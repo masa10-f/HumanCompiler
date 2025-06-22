@@ -1,11 +1,22 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import ValidationError
 
 from config import settings
 from database import db
+from exceptions import (
+    TaskAgentException,
+    general_exception_handler,
+    http_exception_handler,
+    pydantic_validation_exception_handler,
+    task_agent_exception_handler,
+    validation_exception_handler,
+)
+from routers import goals, projects, tasks
 
 
 @asynccontextmanager
@@ -41,6 +52,18 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Add exception handlers
+app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(ValidationError, pydantic_validation_exception_handler)
+app.add_exception_handler(TaskAgentException, task_agent_exception_handler)
+app.add_exception_handler(Exception, general_exception_handler)
+
+# Include API routers
+app.include_router(projects.router, prefix="/api")
+app.include_router(goals.router, prefix="/api")
+app.include_router(tasks.router, prefix="/api")
 
 # Health check endpoint
 @app.get("/health")

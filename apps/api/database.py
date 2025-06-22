@@ -1,5 +1,7 @@
 import logging
+from typing import Generator
 
+from sqlmodel import Session, create_engine
 from supabase import Client, create_client
 
 from config import settings
@@ -12,6 +14,7 @@ class Database:
     def __init__(self):
         self._client: Client = None
         self._service_client: Client = None
+        self._engine = None
 
     def get_client(self) -> Client:
         """Get Supabase client for user operations"""
@@ -32,6 +35,23 @@ class Database:
             )
             logger.info("✅ Supabase service client initialized")
         return self._service_client
+
+    def get_engine(self):
+        """Get SQLModel engine for database operations"""
+        if self._engine is None:
+            self._engine = create_engine(
+                settings.database_url,
+                echo=settings.debug,
+                pool_pre_ping=True
+            )
+            logger.info("✅ SQLModel engine initialized")
+        return self._engine
+
+    def get_session(self) -> Generator[Session, None, None]:
+        """Get database session"""
+        engine = self.get_engine()
+        with Session(engine) as session:
+            yield session
 
     async def health_check(self) -> bool:
         """Check database connection health"""
