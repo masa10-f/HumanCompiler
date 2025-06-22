@@ -129,66 +129,68 @@ Secrets:
 * `SUPABASE_URL`, `SUPABASE_ANON_KEY`
 * `DATABASE_URL`
 
-## 開発計画
+## 開発計画・進捗状況
 
-### Phase 1: 基盤構築 (高優先度)
+### Phase 1: 基盤構築 ✅ **完了**
 
-1. **monorepo構造セットアップ**
+1. **monorepo構造セットアップ** ✅
    - pnpm workspace設定
    - apps/web (Next.js)、apps/api (FastAPI)ディレクトリ作成
    - packages/db、packages/schedulerパッケージ構成
    - 基本的なpackage.json、tsconfig.json設定
 
-2. **Supabase Postgresデータベース**
+2. **Supabase Postgresデータベース** ✅
    - Supabaseプロジェクト作成・設定
    - テーブル設計: users, projects, goals, tasks, schedules, logs
    - RLS (Row Level Security) 設定
    - 初期マイグレーション実行
 
-3. **FastAPI基盤セットアップ**
+3. **FastAPI基盤セットアップ** ✅
    - FastAPI + Uvicorn基本構成
    - CORS設定、環境変数管理
    - Supabase接続設定
    - ヘルスチェックエンドポイント
 
-4. **Next.js 14基盤セットアップ**
+4. **Next.js 14基盤セットアップ** ✅
    - App Router構成
    - TailwindCSS、shadcn/ui導入
    - TypeScript strict設定
    - 基本レイアウト・ルーティング
 
-5. **Supabase認証機能実装**
+5. **Supabase認証機能実装** ✅
    - ユーザー登録・ログイン画面
    - セッション管理・ミドルウェア
    - 認証状態管理 (Context/Zustand)
 
-### Phase 2: コア機能開発 (中優先度)
+### Phase 2: コア機能開発 🔄 **進行中**
 
-6. **基本CRUD API実装**
-   - users, projects, goals, tasks テーブル操作
-   - SQLModel/Pydanticモデル定義
-   - FastAPI エンドポイント実装
-   - バリデーション・エラーハンドリング
+6. **基本CRUD API実装** ✅ **完了**
+   - SQLModel/Pydanticモデル定義 (User, Project, Goal, Task, Schedule, Log)
+   - FastAPI エンドポイント実装 (projects, goals, tasks の全CRUD操作)
+   - バリデーション・エラーハンドリング (カスタム例外クラス)
+   - 所有権ベースのアクセス制御実装
+   - サービス層による業務ロジック分離
+   - 包括的なテストスイート (8個のテストが通過)
 
-7. **タスク・ゴール管理UI**
-   - プロジェクト一覧・作成画面
-   - ゴール管理画面
-   - タスク作成・編集・削除機能
-   - shadcn/ui Table、Dialog、Form使用
+7. **タスク・ゴール管理UI** 🚧 **次のタスク**
+   - 🚧 プロジェクト一覧・作成画面 ← **現在実装中**
+   - ⏳ ゴール管理画面
+   - ⏳ タスク作成・編集・削除機能
+   - ⏳ shadcn/ui Table、Dialog、Form使用
 
-8. **OR-Toolsスケジューラパッケージ**
+8. **OR-Toolsスケジューラパッケージ** ⏳
    - packages/scheduler Python パッケージ
    - 制約充足問題定義・実装
    - タスク割り当て最適化ロジック
    - API用ラッパー関数
 
-9. **スケジューリングAPI実装**
+9. **スケジューリングAPI実装** ⏳
    - POST /api/schedule/daily エンドポイント
    - 利用可能時間スロット入力処理
    - OR-Tools CP-SAT ソルバー呼び出し
    - 最適化結果JSON返却
 
-10. **OpenAI Assistants API統合**
+10. **OpenAI Assistants API統合** ⏳
     - OpenAI関数定義 (create_week_plan, update_plan)
     - 週間計画生成ロジック
     - プロンプトエンジニアリング
@@ -212,6 +214,89 @@ Secrets:
     - Fly.io (FastAPI) デプロイ設定
     - GitHub Actions CI/CD
     - 環境変数・シークレット管理
+
+## 実装完了済みの詳細
+
+### API実装 (2025-06-22時点)
+
+**実装済みファイル:**
+- `apps/api/models.py` - SQLModel/Pydanticモデル定義
+- `apps/api/services.py` - サービス層の業務ロジック
+- `apps/api/routers/projects.py` - プロジェクトCRUD API
+- `apps/api/routers/goals.py` - ゴールCRUD API
+- `apps/api/routers/tasks.py` - タスクCRUD API
+- `apps/api/exceptions.py` - カスタム例外・エラーハンドリング
+- `apps/api/main.py` - FastAPIアプリケーション設定
+- `apps/api/tests/test_api.py` - APIテストスイート
+
+**実装済みAPI エンドポイント:**
+```
+GET    /api/projects/           - プロジェクト一覧取得
+POST   /api/projects/           - プロジェクト作成
+GET    /api/projects/{id}       - プロジェクト詳細取得
+PUT    /api/projects/{id}       - プロジェクト更新
+DELETE /api/projects/{id}       - プロジェクト削除
+
+GET    /api/goals/project/{project_id} - プロジェクトのゴール一覧
+POST   /api/goals/              - ゴール作成
+GET    /api/goals/{id}          - ゴール詳細取得
+PUT    /api/goals/{id}          - ゴール更新
+DELETE /api/goals/{id}          - ゴール削除
+
+GET    /api/tasks/goal/{goal_id}        - ゴールのタスク一覧
+GET    /api/tasks/project/{project_id}  - プロジェクトの全タスク
+POST   /api/tasks/              - タスク作成
+GET    /api/tasks/{id}          - タスク詳細取得
+PUT    /api/tasks/{id}          - タスク更新
+DELETE /api/tasks/{id}          - タスク削除
+```
+
+**最新コミット:**
+- `b7667ce` - feat: implement comprehensive CRUD APIs with service layer and validation
+
+## 次に実装すべきタスク
+
+### 🚧 **現在のタスク: プロジェクト一覧・作成画面**
+
+**実装場所:**
+- `apps/web/src/app/projects/page.tsx` - プロジェクト一覧ページ
+- `apps/web/src/components/projects/` - プロジェクト関連コンポーネント
+
+**実装すべき機能:**
+1. プロジェクト一覧表示（shadcn/ui Table使用）
+2. 新規プロジェクト作成フォーム（shadcn/ui Dialog + Form）
+3. プロジェクト編集・削除機能
+4. FastAPI CRUD APIとの統合
+5. 認証チェック・リダイレクト機能
+6. TypeScript型定義（API レスポンス型）
+
+**参考にすべきコード:**
+- 既存の認証ページ: `apps/web/src/app/login/page.tsx`
+- Supabase接続: `apps/web/src/lib/supabase.ts`
+- shadcn/uiコンポーネント使用例
+
+**API URL:**
+- バックエンドAPI: `http://localhost:8000/api/projects/`
+- 認証ヘッダー: `Authorization: Bearer {token}`
+
+### 次回作業開始時のコマンド
+
+```bash
+# プロジェクトルートで
+cd /home/masato/git-repos/lifemanagement/TaskAgent
+
+# 既存の進捗確認
+cat plan.md
+
+# フロントエンド開発サーバー起動
+cd apps/web
+pnpm dev
+
+# 新しいターミナルでバックエンドも起動
+cd apps/api
+uv pip install -r requirements.txt
+python main.py
+```
 
 ## 今後の拡張アイデア
 
