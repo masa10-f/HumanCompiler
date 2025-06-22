@@ -7,13 +7,5 @@
     "test": "pytest",
     "lint": "ruff check .",
     "format": "ruff format ."
-  },
-  "dependencies": {
-    "ortools": ">=9.8.0",
-    "pydantic": ">=2.5.0"
-  },
-  "devDependencies": {
-    "pytest": ">=7.4.0",
-    "ruff": ">=0.1.0"
   }
 }

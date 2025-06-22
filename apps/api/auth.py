@@ -1,9 +1,9 @@
-from fastapi import HTTPException, Depends, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Optional
-import jwt
-from database import db
 import logging
+
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from database import db
 
 logger = logging.getLogger(__name__)
 
@@ -24,40 +24,42 @@ async def get_current_user(
     """
     try:
         token = credentials.credentials
-        
+
         # Verify token with Supabase
         client = db.get_client()
-        
+
         # Get user from token
         user_response = client.auth.get_user(token)
-        
+
         if not user_response.user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
+
         user = user_response.user
         return AuthUser(user_id=user.id, email=user.email)
-        
+
     except Exception as e:
         logger.error(f"Authentication error: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from e
 
 async def get_optional_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
-) -> Optional[AuthUser]:
+    credentials: HTTPAuthorizationCredentials | None = Depends(
+        HTTPBearer(auto_error=False)
+    )
+) -> AuthUser | None:
     """
     Optional authentication - returns None if no token provided
     """
     if not credentials:
         return None
-    
+
     try:
         return await get_current_user(credentials)
     except HTTPException:
