@@ -1,0 +1,30 @@
+{
+  "name": "@task-agent/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "uvicorn main:app --reload --host 0.0.0.0 --port 8000",
+    "start": "uvicorn main:app --host 0.0.0.0 --port 8000",
+    "test": "pytest",
+    "lint": "ruff check .",
+    "format": "ruff format ."
+  },
+  "dependencies": {
+    "fastapi": ">=0.104.0",
+    "uvicorn": ">=0.24.0",
+    "python-multipart": ">=0.0.6",
+    "python-dotenv": ">=1.0.0",
+    "supabase": ">=2.0.0",
+    "pydantic": ">=2.5.0",
+    "sqlmodel": ">=0.0.14",
+    "ortools": ">=9.8.0",
+    "openai": ">=1.30.0",
+    "langgraph": ">=0.1.0"
+  },
+  "devDependencies": {
+    "pytest": ">=7.4.0",
+    "pytest-asyncio": ">=0.21.0",
+    "httpx": ">=0.25.0",
+    "ruff": ">=0.1.0"
+  }
+}
