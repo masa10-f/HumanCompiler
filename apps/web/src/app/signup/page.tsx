@@ -58,10 +58,10 @@ export default function SignUpPage() {
       })
       
       router.push('/login')
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: '登録に失敗しました',
-        description: error.message,
+        description: error instanceof Error ? error.message : '登録に失敗しました',
         variant: 'destructive',
       })
     } finally {

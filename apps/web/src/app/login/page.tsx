@@ -33,10 +33,10 @@ export default function LoginPage() {
       setLoading(true)
       await signIn(email, password)
       router.push('/dashboard')
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'ログインに失敗しました',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'ログインに失敗しました',
         variant: 'destructive',
       })
     } finally {
@@ -91,7 +91,7 @@ export default function LoginPage() {
               </Link>
             </p>
             <p className="text-sm">
-              <Link href="/auth/reset-password" className="text-blue-600 hover:underline">
+              <Link href="/login" className="text-blue-600 hover:underline">
                 パスワードを忘れた方
               </Link>
             </p>

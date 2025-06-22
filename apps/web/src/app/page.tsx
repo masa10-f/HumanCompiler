@@ -23,7 +23,7 @@ export default function Home() {
               </Link>
             </Button>
             <Button asChild variant="outline" size="lg" className="text-lg px-8 py-3">
-              <Link href="/about">
+              <Link href="/signup">
                 Learn More
               </Link>
             </Button>

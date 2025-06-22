@@ -51,10 +51,10 @@ export function useAuth() {
       setLoading(true)
       const { error } = await supabase.auth.signOut()
       if (error) throw error
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'エラー',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'エラーが発生しました',
         variant: 'destructive',
       })
     } finally {
