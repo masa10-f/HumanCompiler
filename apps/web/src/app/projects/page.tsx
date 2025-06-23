@@ -83,7 +83,11 @@ export default function ProjectsPage() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => (
-            <Card key={project.id} className="hover:shadow-lg transition-shadow cursor-pointer">
+            <Card 
+              key={project.id} 
+              className="hover:shadow-lg transition-shadow cursor-pointer"
+              onClick={() => router.push(`/projects/${project.id}`)}
+            >
               <CardHeader>
                 <CardTitle className="line-clamp-1">{project.title}</CardTitle>
                 <CardDescription className="line-clamp-2">
@@ -93,7 +97,7 @@ export default function ProjectsPage() {
               <CardContent>
                 <div className="flex justify-between items-center text-sm text-gray-500">
                   <span>作成日: {new Date(project.created_at).toLocaleDateString('ja-JP')}</span>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                     <ProjectEditDialog project={project}>
                       <Button variant="outline" size="sm">
                         編集
