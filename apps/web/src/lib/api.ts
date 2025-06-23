@@ -11,6 +11,12 @@ import type {
   GoalUpdate,
   GoalResponse
 } from '@/types/goal';
+import type {
+  Task,
+  TaskCreate,
+  TaskUpdate,
+  TaskResponse
+} from '@/types/task';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -119,6 +125,39 @@ class ApiClient {
       method: 'DELETE',
     });
   }
+
+  // Task API methods
+  async getTasksByGoal(goalId: string, skip: number = 0, limit: number = 20): Promise<Task[]> {
+    return this.request<Task[]>(`/api/tasks/goal/${goalId}?skip=${skip}&limit=${limit}`);
+  }
+
+  async getTasksByProject(projectId: string, skip: number = 0, limit: number = 20): Promise<Task[]> {
+    return this.request<Task[]>(`/api/tasks/project/${projectId}?skip=${skip}&limit=${limit}`);
+  }
+
+  async getTask(taskId: string): Promise<Task> {
+    return this.request<Task>(`/api/tasks/${taskId}`);
+  }
+
+  async createTask(taskData: TaskCreate): Promise<Task> {
+    return this.request<Task>('/api/tasks/', {
+      method: 'POST',
+      body: JSON.stringify(taskData),
+    });
+  }
+
+  async updateTask(taskId: string, taskData: TaskUpdate): Promise<Task> {
+    return this.request<Task>(`/api/tasks/${taskId}`, {
+      method: 'PUT',
+      body: JSON.stringify(taskData),
+    });
+  }
+
+  async deleteTask(taskId: string): Promise<void> {
+    return this.request<void>(`/api/tasks/${taskId}`, {
+      method: 'DELETE',
+    });
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL);
@@ -139,4 +178,15 @@ export const goalsApi = {
   create: (data: GoalCreate) => apiClient.createGoal(data),
   update: (id: string, data: GoalUpdate) => apiClient.updateGoal(id, data),
   delete: (id: string) => apiClient.deleteGoal(id),
+};
+
+export const tasksApi = {
+  getByGoal: (goalId: string, skip?: number, limit?: number) => 
+    apiClient.getTasksByGoal(goalId, skip, limit),
+  getByProject: (projectId: string, skip?: number, limit?: number) => 
+    apiClient.getTasksByProject(projectId, skip, limit),
+  getById: (id: string) => apiClient.getTask(id),
+  create: (data: TaskCreate) => apiClient.createTask(data),
+  update: (id: string, data: TaskUpdate) => apiClient.updateTask(id, data),
+  delete: (id: string) => apiClient.deleteTask(id),
 };

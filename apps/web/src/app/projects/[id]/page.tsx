@@ -161,7 +161,11 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {goals.map((goal) => (
-              <Card key={goal.id} className="hover:shadow-lg transition-shadow">
+              <Card 
+                key={goal.id} 
+                className="hover:shadow-lg transition-shadow cursor-pointer"
+                onClick={() => router.push(`/projects/${params.id}/goals/${goal.id}`)}
+              >
                 <CardHeader>
                   <CardTitle className="line-clamp-1">{goal.title}</CardTitle>
                   <CardDescription className="line-clamp-2">
@@ -177,7 +181,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
                       {new Date(goal.created_at).toLocaleDateString('ja-JP')}
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                     <GoalEditDialog goal={goal}>
                       <Button variant="outline" size="sm">
                         編集
