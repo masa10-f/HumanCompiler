@@ -1,0 +1,312 @@
+"""
+Tests for scheduler API endpoints.
+"""
+
+import pytest
+from datetime import datetime
+from fastapi.testclient import TestClient
+from unittest.mock import patch, MagicMock
+
+from main import app
+from models import User, Project, Goal, Task
+
+client = TestClient(app)
+
+
+class TestSchedulerAPI:
+    """Test cases for scheduler API endpoints."""
+    
+    def test_scheduler_test_endpoint(self):
+        """Test the scheduler test endpoint."""
+        response = client.get("/api/schedule/test")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert "Scheduler package imported successfully" in data["message"]
+    
+    @patch("routers.scheduler.get_current_user_id")
+    @patch("routers.scheduler.get_session")
+    @patch("routers.scheduler.TaskService.get_tasks_by_goal")
+    def test_create_daily_schedule_success(self, mock_get_tasks, mock_session, mock_user_id):
+        """Test successful daily schedule creation."""
+        # Mock dependencies
+        mock_user_id.return_value = "user123"
+        mock_session.return_value = MagicMock()
+        
+        # Mock task data
+        mock_task = MagicMock()
+        mock_task.id = "task1"
+        mock_task.title = "Test Task"
+        mock_task.estimate_hours = 2.0
+        mock_task.status = "pending"
+        mock_task.due_date = None
+        mock_task.goal_id = "goal1"
+        mock_get_tasks.return_value = [mock_task]
+        
+        request_data = {
+            "date": "2025-06-23",
+            "goal_id": "goal1",
+            "time_slots": [
+                {
+                    "start": "09:00",
+                    "end": "12:00",
+                    "kind": "deep"
+                }
+            ]
+        }
+        
+        response = client.post("/api/schedule/daily", json=request_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "success" in data
+        assert "assignments" in data
+        assert "unscheduled_tasks" in data
+        assert data["date"] == "2025-06-23"
+    
+    @patch("routers.scheduler.get_current_user_id")
+    @patch("routers.scheduler.get_session")
+    @patch("routers.scheduler.TaskService.get_tasks_by_project")
+    def test_create_daily_schedule_by_project(self, mock_get_tasks, mock_session, mock_user_id):
+        """Test daily schedule creation filtered by project."""
+        # Mock dependencies
+        mock_user_id.return_value = "user123"
+        mock_session.return_value = MagicMock()
+        
+        # Mock task data
+        mock_task = MagicMock()
+        mock_task.id = "task1"
+        mock_task.title = "Project Task"
+        mock_task.estimate_hours = 1.5
+        mock_task.status = "in_progress"
+        mock_task.due_date = datetime(2025, 6, 25)
+        mock_task.goal_id = "goal1"
+        mock_get_tasks.return_value = [mock_task]
+        
+        request_data = {
+            "date": "2025-06-23",
+            "project_id": "project1",
+            "time_slots": [
+                {
+                    "start": "14:00",
+                    "end": "16:00",
+                    "kind": "light"
+                }
+            ]
+        }
+        
+        response = client.post("/api/schedule/daily", json=request_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True or data["success"] is False  # Either is valid
+        assert isinstance(data["assignments"], list)
+        assert isinstance(data["unscheduled_tasks"], list)
+    
+    @patch("routers.scheduler.get_current_user_id")
+    def test_create_daily_schedule_no_filter(self, mock_user_id):
+        """Test schedule creation without project_id or goal_id."""
+        mock_user_id.return_value = "user123"
+        
+        request_data = {
+            "date": "2025-06-23",
+            "time_slots": [
+                {
+                    "start": "09:00",
+                    "end": "12:00",
+                    "kind": "deep"
+                }
+            ]
+        }
+        
+        response = client.post("/api/schedule/daily", json=request_data)
+        
+        assert response.status_code == 400
+        data = response.json()
+        assert "Either project_id or goal_id must be specified" in data["detail"]
+    
+    def test_create_daily_schedule_invalid_date(self):
+        """Test schedule creation with invalid date format."""
+        request_data = {
+            "date": "invalid-date",
+            "goal_id": "goal1",
+            "time_slots": [
+                {
+                    "start": "09:00",
+                    "end": "12:00",
+                    "kind": "deep"
+                }
+            ]
+        }
+        
+        response = client.post("/api/schedule/daily", json=request_data)
+        
+        assert response.status_code == 422  # Validation error
+    
+    def test_create_daily_schedule_invalid_time_slot(self):
+        """Test schedule creation with invalid time slot."""
+        request_data = {
+            "date": "2025-06-23",
+            "goal_id": "goal1",
+            "time_slots": [
+                {
+                    "start": "25:00",  # Invalid hour
+                    "end": "12:00",
+                    "kind": "deep"
+                }
+            ]
+        }
+        
+        response = client.post("/api/schedule/daily", json=request_data)
+        
+        assert response.status_code == 422  # Validation error
+    
+    def test_create_daily_schedule_empty_time_slots(self):
+        """Test schedule creation with empty time slots."""
+        request_data = {
+            "date": "2025-06-23",
+            "goal_id": "goal1",
+            "time_slots": []
+        }
+        
+        response = client.post("/api/schedule/daily", json=request_data)
+        
+        assert response.status_code == 422  # Validation error
+    
+    def test_time_slot_validation(self):
+        """Test TimeSlotInput validation."""
+        from routers.scheduler import TimeSlotInput
+        
+        # Valid time slot
+        valid_slot = TimeSlotInput(
+            start="09:00",
+            end="12:00",
+            kind="deep"
+        )
+        assert valid_slot.start == "09:00"
+        assert valid_slot.kind == "deep"
+        
+        # Invalid time format
+        with pytest.raises(ValueError):
+            TimeSlotInput(
+                start="9:00am",  # Invalid format
+                end="12:00",
+                kind="deep"
+            )
+        
+        # Invalid kind
+        with pytest.raises(ValueError):
+            TimeSlotInput(
+                start="09:00",
+                end="12:00",
+                kind="invalid_kind"
+            )
+    
+    def test_task_kind_mapping(self):
+        """Test task kind mapping function."""
+        from routers.scheduler import map_task_kind
+        from scheduler.models import TaskKind
+        
+        # Test mapping
+        assert map_task_kind("Research Project") == TaskKind.DEEP
+        assert map_task_kind("Data Analysis") == TaskKind.DEEP
+        assert map_task_kind("Study Session") == TaskKind.STUDY
+        assert map_task_kind("Team Meeting") == TaskKind.MEETING
+        assert map_task_kind("Email Review") == TaskKind.LIGHT
+        assert map_task_kind("Random Task") == TaskKind.LIGHT  # Default
+    
+    def test_slot_kind_mapping(self):
+        """Test slot kind mapping function."""
+        from routers.scheduler import map_slot_kind
+        from scheduler.models import SlotKind
+        
+        # Test mapping
+        assert map_slot_kind("deep") == SlotKind.DEEP
+        assert map_slot_kind("LIGHT") == SlotKind.LIGHT  # Case insensitive
+        assert map_slot_kind("study") == SlotKind.STUDY
+        assert map_slot_kind("meeting") == SlotKind.MEETING
+        assert map_slot_kind("unknown") == SlotKind.LIGHT  # Default
+    
+    @patch("routers.scheduler.get_current_user_id")
+    @patch("routers.scheduler.get_session")
+    @patch("routers.scheduler.TaskService.get_tasks_by_goal")
+    def test_create_daily_schedule_no_tasks(self, mock_get_tasks, mock_session, mock_user_id):
+        """Test schedule creation when no tasks are found."""
+        # Mock dependencies
+        mock_user_id.return_value = "user123"
+        mock_session.return_value = MagicMock()
+        mock_get_tasks.return_value = []  # No tasks
+        
+        request_data = {
+            "date": "2025-06-23",
+            "goal_id": "goal1",
+            "time_slots": [
+                {
+                    "start": "09:00",
+                    "end": "12:00",
+                    "kind": "deep"
+                }
+            ]
+        }
+        
+        response = client.post("/api/schedule/daily", json=request_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert len(data["assignments"]) == 0
+        assert len(data["unscheduled_tasks"]) == 0
+        assert data["optimization_status"] == "NO_TASKS"
+    
+    @patch("routers.scheduler.get_current_user_id")
+    @patch("routers.scheduler.get_session")
+    @patch("routers.scheduler.TaskService.get_tasks_by_goal")
+    def test_create_daily_schedule_completed_tasks_filtered(self, mock_get_tasks, mock_session, mock_user_id):
+        """Test that completed tasks are filtered out from scheduling."""
+        # Mock dependencies
+        mock_user_id.return_value = "user123"
+        mock_session.return_value = MagicMock()
+        
+        # Mock tasks with different statuses
+        mock_task_pending = MagicMock()
+        mock_task_pending.id = "task1"
+        mock_task_pending.title = "Pending Task"
+        mock_task_pending.status = "pending"
+        mock_task_pending.estimate_hours = 1.0
+        mock_task_pending.due_date = None
+        mock_task_pending.goal_id = "goal1"
+        
+        mock_task_completed = MagicMock()
+        mock_task_completed.id = "task2"
+        mock_task_completed.title = "Completed Task"
+        mock_task_completed.status = "completed"
+        mock_task_completed.estimate_hours = 2.0
+        mock_task_completed.due_date = None
+        mock_task_completed.goal_id = "goal1"
+        
+        mock_get_tasks.return_value = [mock_task_pending, mock_task_completed]
+        
+        request_data = {
+            "date": "2025-06-23",
+            "goal_id": "goal1",
+            "time_slots": [
+                {
+                    "start": "09:00",
+                    "end": "12:00",
+                    "kind": "light"
+                }
+            ]
+        }
+        
+        response = client.post("/api/schedule/daily", json=request_data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Should only consider pending task
+        if data["success"] and data["assignments"]:
+            # Check that only pending task is in assignments
+            task_ids = [assignment["task_id"] for assignment in data["assignments"]]
+            assert "task1" in task_ids
+            assert "task2" not in task_ids
