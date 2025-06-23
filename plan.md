@@ -162,7 +162,7 @@ Secrets:
    - セッション管理・ミドルウェア
    - 認証状態管理 (Context/Zustand)
 
-### Phase 2: コア機能開発 🔄 **進行中**
+### Phase 2: コア機能開発 ✅ **完了**
 
 6. **基本CRUD API実装** ✅ **完了**
    - SQLModel/Pydanticモデル定義 (User, Project, Goal, Task, Schedule, Log)
@@ -172,31 +172,37 @@ Secrets:
    - サービス層による業務ロジック分離
    - 包括的なテストスイート (8個のテストが通過)
 
-7. **タスク・ゴール管理UI** 🚧 **次のタスク**
-   - 🚧 プロジェクト一覧・作成画面 ← **現在実装中**
-   - ⏳ ゴール管理画面
-   - ⏳ タスク作成・編集・削除機能
-   - ⏳ shadcn/ui Table、Dialog、Form使用
-
-8. **OR-Toolsスケジューラパッケージ** ⏳
-   - packages/scheduler Python パッケージ
-   - 制約充足問題定義・実装
+7. **OR-Toolsスケジューラパッケージ** ✅ **完了**
+   - packages/scheduler Python パッケージ実装
+   - 制約充足問題定義・実装 (CP-SAT solver)
    - タスク割り当て最適化ロジック
-   - API用ラッパー関数
+   - API用ラッパー関数 (optimize_schedule)
+   - タスク種別とスロット種別のマッピング
 
-9. **スケジューリングAPI実装** ⏳
-   - POST /api/schedule/daily エンドポイント
+8. **スケジューリングAPI実装** ✅ **完了**
+   - POST /api/schedule/daily エンドポイント実装
    - 利用可能時間スロット入力処理
    - OR-Tools CP-SAT ソルバー呼び出し
    - 最適化結果JSON返却
+   - 包括的なテストスイート (12個のテストが通過)
 
-10. **OpenAI Assistants API統合** ⏳
-    - OpenAI関数定義 (create_week_plan, update_plan)
-    - 週間計画生成ロジック
-    - プロンプトエンジニアリング
-    - API呼び出し・レスポンス処理
+9. **OpenAI Assistants API統合** ✅ **完了**
+   - OpenAI関数定義 (create_week_plan, update_plan)
+   - 週間計画生成ロジック実装
+   - 研究開発特化のプロンプトエンジニアリング
+   - AI計画エンドポイント (weekly-plan, analyze-workload, suggest-priorities)
+   - エラーハンドリングと適切なフォールバック
 
-### Phase 3: 高度な機能・運用 (低優先度)
+### Phase 3: フロントエンド開発 🚧 **次のフェーズ**
+
+10. **タスク・ゴール管理UI** 🚧 **次のタスク**
+    - 🚧 プロジェクト一覧・作成画面 ← **現在実装予定**
+    - ⏳ ゴール管理画面
+    - ⏳ タスク作成・編集・削除機能
+    - ⏳ shadcn/ui Table、Dialog、Form使用
+    - ⏳ FastAPI CRUD APIとの統合
+
+### Phase 4: 高度な機能・運用 (低優先度)
 
 11. **LangGraph cron worker実装**
     - LangGraphノード構成 (FetchContext, CallLLM, PersistPlan)
@@ -217,8 +223,9 @@ Secrets:
 
 ## 実装完了済みの詳細
 
-### API実装 (2025-06-22時点)
+### Phase 2完了: コア機能開発 (2025-06-23時点)
 
+#### **1. 基本CRUD API実装** ✅
 **実装済みファイル:**
 - `apps/api/models.py` - SQLModel/Pydanticモデル定義
 - `apps/api/services.py` - サービス層の業務ロジック
@@ -229,8 +236,26 @@ Secrets:
 - `apps/api/main.py` - FastAPIアプリケーション設定
 - `apps/api/tests/test_api.py` - APIテストスイート
 
+#### **2. OR-Toolsスケジューラパッケージ** ✅
+**実装済みファイル:**
+- `packages/scheduler/` - 独立したPythonパッケージ
+- `packages/scheduler/scheduler/core.py` - CP-SATソルバー実装
+- `packages/scheduler/scheduler/models.py` - タスク・スロットモデル
+- `packages/scheduler/scheduler/api.py` - APIラッパー関数
+
+#### **3. スケジューリングAPI実装** ✅
+**実装済みファイル:**
+- `apps/api/routers/scheduler.py` - スケジューリングエンドポイント
+- `apps/api/tests/test_scheduler.py` - スケジューラテストスイート (12テスト)
+
+#### **4. OpenAI Assistants API統合** ✅
+**実装済みファイル:**
+- `apps/api/ai_service.py` - OpenAI統合サービス
+- `apps/api/routers/ai_planning.py` - AI計画エンドポイント
+
 **実装済みAPI エンドポイント:**
 ```
+# CRUD APIs
 GET    /api/projects/           - プロジェクト一覧取得
 POST   /api/projects/           - プロジェクト作成
 GET    /api/projects/{id}       - プロジェクト詳細取得
@@ -249,14 +274,26 @@ POST   /api/tasks/              - タスク作成
 GET    /api/tasks/{id}          - タスク詳細取得
 PUT    /api/tasks/{id}          - タスク更新
 DELETE /api/tasks/{id}          - タスク削除
+
+# スケジューリングAPIs
+GET    /api/schedule/test       - スケジューラテストエンドポイント
+POST   /api/schedule/daily      - 日次スケジュール最適化
+
+# AI計画APIs
+GET    /api/ai/weekly-plan/test - OpenAI統合テストエンドポイント
+POST   /api/ai/weekly-plan      - AI週間計画生成
+POST   /api/ai/analyze-workload - ワークロード分析
+POST   /api/ai/suggest-priorities - タスク優先度提案
 ```
 
 **最新コミット:**
-- `b7667ce` - feat: implement comprehensive CRUD APIs with service layer and validation
+- `56f108e` - feat: implement OpenAI Assistants API integration for weekly planning
 
 ## 次に実装すべきタスク
 
-### 🚧 **現在のタスク: プロジェクト一覧・作成画面**
+### 🚧 **Phase 3: フロントエンド開発**
+
+#### **1. プロジェクト一覧・作成画面** ← **次の実装タスク**
 
 **実装場所:**
 - `apps/web/src/app/projects/page.tsx` - プロジェクト一覧ページ
@@ -279,6 +316,12 @@ DELETE /api/tasks/{id}          - タスク削除
 - バックエンドAPI: `http://localhost:8000/api/projects/`
 - 認証ヘッダー: `Authorization: Bearer {token}`
 
+#### **2. 後続タスク**
+- ゴール管理画面の実装
+- タスク作成・編集・削除機能
+- AI週間計画機能のUI実装
+- スケジューリング結果表示UI
+
 ### 次回作業開始時のコマンド
 
 ```bash
@@ -288,15 +331,27 @@ cd /home/masato/git-repos/lifemanagement/TaskAgent
 # 既存の進捗確認
 cat plan.md
 
+# 環境設定確認（必要に応じて.envファイル編集）
+# OpenAI API keyを設定: OPENAI_API_KEY=your_actual_key
+
 # フロントエンド開発サーバー起動
 cd apps/web
 pnpm dev
 
 # 新しいターミナルでバックエンドも起動
 cd apps/api
-uv pip install -r requirements.txt
+pip install -r requirements.txt  # scheduler パッケージも含む
 python main.py
 ```
+
+### 🎯 **完了したPhase 2の成果**
+
+✅ **強力なAI駆動タスク管理システム**を構築:
+- **OR-Tools制約ソルバー**による最適スケジューリング
+- **OpenAI GPT-4**による自然言語週間計画生成
+- **包括的なCRUD API**（20以上のエンドポイント）
+- **堅牢なテストスイート**（20以上のテスト）
+- **研究開発プロジェクト**に特化した設計
 
 ## 今後の拡張アイデア
 
