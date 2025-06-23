@@ -9,10 +9,10 @@ from datetime import datetime, time
 from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, Field, validator
 
-from ..auth import get_current_user_id
-from ..services import TaskService, GoalService, ProjectService  
-from ..exceptions import ValidationException, NotFoundException
-from ..database import get_session
+from auth import get_current_user_id
+from services import TaskService, GoalService, ProjectService  
+from exceptions import ValidationError, ResourceNotFoundError
+from database import db
 from sqlmodel import Session
 
 # Import scheduler package
@@ -165,7 +165,7 @@ def map_slot_kind(kind_str: str) -> SlotKind:
 async def create_daily_schedule(
     request: DailyScheduleRequest,
     user_id: str = Depends(get_current_user_id),
-    session: Session = Depends(get_session)
+    session: Session = Depends(db.get_session)
 ):
     """
     Create optimal daily schedule for tasks using OR-Tools CP-SAT solver.
@@ -303,11 +303,11 @@ async def create_daily_schedule(
         logger.info(f"Schedule optimization completed: {len(assignments)} tasks scheduled")
         return response
         
-    except ValidationException as e:
+    except ValidationError as e:
         logger.error(f"Validation error in schedule creation: {e}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     
-    except NotFoundException as e:
+    except ResourceNotFoundError as e:
         logger.error(f"Resource not found in schedule creation: {e}")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     

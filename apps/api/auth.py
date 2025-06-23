@@ -64,3 +64,11 @@ async def get_optional_user(
         return await get_current_user(credentials)
     except HTTPException:
         return None
+
+async def get_current_user_id(
+    current_user: AuthUser = Depends(get_current_user)
+) -> str:
+    """
+    Get current user ID from authenticated user
+    """
+    return current_user.user_id

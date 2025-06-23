@@ -1,0 +1,452 @@
+"""
+OpenAI Assistants API integration for task planning and scheduling.
+"""
+
+import logging
+import json
+from typing import Dict, List, Any, Optional
+from datetime import datetime, date, timedelta
+from dataclasses import dataclass
+
+import openai
+from openai import OpenAI
+from pydantic import BaseModel, Field
+
+from config import settings
+from models import Project, Goal, Task
+from services import ProjectService, GoalService, TaskService
+
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class WeeklyPlanContext:
+    """Context data for weekly planning."""
+    user_id: str
+    week_start_date: date
+    projects: List[Project]
+    goals: List[Goal]
+    tasks: List[Task]
+    capacity_hours: float
+    preferences: Dict[str, Any]
+
+
+class WeeklyPlanRequest(BaseModel):
+    """Request model for weekly plan generation."""
+    week_start_date: str = Field(..., description="Week start date (YYYY-MM-DD)")
+    capacity_hours: float = Field(40.0, description="Available hours for the week")
+    project_filter: Optional[List[str]] = Field(None, description="Filter by project IDs")
+    preferences: Dict[str, Any] = Field(default_factory=dict, description="User preferences")
+
+
+class TaskPlan(BaseModel):
+    """Individual task plan within a week."""
+    task_id: str
+    task_title: str
+    estimated_hours: float
+    priority: int
+    suggested_day: str
+    suggested_time_slot: str
+    rationale: str
+
+
+class WeeklyPlanResponse(BaseModel):
+    """Response model for weekly plan generation."""
+    success: bool
+    week_start_date: str
+    total_planned_hours: float
+    task_plans: List[TaskPlan]
+    recommendations: List[str]
+    insights: List[str]
+    generated_at: datetime
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class OpenAIService:
+    """Service for OpenAI Assistants API integration."""
+    
+    def __init__(self):
+        """Initialize OpenAI client."""
+        if not settings.openai_api_key or settings.openai_api_key == "your_openai_api_key":
+            logger.warning("OpenAI API key not configured - AI features will not be available")
+            self.client = None
+            self.model = "gpt-4-1106-preview"  # GPT-4 Turbo with function calling
+        else:
+            self.client = OpenAI(api_key=settings.openai_api_key)
+            self.model = "gpt-4-1106-preview"  # GPT-4 Turbo with function calling
+    
+    def get_function_definitions(self) -> List[Dict[str, Any]]:
+        """Get OpenAI function definitions for task planning."""
+        return [
+            {
+                "name": "create_week_plan",
+                "description": "Create an optimal weekly plan for tasks based on user context and preferences",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_plans": {
+                            "type": "array",
+                            "description": "List of planned tasks for the week",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "task_id": {
+                                        "type": "string",
+                                        "description": "Unique task identifier"
+                                    },
+                                    "estimated_hours": {
+                                        "type": "number",
+                                        "description": "Estimated hours for the task"
+                                    },
+                                    "priority": {
+                                        "type": "integer",
+                                        "description": "Task priority (1=highest, 5=lowest)"
+                                    },
+                                    "suggested_day": {
+                                        "type": "string",
+                                        "description": "Suggested day of week (Monday, Tuesday, etc.)"
+                                    },
+                                    "suggested_time_slot": {
+                                        "type": "string",
+                                        "description": "Suggested time slot (morning, afternoon, evening)"
+                                    },
+                                    "rationale": {
+                                        "type": "string",
+                                        "description": "Reasoning for this scheduling decision"
+                                    }
+                                },
+                                "required": ["task_id", "estimated_hours", "priority", "suggested_day", "suggested_time_slot", "rationale"]
+                            }
+                        },
+                        "recommendations": {
+                            "type": "array",
+                            "description": "General recommendations for the week",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        "insights": {
+                            "type": "array",
+                            "description": "Insights about workload and optimization opportunities",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "required": ["task_plans", "recommendations", "insights"]
+                }
+            },
+            {
+                "name": "update_plan",
+                "description": "Update an existing plan based on progress and changes",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "updated_tasks": {
+                            "type": "array",
+                            "description": "Tasks with updated planning",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "task_id": {
+                                        "type": "string",
+                                        "description": "Task identifier"
+                                    },
+                                    "new_estimated_hours": {
+                                        "type": "number",
+                                        "description": "Updated time estimate"
+                                    },
+                                    "new_priority": {
+                                        "type": "integer",
+                                        "description": "Updated priority level"
+                                    },
+                                    "adjustment_reason": {
+                                        "type": "string",
+                                        "description": "Reason for the adjustment"
+                                    }
+                                },
+                                "required": ["task_id", "adjustment_reason"]
+                            }
+                        },
+                        "plan_adjustments": {
+                            "type": "array",
+                            "description": "Overall plan adjustments and recommendations",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "required": ["updated_tasks", "plan_adjustments"]
+                }
+            }
+        ]
+    
+    def create_system_prompt(self) -> str:
+        """Create system prompt for task planning assistant."""
+        return """You are an expert task planning and productivity assistant specialized in research and development project management. Your role is to help users create optimal weekly schedules that maximize productivity and goal achievement.
+
+## Your Expertise:
+- Deep work scheduling and time management
+- Research project planning and milestone tracking  
+- Priority-based task organization
+- Workload balancing and capacity planning
+- Cognitive load optimization
+
+## Planning Principles:
+1. **Deep Work First**: Schedule complex, high-cognitive tasks (research, analysis, coding) during peak focus hours (typically mornings)
+2. **Energy Management**: Match task difficulty to energy levels throughout the day
+3. **Priority Optimization**: Focus on high-impact tasks that advance key project milestones
+4. **Realistic Scheduling**: Account for interruptions, meetings, and cognitive fatigue
+5. **Goal Alignment**: Ensure tasks directly contribute to project and goal objectives
+
+## Time Slot Guidelines:
+- **Morning (9-12)**: Deep work, research, complex analysis
+- **Afternoon (13-17)**: Implementation, coding, documentation
+- **Evening (18-20)**: Light tasks, planning, administrative work
+
+## Scheduling Strategy:
+- Batch similar tasks together for efficiency
+- Leave buffer time for unexpected urgent tasks
+- Consider task dependencies and logical sequencing
+- Account for due dates and deadline pressure
+- Balance between different projects to maintain momentum
+
+## Output Requirements:
+Always provide specific, actionable recommendations with clear rationale. Include insights about workload distribution and optimization opportunities. Focus on helping the user achieve their research and development goals efficiently.
+
+When creating weekly plans, use the create_week_plan function. When updating existing plans, use the update_plan function."""
+
+    def format_context_for_llm(self, context: WeeklyPlanContext) -> str:
+        """Format context data for LLM consumption."""
+        context_str = f"""# Weekly Planning Context
+
+## User Information
+- User ID: {context.user_id}
+- Week Starting: {context.week_start_date.strftime('%Y-%m-%d (%A)')}
+- Available Capacity: {context.capacity_hours} hours
+
+## Projects ({len(context.projects)} active)
+"""
+        
+        for project in context.projects:
+            context_str += f"""
+### {project.title}
+- Project ID: {project.id}
+- Description: {project.description or 'No description'}
+- Created: {project.created_at.strftime('%Y-%m-%d')}
+"""
+        
+        context_str += f"\n## Goals ({len(context.goals)} active)\n"
+        
+        for goal in context.goals:
+            project_title = next((p.title for p in context.projects if p.id == goal.project_id), "Unknown Project")
+            context_str += f"""
+### {goal.title} (Project: {project_title})
+- Goal ID: {goal.id}
+- Estimated Hours: {goal.estimate_hours}
+- Description: {goal.description or 'No description'}
+"""
+        
+        context_str += f"\n## Pending Tasks ({len(context.tasks)} items)\n"
+        
+        for task in context.tasks:
+            goal_title = next((g.title for g in context.goals if g.id == task.goal_id), "Unknown Goal")
+            due_info = f" | Due: {task.due_date.strftime('%Y-%m-%d')}" if task.due_date else ""
+            context_str += f"""
+### {task.title} (Goal: {goal_title})
+- Task ID: {task.id}
+- Status: {task.status}
+- Estimated Hours: {task.estimate_hours}
+- Description: {task.description or 'No description'}{due_info}
+"""
+        
+        if context.preferences:
+            context_str += f"\n## User Preferences\n{json.dumps(context.preferences, indent=2)}"
+        
+        return context_str
+    
+    async def generate_weekly_plan(self, context: WeeklyPlanContext) -> WeeklyPlanResponse:
+        """Generate weekly plan using OpenAI Assistants API."""
+        try:
+            logger.info(f"Generating weekly plan for user {context.user_id}")
+            
+            # Check if OpenAI client is available
+            if not self.client:
+                return WeeklyPlanResponse(
+                    success=False,
+                    week_start_date=context.week_start_date.strftime('%Y-%m-%d'),
+                    total_planned_hours=0.0,
+                    task_plans=[],
+                    recommendations=["OpenAI API key not configured - AI features unavailable"],
+                    insights=["Please configure OPENAI_API_KEY to enable AI planning"],
+                    generated_at=datetime.now()
+                )
+            
+            # Format context for LLM
+            context_text = self.format_context_for_llm(context)
+            
+            # Create user message
+            user_message = f"""Please create an optimal weekly plan for the following context:
+
+{context_text}
+
+Focus on:
+1. Prioritizing high-impact tasks that advance key goals
+2. Scheduling deep work during optimal time slots
+3. Balancing workload across the week
+4. Considering due dates and dependencies
+5. Providing specific scheduling recommendations
+
+Use the create_week_plan function to structure your response."""
+            
+            # Call OpenAI API
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": self.create_system_prompt()},
+                    {"role": "user", "content": user_message}
+                ],
+                functions=self.get_function_definitions(),
+                function_call={"name": "create_week_plan"},
+                temperature=0.7,
+                max_tokens=2000
+            )
+            
+            # Parse function call response
+            function_call = response.choices[0].message.function_call
+            if function_call and function_call.name == "create_week_plan":
+                function_args = json.loads(function_call.arguments)
+                
+                # Convert to our response format
+                task_plans = []
+                for plan in function_args.get("task_plans", []):
+                    # Find task title
+                    task_title = next(
+                        (t.title for t in context.tasks if t.id == plan["task_id"]), 
+                        "Unknown Task"
+                    )
+                    
+                    task_plan = TaskPlan(
+                        task_id=plan["task_id"],
+                        task_title=task_title,
+                        estimated_hours=plan["estimated_hours"],
+                        priority=plan["priority"],
+                        suggested_day=plan["suggested_day"],
+                        suggested_time_slot=plan["suggested_time_slot"],
+                        rationale=plan["rationale"]
+                    )
+                    task_plans.append(task_plan)
+                
+                total_hours = sum(plan.estimated_hours for plan in task_plans)
+                
+                return WeeklyPlanResponse(
+                    success=True,
+                    week_start_date=context.week_start_date.strftime('%Y-%m-%d'),
+                    total_planned_hours=total_hours,
+                    task_plans=task_plans,
+                    recommendations=function_args.get("recommendations", []),
+                    insights=function_args.get("insights", []),
+                    generated_at=datetime.now()
+                )
+            else:
+                logger.error("OpenAI did not return expected function call")
+                return WeeklyPlanResponse(
+                    success=False,
+                    week_start_date=context.week_start_date.strftime('%Y-%m-%d'),
+                    total_planned_hours=0.0,
+                    task_plans=[],
+                    recommendations=["Failed to generate plan - please try again"],
+                    insights=["OpenAI API error occurred"],
+                    generated_at=datetime.now()
+                )
+                
+        except Exception as e:
+            logger.error(f"Error generating weekly plan: {e}")
+            return WeeklyPlanResponse(
+                success=False,
+                week_start_date=context.week_start_date.strftime('%Y-%m-%d'),
+                total_planned_hours=0.0,
+                task_plans=[],
+                recommendations=[f"Error generating plan: {str(e)}"],
+                insights=["Please check OpenAI API configuration and try again"],
+                generated_at=datetime.now()
+            )
+
+
+class WeeklyPlanService:
+    """Service for weekly plan generation and management."""
+    
+    def __init__(self):
+        """Initialize service."""
+        self.openai_service = OpenAIService()
+    
+    async def collect_context(
+        self, 
+        session, 
+        user_id: str, 
+        week_start_date: date,
+        project_filter: Optional[List[str]] = None,
+        capacity_hours: float = 40.0,
+        preferences: Optional[Dict[str, Any]] = None
+    ) -> WeeklyPlanContext:
+        """Collect context data for weekly planning."""
+        
+        # Get user's projects
+        projects = ProjectService.get_projects(session, user_id)
+        
+        # Filter projects if specified
+        if project_filter:
+            projects = [p for p in projects if p.id in project_filter]
+        
+        # Get goals for the projects
+        goals = []
+        for project in projects:
+            project_goals = GoalService.get_goals_by_project(session, project.id, user_id)
+            goals.extend(project_goals)
+        
+        # Get pending tasks for the goals
+        tasks = []
+        for goal in goals:
+            goal_tasks = TaskService.get_tasks_by_goal(session, goal.id, user_id)
+            # Only include pending and in-progress tasks
+            pending_tasks = [t for t in goal_tasks if t.status in ['pending', 'in_progress']]
+            tasks.extend(pending_tasks)
+        
+        return WeeklyPlanContext(
+            user_id=user_id,
+            week_start_date=week_start_date,
+            projects=projects,
+            goals=goals,
+            tasks=tasks,
+            capacity_hours=capacity_hours,
+            preferences=preferences or {}
+        )
+    
+    async def generate_weekly_plan(
+        self,
+        session,
+        user_id: str,
+        request: WeeklyPlanRequest
+    ) -> WeeklyPlanResponse:
+        """Generate weekly plan for user."""
+        
+        # Parse week start date
+        week_start = datetime.strptime(request.week_start_date, "%Y-%m-%d").date()
+        
+        # Collect context
+        context = await self.collect_context(
+            session=session,
+            user_id=user_id,
+            week_start_date=week_start,
+            project_filter=request.project_filter,
+            capacity_hours=request.capacity_hours,
+            preferences=request.preferences
+        )
+        
+        # Generate plan using OpenAI
+        return await self.openai_service.generate_weekly_plan(context)

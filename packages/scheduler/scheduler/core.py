@@ -174,7 +174,7 @@ class TaskScheduler:
     def _process_solution(
         self, 
         solver: cp_model.CpSolver, 
-        status: cp_model.CpSolverStatus,
+        status: int,
         x: Dict,
         solve_time: float
     ) -> ScheduleResult:

@@ -16,7 +16,7 @@ from exceptions import (
     task_agent_exception_handler,
     validation_exception_handler,
 )
-from routers import goals, projects, tasks, scheduler
+from routers import goals, projects, tasks, scheduler, ai_planning
 
 
 @asynccontextmanager
@@ -65,6 +65,7 @@ app.include_router(projects.router, prefix="/api")
 app.include_router(goals.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
 app.include_router(scheduler.router, prefix="/api")
+app.include_router(ai_planning.router, prefix="/api")
 
 # Health check endpoint
 @app.get("/health")
