@@ -308,6 +308,8 @@ POST   /api/ai/suggest-priorities - タスク優先度提案
 ```
 
 **最新コミット:**
+- `e3f9e0b` - feat: complete Phase 4 AI features and advanced UI implementation
+- `f097f44` - feat: complete Phase 3 frontend development with full CRUD UI  
 - `56f108e` - feat: implement OpenAI Assistants API integration for weekly planning
 
 ## 🎉 完成済み機能
@@ -342,45 +344,166 @@ TaskAgentは**完全に機能するAI駆動タスク管理ウェブアプリケ�
 - モニタリング・ログ収集
 - パフォーマンス最適化
 
-### 次回作業開始時のコマンド
+## ⚙️ セットアップ・設定手順
 
+### 1. 環境変数設定
+
+#### **必須設定項目** 
+以下のサービスでアカウント作成・API キー取得が必要です：
+
+**OpenAI (AI機能用)**
 ```bash
-# プロジェクトルートで
-cd /home/masato/git-repos/lifemanagement/TaskAgent
+# .env ファイルに追加
+OPENAI_API_KEY=sk-your-openai-api-key-here
+```
+- [OpenAI Platform](https://platform.openai.com/) でアカウント作成
+- API Keys ページでキー生成
+- GPT-4 アクセス権限が必要（従量課金）
 
-# 既存の進捗確認
-cat plan.md
+**Supabase (認証・データベース用)**
+```bash
+# .env ファイルに追加  
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+DATABASE_URL=postgresql://postgres:password@localhost:54322/postgres
+```
+- [Supabase](https://supabase.com/) でプロジェクト作成
+- Settings > API でURL・キー取得
+- Database > Settings でConnection string取得
 
-# 環境設定確認（必要に応じて.envファイル編集）
-# OpenAI API keyを設定: OPENAI_API_KEY=your_actual_key
+#### **環境変数テンプレート**
+```bash
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
-# フロントエンド開発サーバー起動
-cd apps/web
-pnpm dev
+# OpenAI Configuration (AI機能用)
+OPENAI_API_KEY=sk-proj-your-key-here
 
-# 新しいターミナルでバックエンドも起動
-cd apps/api
-pip install -r requirements.txt  # scheduler パッケージも含む
-python main.py
+# FastAPI Configuration
+API_BASE_URL=http://localhost:8000
+CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+
+# Database Configuration (for FastAPI)
+DATABASE_URL=postgresql://postgres:password@localhost:54322/postgres
+
+# Development
+NODE_ENV=development
 ```
 
-### 🎯 **Phase 2-3 完了の成果**
+### 2. 開発サーバー起動手順
 
-✅ **フル機能のAI駆動タスク管理ウェブアプリケーション**を構築:
+```bash
+# 1. プロジェクトルートに移動
+cd /home/masato/git-repos/lifemanagement/TaskAgent
 
-**Phase 2 (バックエンド):**
+# 2. 依存関係インストール
+npm install  # または pnpm install
+
+# 3. フロントエンド起動 (ターミナル1)
+cd apps/web
+npm run dev
+# → http://localhost:3000 (または 3001)
+
+# 4. バックエンド起動 (ターミナル2)  
+cd apps/api
+pip install -r requirements.txt
+python main.py
+# → http://localhost:8000
+
+# 5. Supabase ローカル起動 (オプション・ターミナル3)
+supabase start
+# → http://localhost:54323 (ダッシュボード)
+```
+
+### 3. 初回セットアップ確認
+
+#### **API接続テスト**
+```bash
+# AI機能テスト
+curl http://localhost:8000/api/ai/weekly-plan/test
+
+# スケジューラテスト  
+curl http://localhost:8000/api/schedule/test
+
+# CRUD APIテスト
+curl http://localhost:8000/api/projects/ \
+  -H "Authorization: Bearer your-supabase-jwt-token"
+```
+
+#### **機能確認チェックリスト**
+- [ ] ユーザー登録・ログイン (Supabase認証)
+- [ ] プロジェクト作成・編集・削除
+- [ ] ゴール作成・編集・削除  
+- [ ] タスク作成・編集・削除
+- [ ] AI週間計画生成 (OpenAI API使用)
+- [ ] ワークロード分析
+- [ ] タスク優先度提案
+- [ ] OR-Toolsスケジューリング最適化
+
+### 4. 料金・制限事項
+
+#### **OpenAI API 使用料金**
+- GPT-4 Turbo: $0.01/1K input tokens, $0.03/1K output tokens
+- 週間計画生成: 約$0.05-0.10/回 (推定)
+- 月額約$10-50 (中規模使用時)
+
+#### **Supabase 無料枠**
+- データベース: 500MB
+- 認証: 50,000 monthly active users
+- API リクエスト: unlimited
+- 無料枠超過時の従量課金あり
+
+#### **制限事項・注意点**
+- OpenAI API キー未設定時：AI機能は無効化され、エラーメッセージ表示
+- Supabase接続失敗時：認証・データ永続化不可、ローカルのみ動作
+- OR-Tools最適化：30秒タイムアウト設定、大量タスク時は部分最適化
+
+### 5. トラブルシューティング
+
+#### **よくある問題**
+```bash
+# ポート競合エラー
+# → 別ポートで起動: npm run dev -- -p 3001
+
+# Python依存関係エラー  
+# → 仮想環境作成: python -m venv venv && source venv/bin/activate
+
+# Supabase接続エラー
+# → ローカル起動: supabase start
+# → 環境変数確認: echo $NEXT_PUBLIC_SUPABASE_URL
+
+# OpenAI API エラー
+# → キー確認: echo $OPENAI_API_KEY  
+# → 残高確認: OpenAI Platform → Usage
+```
+
+### 🎯 **Phase 2-4 完了の成果**
+
+✅ **完全機能のAI駆動タスク管理ウェブアプリケーション**を構築:
+
+**Phase 2 (バックエンド・AI統合):**
 - **OR-Tools制約ソルバー**による最適スケジューリング
 - **OpenAI GPT-4**による自然言語週間計画生成
 - **包括的なCRUD API**（20以上のエンドポイント）
 - **堅牢なテストスイート**（20以上のテスト）
 - **研究開発プロジェクト**に特化した設計
 
-**Phase 3 (フロントエンド):**
+**Phase 3 (基本フロントエンド):**
 - **Next.js 14 + shadcn/ui**による現代的なUI
 - **プロジェクト・ゴール・タスク**の完全CRUD機能
 - **Supabase認証**との統合
 - **レスポンシブデザイン**でモバイル対応
 - **TypeScript型安全性**の完全実装
+
+**Phase 4 (AI機能UI・高度な機能):**
+- **AI週間計画生成UI**（タブインターフェース）
+- **ワークロード分析ダッシュボード**（統計・推奨事項）
+- **タスク優先度提案**（AI分析・理由付き提案）
+- **OR-Tools制約最適化UI**（時間スロット設定・結果可視化）
+- **統合ナビゲーション**（全ページ統一ヘッダー）
 
 ## 今後の拡張アイデア
 
