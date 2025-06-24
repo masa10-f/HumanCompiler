@@ -51,12 +51,56 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="container mx-auto py-8">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold">プロジェクト一覧</h1>
-          <p className="text-gray-600 mt-2">研究・開発プロジェクトを管理します。</p>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Header */}
+      <header className="bg-white dark:bg-gray-800 shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center space-x-8">
+              <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
+                TaskAgent
+              </h1>
+              <nav className="hidden md:flex space-x-4">
+                <Button 
+                  variant="ghost" 
+                  onClick={() => router.push('/dashboard')}
+                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                >
+                  ダッシュボード
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  onClick={() => router.push('/projects')}
+                  className="text-gray-900 dark:text-white font-medium"
+                >
+                  プロジェクト
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  onClick={() => router.push('/ai-planning')}
+                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                >
+                  AI計画
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  onClick={() => router.push('/scheduling')}
+                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                >
+                  スケジューリング
+                </Button>
+              </nav>
+            </div>
+          </div>
         </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-bold">プロジェクト一覧</h1>
+            <p className="text-gray-600 mt-2">研究・開発プロジェクトを管理します。</p>
+          </div>
         <ProjectFormDialog>
           <Button>
             新規プロジェクト作成
@@ -115,6 +159,7 @@ export default function ProjectsPage() {
           ))}
         </div>
       )}
+      </main>
     </div>
   );
 }

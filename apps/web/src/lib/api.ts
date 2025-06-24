@@ -17,6 +17,14 @@ import type {
   TaskUpdate,
   TaskResponse
 } from '@/types/task';
+import type {
+  WeeklyPlanRequest,
+  WeeklyPlanResponse,
+  WorkloadAnalysis,
+  PrioritySuggestions,
+  ScheduleRequest,
+  ScheduleResult
+} from '@/types/ai-planning';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -158,6 +166,46 @@ class ApiClient {
       method: 'DELETE',
     });
   }
+
+  // AI Planning API methods
+  async generateWeeklyPlan(planRequest: WeeklyPlanRequest): Promise<WeeklyPlanResponse> {
+    return this.request<WeeklyPlanResponse>('/api/ai/weekly-plan', {
+      method: 'POST',
+      body: JSON.stringify(planRequest),
+    });
+  }
+
+  async analyzeWorkload(projectIds?: string[]): Promise<WorkloadAnalysis> {
+    const body = projectIds ? { project_ids: projectIds } : {};
+    return this.request<WorkloadAnalysis>('/api/ai/analyze-workload', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async suggestTaskPriorities(projectId?: string): Promise<PrioritySuggestions> {
+    const body = projectId ? { project_id: projectId } : {};
+    return this.request<PrioritySuggestions>('/api/ai/suggest-priorities', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async testAIIntegration(): Promise<any> {
+    return this.request<any>('/api/ai/weekly-plan/test');
+  }
+
+  // Scheduling API methods
+  async optimizeDailySchedule(scheduleRequest: ScheduleRequest): Promise<ScheduleResult> {
+    return this.request<ScheduleResult>('/api/schedule/daily', {
+      method: 'POST',
+      body: JSON.stringify(scheduleRequest),
+    });
+  }
+
+  async testScheduler(): Promise<any> {
+    return this.request<any>('/api/schedule/test');
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL);
@@ -189,4 +237,16 @@ export const tasksApi = {
   create: (data: TaskCreate) => apiClient.createTask(data),
   update: (id: string, data: TaskUpdate) => apiClient.updateTask(id, data),
   delete: (id: string) => apiClient.deleteTask(id),
+};
+
+export const aiPlanningApi = {
+  generateWeeklyPlan: (request: WeeklyPlanRequest) => apiClient.generateWeeklyPlan(request),
+  analyzeWorkload: (projectIds?: string[]) => apiClient.analyzeWorkload(projectIds),
+  suggestPriorities: (projectId?: string) => apiClient.suggestTaskPriorities(projectId),
+  testIntegration: () => apiClient.testAIIntegration(),
+};
+
+export const schedulingApi = {
+  optimizeDaily: (request: ScheduleRequest) => apiClient.optimizeDailySchedule(request),
+  test: () => apiClient.testScheduler(),
 };

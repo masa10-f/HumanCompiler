@@ -3,7 +3,7 @@
 import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Calendar, Plus, Target, TrendingUp } from 'lucide-react'
+import { Calendar, Plus, Target, TrendingUp, Brain, Settings } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 
@@ -38,10 +38,40 @@ export default function DashboardPage() {
       <header className="bg-white dark:bg-gray-800 shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
+            <div className="flex items-center space-x-8">
               <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
                 TaskAgent
               </h1>
+              <nav className="hidden md:flex space-x-4">
+                <Button 
+                  variant="ghost" 
+                  onClick={() => router.push('/dashboard')}
+                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                >
+                  ダッシュボード
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  onClick={() => router.push('/projects')}
+                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                >
+                  プロジェクト
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  onClick={() => router.push('/ai-planning')}
+                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                >
+                  AI計画
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  onClick={() => router.push('/scheduling')}
+                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                >
+                  スケジューリング
+                </Button>
+              </nav>
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-600 dark:text-gray-300">
@@ -68,36 +98,37 @@ export default function DashboardPage() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card className="cursor-pointer hover:shadow-md transition-shadow">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+          <Card 
+            className="cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => router.push('/projects')}
+          >
             <CardHeader className="text-center pb-4">
               <Plus className="h-8 w-8 text-blue-600 mx-auto mb-2" />
-              <CardTitle className="text-lg">新しいプロジェクト</CardTitle>
-              <CardDescription>プロジェクトを作成する</CardDescription>
+              <CardTitle className="text-lg">プロジェクト管理</CardTitle>
+              <CardDescription>プロジェクト・ゴール・タスクを管理</CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="cursor-pointer hover:shadow-md transition-shadow">
+          <Card 
+            className="cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => router.push('/ai-planning')}
+          >
             <CardHeader className="text-center pb-4">
-              <Target className="h-8 w-8 text-green-600 mx-auto mb-2" />
-              <CardTitle className="text-lg">ゴール設定</CardTitle>
-              <CardDescription>週間目標を設定する</CardDescription>
+              <Brain className="h-8 w-8 text-purple-600 mx-auto mb-2" />
+              <CardTitle className="text-lg">AI週間計画</CardTitle>
+              <CardDescription>AIによる最適な週間計画生成</CardDescription>
             </CardHeader>
           </Card>
 
-          <Card className="cursor-pointer hover:shadow-md transition-shadow">
+          <Card 
+            className="cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => router.push('/scheduling')}
+          >
             <CardHeader className="text-center pb-4">
-              <Calendar className="h-8 w-8 text-purple-600 mx-auto mb-2" />
-              <CardTitle className="text-lg">スケジュール</CardTitle>
-              <CardDescription>日程を最適化する</CardDescription>
-            </CardHeader>
-          </Card>
-
-          <Card className="cursor-pointer hover:shadow-md transition-shadow">
-            <CardHeader className="text-center pb-4">
-              <TrendingUp className="h-8 w-8 text-orange-600 mx-auto mb-2" />
-              <CardTitle className="text-lg">進捗レポート</CardTitle>
-              <CardDescription>進捗を確認する</CardDescription>
+              <Settings className="h-8 w-8 text-green-600 mx-auto mb-2" />
+              <CardTitle className="text-lg">スケジュール最適化</CardTitle>
+              <CardDescription>OR-Toolsによる制約最適化</CardDescription>
             </CardHeader>
           </Card>
         </div>
@@ -114,7 +145,7 @@ export default function DashboardPage() {
             <CardContent>
               <div className="text-center py-8 text-gray-500">
                 <p>まだプロジェクトがありません</p>
-                <Button className="mt-4">
+                <Button className="mt-4" onClick={() => router.push('/projects')}>
                   最初のプロジェクトを作成
                 </Button>
               </div>
