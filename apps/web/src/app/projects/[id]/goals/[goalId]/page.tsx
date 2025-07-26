@@ -46,6 +46,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
       try {
         setGoalLoading(true);
         setGoalError(null);
+        console.log('[GoalDetail] Fetching data for goal:', params.goalId, 'project:', params.id);
         
         // Fetch goal and project data
         const [goalData, projectData] = await Promise.all([
@@ -53,9 +54,11 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
           projectsApi.getById(params.id)
         ]);
         
+        console.log('[GoalDetail] Data fetched successfully:', { goalData, projectData });
         setGoal(goalData);
         setProject(projectData);
       } catch (err) {
+        console.error('[GoalDetail] Error fetching data:', err);
         setGoalError(err instanceof Error ? err.message : 'Failed to fetch data');
       } finally {
         setGoalLoading(false);
