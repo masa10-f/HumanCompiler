@@ -1641,3 +1641,473 @@ INFO:database:✅ Supabase client initialized
 INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
 INFO:main:✅ Database connection successful
 INFO:     Application startup complete.
+INFO:     127.0.0.1:53386 - "OPTIONS /api/projects/?skip=0&limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53392 - "OPTIONS /api/projects/?skip=0&limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "OPTIONS /api/projects/?skip=0&limit=20 HTTP/1.1" 200 OK
+INFO:database:✅ SQLModel engine initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/auth/v1/user "HTTP/2 200 OK"
+INFO:auth:✅ User authenticated: 97f50088-11be-4a00-afdf-830b47ec607c
+INFO:routers.projects:📋 Getting projects for user 97f50088-11be-4a00-afdf-830b47ec607c
+ERROR:routers.projects:❌ Error getting projects: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
+
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+INFO:     127.0.0.1:53392 - "GET /api/projects/?skip=0&limit=20 HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 145, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 3297, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 713, in checkout
+    rec = pool._do_get()
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/impl.py", line 179, in _do_get
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 675, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 915, in __connect
+    )._exec_w_sync_on_first_run(self.dbapi_connection, self)
+      ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/event/attr.py", line 483, in _exec_w_sync_on_first_run
+    self(*args, **kw)
+    ~~~~^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/event/attr.py", line 497, in __call__
+    fn(*args, **kw)
+    ~~^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/create.py", line 724, in on_connect
+    do_on_connect(dbapi_connection)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/dialects/postgresql/psycopg2.py", line 784, in on_connect
+    fn(dbapi_conn)
+    ~~^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/dialects/postgresql/psycopg2.py", line 759, in on_connect
+    hstore_oids = self._hstore_oids(dbapi_conn)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py", line 1275, in oneshot
+    result = fn(self, *args, **kw)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/dialects/postgresql/psycopg2.py", line 835, in _hstore_oids
+    oids = extras.HstoreAdapter.get_oids(dbapi_connection)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/psycopg2/extras.py", line 907, in get_oids
+            curs.execute(f"""SELECT t.oid, {typarray}
+            ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    FROM pg_type t JOIN pg_namespace ns
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        ON typnamespace = ns.oid
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    WHERE typname = 'hstore';
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+    """)
+    ^^^^
+psycopg2.OperationalError: SSL connection has been closed unexpectedly
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/uvicorn/protocols/http/httptools_impl.py", line 409, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self.scope, self.receive, self.send
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/fastapi/applications.py", line 1054, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/applications.py", line 112, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 187, in __call__
+    raise exc
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 165, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/cors.py", line 93, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/cors.py", line 144, in simple_response
+    await self.app(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 714, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 734, in app
+    await route.handle(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 288, in handle
+    await self.app(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 76, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 73, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/fastapi/routing.py", line 301, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/fastapi/routing.py", line 212, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/TaskAgent/apps/api/routers/projects.py", line 59, in get_projects
+    projects = project_service.get_projects(session, current_user.user_id, skip, limit)
+  File "/home/masato/git-repos/lifemanagement/TaskAgent/apps/api/services_refactored.py", line 96, in get_projects
+    return self.get_all(session, owner_id, skip, limit)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/TaskAgent/apps/api/base_service.py", line 89, in get_all
+    return list(session.exec(statement).all())
+                ~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlmodel/orm/session.py", line 66, in exec
+    results = super().execute(
+        statement,
+    ...<4 lines>...
+        _add_event=_add_event,
+    )
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 2365, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 2241, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 2110, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 2, in _connection_for_bind
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 1189, in _connection_for_bind
+    conn = bind.connect()
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 3273, in connect
+    return self._connection_cls(self)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 147, in __init__
+    Connection._handle_dbapi_exception_noconnection(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        err, dialect, engine
+        ^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 2436, in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 145, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 3297, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 713, in checkout
+    rec = pool._do_get()
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/impl.py", line 179, in _do_get
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 675, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 915, in __connect
+    )._exec_w_sync_on_first_run(self.dbapi_connection, self)
+      ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/event/attr.py", line 483, in _exec_w_sync_on_first_run
+    self(*args, **kw)
+    ~~~~^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/event/attr.py", line 497, in __call__
+    fn(*args, **kw)
+    ~~^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/create.py", line 724, in on_connect
+    do_on_connect(dbapi_connection)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/dialects/postgresql/psycopg2.py", line 784, in on_connect
+    fn(dbapi_conn)
+    ~~^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/dialects/postgresql/psycopg2.py", line 759, in on_connect
+    hstore_oids = self._hstore_oids(dbapi_conn)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py", line 1275, in oneshot
+    result = fn(self, *args, **kw)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/dialects/postgresql/psycopg2.py", line 835, in _hstore_oids
+    oids = extras.HstoreAdapter.get_oids(dbapi_connection)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/psycopg2/extras.py", line 907, in get_oids
+            curs.execute(f"""SELECT t.oid, {typarray}
+            ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    FROM pg_type t JOIN pg_namespace ns
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        ON typnamespace = ns.oid
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    WHERE typname = 'hstore';
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+    """)
+    ^^^^
+sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
+
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/auth/v1/user "HTTP/2 200 OK"
+INFO:auth:✅ User authenticated: 97f50088-11be-4a00-afdf-830b47ec607c
+INFO:routers.projects:📋 Getting projects for user 97f50088-11be-4a00-afdf-830b47ec607c
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/auth/v1/user "HTTP/2 200 OK"
+ERROR:routers.projects:❌ Error getting projects: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
+
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 145, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 3297, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 713, in checkout
+    rec = pool._do_get()
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/impl.py", line 179, in _do_get
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 675, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 915, in __connect
+    )._exec_w_sync_on_first_run(self.dbapi_connection, self)
+      ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/event/attr.py", line 483, in _exec_w_sync_on_first_run
+    self(*args, **kw)
+    ~~~~^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/event/attr.py", line 497, in __call__
+    fn(*args, **kw)
+    ~~^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/create.py", line 724, in on_connect
+    do_on_connect(dbapi_connection)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/dialects/postgresql/psycopg2.py", line 784, in on_connect
+    fn(dbapi_conn)
+    ~~^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/dialects/postgresql/psycopg2.py", line 759, in on_connect
+    hstore_oids = self._hstore_oids(dbapi_conn)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py", line 1275, in oneshot
+    result = fn(self, *args, **kw)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/dialects/postgresql/psycopg2.py", line 835, in _hstore_oids
+    oids = extras.HstoreAdapter.get_oids(dbapi_connection)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/psycopg2/extras.py", line 907, in get_oids
+            curs.execute(f"""SELECT t.oid, {typarray}
+            ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    FROM pg_type t JOIN pg_namespace ns
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        ON typnamespace = ns.oid
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    WHERE typname = 'hstore';
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+    """)
+    ^^^^
+psycopg2.OperationalError: SSL connection has been closed unexpectedly
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/uvicorn/protocols/http/httptools_impl.py", line 409, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self.scope, self.receive, self.send
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/fastapi/applications.py", line 1054, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/applications.py", line 112, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 187, in __call__
+    raise exc
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 165, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/cors.py", line 93, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/cors.py", line 144, in simple_response
+    await self.app(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 714, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 734, in app
+    await route.handle(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 288, in handle
+    await self.app(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 76, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 73, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/fastapi/routing.py", line 301, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/fastapi/routing.py", line 212, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/TaskAgent/apps/api/routers/projects.py", line 59, in get_projects
+    projects = project_service.get_projects(session, current_user.user_id, skip, limit)
+  File "/home/masato/git-repos/lifemanagement/TaskAgent/apps/api/services_refactored.py", line 96, in get_projects
+    return self.get_all(session, owner_id, skip, limit)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/TaskAgent/apps/api/base_service.py", line 89, in get_all
+    return list(session.exec(statement).all())
+                ~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlmodel/orm/session.py", line 66, in exec
+    results = super().execute(
+        statement,
+    ...<4 lines>...
+        _add_event=_add_event,
+    )
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 2365, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 2241, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 2110, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 2, in _connection_for_bind
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 1189, in _connection_for_bind
+    conn = bind.connect()
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 3273, in connect
+    return self._connection_cls(self)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 147, in __init__
+    Connection._handle_dbapi_exception_noconnection(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        err, dialect, engine
+        ^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 2436, in _handle_dbapi_exception_noconnection
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 145, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 3297, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 713, in checkout
+    rec = pool._do_get()
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/impl.py", line 179, in _do_get
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/impl.py", line 177, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 675, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/pool/base.py", line 915, in __connect
+    )._exec_w_sync_on_first_run(self.dbapi_connection, self)
+      ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/event/attr.py", line 483, in _exec_w_sync_on_first_run
+    self(*args, **kw)
+    ~~~~^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/event/attr.py", line 497, in __call__
+    fn(*args, **kw)
+    ~~^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/create.py", line 724, in on_connect
+    do_on_connect(dbapi_connection)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/dialects/postgresql/psycopg2.py", line 784, in on_connect
+    fn(dbapi_conn)
+    ~~^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/dialects/postgresql/psycopg2.py", line 759, in on_connect
+    hstore_oids = self._hstore_oids(dbapi_conn)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/util/langhelpers.py", line 1275, in oneshot
+    result = fn(self, *args, **kw)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/dialects/postgresql/psycopg2.py", line 835, in _hstore_oids
+    oids = extras.HstoreAdapter.get_oids(dbapi_connection)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/psycopg2/extras.py", line 907, in get_oids
+            curs.execute(f"""SELECT t.oid, {typarray}
+            ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    FROM pg_type t JOIN pg_namespace ns
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        ON typnamespace = ns.oid
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    WHERE typname = 'hstore';
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+    """)
+    ^^^^
+sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
+
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+ERROR:auth:❌ Supabase auth timeout
+ERROR:auth:Authentication error: 504: Authentication service timeout
