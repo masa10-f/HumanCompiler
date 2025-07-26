@@ -63,7 +63,7 @@ async def get_current_user(
         # For development/testing, allow test token
         if token == "test-token":
             logger.warning("⚠️ Using test token - for development only!")
-            return AuthUser(user_id="test-user-id", email="test@example.com")
+            return AuthUser(user_id="97f50088-11be-4a00-afdf-830b47ec607c", email="test@example.com")
 
         # Verify token with Supabase
         client = db.get_client()
@@ -92,11 +92,10 @@ async def get_current_user(
 
         user = user_response.user
         
-        # Skip user creation for now to avoid hanging
-        # TODO: Fix async user creation
-        # asyncio.create_task(ensure_user_exists(user.id, user.email))
-        
-        return AuthUser(user_id=user.id, email=user.email)
+        # Skip user creation to avoid hanging issues
+        logger.info(f"✅ User authenticated: {user.id}")
+
+        return AuthUser(user_id=user.id, email=user.email or "unknown@example.com")
 
     except Exception as e:
         logger.error(f"Authentication error: {e}")

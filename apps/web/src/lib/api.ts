@@ -53,37 +53,30 @@ class ApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const headers = await this.getAuthHeaders();
-    
-    // Create AbortController if not provided
-    const controller = options.signal ? undefined : new AbortController();
-    const timeoutId = controller ? setTimeout(() => controller.abort(), 30000) : undefined; // 30 second timeout
-    
     try {
+      const headers = await this.getAuthHeaders();
+      
       const response = await fetch(`${this.baseURL}${endpoint}`, {
         ...options,
-        signal: options.signal || controller?.signal,
         headers: {
           ...headers,
           ...options.headers,
         },
       });
-      
-      if (timeoutId) clearTimeout(timeoutId);
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-      throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
-    }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+      }
 
-    // Handle 204 No Content responses
-    if (response.status === 204) {
-      return {} as T;
-    }
+      // Handle 204 No Content responses
+      if (response.status === 204) {
+        return {} as T;
+      }
 
       return response.json();
     } catch (error) {
-      if (timeoutId) clearTimeout(timeoutId);
+      console.error(`API request failed for ${endpoint}:`, error);
       throw error;
     }
   }
