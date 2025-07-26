@@ -67,15 +67,15 @@ class Database:
                 "application_name": "TaskAgent-API"
             }
             
-            # Create engine with minimal settings to avoid SSL issues
+            # Create engine with optimized pool settings for local development
             self._engine = create_engine(
                 database_url,
-                echo=False,           # Disable echo to reduce queries
-                pool_pre_ping=False,  # Disable pre-ping 
-                pool_recycle=600,     # Recycle connections after 10 minutes
-                pool_size=1,          # Single connection
-                max_overflow=0,       # No overflow connections
-                pool_timeout=30,      # Connection timeout
+                echo=settings.debug,  # Show SQL queries in debug mode
+                pool_pre_ping=True,   # Enable connection health checks
+                pool_recycle=3600,    # Recycle connections after 1 hour
+                pool_size=10,         # Increase pool size for concurrent requests
+                max_overflow=20,      # Allow more overflow connections
+                pool_timeout=60,      # Longer timeout for busy periods
                 connect_args=connect_args
             )
             

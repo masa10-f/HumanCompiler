@@ -19,7 +19,11 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 def get_session() -> Session:
     """Database session dependency"""
-    return next(db.get_session())
+    session = next(db.get_session())
+    try:
+        yield session
+    finally:
+        session.close()
 
 
 @router.post(
