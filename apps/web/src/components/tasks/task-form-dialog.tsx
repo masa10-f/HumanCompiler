@@ -57,17 +57,25 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
   const onSubmit = async (data: TaskFormData) => {
     try {
       setIsSubmitting(true);
-      await createTask({
+      console.log('[TaskForm] Submitting task data:', data);
+      console.log('[TaskForm] Goal ID:', goalId);
+      
+      const taskData = {
         title: data.title,
         description: data.description || undefined,
         estimate_hours: data.estimate_hours,
         due_date: data.due_date || undefined,
         goal_id: goalId,
-      });
+      };
+      
+      console.log('[TaskForm] Final task data:', taskData);
+      await createTask(taskData);
+      console.log('[TaskForm] Task created successfully');
+      
       form.reset();
       setOpen(false);
     } catch (error) {
-      console.error('Failed to create task:', error);
+      console.error('[TaskForm] Failed to create task:', error);
     } finally {
       setIsSubmitting(false);
     }

@@ -35,9 +35,12 @@ export function useTasks(goalId: string): UseTasksReturn {
   const createTask = useCallback(async (data: TaskCreate) => {
     try {
       setError(null);
+      console.log('[useTasks] Creating task with data:', data);
       const newTask = await tasksApi.create(data);
+      console.log('[useTasks] Task created successfully:', newTask);
       setTasks(prev => [...prev, newTask]);
     } catch (err) {
+      console.error('[useTasks] Error creating task:', err);
       setError(err instanceof Error ? err.message : 'Failed to create task');
       throw err;
     }
