@@ -16,9 +16,10 @@ from services import TaskService
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
-def get_session() -> Session:
+def get_session():
     """Database session dependency"""
-    return next(db.get_session())
+    with Session(db.get_engine()) as session:
+        yield session
 
 
 @router.post(

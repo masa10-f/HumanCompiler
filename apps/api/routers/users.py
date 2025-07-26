@@ -16,9 +16,10 @@ from services import UserService
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-def get_session() -> Session:
+def get_session():
     """Database session dependency"""
-    return next(db.get_session())
+    with Session(db.get_engine()) as session:
+        yield session
 
 
 @router.post(
