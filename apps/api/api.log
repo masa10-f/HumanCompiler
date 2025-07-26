@@ -793,3 +793,851 @@ WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
 2025-07-26 22:59:05,812 INFO sqlalchemy.engine.Engine [cached since 0.2782s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
 INFO:sqlalchemy.engine.Engine:[cached since 0.2782s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
+ERROR:routers.projects:❌ Error getting projects: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
+
+[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
+FROM projects 
+WHERE projects.owner_id = %(owner_id_1)s::UUID 
+ LIMIT %(param_1)s OFFSET %(param_2)s]
+[parameters: {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+INFO:     127.0.0.1:43192 - "GET /api/projects/?skip=0&limit=20 HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1963, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/default.py", line 943, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.OperationalError: SSL connection has been closed unexpectedly
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/uvicorn/protocols/http/httptools_impl.py", line 409, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self.scope, self.receive, self.send
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/fastapi/applications.py", line 1054, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/applications.py", line 112, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 187, in __call__
+    raise exc
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 165, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/cors.py", line 93, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/cors.py", line 144, in simple_response
+    await self.app(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 714, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 734, in app
+    await route.handle(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 288, in handle
+    await self.app(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 76, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 73, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/fastapi/routing.py", line 301, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/fastapi/routing.py", line 212, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/TaskAgent/apps/api/routers/projects.py", line 59, in get_projects
+    projects = ProjectService.get_projects(session, current_user.user_id, skip, limit)
+  File "/home/masato/git-repos/lifemanagement/TaskAgent/apps/api/services.py", line 102, in get_projects
+    return list(session.exec(statement).all())
+                ~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlmodel/orm/session.py", line 66, in exec
+    results = super().execute(
+        statement,
+    ...<4 lines>...
+        _add_event=_add_event,
+    )
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 2365, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 2251, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<4 lines>...
+        conn,
+        ^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+        statement, params or {}, execution_options=execution_options
+    )
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1415, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/sql/elements.py", line 523, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1637, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1842, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1982, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 2351, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1963, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/default.py", line 943, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
+
+[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
+FROM projects 
+WHERE projects.owner_id = %(owner_id_1)s::UUID 
+ LIMIT %(param_1)s OFFSET %(param_2)s]
+[parameters: {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/auth/v1/user "HTTP/2 200 OK"
+INFO:auth:✅ User authenticated: 97f50088-11be-4a00-afdf-830b47ec607c
+INFO:routers.projects:📋 Getting projects for user 97f50088-11be-4a00-afdf-830b47ec607c
+2025-07-26 23:00:06,065 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2025-07-26 23:00:06,065 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
+FROM projects 
+WHERE projects.owner_id = %(owner_id_1)s::UUID 
+ LIMIT %(param_1)s OFFSET %(param_2)s
+INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
+FROM projects 
+WHERE projects.owner_id = %(owner_id_1)s::UUID 
+ LIMIT %(param_1)s OFFSET %(param_2)s
+2025-07-26 23:00:06,065 INFO sqlalchemy.engine.Engine [cached since 60.53s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
+INFO:sqlalchemy.engine.Engine:[cached since 60.53s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
+ERROR:routers.projects:❌ Error getting projects: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
+
+[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
+FROM projects 
+WHERE projects.owner_id = %(owner_id_1)s::UUID 
+ LIMIT %(param_1)s OFFSET %(param_2)s]
+[parameters: {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+INFO:     127.0.0.1:43198 - "GET /api/projects/?skip=0&limit=20 HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1963, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/default.py", line 943, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.OperationalError: SSL connection has been closed unexpectedly
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/uvicorn/protocols/http/httptools_impl.py", line 409, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self.scope, self.receive, self.send
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/fastapi/applications.py", line 1054, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/applications.py", line 112, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 187, in __call__
+    raise exc
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 165, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/cors.py", line 93, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/cors.py", line 144, in simple_response
+    await self.app(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 714, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 734, in app
+    await route.handle(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 288, in handle
+    await self.app(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 76, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 73, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/fastapi/routing.py", line 301, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/fastapi/routing.py", line 212, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/TaskAgent/apps/api/routers/projects.py", line 59, in get_projects
+    projects = ProjectService.get_projects(session, current_user.user_id, skip, limit)
+  File "/home/masato/git-repos/lifemanagement/TaskAgent/apps/api/services.py", line 102, in get_projects
+    return list(session.exec(statement).all())
+                ~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlmodel/orm/session.py", line 66, in exec
+    results = super().execute(
+        statement,
+    ...<4 lines>...
+        _add_event=_add_event,
+    )
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 2365, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 2251, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<4 lines>...
+        conn,
+        ^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+        statement, params or {}, execution_options=execution_options
+    )
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1415, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/sql/elements.py", line 523, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1637, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1842, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1982, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 2351, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1963, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/default.py", line 943, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
+
+[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
+FROM projects 
+WHERE projects.owner_id = %(owner_id_1)s::UUID 
+ LIMIT %(param_1)s OFFSET %(param_2)s]
+[parameters: {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/auth/v1/user "HTTP/2 200 OK"
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/auth/v1/user "HTTP/2 200 OK"
+INFO:auth:✅ User authenticated: 97f50088-11be-4a00-afdf-830b47ec607c
+INFO:routers.projects:📋 Getting projects for user 97f50088-11be-4a00-afdf-830b47ec607c
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/auth/v1/user "HTTP/2 200 OK"
+2025-07-26 23:01:06,715 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
+2025-07-26 23:01:06,716 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
+FROM projects 
+WHERE projects.owner_id = %(owner_id_1)s::UUID 
+ LIMIT %(param_1)s OFFSET %(param_2)s
+INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
+FROM projects 
+WHERE projects.owner_id = %(owner_id_1)s::UUID 
+ LIMIT %(param_1)s OFFSET %(param_2)s
+2025-07-26 23:01:06,716 INFO sqlalchemy.engine.Engine [cached since 121.2s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
+INFO:sqlalchemy.engine.Engine:[cached since 121.2s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
+ERROR:routers.projects:❌ Error getting projects: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
+
+[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
+FROM projects 
+WHERE projects.owner_id = %(owner_id_1)s::UUID 
+ LIMIT %(param_1)s OFFSET %(param_2)s]
+[parameters: {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1963, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/default.py", line 943, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.OperationalError: SSL connection has been closed unexpectedly
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/uvicorn/protocols/http/httptools_impl.py", line 409, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self.scope, self.receive, self.send
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/fastapi/applications.py", line 1054, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/applications.py", line 112, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 187, in __call__
+    raise exc
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/errors.py", line 165, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/cors.py", line 93, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/cors.py", line 144, in simple_response
+    await self.app(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 714, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 734, in app
+    await route.handle(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 288, in handle
+    await self.app(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 76, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/starlette/routing.py", line 73, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/fastapi/routing.py", line 301, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/fastapi/routing.py", line 212, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/TaskAgent/apps/api/routers/projects.py", line 59, in get_projects
+    projects = ProjectService.get_projects(session, current_user.user_id, skip, limit)
+  File "/home/masato/git-repos/lifemanagement/TaskAgent/apps/api/services.py", line 102, in get_projects
+    return list(session.exec(statement).all())
+                ~~~~~~~~~~~~^^^^^^^^^^^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlmodel/orm/session.py", line 66, in exec
+    results = super().execute(
+        statement,
+    ...<4 lines>...
+        _add_event=_add_event,
+    )
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 2365, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/session.py", line 2251, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<4 lines>...
+        conn,
+        ^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+        statement, params or {}, execution_options=execution_options
+    )
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1415, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/sql/elements.py", line 523, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1637, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1842, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1982, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 2351, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1963, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/masato/git-repos/lifemanagement/.venv/lib/python3.13/site-packages/sqlalchemy/engine/default.py", line 943, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
+
+[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
+FROM projects 
+WHERE projects.owner_id = %(owner_id_1)s::UUID 
+ LIMIT %(param_1)s OFFSET %(param_2)s]
+[parameters: {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+ERROR:auth:❌ Supabase auth timeout
+ERROR:auth:Authentication error: 504: Authentication service timeout
+ERROR:auth:❌ Supabase auth timeout
+ERROR:auth:Authentication error: 504: Authentication service timeout
+WARNING:  WatchFiles detected changes in 'services.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [25057]
+INFO:     Started server process [29487]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'services.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [29487]
+INFO:     Started server process [29604]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'services.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [29604]
+INFO:     Started server process [29734]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'services.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [29734]
+INFO:     Started server process [29857]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'base_service.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [29857]
+INFO:     Started server process [30265]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'services_refactored.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [30265]
+INFO:     Started server process [30664]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'routers/projects.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [30664]
+INFO:     Started server process [30794]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'routers/projects.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [30794]
+INFO:     Started server process [30893]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'ai/models.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [30893]
+INFO:     Started server process [31225]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'ai/prompts.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [31225]
+INFO:     Started server process [31571]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'ai/openai_client.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [31571]
+INFO:     Started server process [31790]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'ai/context_collector.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [31790]
+INFO:     Started server process [31918]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'ai/planning_service.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [31918]
+INFO:     Started server process [32030]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'ai/__init__.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [32030]
+INFO:     Started server process [32099]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'routers/ai_planning.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [32099]
+INFO:     Started server process [32252]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'routers/ai_planning.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [32252]
+INFO:     Started server process [32401]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'routers/ai_planning.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [32401]
+INFO:     Started server process [32570]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'common/error_handlers.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [32570]
+INFO:     Started server process [420]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'base_service.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [420]
+INFO:     Started server process [498]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'base_service.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [498]
+INFO:     Started server process [730]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'common/__init__.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [730]
+INFO:     Started server process [806]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'tests/test_base_service.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [806]
+INFO:     Started server process [1135]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'tests/test_ai_services.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1135]
+INFO:     Started server process [1362]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'tests/__init__.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:main:🔄 FastAPI server shutting down...
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1362]
+INFO:     Started server process [1542]
+INFO:     Waiting for application startup.
+INFO:main:🚀 FastAPI server starting up...
+INFO:database:✅ Supabase client initialized
+INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/rest/v1/users?select=count "HTTP/2 200 OK"
+INFO:main:✅ Database connection successful
+INFO:     Application startup complete.

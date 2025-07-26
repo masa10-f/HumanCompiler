@@ -12,7 +12,7 @@ from models import (
     ProjectResponse,
     ProjectUpdate,
 )
-from services import ProjectService
+from services_refactored import project_service
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -36,7 +36,7 @@ async def create_project(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> ProjectResponse:
     """Create a new project"""
-    project = ProjectService.create_project(session, project_data, current_user.user_id)
+    project = project_service.create_project(session, project_data, current_user.user_id)
     return ProjectResponse.model_validate(project)
 
 
@@ -56,7 +56,7 @@ async def get_projects(
     logger.info(f"📋 Getting projects for user {current_user.user_id}")
     
     try:
-        projects = ProjectService.get_projects(session, current_user.user_id, skip, limit)
+        projects = project_service.get_projects(session, current_user.user_id, skip, limit)
         logger.info(f"✅ Found {len(projects)} projects")
         return [ProjectResponse.model_validate(project) for project in projects]
     except Exception as e:
@@ -77,7 +77,7 @@ async def get_project(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> ProjectResponse:
     """Get specific project"""
-    project = ProjectService.get_project(session, project_id, current_user.user_id)
+    project = project_service.get_project(session, project_id, current_user.user_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -100,7 +100,7 @@ async def update_project(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> ProjectResponse:
     """Update specific project"""
-    project = ProjectService.update_project(session, project_id, current_user.user_id, project_data)
+    project = project_service.update_project(session, project_id, current_user.user_id, project_data)
     return ProjectResponse.model_validate(project)
 
 
@@ -118,7 +118,7 @@ async def delete_project(
 ) -> None:
     """Delete specific project"""
     try:
-        ProjectService.delete_project(session, project_id, current_user.user_id)
+        project_service.delete_project(session, project_id, current_user.user_id)
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)

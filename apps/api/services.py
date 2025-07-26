@@ -9,6 +9,7 @@ from models import (
     Goal,
     GoalCreate,
     GoalUpdate,
+    Log,
     Project,
     ProjectCreate,
     ProjectUpdate,
@@ -161,7 +162,7 @@ class GoalService:
     """Goal service for CRUD operations"""
 
     @staticmethod
-    def create_goal(session: Session, goal_data: GoalCreate, owner_id: str) -> Goal:
+    def create_goal(session: Session, goal_data: GoalCreate, owner_id: Union[str, UUID]) -> Goal:
         """Create a new goal"""
         # Verify project ownership
         project = ProjectService.get_project(session, goal_data.project_id, owner_id)
@@ -172,7 +173,7 @@ class GoalService:
             )
 
         goal = Goal(
-            id=str(uuid4()),
+            id=uuid4(),
             project_id=goal_data.project_id,
             title=goal_data.title,
             description=goal_data.description,
@@ -184,7 +185,7 @@ class GoalService:
         return goal
 
     @staticmethod
-    def get_goal(session: Session, goal_id: str, owner_id: str) -> Optional[Goal]:
+    def get_goal(session: Session, goal_id: Union[str, UUID], owner_id: Union[str, UUID]) -> Optional[Goal]:
         """Get goal by ID for specific owner"""
         statement = select(Goal).join(Project).where(
             Goal.id == goal_id,
@@ -193,7 +194,7 @@ class GoalService:
         return session.exec(statement).first()
 
     @staticmethod
-    def get_goals_by_project(session: Session, project_id: str, owner_id: str, skip: int = 0, limit: int = 100) -> list[Goal]:
+    def get_goals_by_project(session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> list[Goal]:
         """Get goals for specific project"""
         # Verify project ownership
         project = ProjectService.get_project(session, project_id, owner_id)
@@ -209,7 +210,7 @@ class GoalService:
         return list(session.exec(statement).all())
 
     @staticmethod
-    def update_goal(session: Session, goal_id: str, owner_id: str, goal_data: GoalUpdate) -> Goal:
+    def update_goal(session: Session, goal_id: Union[str, UUID], owner_id: Union[str, UUID], goal_data: GoalUpdate) -> Goal:
         """Update goal"""
         goal = GoalService.get_goal(session, goal_id, owner_id)
         if not goal:
@@ -229,7 +230,7 @@ class GoalService:
         return goal
 
     @staticmethod
-    def delete_goal(session: Session, goal_id: str, owner_id: str) -> bool:
+    def delete_goal(session: Session, goal_id: Union[str, UUID], owner_id: Union[str, UUID]) -> bool:
         """Delete goal"""
         goal = GoalService.get_goal(session, goal_id, owner_id)
         if not goal:
@@ -247,7 +248,7 @@ class TaskService:
     """Task service for CRUD operations"""
 
     @staticmethod
-    def create_task(session: Session, task_data: TaskCreate, owner_id: str) -> Task:
+    def create_task(session: Session, task_data: TaskCreate, owner_id: Union[str, UUID]) -> Task:
         """Create a new task"""
         # Verify goal ownership through project
         goal = GoalService.get_goal(session, task_data.goal_id, owner_id)
@@ -258,7 +259,7 @@ class TaskService:
             )
 
         task = Task(
-            id=str(uuid4()),
+            id=uuid4(),
             goal_id=task_data.goal_id,
             title=task_data.title,
             description=task_data.description,
@@ -272,7 +273,7 @@ class TaskService:
         return task
 
     @staticmethod
-    def get_task(session: Session, task_id: str, owner_id: str) -> Optional[Task]:
+    def get_task(session: Session, task_id: Union[str, UUID], owner_id: Union[str, UUID]) -> Optional[Task]:
         """Get task by ID for specific owner"""
         statement = select(Task).join(Goal).join(Project).where(
             Task.id == task_id,
@@ -281,7 +282,7 @@ class TaskService:
         return session.exec(statement).first()
 
     @staticmethod
-    def get_tasks_by_goal(session: Session, goal_id: str, owner_id: str, skip: int = 0, limit: int = 100) -> list[Task]:
+    def get_tasks_by_goal(session: Session, goal_id: Union[str, UUID], owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> list[Task]:
         """Get tasks for specific goal"""
         # Verify goal ownership
         goal = GoalService.get_goal(session, goal_id, owner_id)
@@ -297,7 +298,7 @@ class TaskService:
         return list(session.exec(statement).all())
 
     @staticmethod
-    def get_tasks_by_project(session: Session, project_id: str, owner_id: str, skip: int = 0, limit: int = 100) -> list[Task]:
+    def get_tasks_by_project(session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> list[Task]:
         """Get all tasks for specific project"""
         # Verify project ownership
         project = ProjectService.get_project(session, project_id, owner_id)
@@ -313,7 +314,7 @@ class TaskService:
         return list(session.exec(statement).all())
 
     @staticmethod
-    def update_task(session: Session, task_id: str, owner_id: str, task_data: TaskUpdate) -> Task:
+    def update_task(session: Session, task_id: Union[str, UUID], owner_id: Union[str, UUID], task_data: TaskUpdate) -> Task:
         """Update task"""
         task = TaskService.get_task(session, task_id, owner_id)
         if not task:
@@ -333,7 +334,7 @@ class TaskService:
         return task
 
     @staticmethod
-    def delete_task(session: Session, task_id: str, owner_id: str) -> bool:
+    def delete_task(session: Session, task_id: Union[str, UUID], owner_id: Union[str, UUID]) -> bool:
         """Delete task"""
         task = TaskService.get_task(session, task_id, owner_id)
         if not task:

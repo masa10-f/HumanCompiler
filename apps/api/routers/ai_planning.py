@@ -12,7 +12,7 @@ from sqlmodel import Session
 from auth import get_current_user_id
 from database import db
 from exceptions import ValidationError, ResourceNotFoundError
-from ai_service import WeeklyPlanService, WeeklyPlanRequest, WeeklyPlanResponse
+from ai import weekly_plan_service, WeeklyPlanRequest, WeeklyPlanResponse
 
 
 logger = logging.getLogger(__name__)
@@ -61,11 +61,8 @@ async def generate_weekly_plan(
                 detail="Cannot create plans for weeks more than 7 days in the past"
             )
         
-        # Initialize service
-        planning_service = WeeklyPlanService()
-        
-        # Generate weekly plan
-        plan_response = await planning_service.generate_weekly_plan(
+        # Generate weekly plan using singleton service
+        plan_response = await weekly_plan_service.generate_weekly_plan(
             session=session,
             user_id=user_id,
             request=request
@@ -88,18 +85,19 @@ async def generate_weekly_plan(
 async def test_ai_integration():
     """Test endpoint to verify OpenAI integration."""
     try:
-        from ai_service import OpenAIService
+        from ai.openai_client import OpenAIClient
+        from ai.prompts import get_function_definitions
         
         # Test OpenAI service initialization
-        ai_service = OpenAIService()
+        ai_client = OpenAIClient()
         
         # Test function definitions
-        functions = ai_service.get_function_definitions()
+        functions = get_function_definitions()
         
         return {
             "status": "success",
             "message": "OpenAI integration working",
-            "model": ai_service.model,
+            "model": ai_client.model,
             "functions_available": len(functions),
             "function_names": [f["name"] for f in functions]
         }
