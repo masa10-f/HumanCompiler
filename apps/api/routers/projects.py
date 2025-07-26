@@ -51,7 +51,31 @@ async def get_projects(
 ) -> list[ProjectResponse]:
     """Get projects for current user"""
     projects = ProjectService.get_projects(session, current_user.user_id, skip, limit)
-    return [ProjectResponse.model_validate(project) for project in projects]
+    
+    try:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Retrieved {len(projects)} projects")
+        
+        response_projects = []
+        for i, project in enumerate(projects):
+            logger.info(f"Project {i}: type={type(project)}, data={project}")
+            logger.info(f"Project {i} attributes: id={getattr(project, 'id', 'MISSING')}, owner_id={getattr(project, 'owner_id', 'MISSING')}")
+            
+            validated_project = ProjectResponse.model_validate(project)
+            response_projects.append(validated_project)
+        return response_projects
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Project validation error: {e}")
+        logger.error(f"Project data: {projects}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Project validation failed: {str(e)}"
+        )
 
 
 @router.get(
