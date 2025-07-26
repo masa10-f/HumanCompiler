@@ -15,6 +15,7 @@ from models import (
     ProjectUpdate,
     Task,
     TaskCreate,
+    TaskStatus,
     TaskUpdate,
     User,
     UserCreate,
@@ -265,7 +266,7 @@ class TaskService:
             description=task_data.description,
             estimate_hours=task_data.estimate_hours,
             due_date=task_data.due_date,
-            status=task_data.status,
+            status=TaskStatus.PENDING,
         )
         session.add(task)
         session.commit()
