@@ -83,7 +83,7 @@ class TaskBase(SQLModel):
     description: Optional[str] = SQLField(default=None, max_length=1000)
     estimate_hours: Decimal = SQLField(gt=0, max_digits=5, decimal_places=2)
     due_date: Optional[datetime] = SQLField(default=None)
-    status: TaskStatus = SQLField(default=TaskStatus.PENDING, sa_column=Column(SQLEnum(TaskStatus)))
+    status: TaskStatus = SQLField(default=TaskStatus.PENDING, sa_column=Column(SQLEnum(TaskStatus, values_callable=lambda x: [e.value for e in x])))
 
 
 class Task(TaskBase, table=True):
