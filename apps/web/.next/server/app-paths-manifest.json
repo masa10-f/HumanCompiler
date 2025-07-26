@@ -1,9 +1,0 @@
-{
-  "/_not-found/page": "app/_not-found/page.js",
-  "/login/page": "app/login/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
-  "/projects/page": "app/projects/page.js",
-  "/scheduling/page": "app/scheduling/page.js",
-  "/ai-planning/page": "app/ai-planning/page.js",
-  "/projects/[id]/page": "app/projects/[id]/page.js"
-}

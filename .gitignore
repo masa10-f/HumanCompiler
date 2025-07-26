@@ -11,16 +11,16 @@
 # next.js
 /.next/
 /out/
+apps/web/.next/
+apps/web/out/
 
-# Next.js build artifacts
-*/.next/
-*/out/
-.next/
-out/
-
-# Hot reload files
-**/.next/static/webpack/
+# Next.js build artifacts and cache
+**/.next/
+**/out/
+**/.next/static/
 **/.next/cache/
+**/.next/server/
+**/.next/types/
 
 # production
 /build
