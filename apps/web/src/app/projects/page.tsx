@@ -105,11 +105,11 @@ export default function ProjectsPage() {
             </div>
             <Button
               variant="outline"
-              onClick={() => router.back()}
+              onClick={() => router.push('/dashboard')}
               className="flex items-center gap-2"
             >
               <ArrowLeft className="h-4 w-4" />
-              戻る
+              ダッシュボード
             </Button>
           </div>
         </div>
