@@ -58,34 +58,25 @@ class Database:
     def get_engine(self):
         """Get SQLModel engine for database operations"""
         if self._engine is None:
-            # Modify database URL to include SSL parameters
+            # Use the database URL as-is from environment
             database_url = settings.database_url
-            if "?" not in database_url:
-                database_url += "?sslmode=require&connect_timeout=30"
-            else:
-                database_url += "&sslmode=require&connect_timeout=30"
             
-            # Connection args for psycopg2
+            # Minimal connection args
             connect_args = {
-                "sslmode": "require",
-                "connect_timeout": 30,
-                "application_name": "TaskAgent-API",
-                "options": "-c default_transaction_isolation=read_committed"
+                "connect_timeout": 10,
+                "application_name": "TaskAgent-API"
             }
             
-            # Create engine with all hstore functionality disabled
+            # Create engine with minimal settings to avoid SSL issues
             self._engine = create_engine(
                 database_url,
-                echo=settings.debug,
-                pool_pre_ping=False,  # Disable pre-ping as it might trigger hstore
-                pool_recycle=300,     # Recycle connections after 5 minutes
-                pool_size=1,          # Minimal pool size
-                max_overflow=2,       # Minimal overflow
-                pool_timeout=60,      # Longer timeout
-                connect_args=connect_args,
-                # Additional engine args to prevent dialect issues
-                isolation_level="AUTOCOMMIT",
-                future=True
+                echo=False,           # Disable echo to reduce queries
+                pool_pre_ping=False,  # Disable pre-ping 
+                pool_recycle=600,     # Recycle connections after 10 minutes
+                pool_size=1,          # Single connection
+                max_overflow=0,       # No overflow connections
+                pool_timeout=30,      # Connection timeout
+                connect_args=connect_args
             )
             
             logger.info("✅ SQLModel engine initialized with hstore globally disabled")
