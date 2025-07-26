@@ -51,9 +51,17 @@ async def get_projects(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[ProjectResponse]:
     """Get projects for current user"""
-    projects = ProjectService.get_projects(session, current_user.user_id, skip, limit)
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"📋 Getting projects for user {current_user.user_id}")
     
-    return [ProjectResponse.model_validate(project) for project in projects]
+    try:
+        projects = ProjectService.get_projects(session, current_user.user_id, skip, limit)
+        logger.info(f"✅ Found {len(projects)} projects")
+        return [ProjectResponse.model_validate(project) for project in projects]
+    except Exception as e:
+        logger.error(f"❌ Error getting projects: {e}")
+        raise
 
 
 @router.get(

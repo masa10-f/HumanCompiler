@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { useProjects } from '@/hooks/use-projects';
@@ -14,12 +14,21 @@ export default function ProjectsPage() {
   const { user, loading: authLoading } = useAuth();
   const { projects, loading, error, refetch } = useProjects();
   const router = useRouter();
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login');
     }
   }, [user, authLoading, router]);
+
+  useEffect(() => {
+    // Set initial load to false after component mounts
+    const timer = setTimeout(() => {
+      setIsInitialLoad(false);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   if (authLoading || !user) {
     return (
@@ -29,12 +38,25 @@ export default function ProjectsPage() {
     );
   }
 
-  if (loading) {
+  if (loading && isInitialLoad) {
     return (
-      <div className="container mx-auto py-8">
-        <div className="flex items-center justify-center">
-          <div className="text-lg">プロジェクトを読み込み中...</div>
-        </div>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        {/* Header skeleton */}
+        <header className="bg-white dark:bg-gray-800 shadow-sm border-b">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="h-16" />
+          </div>
+        </header>
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex items-center justify-center mt-16">
+            <div className="text-center">
+              <div className="text-lg mb-4">プロジェクトを読み込み中...</div>
+              <div className="text-sm text-gray-500">
+                サーバーに接続中です。しばらくお待ちください。
+              </div>
+            </div>
+          </div>
+        </main>
       </div>
     );
   }
@@ -108,7 +130,11 @@ export default function ProjectsPage() {
         </ProjectFormDialog>
       </div>
 
-      {projects.length === 0 ? (
+      {loading ? (
+        <div className="text-center py-8">
+          <div className="text-lg">プロジェクトを読み込み中...</div>
+        </div>
+      ) : projects.length === 0 ? (
         <Card>
           <CardHeader>
             <CardTitle>プロジェクトがまだありません</CardTitle>

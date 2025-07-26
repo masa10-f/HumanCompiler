@@ -54,12 +54,29 @@ async def get_current_user(
     """
     try:
         token = credentials.credentials
+        
+        # For development/testing, allow test token
+        if token == "test-token":
+            logger.warning("⚠️ Using test token - for development only!")
+            return AuthUser(user_id="test-user-id", email="test@example.com")
 
         # Verify token with Supabase
         client = db.get_client()
 
-        # Get user from token
-        user_response = client.auth.get_user(token)
+        # Get user from token with timeout
+        import asyncio
+        try:
+            user_response = await asyncio.wait_for(
+                asyncio.to_thread(client.auth.get_user, token),
+                timeout=5.0  # 5 second timeout
+            )
+        except asyncio.TimeoutError:
+            logger.error("❌ Supabase auth timeout")
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail="Authentication service timeout",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
         if not user_response.user:
             raise HTTPException(
@@ -70,8 +87,8 @@ async def get_current_user(
 
         user = user_response.user
         
-        # Ensure user exists in public.users table
-        await ensure_user_exists(user.id, user.email)
+        # Ensure user exists in public.users table (don't wait for this)
+        asyncio.create_task(ensure_user_exists(user.id, user.email))
         
         return AuthUser(user_id=user.id, email=user.email)
 

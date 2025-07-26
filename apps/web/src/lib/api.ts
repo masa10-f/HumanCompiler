@@ -55,13 +55,21 @@ class ApiClient {
   ): Promise<T> {
     const headers = await this.getAuthHeaders();
     
-    const response = await fetch(`${this.baseURL}${endpoint}`, {
-      ...options,
-      headers: {
-        ...headers,
-        ...options.headers,
-      },
-    });
+    // Create AbortController if not provided
+    const controller = options.signal ? undefined : new AbortController();
+    const timeoutId = controller ? setTimeout(() => controller.abort(), 30000) : undefined; // 30 second timeout
+    
+    try {
+      const response = await fetch(`${this.baseURL}${endpoint}`, {
+        ...options,
+        signal: options.signal || controller?.signal,
+        headers: {
+          ...headers,
+          ...options.headers,
+        },
+      });
+      
+      if (timeoutId) clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
@@ -73,7 +81,11 @@ class ApiClient {
       return {} as T;
     }
 
-    return response.json();
+      return response.json();
+    } catch (error) {
+      if (timeoutId) clearTimeout(timeoutId);
+      throw error;
+    }
   }
 
   // Project API methods

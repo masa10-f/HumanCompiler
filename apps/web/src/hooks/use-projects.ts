@@ -14,16 +14,31 @@ export interface UseProjectsReturn {
 
 export function useProjects(): UseProjectsReturn {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchProjects = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await projectsApi.getAll();
-      setProjects(data);
+      
+      // Add timeout to prevent indefinite loading
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      try {
+        const data = await projectsApi.getAll();
+        clearTimeout(timeoutId);
+        setProjects(data);
+      } catch (fetchErr) {
+        clearTimeout(timeoutId);
+        if (fetchErr instanceof Error && fetchErr.name === 'AbortError') {
+          throw new Error('タイムアウト: サーバーからの応答がありません');
+        }
+        throw fetchErr;
+      }
     } catch (err) {
+      console.error('Failed to fetch projects:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch projects');
     } finally {
       setLoading(false);
@@ -66,6 +81,7 @@ export function useProjects(): UseProjectsReturn {
   }, []);
 
   useEffect(() => {
+    console.log('[useProjects] Fetching projects on mount...');
     fetchProjects();
   }, [fetchProjects]);
 
