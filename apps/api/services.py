@@ -1,6 +1,6 @@
 from datetime import datetime
-from typing import Optional
-from uuid import uuid4
+from typing import Optional, Union
+from uuid import uuid4, UUID
 
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
@@ -25,7 +25,7 @@ class UserService:
     """User service for CRUD operations"""
 
     @staticmethod
-    def create_user(session: Session, user_data: UserCreate, user_id: str) -> User:
+    def create_user(session: Session, user_data: UserCreate, user_id: Union[str, UUID]) -> User:
         """Create a new user or return existing one"""
         # Check if user already exists
         existing_user = session.get(User, user_id)
@@ -42,12 +42,12 @@ class UserService:
         return user
 
     @staticmethod
-    def get_user(session: Session, user_id: str) -> Optional[User]:
+    def get_user(session: Session, user_id: Union[str, UUID]) -> Optional[User]:
         """Get user by ID"""
         return session.get(User, user_id)
 
     @staticmethod
-    def update_user(session: Session, user_id: str, user_data: UserUpdate) -> User:
+    def update_user(session: Session, user_id: Union[str, UUID], user_data: UserUpdate) -> User:
         """Update user"""
         user = session.get(User, user_id)
         if not user:
@@ -71,10 +71,10 @@ class ProjectService:
     """Project service for CRUD operations"""
 
     @staticmethod
-    def create_project(session: Session, project_data: ProjectCreate, owner_id: str) -> Project:
+    def create_project(session: Session, project_data: ProjectCreate, owner_id: Union[str, UUID]) -> Project:
         """Create a new project"""
         project = Project(
-            id=str(uuid4()),
+            id=uuid4(),
             owner_id=owner_id,
             title=project_data.title,
             description=project_data.description,
@@ -85,7 +85,7 @@ class ProjectService:
         return project
 
     @staticmethod
-    def get_project(session: Session, project_id: str, owner_id: str) -> Optional[Project]:
+    def get_project(session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID]) -> Optional[Project]:
         """Get project by ID for specific owner"""
         statement = select(Project).where(
             Project.id == project_id,
@@ -94,7 +94,7 @@ class ProjectService:
         return session.exec(statement).first()
 
     @staticmethod
-    def get_projects(session: Session, owner_id: str, skip: int = 0, limit: int = 100) -> list[Project]:
+    def get_projects(session: Session, owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> list[Project]:
         """Get projects for specific owner"""
         statement = select(Project).where(
             Project.owner_id == owner_id
@@ -102,7 +102,7 @@ class ProjectService:
         return list(session.exec(statement).all())
 
     @staticmethod
-    def update_project(session: Session, project_id: str, owner_id: str, project_data: ProjectUpdate) -> Project:
+    def update_project(session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID], project_data: ProjectUpdate) -> Project:
         """Update project"""
         project = ProjectService.get_project(session, project_id, owner_id)
         if not project:
@@ -122,7 +122,7 @@ class ProjectService:
         return project
 
     @staticmethod
-    def delete_project(session: Session, project_id: str, owner_id: str) -> bool:
+    def delete_project(session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID]) -> bool:
         """Delete project"""
         project = ProjectService.get_project(session, project_id, owner_id)
         if not project:

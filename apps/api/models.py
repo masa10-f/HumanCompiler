@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Any, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 from sqlalchemy import JSON
@@ -26,7 +27,7 @@ class User(UserBase, table=True):
     """User database model"""
     __tablename__ = "users"
     
-    id: Optional[str] = SQLField(default=None, primary_key=True)
+    id: Optional[UUID] = SQLField(default=None, primary_key=True)
     created_at: Optional[datetime] = SQLField(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = SQLField(default_factory=datetime.utcnow)
     
@@ -45,8 +46,8 @@ class Project(ProjectBase, table=True):
     """Project database model"""
     __tablename__ = "projects"
     
-    id: Optional[str] = SQLField(default=None, primary_key=True)
-    owner_id: str = SQLField(foreign_key="users.id")
+    id: Optional[UUID] = SQLField(default=None, primary_key=True)
+    owner_id: UUID = SQLField(foreign_key="users.id")
     created_at: Optional[datetime] = SQLField(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = SQLField(default_factory=datetime.utcnow)
     
@@ -66,8 +67,8 @@ class Goal(GoalBase, table=True):
     """Goal database model"""
     __tablename__ = "goals"
     
-    id: Optional[str] = SQLField(default=None, primary_key=True)
-    project_id: str = SQLField(foreign_key="projects.id")
+    id: Optional[UUID] = SQLField(default=None, primary_key=True)
+    project_id: UUID = SQLField(foreign_key="projects.id")
     created_at: Optional[datetime] = SQLField(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = SQLField(default_factory=datetime.utcnow)
     
@@ -89,8 +90,8 @@ class Task(TaskBase, table=True):
     """Task database model"""
     __tablename__ = "tasks"
     
-    id: Optional[str] = SQLField(default=None, primary_key=True)
-    goal_id: str = SQLField(foreign_key="goals.id")
+    id: Optional[UUID] = SQLField(default=None, primary_key=True)
+    goal_id: UUID = SQLField(foreign_key="goals.id")
     created_at: Optional[datetime] = SQLField(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = SQLField(default_factory=datetime.utcnow)
     
@@ -109,8 +110,8 @@ class Schedule(ScheduleBase, table=True):
     """Schedule database model"""
     __tablename__ = "schedules"
     
-    id: Optional[str] = SQLField(default=None, primary_key=True)
-    user_id: str = SQLField(foreign_key="users.id")
+    id: Optional[UUID] = SQLField(default=None, primary_key=True)
+    user_id: UUID = SQLField(foreign_key="users.id")
     created_at: Optional[datetime] = SQLField(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = SQLField(default_factory=datetime.utcnow)
     
@@ -128,8 +129,8 @@ class Log(LogBase, table=True):
     """Log database model"""
     __tablename__ = "logs"
     
-    id: Optional[str] = SQLField(default=None, primary_key=True)
-    task_id: str = SQLField(foreign_key="tasks.id")
+    id: Optional[UUID] = SQLField(default=None, primary_key=True)
+    task_id: UUID = SQLField(foreign_key="tasks.id")
     created_at: Optional[datetime] = SQLField(default_factory=datetime.utcnow)
     
     # Relationships
@@ -149,7 +150,7 @@ class UserUpdate(BaseModel):
 
 class UserResponse(UserBase):
     """User response model"""
-    id: str
+    id: UUID
     created_at: datetime
     updated_at: datetime
     
@@ -170,8 +171,8 @@ class ProjectUpdate(BaseModel):
 
 class ProjectResponse(ProjectBase):
     """Project response model"""
-    id: str
-    owner_id: str
+    id: UUID
+    owner_id: UUID
     created_at: datetime
     updated_at: datetime
     
@@ -181,7 +182,7 @@ class ProjectResponse(ProjectBase):
 
 class GoalCreate(GoalBase):
     """Goal creation request"""
-    project_id: str
+    project_id: UUID
 
 
 class GoalUpdate(BaseModel):
@@ -193,8 +194,8 @@ class GoalUpdate(BaseModel):
 
 class GoalResponse(GoalBase):
     """Goal response model"""
-    id: str
-    project_id: str
+    id: UUID
+    project_id: UUID
     created_at: datetime
     updated_at: datetime
     
@@ -204,7 +205,7 @@ class GoalResponse(GoalBase):
 
 class TaskCreate(TaskBase):
     """Task creation request"""
-    goal_id: str
+    goal_id: UUID
 
 
 class TaskUpdate(BaseModel):
@@ -218,8 +219,8 @@ class TaskUpdate(BaseModel):
 
 class TaskResponse(TaskBase):
     """Task response model"""
-    id: str
-    goal_id: str
+    id: UUID
+    goal_id: UUID
     created_at: datetime
     updated_at: datetime
     
@@ -240,8 +241,8 @@ class ScheduleUpdate(BaseModel):
 
 class ScheduleResponse(ScheduleBase):
     """Schedule response model"""
-    id: str
-    user_id: str
+    id: UUID
+    user_id: UUID
     created_at: datetime
     updated_at: datetime
     
@@ -251,7 +252,7 @@ class ScheduleResponse(ScheduleBase):
 
 class LogCreate(LogBase):
     """Log creation request"""
-    task_id: str
+    task_id: UUID
 
 
 class LogUpdate(BaseModel):
@@ -262,8 +263,8 @@ class LogUpdate(BaseModel):
 
 class LogResponse(LogBase):
     """Log response model"""
-    id: str
-    task_id: str
+    id: UUID
+    task_id: UUID
     created_at: datetime
     
     class Config:
