@@ -26,14 +26,11 @@ class UserService:
 
     @staticmethod
     def create_user(session: Session, user_data: UserCreate, user_id: str) -> User:
-        """Create a new user"""
+        """Create a new user or return existing one"""
         # Check if user already exists
         existing_user = session.get(User, user_id)
         if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="User already exists"
-            )
+            return existing_user
 
         user = User(
             id=user_id,

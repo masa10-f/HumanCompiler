@@ -2,8 +2,11 @@ import logging
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlmodel import Session
 
 from database import db
+from services import UserService
+from models import UserCreate
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +18,33 @@ class AuthUser:
     def __init__(self, user_id: str, email: str):
         self.user_id = user_id
         self.email = email
+
+async def ensure_user_exists(user_id: str, email: str) -> None:
+    """
+    Ensure user exists in public.users table
+    Create if not exists
+    """
+    try:
+        # Get database session
+        session_gen = db.get_session()
+        session = next(session_gen)
+        
+        try:
+            # Check if user exists
+            existing_user = UserService.get_user(session, user_id)
+            
+            if not existing_user:
+                # Create user if not exists
+                user_data = UserCreate(email=email)
+                UserService.create_user(session, user_data, user_id)
+                logger.info(f"✅ Created user in public.users: {user_id}")
+            
+        finally:
+            session.close()
+            
+    except Exception as e:
+        logger.error(f"❌ Failed to ensure user exists: {e}")
+        # Don't raise exception - user might already exist due to race condition
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
@@ -39,6 +69,10 @@ async def get_current_user(
             )
 
         user = user_response.user
+        
+        # Ensure user exists in public.users table
+        await ensure_user_exists(user.id, user.email)
+        
         return AuthUser(user_id=user.id, email=user.email)
 
     except Exception as e:

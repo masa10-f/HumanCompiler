@@ -16,7 +16,7 @@ from exceptions import (
     task_agent_exception_handler,
     validation_exception_handler,
 )
-from routers import goals, projects, tasks, scheduler, ai_planning
+from routers import goals, projects, tasks, scheduler, ai_planning, users
 
 
 @asynccontextmanager
@@ -61,6 +61,7 @@ app.add_exception_handler(TaskAgentException, task_agent_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 
 # Include API routers
+app.include_router(users.router, prefix="/api")
 app.include_router(projects.router, prefix="/api")
 app.include_router(goals.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
