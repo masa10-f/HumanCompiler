@@ -11,7 +11,6 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Brain, 
@@ -22,7 +21,8 @@ import {
   CheckCircle, 
   Loader2,
   BarChart3,
-  Target
+  Target,
+  ArrowLeft
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { aiPlanningApi } from '@/lib/api';
@@ -127,11 +127,21 @@ export default function AIPlanningPage() {
   return (
     <div className="container mx-auto py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Brain className="h-8 w-8 text-purple-600" />
-          AI週間計画
-        </h1>
-        <p className="text-gray-600 mt-2">
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Brain className="h-8 w-8 text-purple-600" />
+            AI週間計画
+          </h1>
+          <Button
+            variant="outline"
+            onClick={() => router.back()}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            戻る
+          </Button>
+        </div>
+        <p className="text-gray-600">
           AIがあなたのタスクを分析し、最適な週間計画を提案します。
         </p>
       </div>

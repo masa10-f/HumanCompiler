@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,7 +17,8 @@ import {
   AlertCircle,
   Loader2,
   Plus,
-  Trash2
+  Trash2,
+  ArrowLeft
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { schedulingApi } from '@/lib/api';
@@ -24,6 +26,7 @@ import type { ScheduleRequest, ScheduleResult, TimeSlot } from '@/types/ai-plann
 
 export default function SchedulingPage() {
   const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
   
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date();
@@ -117,11 +120,21 @@ export default function SchedulingPage() {
   return (
     <div className="container mx-auto py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Settings className="h-8 w-8 text-blue-600" />
-          スケジュール最適化
-        </h1>
-        <p className="text-gray-600 mt-2">
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Settings className="h-8 w-8 text-blue-600" />
+            スケジュール最適化
+          </h1>
+          <Button
+            variant="outline"
+            onClick={() => router.back()}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            戻る
+          </Button>
+        </div>
+        <p className="text-gray-600">
           OR-Toolsを使用してタスクの最適なスケジューリングを行います。
         </p>
       </div>
