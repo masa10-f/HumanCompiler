@@ -39,23 +39,34 @@ class Database:
     def get_engine(self):
         """Get SQLModel engine for database operations"""
         if self._engine is None:
-            # Add SSL and connection pool settings for Supabase
+            # Modify database URL to include SSL parameters
+            database_url = settings.database_url
+            if "?" not in database_url:
+                database_url += "?sslmode=require&connect_timeout=30"
+            else:
+                database_url += "&sslmode=require&connect_timeout=30"
+            
+            # Connection args for psycopg2
             connect_args = {
                 "sslmode": "require",
                 "connect_timeout": 30,
-                "application_name": "TaskAgent-API"
+                "application_name": "TaskAgent-API",
+                "options": "-c default_transaction_isolation=read_committed"
             }
             
             self._engine = create_engine(
-                settings.database_url,
+                database_url,
                 echo=settings.debug,
                 pool_pre_ping=True,
-                pool_recycle=3600,  # Recycle connections after 1 hour
-                pool_size=5,        # Small pool size for development
-                max_overflow=10,    # Allow temporary connections
-                connect_args=connect_args
+                pool_recycle=1800,   # Recycle connections after 30 minutes
+                pool_size=3,         # Smaller pool for better connection management
+                max_overflow=5,      # Fewer overflow connections
+                pool_timeout=30,     # Connection timeout from pool
+                connect_args=connect_args,
+                # Disable hstore support to avoid SSL issues during connection init
+                module=None
             )
-            logger.info("✅ SQLModel engine initialized with SSL settings")
+            logger.info("✅ SQLModel engine initialized with enhanced SSL settings")
         return self._engine
 
     def get_session(self) -> Generator[Session, None, None]:
