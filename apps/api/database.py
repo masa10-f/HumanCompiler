@@ -39,12 +39,23 @@ class Database:
     def get_engine(self):
         """Get SQLModel engine for database operations"""
         if self._engine is None:
+            # Add SSL and connection pool settings for Supabase
+            connect_args = {
+                "sslmode": "require",
+                "connect_timeout": 30,
+                "application_name": "TaskAgent-API"
+            }
+            
             self._engine = create_engine(
                 settings.database_url,
                 echo=settings.debug,
-                pool_pre_ping=True
+                pool_pre_ping=True,
+                pool_recycle=3600,  # Recycle connections after 1 hour
+                pool_size=5,        # Small pool size for development
+                max_overflow=10,    # Allow temporary connections
+                connect_args=connect_args
             )
-            logger.info("✅ SQLModel engine initialized")
+            logger.info("✅ SQLModel engine initialized with SSL settings")
         return self._engine
 
     def get_session(self) -> Generator[Session, None, None]:
