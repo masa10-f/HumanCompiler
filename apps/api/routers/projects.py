@@ -17,13 +17,10 @@ from services_refactored import project_service
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
-def get_session() -> Session:
+def get_session():
     """Database session dependency"""
-    session = next(db.get_session())
-    try:
+    with Session(db.get_engine()) as session:
         yield session
-    finally:
-        session.close()
 
 
 @router.post(
@@ -56,13 +53,25 @@ async def get_projects(
 ) -> list[ProjectResponse]:
     """Get projects for current user"""
     import logging
+    import time
     logger = logging.getLogger(__name__)
+    
+    start_time = time.time()
     logger.info(f"📋 Getting projects for user {current_user.user_id}")
     
     try:
+        db_start = time.time()
         projects = project_service.get_projects(session, current_user.user_id, skip, limit)
-        logger.info(f"✅ Found {len(projects)} projects")
-        return [ProjectResponse.model_validate(project) for project in projects]
+        db_time = time.time() - db_start
+        
+        response_start = time.time()
+        result = [ProjectResponse.model_validate(project) for project in projects]
+        response_time = time.time() - response_start
+        
+        total_time = time.time() - start_time
+        logger.info(f"✅ Found {len(projects)} projects | DB: {db_time:.3f}s | Response: {response_time:.3f}s | Total: {total_time:.3f}s")
+        
+        return result
     except Exception as e:
         logger.error(f"❌ Error getting projects: {e}")
         raise

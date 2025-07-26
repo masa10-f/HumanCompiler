@@ -85,6 +85,10 @@ class BaseService(ABC, Generic[T, CreateT, UpdateT]):
             if hasattr(self.model, key) and value is not None:
                 statement = statement.where(getattr(self.model, key) == value)
         
+        # Add consistent ordering for predictable results
+        if hasattr(self.model, 'created_at'):
+            statement = statement.order_by(self.model.created_at.desc())
+        
         statement = statement.offset(skip).limit(limit)
         return list(session.exec(statement).all())
     
