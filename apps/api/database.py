@@ -2,9 +2,20 @@ import logging
 from typing import Generator
 
 from sqlmodel import Session, create_engine
+from sqlalchemy import event
+from sqlalchemy.dialects.postgresql import psycopg2
 from supabase import Client, create_client
+import psycopg2.extras
 
 from config import settings
+
+# Monkey patch to disable hstore entirely
+def _disabled_get_oids(connection):
+    """Disabled version of HstoreAdapter.get_oids to prevent SSL issues"""
+    return None, None
+
+# Apply the monkey patch
+psycopg2.extras.HstoreAdapter.get_oids = staticmethod(_disabled_get_oids)
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +65,7 @@ class Database:
                 "options": "-c default_transaction_isolation=read_committed"
             }
             
+            # Create engine with hstore disabled
             self._engine = create_engine(
                 database_url,
                 echo=settings.debug,
@@ -62,11 +74,10 @@ class Database:
                 pool_size=3,         # Smaller pool for better connection management
                 max_overflow=5,      # Fewer overflow connections
                 pool_timeout=30,     # Connection timeout from pool
-                connect_args=connect_args,
-                # Disable hstore support to avoid SSL issues during connection init
-                module=None
+                connect_args=connect_args
             )
-            logger.info("✅ SQLModel engine initialized with enhanced SSL settings")
+            
+            logger.info("✅ SQLModel engine initialized with hstore globally disabled")
         return self._engine
 
     def get_session(self) -> Generator[Session, None, None]:
