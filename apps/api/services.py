@@ -131,9 +131,30 @@ class ProjectService:
                 detail="Project not found"
             )
 
-        session.delete(project)
-        session.commit()
-        return True
+        try:
+            # Delete all tasks in all goals of this project
+            from sqlmodel import select
+            goals = session.exec(select(Goal).where(Goal.project_id == project_id)).all()
+            for goal in goals:
+                tasks = session.exec(select(Task).where(Task.goal_id == goal.id)).all()
+                for task in tasks:
+                    # Delete all logs for this task
+                    logs = session.exec(select(Log).where(Log.task_id == task.id)).all()
+                    for log in logs:
+                        session.delete(log)
+                    session.delete(task)
+                session.delete(goal)
+            
+            # Delete the project
+            session.delete(project)
+            session.commit()
+            return True
+        except Exception as e:
+            session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to delete project: {str(e)}"
+            )
 
 
 class GoalService:

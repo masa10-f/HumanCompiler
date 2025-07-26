@@ -109,4 +109,16 @@ async def delete_project(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> None:
     """Delete specific project"""
-    ProjectService.delete_project(session, project_id, current_user.user_id)
+    try:
+        ProjectService.delete_project(session, project_id, current_user.user_id)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Project deletion error: {e}")
+        logger.error(f"Project ID: {project_id}, User ID: {current_user.user_id}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Project deletion failed: {str(e)}"
+        )
