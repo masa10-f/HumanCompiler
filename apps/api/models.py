@@ -152,6 +152,9 @@ class UserResponse(UserBase):
     id: str
     created_at: datetime
     updated_at: datetime
+    
+    class Config:
+        from_attributes = True
 
 
 class ProjectCreate(ProjectBase):
@@ -171,6 +174,9 @@ class ProjectResponse(ProjectBase):
     owner_id: str
     created_at: datetime
     updated_at: datetime
+    
+    class Config:
+        from_attributes = True
 
 
 class GoalCreate(GoalBase):
@@ -191,6 +197,9 @@ class GoalResponse(GoalBase):
     project_id: str
     created_at: datetime
     updated_at: datetime
+    
+    class Config:
+        from_attributes = True
 
 
 class TaskCreate(TaskBase):
@@ -213,6 +222,9 @@ class TaskResponse(TaskBase):
     goal_id: str
     created_at: datetime
     updated_at: datetime
+    
+    class Config:
+        from_attributes = True
 
 
 class ScheduleCreate(ScheduleBase):
@@ -232,6 +244,9 @@ class ScheduleResponse(ScheduleBase):
     user_id: str
     created_at: datetime
     updated_at: datetime
+    
+    class Config:
+        from_attributes = True
 
 
 class LogCreate(LogBase):
@@ -250,6 +265,9 @@ class LogResponse(LogBase):
     id: str
     task_id: str
     created_at: datetime
+    
+    class Config:
+        from_attributes = True
 
 
 # Error Response Models
