@@ -75,8 +75,19 @@ export function useProjects(): UseProjectsReturn {
   }, []);
 
   useEffect(() => {
-    console.log('[useProjects] Component mounted, fetching projects...');
-    fetchProjects();
+    let mounted = true;
+    
+    const loadProjects = async () => {
+      if (!mounted) return;
+      console.log('[useProjects] Component mounted, fetching projects...');
+      await fetchProjects();
+    };
+    
+    loadProjects();
+    
+    return () => {
+      mounted = false;
+    };
   }, [fetchProjects]);
 
   return {

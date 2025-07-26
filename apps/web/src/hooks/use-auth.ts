@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import type { User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { toast } from '@/hooks/use-toast'
@@ -9,7 +9,9 @@ import { toast } from '@/hooks/use-toast'
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [initialLoad, setInitialLoad] = useState(true)
   const router = useRouter()
+  const pathname = usePathname()
 
   useEffect(() => {
     // Get initial session
@@ -17,6 +19,7 @@ export function useAuth() {
       const { data: { session } } = await supabase.auth.getSession()
       setUser(session?.user ?? null)
       setLoading(false)
+      setInitialLoad(false)
     }
 
     getInitialSession()
@@ -27,12 +30,17 @@ export function useAuth() {
         setUser(session?.user ?? null)
         setLoading(false)
 
-        if (event === 'SIGNED_IN') {
-          toast({
-            title: 'ログインしました',
-            description: 'TaskAgentへようこそ！',
-          })
-          router.push('/dashboard')
+        // Only redirect on actual sign in/out events, not on session restoration
+        if (event === 'SIGNED_IN' && !initialLoad) {
+          // Only redirect to dashboard if we're on login/signup pages
+          const isAuthPage = pathname === '/login' || pathname === '/signup' || pathname === '/'
+          if (isAuthPage) {
+            toast({
+              title: 'ログインしました',
+              description: 'TaskAgentへようこそ！',
+            })
+            router.push('/dashboard')
+          }
         } else if (event === 'SIGNED_OUT') {
           toast({
             title: 'ログアウトしました',
@@ -44,7 +52,7 @@ export function useAuth() {
     )
 
     return () => subscription.unsubscribe()
-  }, [router])
+  }, [router, initialLoad, pathname])
 
   const signOut = async () => {
     try {

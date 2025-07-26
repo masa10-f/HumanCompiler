@@ -3,22 +3,19 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
-import { projectsApi } from '@/lib/api';
+import { useProjects } from '@/hooks/use-projects';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, Plus } from 'lucide-react';
-import type { Project } from '@/types/project';
 
 export default function ProjectsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const { projects, loading, error, createProject, refetch } = useProjects();
   
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
   
@@ -26,45 +23,25 @@ export default function ProjectsPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
 
-  const fetchProjects = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      console.log('[Projects] Fetching projects...');
-      
-      const data = await projectsApi.getAll();
-      console.log('[Projects] Fetched:', data);
-      setProjects(data);
-    } catch (err) {
-      console.error('[Projects] Error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch projects');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const createProject = async (e: React.FormEvent) => {
+  const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
 
     try {
       setCreating(true);
-      setError(null);
       console.log('[Projects] Creating:', { title, description });
       
-      const newProject = await projectsApi.create({
+      await createProject({
         title: title.trim(),
         description: description.trim() || undefined,
       });
       
-      console.log('[Projects] Created:', newProject);
-      setProjects(prev => [...prev, newProject]);
+      console.log('[Projects] Project created successfully');
       setTitle('');
       setDescription('');
       setShowCreateForm(false);
     } catch (err) {
       console.error('[Projects] Create error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create project');
     } finally {
       setCreating(false);
     }
@@ -74,10 +51,6 @@ export default function ProjectsPage() {
     if (!authLoading && !user) {
       router.push('/login');
       return;
-    }
-    
-    if (user) {
-      fetchProjects();
     }
   }, [user, authLoading, router]);
 
@@ -164,7 +137,7 @@ export default function ProjectsPage() {
               variant="outline" 
               size="sm" 
               className="mt-2"
-              onClick={fetchProjects}
+              onClick={refetch}
             >
               再試行
             </Button>
@@ -181,7 +154,7 @@ export default function ProjectsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={createProject} className="space-y-4">
+              <form onSubmit={handleCreateProject} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="title">プロジェクト名 *</Label>
                   <Input
