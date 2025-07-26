@@ -17,6 +17,14 @@ def _disabled_get_oids(connection):
 # Apply the monkey patch
 psycopg2.extras.HstoreAdapter.get_oids = staticmethod(_disabled_get_oids)
 
+# Also patch the register_hstore function to prevent any hstore setup
+original_register_hstore = psycopg2.extras.register_hstore
+def _disabled_register_hstore(*args, **kwargs):
+    """Disabled version of register_hstore"""
+    pass
+
+psycopg2.extras.register_hstore = _disabled_register_hstore
+
 logger = logging.getLogger(__name__)
 
 class Database:
@@ -65,16 +73,19 @@ class Database:
                 "options": "-c default_transaction_isolation=read_committed"
             }
             
-            # Create engine with hstore disabled
+            # Create engine with all hstore functionality disabled
             self._engine = create_engine(
                 database_url,
                 echo=settings.debug,
-                pool_pre_ping=True,
-                pool_recycle=1800,   # Recycle connections after 30 minutes
-                pool_size=3,         # Smaller pool for better connection management
-                max_overflow=5,      # Fewer overflow connections
-                pool_timeout=30,     # Connection timeout from pool
-                connect_args=connect_args
+                pool_pre_ping=False,  # Disable pre-ping as it might trigger hstore
+                pool_recycle=300,     # Recycle connections after 5 minutes
+                pool_size=1,          # Minimal pool size
+                max_overflow=2,       # Minimal overflow
+                pool_timeout=60,      # Longer timeout
+                connect_args=connect_args,
+                # Additional engine args to prevent dialect issues
+                isolation_level="AUTOCOMMIT",
+                future=True
             )
             
             logger.info("✅ SQLModel engine initialized with hstore globally disabled")
