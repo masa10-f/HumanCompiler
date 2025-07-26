@@ -40,6 +40,11 @@ async def ensure_user_exists(user_id: str, email: str) -> None:
                 logger.info(f"✅ Created user in public.users: {user_id}")
             
         finally:
+            # Make sure to close all generators properly
+            try:
+                session_gen.close()
+            except:
+                pass
             session.close()
             
     except Exception as e:
@@ -87,8 +92,9 @@ async def get_current_user(
 
         user = user_response.user
         
-        # Ensure user exists in public.users table (don't wait for this)
-        asyncio.create_task(ensure_user_exists(user.id, user.email))
+        # Skip user creation for now to avoid hanging
+        # TODO: Fix async user creation
+        # asyncio.create_task(ensure_user_exists(user.id, user.email))
         
         return AuthUser(user_id=user.id, email=user.email)
 

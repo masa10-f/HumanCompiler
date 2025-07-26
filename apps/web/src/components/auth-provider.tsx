@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
+import { ProjectsProvider } from '@/contexts/projects-context'
 
 interface AuthContextType {
   user: User | null
@@ -41,7 +42,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={{ user, loading }}>
-      {children}
+      {user ? (
+        <ProjectsProvider>
+          {children}
+        </ProjectsProvider>
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
   )
 }
