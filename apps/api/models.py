@@ -5,7 +5,7 @@ from typing import Any, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
-from sqlalchemy import JSON
+from sqlalchemy import JSON, Enum as SQLEnum
 from sqlmodel import Column, Field as SQLField, Relationship, SQLModel
 
 
@@ -83,7 +83,7 @@ class TaskBase(SQLModel):
     description: Optional[str] = SQLField(default=None, max_length=1000)
     estimate_hours: Decimal = SQLField(gt=0, max_digits=5, decimal_places=2)
     due_date: Optional[datetime] = SQLField(default=None)
-    status: TaskStatus = SQLField(default=TaskStatus.PENDING)
+    status: TaskStatus = SQLField(default=TaskStatus.PENDING, sa_column=Column(SQLEnum(TaskStatus)))
 
 
 class Task(TaskBase, table=True):
