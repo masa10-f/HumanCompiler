@@ -225,25 +225,25 @@ async def create_daily_schedule(
             logger.debug(f"Including task {db_task.id}: {db_task.title}, status: {db_task.status}, kind: {task_kind}")
             
             scheduler_task = SchedulerTask(
-                id=db_task.id,
+                id=str(db_task.id),  # Convert UUID to string
                 title=db_task.title,
                 estimate_hours=db_task.estimate_hours,
                 priority=3,  # Default priority - could be enhanced
                 due_date=db_task.due_date,
                 kind=task_kind,
-                goal_id=db_task.goal_id
+                goal_id=str(db_task.goal_id) if db_task.goal_id else None  # Convert UUID to string
             )
             scheduler_tasks.append(scheduler_task)
             
             # Store task info for response
-            task_info_map[db_task.id] = TaskInfo(
-                id=db_task.id,
+            task_info_map[str(db_task.id)] = TaskInfo(
+                id=str(db_task.id),  # Convert UUID to string
                 title=db_task.title,
                 estimate_hours=db_task.estimate_hours,
                 priority=3,
                 kind=task_kind.value,
                 due_date=db_task.due_date,
-                goal_id=db_task.goal_id
+                goal_id=str(db_task.goal_id) if db_task.goal_id else None  # Convert UUID to string
             )
         
         logger.info(f"Filtered out {filtered_count} completed/cancelled tasks")
