@@ -6,7 +6,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, time
 
-from fastapi import APIRouter, HTTPException, Depends, status, Query
+from fastapi import APIRouter, HTTPException, Depends, status, Query, Request
 from pydantic import BaseModel, Field, validator
 
 from auth import get_current_user_id
@@ -32,6 +32,7 @@ except ImportError as e:
 
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 router = APIRouter(prefix="/schedule", tags=["scheduling"])
 
 
@@ -461,6 +462,81 @@ async def save_daily_schedule(
         )
 
 
+@router.get("/daily/list", response_model=list[ScheduleResponse])
+async def list_daily_schedules(
+    request: Request,
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(db.get_session)
+):
+    """
+    Get list of saved daily schedules for user.
+    
+    Returns schedules ordered by date (newest first).
+    """
+    try:
+        # Parse query parameters manually
+        skip = int(request.query_params.get('skip', 0))
+        limit = int(request.query_params.get('limit', 30))
+        
+        logger.info(f"Fetching schedule list for user {user_id} (skip={skip}, limit={limit})")
+        logger.info(f"Query params: {dict(request.query_params)}")
+        logger.info(f"Parameters types: skip={type(skip)}, limit={type(limit)}")
+        
+        # Validate parameters
+        if skip < 0:
+            logger.error(f"Invalid skip parameter: {skip}")
+            raise HTTPException(status_code=400, detail=f"Invalid skip parameter: {skip}")
+        
+        if limit < 1 or limit > 100:
+            logger.error(f"Invalid limit parameter: {limit}")
+            raise HTTPException(status_code=400, detail=f"Invalid limit parameter: {limit}")
+        
+        # Get schedules from database ordered by date (newest first)
+        logger.info("Executing database query...")
+        schedules = session.exec(
+            select(Schedule)
+            .where(Schedule.user_id == user_id)
+            .order_by(Schedule.date.desc())
+            .offset(skip)
+            .limit(limit)
+        ).all()
+        
+        logger.info(f"Found {len(schedules)} schedules for user {user_id}")
+        
+        # Validate each schedule before converting
+        result = []
+        for i, schedule in enumerate(schedules):
+            try:
+                logger.debug(f"Validating schedule {i}: {schedule.id}")
+                validated_schedule = ScheduleResponse.model_validate(schedule)
+                result.append(validated_schedule)
+            except Exception as validation_error:
+                logger.error(f"Failed to validate schedule {schedule.id}: {validation_error}")
+                logger.error(f"Schedule data: {schedule}")
+                # Skip invalid schedules instead of failing completely
+                continue
+        
+        logger.info(f"Successfully validated {len(result)} schedules")
+        return result
+        
+    except HTTPException:
+        raise
+    except ValidationError as e:
+        logger.error(f"Validation error in schedule list: {e}")
+        logger.error(f"Validation error details: {e.errors()}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        
+    except Exception as e:
+        logger.error(f"Unexpected error fetching schedule list: {e}")
+        logger.error(f"Error type: {type(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch schedule list"
+        )
+
+
 @router.get("/daily/{date}", response_model=ScheduleResponse)
 async def get_daily_schedule(
     date: str,
@@ -507,45 +583,4 @@ async def get_daily_schedule(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch schedule"
-        )
-
-
-@router.get("/daily/list", response_model=list[ScheduleResponse])
-async def list_daily_schedules(
-    user_id: str = Depends(get_current_user_id),
-    session: Session = Depends(db.get_session),
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=30, ge=1, le=100)
-):
-    """
-    Get list of saved daily schedules for user.
-    
-    Returns schedules ordered by date (newest first).
-    """
-    try:
-        logger.info(f"Fetching schedule list for user {user_id} (skip={skip}, limit={limit})")
-        
-        # Get schedules from database ordered by date (newest first)
-        schedules = session.exec(
-            select(Schedule)
-            .where(Schedule.user_id == user_id)
-            .order_by(Schedule.date.desc())
-            .offset(skip)
-            .limit(limit)
-        ).all()
-        
-        logger.info(f"Found {len(schedules)} schedules for user {user_id}")
-        
-        result = [ScheduleResponse.model_validate(schedule) for schedule in schedules]
-        return result
-        
-    except ValidationError as e:
-        logger.error(f"Validation error in schedule list: {e}")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-        
-    except Exception as e:
-        logger.error(f"Error fetching schedule list: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch schedule list"
         )
