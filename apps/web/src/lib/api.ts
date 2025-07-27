@@ -219,6 +219,14 @@ class ApiClient {
     return this.request<any>(`/api/schedule/daily/${date}`);
   }
 
+  async listDailySchedules(skip?: number, limit?: number): Promise<any[]> {
+    const params = new URLSearchParams();
+    if (skip !== undefined) params.append('skip', skip.toString());
+    if (limit !== undefined) params.append('limit', limit.toString());
+    
+    return this.request<any[]>(`/api/schedule/daily/list?${params.toString()}`);
+  }
+
   async testScheduler(): Promise<any> {
     return this.request<any>('/api/schedule/test');
   }
@@ -266,5 +274,6 @@ export const schedulingApi = {
   optimizeDaily: (request: ScheduleRequest) => apiClient.optimizeDailySchedule(request),
   save: (scheduleData: ScheduleResult & { date: string; generated_at: string }) => apiClient.saveDailySchedule(scheduleData),
   getByDate: (date: string) => apiClient.getDailySchedule(date),
+  list: (skip?: number, limit?: number) => apiClient.listDailySchedules(skip, limit),
   test: () => apiClient.testScheduler(),
 };

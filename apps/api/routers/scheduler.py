@@ -508,3 +508,37 @@ async def get_daily_schedule(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch schedule"
         )
+
+
+@router.get("/daily/list", response_model=list[ScheduleResponse])
+async def list_daily_schedules(
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(db.get_session),
+    skip: int = 0,
+    limit: int = 30
+):
+    """
+    Get list of saved daily schedules for user.
+    
+    Returns schedules ordered by date (newest first).
+    """
+    try:
+        logger.info(f"Fetching schedule list for user {user_id}")
+        
+        # Get schedules from database ordered by date (newest first)
+        schedules = session.exec(
+            select(Schedule)
+            .where(Schedule.user_id == user_id)
+            .order_by(Schedule.date.desc())
+            .offset(skip)
+            .limit(limit)
+        ).all()
+        
+        return [ScheduleResponse.model_validate(schedule) for schedule in schedules]
+        
+    except Exception as e:
+        logger.error(f"Error fetching schedule list: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch schedule list"
+        )

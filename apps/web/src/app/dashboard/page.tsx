@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Calendar, Plus, Target, TrendingUp, Brain, Settings, Clock, ExternalLink } from 'lucide-react'
+import { Calendar, Plus, Target, TrendingUp, Brain, Settings, Clock, ExternalLink, History } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { schedulingApi } from '@/lib/api'
@@ -94,6 +94,13 @@ export default function DashboardPage() {
                 >
                   スケジューリング
                 </Button>
+                <Button 
+                  variant="ghost" 
+                  onClick={() => router.push('/schedule-history')}
+                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                >
+                  スケジュール履歴
+                </Button>
               </nav>
             </div>
             <div className="flex items-center space-x-4">
@@ -121,7 +128,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <Card 
             className="cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => router.push('/projects')}
@@ -154,6 +161,17 @@ export default function DashboardPage() {
               <CardDescription>OR-Toolsによる制約最適化</CardDescription>
             </CardHeader>
           </Card>
+
+          <Card 
+            className="cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => router.push('/schedule-history')}
+          >
+            <CardHeader className="text-center pb-4">
+              <History className="h-8 w-8 text-orange-600 mx-auto mb-2" />
+              <CardTitle className="text-lg">スケジュール履歴</CardTitle>
+              <CardDescription>過去のスケジュールを確認</CardDescription>
+            </CardHeader>
+          </Card>
         </div>
 
         {/* Today's Schedule */}
@@ -176,13 +194,24 @@ export default function DashboardPage() {
                       })}
                     </CardDescription>
                   </div>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => router.push('/scheduling')}
-                  >
-                    スケジュール編集
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => router.push('/schedule-history')}
+                      className="flex items-center gap-1"
+                    >
+                      <History className="h-3 w-3" />
+                      履歴
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => router.push('/scheduling')}
+                    >
+                      スケジュール編集
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
