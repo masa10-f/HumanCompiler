@@ -100,10 +100,42 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
   }
 
   const completedTasks = tasks.filter(task => task.status === 'completed').length;
-  const totalHours = tasks.reduce((sum, task) => sum + task.estimate_hours, 0);
-  const completedHours = tasks
+  
+  // Debug: Log tasks data to understand the structure
+  console.log('[GoalDetail] Tasks data:', tasks.map(t => ({ 
+    id: t.id, 
+    title: t.title, 
+    estimate_hours: t.estimate_hours, 
+    type: typeof t.estimate_hours 
+  })));
+  
+  // Ensure estimate_hours is treated as number and fix potential string concatenation issues
+  const totalEstimateHours = tasks.reduce((sum, task) => {
+    const hours = typeof task.estimate_hours === 'string' 
+      ? parseFloat(task.estimate_hours) 
+      : task.estimate_hours || 0;
+    console.log(`[GoalDetail] Task ${task.title}: hours=${hours}, type=${typeof task.estimate_hours}`);
+    return sum + hours;
+  }, 0);
+  
+  const completedEstimateHours = tasks
     .filter(task => task.status === 'completed')
-    .reduce((sum, task) => sum + task.estimate_hours, 0);
+    .reduce((sum, task) => {
+      const hours = typeof task.estimate_hours === 'string' 
+        ? parseFloat(task.estimate_hours) 
+        : task.estimate_hours || 0;
+      return sum + hours;
+    }, 0);
+  
+  // For now, show completed estimate hours as "actual" hours
+  // TODO: Implement actual time tracking with logs API
+  const totalActualHours = completedEstimateHours;
+  
+  console.log('[GoalDetail] Calculated values:', {
+    totalEstimateHours,
+    completedEstimateHours,
+    totalActualHours
+  });
 
   return (
     <div className="container mx-auto py-8">
@@ -174,8 +206,8 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-purple-600" />
                 <div>
-                  <div className="text-2xl font-bold">{completedHours}h / {totalHours}h</div>
-                  <div className="text-xs text-gray-500">実績時間</div>
+                  <div className="text-2xl font-bold">{totalActualHours.toFixed(1)}h / {totalEstimateHours.toFixed(1)}h</div>
+                  <div className="text-xs text-gray-500">実績 / 見積時間</div>
                 </div>
               </div>
             </CardContent>
