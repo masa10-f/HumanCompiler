@@ -23,7 +23,10 @@ import type {
   ScheduleResult
 } from '@/types/ai-planning';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 
+  (process.env.NODE_ENV === 'production' 
+    ? 'https://taskagent-api.fly.dev' 
+    : 'http://localhost:8000');
 
 // API client configuration
 class ApiClient {

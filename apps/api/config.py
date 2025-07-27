@@ -30,6 +30,16 @@ class Settings(BaseSettings):
 
     # Environment
     environment: str = "development"
+    
+    # CORS Configuration
+    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3001"]
+    
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Get CORS origins as a list, supporting both list and comma-separated string"""
+        if isinstance(self.cors_origins, str):
+            return [origin.strip() for origin in self.cors_origins.split(",")]
+        return self.cors_origins
 
     class Config:
         env_file = ".env"
