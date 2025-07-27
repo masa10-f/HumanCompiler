@@ -15,6 +15,7 @@ from exceptions import ValidationError, ResourceNotFoundError
 from database import db
 from sqlmodel import Session, select
 from models import Schedule, ScheduleCreate, ScheduleResponse
+from uuid import uuid4
 
 # Import scheduler package
 try:
@@ -441,6 +442,7 @@ async def save_daily_schedule(
         else:
             # Create new schedule
             new_schedule = Schedule(
+                id=uuid4(),  # Generate UUID for primary key
                 user_id=user_id,
                 date=datetime.strptime(schedule_data.date, "%Y-%m-%d"),
                 plan_json=plan_data
