@@ -315,6 +315,14 @@ class TaskService:
         return list(session.exec(statement).all())
 
     @staticmethod
+    def get_all_user_tasks(session: Session, owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> list[Task]:
+        """Get all tasks for a user across all projects"""
+        statement = select(Task).join(Goal).join(Project).where(
+            Project.owner_id == owner_id
+        ).offset(skip).limit(limit)
+        return list(session.exec(statement).all())
+
+    @staticmethod
     def update_task(session: Session, task_id: Union[str, UUID], owner_id: Union[str, UUID], task_data: TaskUpdate) -> Task:
         """Update task"""
         task = TaskService.get_task(session, task_id, owner_id)

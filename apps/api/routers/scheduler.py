@@ -178,19 +178,23 @@ async def create_daily_schedule(
     """
     try:
         logger.info(f"Creating daily schedule for user {user_id} on {request.date}")
+        logger.info(f"Request params: project_id={request.project_id}, goal_id={request.goal_id}")
         
         # Fetch tasks based on filters
         if request.goal_id:
             # Get tasks for specific goal
+            logger.info(f"Fetching tasks for goal_id: {request.goal_id}")
             db_tasks = TaskService.get_tasks_by_goal(session, request.goal_id, user_id)
         elif request.project_id:
             # Get tasks for specific project
+            logger.info(f"Fetching tasks for project_id: {request.project_id}")
             db_tasks = TaskService.get_tasks_by_project(session, request.project_id, user_id)
         else:
-            # Get all pending tasks for user (fallback to empty list for now)
-            # TODO: Implement TaskService.get_all_pending_tasks_by_user method
-            logger.warning("No project_id or goal_id specified, returning empty task list")
-            db_tasks = []
+            # Get all tasks for user
+            logger.info("No project_id or goal_id specified, fetching all user tasks")
+            db_tasks = TaskService.get_all_user_tasks(session, user_id)
+        
+        logger.info(f"Fetched {len(db_tasks)} total tasks from database")
         
         if not db_tasks:
             return DailyScheduleResponse(
@@ -207,14 +211,18 @@ async def create_daily_schedule(
         # Convert database tasks to scheduler tasks
         scheduler_tasks = []
         task_info_map = {}
+        filtered_count = 0
         
         for db_task in db_tasks:
             # Only schedule pending or in-progress tasks
             if db_task.status in ['completed', 'cancelled']:
+                filtered_count += 1
+                logger.debug(f"Skipping task {db_task.id} with status: {db_task.status}")
                 continue
             
             # Determine task kind based on title/description
             task_kind = map_task_kind(db_task.title)
+            logger.debug(f"Including task {db_task.id}: {db_task.title}, status: {db_task.status}, kind: {task_kind}")
             
             scheduler_task = SchedulerTask(
                 id=db_task.id,
@@ -237,6 +245,9 @@ async def create_daily_schedule(
                 due_date=db_task.due_date,
                 goal_id=db_task.goal_id
             )
+        
+        logger.info(f"Filtered out {filtered_count} completed/cancelled tasks")
+        logger.info(f"Converted {len(scheduler_tasks)} tasks for scheduling")
         
         # Convert time slots
         scheduler_slots = []
