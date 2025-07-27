@@ -74,7 +74,10 @@ export default function SchedulingPage() {
       
       const request: ScheduleRequest = {
         date: selectedDate,
-        available_slots: timeSlots
+        time_slots: timeSlots,
+        // TODO: プロジェクトIDまたはゴールIDを選択するUI要素を追加
+        project_id: undefined,
+        goal_id: undefined
       };
       
       const result = await schedulingApi.optimizeDaily(request);

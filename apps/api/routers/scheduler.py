@@ -187,12 +187,10 @@ async def create_daily_schedule(
             # Get tasks for specific project
             db_tasks = TaskService.get_tasks_by_project(session, request.project_id, user_id)
         else:
-            # Get all pending tasks for user
-            # This would require a new service method
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Either project_id or goal_id must be specified"
-            )
+            # Get all pending tasks for user (fallback to empty list for now)
+            # TODO: Implement TaskService.get_all_pending_tasks_by_user method
+            logger.warning("No project_id or goal_id specified, returning empty task list")
+            db_tasks = []
         
         if not db_tasks:
             return DailyScheduleResponse(

@@ -72,7 +72,10 @@ export interface TimeSlot {
 
 export interface ScheduleRequest {
   date: string;
-  available_slots: TimeSlot[];
+  time_slots: TimeSlot[];
+  project_id?: string;
+  goal_id?: string;
+  preferences?: Record<string, any>;
 }
 
 export interface TaskAssignment {
