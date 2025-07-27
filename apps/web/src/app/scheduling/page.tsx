@@ -20,7 +20,8 @@ import {
   Plus,
   Trash2,
   ArrowLeft,
-  ExternalLink
+  ExternalLink,
+  Save
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { schedulingApi } from '@/lib/api';
@@ -43,6 +44,7 @@ export default function SchedulingPage() {
   
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [scheduleResult, setScheduleResult] = useState<ScheduleResult | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   if (authLoading || !user) {
     return (
@@ -105,6 +107,35 @@ export default function SchedulingPage() {
       });
     } finally {
       setIsOptimizing(false);
+    }
+  };
+
+  const saveSchedule = async () => {
+    if (!scheduleResult) return;
+    
+    try {
+      setIsSaving(true);
+      
+      const scheduleData = {
+        ...scheduleResult,
+        date: selectedDate,
+        generated_at: new Date().toISOString()
+      };
+      
+      await schedulingApi.save(scheduleData);
+      
+      toast({
+        title: 'スケジュール保存完了',
+        description: '本日のスケジュールが保存されました',
+      });
+    } catch (error) {
+      toast({
+        title: '保存エラー',
+        description: error instanceof Error ? error.message : 'スケジュールの保存に失敗しました',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -251,17 +282,36 @@ export default function SchedulingPage() {
           {scheduleResult && (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  {scheduleResult.success ? (
-                    <CheckCircle className="h-5 w-5 text-green-600" />
-                  ) : (
-                    <AlertCircle className="h-5 w-5 text-red-600" />
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      {scheduleResult.success ? (
+                        <CheckCircle className="h-5 w-5 text-green-600" />
+                      ) : (
+                        <AlertCircle className="h-5 w-5 text-red-600" />
+                      )}
+                      最適化結果
+                    </CardTitle>
+                    <CardDescription>
+                      {new Date(selectedDate).toLocaleDateString('ja-JP')}のスケジュール
+                    </CardDescription>
+                  </div>
+                  {scheduleResult.success && scheduleResult.assignments.length > 0 && (
+                    <Button 
+                      onClick={saveSchedule}
+                      disabled={isSaving}
+                      size="sm"
+                      className="flex items-center gap-2"
+                    >
+                      {isSaving ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="h-4 w-4" />
+                      )}
+                      スケジュールを保存
+                    </Button>
                   )}
-                  最適化結果
-                </CardTitle>
-                <CardDescription>
-                  {new Date(selectedDate).toLocaleDateString('ja-JP')}のスケジュール
-                </CardDescription>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Summary Stats */}

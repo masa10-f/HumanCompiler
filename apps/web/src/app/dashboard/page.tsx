@@ -3,19 +3,42 @@
 import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Calendar, Plus, Target, TrendingUp, Brain, Settings } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { Calendar, Plus, Target, TrendingUp, Brain, Settings, Clock, ExternalLink } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { schedulingApi } from '@/lib/api'
+import Link from 'next/link'
 
 export default function DashboardPage() {
   const { user, loading, signOut, isAuthenticated } = useAuth()
   const router = useRouter()
+  const [todaySchedule, setTodaySchedule] = useState<any>(null)
+  const [scheduleLoading, setScheduleLoading] = useState(true)
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
       router.push('/login')
     }
   }, [loading, isAuthenticated, router])
+
+  useEffect(() => {
+    const fetchTodaySchedule = async () => {
+      if (!isAuthenticated) return
+      
+      try {
+        const today = new Date().toISOString().split('T')[0]
+        const schedule = await schedulingApi.getByDate(today)
+        setTodaySchedule(schedule)
+      } catch (error) {
+        console.log('No schedule found for today')
+      } finally {
+        setScheduleLoading(false)
+      }
+    }
+    
+    fetchTodaySchedule()
+  }, [isAuthenticated])
 
   if (loading) {
     return (
@@ -132,6 +155,86 @@ export default function DashboardPage() {
             </CardHeader>
           </Card>
         </div>
+
+        {/* Today's Schedule */}
+        {!scheduleLoading && todaySchedule && todaySchedule.plan_json?.assignments?.length > 0 && (
+          <div className="mb-8">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Calendar className="h-5 w-5 text-blue-600" />
+                      本日のスケジュール
+                    </CardTitle>
+                    <CardDescription>
+                      {new Date().toLocaleDateString('ja-JP', { 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric', 
+                        weekday: 'long' 
+                      })}
+                    </CardDescription>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => router.push('/scheduling')}
+                  >
+                    スケジュール編集
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {todaySchedule.plan_json.assignments.map((assignment: any, index: number) => (
+                    <div key={index} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className="text-lg font-semibold text-gray-600">
+                          {assignment.start_time}
+                        </div>
+                        <div>
+                          <div className="font-medium">{assignment.task_title}</div>
+                          <div className="text-sm text-gray-500 flex items-center gap-2">
+                            <Clock className="h-3 w-3" />
+                            {assignment.duration_hours.toFixed(1)}時間
+                            <span className="text-gray-400">•</span>
+                            <Badge variant="outline" className="text-xs">
+                              {assignment.slot_kind === 'deep' ? '集中作業' :
+                               assignment.slot_kind === 'light' ? '軽作業' :
+                               assignment.slot_kind === 'study' ? '学習' : '会議'}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                      {assignment.project_id && assignment.goal_id && (
+                        <Link 
+                          href={`/projects/${assignment.project_id}/goals/${assignment.goal_id}`}
+                          className="text-blue-500 hover:text-blue-700 transition-colors"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Link>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 pt-4 border-t">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500">総スケジュール時間</span>
+                    <span className="font-semibold">
+                      {todaySchedule.plan_json.total_scheduled_hours.toFixed(1)}時間
+                    </span>
+                  </div>
+                  {todaySchedule.plan_json.unscheduled_tasks?.length > 0 && (
+                    <div className="mt-2 text-sm text-orange-600">
+                      未スケジュール: {todaySchedule.plan_json.unscheduled_tasks.length}個のタスク
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Recent Projects */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

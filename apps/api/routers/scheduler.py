@@ -13,7 +13,8 @@ from auth import get_current_user_id
 from services import TaskService, GoalService, ProjectService  
 from exceptions import ValidationError, ResourceNotFoundError
 from database import db
-from sqlmodel import Session
+from sqlmodel import Session, select
+from models import Schedule, ScheduleCreate, ScheduleResponse
 
 # Import scheduler package
 try:
@@ -366,3 +367,142 @@ async def test_scheduler():
             "message": f"Scheduler package test failed: {str(e)}",
             "ortools_available": "False"
         }
+
+
+@router.post("/daily/save", response_model=ScheduleResponse)
+async def save_daily_schedule(
+    schedule_data: DailyScheduleResponse,
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(db.get_session)
+):
+    """
+    Save optimized daily schedule to database.
+    
+    This endpoint stores the schedule optimization result for later retrieval.
+    """
+    try:
+        logger.info(f"Saving daily schedule for user {user_id} on {schedule_data.date}")
+        
+        # Check if schedule already exists for this date
+        existing_schedule = session.exec(
+            select(Schedule).where(
+                Schedule.user_id == user_id,
+                Schedule.date == datetime.strptime(schedule_data.date, "%Y-%m-%d")
+            )
+        ).first()
+        
+        # Prepare schedule data for storage
+        plan_data = {
+            "success": schedule_data.success,
+            "assignments": [
+                {
+                    "task_id": a.task_id,
+                    "task_title": a.task_title,
+                    "goal_id": a.goal_id,
+                    "project_id": a.project_id,
+                    "slot_index": a.slot_index,
+                    "start_time": a.start_time,
+                    "duration_hours": a.duration_hours,
+                    "slot_start": a.slot_start,
+                    "slot_end": a.slot_end,
+                    "slot_kind": a.slot_kind
+                }
+                for a in schedule_data.assignments
+            ],
+            "unscheduled_tasks": [
+                {
+                    "id": t.id,
+                    "title": t.title,
+                    "estimate_hours": t.estimate_hours,
+                    "priority": t.priority,
+                    "kind": t.kind,
+                    "due_date": t.due_date.isoformat() if t.due_date else None,
+                    "goal_id": t.goal_id,
+                    "project_id": t.project_id
+                }
+                for t in schedule_data.unscheduled_tasks
+            ],
+            "total_scheduled_hours": schedule_data.total_scheduled_hours,
+            "optimization_status": schedule_data.optimization_status,
+            "solve_time_seconds": schedule_data.solve_time_seconds,
+            "objective_value": schedule_data.objective_value,
+            "generated_at": schedule_data.generated_at.isoformat()
+        }
+        
+        if existing_schedule:
+            # Update existing schedule
+            existing_schedule.plan_json = plan_data
+            existing_schedule.updated_at = datetime.utcnow()
+            session.add(existing_schedule)
+            session.commit()
+            session.refresh(existing_schedule)
+            logger.info(f"Updated existing schedule {existing_schedule.id} for date {schedule_data.date}")
+            return ScheduleResponse.model_validate(existing_schedule)
+        else:
+            # Create new schedule
+            new_schedule = Schedule(
+                user_id=user_id,
+                date=datetime.strptime(schedule_data.date, "%Y-%m-%d"),
+                plan_json=plan_data
+            )
+            session.add(new_schedule)
+            session.commit()
+            session.refresh(new_schedule)
+            logger.info(f"Created new schedule {new_schedule.id} for date {schedule_data.date}")
+            return ScheduleResponse.model_validate(new_schedule)
+            
+    except Exception as e:
+        logger.error(f"Error saving schedule: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save schedule"
+        )
+
+
+@router.get("/daily/{date}", response_model=ScheduleResponse)
+async def get_daily_schedule(
+    date: str,
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(db.get_session)
+):
+    """
+    Get saved daily schedule for specific date.
+    
+    Date should be in YYYY-MM-DD format.
+    """
+    try:
+        # Validate date format
+        try:
+            schedule_date = datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Date must be in YYYY-MM-DD format"
+            )
+        
+        logger.info(f"Fetching schedule for user {user_id} on {date}")
+        
+        # Get schedule from database
+        schedule = session.exec(
+            select(Schedule).where(
+                Schedule.user_id == user_id,
+                Schedule.date == schedule_date
+            )
+        ).first()
+        
+        if not schedule:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No schedule found for date {date}"
+            )
+        
+        return ScheduleResponse.model_validate(schedule)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching schedule: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch schedule"
+        )

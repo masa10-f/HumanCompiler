@@ -208,6 +208,17 @@ class ApiClient {
     });
   }
 
+  async saveDailySchedule(scheduleData: ScheduleResult & { date: string; generated_at: string }): Promise<any> {
+    return this.request<any>('/api/schedule/daily/save', {
+      method: 'POST',
+      body: JSON.stringify(scheduleData),
+    });
+  }
+
+  async getDailySchedule(date: string): Promise<any> {
+    return this.request<any>(`/api/schedule/daily/${date}`);
+  }
+
   async testScheduler(): Promise<any> {
     return this.request<any>('/api/schedule/test');
   }
@@ -253,5 +264,7 @@ export const aiPlanningApi = {
 
 export const schedulingApi = {
   optimizeDaily: (request: ScheduleRequest) => apiClient.optimizeDailySchedule(request),
+  save: (scheduleData: ScheduleResult & { date: string; generated_at: string }) => apiClient.saveDailySchedule(scheduleData),
+  getByDate: (date: string) => apiClient.getDailySchedule(date),
   test: () => apiClient.testScheduler(),
 };
