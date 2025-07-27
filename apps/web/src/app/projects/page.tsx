@@ -183,7 +183,6 @@ export default function ProjectsPage() {
                       setShowCreateForm(false);
                       setTitle('');
                       setDescription('');
-                      setError(null);
                     }}
                     disabled={creating}
                   >

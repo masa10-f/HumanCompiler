@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Calendar, Plus, Target, TrendingUp, Brain, Settings, Clock, ExternalLink, History } from 'lucide-react'
+import { Calendar, Plus, Brain, Settings, Clock, ExternalLink, History } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { schedulingApi } from '@/lib/api'
@@ -13,7 +13,20 @@ import Link from 'next/link'
 export default function DashboardPage() {
   const { user, loading, signOut, isAuthenticated } = useAuth()
   const router = useRouter()
-  const [todaySchedule, setTodaySchedule] = useState<any>(null)
+  const [todaySchedule, setTodaySchedule] = useState<{
+    plan_json: {
+      assignments: Array<{
+        task_title: string;
+        start_time: string;
+        duration_hours: number;
+        slot_kind: string;
+        project_id: string;
+        goal_id: string;
+      }>;
+      total_scheduled_hours: number;
+      unscheduled_tasks: Array<unknown>;
+    };
+  } | null>(null)
   const [scheduleLoading, setScheduleLoading] = useState(true)
 
   useEffect(() => {
@@ -28,7 +41,7 @@ export default function DashboardPage() {
       
       try {
         const today = new Date().toISOString().split('T')[0]
-        const schedule = await schedulingApi.getByDate(today)
+        const schedule = await schedulingApi.getByDate(today as string)
         setTodaySchedule(schedule)
       } catch (error) {
         console.log('No schedule found for today')
@@ -216,7 +229,7 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {todaySchedule.plan_json.assignments.map((assignment: any, index: number) => (
+                  {todaySchedule.plan_json.assignments.map((assignment, index: number) => (
                     <div key={index} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                       <div className="flex items-center gap-3">
                         <div className="text-lg font-semibold text-gray-600">

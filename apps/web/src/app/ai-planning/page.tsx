@@ -71,7 +71,7 @@ export default function AIPlanningPage() {
       setIsGenerating(true);
       
       const response = await aiPlanningApi.generateWeeklyPlan({
-        week_start_date: weekStartDate,
+        week_start_date: weekStartDate as string,
         capacity_hours: capacityHours,
         project_filter: selectedProjects.length > 0 ? selectedProjects : undefined,
         preferences: {}

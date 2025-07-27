@@ -6,7 +6,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, time
 
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Query
 from pydantic import BaseModel, Field, validator
 
 from auth import get_current_user_id
@@ -514,8 +514,8 @@ async def get_daily_schedule(
 async def list_daily_schedules(
     user_id: str = Depends(get_current_user_id),
     session: Session = Depends(db.get_session),
-    skip: int = 0,
-    limit: int = 30
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=30, ge=1, le=100)
 ):
     """
     Get list of saved daily schedules for user.
@@ -523,7 +523,7 @@ async def list_daily_schedules(
     Returns schedules ordered by date (newest first).
     """
     try:
-        logger.info(f"Fetching schedule list for user {user_id}")
+        logger.info(f"Fetching schedule list for user {user_id} (skip={skip}, limit={limit})")
         
         # Get schedules from database ordered by date (newest first)
         schedules = session.exec(
@@ -534,7 +534,14 @@ async def list_daily_schedules(
             .limit(limit)
         ).all()
         
-        return [ScheduleResponse.model_validate(schedule) for schedule in schedules]
+        logger.info(f"Found {len(schedules)} schedules for user {user_id}")
+        
+        result = [ScheduleResponse.model_validate(schedule) for schedule in schedules]
+        return result
+        
+    except ValidationError as e:
+        logger.error(f"Validation error in schedule list: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
         
     except Exception as e:
         logger.error(f"Error fetching schedule list: {e}")

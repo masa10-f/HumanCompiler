@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useTasks } from '@/hooks/use-tasks';
-import { taskStatusLabels, type TaskStatus } from '@/types/task';
+import { taskStatusLabels } from '@/types/task';
 import type { Task } from '@/types/task';
 
 const taskFormSchema = z.object({

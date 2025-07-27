@@ -2,20 +2,17 @@ import { supabase } from './supabase';
 import type { 
   Project, 
   ProjectCreate, 
-  ProjectUpdate, 
-  ProjectResponse 
+  ProjectUpdate
 } from '@/types/project';
 import type {
   Goal,
   GoalCreate,
-  GoalUpdate,
-  GoalResponse
+  GoalUpdate
 } from '@/types/goal';
 import type {
   Task,
   TaskCreate,
-  TaskUpdate,
-  TaskResponse
+  TaskUpdate
 } from '@/types/task';
 import type {
   WeeklyPlanRequest,

@@ -77,7 +77,7 @@ export default function SchedulingPage() {
       setIsOptimizing(true);
       
       const request: ScheduleRequest = {
-        date: selectedDate,
+        date: selectedDate as string,
         time_slots: timeSlots,
         // TODO: プロジェクトIDまたはゴールIDを選択するUI要素を追加
         project_id: undefined,
@@ -118,7 +118,7 @@ export default function SchedulingPage() {
       
       const scheduleData = {
         ...scheduleResult,
-        date: selectedDate,
+        date: selectedDate as string,
         generated_at: new Date().toISOString()
       };
       
@@ -293,7 +293,7 @@ export default function SchedulingPage() {
                       最適化結果
                     </CardTitle>
                     <CardDescription>
-                      {new Date(selectedDate).toLocaleDateString('ja-JP')}のスケジュール
+                      {new Date(selectedDate as string).toLocaleDateString('ja-JP')}のスケジュール
                     </CardDescription>
                   </div>
                   {scheduleResult.success && scheduleResult.assignments.length > 0 && (
@@ -372,7 +372,9 @@ export default function SchedulingPage() {
                     <div className="space-y-2">
                       {scheduleResult.assignments.map((assignment, index) => {
                         const slotInfo = timeSlots[assignment.slot_index];
-                        const taskLink = `/projects/${assignment.project_id}/goals/${assignment.goal_id}`;
+                        const taskLink = assignment.project_id && assignment.goal_id 
+                          ? `/projects/${assignment.project_id}/goals/${assignment.goal_id}`
+                          : null;
                         
                         return (
                           <div key={index} className="p-3 border rounded-lg">
@@ -381,17 +383,19 @@ export default function SchedulingPage() {
                                 <div className="font-medium">
                                   {assignment.task_title}
                                 </div>
-                                <Link 
-                                  href={taskLink}
-                                  className="text-blue-500 hover:text-blue-700 transition-colors"
-                                  title="タスク詳細を表示"
-                                >
-                                  <ExternalLink className="h-4 w-4" />
-                                </Link>
+                                {taskLink && (
+                                  <Link 
+                                    href={taskLink as any}
+                                    className="text-blue-500 hover:text-blue-700 transition-colors"
+                                    title="タスク詳細を表示"
+                                  >
+                                    <ExternalLink className="h-4 w-4" />
+                                  </Link>
+                                )}
                               </div>
                               <div className="flex items-center gap-2">
-                                <Badge className={slotKindColors[slotInfo.kind]}>
-                                  {slotKindLabels[slotInfo.kind]}
+                                <Badge className={slotKindColors[slotInfo?.kind || 'light']}>
+                                  {slotKindLabels[slotInfo?.kind || 'light']}
                                 </Badge>
                                 <span className="text-sm text-gray-500">
                                   {assignment.duration_hours.toFixed(1)}h
@@ -433,7 +437,7 @@ export default function SchedulingPage() {
                                 </span>
                                 {taskLink && (
                                   <Link 
-                                    href={taskLink}
+                                    href={taskLink as any}
                                     className="text-red-500 hover:text-red-700 transition-colors"
                                     title="タスク詳細を表示"
                                   >
