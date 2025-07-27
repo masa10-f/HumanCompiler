@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,7 +19,8 @@ import {
   Loader2,
   Plus,
   Trash2,
-  ArrowLeft
+  ArrowLeft,
+  ExternalLink
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { schedulingApi } from '@/lib/api';
@@ -320,11 +322,22 @@ export default function SchedulingPage() {
                     <div className="space-y-2">
                       {scheduleResult.assignments.map((assignment, index) => {
                         const slotInfo = timeSlots[assignment.slot_index];
+                        const taskLink = `/projects/${assignment.project_id}/goals/${assignment.goal_id}`;
+                        
                         return (
                           <div key={index} className="p-3 border rounded-lg">
                             <div className="flex items-center justify-between mb-2">
-                              <div className="font-medium">
-                                タスク ID: {assignment.task_id}
+                              <div className="flex items-center gap-2">
+                                <div className="font-medium">
+                                  {assignment.task_title}
+                                </div>
+                                <Link 
+                                  href={taskLink}
+                                  className="text-blue-500 hover:text-blue-700 transition-colors"
+                                  title="タスク詳細を表示"
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                </Link>
                               </div>
                               <div className="flex items-center gap-2">
                                 <Badge className={slotKindColors[slotInfo.kind]}>
@@ -337,6 +350,9 @@ export default function SchedulingPage() {
                             </div>
                             <div className="text-sm text-gray-600">
                               {assignment.start_time} - スロット{assignment.slot_index + 1}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-1">
+                              ID: {assignment.task_id}
                             </div>
                           </div>
                         );
@@ -351,12 +367,39 @@ export default function SchedulingPage() {
                     <h4 className="text-lg font-semibold mb-3 text-red-600">
                       未スケジュールタスク
                     </h4>
-                    <div className="space-y-1">
-                      {scheduleResult.unscheduled_tasks.map((taskId, index) => (
-                        <div key={index} className="text-sm text-red-600">
-                          • タスク ID: {taskId}
-                        </div>
-                      ))}
+                    <div className="space-y-2">
+                      {scheduleResult.unscheduled_tasks.map((task, index) => {
+                        // unscheduled_tasks is now TaskInfo objects, not just IDs
+                        const taskLink = task.project_id && task.goal_id 
+                          ? `/projects/${task.project_id}/goals/${task.goal_id}`
+                          : null;
+                        
+                        return (
+                          <div key={index} className="p-2 border border-red-200 rounded text-red-600">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">
+                                  {typeof task === 'string' ? `タスク ID: ${task}` : task.title || task.id}
+                                </span>
+                                {taskLink && (
+                                  <Link 
+                                    href={taskLink}
+                                    className="text-red-500 hover:text-red-700 transition-colors"
+                                    title="タスク詳細を表示"
+                                  >
+                                    <ExternalLink className="h-3 w-3" />
+                                  </Link>
+                                )}
+                              </div>
+                              {typeof task === 'object' && (
+                                <span className="text-xs">
+                                  {task.estimate_hours?.toFixed(1)}h
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

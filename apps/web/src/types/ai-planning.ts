@@ -80,15 +80,32 @@ export interface ScheduleRequest {
 
 export interface TaskAssignment {
   task_id: string;
+  task_title: string;
+  goal_id: string;
+  project_id: string;
   slot_index: number;
   start_time: string;
   duration_hours: number;
+  slot_start: string;
+  slot_end: string;
+  slot_kind: string;
+}
+
+export interface TaskInfo {
+  id: string;
+  title: string;
+  estimate_hours: number;
+  priority: number;
+  kind: string;
+  due_date?: string;
+  goal_id?: string;
+  project_id?: string;
 }
 
 export interface ScheduleResult {
   success: boolean;
   assignments: TaskAssignment[];
-  unscheduled_tasks: string[];
+  unscheduled_tasks: TaskInfo[];
   total_scheduled_hours: number;
   optimization_status: string;
   solve_time_seconds: number;

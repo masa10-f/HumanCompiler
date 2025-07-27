@@ -93,12 +93,15 @@ class TaskInfo(BaseModel):
     kind: str
     due_date: Optional[datetime] = None
     goal_id: Optional[str] = None
+    project_id: Optional[str] = None
 
 
 class ScheduleAssignment(BaseModel):
     """Schedule assignment result."""
     task_id: str
     task_title: str
+    goal_id: str
+    project_id: str
     slot_index: int
     start_time: str
     duration_hours: float
@@ -224,6 +227,10 @@ async def create_daily_schedule(
             task_kind = map_task_kind(db_task.title)
             logger.debug(f"Including task {db_task.id}: {db_task.title}, status: {db_task.status}, kind: {task_kind}")
             
+            # Get goal to access project_id
+            goal = GoalService.get_goal(session, db_task.goal_id, user_id)
+            project_id = str(goal.project_id) if goal else None
+            
             scheduler_task = SchedulerTask(
                 id=str(db_task.id),  # Convert UUID to string
                 title=db_task.title,
@@ -243,7 +250,8 @@ async def create_daily_schedule(
                 priority=3,
                 kind=task_kind.value,
                 due_date=db_task.due_date,
-                goal_id=str(db_task.goal_id) if db_task.goal_id else None  # Convert UUID to string
+                goal_id=str(db_task.goal_id) if db_task.goal_id else None,  # Convert UUID to string
+                project_id=project_id
             )
         
         logger.info(f"Filtered out {filtered_count} completed/cancelled tasks")
@@ -284,6 +292,8 @@ async def create_daily_schedule(
             schedule_assignment = ScheduleAssignment(
                 task_id=assignment.task_id,
                 task_title=task_info.title,
+                goal_id=task_info.goal_id or "",
+                project_id=task_info.project_id or "",
                 slot_index=assignment.slot_index,
                 start_time=assignment.start_time.strftime('%H:%M'),
                 duration_hours=assignment.duration_hours,
