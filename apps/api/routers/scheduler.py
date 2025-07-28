@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Depends, status, Query, Request
 from pydantic import BaseModel, Field, validator
 
 from auth import get_current_user_id
-from services import TaskService, GoalService, ProjectService  
+from services import task_service, goal_service, project_service  
 from exceptions import ValidationError, ResourceNotFoundError
 from database import db
 from sqlmodel import Session, select
@@ -190,15 +190,15 @@ async def create_daily_schedule(
         if request.goal_id:
             # Get tasks for specific goal
             logger.info(f"Fetching tasks for goal_id: {request.goal_id}")
-            db_tasks = TaskService.get_tasks_by_goal(session, request.goal_id, user_id)
+            db_tasks = task_service.get_tasks_by_goal(session, request.goal_id, user_id)
         elif request.project_id:
             # Get tasks for specific project
             logger.info(f"Fetching tasks for project_id: {request.project_id}")
-            db_tasks = TaskService.get_tasks_by_project(session, request.project_id, user_id)
+            db_tasks = task_service.get_tasks_by_project(session, request.project_id, user_id)
         else:
             # Get all tasks for user
             logger.info("No project_id or goal_id specified, fetching all user tasks")
-            db_tasks = TaskService.get_all_user_tasks(session, user_id)
+            db_tasks = task_service.get_all_user_tasks(session, user_id)
         
         logger.info(f"Fetched {len(db_tasks)} total tasks from database")
         
@@ -231,7 +231,7 @@ async def create_daily_schedule(
             logger.debug(f"Including task {db_task.id}: {db_task.title}, status: {db_task.status}, kind: {task_kind}")
             
             # Get goal to access project_id
-            goal = GoalService.get_goal(session, db_task.goal_id, user_id)
+            goal = goal_service.get_goal(session, db_task.goal_id, user_id)
             project_id = str(goal.project_id) if goal else None
             
             scheduler_task = SchedulerTask(

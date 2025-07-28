@@ -11,7 +11,7 @@ from models import (
     TaskResponse,
     TaskUpdate,
 )
-from services import TaskService
+from services import task_service
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -36,7 +36,7 @@ async def create_task(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> TaskResponse:
     """Create a new task"""
-    task = TaskService.create_task(session, task_data, current_user.user_id)
+    task = task_service.create_task(session, task_data, current_user.user_id)
     return TaskResponse.model_validate(task)
 
 
@@ -55,7 +55,7 @@ async def get_tasks_by_goal(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[TaskResponse]:
     """Get tasks for specific goal"""
-    tasks = TaskService.get_tasks_by_goal(session, goal_id, current_user.user_id, skip, limit)
+    tasks = task_service.get_tasks_by_goal(session, goal_id, current_user.user_id, skip, limit)
     return [TaskResponse.model_validate(task) for task in tasks]
 
 
@@ -74,7 +74,7 @@ async def get_tasks_by_project(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[TaskResponse]:
     """Get all tasks for specific project"""
-    tasks = TaskService.get_tasks_by_project(session, project_id, current_user.user_id, skip, limit)
+    tasks = task_service.get_tasks_by_project(session, project_id, current_user.user_id, skip, limit)
     return [TaskResponse.model_validate(task) for task in tasks]
 
 
@@ -91,7 +91,7 @@ async def get_task(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> TaskResponse:
     """Get specific task"""
-    task = TaskService.get_task(session, task_id, current_user.user_id)
+    task = task_service.get_task(session, task_id, current_user.user_id)
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -114,7 +114,7 @@ async def update_task(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> TaskResponse:
     """Update specific task"""
-    task = TaskService.update_task(session, task_id, current_user.user_id, task_data)
+    task = task_service.update_task(session, task_id, current_user.user_id, task_data)
     return TaskResponse.model_validate(task)
 
 
@@ -131,4 +131,4 @@ async def delete_task(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> None:
     """Delete specific task"""
-    TaskService.delete_task(session, task_id, current_user.user_id)
+    task_service.delete_task(session, task_id, current_user.user_id)

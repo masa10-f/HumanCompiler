@@ -12,7 +12,7 @@ from models import (
     ProjectResponse,
     ProjectUpdate,
 )
-from services_refactored import project_service
+from services import project_service
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 

@@ -1,9 +1,9 @@
 {
-  "buildCommand": "pnpm run build",
-  "outputDirectory": "apps/web/.next",
+  "buildCommand": "cd ../.. && pnpm --filter @task-agent/web build",
+  "outputDirectory": ".next",
   "framework": "nextjs",
-  "installCommand": "pnpm install",
-  "devCommand": "pnpm run dev",
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+  "devCommand": "cd ../.. && pnpm --filter @task-agent/web dev",
   "rewrites": [
     {
       "source": "/api/(.*)",
@@ -40,10 +40,5 @@
   "env": {
     "NEXT_PUBLIC_APP_URL": "https://taskagent.vercel.app"
   },
-  "regions": ["nrt1"],
-  "functions": {
-    "apps/web/app/**": {
-      "maxDuration": 30
-    }
-  }
+  "regions": ["hnd1"]
 }

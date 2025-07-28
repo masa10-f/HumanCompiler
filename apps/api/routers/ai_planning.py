@@ -126,28 +126,28 @@ async def analyze_workload(
     - Potential bottlenecks and overcommitments
     """
     try:
-        from services import ProjectService, GoalService, TaskService
+        from services import project_service, goal_service, task_service
         
         # Get user's data
         if project_ids:
             projects = []
             for project_id in project_ids:
-                project = ProjectService.get_project(session, project_id, user_id)
+                project = project_service.get_project(session, project_id, user_id)
                 if project:
                     projects.append(project)
         else:
-            projects = ProjectService.get_projects(session, user_id)
+            projects = project_service.get_projects(session, user_id)
         
         # Collect all goals and tasks
         all_goals = []
         all_tasks = []
         
         for project in projects:
-            goals = GoalService.get_goals_by_project(session, project.id, user_id)
+            goals = goal_service.get_goals_by_project(session, project.id, user_id)
             all_goals.extend(goals)
             
             for goal in goals:
-                tasks = TaskService.get_tasks_by_goal(session, goal.id, user_id)
+                tasks = task_service.get_tasks_by_goal(session, goal.id, user_id)
                 pending_tasks = [t for t in tasks if t.status in ['pending', 'in_progress']]
                 all_tasks.extend(pending_tasks)
         
@@ -229,30 +229,30 @@ async def suggest_task_priorities(
     - Project strategic importance
     """
     try:
-        from services import ProjectService, GoalService, TaskService
+        from services import project_service, goal_service, task_service
         
         # Get tasks for analysis
         if project_id:
-            project = ProjectService.get_project(session, project_id, user_id)
+            project = project_service.get_project(session, project_id, user_id)
             if not project:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Project not found"
                 )
             
-            goals = GoalService.get_goals_by_project(session, project_id, user_id)
+            goals = goal_service.get_goals_by_project(session, project_id, user_id)
             tasks = []
             for goal in goals:
-                goal_tasks = TaskService.get_tasks_by_goal(session, goal.id, user_id)
+                goal_tasks = task_service.get_tasks_by_goal(session, goal.id, user_id)
                 tasks.extend([t for t in goal_tasks if t.status in ['pending', 'in_progress']])
         else:
             # Get all user tasks
-            projects = ProjectService.get_projects(session, user_id)
+            projects = project_service.get_projects(session, user_id)
             tasks = []
             for project in projects:
-                goals = GoalService.get_goals_by_project(session, project.id, user_id)
+                goals = goal_service.get_goals_by_project(session, project.id, user_id)
                 for goal in goals:
-                    goal_tasks = TaskService.get_tasks_by_goal(session, goal.id, user_id)
+                    goal_tasks = task_service.get_tasks_by_goal(session, goal.id, user_id)
                     tasks.extend([t for t in goal_tasks if t.status in ['pending', 'in_progress']])
         
         # Priority scoring algorithm
