@@ -1,6 +1,9 @@
 import logging
+import time
+from collections import defaultdict
+from typing import Dict
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import Session
 
@@ -10,6 +13,11 @@ from models import UserCreate
 
 logger = logging.getLogger(__name__)
 
+# Simple in-memory rate limiting (for production, use Redis)
+_auth_attempts: Dict[str, list] = defaultdict(list)
+MAX_AUTH_ATTEMPTS = 5
+RATE_LIMIT_WINDOW = 300  # 5 minutes
+
 # Security scheme
 security = HTTPBearer()
 
@@ -18,6 +26,25 @@ class AuthUser:
     def __init__(self, user_id: str, email: str):
         self.user_id = user_id
         self.email = email
+
+def _check_rate_limit(client_ip: str) -> None:
+    """Check authentication rate limit for IP address"""
+    now = time.time()
+    attempts = _auth_attempts[client_ip]
+    
+    # Remove old attempts outside the window
+    attempts[:] = [attempt_time for attempt_time in attempts if now - attempt_time < RATE_LIMIT_WINDOW]
+    
+    if len(attempts) >= MAX_AUTH_ATTEMPTS:
+        logger.warning(f"🔒 Rate limit exceeded for IP: {client_ip}")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many authentication attempts. Please try again later.",
+            headers={"Retry-After": str(RATE_LIMIT_WINDOW)}
+        )
+    
+    # Record this attempt
+    attempts.append(now)
 
 async def ensure_user_exists(user_id: str, email: str) -> None:
     """
@@ -52,18 +79,20 @@ async def ensure_user_exists(user_id: str, email: str) -> None:
         # Don't raise exception - user might already exist due to race condition
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request = None
 ) -> AuthUser:
     """
     Extract and validate user from JWT token
     """
     try:
+        # Apply rate limiting if request is available
+        if request:
+            client_ip = request.client.host if request.client else "unknown"
+            _check_rate_limit(client_ip)
+        
         token = credentials.credentials
         
-        # For development/testing, allow test token
-        if token == "test-token":
-            logger.warning("⚠️ Using test token - for development only!")
-            return AuthUser(user_id="97f50088-11be-4a00-afdf-830b47ec607c", email="test@example.com")
 
         # Verify token with Supabase
         client = db.get_client()
@@ -97,13 +126,17 @@ async def get_current_user(
 
         return AuthUser(user_id=user.id, email=user.email or "unknown@example.com")
 
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
-        logger.error(f"Authentication error: {e}")
+        # Log full error details for debugging but return generic message
+        logger.error(f"Authentication error: {type(e).__name__}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
+            detail="Authentication failed",
             headers={"WWW-Authenticate": "Bearer"},
-        ) from e
+        )
 
 async def get_optional_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(

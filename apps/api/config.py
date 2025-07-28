@@ -1,4 +1,6 @@
 from pydantic_settings import BaseSettings
+from pydantic import Field, field_validator
+import os
 
 
 class Settings(BaseSettings):
@@ -18,21 +20,59 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
     # Supabase Configuration
-    supabase_url: str
-    supabase_anon_key: str
-    supabase_service_role_key: str
+    supabase_url: str = Field(..., description="Supabase project URL")
+    supabase_anon_key: str = Field(..., description="Supabase anonymous/public key")
+    supabase_service_role_key: str = Field(..., description="Supabase service role key")
 
     # Database Configuration
-    database_url: str
+    database_url: str = Field(..., description="PostgreSQL database URL")
 
     # OpenAI Configuration
-    openai_api_key: str
+    openai_api_key: str = Field(..., description="OpenAI API key")
 
     # Environment
-    environment: str = "development"
+    environment: str = Field(default="development", pattern="^(development|staging|production)$")
     
     # CORS Configuration
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3001"]
+    
+    @field_validator('supabase_url')
+    @classmethod
+    def validate_supabase_url(cls, v: str) -> str:
+        """Validate Supabase URL format"""
+        if not v.startswith(('https://', 'http://')):
+            raise ValueError('Supabase URL must start with https:// or http://')
+        if '.supabase.co' not in v and 'localhost' not in v:
+            raise ValueError('Invalid Supabase URL format')
+        return v
+    
+    @field_validator('supabase_anon_key', 'supabase_service_role_key')
+    @classmethod
+    def validate_supabase_keys(cls, v: str) -> str:
+        """Validate Supabase keys are not empty"""
+        if not v or v.strip() == '':
+            raise ValueError('Supabase keys cannot be empty')
+        if len(v) < 32:
+            raise ValueError('Invalid Supabase key format')
+        return v
+    
+    @field_validator('database_url')
+    @classmethod
+    def validate_database_url(cls, v: str) -> str:
+        """Validate database URL format"""
+        if not v.startswith(('postgresql://', 'postgres://')):
+            raise ValueError('Database URL must be a valid PostgreSQL connection string')
+        return v
+    
+    @field_validator('openai_api_key')
+    @classmethod
+    def validate_openai_key(cls, v: str) -> str:
+        """Validate OpenAI API key format"""
+        if not v.startswith('sk-'):
+            raise ValueError('OpenAI API key must start with sk-')
+        if len(v) < 40:
+            raise ValueError('Invalid OpenAI API key format')
+        return v
     
     @property
     def cors_origins_list(self) -> list[str]:
