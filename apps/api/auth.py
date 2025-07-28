@@ -72,9 +72,7 @@ async def ensure_user_exists(user_id: str, email: str) -> None:
         finally:
             # Properly close session and generator
             try:
-                next(session_gen)  # Close generator properly
-            except StopIteration:
-                pass
+                session_gen.close()  # Close generator properly
             except Exception as close_error:
                 logger.debug(f"Session generator close warning: {close_error}")
             
@@ -159,10 +157,8 @@ async def get_optional_user(
         return None
 
     try:
-        # Create a mock request for rate limiting context
-        from fastapi import Request
-        mock_request = Request(scope={"type": "http", "client": None})
-        return await get_current_user(credentials, mock_request)
+        # Pass None for the request parameter as rate limiting handles None cases
+        return await get_current_user(credentials, None)
     except HTTPException:
         return None
 

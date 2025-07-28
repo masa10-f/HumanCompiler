@@ -67,8 +67,7 @@ class Settings(BaseSettings):
         """Validate OpenAI API key format"""
         if not v or v.strip() == '':
             raise ValueError('OpenAI API key cannot be empty')
-        if len(v) < 40:
-            raise ValueError('Invalid OpenAI API key format: must be at least 40 characters long')
+        # Remove length validation as different key formats may have different lengths
         return v
     
     @property
