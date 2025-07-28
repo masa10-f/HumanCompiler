@@ -1,10 +1,9 @@
 {
-  "rootDirectory": "apps/web",
-  "buildCommand": "npm run build",
-  "outputDirectory": ".next",
+  "buildCommand": "cd apps/web && npm run build",
+  "outputDirectory": "apps/web/.next",
   "framework": "nextjs",
-  "installCommand": "npm install",
-  "devCommand": "npm run dev",
+  "installCommand": "cd apps/web && npm install",
+  "devCommand": "cd apps/web && npm run dev",
   "rewrites": [
     {
       "source": "/api/(.*)",
