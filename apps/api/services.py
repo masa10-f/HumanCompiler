@@ -109,8 +109,8 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
         return self.update(session, project_id, project_data, owner_id)
     
     def delete_project(self, session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID]) -> bool:
-        """Delete project with cascade deletion"""
-        # Custom implementation for cascade deletion
+        """Delete project with optimized cascade deletion (fixes N+1 query problem)"""
+        # Verify project exists and belongs to user
         project = self.get_by_id(session, project_id, owner_id)
         if not project:
             raise HTTPException(
@@ -119,28 +119,54 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
             )
 
         try:
-            # Delete all tasks in all goals of this project
-            goals = session.exec(select(Goal).where(Goal.project_id == project_id)).all()
-            for goal in goals:
-                tasks = session.exec(select(Task).where(Task.goal_id == goal.id)).all()
-                for task in tasks:
-                    # Delete all logs for this task
-                    logs = session.exec(select(Log).where(Log.task_id == task.id)).all()
-                    for log in logs:
-                        session.delete(log)
-                    session.delete(task)
-                session.delete(goal)
-            
-            # Delete the project
+            # OPTION 1: Database-level cascade deletion (most efficient)
+            # If database supports CASCADE DELETE (PostgreSQL in production)
+            # Simply deleting the project will cascade to all related records
             session.delete(project)
             session.commit()
             return True
-        except Exception as e:
+            
+        except Exception as cascade_error:
+            # OPTION 2: Fallback to optimized batch deletion for databases without CASCADE
+            # This eliminates N+1 queries while maintaining compatibility
             session.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to delete project: {str(e)}"
-            )
+            
+            try:
+                # Optimized batch deletion to eliminate N+1 queries
+                # Step 1: Get all goal IDs for this project in a single query
+                goal_ids_query = select(Goal.id).where(Goal.project_id == project_id)
+                goal_ids = [row.id for row in session.exec(goal_ids_query).all()]
+                
+                if goal_ids:
+                    # Step 2: Get all task IDs for these goals in a single query
+                    task_ids_query = select(Task.id).where(Task.goal_id.in_(goal_ids))
+                    task_ids = [row.id for row in session.exec(task_ids_query).all()]
+                    
+                    if task_ids:
+                        # Step 3: Batch delete all logs for these tasks in a single query
+                        from sqlmodel import delete
+                        logs_delete = delete(Log).where(Log.task_id.in_(task_ids))
+                        session.exec(logs_delete)
+                        
+                        # Step 4: Batch delete all tasks in a single query
+                        tasks_delete = delete(Task).where(Task.id.in_(task_ids))
+                        session.exec(tasks_delete)
+                    
+                    # Step 5: Batch delete all goals in a single query
+                    goals_delete = delete(Goal).where(Goal.id.in_(goal_ids))
+                    session.exec(goals_delete)
+                
+                # Step 6: Delete the project
+                session.delete(project)
+                session.commit()
+                return True
+                
+            except Exception as e:
+                session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to delete project: {str(e)}"
+                )
 
 
 class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):

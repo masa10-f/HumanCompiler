@@ -68,13 +68,13 @@ class Goal(GoalBase, table=True):
     __tablename__ = "goals"
     
     id: Optional[UUID] = SQLField(default=None, primary_key=True)
-    project_id: UUID = SQLField(foreign_key="projects.id")
+    project_id: UUID = SQLField(foreign_key="projects.id", ondelete="CASCADE")
     created_at: Optional[datetime] = SQLField(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = SQLField(default_factory=datetime.utcnow)
     
     # Relationships
     project: Optional[Project] = Relationship(back_populates="goals")
-    tasks: list["Task"] = Relationship(back_populates="goal")
+    tasks: list["Task"] = Relationship(back_populates="goal", cascade_delete=True)
 
 
 class TaskBase(SQLModel):
@@ -91,13 +91,13 @@ class Task(TaskBase, table=True):
     __tablename__ = "tasks"
     
     id: Optional[UUID] = SQLField(default=None, primary_key=True)
-    goal_id: UUID = SQLField(foreign_key="goals.id")
+    goal_id: UUID = SQLField(foreign_key="goals.id", ondelete="CASCADE")
     created_at: Optional[datetime] = SQLField(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = SQLField(default_factory=datetime.utcnow)
     
     # Relationships
     goal: Optional[Goal] = Relationship(back_populates="tasks")
-    logs: list["Log"] = Relationship(back_populates="task")
+    logs: list["Log"] = Relationship(back_populates="task", cascade_delete=True)
 
 
 class ScheduleBase(SQLModel):
@@ -130,7 +130,7 @@ class Log(LogBase, table=True):
     __tablename__ = "logs"
     
     id: Optional[UUID] = SQLField(default=None, primary_key=True)
-    task_id: UUID = SQLField(foreign_key="tasks.id")
+    task_id: UUID = SQLField(foreign_key="tasks.id", ondelete="CASCADE")
     created_at: Optional[datetime] = SQLField(default_factory=datetime.utcnow)
     
     # Relationships
