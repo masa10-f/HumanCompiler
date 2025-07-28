@@ -83,5 +83,6 @@ class Settings(BaseSettings):
         case_sensitive = False
 
 # Global settings instance
-settings = Settings()
+# Settings will automatically load from environment variables via pydantic_settings
+settings = Settings()  # type: ignore[call-arg]
 
