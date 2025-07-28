@@ -75,27 +75,26 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 2. 🚀 **Fly.io デプロイ** - API サーバーのデプロイ
 3. 🏥 **ヘルスチェック** - デプロイ後の動作確認
 
-### 🌐 フロントエンド デプロイ (`deploy-web.yml`)
+### 🌐 フロントエンド デプロイ (Vercel GitHub Integration)
 
-**トリガー条件:**
-- `main` ブランチへの `apps/web/**` 変更時
+**❌ GitHub Actions不要**: VercelがGitHubリポジトリと直接連携済み
 
-**実行ステップ:**
-1. 🧪 **ビルドテスト** - Next.js ビルドの確認
-2. 🚀 **Vercel デプロイ** - フロントエンドのデプロイ  
-3. 🏥 **ヘルスチェック** - デプロイ後のアクセス確認
+**自動デプロイ:**
+- `main` ブランチpush → 本番デプロイ (`https://taskagent.vercel.app`)
+- Pull Request → プレビューデプロイ (一意URL)
+- `vercel.json`設定に基づく自動ビルド
 
 ## 🎯 デプロイフロー
 
 ```mermaid
 graph LR
     A[Code Push] --> B{変更箇所?}
-    B -->|apps/api| C[API Test]
-    B -->|apps/web| D[Web Test]
-    C --> E[Fly.io Deploy]
-    D --> F[Vercel Deploy]
+    B -->|apps/api| C[GitHub Actions]
+    B -->|apps/web| D[Vercel Integration]
+    C --> E[API Test → Fly.io Deploy]
+    D --> F[Auto Build → Deploy]
     E --> G[API Health Check]
-    F --> H[Web Health Check]
+    F --> H[Vercel Deploy Complete]
     G --> I[🎉 完了]
     H --> I
 ```

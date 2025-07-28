@@ -28,28 +28,20 @@ fly auth token
 
 ## 🌐 Vercel (フロントエンド) 関連
 
-### `VERCEL_TOKEN`
-**用途**: フロントエンドの自動デプロイ用  
-**取得方法**:
-1. https://vercel.com/account/tokens にアクセス
-2. **Create Token** をクリック
-3. トークン名を入力（例: "TaskAgent CI/CD"）
-4. **Create** をクリックしてトークンをコピー
+### ❌ **Vercel シークレット不要**
 
-**設定値例**: `xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+**理由**: VercelがGitHubリポジトリと直接連携済みのため、GitHub Actions経由のデプロイは不要
 
-### `VERCEL_ORG_ID` と `VERCEL_PROJECT_ID`
-**❌ 設定不要**: 自動プロジェクト検出を使用するため、これらのシークレットは不要です。
+**自動デプロイ設定:**
+- GitHub Integration: ✅ 設定済み
+- 本番デプロイ: `main` ブランチへのpush時
+- プレビューデプロイ: Pull Request作成時
+- 設定ファイル: `vercel.json`
 
-**📝 取得方法（参考）**:
-組織IDやプロジェクトIDが必要な場合:
-```bash
-# Vercel CLIでプロジェクトをリンク
-vercel link
-
-# 設定ファイルで確認
-cat .vercel/project.json
-```
+**💡 環境変数設定**: Vercel Dashboardで直接設定
+1. https://vercel.com/dashboard でプロジェクトを選択
+2. **Settings** → **Environment Variables**
+3. 必要な`NEXT_PUBLIC_*`変数を設定
 
 ---
 
@@ -113,25 +105,20 @@ cat .vercel/project.json
 
 ## 📋 設定チェックリスト
 
-設定完了後、以下をチェックしてください：
+**必要なGitHub Secrets: 4個のみ**
 
-### ✅ Fly.io 関連
-- [ ] `FLY_API_TOKEN` - 正しいトークンが設定済み
+### ✅ GitHub Repository Secrets (4個)
+- [ ] `FLY_API_TOKEN` - Fly.io APIデプロイ用
+- [ ] `SUPABASE_URL` - データベース接続用
+- [ ] `SUPABASE_ANON_KEY` - API認証用
+- [ ] `SUPABASE_SERVICE_ROLE_KEY` - 管理者権限用
+- [ ] `OPENAI_API_KEY` - AIテスト用
 
-### ✅ Vercel 関連  
-- [ ] `VERCEL_TOKEN` - 有効なトークンが設定済み
-- [ ] ~~`VERCEL_ORG_ID`~~ - 設定不要（自動検出）
-- [ ] ~~`VERCEL_PROJECT_ID`~~ - 設定不要（自動検出）
-
-### ✅ Supabase 関連
-- [ ] `SUPABASE_URL` - プロジェクトURLが設定済み
-- [ ] `SUPABASE_ANON_KEY` - 匿名キーが設定済み
-- [ ] `SUPABASE_SERVICE_ROLE_KEY` - サービスロールキーが設定済み
-- [ ] `NEXT_PUBLIC_SUPABASE_URL` - フロントエンド用URLが設定済み
-- [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY` - フロントエンド用キーが設定済み
-
-### ✅ OpenAI 関連
-- [ ] `OPENAI_API_KEY` - 有効なAPIキーが設定済み
+### ✅ Vercel Dashboard 設定 (GitHub Actions不要)
+- [ ] GitHub Integration - 自動デプロイ設定済み
+- [ ] Environment Variables - `NEXT_PUBLIC_*`変数をVercel Dashboardで設定
+  - `NEXT_PUBLIC_SUPABASE_URL`
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
 ---
 
