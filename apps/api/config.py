@@ -65,10 +65,10 @@ class Settings(BaseSettings):
     @classmethod
     def validate_openai_key(cls, v: str) -> str:
         """Validate OpenAI API key format"""
-        if not v.startswith('sk-'):
-            raise ValueError('OpenAI API key must start with sk-')
+        if not v or v.strip() == '':
+            raise ValueError('OpenAI API key cannot be empty')
         if len(v) < 40:
-            raise ValueError('Invalid OpenAI API key format')
+            raise ValueError('Invalid OpenAI API key format: must be at least 40 characters long')
         return v
     
     @property

@@ -13,7 +13,10 @@ from models import UserCreate
 
 logger = logging.getLogger(__name__)
 
-# Simple in-memory rate limiting (for production, use Redis)
+# Simple in-memory rate limiting 
+# WARNING: This implementation does not persist across server restarts 
+# and will not work correctly in multi-instance deployments.
+# For production environments, use a distributed cache like Redis.
 _auth_attempts: Dict[str, list] = defaultdict(list)
 MAX_AUTH_ATTEMPTS = 5
 RATE_LIMIT_WINDOW = 300  # 5 minutes

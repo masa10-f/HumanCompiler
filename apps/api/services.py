@@ -203,10 +203,10 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
 class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
     """Task service using base service"""
     
-    def __init__(self):
+    def __init__(self, goal_service: GoalService = None, project_service: ProjectService = None):
         super().__init__(Task)
-        self.goal_service = GoalService()
-        self.project_service = ProjectService()
+        self.goal_service = goal_service or GoalService()
+        self.project_service = project_service or ProjectService()
     
     def _create_instance(self, data: TaskCreate, user_id: Union[str, UUID], **kwargs) -> Task:
         """Create a new task instance"""
