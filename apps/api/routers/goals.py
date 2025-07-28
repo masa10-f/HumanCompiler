@@ -11,7 +11,7 @@ from models import (
     GoalResponse,
     GoalUpdate,
 )
-from services import GoalService
+from services import goal_service
 
 router = APIRouter(prefix="/goals", tags=["goals"])
 
@@ -36,7 +36,7 @@ async def create_goal(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> GoalResponse:
     """Create a new goal"""
-    goal = GoalService.create_goal(session, goal_data, current_user.user_id)
+    goal = goal_service.create_goal(session, goal_data, current_user.user_id)
     return GoalResponse.model_validate(goal)
 
 
@@ -55,7 +55,7 @@ async def get_goals_by_project(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[GoalResponse]:
     """Get goals for specific project"""
-    goals = GoalService.get_goals_by_project(session, project_id, current_user.user_id, skip, limit)
+    goals = goal_service.get_goals_by_project(session, project_id, current_user.user_id, skip, limit)
     return [GoalResponse.model_validate(goal) for goal in goals]
 
 
@@ -72,7 +72,7 @@ async def get_goal(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> GoalResponse:
     """Get specific goal"""
-    goal = GoalService.get_goal(session, goal_id, current_user.user_id)
+    goal = goal_service.get_goal(session, goal_id, current_user.user_id)
     if not goal:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -95,7 +95,7 @@ async def update_goal(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> GoalResponse:
     """Update specific goal"""
-    goal = GoalService.update_goal(session, goal_id, current_user.user_id, goal_data)
+    goal = goal_service.update_goal(session, goal_id, current_user.user_id, goal_data)
     return GoalResponse.model_validate(goal)
 
 
@@ -112,4 +112,4 @@ async def delete_goal(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> None:
     """Delete specific goal"""
-    GoalService.delete_goal(session, goal_id, current_user.user_id)
+    goal_service.delete_goal(session, goal_id, current_user.user_id)

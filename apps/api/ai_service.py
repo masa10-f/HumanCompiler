@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from config import settings
 from models import Project, Goal, Task
-from services import ProjectService, GoalService, TaskService
+from services import project_service, goal_service, task_service
 
 
 logger = logging.getLogger(__name__)
@@ -397,7 +397,7 @@ class WeeklyPlanService:
         """Collect context data for weekly planning."""
         
         # Get user's projects
-        projects = ProjectService.get_projects(session, user_id)
+        projects = project_service.get_projects(session, user_id)
         
         # Filter projects if specified
         if project_filter:
@@ -406,13 +406,13 @@ class WeeklyPlanService:
         # Get goals for the projects
         goals = []
         for project in projects:
-            project_goals = GoalService.get_goals_by_project(session, project.id, user_id)
+            project_goals = goal_service.get_goals_by_project(session, project.id, user_id)
             goals.extend(project_goals)
         
         # Get pending tasks for the goals
         tasks = []
         for goal in goals:
-            goal_tasks = TaskService.get_tasks_by_goal(session, goal.id, user_id)
+            goal_tasks = task_service.get_tasks_by_goal(session, goal.id, user_id)
             # Only include pending and in-progress tasks
             pending_tasks = [t for t in goal_tasks if t.status in ['pending', 'in_progress']]
             tasks.extend(pending_tasks)

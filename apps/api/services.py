@@ -1,10 +1,15 @@
+"""
+Refactored services using base service class
+"""
+
 from datetime import datetime
-from typing import Optional, Union
-from uuid import uuid4, UUID
+from typing import List, Optional, Union
+from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlmodel import Session, select
 
+from base_service import BaseService
 from models import (
     Goal,
     GoalCreate,
@@ -24,7 +29,7 @@ from models import (
 
 
 class UserService:
-    """User service for CRUD operations"""
+    """User service for authentication-related operations"""
 
     @staticmethod
     def create_user(session: Session, user_data: UserCreate, user_id: Union[str, UUID]) -> User:
@@ -69,64 +74,44 @@ class UserService:
         return user
 
 
-class ProjectService:
-    """Project service for CRUD operations"""
-
-    @staticmethod
-    def create_project(session: Session, project_data: ProjectCreate, owner_id: Union[str, UUID]) -> Project:
-        """Create a new project"""
-        project = Project(
-            id=uuid4(),
-            owner_id=owner_id,
-            title=project_data.title,
-            description=project_data.description,
+class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
+    """Project service using base service"""
+    
+    def __init__(self):
+        super().__init__(Project)
+    
+    def _create_instance(self, data: ProjectCreate, user_id: Union[str, UUID], **kwargs) -> Project:
+        """Create a new project instance"""
+        return Project(
+            owner_id=user_id,
+            title=data.title,
+            description=data.description,
         )
-        session.add(project)
-        session.commit()
-        session.refresh(project)
-        return project
-
-    @staticmethod
-    def get_project(session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID]) -> Optional[Project]:
-        """Get project by ID for specific owner"""
-        statement = select(Project).where(
-            Project.id == project_id,
-            Project.owner_id == owner_id
-        )
-        return session.exec(statement).first()
-
-    @staticmethod
-    def get_projects(session: Session, owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> list[Project]:
+    
+    def _get_user_filter(self, user_id: Union[str, UUID]):
+        """Get filter for project ownership"""
+        return Project.owner_id == user_id
+    
+    def get_projects(self, session: Session, owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> List[Project]:
         """Get projects for specific owner"""
-        statement = select(Project).where(
-            Project.owner_id == owner_id
-        ).offset(skip).limit(limit)
-        return list(session.exec(statement).all())
-
-    @staticmethod
-    def update_project(session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID], project_data: ProjectUpdate) -> Project:
+        return self.get_all(session, owner_id, skip, limit)
+    
+    def get_project(self, session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID]) -> Optional[Project]:
+        """Get project by ID for specific owner"""
+        return self.get_by_id(session, project_id, owner_id)
+    
+    def create_project(self, session: Session, project_data: ProjectCreate, owner_id: Union[str, UUID]) -> Project:
+        """Create a new project"""
+        return self.create(session, project_data, owner_id)
+    
+    def update_project(self, session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID], project_data: ProjectUpdate) -> Project:
         """Update project"""
-        project = ProjectService.get_project(session, project_id, owner_id)
-        if not project:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Project not found"
-            )
-
-        update_data = project_data.model_dump(exclude_unset=True)
-        for field, value in update_data.items():
-            setattr(project, field, value)
-
-        project.updated_at = datetime.utcnow()
-        session.add(project)
-        session.commit()
-        session.refresh(project)
-        return project
-
-    @staticmethod
-    def delete_project(session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID]) -> bool:
-        """Delete project"""
-        project = ProjectService.get_project(session, project_id, owner_id)
+        return self.update(session, project_id, project_data, owner_id)
+    
+    def delete_project(self, session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID]) -> bool:
+        """Delete project with cascade deletion"""
+        # Custom implementation for cascade deletion
+        project = self.get_by_id(session, project_id, owner_id)
         if not project:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -135,7 +120,6 @@ class ProjectService:
 
         try:
             # Delete all tasks in all goals of this project
-            from sqlmodel import select
             goals = session.exec(select(Goal).where(Goal.project_id == project_id)).all()
             for goal in goals:
                 tasks = session.exec(select(Task).where(Task.goal_id == goal.id)).all()
@@ -159,199 +143,147 @@ class ProjectService:
             )
 
 
-class GoalService:
-    """Goal service for CRUD operations"""
-
-    @staticmethod
-    def create_goal(session: Session, goal_data: GoalCreate, owner_id: Union[str, UUID]) -> Goal:
+class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
+    """Goal service using base service"""
+    
+    def __init__(self):
+        super().__init__(Goal)
+        self.project_service = ProjectService()
+    
+    def _create_instance(self, data: GoalCreate, user_id: Union[str, UUID], **kwargs) -> Goal:
+        """Create a new goal instance"""
+        return Goal(
+            project_id=data.project_id,
+            title=data.title,
+            description=data.description,
+            estimate_hours=data.estimate_hours,
+        )
+    
+    def _get_user_filter(self, user_id: Union[str, UUID]):
+        """Get filter for goal ownership through project"""
+        return Goal.project_id.in_(
+            select(Project.id).where(Project.owner_id == user_id)
+        )
+    
+    def create_goal(self, session: Session, goal_data: GoalCreate, owner_id: Union[str, UUID]) -> Goal:
         """Create a new goal"""
         # Verify project ownership
-        project = ProjectService.get_project(session, goal_data.project_id, owner_id)
+        project = self.project_service.get_project(session, goal_data.project_id, owner_id)
         if not project:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Project not found"
             )
-
-        goal = Goal(
-            id=uuid4(),
-            project_id=goal_data.project_id,
-            title=goal_data.title,
-            description=goal_data.description,
-            estimate_hours=goal_data.estimate_hours,
-        )
-        session.add(goal)
-        session.commit()
-        session.refresh(goal)
-        return goal
-
-    @staticmethod
-    def get_goal(session: Session, goal_id: Union[str, UUID], owner_id: Union[str, UUID]) -> Optional[Goal]:
+        return self.create(session, goal_data, owner_id)
+    
+    def get_goal(self, session: Session, goal_id: Union[str, UUID], owner_id: Union[str, UUID]) -> Optional[Goal]:
         """Get goal by ID for specific owner"""
-        statement = select(Goal).join(Project).where(
-            Goal.id == goal_id,
-            Project.owner_id == owner_id
-        )
-        return session.exec(statement).first()
-
-    @staticmethod
-    def get_goals_by_project(session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> list[Goal]:
+        return self.get_by_id(session, goal_id, owner_id)
+    
+    def get_goals_by_project(self, session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> List[Goal]:
         """Get goals for specific project"""
         # Verify project ownership
-        project = ProjectService.get_project(session, project_id, owner_id)
+        project = self.project_service.get_project(session, project_id, owner_id)
         if not project:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Project not found"
             )
-
-        statement = select(Goal).where(
-            Goal.project_id == project_id
-        ).offset(skip).limit(limit)
-        return list(session.exec(statement).all())
-
-    @staticmethod
-    def update_goal(session: Session, goal_id: Union[str, UUID], owner_id: Union[str, UUID], goal_data: GoalUpdate) -> Goal:
+        return self.get_all(session, owner_id, skip, limit, project_id=project_id)
+    
+    def update_goal(self, session: Session, goal_id: Union[str, UUID], owner_id: Union[str, UUID], goal_data: GoalUpdate) -> Goal:
         """Update goal"""
-        goal = GoalService.get_goal(session, goal_id, owner_id)
-        if not goal:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Goal not found"
-            )
-
-        update_data = goal_data.model_dump(exclude_unset=True)
-        for field, value in update_data.items():
-            setattr(goal, field, value)
-
-        goal.updated_at = datetime.utcnow()
-        session.add(goal)
-        session.commit()
-        session.refresh(goal)
-        return goal
-
-    @staticmethod
-    def delete_goal(session: Session, goal_id: Union[str, UUID], owner_id: Union[str, UUID]) -> bool:
+        return self.update(session, goal_id, goal_data, owner_id)
+    
+    def delete_goal(self, session: Session, goal_id: Union[str, UUID], owner_id: Union[str, UUID]) -> bool:
         """Delete goal"""
-        goal = GoalService.get_goal(session, goal_id, owner_id)
-        if not goal:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Goal not found"
+        return self.delete(session, goal_id, owner_id)
+
+
+class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
+    """Task service using base service"""
+    
+    def __init__(self):
+        super().__init__(Task)
+        self.goal_service = GoalService()
+        self.project_service = ProjectService()
+    
+    def _create_instance(self, data: TaskCreate, user_id: Union[str, UUID], **kwargs) -> Task:
+        """Create a new task instance"""
+        return Task(
+            goal_id=data.goal_id,
+            title=data.title,
+            description=data.description,
+            estimate_hours=data.estimate_hours,
+            due_date=data.due_date,
+            status=data.status,
+        )
+    
+    def _get_user_filter(self, user_id: Union[str, UUID]):
+        """Get filter for task ownership through goal and project"""
+        return Task.goal_id.in_(
+            select(Goal.id).where(
+                Goal.project_id.in_(
+                    select(Project.id).where(Project.owner_id == user_id)
+                )
             )
-
-        session.delete(goal)
-        session.commit()
-        return True
-
-
-class TaskService:
-    """Task service for CRUD operations"""
-
-    @staticmethod
-    def create_task(session: Session, task_data: TaskCreate, owner_id: Union[str, UUID]) -> Task:
+        )
+    
+    def create_task(self, session: Session, task_data: TaskCreate, owner_id: Union[str, UUID]) -> Task:
         """Create a new task"""
         # Verify goal ownership through project
-        goal = GoalService.get_goal(session, task_data.goal_id, owner_id)
+        goal = self.goal_service.get_goal(session, task_data.goal_id, owner_id)
         if not goal:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Goal not found"
             )
-
-        task = Task(
-            id=uuid4(),
-            goal_id=task_data.goal_id,
-            title=task_data.title,
-            description=task_data.description,
-            estimate_hours=task_data.estimate_hours,
-            due_date=task_data.due_date,
-            status=TaskStatus.PENDING,
-        )
-        session.add(task)
-        session.commit()
-        session.refresh(task)
-        return task
-
-    @staticmethod
-    def get_task(session: Session, task_id: Union[str, UUID], owner_id: Union[str, UUID]) -> Optional[Task]:
+        return self.create(session, task_data, owner_id)
+    
+    def get_task(self, session: Session, task_id: Union[str, UUID], owner_id: Union[str, UUID]) -> Optional[Task]:
         """Get task by ID for specific owner"""
-        statement = select(Task).join(Goal).join(Project).where(
-            Task.id == task_id,
-            Project.owner_id == owner_id
-        )
-        return session.exec(statement).first()
-
-    @staticmethod
-    def get_tasks_by_goal(session: Session, goal_id: Union[str, UUID], owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> list[Task]:
+        return self.get_by_id(session, task_id, owner_id)
+    
+    def get_tasks_by_goal(self, session: Session, goal_id: Union[str, UUID], owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> List[Task]:
         """Get tasks for specific goal"""
         # Verify goal ownership
-        goal = GoalService.get_goal(session, goal_id, owner_id)
+        goal = self.goal_service.get_goal(session, goal_id, owner_id)
         if not goal:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Goal not found"
             )
-
-        statement = select(Task).where(
-            Task.goal_id == goal_id
-        ).offset(skip).limit(limit)
-        return list(session.exec(statement).all())
-
-    @staticmethod
-    def get_tasks_by_project(session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> list[Task]:
+        return self.get_all(session, owner_id, skip, limit, goal_id=goal_id)
+    
+    def get_tasks_by_project(self, session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> List[Task]:
         """Get all tasks for specific project"""
         # Verify project ownership
-        project = ProjectService.get_project(session, project_id, owner_id)
+        project = self.project_service.get_project(session, project_id, owner_id)
         if not project:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Project not found"
             )
-
+        
         statement = select(Task).join(Goal).where(
             Goal.project_id == project_id
         ).offset(skip).limit(limit)
         return list(session.exec(statement).all())
-
-    @staticmethod
-    def get_all_user_tasks(session: Session, owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> list[Task]:
+    
+    def get_all_user_tasks(self, session: Session, owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> List[Task]:
         """Get all tasks for a user across all projects"""
-        statement = select(Task).join(Goal).join(Project).where(
-            Project.owner_id == owner_id
-        ).offset(skip).limit(limit)
-        return list(session.exec(statement).all())
-
-    @staticmethod
-    def update_task(session: Session, task_id: Union[str, UUID], owner_id: Union[str, UUID], task_data: TaskUpdate) -> Task:
+        return self.get_all(session, owner_id, skip, limit)
+    
+    def update_task(self, session: Session, task_id: Union[str, UUID], owner_id: Union[str, UUID], task_data: TaskUpdate) -> Task:
         """Update task"""
-        task = TaskService.get_task(session, task_id, owner_id)
-        if not task:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Task not found"
-            )
-
-        update_data = task_data.model_dump(exclude_unset=True)
-        for field, value in update_data.items():
-            setattr(task, field, value)
-
-        task.updated_at = datetime.utcnow()
-        session.add(task)
-        session.commit()
-        session.refresh(task)
-        return task
-
-    @staticmethod
-    def delete_task(session: Session, task_id: Union[str, UUID], owner_id: Union[str, UUID]) -> bool:
+        return self.update(session, task_id, task_data, owner_id)
+    
+    def delete_task(self, session: Session, task_id: Union[str, UUID], owner_id: Union[str, UUID]) -> bool:
         """Delete task"""
-        task = TaskService.get_task(session, task_id, owner_id)
-        if not task:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Task not found"
-            )
+        return self.delete(session, task_id, owner_id)
 
-        session.delete(task)
-        session.commit()
-        return True
+
+# Create service instances for use in routers
+project_service = ProjectService()
+goal_service = GoalService()
+task_service = TaskService()
