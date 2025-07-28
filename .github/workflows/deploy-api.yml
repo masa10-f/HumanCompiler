@@ -43,8 +43,8 @@ jobs:
         run: |
           python -m pytest tests/ -v
         env:
-          # Test environment variables
-          DATABASE_URL: sqlite:///./test.db
+          # Test environment variables - use in-memory database for isolation
+          DATABASE_URL: "sqlite:///:memory:"
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}

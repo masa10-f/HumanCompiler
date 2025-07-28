@@ -35,12 +35,16 @@ VERCEL_PROJECT_ID=your_project_id
 
 **取得方法:**
 ```bash
-# Vercel CLIでトークン取得
-vercel login
-vercel --scope your-team-name
+# 1. Vercel Dashboardでトークン作成
+# https://vercel.com/account/tokens
 
-# プロジェクト情報を取得
-npx vercel env ls
+# 2. プロジェクト設定で組織IDとプロジェクトIDを取得
+# Vercel Dashboard > Project Settings > General
+
+# 3. CLIでの確認方法
+vercel login
+vercel link  # プロジェクトをリンク
+cat .vercel/project.json  # プロジェクト情報確認
 ```
 
 #### 🔒 アプリケーション環境変数
