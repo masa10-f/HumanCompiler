@@ -16,9 +16,6 @@ class Settings(BaseSettings):
     port: int = 8000
     debug: bool = False
 
-    # CORS Configuration
-    cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
-
     # Supabase Configuration
     supabase_url: str = Field(..., description="Supabase project URL")
     supabase_anon_key: str = Field(..., description="Supabase anonymous/public key")
@@ -34,7 +31,7 @@ class Settings(BaseSettings):
     environment: str = Field(default="development", pattern="^(development|staging|production)$")
     
     # CORS Configuration
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3001"]
+    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000"]
     
     @field_validator('supabase_url')
     @classmethod
@@ -68,10 +65,9 @@ class Settings(BaseSettings):
     @classmethod
     def validate_openai_key(cls, v: str) -> str:
         """Validate OpenAI API key format"""
-        if not v.startswith('sk-'):
-            raise ValueError('OpenAI API key must start with sk-')
-        if len(v) < 40:
-            raise ValueError('Invalid OpenAI API key format')
+        if not v or v.strip() == '':
+            raise ValueError('OpenAI API key cannot be empty')
+        # Remove length validation as different key formats may have different lengths
         return v
     
     @property
@@ -87,5 +83,6 @@ class Settings(BaseSettings):
         case_sensitive = False
 
 # Global settings instance
-settings = Settings()
+# Settings will automatically load from environment variables via pydantic_settings
+settings = Settings()  # type: ignore[call-arg]
 

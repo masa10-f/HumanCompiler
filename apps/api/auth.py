@@ -13,7 +13,10 @@ from models import UserCreate
 
 logger = logging.getLogger(__name__)
 
-# Simple in-memory rate limiting (for production, use Redis)
+# Simple in-memory rate limiting 
+# WARNING: This implementation does not persist across server restarts 
+# and will not work correctly in multi-instance deployments.
+# For production environments, use a distributed cache like Redis.
 _auth_attempts: Dict[str, list] = defaultdict(list)
 MAX_AUTH_ATTEMPTS = 5
 RATE_LIMIT_WINDOW = 300  # 5 minutes
@@ -67,12 +70,16 @@ async def ensure_user_exists(user_id: str, email: str) -> None:
                 logger.info(f"✅ Created user in public.users: {user_id}")
             
         finally:
-            # Make sure to close all generators properly
+            # Properly close session and generator
             try:
-                session_gen.close()
-            except:
-                pass
-            session.close()
+                session_gen.close()  # Close generator properly
+            except Exception as close_error:
+                logger.debug(f"Session generator close warning: {close_error}")
+            
+            try:
+                session.close()
+            except Exception as session_error:
+                logger.debug(f"Session close warning: {session_error}")
             
     except Exception as e:
         logger.error(f"❌ Failed to ensure user exists: {e}")
@@ -80,15 +87,15 @@ async def ensure_user_exists(user_id: str, email: str) -> None:
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    request: Request = None
+    request: Request | None = None
 ) -> AuthUser:
     """
     Extract and validate user from JWT token
     """
     try:
         # Apply rate limiting if request is available
-        if request:
-            client_ip = request.client.host if request.client else "unknown"
+        if request and request.client:
+            client_ip = request.client.host or "unknown"
             _check_rate_limit(client_ip)
         
         token = credentials.credentials
@@ -150,7 +157,8 @@ async def get_optional_user(
         return None
 
     try:
-        return await get_current_user(credentials)
+        # Pass None for the request parameter as rate limiting handles None cases
+        return await get_current_user(credentials, None)
     except HTTPException:
         return None
 
