@@ -40,10 +40,5 @@
   "env": {
     "NEXT_PUBLIC_APP_URL": "https://taskagent.vercel.app"
   },
-  "regions": ["hnd1"],
-  "functions": {
-    "app/**": {
-      "maxDuration": 30
-    }
-  }
+  "regions": ["hnd1"]
 }
