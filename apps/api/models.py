@@ -74,7 +74,7 @@ class Goal(GoalBase, table=True):
     
     # Relationships
     project: Optional[Project] = Relationship(back_populates="goals")
-    tasks: list["Task"] = Relationship(back_populates="goal", cascade_delete=True)
+    tasks: list["Task"] = Relationship(back_populates="goal")
 
 
 class TaskBase(SQLModel):
@@ -97,7 +97,7 @@ class Task(TaskBase, table=True):
     
     # Relationships
     goal: Optional[Goal] = Relationship(back_populates="tasks")
-    logs: list["Log"] = Relationship(back_populates="task", cascade_delete=True)
+    logs: list["Log"] = Relationship(back_populates="task")
 
 
 class ScheduleBase(SQLModel):

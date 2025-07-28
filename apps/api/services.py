@@ -7,7 +7,7 @@ from typing import List, Optional, Union
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlmodel import Session, select
+from sqlmodel import Session, select, delete
 
 from base_service import BaseService
 from models import (
@@ -119,54 +119,67 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
             )
 
         try:
-            # OPTION 1: Database-level cascade deletion (most efficient)
-            # If database supports CASCADE DELETE (PostgreSQL in production)
-            # Simply deleting the project will cascade to all related records
-            session.delete(project)
-            session.commit()
-            return True
+            # Check if database supports CASCADE DELETE by checking database URL
+            # For PostgreSQL (production), we can use CASCADE DELETE
+            # For SQLite (development), we use batch deletion
+            use_cascade = self._supports_cascade_delete(session)
             
-        except Exception as cascade_error:
-            # OPTION 2: Fallback to optimized batch deletion for databases without CASCADE
-            # This eliminates N+1 queries while maintaining compatibility
-            session.rollback()
-            
-            try:
-                # Optimized batch deletion to eliminate N+1 queries
-                # Step 1: Get all goal IDs for this project in a single query
-                goal_ids_query = select(Goal.id).where(Goal.project_id == project_id)
-                goal_ids = [row.id for row in session.exec(goal_ids_query).all()]
-                
-                if goal_ids:
-                    # Step 2: Get all task IDs for these goals in a single query
-                    task_ids_query = select(Task.id).where(Task.goal_id.in_(goal_ids))
-                    task_ids = [row.id for row in session.exec(task_ids_query).all()]
-                    
-                    if task_ids:
-                        # Step 3: Batch delete all logs for these tasks in a single query
-                        from sqlmodel import delete
-                        logs_delete = delete(Log).where(Log.task_id.in_(task_ids))
-                        session.exec(logs_delete)
-                        
-                        # Step 4: Batch delete all tasks in a single query
-                        tasks_delete = delete(Task).where(Task.id.in_(task_ids))
-                        session.exec(tasks_delete)
-                    
-                    # Step 5: Batch delete all goals in a single query
-                    goals_delete = delete(Goal).where(Goal.id.in_(goal_ids))
-                    session.exec(goals_delete)
-                
-                # Step 6: Delete the project
+            if use_cascade:
+                # DATABASE-LEVEL CASCADE DELETION (most efficient)
+                # Simply deleting the project will cascade to all related records
                 session.delete(project)
                 session.commit()
                 return True
+            else:
+                # BATCH DELETION OPTIMIZATION (eliminates N+1 queries)
+                return self._delete_project_with_batch_queries(session, project, project_id)
                 
-            except Exception as e:
-                session.rollback()
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to delete project: {str(e)}"
-                )
+        except Exception as e:
+            session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to delete project: {str(e)}"
+            )
+    
+    def _supports_cascade_delete(self, session: Session) -> bool:
+        """Check if the database supports CASCADE DELETE constraints"""
+        try:
+            # Get database engine name
+            engine_name = session.bind.dialect.name.lower()
+            # PostgreSQL and MySQL support CASCADE DELETE
+            return engine_name in ('postgresql', 'mysql')
+        except:
+            # Default to batch deletion if we can't determine database type
+            return False
+    
+    def _delete_project_with_batch_queries(self, session: Session, project: Project, project_id: Union[str, UUID]) -> bool:
+        """Delete project using optimized batch queries (eliminates N+1 problem)"""
+        # Step 1: Get all goal IDs for this project in a single query
+        goal_ids_query = select(Goal.id).where(Goal.project_id == project_id)
+        goal_ids = [row.id for row in session.exec(goal_ids_query).all()]
+        
+        if goal_ids:
+            # Step 2: Get all task IDs for these goals in a single query
+            task_ids_query = select(Task.id).where(Task.goal_id.in_(goal_ids))
+            task_ids = [row.id for row in session.exec(task_ids_query).all()]
+            
+            if task_ids:
+                # Step 3: Batch delete all logs for these tasks in a single query
+                logs_delete = delete(Log).where(Log.task_id.in_(task_ids))
+                session.exec(logs_delete)
+                
+                # Step 4: Batch delete all tasks in a single query
+                tasks_delete = delete(Task).where(Task.id.in_(task_ids))
+                session.exec(tasks_delete)
+            
+            # Step 5: Batch delete all goals in a single query
+            goals_delete = delete(Goal).where(Goal.id.in_(goal_ids))
+            session.exec(goals_delete)
+        
+        # Step 6: Delete the project
+        session.delete(project)
+        session.commit()
+        return True
 
 
 class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
