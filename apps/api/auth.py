@@ -67,12 +67,18 @@ async def ensure_user_exists(user_id: str, email: str) -> None:
                 logger.info(f"✅ Created user in public.users: {user_id}")
             
         finally:
-            # Make sure to close all generators properly
+            # Properly close session and generator
             try:
-                session_gen.close()
-            except:
+                next(session_gen)  # Close generator properly
+            except StopIteration:
                 pass
-            session.close()
+            except Exception as close_error:
+                logger.debug(f"Session generator close warning: {close_error}")
+            
+            try:
+                session.close()
+            except Exception as session_error:
+                logger.debug(f"Session close warning: {session_error}")
             
     except Exception as e:
         logger.error(f"❌ Failed to ensure user exists: {e}")
@@ -80,15 +86,15 @@ async def ensure_user_exists(user_id: str, email: str) -> None:
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    request: Request = None
+    request: Request | None = None
 ) -> AuthUser:
     """
     Extract and validate user from JWT token
     """
     try:
         # Apply rate limiting if request is available
-        if request:
-            client_ip = request.client.host if request.client else "unknown"
+        if request and request.client:
+            client_ip = request.client.host or "unknown"
             _check_rate_limit(client_ip)
         
         token = credentials.credentials
@@ -150,7 +156,10 @@ async def get_optional_user(
         return None
 
     try:
-        return await get_current_user(credentials)
+        # Create a mock request for rate limiting context
+        from fastapi import Request
+        mock_request = Request(scope={"type": "http", "client": None})
+        return await get_current_user(credentials, mock_request)
     except HTTPException:
         return None
 

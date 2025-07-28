@@ -16,9 +16,6 @@ class Settings(BaseSettings):
     port: int = 8000
     debug: bool = False
 
-    # CORS Configuration
-    cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
-
     # Supabase Configuration
     supabase_url: str = Field(..., description="Supabase project URL")
     supabase_anon_key: str = Field(..., description="Supabase anonymous/public key")
@@ -34,7 +31,7 @@ class Settings(BaseSettings):
     environment: str = Field(default="development", pattern="^(development|staging|production)$")
     
     # CORS Configuration
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3001"]
+    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000"]
     
     @field_validator('supabase_url')
     @classmethod

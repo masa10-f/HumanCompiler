@@ -45,4 +45,4 @@ For production deployments:
 
 ### Reporting Security Issues
 
-If you discover a security vulnerability, please email security@example.com instead of using the issue tracker.
+If you discover a security vulnerability, please create a private security advisory on GitHub or contact the repository maintainers directly instead of using the public issue tracker.
