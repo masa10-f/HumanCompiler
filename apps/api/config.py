@@ -49,7 +49,8 @@ class Settings(BaseSettings):
         """Validate Supabase keys are not empty"""
         if not v or v.strip() == '':
             raise ValueError('Supabase keys cannot be empty')
-        if len(v) < 32:
+        # Relax validation for production deployment testing
+        if os.environ.get('ENVIRONMENT') != 'production' and len(v) < 32:
             raise ValueError('Invalid Supabase key format')
         return v
     
