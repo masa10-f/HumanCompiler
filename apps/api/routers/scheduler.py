@@ -447,10 +447,8 @@ async def create_daily_schedule(
 async def test_scheduler():
     """Test endpoint to verify scheduler package integration."""
     try:
-        # Simple test of scheduler import
-        from scheduler.models import Task as SchedulerTask, TaskKind
-        
-        # Create a test task
+        # Use the already imported SchedulerTask and TaskKind from module level
+        # This works with both real scheduler package and mock implementations
         test_task = SchedulerTask(
             id="test",
             title="Test Task",
