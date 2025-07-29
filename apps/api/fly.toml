@@ -1,5 +1,5 @@
 # Fly.io configuration for TaskAgent API
-app = "taskagent-api"
+app = "taskagent-api-masa"
 primary_region = "nrt"  # Tokyo region for lower latency
 
 [build]
@@ -18,8 +18,8 @@ primary_region = "nrt"  # Tokyo region for lower latency
   processes = ["app"]
 
   [[http_service.checks]]
-    interval = 10000
-    timeout = 2000
+    interval = "10s"
+    timeout = "2s"
     grace_period = "30s"
     method = "GET"
     path = "/health"
