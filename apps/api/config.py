@@ -28,10 +28,10 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(..., description="OpenAI API key")
 
     # Environment
-    environment: str = Field(default="development", pattern="^(development|staging|production)$")
+    environment: str = Field(default="development", pattern="^(development|staging|production|test)$")
     
     # CORS Configuration
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000"]
+    cors_origins: list[str] | str = ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000"]
     
     @field_validator('supabase_url')
     @classmethod
@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     @classmethod
     def validate_database_url(cls, v: str) -> str:
         """Validate database URL format"""
+        # Allow SQLite URLs for testing
+        if os.environ.get('ENVIRONMENT') == 'test' and v.startswith('sqlite://'):
+            return v
         if not v.startswith(('postgresql://', 'postgres://')):
             raise ValueError('Database URL must be a valid PostgreSQL connection string')
         return v

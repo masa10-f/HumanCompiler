@@ -156,12 +156,12 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
         """Delete project using optimized batch queries (eliminates N+1 problem)"""
         # Step 1: Get all goal IDs for this project in a single query
         goal_ids_query = select(Goal.id).where(Goal.project_id == project_id)
-        goal_ids = [row.id for row in session.exec(goal_ids_query).all()]
+        goal_ids = [row for row in session.exec(goal_ids_query).all()]
         
         if goal_ids:
             # Step 2: Get all task IDs for these goals in a single query
             task_ids_query = select(Task.id).where(Task.goal_id.in_(goal_ids))
-            task_ids = [row.id for row in session.exec(task_ids_query).all()]
+            task_ids = [row for row in session.exec(task_ids_query).all()]
             
             if task_ids:
                 # Step 3: Batch delete all logs for these tasks in a single query

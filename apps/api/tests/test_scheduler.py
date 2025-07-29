@@ -6,11 +6,24 @@ import pytest
 from datetime import datetime
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
+from uuid import uuid4
 
 from main import app
 from models import User, Project, Goal, Task
+from auth import get_current_user_id
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def mock_auth():
+    """Automatically mock authentication for all tests in this module."""
+    user_id = str(uuid4())
+    def mock_get_user_id():
+        return user_id
+    app.dependency_overrides[get_current_user_id] = mock_get_user_id
+    yield user_id
+    app.dependency_overrides.clear()
 
 
 class TestSchedulerAPI:
@@ -25,28 +38,39 @@ class TestSchedulerAPI:
         assert data["status"] == "success"
         assert "Scheduler package imported successfully" in data["message"]
     
-    @patch("routers.scheduler.get_current_user_id")
-    @patch("routers.scheduler.get_session")
-    @patch("routers.scheduler.TaskService.get_tasks_by_goal")
-    def test_create_daily_schedule_success(self, mock_get_tasks, mock_session, mock_user_id):
+    @patch("routers.scheduler.goal_service.get_goal")
+    @patch("routers.scheduler.db.get_session")
+    @patch("routers.scheduler.task_service.get_tasks_by_goal")
+    def test_create_daily_schedule_success(self, mock_get_tasks, mock_session, mock_get_goal, mock_auth):
         """Test successful daily schedule creation."""
-        # Mock dependencies
-        mock_user_id.return_value = "user123"
-        mock_session.return_value = MagicMock()
+        # Mock session as generator
+        mock_sess = MagicMock()
+        def session_generator():
+            yield mock_sess
+        mock_session.return_value = session_generator()
         
-        # Mock task data
+        # Mock task data with valid UUIDs
+        goal_id = str(uuid4())
+        task_id = str(uuid4())
+        
         mock_task = MagicMock()
-        mock_task.id = "task1"
+        mock_task.id = task_id
         mock_task.title = "Test Task"
         mock_task.estimate_hours = 2.0
         mock_task.status = "pending"
         mock_task.due_date = None
-        mock_task.goal_id = "goal1"
+        mock_task.goal_id = goal_id
         mock_get_tasks.return_value = [mock_task]
+        
+        # Mock goal data
+        project_id = str(uuid4())
+        mock_goal = MagicMock()
+        mock_goal.project_id = project_id
+        mock_get_goal.return_value = mock_goal
         
         request_data = {
             "date": "2025-06-23",
-            "goal_id": "goal1",
+            "goal_id": goal_id,
             "time_slots": [
                 {
                     "start": "09:00",
@@ -56,6 +80,7 @@ class TestSchedulerAPI:
             ]
         }
         
+        # No need for auth header since we're using dependency override
         response = client.post("/api/schedule/daily", json=request_data)
         
         assert response.status_code == 200
@@ -65,28 +90,39 @@ class TestSchedulerAPI:
         assert "unscheduled_tasks" in data
         assert data["date"] == "2025-06-23"
     
-    @patch("routers.scheduler.get_current_user_id")
-    @patch("routers.scheduler.get_session")
-    @patch("routers.scheduler.TaskService.get_tasks_by_project")
-    def test_create_daily_schedule_by_project(self, mock_get_tasks, mock_session, mock_user_id):
+    @patch("routers.scheduler.goal_service.get_goal")
+    @patch("routers.scheduler.db.get_session")
+    @patch("routers.scheduler.task_service.get_tasks_by_project")
+    def test_create_daily_schedule_by_project(self, mock_get_tasks, mock_session, mock_get_goal, mock_auth):
         """Test daily schedule creation filtered by project."""
-        # Mock dependencies
-        mock_user_id.return_value = "user123"
-        mock_session.return_value = MagicMock()
+        # Mock session as generator
+        mock_sess = MagicMock()
+        def session_generator():
+            yield mock_sess
+        mock_session.return_value = session_generator()
         
-        # Mock task data
+        # Mock task data with valid UUIDs
+        project_id = str(uuid4())
+        goal_id = str(uuid4())
+        task_id = str(uuid4())
+        
         mock_task = MagicMock()
-        mock_task.id = "task1"
+        mock_task.id = task_id
         mock_task.title = "Project Task"
         mock_task.estimate_hours = 1.5
         mock_task.status = "in_progress"
         mock_task.due_date = datetime(2025, 6, 25)
-        mock_task.goal_id = "goal1"
+        mock_task.goal_id = goal_id
         mock_get_tasks.return_value = [mock_task]
+        
+        # Mock goal data
+        mock_goal = MagicMock()
+        mock_goal.project_id = project_id
+        mock_get_goal.return_value = mock_goal
         
         request_data = {
             "date": "2025-06-23",
-            "project_id": "project1",
+            "project_id": project_id,
             "time_slots": [
                 {
                     "start": "14:00",
@@ -96,7 +132,9 @@ class TestSchedulerAPI:
             ]
         }
         
-        response = client.post("/api/schedule/daily", json=request_data)
+        # Add auth header
+        headers = {"Authorization": "Bearer fake_token"}
+        response = client.post("/api/schedule/daily", json=request_data, headers=headers)
         
         assert response.status_code == 200
         data = response.json()
@@ -104,10 +142,8 @@ class TestSchedulerAPI:
         assert isinstance(data["assignments"], list)
         assert isinstance(data["unscheduled_tasks"], list)
     
-    @patch("routers.scheduler.get_current_user_id")
-    def test_create_daily_schedule_no_filter(self, mock_user_id):
+    def test_create_daily_schedule_no_filter(self, mock_auth):
         """Test schedule creation without project_id or goal_id."""
-        mock_user_id.return_value = "user123"
         
         request_data = {
             "date": "2025-06-23",
@@ -120,7 +156,9 @@ class TestSchedulerAPI:
             ]
         }
         
-        response = client.post("/api/schedule/daily", json=request_data)
+        # Add auth header
+        headers = {"Authorization": "Bearer fake_token"}
+        response = client.post("/api/schedule/daily", json=request_data, headers=headers)
         
         assert response.status_code == 400
         data = response.json()
@@ -140,7 +178,9 @@ class TestSchedulerAPI:
             ]
         }
         
-        response = client.post("/api/schedule/daily", json=request_data)
+        # Add auth header
+        headers = {"Authorization": "Bearer fake_token"}
+        response = client.post("/api/schedule/daily", json=request_data, headers=headers)
         
         assert response.status_code == 422  # Validation error
     
@@ -158,7 +198,9 @@ class TestSchedulerAPI:
             ]
         }
         
-        response = client.post("/api/schedule/daily", json=request_data)
+        # Add auth header
+        headers = {"Authorization": "Bearer fake_token"}
+        response = client.post("/api/schedule/daily", json=request_data, headers=headers)
         
         assert response.status_code == 422  # Validation error
     
@@ -170,7 +212,9 @@ class TestSchedulerAPI:
             "time_slots": []
         }
         
-        response = client.post("/api/schedule/daily", json=request_data)
+        # Add auth header
+        headers = {"Authorization": "Bearer fake_token"}
+        response = client.post("/api/schedule/daily", json=request_data, headers=headers)
         
         assert response.status_code == 422  # Validation error
     
@@ -228,14 +272,18 @@ class TestSchedulerAPI:
         assert map_slot_kind("meeting") == SlotKind.MEETING
         assert map_slot_kind("unknown") == SlotKind.LIGHT  # Default
     
-    @patch("routers.scheduler.get_current_user_id")
-    @patch("routers.scheduler.get_session")
-    @patch("routers.scheduler.TaskService.get_tasks_by_goal")
+    @patch("routers.scheduler.goal_service.get_goal")
+    @patch("routers.scheduler.db.get_session")
+    @patch("routers.scheduler.task_service.get_tasks_by_goal")
     def test_create_daily_schedule_no_tasks(self, mock_get_tasks, mock_session, mock_user_id):
         """Test schedule creation when no tasks are found."""
         # Mock dependencies
         mock_user_id.return_value = "user123"
-        mock_session.return_value = MagicMock()
+        # Mock session as generator
+        mock_sess = MagicMock()
+        def session_generator():
+            yield mock_sess
+        mock_session.return_value = session_generator()
         mock_get_tasks.return_value = []  # No tasks
         
         request_data = {
@@ -250,7 +298,9 @@ class TestSchedulerAPI:
             ]
         }
         
-        response = client.post("/api/schedule/daily", json=request_data)
+        # Add auth header
+        headers = {"Authorization": "Bearer fake_token"}
+        response = client.post("/api/schedule/daily", json=request_data, headers=headers)
         
         assert response.status_code == 200
         data = response.json()
@@ -259,14 +309,18 @@ class TestSchedulerAPI:
         assert len(data["unscheduled_tasks"]) == 0
         assert data["optimization_status"] == "NO_TASKS"
     
-    @patch("routers.scheduler.get_current_user_id")
-    @patch("routers.scheduler.get_session")
-    @patch("routers.scheduler.TaskService.get_tasks_by_goal")
+    @patch("routers.scheduler.goal_service.get_goal")
+    @patch("routers.scheduler.db.get_session")
+    @patch("routers.scheduler.task_service.get_tasks_by_goal")
     def test_create_daily_schedule_completed_tasks_filtered(self, mock_get_tasks, mock_session, mock_user_id):
         """Test that completed tasks are filtered out from scheduling."""
         # Mock dependencies
         mock_user_id.return_value = "user123"
-        mock_session.return_value = MagicMock()
+        # Mock session as generator
+        mock_sess = MagicMock()
+        def session_generator():
+            yield mock_sess
+        mock_session.return_value = session_generator()
         
         # Mock tasks with different statuses
         mock_task_pending = MagicMock()
@@ -299,7 +353,9 @@ class TestSchedulerAPI:
             ]
         }
         
-        response = client.post("/api/schedule/daily", json=request_data)
+        # Add auth header
+        headers = {"Authorization": "Bearer fake_token"}
+        response = client.post("/api/schedule/daily", json=request_data, headers=headers)
         
         assert response.status_code == 200
         data = response.json()

@@ -101,3 +101,12 @@ class Database:
 
 # Global database instance
 db = Database()
+
+# Dependency for FastAPI
+def get_db() -> Generator[Session, None, None]:
+    """FastAPI dependency to get database session"""
+    yield from db.get_session()
+
+# SQLModel Base for tests
+from sqlmodel import SQLModel
+Base = SQLModel.metadata

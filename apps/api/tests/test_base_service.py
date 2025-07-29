@@ -11,21 +11,26 @@ from common.error_handlers import ResourceNotFoundError, ValidationError
 from models import Project, ProjectCreate, ProjectUpdate
 
 
-class TestProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
-    """Test service implementation"""
+def create_test_project_service():
+    """Factory function to create test service instance"""
     
-    def __init__(self):
-        super().__init__(Project)
+    class TestProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
+        """Test service implementation"""
+        
+        def __init__(self):
+            super().__init__(Project)
+        
+        def _create_instance(self, data: ProjectCreate, user_id, **kwargs) -> Project:
+            return Project(
+                owner_id=user_id,
+                title=data.title,
+                description=data.description,
+            )
+        
+        def _get_user_filter(self, user_id):
+            return Project.owner_id == user_id
     
-    def _create_instance(self, data: ProjectCreate, user_id, **kwargs) -> Project:
-        return Project(
-            owner_id=user_id,
-            title=data.title,
-            description=data.description,
-        )
-    
-    def _get_user_filter(self, user_id):
-        return Project.owner_id == user_id
+    return TestProjectService()
 
 
 @pytest.fixture
@@ -46,7 +51,7 @@ def session(memory_db):
 @pytest.fixture
 def service():
     """Create test service instance"""
-    return TestProjectService()
+    return create_test_project_service()
 
 
 @pytest.fixture

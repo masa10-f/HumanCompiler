@@ -1,9 +1,10 @@
 import logging
 import time
 from collections import defaultdict
-from typing import Dict
+from typing import Dict, Optional
 
-from fastapi import Depends, HTTPException, status, Request
+from fastapi import Depends, HTTPException, status
+from starlette.requests import Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import Session
 
@@ -86,18 +87,12 @@ async def ensure_user_exists(user_id: str, email: str) -> None:
         # Don't raise exception - user might already exist due to race condition
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    request: Request | None = None
+    credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> AuthUser:
     """
     Extract and validate user from JWT token
     """
     try:
-        # Apply rate limiting if request is available
-        if request and request.client:
-            client_ip = request.client.host or "unknown"
-            _check_rate_limit(client_ip)
-        
         token = credentials.credentials
         
 
@@ -146,10 +141,10 @@ async def get_current_user(
         )
 
 async def get_optional_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(
         HTTPBearer(auto_error=False)
     )
-) -> AuthUser | None:
+) -> Optional[AuthUser]:
     """
     Optional authentication - returns None if no token provided
     """
@@ -157,8 +152,7 @@ async def get_optional_user(
         return None
 
     try:
-        # Pass None for the request parameter as rate limiting handles None cases
-        return await get_current_user(credentials, None)
+        return await get_current_user(credentials)
     except HTTPException:
         return None
 
