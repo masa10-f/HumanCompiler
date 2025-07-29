@@ -52,6 +52,9 @@ class Settings(BaseSettings):
         # Relax validation for production deployment testing
         if os.environ.get('ENVIRONMENT') != 'production' and len(v) < 32:
             raise ValueError('Invalid Supabase key format')
+        # Allow short test keys in production for deployment testing
+        if os.environ.get('ENVIRONMENT') == 'production':
+            return v
         return v
     
     @field_validator('database_url')
