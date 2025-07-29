@@ -1,7 +1,13 @@
 import os
+import sys
 import pytest
 from typing import AsyncGenerator
 from unittest.mock import patch, AsyncMock
+
+# Add scheduler package to Python path for monorepo structure
+scheduler_package_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'packages')
+if scheduler_package_path not in sys.path:
+    sys.path.insert(0, scheduler_package_path)
 
 # Set test environment variables before importing any application code
 os.environ.update({

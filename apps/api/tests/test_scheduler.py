@@ -249,8 +249,7 @@ class TestSchedulerAPI:
     
     def test_task_kind_mapping(self):
         """Test task kind mapping function."""
-        from routers.scheduler import map_task_kind
-        from scheduler.models import TaskKind
+        from routers.scheduler import map_task_kind, TaskKind
         
         # Test mapping
         assert map_task_kind("Research Project") == TaskKind.DEEP
@@ -262,8 +261,7 @@ class TestSchedulerAPI:
     
     def test_slot_kind_mapping(self):
         """Test slot kind mapping function."""
-        from routers.scheduler import map_slot_kind
-        from scheduler.models import SlotKind
+        from routers.scheduler import map_slot_kind, SlotKind
         
         # Test mapping
         assert map_slot_kind("deep") == SlotKind.DEEP

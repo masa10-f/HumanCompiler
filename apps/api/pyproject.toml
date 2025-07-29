@@ -15,6 +15,7 @@ dependencies = [
     "openai>=1.30.0",
     "langgraph>=0.1.0",
     "httpx>=0.25.0",
+    "scheduler @ file://../../packages/scheduler",
 ]
 
 [project.optional-dependencies]
