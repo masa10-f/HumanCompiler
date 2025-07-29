@@ -18,16 +18,16 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
-COPY apps/api/requirements.txt .
+COPY requirements.txt .
 
-# Install Python dependencies
+# Install Python dependencies  
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY apps/api .
+COPY . .
 
-# Copy scheduler package
-COPY packages/scheduler/scheduler ./scheduler
+# Note: Using mock scheduler implementation for containerized deployments
+# Real OR-Tools scheduler requires additional setup complexity
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash appuser && \

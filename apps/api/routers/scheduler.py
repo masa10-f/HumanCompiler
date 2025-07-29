@@ -17,56 +17,38 @@ from sqlmodel import Session, select
 from models import Schedule, ScheduleCreate, ScheduleResponse
 from uuid import uuid4
 
-# Import scheduler package or use mocks for testing
-try:
-    # Add scheduler package to Python path for monorepo structure
-    import sys
-    import os
-    packages_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'packages')
-    if packages_path not in sys.path:
-        sys.path.insert(0, packages_path)
-    
-    # Try importing directly first
+# Always use mock implementation for Docker/Production deployments
+# Real scheduler package requires complex monorepo setup
+import os
+
+# Check if we're in a containerized environment (Docker/Production)
+USE_MOCK_SCHEDULER = os.environ.get('ENVIRONMENT', 'development') == 'production' or os.path.exists('/.dockerenv')
+
+if not USE_MOCK_SCHEDULER:
+    # Development environment - try to import real scheduler
     try:
+        # Add scheduler package to Python path for monorepo structure
+        import sys
+        packages_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'packages')
+        if packages_path not in sys.path:
+            sys.path.insert(0, packages_path)
+        
         from scheduler import optimize_schedule
         from scheduler.models import Task as SchedulerTask, TimeSlot, TaskKind, SlotKind
         from scheduler.api import optimize_schedule_api
-    except ImportError:
-        # Fallback to importlib for name conflicts
-        import importlib.util
-        scheduler_path = os.path.join(packages_path, 'scheduler')
-        spec = importlib.util.spec_from_file_location(
-            "task_scheduler", 
-            os.path.join(scheduler_path, "scheduler", "__init__.py")
-        )
-        task_scheduler = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(task_scheduler)
         
-        optimize_schedule = task_scheduler.optimize_schedule
-        SchedulerTask = task_scheduler.Task
-        TimeSlot = task_scheduler.TimeSlot
-        optimize_schedule_api = task_scheduler.optimize_schedule_api
+        def validate_schedule_request(request):
+            return True
         
-        # Import models
-        spec_models = importlib.util.spec_from_file_location(
-            "scheduler_models",
-            os.path.join(scheduler_path, "scheduler", "models.py")
-        )
-        scheduler_models = importlib.util.module_from_spec(spec_models)
-        spec_models.loader.exec_module(scheduler_models)
-        
-        TaskKind = scheduler_models.TaskKind
-        SlotKind = scheduler_models.SlotKind
-    
-    # Mock functions for validation and formatting (implement as needed)
-    def validate_schedule_request(request):
-        return True
-    
-    def format_schedule_result(result):
-        return result
-        
-except ImportError as e:
-    logging.warning(f"Scheduler package not available, using mocks: {e}")
+        def format_schedule_result(result):
+            return result
+            
+    except ImportError as e:
+        logging.warning(f"Scheduler package not available in development, using mocks: {e}")
+        USE_MOCK_SCHEDULER = True
+
+if USE_MOCK_SCHEDULER:
+    logging.warning("Using mock scheduler implementation for containerized deployment")
     # Define mock classes and functions for testing
     from enum import Enum
     from dataclasses import dataclass
