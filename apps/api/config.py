@@ -31,7 +31,13 @@ class Settings(BaseSettings):
     environment: str = Field(default="development", pattern="^(development|staging|production|test)$")
     
     # CORS Configuration
-    cors_origins: list[str] | str = ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000"]
+    cors_origins: list[str] | str = [
+        "http://localhost:3000", 
+        "http://localhost:3001", 
+        "http://127.0.0.1:3000",
+        "https://taskagent-three.vercel.app",
+        "https://*.vercel.app"
+    ]
     
     @field_validator('supabase_url')
     @classmethod
