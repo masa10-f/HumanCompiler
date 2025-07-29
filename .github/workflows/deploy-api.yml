@@ -30,8 +30,10 @@ jobs:
         working-directory: ./apps/api
         run: |
           python -m pip install --upgrade pip
-          # Install API package and all dependencies including local scheduler
-          pip install -e .
+          # Install scheduler package from monorepo first
+          pip install -e ../../packages/scheduler
+          # Install other dependencies
+          pip install -r requirements.txt
 
       - name: 🔍 Run linting
         working-directory: ./apps/api
