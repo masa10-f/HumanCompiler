@@ -75,8 +75,8 @@ jobs:
       - name: ✅ Deployment notification
         if: success()
         run: |
-          echo "🎉 API successfully deployed to: https://taskagent-api.fly.dev"
-          echo "📊 API Documentation: https://taskagent-api.fly.dev/docs"
+          echo "🎉 API successfully deployed to: https://taskagent-api-masa.fly.dev"
+          echo "📊 API Documentation: https://taskagent-api-masa.fly.dev/docs"
 
       - name: ❌ Deployment failure notification
         if: failure()
@@ -96,7 +96,7 @@ jobs:
 
       - name: 🏥 Check API health
         run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" https://taskagent-api.fly.dev/health)
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://taskagent-api-masa.fly.dev/health)
           if [ $response -eq 200 ]; then
             echo "✅ Health check passed (HTTP $response)"
           else
@@ -106,7 +106,7 @@ jobs:
 
       - name: 📝 Verify API documentation
         run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" https://taskagent-api.fly.dev/docs)
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://taskagent-api-masa.fly.dev/docs)
           if [ $response -eq 200 ]; then
             echo "✅ API documentation accessible (HTTP $response)"
           else
