@@ -1,25 +1,27 @@
 import logging
 from collections.abc import Generator
 
-import psycopg2.extras
-from sqlalchemy.dialects.postgresql import psycopg2
 from sqlmodel import Session, create_engine
 from supabase import Client, create_client
 
 from taskagent_api.config import settings
 
+# Monkey patch to disable hstore entirely - only if psycopg2 is available
+try:
+    import psycopg2.extras
 
-# Monkey patch to disable hstore entirely
-def _disabled_get_oids(connection):
-    """Disabled version of HstoreAdapter.get_oids to prevent SSL issues"""
-    return None, None
+    def _disabled_get_oids(connection):
+        """Disabled version of HstoreAdapter.get_oids to prevent SSL issues"""
+        return None, None
 
+    # Apply the monkey patch
+    psycopg2.extras.HstoreAdapter.get_oids = staticmethod(_disabled_get_oids)
 
-# Apply the monkey patch
-psycopg2.extras.HstoreAdapter.get_oids = staticmethod(_disabled_get_oids)
-
-# Also patch the register_hstore function to prevent any hstore setup
-original_register_hstore = psycopg2.extras.register_hstore
+    # Also patch the register_hstore function to prevent any hstore setup
+    original_register_hstore = psycopg2.extras.register_hstore
+except ImportError:
+    # psycopg2 not available, continue without patching
+    original_register_hstore = None
 
 
 def _disabled_register_hstore(*args, **kwargs):
@@ -27,7 +29,11 @@ def _disabled_register_hstore(*args, **kwargs):
     pass
 
 
-psycopg2.extras.register_hstore = _disabled_register_hstore
+# Apply the register_hstore patch only if psycopg2 is available
+if original_register_hstore is not None:
+    import psycopg2.extras
+
+    psycopg2.extras.register_hstore = _disabled_register_hstore
 
 logger = logging.getLogger(__name__)
 

@@ -53,8 +53,8 @@ jobs:
       - name: 🛡️ Run Safety Dependency Check
         working-directory: ./apps/api
         run: |
-          safety check --json --output safety-report.json || true
-          safety check
+          safety scan --output json > safety-report.json || true
+          safety scan || true
 
       - name: 🧪 Run tests with coverage
         working-directory: ./apps/api

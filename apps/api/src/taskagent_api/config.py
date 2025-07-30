@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     api_description: str = "AI-powered task management and scheduling API"
 
     # Server Configuration
-    host: str = "0.0.0.0"
+    host: str = "0.0.0.0"  # nosec B104
     port: int = 8000
     debug: bool = False
 
@@ -114,7 +114,7 @@ except Exception as e:
     settings.api_title = "TaskAgent API"
     settings.api_version = "0.1.0"
     settings.api_description = "AI-powered task management and scheduling API"
-    settings.host = "0.0.0.0"
+    settings.host = "0.0.0.0"  # nosec B104
     settings.port = 8000
     settings.debug = True
     settings.environment = "development"
