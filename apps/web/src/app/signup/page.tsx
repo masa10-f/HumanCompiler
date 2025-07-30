@@ -20,7 +20,7 @@ export default function SignUpPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!email || !password || !confirmPassword) {
       toast({
         title: 'エラー',
@@ -51,12 +51,12 @@ export default function SignUpPage() {
     try {
       setLoading(true)
       await signUp(email, password)
-      
+
       toast({
         title: '登録完了',
         description: 'メールアドレスに確認メールを送信しました。',
       })
-      
+
       router.push('/login')
     } catch (error: unknown) {
       toast({
@@ -118,7 +118,7 @@ export default function SignUpPage() {
               アカウント作成
             </Button>
           </form>
-          
+
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600 dark:text-gray-400">
               すでにアカウントをお持ちの方は{' '}

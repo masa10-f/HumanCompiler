@@ -15,10 +15,10 @@ export default function ProjectsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { projects, loading, error, createProject, refetch } = useProjects();
-  
+
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [creating, setCreating] = useState(false);
-  
+
   // Form state
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -30,12 +30,12 @@ export default function ProjectsPage() {
     try {
       setCreating(true);
       console.log('[Projects] Creating:', { title, description });
-      
+
       await createProject({
         title: title.trim(),
         description: description.trim() || undefined,
       });
-      
+
       console.log('[Projects] Project created successfully');
       setTitle('');
       setDescription('');
@@ -73,29 +73,29 @@ export default function ProjectsPage() {
                 TaskAgent
               </h1>
               <nav className="hidden md:flex space-x-4">
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   onClick={() => router.push('/dashboard')}
                   className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
                 >
                   ダッシュボード
                 </Button>
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   onClick={() => router.push('/projects')}
                   className="text-gray-900 dark:text-white font-medium"
                 >
                   プロジェクト
                 </Button>
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   onClick={() => router.push('/ai-planning')}
                   className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
                 >
                   AI計画
                 </Button>
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   onClick={() => router.push('/scheduling')}
                   className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
                 >
@@ -121,7 +121,7 @@ export default function ProjectsPage() {
             <h1 className="text-3xl font-bold">プロジェクト一覧</h1>
             <p className="text-gray-600 mt-2">研究・開発プロジェクトを管理します。</p>
           </div>
-          <Button 
+          <Button
             onClick={() => setShowCreateForm(true)}
             className="flex items-center gap-2"
           >
@@ -133,9 +133,9 @@ export default function ProjectsPage() {
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-red-800">{error}</p>
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               className="mt-2"
               onClick={refetch}
             >
@@ -211,7 +211,7 @@ export default function ProjectsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button 
+              <Button
                 onClick={() => setShowCreateForm(true)}
                 className="flex items-center gap-2"
               >
@@ -223,8 +223,8 @@ export default function ProjectsPage() {
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {projects.map((project) => (
-              <Card 
-                key={project.id} 
+              <Card
+                key={project.id}
                 className="hover:shadow-lg transition-shadow cursor-pointer"
                 onClick={() => router.push(`/projects/${project.id}`)}
               >

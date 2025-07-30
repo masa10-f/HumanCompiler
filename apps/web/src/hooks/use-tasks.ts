@@ -19,7 +19,7 @@ export function useTasks(goalId: string): UseTasksReturn {
 
   const fetchTasks = useCallback(async () => {
     if (!goalId) return;
-    
+
     try {
       setLoading(true);
       setError(null);
@@ -50,7 +50,7 @@ export function useTasks(goalId: string): UseTasksReturn {
     try {
       setError(null);
       const updatedTask = await tasksApi.update(id, data);
-      setTasks(prev => prev.map(task => 
+      setTasks(prev => prev.map(task =>
         task.id === id ? updatedTask : task
       ));
     } catch (err) {
@@ -93,7 +93,7 @@ export function useProjectTasks(projectId: string): UseTasksReturn {
 
   const fetchTasks = useCallback(async () => {
     if (!projectId) return;
-    
+
     try {
       setLoading(true);
       setError(null);
@@ -121,7 +121,7 @@ export function useProjectTasks(projectId: string): UseTasksReturn {
     try {
       setError(null);
       const updatedTask = await tasksApi.update(id, data);
-      setTasks(prev => prev.map(task => 
+      setTasks(prev => prev.map(task =>
         task.id === id ? updatedTask : task
       ));
     } catch (err) {

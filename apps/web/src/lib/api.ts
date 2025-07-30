@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
-import type { 
-  Project, 
-  ProjectCreate, 
+import type {
+  Project,
+  ProjectCreate,
   ProjectUpdate
 } from '@/types/project';
 import type {
@@ -23,9 +23,9 @@ import type {
   ScheduleResult
 } from '@/types/ai-planning';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 
-  (process.env.NODE_ENV === 'production' 
-    ? 'https://taskagent-api-masa.fly.dev' 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ||
+  (process.env.NODE_ENV === 'production'
+    ? 'https://taskagent-api-masa.fly.dev'
     : 'http://localhost:8000');
 
 // API client configuration
@@ -38,7 +38,7 @@ class ApiClient {
 
   private async getAuthHeaders(): Promise<HeadersInit> {
     const { data: { session } } = await supabase.auth.getSession();
-    
+
     if (!session?.access_token) {
       throw new Error('User not authenticated');
     }
@@ -55,7 +55,7 @@ class ApiClient {
   ): Promise<T> {
     try {
       const headers = await this.getAuthHeaders();
-      
+
       const response = await fetch(`${this.baseURL}${endpoint}`, {
         ...options,
         headers: {
@@ -223,7 +223,7 @@ class ApiClient {
     const params = new URLSearchParams();
     if (skip !== undefined) params.append('skip', skip.toString());
     if (limit !== undefined) params.append('limit', limit.toString());
-    
+
     return this.request<any[]>(`/api/schedule/daily/list?${params.toString()}`);
   }
 
@@ -244,7 +244,7 @@ export const projectsApi = {
 };
 
 export const goalsApi = {
-  getByProject: (projectId: string, skip?: number, limit?: number) => 
+  getByProject: (projectId: string, skip?: number, limit?: number) =>
     apiClient.getGoalsByProject(projectId, skip, limit),
   getById: (id: string) => apiClient.getGoal(id),
   create: (data: GoalCreate) => apiClient.createGoal(data),
@@ -253,9 +253,9 @@ export const goalsApi = {
 };
 
 export const tasksApi = {
-  getByGoal: (goalId: string, skip?: number, limit?: number) => 
+  getByGoal: (goalId: string, skip?: number, limit?: number) =>
     apiClient.getTasksByGoal(goalId, skip, limit),
-  getByProject: (projectId: string, skip?: number, limit?: number) => 
+  getByProject: (projectId: string, skip?: number, limit?: number) =>
     apiClient.getTasksByProject(projectId, skip, limit),
   getById: (id: string) => apiClient.getTask(id),
   create: (data: TaskCreate) => apiClient.createTask(data),

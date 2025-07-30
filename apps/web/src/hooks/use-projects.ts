@@ -22,7 +22,7 @@ export function useProjects(): UseProjectsReturn {
       setLoading(true);
       setError(null);
       console.log('[useProjects] Fetching projects...');
-      
+
       const data = await projectsApi.getAll();
       console.log('[useProjects] Success:', data);
       setProjects(data);
@@ -38,10 +38,10 @@ export function useProjects(): UseProjectsReturn {
     try {
       setError(null);
       console.log('[useProjects] Creating project:', data);
-      
+
       const newProject = await projectsApi.create(data);
       console.log('[useProjects] Created project:', newProject);
-      
+
       setProjects(prev => [...prev, newProject]);
     } catch (err) {
       console.error('[useProjects] Create error:', err);
@@ -54,7 +54,7 @@ export function useProjects(): UseProjectsReturn {
     try {
       setError(null);
       const updatedProject = await projectsApi.update(id, data);
-      setProjects(prev => prev.map(project => 
+      setProjects(prev => prev.map(project =>
         project.id === id ? updatedProject : project
       ));
     } catch (err) {
@@ -76,15 +76,15 @@ export function useProjects(): UseProjectsReturn {
 
   useEffect(() => {
     let mounted = true;
-    
+
     const loadProjects = async () => {
       if (!mounted) return;
       console.log('[useProjects] Component mounted, fetching projects...');
       await fetchProjects();
     };
-    
+
     loadProjects();
-    
+
     return () => {
       mounted = false;
     };
