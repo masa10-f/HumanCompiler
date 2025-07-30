@@ -5,114 +5,130 @@ OpenAI client wrapper for AI services
 import json
 import logging
 from datetime import datetime
-from typing import Optional
 
 from openai import OpenAI
 
-from taskagent_api.config import settings
 from taskagent_api.ai.models import TaskPlan, WeeklyPlanContext, WeeklyPlanResponse
 from taskagent_api.ai.prompts import (
     create_system_prompt,
     create_weekly_plan_user_message,
     get_function_definitions,
 )
+from taskagent_api.config import settings
 
 logger = logging.getLogger(__name__)
 
 
 class OpenAIClient:
     """OpenAI client for AI services"""
-    
+
     def __init__(self):
         """Initialize OpenAI client"""
-        if not settings.openai_api_key or settings.openai_api_key == "your_openai_api_key":
-            logger.warning("OpenAI API key not configured - AI features will not be available")
+        if (
+            not settings.openai_api_key
+            or settings.openai_api_key == "your_openai_api_key"
+        ):
+            logger.warning(
+                "OpenAI API key not configured - AI features will not be available"
+            )
             self.client = None
             self.model = "gpt-4-1106-preview"  # GPT-4 Turbo with function calling
         else:
             self.client = OpenAI(api_key=settings.openai_api_key)
             self.model = "gpt-4-1106-preview"  # GPT-4 Turbo with function calling
-    
+
     def is_available(self) -> bool:
         """Check if OpenAI client is available"""
         return self.client is not None
-    
-    async def generate_weekly_plan(self, context: WeeklyPlanContext) -> WeeklyPlanResponse:
+
+    async def generate_weekly_plan(
+        self, context: WeeklyPlanContext
+    ) -> WeeklyPlanResponse:
         """Generate weekly plan using OpenAI API"""
         try:
             logger.info(f"Generating weekly plan for user {context.user_id}")
-            
+
             # Check if OpenAI client is available
             if not self.is_available():
                 return self._create_unavailable_response(context)
-            
+
             # Create messages
             system_message = create_system_prompt()
             user_message = create_weekly_plan_user_message(context)
-            
+
             # Call OpenAI API
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system_message},
-                    {"role": "user", "content": user_message}
+                    {"role": "user", "content": user_message},
                 ],
                 functions=get_function_definitions(),
                 function_call={"name": "create_week_plan"},
                 temperature=0.7,
-                max_tokens=2000
+                max_tokens=2000,
             )
-            
+
             # Parse function call response
             function_call = response.choices[0].message.function_call
             if function_call and function_call.name == "create_week_plan":
                 return self._parse_function_response(function_call, context)
             else:
                 logger.error("OpenAI did not return expected function call")
-                return self._create_error_response(context, "Failed to generate plan - please try again")
-                
+                return self._create_error_response(
+                    context, "Failed to generate plan - please try again"
+                )
+
         except Exception as e:
             logger.error(f"Error generating weekly plan: {e}")
-            return self._create_error_response(context, f"Error generating plan: {str(e)}")
-    
-    def _create_unavailable_response(self, context: WeeklyPlanContext) -> WeeklyPlanResponse:
+            return self._create_error_response(
+                context, f"Error generating plan: {str(e)}"
+            )
+
+    def _create_unavailable_response(
+        self, context: WeeklyPlanContext
+    ) -> WeeklyPlanResponse:
         """Create response when OpenAI is unavailable"""
         return WeeklyPlanResponse(
             success=False,
-            week_start_date=context.week_start_date.strftime('%Y-%m-%d'),
+            week_start_date=context.week_start_date.strftime("%Y-%m-%d"),
             total_planned_hours=0.0,
             task_plans=[],
             recommendations=["OpenAI API key not configured - AI features unavailable"],
             insights=["Please configure OPENAI_API_KEY to enable AI planning"],
-            generated_at=datetime.now()
+            generated_at=datetime.now(),
         )
-    
-    def _create_error_response(self, context: WeeklyPlanContext, error_message: str) -> WeeklyPlanResponse:
+
+    def _create_error_response(
+        self, context: WeeklyPlanContext, error_message: str
+    ) -> WeeklyPlanResponse:
         """Create error response"""
         return WeeklyPlanResponse(
             success=False,
-            week_start_date=context.week_start_date.strftime('%Y-%m-%d'),
+            week_start_date=context.week_start_date.strftime("%Y-%m-%d"),
             total_planned_hours=0.0,
             task_plans=[],
             recommendations=[error_message],
             insights=["Please check OpenAI API configuration and try again"],
-            generated_at=datetime.now()
+            generated_at=datetime.now(),
         )
-    
-    def _parse_function_response(self, function_call, context: WeeklyPlanContext) -> WeeklyPlanResponse:
+
+    def _parse_function_response(
+        self, function_call, context: WeeklyPlanContext
+    ) -> WeeklyPlanResponse:
         """Parse OpenAI function call response"""
         try:
             function_args = json.loads(function_call.arguments)
-            
+
             # Convert to our response format
             task_plans = []
             for plan in function_args.get("task_plans", []):
                 # Find task title
                 task_title = next(
-                    (t.title for t in context.tasks if t.id == plan["task_id"]), 
-                    "Unknown Task"
+                    (t.title for t in context.tasks if t.id == plan["task_id"]),
+                    "Unknown Task",
                 )
-                
+
                 task_plan = TaskPlan(
                     task_id=plan["task_id"],
                     task_title=task_title,
@@ -120,20 +136,20 @@ class OpenAIClient:
                     priority=plan["priority"],
                     suggested_day=plan["suggested_day"],
                     suggested_time_slot=plan["suggested_time_slot"],
-                    rationale=plan["rationale"]
+                    rationale=plan["rationale"],
                 )
                 task_plans.append(task_plan)
-            
+
             total_hours = sum(plan.estimated_hours for plan in task_plans)
-            
+
             return WeeklyPlanResponse(
                 success=True,
-                week_start_date=context.week_start_date.strftime('%Y-%m-%d'),
+                week_start_date=context.week_start_date.strftime("%Y-%m-%d"),
                 total_planned_hours=total_hours,
                 task_plans=task_plans,
                 recommendations=function_args.get("recommendations", []),
                 insights=function_args.get("insights", []),
-                generated_at=datetime.now()
+                generated_at=datetime.now(),
             )
         except Exception as e:
             logger.error(f"Error parsing function response: {e}")

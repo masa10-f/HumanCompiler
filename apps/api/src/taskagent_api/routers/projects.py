@@ -37,7 +37,9 @@ async def create_project(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> ProjectResponse:
     """Create a new project"""
-    project = project_service.create_project(session, project_data, current_user.user_id)
+    project = project_service.create_project(
+        session, project_data, current_user.user_id
+    )
     return ProjectResponse.model_validate(project)
 
 
@@ -54,23 +56,28 @@ async def get_projects(
     """Get projects for current user"""
     import logging
     import time
+
     logger = logging.getLogger(__name__)
-    
+
     start_time = time.time()
     logger.info(f"📋 Getting projects for user {current_user.user_id}")
-    
+
     try:
         db_start = time.time()
-        projects = project_service.get_projects(session, current_user.user_id, skip, limit)
+        projects = project_service.get_projects(
+            session, current_user.user_id, skip, limit
+        )
         db_time = time.time() - db_start
-        
+
         response_start = time.time()
         result = [ProjectResponse.model_validate(project) for project in projects]
         response_time = time.time() - response_start
-        
+
         total_time = time.time() - start_time
-        logger.info(f"✅ Found {len(projects)} projects | DB: {db_time:.3f}s | Response: {response_time:.3f}s | Total: {total_time:.3f}s")
-        
+        logger.info(
+            f"✅ Found {len(projects)} projects | DB: {db_time:.3f}s | Response: {response_time:.3f}s | Total: {total_time:.3f}s"
+        )
+
         return result
     except Exception as e:
         logger.error(f"❌ Error getting projects: {e}")
@@ -93,8 +100,7 @@ async def get_project(
     project = project_service.get_project(session, project_id, current_user.user_id)
     if not project:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
         )
     return ProjectResponse.model_validate(project)
 
@@ -113,7 +119,9 @@ async def update_project(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> ProjectResponse:
     """Update specific project"""
-    project = project_service.update_project(session, project_id, current_user.user_id, project_data)
+    project = project_service.update_project(
+        session, project_id, current_user.user_id, project_data
+    )
     return ProjectResponse.model_validate(project)
 
 
@@ -134,12 +142,14 @@ async def delete_project(
         project_service.delete_project(session, project_id, current_user.user_id)
     except Exception as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error(f"Project deletion error: {e}")
         logger.error(f"Project ID: {project_id}, User ID: {current_user.user_id}")
         import traceback
+
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Project deletion failed: {str(e)}"
+            detail=f"Project deletion failed: {str(e)}",
         )

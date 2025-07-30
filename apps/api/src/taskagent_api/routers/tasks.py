@@ -55,7 +55,9 @@ async def get_tasks_by_goal(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[TaskResponse]:
     """Get tasks for specific goal"""
-    tasks = task_service.get_tasks_by_goal(session, goal_id, current_user.user_id, skip, limit)
+    tasks = task_service.get_tasks_by_goal(
+        session, goal_id, current_user.user_id, skip, limit
+    )
     return [TaskResponse.model_validate(task) for task in tasks]
 
 
@@ -74,7 +76,9 @@ async def get_tasks_by_project(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[TaskResponse]:
     """Get all tasks for specific project"""
-    tasks = task_service.get_tasks_by_project(session, project_id, current_user.user_id, skip, limit)
+    tasks = task_service.get_tasks_by_project(
+        session, project_id, current_user.user_id, skip, limit
+    )
     return [TaskResponse.model_validate(task) for task in tasks]
 
 
@@ -94,8 +98,7 @@ async def get_task(
     task = task_service.get_task(session, task_id, current_user.user_id)
     if not task:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Task not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
         )
     return TaskResponse.model_validate(task)
 

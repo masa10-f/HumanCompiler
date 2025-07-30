@@ -55,7 +55,9 @@ async def get_goals_by_project(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[GoalResponse]:
     """Get goals for specific project"""
-    goals = goal_service.get_goals_by_project(session, project_id, current_user.user_id, skip, limit)
+    goals = goal_service.get_goals_by_project(
+        session, project_id, current_user.user_id, skip, limit
+    )
     return [GoalResponse.model_validate(goal) for goal in goals]
 
 
@@ -75,8 +77,7 @@ async def get_goal(
     goal = goal_service.get_goal(session, goal_id, current_user.user_id)
     if not goal:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Goal not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found"
         )
     return GoalResponse.model_validate(goal)
 

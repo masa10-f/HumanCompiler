@@ -3,11 +3,10 @@ Refactored services using base service class
 """
 
 from datetime import datetime
-from typing import List, Optional, Union
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlmodel import Session, select, delete
+from sqlmodel import Session, delete, select
 
 from taskagent_api.base_service import BaseService
 from taskagent_api.models import (
@@ -20,7 +19,6 @@ from taskagent_api.models import (
     ProjectUpdate,
     Task,
     TaskCreate,
-    TaskStatus,
     TaskUpdate,
     User,
     UserCreate,
@@ -32,7 +30,9 @@ class UserService:
     """User service for authentication-related operations"""
 
     @staticmethod
-    def create_user(session: Session, user_data: UserCreate, user_id: Union[str, UUID]) -> User:
+    def create_user(
+        session: Session, user_data: UserCreate, user_id: str | UUID
+    ) -> User:
         """Create a new user or return existing one"""
         # Check if user already exists
         existing_user = session.get(User, user_id)
@@ -49,18 +49,19 @@ class UserService:
         return user
 
     @staticmethod
-    def get_user(session: Session, user_id: Union[str, UUID]) -> Optional[User]:
+    def get_user(session: Session, user_id: str | UUID) -> User | None:
         """Get user by ID"""
         return session.get(User, user_id)
 
     @staticmethod
-    def update_user(session: Session, user_id: Union[str, UUID], user_data: UserUpdate) -> User:
+    def update_user(
+        session: Session, user_id: str | UUID, user_data: UserUpdate
+    ) -> User:
         """Update user"""
         user = session.get(User, user_id)
         if not user:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
             )
 
         update_data = user_data.model_dump(exclude_unset=True)
@@ -76,46 +77,61 @@ class UserService:
 
 class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
     """Project service using base service"""
-    
+
     def __init__(self):
         super().__init__(Project)
-    
-    def _create_instance(self, data: ProjectCreate, user_id: Union[str, UUID], **kwargs) -> Project:
+
+    def _create_instance(
+        self, data: ProjectCreate, user_id: str | UUID, **kwargs
+    ) -> Project:
         """Create a new project instance"""
         return Project(
             owner_id=user_id,
             title=data.title,
             description=data.description,
         )
-    
-    def _get_user_filter(self, user_id: Union[str, UUID]):
+
+    def _get_user_filter(self, user_id: str | UUID):
         """Get filter for project ownership"""
         return Project.owner_id == user_id
-    
-    def get_projects(self, session: Session, owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> List[Project]:
+
+    def get_projects(
+        self, session: Session, owner_id: str | UUID, skip: int = 0, limit: int = 100
+    ) -> list[Project]:
         """Get projects for specific owner"""
         return self.get_all(session, owner_id, skip, limit)
-    
-    def get_project(self, session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID]) -> Optional[Project]:
+
+    def get_project(
+        self, session: Session, project_id: str | UUID, owner_id: str | UUID
+    ) -> Project | None:
         """Get project by ID for specific owner"""
         return self.get_by_id(session, project_id, owner_id)
-    
-    def create_project(self, session: Session, project_data: ProjectCreate, owner_id: Union[str, UUID]) -> Project:
+
+    def create_project(
+        self, session: Session, project_data: ProjectCreate, owner_id: str | UUID
+    ) -> Project:
         """Create a new project"""
         return self.create(session, project_data, owner_id)
-    
-    def update_project(self, session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID], project_data: ProjectUpdate) -> Project:
+
+    def update_project(
+        self,
+        session: Session,
+        project_id: str | UUID,
+        owner_id: str | UUID,
+        project_data: ProjectUpdate,
+    ) -> Project:
         """Update project"""
         return self.update(session, project_id, project_data, owner_id)
-    
-    def delete_project(self, session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID]) -> bool:
+
+    def delete_project(
+        self, session: Session, project_id: str | UUID, owner_id: str | UUID
+    ) -> bool:
         """Delete project with optimized cascade deletion (fixes N+1 query problem)"""
         # Verify project exists and belongs to user
         project = self.get_by_id(session, project_id, owner_id)
         if not project:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Project not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
             )
 
         try:
@@ -123,7 +139,7 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
             # For PostgreSQL (production), we can use CASCADE DELETE
             # For SQLite (development), we use batch deletion
             use_cascade = self._supports_cascade_delete(session)
-            
+
             if use_cascade:
                 # DATABASE-LEVEL CASCADE DELETION (most efficient)
                 # Simply deleting the project will cascade to all related records
@@ -132,50 +148,54 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
                 return True
             else:
                 # BATCH DELETION OPTIMIZATION (eliminates N+1 queries)
-                return self._delete_project_with_batch_queries(session, project, project_id)
-                
+                return self._delete_project_with_batch_queries(
+                    session, project, project_id
+                )
+
         except Exception as e:
             session.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to delete project: {str(e)}"
+                detail=f"Failed to delete project: {str(e)}",
             )
-    
+
     def _supports_cascade_delete(self, session: Session) -> bool:
         """Check if the database supports CASCADE DELETE constraints"""
         try:
             # Get database engine name
             engine_name = session.bind.dialect.name.lower()
             # PostgreSQL and MySQL support CASCADE DELETE
-            return engine_name in ('postgresql', 'mysql')
+            return engine_name in ("postgresql", "mysql")
         except:
             # Default to batch deletion if we can't determine database type
             return False
-    
-    def _delete_project_with_batch_queries(self, session: Session, project: Project, project_id: Union[str, UUID]) -> bool:
+
+    def _delete_project_with_batch_queries(
+        self, session: Session, project: Project, project_id: str | UUID
+    ) -> bool:
         """Delete project using optimized batch queries (eliminates N+1 problem)"""
         # Step 1: Get all goal IDs for this project in a single query
         goal_ids_query = select(Goal.id).where(Goal.project_id == project_id)
         goal_ids = [row for row in session.exec(goal_ids_query).all()]
-        
+
         if goal_ids:
             # Step 2: Get all task IDs for these goals in a single query
             task_ids_query = select(Task.id).where(Task.goal_id.in_(goal_ids))
             task_ids = [row for row in session.exec(task_ids_query).all()]
-            
+
             if task_ids:
                 # Step 3: Batch delete all logs for these tasks in a single query
                 logs_delete = delete(Log).where(Log.task_id.in_(task_ids))
                 session.exec(logs_delete)
-                
+
                 # Step 4: Batch delete all tasks in a single query
                 tasks_delete = delete(Task).where(Task.id.in_(task_ids))
                 session.exec(tasks_delete)
-            
+
             # Step 5: Batch delete all goals in a single query
             goals_delete = delete(Goal).where(Goal.id.in_(goal_ids))
             session.exec(goals_delete)
-        
+
         # Step 6: Delete the project
         session.delete(project)
         session.commit()
@@ -184,12 +204,12 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
 
 class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
     """Goal service using base service"""
-    
+
     def __init__(self):
         super().__init__(Goal)
         self.project_service = ProjectService()
-    
-    def _create_instance(self, data: GoalCreate, user_id: Union[str, UUID], **kwargs) -> Goal:
+
+    def _create_instance(self, data: GoalCreate, user_id: str | UUID, **kwargs) -> Goal:
         """Create a new goal instance"""
         return Goal(
             project_id=data.project_id,
@@ -197,57 +217,78 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
             description=data.description,
             estimate_hours=data.estimate_hours,
         )
-    
-    def _get_user_filter(self, user_id: Union[str, UUID]):
+
+    def _get_user_filter(self, user_id: str | UUID):
         """Get filter for goal ownership through project"""
         return Goal.project_id.in_(
             select(Project.id).where(Project.owner_id == user_id)
         )
-    
-    def create_goal(self, session: Session, goal_data: GoalCreate, owner_id: Union[str, UUID]) -> Goal:
+
+    def create_goal(
+        self, session: Session, goal_data: GoalCreate, owner_id: str | UUID
+    ) -> Goal:
         """Create a new goal"""
         # Verify project ownership
-        project = self.project_service.get_project(session, goal_data.project_id, owner_id)
+        project = self.project_service.get_project(
+            session, goal_data.project_id, owner_id
+        )
         if not project:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Project not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
             )
         return self.create(session, goal_data, owner_id)
-    
-    def get_goal(self, session: Session, goal_id: Union[str, UUID], owner_id: Union[str, UUID]) -> Optional[Goal]:
+
+    def get_goal(
+        self, session: Session, goal_id: str | UUID, owner_id: str | UUID
+    ) -> Goal | None:
         """Get goal by ID for specific owner"""
         return self.get_by_id(session, goal_id, owner_id)
-    
-    def get_goals_by_project(self, session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> List[Goal]:
+
+    def get_goals_by_project(
+        self,
+        session: Session,
+        project_id: str | UUID,
+        owner_id: str | UUID,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> list[Goal]:
         """Get goals for specific project"""
         # Verify project ownership
         project = self.project_service.get_project(session, project_id, owner_id)
         if not project:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Project not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
             )
         return self.get_all(session, owner_id, skip, limit, project_id=project_id)
-    
-    def update_goal(self, session: Session, goal_id: Union[str, UUID], owner_id: Union[str, UUID], goal_data: GoalUpdate) -> Goal:
+
+    def update_goal(
+        self,
+        session: Session,
+        goal_id: str | UUID,
+        owner_id: str | UUID,
+        goal_data: GoalUpdate,
+    ) -> Goal:
         """Update goal"""
         return self.update(session, goal_id, goal_data, owner_id)
-    
-    def delete_goal(self, session: Session, goal_id: Union[str, UUID], owner_id: Union[str, UUID]) -> bool:
+
+    def delete_goal(
+        self, session: Session, goal_id: str | UUID, owner_id: str | UUID
+    ) -> bool:
         """Delete goal"""
         return self.delete(session, goal_id, owner_id)
 
 
 class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
     """Task service using base service"""
-    
-    def __init__(self, goal_service: GoalService = None, project_service: ProjectService = None):
+
+    def __init__(
+        self, goal_service: GoalService = None, project_service: ProjectService = None
+    ):
         super().__init__(Task)
         self.goal_service = goal_service or GoalService()
         self.project_service = project_service or ProjectService()
-    
-    def _create_instance(self, data: TaskCreate, user_id: Union[str, UUID], **kwargs) -> Task:
+
+    def _create_instance(self, data: TaskCreate, user_id: str | UUID, **kwargs) -> Task:
         """Create a new task instance"""
         return Task(
             goal_id=data.goal_id,
@@ -257,8 +298,8 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             due_date=data.due_date,
             status=data.status,
         )
-    
-    def _get_user_filter(self, user_id: Union[str, UUID]):
+
+    def _get_user_filter(self, user_id: str | UUID):
         """Get filter for task ownership through goal and project"""
         return Task.goal_id.in_(
             select(Goal.id).where(
@@ -267,57 +308,86 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
                 )
             )
         )
-    
-    def create_task(self, session: Session, task_data: TaskCreate, owner_id: Union[str, UUID]) -> Task:
+
+    def create_task(
+        self, session: Session, task_data: TaskCreate, owner_id: str | UUID
+    ) -> Task:
         """Create a new task"""
         # Verify goal ownership through project
         goal = self.goal_service.get_goal(session, task_data.goal_id, owner_id)
         if not goal:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Goal not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found"
             )
         return self.create(session, task_data, owner_id)
-    
-    def get_task(self, session: Session, task_id: Union[str, UUID], owner_id: Union[str, UUID]) -> Optional[Task]:
+
+    def get_task(
+        self, session: Session, task_id: str | UUID, owner_id: str | UUID
+    ) -> Task | None:
         """Get task by ID for specific owner"""
         return self.get_by_id(session, task_id, owner_id)
-    
-    def get_tasks_by_goal(self, session: Session, goal_id: Union[str, UUID], owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> List[Task]:
+
+    def get_tasks_by_goal(
+        self,
+        session: Session,
+        goal_id: str | UUID,
+        owner_id: str | UUID,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> list[Task]:
         """Get tasks for specific goal"""
         # Verify goal ownership
         goal = self.goal_service.get_goal(session, goal_id, owner_id)
         if not goal:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Goal not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found"
             )
         return self.get_all(session, owner_id, skip, limit, goal_id=goal_id)
-    
-    def get_tasks_by_project(self, session: Session, project_id: Union[str, UUID], owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> List[Task]:
+
+    def get_tasks_by_project(
+        self,
+        session: Session,
+        project_id: str | UUID,
+        owner_id: str | UUID,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> list[Task]:
         """Get all tasks for specific project"""
         # Verify project ownership
         project = self.project_service.get_project(session, project_id, owner_id)
         if not project:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Project not found"
+                status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
             )
-        
-        statement = select(Task).join(Goal).where(
-            Goal.project_id == project_id
-        ).offset(skip).limit(limit)
+
+        statement = (
+            select(Task)
+            .join(Goal)
+            .where(Goal.project_id == project_id)
+            .offset(skip)
+            .limit(limit)
+        )
         return list(session.exec(statement).all())
-    
-    def get_all_user_tasks(self, session: Session, owner_id: Union[str, UUID], skip: int = 0, limit: int = 100) -> List[Task]:
+
+    def get_all_user_tasks(
+        self, session: Session, owner_id: str | UUID, skip: int = 0, limit: int = 100
+    ) -> list[Task]:
         """Get all tasks for a user across all projects"""
         return self.get_all(session, owner_id, skip, limit)
-    
-    def update_task(self, session: Session, task_id: Union[str, UUID], owner_id: Union[str, UUID], task_data: TaskUpdate) -> Task:
+
+    def update_task(
+        self,
+        session: Session,
+        task_id: str | UUID,
+        owner_id: str | UUID,
+        task_data: TaskUpdate,
+    ) -> Task:
         """Update task"""
         return self.update(session, task_id, task_data, owner_id)
-    
-    def delete_task(self, session: Session, task_id: Union[str, UUID], owner_id: Union[str, UUID]) -> bool:
+
+    def delete_task(
+        self, session: Session, task_id: str | UUID, owner_id: str | UUID
+    ) -> bool:
         """Delete task"""
         return self.delete(session, task_id, owner_id)
 
