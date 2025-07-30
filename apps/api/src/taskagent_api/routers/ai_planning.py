@@ -46,11 +46,11 @@ async def generate_weekly_plan(
         # Validate week start date
         try:
             week_start = datetime.strptime(request.week_start_date, "%Y-%m-%d").date()
-        except ValueError:
+        except ValueError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid date format. Use YYYY-MM-DD",
-            )
+            ) from e
 
         # Check if date is in the past (allow current week)
         today = date.today()

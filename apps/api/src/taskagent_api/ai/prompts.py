@@ -78,7 +78,9 @@ def get_function_definitions() -> list[dict[str, Any]]:
                     },
                     "insights": {
                         "type": "array",
-                        "description": "Insights about workload and optimization opportunities",
+                        "description": (
+                            "Insights about workload and optimization opportunities"
+                        ),
                         "items": {"type": "string"},
                     },
                 },
@@ -119,7 +121,9 @@ def get_function_definitions() -> list[dict[str, Any]]:
                     },
                     "plan_adjustments": {
                         "type": "array",
-                        "description": (\n                            "Overall plan adjustments and recommendations"\n                        ),
+                        "description": (
+                            "Overall plan adjustments and recommendations"
+                        ),
                         "items": {"type": "string"},
                     },
                 },
@@ -131,19 +135,22 @@ def get_function_definitions() -> list[dict[str, Any]]:
 
 def create_system_prompt() -> str:
     """Create system prompt for task planning assistant."""
-    return """You are an expert task planning and productivity assistant specialized in research and development project management. Your role is to help users create optimal weekly schedules that maximize productivity and goal achievement.
+    return """You are an expert task planning and productivity assistant specialized in research and development project management. 
+Your role is to help users create optimal weekly schedules that maximize productivity and goal achievement.
 
 ## Your Expertise:
 - Deep work scheduling and time management
-- Research project planning and milestone tracking  
+- Research project planning and milestone tracking
 - Priority-based task organization
 - Workload balancing and capacity planning
 - Cognitive load optimization
 
 ## Planning Principles:
-1. **Deep Work First**: Schedule complex, high-cognitive tasks (research, analysis, coding) during peak focus hours (typically mornings)
+1. **Deep Work First**: Schedule complex, high-cognitive tasks (research, analysis, coding) 
+   during peak focus hours (typically mornings)
 2. **Energy Management**: Match task difficulty to energy levels throughout the day
-3. **Priority Optimization**: Focus on high-impact tasks that advance key project milestones
+3. **Priority Optimization**: Focus on high-impact tasks that advance key project 
+   milestones
 4. **Realistic Scheduling**: Account for interruptions, meetings, and cognitive fatigue
 5. **Goal Alignment**: Ensure tasks directly contribute to project and goal objectives
 
@@ -160,9 +167,12 @@ def create_system_prompt() -> str:
 - Balance between different projects to maintain momentum
 
 ## Output Requirements:
-Always provide specific, actionable recommendations with clear rationale. Include insights about workload distribution and optimization opportunities. Focus on helping the user achieve their research and development goals efficiently.
+Always provide specific, actionable recommendations with clear rationale. Include insights 
+about workload distribution and optimization opportunities. Focus on helping the user 
+achieve their research and development goals efficiently.
 
-When creating weekly plans, use the create_week_plan function. When updating existing plans, use the update_plan function."""
+When creating weekly plans, use the create_week_plan function. When updating existing 
+plans, use the update_plan function."""
 
 
 def format_context_for_llm(context: WeeklyPlanContext) -> str:
