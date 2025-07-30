@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 class TaskAgentException(Exception):
     """Base exception for TaskAgent API"""
 
-    def __init__(self, message: str, error_code: str = None):
+    def __init__(self, message: str, error_code: str | None = None):
         self.message = message
         self.error_code = error_code
         super().__init__(message)
@@ -16,7 +16,7 @@ class TaskAgentException(Exception):
 class ResourceNotFoundError(TaskAgentException):
     """Resource not found exception"""
 
-    def __init__(self, resource_type: str, resource_id: str = None):
+    def __init__(self, resource_type: str, resource_id: str | None = None):
         message = f"{resource_type} not found"
         if resource_id:
             message += f" with ID: {resource_id}"
@@ -33,7 +33,7 @@ class UnauthorizedError(TaskAgentException):
 class ValidationError(TaskAgentException):
     """Validation error exception"""
 
-    def __init__(self, message: str, field: str = None):
+    def __init__(self, message: str, field: str | None = None):
         if field:
             message = f"Validation error for field '{field}': {message}"
         super().__init__(message, "VALIDATION_ERROR")
