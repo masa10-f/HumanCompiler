@@ -8,9 +8,9 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 from uuid import uuid4
 
-from main import app
-from models import User, Project, Goal, Task
-from auth import get_current_user_id
+from taskagent_api.main import app
+from taskagent_api.models import User, Project, Goal, Task
+from taskagent_api.auth import get_current_user_id
 
 client = TestClient(app)
 

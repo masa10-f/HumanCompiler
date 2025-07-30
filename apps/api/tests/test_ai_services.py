@@ -6,11 +6,11 @@ import pytest
 from datetime import date, datetime
 from unittest.mock import Mock, patch
 
-from ai.models import WeeklyPlanContext, WeeklyPlanRequest
+from taskagent_api.ai.models import WeeklyPlanContext, WeeklyPlanRequest
 from ai.openai_client import OpenAIClient
 from ai.context_collector import ContextCollector
 from ai.planning_service import WeeklyPlanService
-from models import Project, Goal, Task, TaskStatus
+from taskagent_api.models import Project, Goal, Task, TaskStatus
 
 
 @pytest.fixture

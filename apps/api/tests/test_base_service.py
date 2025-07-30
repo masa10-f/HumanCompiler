@@ -6,9 +6,9 @@ import pytest
 from uuid import uuid4
 from sqlmodel import Session, create_engine, SQLModel
 
-from base_service import BaseService
+from taskagent_api.base_service import BaseService
 from common.error_handlers import ResourceNotFoundError, ValidationError
-from models import Project, ProjectCreate, ProjectUpdate
+from taskagent_api.models import Project, ProjectCreate, ProjectUpdate
 
 
 def create_test_project_service():
