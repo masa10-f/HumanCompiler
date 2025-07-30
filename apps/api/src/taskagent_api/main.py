@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
     logger.info("🚀 FastAPI server starting up...")
-    
+
     # Log configuration info
     logger.info(f"Environment: {settings.environment}")
     logger.info(f"Host: {settings.host}, Port: {settings.port}")
@@ -38,7 +38,9 @@ async def lifespan(app: FastAPI):
         else:
             logger.warning("⚠️ Database connection failed, continuing in degraded mode")
     except Exception as e:
-        logger.warning(f"⚠️ Database health check error: {e}, continuing in degraded mode")
+        logger.warning(
+            f"⚠️ Database health check error: {e}, continuing in degraded mode"
+        )
 
     logger.info("✅ FastAPI server startup complete")
     yield
