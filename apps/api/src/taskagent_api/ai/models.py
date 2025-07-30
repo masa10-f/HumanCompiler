@@ -61,5 +61,5 @@ class WeeklyPlanResponse(BaseModel):
     model_config = ConfigDict()
 
     @field_serializer("generated_at")
-    def serialize_datetime(self, value: datetime) -> str:
+    def serialize_generated_at(self, value: datetime) -> str:
         return value.isoformat()
