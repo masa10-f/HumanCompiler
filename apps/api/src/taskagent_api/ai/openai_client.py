@@ -9,9 +9,9 @@ from typing import Optional
 
 from openai import OpenAI
 
-from config import settings
-from .models import TaskPlan, WeeklyPlanContext, WeeklyPlanResponse
-from .prompts import (
+from taskagent_api.config import settings
+from taskagent_api.ai.models import TaskPlan, WeeklyPlanContext, WeeklyPlanResponse
+from taskagent_api.ai.prompts import (
     create_system_prompt,
     create_weekly_plan_user_message,
     get_function_definitions,

@@ -8,9 +8,9 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 from uuid import uuid4
 
-from main import app
-from models import User, Project, Goal, Task
-from auth import get_current_user_id
+from taskagent_api.main import app
+from taskagent_api.models import User, Project, Goal, Task
+from taskagent_api.auth import get_current_user_id
 
 client = TestClient(app)
 
@@ -38,9 +38,9 @@ class TestSchedulerAPI:
         assert data["status"] == "success"
         assert "Scheduler package imported successfully" in data["message"]
     
-    @patch("routers.scheduler.goal_service.get_goal")
-    @patch("routers.scheduler.db.get_session")
-    @patch("routers.scheduler.task_service.get_tasks_by_goal")
+    @patch("taskagent_api.routers.scheduler.goal_service.get_goal")
+    @patch("taskagent_api.routers.scheduler.db.get_session")
+    @patch("taskagent_api.routers.scheduler.task_service.get_tasks_by_goal")
     def test_create_daily_schedule_success(self, mock_get_tasks, mock_session, mock_get_goal, mock_auth):
         """Test successful daily schedule creation."""
         # Mock session as generator
@@ -90,9 +90,9 @@ class TestSchedulerAPI:
         assert "unscheduled_tasks" in data
         assert data["date"] == "2025-06-23"
     
-    @patch("routers.scheduler.goal_service.get_goal")
-    @patch("routers.scheduler.db.get_session")
-    @patch("routers.scheduler.task_service.get_tasks_by_project")
+    @patch("taskagent_api.routers.scheduler.goal_service.get_goal")
+    @patch("taskagent_api.routers.scheduler.db.get_session")
+    @patch("taskagent_api.routers.scheduler.task_service.get_tasks_by_project")
     def test_create_daily_schedule_by_project(self, mock_get_tasks, mock_session, mock_get_goal, mock_auth):
         """Test daily schedule creation filtered by project."""
         # Mock session as generator
@@ -140,8 +140,8 @@ class TestSchedulerAPI:
         assert isinstance(data["assignments"], list)
         assert isinstance(data["unscheduled_tasks"], list)
     
-    @patch("routers.scheduler.db.get_session")
-    @patch("routers.scheduler.task_service.get_all_user_tasks")
+    @patch("taskagent_api.routers.scheduler.db.get_session")
+    @patch("taskagent_api.routers.scheduler.task_service.get_all_user_tasks")
     def test_create_daily_schedule_no_filter(self, mock_get_all_tasks, mock_session, mock_auth):
         """Test schedule creation without project_id or goal_id."""
         # Mock session as generator
@@ -220,7 +220,7 @@ class TestSchedulerAPI:
     
     def test_time_slot_validation(self):
         """Test TimeSlotInput validation."""
-        from routers.scheduler import TimeSlotInput
+        from taskagent_api.routers.scheduler import TimeSlotInput
         
         # Valid time slot
         valid_slot = TimeSlotInput(
@@ -249,7 +249,7 @@ class TestSchedulerAPI:
     
     def test_task_kind_mapping(self):
         """Test task kind mapping function."""
-        from routers.scheduler import map_task_kind, TaskKind
+        from taskagent_api.routers.scheduler import map_task_kind, TaskKind
         
         # Test mapping
         assert map_task_kind("Research Project") == TaskKind.DEEP
@@ -261,7 +261,7 @@ class TestSchedulerAPI:
     
     def test_slot_kind_mapping(self):
         """Test slot kind mapping function."""
-        from routers.scheduler import map_slot_kind, SlotKind
+        from taskagent_api.routers.scheduler import map_slot_kind, SlotKind
         
         # Test mapping
         assert map_slot_kind("deep") == SlotKind.DEEP
@@ -270,9 +270,9 @@ class TestSchedulerAPI:
         assert map_slot_kind("meeting") == SlotKind.MEETING
         assert map_slot_kind("unknown") == SlotKind.LIGHT  # Default
     
-    @patch("routers.scheduler.goal_service.get_goal")
-    @patch("routers.scheduler.db.get_session")
-    @patch("routers.scheduler.task_service.get_tasks_by_goal")
+    @patch("taskagent_api.routers.scheduler.goal_service.get_goal")
+    @patch("taskagent_api.routers.scheduler.db.get_session")
+    @patch("taskagent_api.routers.scheduler.task_service.get_tasks_by_goal")
     def test_create_daily_schedule_no_tasks(self, mock_get_tasks, mock_session, mock_get_goal, mock_auth):
         """Test schedule creation when no tasks are found."""
         # Mock session as generator
@@ -303,9 +303,9 @@ class TestSchedulerAPI:
         assert len(data["unscheduled_tasks"]) == 0
         assert data["optimization_status"] == "NO_TASKS"
     
-    @patch("routers.scheduler.goal_service.get_goal")
-    @patch("routers.scheduler.db.get_session")
-    @patch("routers.scheduler.task_service.get_tasks_by_goal")
+    @patch("taskagent_api.routers.scheduler.goal_service.get_goal")
+    @patch("taskagent_api.routers.scheduler.db.get_session")
+    @patch("taskagent_api.routers.scheduler.task_service.get_tasks_by_goal")
     def test_create_daily_schedule_completed_tasks_filtered(self, mock_get_tasks, mock_session, mock_get_goal, mock_auth):
         """Test that completed tasks are filtered out from scheduling."""
         # Mock session as generator

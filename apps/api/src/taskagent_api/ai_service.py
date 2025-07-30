@@ -12,9 +12,9 @@ import openai
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
-from config import settings
-from models import Project, Goal, Task
-from services import project_service, goal_service, task_service
+from taskagent_api.config import settings
+from taskagent_api.models import Project, Goal, Task
+from taskagent_api.services import project_service, goal_service, task_service
 
 
 logger = logging.getLogger(__name__)

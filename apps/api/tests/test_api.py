@@ -2,13 +2,13 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch
 
-from main import app
+from taskagent_api.main import app
 
 client = TestClient(app)
 
 
-@patch('routers.projects.get_current_user')
-@patch('routers.projects.get_session')
+@patch('taskagent_api.routers.projects.get_current_user')
+@patch('taskagent_api.routers.projects.get_session')
 def test_create_project_unauthenticated(mock_session, mock_user):
     """Test project creation without authentication"""
     mock_user.side_effect = Exception("Unauthorized")
@@ -65,8 +65,8 @@ def test_validation_error():
     assert response.status_code in [403, 422, 500]  # Could be auth or validation error
 
 
-@patch('routers.projects.get_current_user')
-@patch('routers.projects.get_session')
+@patch('taskagent_api.routers.projects.get_current_user')
+@patch('taskagent_api.routers.projects.get_session')
 def test_project_endpoints_structure(mock_session, mock_user):
     """Test that project endpoints are properly structured"""
     # Mock authenticated user

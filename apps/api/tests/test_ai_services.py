@@ -6,11 +6,11 @@ import pytest
 from datetime import date, datetime
 from unittest.mock import Mock, patch
 
-from ai.models import WeeklyPlanContext, WeeklyPlanRequest
-from ai.openai_client import OpenAIClient
-from ai.context_collector import ContextCollector
-from ai.planning_service import WeeklyPlanService
-from models import Project, Goal, Task, TaskStatus
+from taskagent_api.ai.models import WeeklyPlanContext, WeeklyPlanRequest
+from taskagent_api.ai.openai_client import OpenAIClient
+from taskagent_api.ai.context_collector import ContextCollector
+from taskagent_api.ai.planning_service import WeeklyPlanService
+from taskagent_api.models import Project, Goal, Task, TaskStatus
 
 
 @pytest.fixture
@@ -77,14 +77,14 @@ def mock_context(mock_projects, mock_goals, mock_tasks):
 
 def test_openai_client_unavailable():
     """Test OpenAI client when API key is not configured"""
-    with patch('ai.openai_client.settings.openai_api_key', "your_openai_api_key"):
+    with patch('taskagent_api.ai.openai_client.settings.openai_api_key', "your_openai_api_key"):
         client = OpenAIClient()
         assert not client.is_available()
 
 
 def test_openai_client_available():
     """Test OpenAI client when API key is configured"""
-    with patch('ai.openai_client.settings.openai_api_key', "sk-test-key"):
+    with patch('taskagent_api.ai.openai_client.settings.openai_api_key', "sk-test-key"):
         client = OpenAIClient()
         assert client.is_available()
 
@@ -92,7 +92,7 @@ def test_openai_client_available():
 @pytest.mark.asyncio
 async def test_weekly_plan_unavailable(mock_context):
     """Test weekly plan generation when OpenAI is unavailable"""
-    with patch('ai.openai_client.settings.openai_api_key', "your_openai_api_key"):
+    with patch('taskagent_api.ai.openai_client.settings.openai_api_key', "your_openai_api_key"):
         client = OpenAIClient()
         response = await client.generate_weekly_plan(mock_context)
         

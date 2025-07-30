@@ -9,8 +9,8 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlmodel import Session, select, delete
 
-from base_service import BaseService
-from models import (
+from taskagent_api.base_service import BaseService
+from taskagent_api.models import (
     Goal,
     GoalCreate,
     GoalUpdate,

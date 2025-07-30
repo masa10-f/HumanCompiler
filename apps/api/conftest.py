@@ -111,7 +111,7 @@ def mock_supabase():
 @pytest.fixture(autouse=True)
 def override_settings():
     """Override settings for all tests"""
-    from config import settings
+    from taskagent_api.config import settings
     
     # Temporarily store original values
     original_db_url = settings.database_url

@@ -13,8 +13,8 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from models import User, Project, Goal, Task, Log, TaskStatus
-from services import ProjectService
+from taskagent_api.models import User, Project, Goal, Task, Log, TaskStatus
+from taskagent_api.services import ProjectService
 
 
 @pytest.fixture

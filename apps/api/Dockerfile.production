@@ -33,7 +33,7 @@ FROM python:3.13-slim as production
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app \
+    PYTHONPATH=/app/src \
     PATH="/opt/venv/bin:$PATH"
 
 # Install only runtime dependencies
@@ -65,4 +65,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8000/health')" || exit 1
 
 # Run the application with production settings
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD ["uvicorn", "taskagent_api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

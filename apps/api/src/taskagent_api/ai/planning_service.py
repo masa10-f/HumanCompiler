@@ -4,9 +4,9 @@ Refactored AI planning service using modular components
 
 from datetime import date, datetime
 
-from .context_collector import ContextCollector
-from .models import WeeklyPlanRequest, WeeklyPlanResponse
-from .openai_client import OpenAIClient
+from taskagent_api.ai.context_collector import ContextCollector
+from taskagent_api.ai.models import WeeklyPlanRequest, WeeklyPlanResponse
+from taskagent_api.ai.openai_client import OpenAIClient
 
 
 class WeeklyPlanService:
