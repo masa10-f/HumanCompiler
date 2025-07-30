@@ -5,7 +5,7 @@ OpenAI prompts and function definitions for AI services
 import json
 from typing import Any, Dict, List
 
-from .models import WeeklyPlanContext
+from taskagent_api.ai.models import WeeklyPlanContext
 
 
 def get_function_definitions() -> List[Dict[str, Any]]:

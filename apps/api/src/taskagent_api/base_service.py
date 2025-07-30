@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 from fastapi import HTTPException, status
 from sqlmodel import Session, SQLModel, select
 
-from common.error_handlers import (
+from taskagent_api.common.error_handlers import (
     ResourceNotFoundError,
     ServiceError,
     safe_execute,

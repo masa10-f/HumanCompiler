@@ -6,7 +6,7 @@ from datetime import date
 from typing import Dict, List, Optional, Any
 
 from taskagent_api.services import project_service, goal_service, task_service
-from .models import WeeklyPlanContext
+from taskagent_api.ai.models import WeeklyPlanContext
 
 
 class ContextCollector:
