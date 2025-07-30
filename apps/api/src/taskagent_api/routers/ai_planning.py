@@ -85,8 +85,8 @@ async def generate_weekly_plan(
 async def test_ai_integration():
     """Test endpoint to verify OpenAI integration."""
     try:
-        from ai.openai_client import OpenAIClient
-        from ai.prompts import get_function_definitions
+        from taskagent_api.ai.openai_client import OpenAIClient
+        from taskagent_api.ai.prompts import get_function_definitions
         
         # Test OpenAI service initialization
         ai_client = OpenAIClient()
@@ -126,7 +126,7 @@ async def analyze_workload(
     - Potential bottlenecks and overcommitments
     """
     try:
-        from services import project_service, goal_service, task_service
+        from taskagent_api.services import project_service, goal_service, task_service
         
         # Get user's data
         if project_ids:
@@ -229,7 +229,7 @@ async def suggest_task_priorities(
     - Project strategic importance
     """
     try:
-        from services import project_service, goal_service, task_service
+        from taskagent_api.services import project_service, goal_service, task_service
         
         # Get tasks for analysis
         if project_id:
