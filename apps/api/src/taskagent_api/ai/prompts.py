@@ -43,8 +43,7 @@ def get_function_definitions() -> list[dict[str, Any]]:
                                 "suggested_day": {
                                     "type": "string",
                                     "description": (
-                                        "Suggested day of week "
-                                        "(Monday, Tuesday, etc.)"
+                                        "Suggested day of week (Monday, Tuesday, etc.)"
                                     ),
                                 },
                                 "suggested_time_slot": {
@@ -121,9 +120,7 @@ def get_function_definitions() -> list[dict[str, Any]]:
                     },
                     "plan_adjustments": {
                         "type": "array",
-                        "description": (
-                            "Overall plan adjustments and recommendations"
-                        ),
+                        "description": ("Overall plan adjustments and recommendations"),
                         "items": {"type": "string"},
                     },
                 },
