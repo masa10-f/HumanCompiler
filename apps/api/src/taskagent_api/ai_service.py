@@ -200,7 +200,7 @@ class OpenAIService:
 
 ## Your Expertise:
 - Deep work scheduling and time management
-- Research project planning and milestone tracking  
+- Research project planning and milestone tracking
 - Priority-based task organization
 - Workload balancing and capacity planning
 - Cognitive load optimization
