@@ -10,11 +10,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Calendar, 
-  Clock, 
-  Settings, 
-  CheckCircle, 
+import {
+  Calendar,
+  Clock,
+  Settings,
+  CheckCircle,
   AlertCircle,
   Loader2,
   Plus,
@@ -30,18 +30,18 @@ import type { ScheduleRequest, ScheduleResult, TimeSlot } from '@/types/ai-plann
 export default function SchedulingPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  
+
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split('T')[0];
   });
-  
+
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([
     { start: '09:00', end: '12:00', kind: 'deep' },
     { start: '13:00', end: '17:00', kind: 'study' },
     { start: '19:00', end: '21:00', kind: 'light' },
   ]);
-  
+
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [scheduleResult, setScheduleResult] = useState<ScheduleResult | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -63,7 +63,7 @@ export default function SchedulingPage() {
   };
 
   const updateTimeSlot = (index: number, field: keyof TimeSlot, value: string) => {
-    setTimeSlots(prev => prev.map((slot, i) => 
+    setTimeSlots(prev => prev.map((slot, i) =>
       i === index ? { ...slot, [field]: value } : slot
     ));
   };
@@ -75,7 +75,7 @@ export default function SchedulingPage() {
   const optimizeSchedule = async () => {
     try {
       setIsOptimizing(true);
-      
+
       const request: ScheduleRequest = {
         date: selectedDate as string,
         time_slots: timeSlots,
@@ -83,10 +83,10 @@ export default function SchedulingPage() {
         project_id: undefined,
         goal_id: undefined
       };
-      
+
       const result = await schedulingApi.optimizeDaily(request);
       setScheduleResult(result);
-      
+
       if (result.success) {
         toast({
           title: 'スケジュール最適化完了',
@@ -112,18 +112,18 @@ export default function SchedulingPage() {
 
   const saveSchedule = async () => {
     if (!scheduleResult) return;
-    
+
     try {
       setIsSaving(true);
-      
+
       const scheduleData = {
         ...scheduleResult,
         date: selectedDate as string,
         generated_at: new Date().toISOString()
       };
-      
+
       await schedulingApi.save(scheduleData);
-      
+
       toast({
         title: 'スケジュール保存完了',
         description: '本日のスケジュールが保存されました',
@@ -207,7 +207,7 @@ export default function SchedulingPage() {
                     追加
                   </Button>
                 </div>
-                
+
                 <div className="space-y-3">
                   {timeSlots.map((slot, index) => (
                     <div key={index} className="p-3 border rounded-lg space-y-3">
@@ -222,7 +222,7 @@ export default function SchedulingPage() {
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
-                      
+
                       <div className="grid grid-cols-3 gap-2">
                         <div className="space-y-1">
                           <Label className="text-xs">開始時刻</Label>
@@ -232,7 +232,7 @@ export default function SchedulingPage() {
                             onChange={(e) => updateTimeSlot(index, 'start', e.target.value)}
                           />
                         </div>
-                        
+
                         <div className="space-y-1">
                           <Label className="text-xs">終了時刻</Label>
                           <Input
@@ -241,7 +241,7 @@ export default function SchedulingPage() {
                             onChange={(e) => updateTimeSlot(index, 'end', e.target.value)}
                           />
                         </div>
-                        
+
                         <div className="space-y-1">
                           <Label className="text-xs">種別</Label>
                           <Select
@@ -265,8 +265,8 @@ export default function SchedulingPage() {
                 </div>
               </div>
 
-              <Button 
-                onClick={optimizeSchedule} 
+              <Button
+                onClick={optimizeSchedule}
                 disabled={isOptimizing || timeSlots.length === 0}
                 className="w-full"
               >
@@ -297,7 +297,7 @@ export default function SchedulingPage() {
                     </CardDescription>
                   </div>
                   {scheduleResult.success && scheduleResult.assignments.length > 0 && (
-                    <Button 
+                    <Button
                       onClick={saveSchedule}
                       disabled={isSaving}
                       size="sm"
@@ -329,7 +329,7 @@ export default function SchedulingPage() {
                       </div>
                     </CardContent>
                   </Card>
-                  
+
                   <Card>
                     <CardContent className="pt-6">
                       <div className="flex items-center gap-2">
@@ -372,10 +372,10 @@ export default function SchedulingPage() {
                     <div className="space-y-2">
                       {scheduleResult.assignments.map((assignment, index) => {
                         const slotInfo = timeSlots[assignment.slot_index];
-                        const taskLink = assignment.project_id && assignment.goal_id 
+                        const taskLink = assignment.project_id && assignment.goal_id
                           ? `/projects/${assignment.project_id}/goals/${assignment.goal_id}`
                           : null;
-                        
+
                         return (
                           <div key={index} className="p-3 border rounded-lg">
                             <div className="flex items-center justify-between mb-2">
@@ -384,7 +384,7 @@ export default function SchedulingPage() {
                                   {assignment.task_title}
                                 </div>
                                 {taskLink && (
-                                  <Link 
+                                  <Link
                                     href={taskLink as any}
                                     className="text-blue-500 hover:text-blue-700 transition-colors"
                                     title="タスク詳細を表示"
@@ -424,10 +424,10 @@ export default function SchedulingPage() {
                     <div className="space-y-2">
                       {scheduleResult.unscheduled_tasks.map((task, index) => {
                         // unscheduled_tasks is now TaskInfo objects, not just IDs
-                        const taskLink = task.project_id && task.goal_id 
+                        const taskLink = task.project_id && task.goal_id
                           ? `/projects/${task.project_id}/goals/${task.goal_id}`
                           : null;
-                        
+
                         return (
                           <div key={index} className="p-2 border border-red-200 rounded text-red-600">
                             <div className="flex items-center justify-between">
@@ -436,7 +436,7 @@ export default function SchedulingPage() {
                                   {typeof task === 'string' ? `タスク ID: ${task}` : task.title || task.id}
                                 </span>
                                 {taskLink && (
-                                  <Link 
+                                  <Link
                                     href={taskLink as any}
                                     className="text-red-500 hover:text-red-700 transition-colors"
                                     title="タスク詳細を表示"
@@ -475,7 +475,7 @@ export default function SchedulingPage() {
                   const startTime = new Date(`2000-01-01T${slot.start}`);
                   const endTime = new Date(`2000-01-01T${slot.end}`);
                   const duration = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
-                  
+
                   return (
                     <div key={index} className="flex items-center justify-between p-2 border rounded">
                       <div className="flex items-center gap-2">

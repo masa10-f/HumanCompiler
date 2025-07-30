@@ -19,7 +19,7 @@ export function useGoals(projectId: string): UseGoalsReturn {
 
   const fetchGoals = useCallback(async () => {
     if (!projectId) return;
-    
+
     try {
       setLoading(true);
       setError(null);
@@ -47,7 +47,7 @@ export function useGoals(projectId: string): UseGoalsReturn {
     try {
       setError(null);
       const updatedGoal = await goalsApi.update(id, data);
-      setGoals(prev => prev.map(goal => 
+      setGoals(prev => prev.map(goal =>
         goal.id === id ? updatedGoal : goal
       ));
     } catch (err) {

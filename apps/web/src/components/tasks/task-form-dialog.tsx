@@ -59,7 +59,7 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
       setIsSubmitting(true);
       console.log('[TaskForm] Submitting task data:', data);
       console.log('[TaskForm] Goal ID:', goalId);
-      
+
       const taskData = {
         title: data.title,
         description: data.description || undefined,
@@ -67,11 +67,11 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
         due_date: data.due_date || undefined,
         goal_id: goalId,
       };
-      
+
       console.log('[TaskForm] Final task data:', taskData);
       await createTask(taskData);
       console.log('[TaskForm] Task created successfully');
-      
+
       form.reset();
       setOpen(false);
     } catch (error) {

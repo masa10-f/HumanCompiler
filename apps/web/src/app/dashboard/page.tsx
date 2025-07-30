@@ -38,7 +38,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchTodaySchedule = async () => {
       if (!isAuthenticated) return
-      
+
       try {
         const today = new Date().toISOString().split('T')[0]
         const schedule = await schedulingApi.getByDate(today as string)
@@ -49,7 +49,7 @@ export default function DashboardPage() {
         setScheduleLoading(false)
       }
     }
-    
+
     fetchTodaySchedule()
   }, [isAuthenticated])
 
@@ -79,36 +79,36 @@ export default function DashboardPage() {
                 TaskAgent
               </h1>
               <nav className="hidden md:flex space-x-4">
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   onClick={() => router.push('/dashboard')}
                   className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
                 >
                   ダッシュボード
                 </Button>
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   onClick={() => router.push('/projects')}
                   className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
                 >
                   プロジェクト
                 </Button>
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   onClick={() => router.push('/ai-planning')}
                   className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
                 >
                   AI計画
                 </Button>
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   onClick={() => router.push('/scheduling')}
                   className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
                 >
                   スケジューリング
                 </Button>
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   onClick={() => router.push('/schedule-history')}
                   className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
                 >
@@ -142,7 +142,7 @@ export default function DashboardPage() {
 
         {/* Quick Actions */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card 
+          <Card
             className="cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => router.push('/projects')}
           >
@@ -153,7 +153,7 @@ export default function DashboardPage() {
             </CardHeader>
           </Card>
 
-          <Card 
+          <Card
             className="cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => router.push('/ai-planning')}
           >
@@ -164,7 +164,7 @@ export default function DashboardPage() {
             </CardHeader>
           </Card>
 
-          <Card 
+          <Card
             className="cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => router.push('/scheduling')}
           >
@@ -175,7 +175,7 @@ export default function DashboardPage() {
             </CardHeader>
           </Card>
 
-          <Card 
+          <Card
             className="cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => router.push('/schedule-history')}
           >
@@ -199,17 +199,17 @@ export default function DashboardPage() {
                       本日のスケジュール
                     </CardTitle>
                     <CardDescription>
-                      {new Date().toLocaleDateString('ja-JP', { 
-                        year: 'numeric', 
-                        month: 'long', 
-                        day: 'numeric', 
-                        weekday: 'long' 
+                      {new Date().toLocaleDateString('ja-JP', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        weekday: 'long'
                       })}
                     </CardDescription>
                   </div>
                   <div className="flex gap-2">
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => router.push('/schedule-history')}
                       className="flex items-center gap-1"
@@ -217,8 +217,8 @@ export default function DashboardPage() {
                       <History className="h-3 w-3" />
                       履歴
                     </Button>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => router.push('/scheduling')}
                     >
@@ -250,7 +250,7 @@ export default function DashboardPage() {
                         </div>
                       </div>
                       {assignment.project_id && assignment.goal_id && (
-                        <Link 
+                        <Link
                           href={`/projects/${assignment.project_id}/goals/${assignment.goal_id}`}
                           className="text-blue-500 hover:text-blue-700 transition-colors"
                         >
