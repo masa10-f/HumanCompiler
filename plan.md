@@ -309,7 +309,7 @@ POST   /api/ai/suggest-priorities - タスク優先度提案
 
 **最新コミット:**
 - `e3f9e0b` - feat: complete Phase 4 AI features and advanced UI implementation
-- `f097f44` - feat: complete Phase 3 frontend development with full CRUD UI  
+- `f097f44` - feat: complete Phase 3 frontend development with full CRUD UI
 - `56f108e` - feat: implement OpenAI Assistants API integration for weekly planning
 
 ## 🎉 完成済み機能
@@ -348,7 +348,7 @@ TaskAgentは**完全に機能するAI駆動タスク管理ウェブアプリケ�
 
 ### 1. 環境変数設定
 
-#### **必須設定項目** 
+#### **必須設定項目**
 以下のサービスでアカウント作成・API キー取得が必要です：
 
 **OpenAI (AI機能用)**
@@ -362,7 +362,7 @@ OPENAI_API_KEY=sk-your-openai-api-key-here
 
 **Supabase (認証・データベース用)**
 ```bash
-# .env ファイルに追加  
+# .env ファイルに追加
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
@@ -407,7 +407,7 @@ cd apps/web
 npm run dev
 # → http://localhost:3000 (または 3001)
 
-# 4. バックエンド起動 (ターミナル2)  
+# 4. バックエンド起動 (ターミナル2)
 cd apps/api
 pip install -r requirements.txt
 python main.py
@@ -425,7 +425,7 @@ supabase start
 # AI機能テスト
 curl http://localhost:8000/api/ai/weekly-plan/test
 
-# スケジューラテスト  
+# スケジューラテスト
 curl http://localhost:8000/api/schedule/test
 
 # CRUD APIテスト
@@ -436,7 +436,7 @@ curl http://localhost:8000/api/projects/ \
 #### **機能確認チェックリスト**
 - [ ] ユーザー登録・ログイン (Supabase認証)
 - [ ] プロジェクト作成・編集・削除
-- [ ] ゴール作成・編集・削除  
+- [ ] ゴール作成・編集・削除
 - [ ] タスク作成・編集・削除
 - [ ] AI週間計画生成 (OpenAI API使用)
 - [ ] ワークロード分析
@@ -468,7 +468,7 @@ curl http://localhost:8000/api/projects/ \
 # ポート競合エラー
 # → 別ポートで起動: npm run dev -- -p 3001
 
-# Python依存関係エラー  
+# Python依存関係エラー
 # → 仮想環境作成: python -m venv venv && source venv/bin/activate
 
 # Supabase接続エラー
@@ -476,7 +476,7 @@ curl http://localhost:8000/api/projects/ \
 # → 環境変数確認: echo $NEXT_PUBLIC_SUPABASE_URL
 
 # OpenAI API エラー
-# → キー確認: echo $OPENAI_API_KEY  
+# → キー確認: echo $OPENAI_API_KEY
 # → 残高確認: OpenAI Platform → Usage
 ```
 

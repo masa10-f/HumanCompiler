@@ -42,18 +42,18 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
   useEffect(() => {
     const fetchData = async () => {
       if (!params.goalId || !params.id) return;
-      
+
       try {
         setGoalLoading(true);
         setGoalError(null);
         console.log('[GoalDetail] Fetching data for goal:', params.goalId, 'project:', params.id);
-        
+
         // Fetch goal and project data
         const [goalData, projectData] = await Promise.all([
           goalsApi.getById(params.goalId),
           projectsApi.getById(params.id)
         ]);
-        
+
         console.log('[GoalDetail] Data fetched successfully:', { goalData, projectData });
         setGoal(goalData);
         setProject(projectData);
@@ -100,37 +100,37 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
   }
 
   const completedTasks = tasks.filter(task => task.status === 'completed').length;
-  
+
   // Debug: Log tasks data to understand the structure
-  console.log('[GoalDetail] Tasks data:', tasks.map(t => ({ 
-    id: t.id, 
-    title: t.title, 
-    estimate_hours: t.estimate_hours, 
-    type: typeof t.estimate_hours 
+  console.log('[GoalDetail] Tasks data:', tasks.map(t => ({
+    id: t.id,
+    title: t.title,
+    estimate_hours: t.estimate_hours,
+    type: typeof t.estimate_hours
   })));
-  
+
   // Ensure estimate_hours is treated as number and fix potential string concatenation issues
   const totalEstimateHours = tasks.reduce((sum, task) => {
-    const hours = typeof task.estimate_hours === 'string' 
-      ? parseFloat(task.estimate_hours) 
+    const hours = typeof task.estimate_hours === 'string'
+      ? parseFloat(task.estimate_hours)
       : task.estimate_hours || 0;
     console.log(`[GoalDetail] Task ${task.title}: hours=${hours}, type=${typeof task.estimate_hours}`);
     return sum + hours;
   }, 0);
-  
+
   const completedEstimateHours = tasks
     .filter(task => task.status === 'completed')
     .reduce((sum, task) => {
-      const hours = typeof task.estimate_hours === 'string' 
-        ? parseFloat(task.estimate_hours) 
+      const hours = typeof task.estimate_hours === 'string'
+        ? parseFloat(task.estimate_hours)
         : task.estimate_hours || 0;
       return sum + hours;
     }, 0);
-  
+
   // For now, show completed estimate hours as "actual" hours
   // TODO: Implement actual time tracking with logs API
   const totalActualHours = completedEstimateHours;
-  
+
   console.log('[GoalDetail] Calculated values:', {
     totalEstimateHours,
     completedEstimateHours,
@@ -162,7 +162,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
         <p className="text-gray-600 mb-4">
           {goal.description || 'ゴールの説明がありません'}
         </p>
-        
+
         {/* Goal Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <Card>
@@ -176,7 +176,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-2">
@@ -188,7 +188,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-2">
@@ -200,7 +200,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-2">

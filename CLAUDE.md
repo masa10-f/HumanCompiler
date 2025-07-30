@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### 🚀 実装完了状況
 - ✅ **Phase 1**: 基盤構築 (monorepo, Supabase, 認証)
-- ✅ **Phase 2**: バックエンドAPI + AI統合 (FastAPI, OpenAI, OR-Tools)  
+- ✅ **Phase 2**: バックエンドAPI + AI統合 (FastAPI, OpenAI, OR-Tools)
 - ✅ **Phase 3**: フロントエンドCRUD UI (Next.js, shadcn/ui)
 - ✅ **Phase 4**: AI機能UI + 制約最適化UI (完全実装)
 
@@ -63,7 +63,7 @@ supabase start
 cd apps/web
 npm run dev              # Next.js フロントエンド → http://localhost:3001
 
-# バックエンド (ターミナル2)  
+# バックエンド (ターミナル2)
 cd apps/api
 python main.py          # FastAPI サーバー → http://localhost:8000
 ```
@@ -87,12 +87,12 @@ logs(id, task_id, actual_minutes, comment, created_at)
 
 ## 主要API (実装完了済み)
 
-### **CRUD APIs** 
+### **CRUD APIs**
 ```bash
 # プロジェクト管理
 GET/POST/PUT/DELETE /api/projects/
 
-# ゴール管理  
+# ゴール管理
 GET/POST/PUT/DELETE /api/goals/
 GET /api/goals/project/{project_id}
 
@@ -112,7 +112,7 @@ GET  /api/ai/weekly-plan/test      # AI統合テスト
 ```
 
 ### **制約最適化APIs**
-```bash  
+```bash
 # OR-Toolsスケジューリング
 POST /api/schedule/daily           # CP-SAT制約ソルバ最適化
 GET  /api/schedule/test            # スケジューラテスト
@@ -160,19 +160,19 @@ DATABASE_URL=postgresql://postgres:password@localhost:54322/postgres
 ### **実装済み主要機能**
 - ✅ **プロジェクト・ゴール・タスク管理** - 完全CRUD操作
 - ✅ **AI週間計画生成** - OpenAI GPT-4による自動計画
-- ✅ **ワークロード分析** - タスク量・締切・配分分析  
+- ✅ **ワークロード分析** - タスク量・締切・配分分析
 - ✅ **タスク優先度提案** - AI分析による優先度最適化
 - ✅ **OR-Tools制約最適化** - CP-SAT制約ソルバスケジューリング
 - ✅ **統合ナビゲーション** - レスポンシブUI・shadcn/ui
 
 ### **技術的特徴**
 - OR-Toolsによる制約充足問題として最適スケジューリング実装
-- OpenAI Function Callingによる自然言語からの計画生成  
+- OpenAI Function Callingによる自然言語からの計画生成
 - Supabase認証統合による安全なデータ管理
 - TypeScript strict modeによる型安全性確保
 - Next.js App Router + shadcn/uiによる現代的なUI
 
 ### **アクセスURL**
 - フロントエンド: http://localhost:3001
-- バックエンドAPI: http://localhost:8000  
+- バックエンドAPI: http://localhost:8000
 - API ドキュメント: http://localhost:8000/docs
