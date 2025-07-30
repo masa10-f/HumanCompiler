@@ -91,5 +91,22 @@ class Settings(BaseSettings):
 
 # Global settings instance
 # Settings will automatically load from environment variables via pydantic_settings
-settings = Settings()  # type: ignore[call-arg]
+try:
+    settings = Settings()  # type: ignore[call-arg]
+except Exception as e:
+    # In development or when env vars are missing, use minimal config
+    import warnings
+    warnings.warn(f"Failed to load full settings: {e}. Using minimal configuration for development.")
+    
+    # Create settings with default values for development
+    from types import SimpleNamespace
+    settings = SimpleNamespace()
+    settings.api_title = "TaskAgent API"
+    settings.api_version = "0.1.0"
+    settings.api_description = "AI-powered task management and scheduling API"
+    settings.host = "0.0.0.0"
+    settings.port = 8000
+    settings.debug = True
+    settings.environment = "development"
+    settings.cors_origins = ["http://localhost:3000", "http://localhost:3001"]
 
