@@ -110,7 +110,7 @@ except Exception as e:
     # Create settings with default values for development
     from types import SimpleNamespace
 
-    settings = Settings()  # type: ignore
+    settings = SimpleNamespace()
     settings.api_title = "TaskAgent API"
     settings.api_version = "0.1.0"
     settings.api_description = "AI-powered task management and scheduling API"
@@ -125,4 +125,5 @@ except Exception as e:
     settings.supabase_url = "https://dev.supabase.co"
     settings.supabase_anon_key = "dev-anon-key"
     settings.supabase_service_role_key = "dev-service-key"
-    # cors_origins_list is handled by property method, no assignment needed
+    # Add cors_origins_list as a property-like attribute
+    settings.cors_origins_list = settings.cors_origins
