@@ -37,7 +37,7 @@ taskagent_api = ["py.typed"]
 where = ["src"]
 
 [project.scripts]
-taskagent-api = "taskagent_api.main:main"
+taskagent-api = "taskagent_api.main:app"
 
 [tool.ruff]
 target-version = "py311"

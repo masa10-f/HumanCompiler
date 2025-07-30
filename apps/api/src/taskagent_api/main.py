@@ -1,12 +1,5 @@
 import logging
-import os
-import sys
 from contextlib import asynccontextmanager
-
-# Add scheduler package to Python path for monorepo structure
-scheduler_package_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'packages')
-if scheduler_package_path not in sys.path:
-    sys.path.insert(0, scheduler_package_path)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError

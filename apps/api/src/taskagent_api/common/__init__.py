@@ -2,7 +2,7 @@
 Common utilities module
 """
 
-from taskagent_api.common.error_handlers import (
+from .error_handlers import (
     ServiceError,
     ResourceNotFoundError,
     ValidationError,
