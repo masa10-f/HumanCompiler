@@ -125,5 +125,5 @@ except Exception as e:
     settings.supabase_url = "https://dev.supabase.co"
     settings.supabase_anon_key = "dev-anon-key"
     settings.supabase_service_role_key = "dev-service-key"
-    # Add cors_origins_list as a property-like attribute
-    settings.cors_origins_list = settings.cors_origins
+    # Add cors_origins_list property for compatibility
+    settings.cors_origins_list = settings.cors_origins  # type: ignore[misc]

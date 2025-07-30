@@ -36,7 +36,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   useEffect(() => {
     const fetchProject = async () => {
       if (!params.id) return;
-      
+
       try {
         setProjectLoading(true);
         setProjectError(null);
@@ -161,8 +161,8 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {goals.map((goal) => (
-              <Card 
-                key={goal.id} 
+              <Card
+                key={goal.id}
                 className="hover:shadow-lg transition-shadow cursor-pointer"
                 onClick={() => router.push(`/projects/${params.id}/goals/${goal.id}`)}
               >

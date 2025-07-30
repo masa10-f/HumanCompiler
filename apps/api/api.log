@@ -26,13 +26,13 @@ INFO:sqlalchemy.engine.Engine:show standard_conforming_strings
 INFO:sqlalchemy.engine.Engine:[raw sql] {}
 2025-07-26 22:57:02,428 INFO sqlalchemy.engine.Engine BEGIN (implicit)
 INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
-2025-07-26 22:57:02,441 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+2025-07-26 22:57:02,441 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
-INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
 2025-07-26 22:57:02,441 INFO sqlalchemy.engine.Engine [generated in 0.00024s] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
 INFO:sqlalchemy.engine.Engine:[generated in 0.00024s] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
@@ -43,13 +43,13 @@ INFO:auth:✅ User authenticated: 97f50088-11be-4a00-afdf-830b47ec607c
 INFO:routers.projects:📋 Getting projects for user 97f50088-11be-4a00-afdf-830b47ec607c
 2025-07-26 22:57:02,671 INFO sqlalchemy.engine.Engine BEGIN (implicit)
 INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
-2025-07-26 22:57:02,672 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+2025-07-26 22:57:02,672 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
-INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
 2025-07-26 22:57:02,672 INFO sqlalchemy.engine.Engine [cached since 0.2312s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
 INFO:sqlalchemy.engine.Engine:[cached since 0.2312s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
@@ -60,13 +60,13 @@ INFO:auth:✅ User authenticated: 97f50088-11be-4a00-afdf-830b47ec607c
 INFO:routers.projects:📋 Getting projects for user 97f50088-11be-4a00-afdf-830b47ec607c
 2025-07-26 22:57:02,845 INFO sqlalchemy.engine.Engine BEGIN (implicit)
 INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
-2025-07-26 22:57:02,845 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+2025-07-26 22:57:02,845 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
-INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
 2025-07-26 22:57:02,845 INFO sqlalchemy.engine.Engine [cached since 0.4046s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
 INFO:sqlalchemy.engine.Engine:[cached since 0.4046s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
@@ -77,21 +77,21 @@ INFO:auth:✅ User authenticated: 97f50088-11be-4a00-afdf-830b47ec607c
 INFO:routers.projects:📋 Getting projects for user 97f50088-11be-4a00-afdf-830b47ec607c
 2025-07-26 22:57:03,006 INFO sqlalchemy.engine.Engine BEGIN (implicit)
 INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
-2025-07-26 22:57:03,006 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+2025-07-26 22:57:03,006 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
-INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
 2025-07-26 22:57:03,006 INFO sqlalchemy.engine.Engine [cached since 0.5657s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
 INFO:sqlalchemy.engine.Engine:[cached since 0.5657s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
 ERROR:routers.projects:❌ Error getting projects: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
 
-[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s]
 [parameters: {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}]
 (Background on this error at: https://sqlalche.me/e/20/e3q8)
@@ -248,9 +248,9 @@ Traceback (most recent call last):
     ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
 sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
 
-[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s]
 [parameters: {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}]
 (Background on this error at: https://sqlalche.me/e/20/e3q8)
@@ -455,23 +455,23 @@ INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/auth/v1/us
 INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/auth/v1/user "HTTP/2 200 OK"
 2025-07-26 22:58:03,240 INFO sqlalchemy.engine.Engine BEGIN (implicit)
 INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
-2025-07-26 22:58:03,241 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
+2025-07-26 22:58:03,241 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
 WHERE projects.id = %(id_1)s::UUID AND projects.owner_id = %(owner_id_1)s::UUID
-INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
+INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
 WHERE projects.id = %(id_1)s::UUID AND projects.owner_id = %(owner_id_1)s::UUID
 2025-07-26 22:58:03,241 INFO sqlalchemy.engine.Engine [generated in 0.00014s] {'id_1': '6bb16a14-0690-4a59-a080-963996885f8f', 'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c'}
 INFO:sqlalchemy.engine.Engine:[generated in 0.00014s] {'id_1': '6bb16a14-0690-4a59-a080-963996885f8f', 'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c'}
 INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/auth/v1/user "HTTP/2 200 OK"
 INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/auth/v1/user "HTTP/2 200 OK"
-2025-07-26 22:58:03,262 INFO sqlalchemy.engine.Engine SELECT goals.title, goals.description, goals.estimate_hours, goals.id, goals.project_id, goals.created_at, goals.updated_at 
-FROM goals 
-WHERE goals.project_id = %(project_id_1)s::UUID 
+2025-07-26 22:58:03,262 INFO sqlalchemy.engine.Engine SELECT goals.title, goals.description, goals.estimate_hours, goals.id, goals.project_id, goals.created_at, goals.updated_at
+FROM goals
+WHERE goals.project_id = %(project_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
-INFO:sqlalchemy.engine.Engine:SELECT goals.title, goals.description, goals.estimate_hours, goals.id, goals.project_id, goals.created_at, goals.updated_at 
-FROM goals 
-WHERE goals.project_id = %(project_id_1)s::UUID 
+INFO:sqlalchemy.engine.Engine:SELECT goals.title, goals.description, goals.estimate_hours, goals.id, goals.project_id, goals.created_at, goals.updated_at
+FROM goals
+WHERE goals.project_id = %(project_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
 2025-07-26 22:58:03,262 INFO sqlalchemy.engine.Engine [generated in 0.00017s] {'project_id_1': '6bb16a14-0690-4a59-a080-963996885f8f', 'param_1': 20, 'param_2': 0}
 INFO:sqlalchemy.engine.Engine:[generated in 0.00017s] {'project_id_1': '6bb16a14-0690-4a59-a080-963996885f8f', 'param_1': 20, 'param_2': 0}
@@ -479,13 +479,13 @@ INFO:auth:✅ User authenticated: 97f50088-11be-4a00-afdf-830b47ec607c
 INFO:routers.projects:📋 Getting projects for user 97f50088-11be-4a00-afdf-830b47ec607c
 2025-07-26 22:58:03,335 INFO sqlalchemy.engine.Engine BEGIN (implicit)
 INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
-2025-07-26 22:58:03,335 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+2025-07-26 22:58:03,335 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
-INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
 2025-07-26 22:58:03,335 INFO sqlalchemy.engine.Engine [cached since 60.89s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
 INFO:sqlalchemy.engine.Engine:[cached since 60.89s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
@@ -495,22 +495,22 @@ INFO:auth:✅ User authenticated: 97f50088-11be-4a00-afdf-830b47ec607c
 INFO:routers.projects:📋 Getting projects for user 97f50088-11be-4a00-afdf-830b47ec607c
 2025-07-26 22:58:03,410 INFO sqlalchemy.engine.Engine BEGIN (implicit)
 INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
-2025-07-26 22:58:03,411 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+2025-07-26 22:58:03,411 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
-INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
 2025-07-26 22:58:03,411 INFO sqlalchemy.engine.Engine [cached since 60.97s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
 INFO:sqlalchemy.engine.Engine:[cached since 60.97s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
 WARNING:  WatchFiles detected changes in 'auth.py'. Reloading...
 ERROR:routers.projects:❌ Error getting projects: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
 
-[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s]
 [parameters: {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}]
 (Background on this error at: https://sqlalche.me/e/20/e3q8)
@@ -667,9 +667,9 @@ Traceback (most recent call last):
     ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
 sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
 
-[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s]
 [parameters: {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}]
 (Background on this error at: https://sqlalche.me/e/20/e3q8)
@@ -722,13 +722,13 @@ INFO:sqlalchemy.engine.Engine:show standard_conforming_strings
 INFO:sqlalchemy.engine.Engine:[raw sql] {}
 2025-07-26 22:59:05,342 INFO sqlalchemy.engine.Engine BEGIN (implicit)
 INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
-2025-07-26 22:59:05,355 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+2025-07-26 22:59:05,355 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
-INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
 2025-07-26 22:59:05,355 INFO sqlalchemy.engine.Engine [generated in 0.00022s] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
 INFO:sqlalchemy.engine.Engine:[generated in 0.00022s] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
@@ -750,13 +750,13 @@ INFO:sqlalchemy.engine.Engine:show standard_conforming_strings
 INFO:sqlalchemy.engine.Engine:[raw sql] {}
 2025-07-26 22:59:05,532 INFO sqlalchemy.engine.Engine BEGIN (implicit)
 INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
-2025-07-26 22:59:05,533 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+2025-07-26 22:59:05,533 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
-INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
 2025-07-26 22:59:05,534 INFO sqlalchemy.engine.Engine [generated in 0.00016s] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
 INFO:sqlalchemy.engine.Engine:[generated in 0.00016s] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
@@ -766,13 +766,13 @@ INFO:auth:✅ User authenticated: 97f50088-11be-4a00-afdf-830b47ec607c
 INFO:routers.projects:📋 Getting projects for user 97f50088-11be-4a00-afdf-830b47ec607c
 2025-07-26 22:59:05,627 INFO sqlalchemy.engine.Engine BEGIN (implicit)
 INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
-2025-07-26 22:59:05,627 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+2025-07-26 22:59:05,627 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
-INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
 2025-07-26 22:59:05,627 INFO sqlalchemy.engine.Engine [cached since 0.09368s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
 INFO:sqlalchemy.engine.Engine:[cached since 0.09368s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
@@ -783,21 +783,21 @@ INFO:auth:✅ User authenticated: 97f50088-11be-4a00-afdf-830b47ec607c
 INFO:routers.projects:📋 Getting projects for user 97f50088-11be-4a00-afdf-830b47ec607c
 2025-07-26 22:59:05,811 INFO sqlalchemy.engine.Engine BEGIN (implicit)
 INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
-2025-07-26 22:59:05,812 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+2025-07-26 22:59:05,812 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
-INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
 2025-07-26 22:59:05,812 INFO sqlalchemy.engine.Engine [cached since 0.2782s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
 INFO:sqlalchemy.engine.Engine:[cached since 0.2782s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
 ERROR:routers.projects:❌ Error getting projects: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
 
-[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s]
 [parameters: {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}]
 (Background on this error at: https://sqlalche.me/e/20/e3q8)
@@ -954,9 +954,9 @@ Traceback (most recent call last):
     ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
 sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
 
-[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s]
 [parameters: {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}]
 (Background on this error at: https://sqlalche.me/e/20/e3q8)
@@ -965,21 +965,21 @@ INFO:auth:✅ User authenticated: 97f50088-11be-4a00-afdf-830b47ec607c
 INFO:routers.projects:📋 Getting projects for user 97f50088-11be-4a00-afdf-830b47ec607c
 2025-07-26 23:00:06,065 INFO sqlalchemy.engine.Engine BEGIN (implicit)
 INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
-2025-07-26 23:00:06,065 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+2025-07-26 23:00:06,065 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
-INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
 2025-07-26 23:00:06,065 INFO sqlalchemy.engine.Engine [cached since 60.53s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
 INFO:sqlalchemy.engine.Engine:[cached since 60.53s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
 ERROR:routers.projects:❌ Error getting projects: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
 
-[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s]
 [parameters: {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}]
 (Background on this error at: https://sqlalche.me/e/20/e3q8)
@@ -1136,9 +1136,9 @@ Traceback (most recent call last):
     ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
 sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
 
-[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s]
 [parameters: {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}]
 (Background on this error at: https://sqlalche.me/e/20/e3q8)
@@ -1149,21 +1149,21 @@ INFO:routers.projects:📋 Getting projects for user 97f50088-11be-4a00-afdf-830
 INFO:httpx:HTTP Request: GET https://vmnzbdfatpckhqegkntk.supabase.co/auth/v1/user "HTTP/2 200 OK"
 2025-07-26 23:01:06,715 INFO sqlalchemy.engine.Engine BEGIN (implicit)
 INFO:sqlalchemy.engine.Engine:BEGIN (implicit)
-2025-07-26 23:01:06,716 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+2025-07-26 23:01:06,716 INFO sqlalchemy.engine.Engine SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
-INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+INFO:sqlalchemy.engine.Engine:SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s
 2025-07-26 23:01:06,716 INFO sqlalchemy.engine.Engine [cached since 121.2s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
 INFO:sqlalchemy.engine.Engine:[cached since 121.2s ago] {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}
 ERROR:routers.projects:❌ Error getting projects: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
 
-[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s]
 [parameters: {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}]
 (Background on this error at: https://sqlalche.me/e/20/e3q8)
@@ -1319,9 +1319,9 @@ Traceback (most recent call last):
     ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
 sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) SSL connection has been closed unexpectedly
 
-[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at 
-FROM projects 
-WHERE projects.owner_id = %(owner_id_1)s::UUID 
+[SQL: SELECT projects.title, projects.description, projects.id, projects.owner_id, projects.created_at, projects.updated_at
+FROM projects
+WHERE projects.owner_id = %(owner_id_1)s::UUID
  LIMIT %(param_1)s OFFSET %(param_2)s]
 [parameters: {'owner_id_1': '97f50088-11be-4a00-afdf-830b47ec607c', 'param_1': 20, 'param_2': 0}]
 (Background on this error at: https://sqlalche.me/e/20/e3q8)

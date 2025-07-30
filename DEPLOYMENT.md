@@ -26,7 +26,7 @@ supabase db reset --linked
 ```bash
 # Settings > API から以下を取得:
 # - Project URL (SUPABASE_URL)
-# - anon key (SUPABASE_ANON_KEY)  
+# - anon key (SUPABASE_ANON_KEY)
 # - service_role key (SUPABASE_SERVICE_ROLE_KEY)
 # - Database URL (DATABASE_URL)
 ```

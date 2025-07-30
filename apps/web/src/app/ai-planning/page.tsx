@@ -12,13 +12,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  Brain, 
-  Calendar, 
-  Clock, 
-  TrendingUp, 
-  AlertTriangle, 
-  CheckCircle, 
+import {
+  Brain,
+  Calendar,
+  Clock,
+  TrendingUp,
+  AlertTriangle,
+  CheckCircle,
   Loader2,
   BarChart3,
   Target,
@@ -32,7 +32,7 @@ export default function AIPlanningPage() {
   const { user, loading: authLoading } = useAuth();
   const { projects } = useProjects();
   const router = useRouter();
-  
+
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [weekStartDate, setWeekStartDate] = useState(() => {
     const today = new Date();
@@ -43,7 +43,7 @@ export default function AIPlanningPage() {
     return monday.toISOString().split('T')[0];
   });
   const [capacityHours, setCapacityHours] = useState(40);
-  
+
   const [isGenerating, setIsGenerating] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [weeklyPlan, setWeeklyPlan] = useState<WeeklyPlanResponse | null>(null);
@@ -69,14 +69,14 @@ export default function AIPlanningPage() {
   const generateWeeklyPlan = async () => {
     try {
       setIsGenerating(true);
-      
+
       const response = await aiPlanningApi.generateWeeklyPlan({
         week_start_date: weekStartDate as string,
         capacity_hours: capacityHours,
         project_filter: selectedProjects.length > 0 ? selectedProjects : undefined,
         preferences: {}
       });
-      
+
       setWeeklyPlan(response);
       toast({
         title: '週間計画を生成しました',
@@ -96,19 +96,19 @@ export default function AIPlanningPage() {
   const analyzeWorkload = async () => {
     try {
       setIsAnalyzing(true);
-      
+
       const response = await aiPlanningApi.analyzeWorkload(
         selectedProjects.length > 0 ? selectedProjects : undefined
       );
-      
+
       setWorkloadAnalysis(response);
-      
+
       // Also get priority suggestions
       const priorityResponse = await aiPlanningApi.suggestPriorities(
         selectedProjects.length > 0 ? selectedProjects[0] : undefined
       );
       setPrioritySuggestions(priorityResponse);
-      
+
       toast({
         title: 'ワークロード分析が完了しました',
         description: `${response.analysis.total_tasks}個のタスクを分析しました`,
@@ -197,7 +197,7 @@ export default function AIPlanningPage() {
                       <Checkbox
                         id={project.id}
                         checked={selectedProjects.includes(project.id)}
-                        onCheckedChange={(checked) => 
+                        onCheckedChange={(checked) =>
                           handleProjectSelection(project.id, checked as boolean)
                         }
                       />
@@ -209,8 +209,8 @@ export default function AIPlanningPage() {
                 </div>
               </div>
 
-              <Button 
-                onClick={generateWeeklyPlan} 
+              <Button
+                onClick={generateWeeklyPlan}
                 disabled={isGenerating}
                 className="w-full"
               >
@@ -245,7 +245,7 @@ export default function AIPlanningPage() {
                       </div>
                     </CardContent>
                   </Card>
-                  
+
                   <Card>
                     <CardContent className="pt-6">
                       <div className="flex items-center gap-2">
@@ -257,7 +257,7 @@ export default function AIPlanningPage() {
                       </div>
                     </CardContent>
                   </Card>
-                  
+
                   <Card>
                     <CardContent className="pt-6">
                       <div className="flex items-center gap-2">
@@ -294,7 +294,7 @@ export default function AIPlanningPage() {
                           <div className="text-sm text-gray-500">
                             {plan.estimated_hours}h
                           </div>
-                          <Badge 
+                          <Badge
                             className={
                               plan.priority <= 2 ? 'bg-red-100 text-red-800' :
                               plan.priority <= 3 ? 'bg-yellow-100 text-yellow-800' :
@@ -353,8 +353,8 @@ export default function AIPlanningPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button 
-                onClick={analyzeWorkload} 
+              <Button
+                onClick={analyzeWorkload}
                 disabled={isAnalyzing}
                 className="w-full"
               >
@@ -379,7 +379,7 @@ export default function AIPlanningPage() {
                       <div className="text-xs text-gray-500">総見積時間</div>
                     </CardContent>
                   </Card>
-                  
+
                   <Card>
                     <CardContent className="pt-6">
                       <div className="text-2xl font-bold">
@@ -388,7 +388,7 @@ export default function AIPlanningPage() {
                       <div className="text-xs text-gray-500">総タスク数</div>
                     </CardContent>
                   </Card>
-                  
+
                   <Card>
                     <CardContent className="pt-6">
                       <div className="text-2xl font-bold text-red-600">
@@ -397,7 +397,7 @@ export default function AIPlanningPage() {
                       <div className="text-xs text-gray-500">遅延タスク</div>
                     </CardContent>
                   </Card>
-                  
+
                   <Card>
                     <CardContent className="pt-6">
                       <div className="text-2xl font-bold text-yellow-600">
@@ -452,14 +452,14 @@ export default function AIPlanningPage() {
                 <div className="text-sm text-gray-600 mb-4">
                   分析対象: {prioritySuggestions.total_tasks_analyzed}個のタスク
                 </div>
-                
+
                 <div className="space-y-2">
                   {prioritySuggestions.priority_suggestions.map((suggestion, index) => (
                     <div key={index} className="p-3 border rounded-lg">
                       <div className="flex items-center justify-between mb-2">
                         <div className="font-medium">{suggestion.task_title}</div>
                         <div className="flex items-center gap-2">
-                          <Badge 
+                          <Badge
                             className={
                               suggestion.suggested_priority <= 2 ? 'bg-red-100 text-red-800' :
                               suggestion.suggested_priority <= 3 ? 'bg-yellow-100 text-yellow-800' :

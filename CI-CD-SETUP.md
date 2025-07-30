@@ -29,7 +29,7 @@ fly auth token
 #### 🌐 Vercel デプロイ用
 ```bash
 VERCEL_TOKEN=your_vercel_token
-VERCEL_ORG_ID=your_org_id  
+VERCEL_ORG_ID=your_org_id
 VERCEL_PROJECT_ID=your_project_id
 ```
 
@@ -115,7 +115,7 @@ graph LR
 cd apps/api
 fly deploy
 
-# Web (Vercel)  
+# Web (Vercel)
 cd apps/web
 vercel --prod
 ```
@@ -130,7 +130,7 @@ https://github.com/your-username/TaskAgent/actions
 # Fly.io ログ
 fly logs -a taskagent-api
 
-# Vercel ログ  
+# Vercel ログ
 vercel logs
 ```
 
@@ -162,7 +162,7 @@ fly secrets list
 
 ### フロントエンドデプロイエラー
 ```bash
-# 1. Vercel トークン確認  
+# 1. Vercel トークン確認
 vercel whoami
 
 # 2. ビルドエラー確認

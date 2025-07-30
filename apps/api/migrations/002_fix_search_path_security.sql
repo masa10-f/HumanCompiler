@@ -25,31 +25,31 @@ END;
 $$;
 
 -- Recreate all triggers
-CREATE TRIGGER update_users_updated_at 
-    BEFORE UPDATE ON users 
-    FOR EACH ROW 
+CREATE TRIGGER update_users_updated_at
+    BEFORE UPDATE ON users
+    FOR EACH ROW
     EXECUTE FUNCTION public.update_updated_at_column();
 
-CREATE TRIGGER update_projects_updated_at 
-    BEFORE UPDATE ON projects 
-    FOR EACH ROW 
+CREATE TRIGGER update_projects_updated_at
+    BEFORE UPDATE ON projects
+    FOR EACH ROW
     EXECUTE FUNCTION public.update_updated_at_column();
 
-CREATE TRIGGER update_goals_updated_at 
-    BEFORE UPDATE ON goals 
-    FOR EACH ROW 
+CREATE TRIGGER update_goals_updated_at
+    BEFORE UPDATE ON goals
+    FOR EACH ROW
     EXECUTE FUNCTION public.update_updated_at_column();
 
-CREATE TRIGGER update_tasks_updated_at 
-    BEFORE UPDATE ON tasks 
-    FOR EACH ROW 
+CREATE TRIGGER update_tasks_updated_at
+    BEFORE UPDATE ON tasks
+    FOR EACH ROW
     EXECUTE FUNCTION public.update_updated_at_column();
 
-CREATE TRIGGER update_schedules_updated_at 
-    BEFORE UPDATE ON schedules 
-    FOR EACH ROW 
+CREATE TRIGGER update_schedules_updated_at
+    BEFORE UPDATE ON schedules
+    FOR EACH ROW
     EXECUTE FUNCTION public.update_updated_at_column();
 
 -- Add comment explaining the security fix
-COMMENT ON FUNCTION public.update_updated_at_column() IS 
+COMMENT ON FUNCTION public.update_updated_at_column() IS
 'Automatically updates the updated_at timestamp. Fixed search_path for security.';

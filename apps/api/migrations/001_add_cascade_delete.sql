@@ -8,15 +8,15 @@
 /*
 -- For PostgreSQL (production environment):
 ALTER TABLE goals DROP CONSTRAINT IF EXISTS goals_project_id_fkey;
-ALTER TABLE goals ADD CONSTRAINT goals_project_id_fkey 
+ALTER TABLE goals ADD CONSTRAINT goals_project_id_fkey
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE;
 
 ALTER TABLE tasks DROP CONSTRAINT IF EXISTS tasks_goal_id_fkey;
-ALTER TABLE tasks ADD CONSTRAINT tasks_goal_id_fkey 
+ALTER TABLE tasks ADD CONSTRAINT tasks_goal_id_fkey
     FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE;
 
 ALTER TABLE logs DROP CONSTRAINT IF EXISTS logs_task_id_fkey;
-ALTER TABLE logs ADD CONSTRAINT logs_task_id_fkey 
+ALTER TABLE logs ADD CONSTRAINT logs_task_id_fkey
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE;
 */
 

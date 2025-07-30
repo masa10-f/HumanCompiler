@@ -90,23 +90,23 @@ CREATE POLICY "Users can view own profile" ON users FOR ALL USING (auth.uid() = 
 
 CREATE POLICY "Users can view own projects" ON projects FOR ALL USING (auth.uid() = owner_id);
 
-CREATE POLICY "Users can view goals for own projects" ON goals FOR ALL 
+CREATE POLICY "Users can view goals for own projects" ON goals FOR ALL
 USING (project_id IN (SELECT id FROM projects WHERE owner_id = auth.uid()));
 
-CREATE POLICY "Users can view tasks for own goals" ON tasks FOR ALL 
+CREATE POLICY "Users can view tasks for own goals" ON tasks FOR ALL
 USING (goal_id IN (
-    SELECT g.id FROM goals g 
-    JOIN projects p ON g.project_id = p.id 
+    SELECT g.id FROM goals g
+    JOIN projects p ON g.project_id = p.id
     WHERE p.owner_id = auth.uid()
 ));
 
 CREATE POLICY "Users can view own schedules" ON schedules FOR ALL USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can view logs for own tasks" ON logs FOR ALL 
+CREATE POLICY "Users can view logs for own tasks" ON logs FOR ALL
 USING (task_id IN (
-    SELECT t.id FROM tasks t 
-    JOIN goals g ON t.goal_id = g.id 
-    JOIN projects p ON g.project_id = p.id 
+    SELECT t.id FROM tasks t
+    JOIN goals g ON t.goal_id = g.id
+    JOIN projects p ON g.project_id = p.id
     WHERE p.owner_id = auth.uid()
 ));
 

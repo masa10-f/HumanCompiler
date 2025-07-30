@@ -9,9 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { 
-  Calendar, 
-  Clock, 
+import {
+  Calendar,
+  Clock,
   ArrowLeft,
   ExternalLink,
   Search,
@@ -75,7 +75,7 @@ export default function ScheduleHistoryPage() {
   useEffect(() => {
     const fetchSchedules = async () => {
       if (!user) return;
-      
+
       try {
         const data = await schedulingApi.list();
         setSchedules(data);
@@ -90,7 +90,7 @@ export default function ScheduleHistoryPage() {
         setLoading(false);
       }
     };
-    
+
     fetchSchedules();
   }, [user]);
 
@@ -98,7 +98,7 @@ export default function ScheduleHistoryPage() {
     if (!selectedDate) {
       setFilteredSchedules(schedules);
     } else {
-      const filtered = schedules.filter(schedule => 
+      const filtered = schedules.filter(schedule =>
         schedule.date.startsWith(selectedDate)
       );
       setFilteredSchedules(filtered);
@@ -114,11 +114,11 @@ export default function ScheduleHistoryPage() {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('ja-JP', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric', 
-      weekday: 'long' 
+    return date.toLocaleDateString('ja-JP', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      weekday: 'long'
     });
   };
 
@@ -174,8 +174,8 @@ export default function ScheduleHistoryPage() {
                   className="mt-1"
                 />
               </div>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => setSelectedDate('')}
                 className="mt-6"
               >
@@ -200,7 +200,7 @@ export default function ScheduleHistoryPage() {
                 {selectedDate ? '該当するスケジュールがありません' : 'スケジュール履歴がありません'}
               </h3>
               <p className="text-gray-600 mb-4">
-                {selectedDate 
+                {selectedDate
                   ? '選択した日付にスケジュールが保存されていません。'
                   : 'まだスケジュールが保存されていません。スケジューリングページで最適化結果を保存してみましょう。'
                 }
@@ -286,7 +286,7 @@ export default function ScheduleHistoryPage() {
                             </div>
                           </div>
                           {assignment.project_id && assignment.goal_id && (
-                            <Link 
+                            <Link
                               href={`/projects/${assignment.project_id}/goals/${assignment.goal_id}`}
                               className="text-blue-500 hover:text-blue-700 transition-colors"
                             >

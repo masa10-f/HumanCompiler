@@ -13,7 +13,7 @@ CI/CD自動デプロイに必要なGitHub Repository Secretsの設定方法で�
 ## 🛫 Fly.io (API サーバー) 関連
 
 ### `FLY_API_TOKEN`
-**用途**: APIサーバーの自動デプロイ用  
+**用途**: APIサーバーの自動デプロイ用
 **取得方法**:
 ```bash
 # Fly.io CLIにログイン
@@ -48,7 +48,7 @@ fly auth token
 ## 🗄️ Supabase (データベース・認証) 関連
 
 ### `SUPABASE_URL`
-**用途**: APIサーバーのデータベース接続  
+**用途**: APIサーバーのデータベース接続
 **取得方法**:
 1. https://supabase.com/dashboard にアクセス
 2. プロジェクトを選択
@@ -58,7 +58,7 @@ fly auth token
 **設定値例**: `https://xxxxxxxxxxxxxxxxxxxxxxxxx.supabase.co`
 
 ### `SUPABASE_ANON_KEY`
-**用途**: APIサーバーの認証用  
+**用途**: APIサーバーの認証用
 **取得方法**:
 1. Supabase Dashboard → **Settings** → **API**
 2. **Project API keys** セクション
@@ -67,7 +67,7 @@ fly auth token
 **設定値例**: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
 
 ### `SUPABASE_SERVICE_ROLE_KEY`
-**用途**: APIサーバーの管理者権限操作用  
+**用途**: APIサーバーの管理者権限操作用
 **取得方法**:
 1. Supabase Dashboard → **Settings** → **API**
 2. **Project API keys** セクション
@@ -76,13 +76,13 @@ fly auth token
 **設定値例**: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
 
 ### `NEXT_PUBLIC_SUPABASE_URL`
-**用途**: フロントエンドのSupabase接続  
+**用途**: フロントエンドのSupabase接続
 **取得方法**: `SUPABASE_URL` と同じ値を使用
 
 **設定値例**: `https://xxxxxxxxxxxxxxxxxxxxxxxxx.supabase.co`
 
 ### `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-**用途**: フロントエンドのSupabase認証  
+**用途**: フロントエンドのSupabase認証
 **取得方法**: `SUPABASE_ANON_KEY` と同じ値を使用
 
 **設定値例**: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
@@ -92,7 +92,7 @@ fly auth token
 ## 🤖 OpenAI (AI機能) 関連
 
 ### `OPENAI_API_KEY`
-**用途**: AI機能（週間計画生成など）のテスト用  
+**用途**: AI機能（週間計画生成など）のテスト用
 **取得方法**:
 1. https://platform.openai.com/api-keys にアクセス
 2. **Create new secret key** をクリック
