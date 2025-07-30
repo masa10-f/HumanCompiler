@@ -33,16 +33,33 @@ jobs:
           # Install dependencies
           pip install -r requirements.txt
 
-      - name: 🔍 Run linting
+      - name: 🔍 Run Ruff Linting
         working-directory: ./apps/api
         run: |
-          # Add linting commands if available
-          echo "Linting check passed"
+          ruff check . --output-format=github
+          ruff format --check .
 
-      - name: 🧪 Run tests
+      - name: 🔍 Run MyPy Type Checking
         working-directory: ./apps/api
         run: |
-          python -m pytest tests/ -v
+          mypy src --config-file pyproject.toml
+
+      - name: 🔒 Run Bandit Security Scanning
+        working-directory: ./apps/api
+        run: |
+          bandit -r src -f json -o bandit-report.json || true
+          bandit -r src
+
+      - name: 🛡️ Run Safety Dependency Check
+        working-directory: ./apps/api
+        run: |
+          safety check --json --output safety-report.json || true
+          safety check
+
+      - name: 🧪 Run tests with coverage
+        working-directory: ./apps/api
+        run: |
+          pytest --cov=src --cov-report=xml --cov-report=html --cov-report=term -v
         env:
           # Test environment variables - use in-memory database for isolation
           DATABASE_URL: "sqlite:///:memory:"
