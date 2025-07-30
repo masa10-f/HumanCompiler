@@ -1,7 +1,7 @@
 import os
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -89,10 +89,9 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in self.cors_origins.split(",")]
         return self.cors_origins
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", case_sensitive=False
+    )
 
 
 # Global settings instance
@@ -125,5 +124,4 @@ except Exception as e:
     settings.supabase_url = "https://dev.supabase.co"
     settings.supabase_anon_key = "dev-anon-key"
     settings.supabase_service_role_key = "dev-service-key"
-    # Add cors_origins_list property for compatibility
-    settings.cors_origins_list = settings.cors_origins  # type: ignore[misc]
+    # cors_origins_list is available via the property method
