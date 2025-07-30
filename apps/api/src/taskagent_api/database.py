@@ -7,7 +7,7 @@ from sqlalchemy.dialects.postgresql import psycopg2
 from supabase import Client, create_client
 import psycopg2.extras
 
-from config import settings
+from taskagent_api.config import settings
 
 # Monkey patch to disable hstore entirely
 def _disabled_get_oids(connection):

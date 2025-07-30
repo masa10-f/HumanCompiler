@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from models import Goal, Project, Task
+from taskagent_api.models import Goal, Project, Task
 
 
 @dataclass

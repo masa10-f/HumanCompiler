@@ -9,12 +9,12 @@ from datetime import datetime, time
 from fastapi import APIRouter, HTTPException, Depends, status, Query, Request
 from pydantic import BaseModel, Field, validator
 
-from auth import get_current_user_id
-from services import task_service, goal_service, project_service  
-from exceptions import ValidationError, ResourceNotFoundError
-from database import db
+from taskagent_api.auth import get_current_user_id
+from taskagent_api.services import task_service, goal_service, project_service  
+from taskagent_api.exceptions import ValidationError, ResourceNotFoundError
+from taskagent_api.database import db
 from sqlmodel import Session, select
-from models import Schedule, ScheduleCreate, ScheduleResponse
+from taskagent_api.models import Schedule, ScheduleCreate, ScheduleResponse
 from uuid import uuid4
 
 # Always use mock implementation for Docker/Production deployments

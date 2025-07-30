@@ -5,7 +5,7 @@ Context collection service for AI planning
 from datetime import date
 from typing import Dict, List, Optional, Any
 
-from services import project_service, goal_service, task_service
+from taskagent_api.services import project_service, goal_service, task_service
 from .models import WeeklyPlanContext
 
 

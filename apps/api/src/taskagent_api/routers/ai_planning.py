@@ -9,9 +9,9 @@ from datetime import datetime, date
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlmodel import Session
 
-from auth import get_current_user_id
-from database import db
-from exceptions import ValidationError, ResourceNotFoundError
+from taskagent_api.auth import get_current_user_id
+from taskagent_api.database import db
+from taskagent_api.exceptions import ValidationError, ResourceNotFoundError
 from ai import weekly_plan_service, WeeklyPlanRequest, WeeklyPlanResponse
 
 

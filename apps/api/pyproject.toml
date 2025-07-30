@@ -1,8 +1,10 @@
 [project]
-name = "task-agent-api"
+name = "taskagent-api"
 version = "0.1.0"
 description = "AI-powered task management API"
 requires-python = ">=3.11"
+readme = "README.md"
+license = {text = "MIT"}
 dependencies = [
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
@@ -15,7 +17,7 @@ dependencies = [
     "openai>=1.30.0",
     "langgraph>=0.1.0",
     "httpx>=0.25.0",
-    "scheduler @ file://../../packages/scheduler",
+    # "scheduler @ file://../../packages/scheduler",  # Uncomment and adjust path as needed
 ]
 
 [project.optional-dependencies]
@@ -28,6 +30,15 @@ dev = [
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-data]
+taskagent_api = ["py.typed"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+taskagent-api = "taskagent_api.main:main"
 
 [tool.ruff]
 target-version = "py311"

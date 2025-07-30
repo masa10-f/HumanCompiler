@@ -4,7 +4,7 @@ import sys
 from contextlib import asynccontextmanager
 
 # Add scheduler package to Python path for monorepo structure
-scheduler_package_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'packages')
+scheduler_package_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'packages')
 if scheduler_package_path not in sys.path:
     sys.path.insert(0, scheduler_package_path)
 
@@ -13,9 +13,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 
-from config import settings
-from database import db
-from exceptions import (
+from taskagent_api.config import settings
+from taskagent_api.database import db
+from taskagent_api.exceptions import (
     TaskAgentException,
     general_exception_handler,
     http_exception_handler,
@@ -23,7 +23,7 @@ from exceptions import (
     task_agent_exception_handler,
     validation_exception_handler,
 )
-from routers import goals, projects, tasks, scheduler, ai_planning, users
+from taskagent_api.routers import goals, projects, tasks, scheduler, ai_planning, users
 
 
 @asynccontextmanager
@@ -102,7 +102,7 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "main:app",
+        "taskagent_api.main:app",
         host=settings.host,
         port=settings.port,
         reload=settings.debug,

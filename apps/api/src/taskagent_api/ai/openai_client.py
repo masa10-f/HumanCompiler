@@ -9,7 +9,7 @@ from typing import Optional
 
 from openai import OpenAI
 
-from config import settings
+from taskagent_api.config import settings
 from .models import TaskPlan, WeeklyPlanContext, WeeklyPlanResponse
 from .prompts import (
     create_system_prompt,

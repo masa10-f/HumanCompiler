@@ -8,9 +8,9 @@ from starlette.requests import Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import Session
 
-from database import db
-from services import UserService
-from models import UserCreate
+from taskagent_api.database import db
+from taskagent_api.services import UserService
+from taskagent_api.models import UserCreate
 
 logger = logging.getLogger(__name__)
 

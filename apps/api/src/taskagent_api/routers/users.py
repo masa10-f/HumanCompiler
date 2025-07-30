@@ -3,15 +3,15 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 
-from auth import AuthUser, get_current_user
-from database import db
-from models import (
+from taskagent_api.auth import AuthUser, get_current_user
+from taskagent_api.database import db
+from taskagent_api.models import (
     ErrorResponse,
     UserCreate,
     UserResponse,
     UserUpdate,
 )
-from services import UserService
+from taskagent_api.services import UserService
 
 router = APIRouter(prefix="/users", tags=["users"])
 
