@@ -1,6 +1,6 @@
 import os
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, ConfigDict
 from pydantic_settings import BaseSettings
 
 
@@ -89,10 +89,9 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in self.cors_origins.split(",")]
         return self.cors_origins
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = ConfigDict(
+        env_file=".env", env_file_encoding="utf-8", case_sensitive=False
+    )
 
 
 # Global settings instance

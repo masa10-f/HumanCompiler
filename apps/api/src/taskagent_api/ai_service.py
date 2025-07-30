@@ -9,7 +9,7 @@ from datetime import date, datetime
 from typing import Any
 
 from openai import OpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict, field_serializer
 
 from taskagent_api.config import settings
 from taskagent_api.models import Goal, Project, Task
@@ -65,8 +65,11 @@ class WeeklyPlanResponse(BaseModel):
     insights: list[str]
     generated_at: datetime
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
+    model_config = ConfigDict()
+
+    @field_serializer("generated_at")
+    def serialize_datetime(self, value: datetime) -> str:
+        return value.isoformat()
 
 
 class OpenAIService:

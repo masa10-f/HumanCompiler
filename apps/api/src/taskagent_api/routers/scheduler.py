@@ -12,7 +12,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict, field_serializer
 from sqlmodel import Session, select
 
 from taskagent_api.auth import get_current_user_id
@@ -137,7 +137,8 @@ class TimeSlotInput(BaseModel):
         None, description="Maximum hours for this slot"
     )
 
-    @validator("start", "end")
+    @field_validator("start", "end")
+    @classmethod
     def validate_time_format(cls, v):
         try:
             time_parts = v.split(":")
@@ -150,7 +151,8 @@ class TimeSlotInput(BaseModel):
         except (ValueError, TypeError):
             raise ValueError("Time must be in HH:MM format")
 
-    @validator("kind")
+    @field_validator("kind")
+    @classmethod
     def validate_kind(cls, v):
         valid_kinds = ["deep", "light", "study", "meeting"]
         if v.lower() not in valid_kinds:
@@ -169,7 +171,8 @@ class DailyScheduleRequest(BaseModel):
         default_factory=dict, description="Scheduling preferences"
     )
 
-    @validator("date")
+    @field_validator("date")
+    @classmethod
     def validate_date_format(cls, v):
         try:
             datetime.strptime(v, "%Y-%m-%d")
@@ -177,7 +180,8 @@ class DailyScheduleRequest(BaseModel):
         except ValueError:
             raise ValueError("Date must be in YYYY-MM-DD format")
 
-    @validator("time_slots")
+    @field_validator("time_slots")
+    @classmethod
     def validate_time_slots_not_empty(cls, v):
         if not v:
             raise ValueError("At least one time slot is required")
@@ -225,8 +229,11 @@ class DailyScheduleResponse(BaseModel):
     objective_value: float | None = None
     generated_at: datetime
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
+    model_config = ConfigDict()
+
+    @field_serializer("generated_at")
+    def serialize_datetime(self, value: datetime) -> str:
+        return value.isoformat()
 
 
 def map_task_kind(status: str) -> TaskKind:
