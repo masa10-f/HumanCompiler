@@ -4,6 +4,7 @@ from taskagent_api.main import app
 
 client = TestClient(app)
 
+
 def test_root_endpoint():
     """Test root endpoint"""
     response = client.get("/")
@@ -12,6 +13,7 @@ def test_root_endpoint():
     assert "message" in data
     assert "version" in data
     assert data["message"] == "Welcome to TaskAgent API"
+
 
 def test_health_endpoint():
     """Test health check endpoint"""
@@ -23,10 +25,12 @@ def test_health_endpoint():
     assert "version" in data
     assert "database" in data
 
+
 def test_openapi_docs():
     """Test that OpenAPI docs are accessible"""
     response = client.get("/docs")
     assert response.status_code == 200
+
 
 def test_openapi_json():
     """Test that OpenAPI JSON is accessible"""

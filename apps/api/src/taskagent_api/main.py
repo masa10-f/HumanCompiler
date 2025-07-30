@@ -16,7 +16,7 @@ from taskagent_api.exceptions import (
     task_agent_exception_handler,
     validation_exception_handler,
 )
-from taskagent_api.routers import goals, projects, tasks, scheduler, ai_planning, users
+from taskagent_api.routers import ai_planning, goals, projects, scheduler, tasks, users
 
 
 @asynccontextmanager
@@ -36,12 +36,13 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("🔄 FastAPI server shutting down...")
 
+
 # Initialize FastAPI app
 app = FastAPI(
     title=settings.api_title,
     description=settings.api_description,
     version=settings.api_version,
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Configure CORS
@@ -68,6 +69,7 @@ app.include_router(tasks.router, prefix="/api")
 app.include_router(scheduler.router, prefix="/api")
 app.include_router(ai_planning.router, prefix="/api")
 
+
 # Health check endpoint
 @app.get("/health")
 async def health_check():
@@ -78,8 +80,9 @@ async def health_check():
         "status": "healthy" if db_healthy else "unhealthy",
         "message": "TaskAgent API is running",
         "version": settings.api_version,
-        "database": "connected" if db_healthy else "disconnected"
+        "database": "connected" if db_healthy else "disconnected",
     }
+
 
 # Root endpoint
 @app.get("/")
@@ -89,15 +92,17 @@ async def root():
         "message": "Welcome to TaskAgent API",
         "version": settings.api_version,
         "docs": "/docs",
-        "health": "/health"
+        "health": "/health",
     }
+
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
         "taskagent_api.main:app",
         host=settings.host,
         port=settings.port,
         reload=settings.debug,
-        reload_dirs=["./"]
+        reload_dirs=["./"],
     )
