@@ -109,4 +109,12 @@ except Exception as e:
     settings.debug = True
     settings.environment = "development"
     settings.cors_origins = ["http://localhost:3000", "http://localhost:3001"]
+    # Required attributes for fallback mode
+    settings.openai_api_key = "development-key-not-available"
+    settings.database_url = "sqlite:///dev.db"
+    settings.supabase_url = "https://dev.supabase.co"
+    settings.supabase_anon_key = "dev-anon-key"
+    settings.supabase_service_role_key = "dev-service-key"
+    # Add property method for cors_origins_list
+    settings.cors_origins_list = settings.cors_origins
 

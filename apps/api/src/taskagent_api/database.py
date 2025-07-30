@@ -38,11 +38,19 @@ class Database:
     def get_client(self) -> Client:
         """Get Supabase client for user operations"""
         if self._client is None:
-            self._client = create_client(
-                settings.supabase_url,
-                settings.supabase_anon_key
-            )
-            logger.info("✅ Supabase client initialized")
+            try:
+                self._client = create_client(
+                    settings.supabase_url,
+                    settings.supabase_anon_key
+                )
+                logger.info("✅ Supabase client initialized")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to initialize Supabase client: {e}")
+                # Return None or mock client depending on environment
+                if hasattr(settings, 'environment') and settings.environment == 'development':
+                    logger.info("Using development mode - database disabled")
+                    return None
+                raise
         return self._client
 
     def get_service_client(self) -> Client:
@@ -92,6 +100,9 @@ class Database:
         """Check database connection health"""
         try:
             client = self.get_client()
+            if client is None:
+                logger.warning("Database client not available (development mode)")
+                return False
             # Simple query to test connection
             client.table("users").select("count", count="exact").execute()
             return True
