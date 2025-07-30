@@ -7,7 +7,7 @@ from uuid import uuid4
 from sqlmodel import Session, create_engine, SQLModel
 
 from taskagent_api.base_service import BaseService
-from common.error_handlers import ResourceNotFoundError, ValidationError
+from taskagent_api.common.error_handlers import ResourceNotFoundError, ValidationError
 from taskagent_api.models import Project, ProjectCreate, ProjectUpdate
 
 

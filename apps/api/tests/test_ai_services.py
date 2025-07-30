@@ -7,9 +7,9 @@ from datetime import date, datetime
 from unittest.mock import Mock, patch
 
 from taskagent_api.ai.models import WeeklyPlanContext, WeeklyPlanRequest
-from ai.openai_client import OpenAIClient
-from ai.context_collector import ContextCollector
-from ai.planning_service import WeeklyPlanService
+from taskagent_api.ai.openai_client import OpenAIClient
+from taskagent_api.ai.context_collector import ContextCollector
+from taskagent_api.ai.planning_service import WeeklyPlanService
 from taskagent_api.models import Project, Goal, Task, TaskStatus
 
 
