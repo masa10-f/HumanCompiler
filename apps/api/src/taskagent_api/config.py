@@ -101,6 +101,7 @@ try:
 except Exception as e:
     # In development or when env vars are missing, use minimal config
     import warnings
+    from typing import Any
 
     warnings.warn(
         f"Failed to load full settings: {e}. Using minimal configuration for development."
@@ -109,7 +110,7 @@ except Exception as e:
     # Create settings with default values for development
     from types import SimpleNamespace
 
-    settings = SimpleNamespace()
+    settings: Any = SimpleNamespace()
     settings.api_title = "TaskAgent API"
     settings.api_version = "0.1.0"
     settings.api_description = "AI-powered task management and scheduling API"
@@ -118,7 +119,7 @@ except Exception as e:
     settings.debug = True
     settings.environment = "development"
     settings.cors_origins = ["http://localhost:3000", "http://localhost:3001"]
-    settings.cors_origins_list = ["http://localhost:3000", "http://localhost:3001"]
+    settings.cors_origins_list = ["http://localhost:3000", "http://localhost:3001"]  # type: ignore[misc]
     # Required attributes for fallback mode
     settings.openai_api_key = "development-key-not-available"
     settings.database_url = "sqlite:///dev.db"
