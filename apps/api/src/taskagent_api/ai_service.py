@@ -10,9 +10,13 @@ from typing import Any
 
 from openai import OpenAI
 from pydantic import BaseModel, Field, ConfigDict, field_serializer
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
+from uuid import UUID
 
 from taskagent_api.config import settings
-from taskagent_api.models import Goal, Project, Task
+from taskagent_api.crypto import crypto_service
+from taskagent_api.models import Goal, Project, Task, UserSettings, ApiUsageLog
 from taskagent_api.services import goal_service, project_service, task_service
 
 logger = logging.getLogger(__name__)
@@ -75,9 +79,12 @@ class WeeklyPlanResponse(BaseModel):
 class OpenAIService:
     """Service for OpenAI Assistants API integration."""
 
-    def __init__(self):
-        """Initialize OpenAI client."""
-        if (
+    def __init__(self, api_key: str | None = None, model: str | None = None):
+        """Initialize OpenAI client with optional user-specific API key."""
+        if api_key:
+            self.client = OpenAI(api_key=api_key)
+            self.model = model or "gpt-4-1106-preview"
+        elif (
             not settings.openai_api_key
             or settings.openai_api_key == "your_openai_api_key"
         ):
@@ -89,6 +96,26 @@ class OpenAIService:
         else:
             self.client = OpenAI(api_key=settings.openai_api_key)
             self.model = "gpt-4-1106-preview"  # GPT-4 Turbo with function calling
+
+    @classmethod
+    async def create_for_user(
+        cls, user_id: UUID, session: AsyncSession
+    ) -> "OpenAIService":
+        """Create OpenAI service for a specific user with their API key."""
+        # Get user settings
+        result = await session.execute(
+            select(UserSettings).where(UserSettings.user_id == user_id)
+        )
+        user_settings = result.scalar_one_or_none()
+
+        if user_settings and user_settings.openai_api_key_encrypted:
+            # Decrypt API key
+            api_key = crypto_service.decrypt(user_settings.openai_api_key_encrypted)
+            if api_key:
+                return cls(api_key=api_key, model=user_settings.openai_model)
+
+        # Fall back to system API key or no client
+        return cls()
 
     def get_function_definitions(self) -> list[dict[str, Any]]:
         """Get OpenAI function definitions for task planning."""
@@ -291,9 +318,10 @@ When creating weekly plans, use the create_week_plan function. When updating exi
         return context_str
 
     async def generate_weekly_plan(
-        self, context: WeeklyPlanContext
+        self, context: WeeklyPlanContext, session: AsyncSession | None = None
     ) -> WeeklyPlanResponse:
         """Generate weekly plan using OpenAI Assistants API."""
+        self.session = session  # Store session for logging
         try:
             logger.info(f"Generating weekly plan for user {context.user_id}")
 
@@ -307,7 +335,9 @@ When creating weekly plans, use the create_week_plan function. When updating exi
                     recommendations=[
                         "OpenAI API key not configured - AI features unavailable"
                     ],
-                    insights=["Please configure OPENAI_API_KEY to enable AI planning"],
+                    insights=[
+                        "Please configure your OpenAI API key in settings to enable AI planning"
+                    ],
                     generated_at=datetime.now(),
                 )
 
@@ -340,6 +370,15 @@ Use the create_week_plan function to structure your response."""
                 temperature=0.7,
                 max_tokens=2000,
             )
+
+            # Log API usage
+            if hasattr(response, "usage") and response.usage:
+                await self._log_api_usage(
+                    user_id=context.user_id,
+                    endpoint="weekly-plan",
+                    tokens_used=response.usage.total_tokens,
+                    response_status="success",
+                )
 
             # Parse function call response
             function_call = response.choices[0].message.function_call
@@ -391,6 +430,14 @@ Use the create_week_plan function to structure your response."""
 
         except Exception as e:
             logger.error(f"Error generating weekly plan: {e}")
+            # Log API error
+            if hasattr(self, "session") and self.session:
+                await self._log_api_usage(
+                    user_id=context.user_id,
+                    endpoint="weekly-plan",
+                    tokens_used=0,
+                    response_status="error",
+                )
             return WeeklyPlanResponse(
                 success=False,
                 week_start_date=context.week_start_date.strftime("%Y-%m-%d"),
@@ -401,13 +448,39 @@ Use the create_week_plan function to structure your response."""
                 generated_at=datetime.now(),
             )
 
+    async def _log_api_usage(
+        self, user_id: str, endpoint: str, tokens_used: int, response_status: str
+    ) -> None:
+        """Log API usage to database."""
+        if not hasattr(self, "session") or not self.session:
+            return
+
+        try:
+            # Estimate cost (GPT-4 Turbo pricing as of 2024)
+            # Input: $0.01 / 1K tokens, Output: $0.03 / 1K tokens
+            # Using average for simplicity
+            cost_per_1k_tokens = 0.02
+            cost_usd = (tokens_used / 1000) * cost_per_1k_tokens
+
+            usage_log = ApiUsageLog(
+                user_id=UUID(user_id),
+                endpoint=endpoint,
+                tokens_used=tokens_used,
+                cost_usd=cost_usd,
+                response_status=response_status,
+            )
+            self.session.add(usage_log)
+            await self.session.commit()
+        except Exception as e:
+            logger.error(f"Failed to log API usage: {e}")
+
 
 class WeeklyPlanService:
     """Service for weekly plan generation and management."""
 
-    def __init__(self):
+    def __init__(self, openai_service: OpenAIService | None = None):
         """Initialize service."""
-        self.openai_service = OpenAIService()
+        self.openai_service = openai_service or OpenAIService()
 
     async def collect_context(
         self,
@@ -473,5 +546,11 @@ class WeeklyPlanService:
             preferences=request.preferences,
         )
 
+        # Create user-specific OpenAI service if not provided
+        if not hasattr(self, "openai_service") or not self.openai_service:
+            self.openai_service = await OpenAIService.create_for_user(
+                UUID(user_id), session
+            )
+
         # Generate plan using OpenAI
-        return await self.openai_service.generate_weekly_plan(context)
+        return await self.openai_service.generate_weekly_plan(context, session)

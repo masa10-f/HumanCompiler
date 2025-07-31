@@ -16,7 +16,15 @@ from taskagent_api.exceptions import (
     task_agent_exception_handler,
     validation_exception_handler,
 )
-from taskagent_api.routers import ai_planning, goals, projects, scheduler, tasks, users
+from taskagent_api.routers import (
+    ai_planning,
+    goals,
+    projects,
+    scheduler,
+    tasks,
+    users,
+    user_settings,
+)
 
 
 @asynccontextmanager
@@ -79,6 +87,7 @@ app.include_router(goals.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
 app.include_router(scheduler.router, prefix="/api")
 app.include_router(ai_planning.router, prefix="/api")
+app.include_router(user_settings.router)
 
 
 # Health check endpoint

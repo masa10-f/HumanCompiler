@@ -5,8 +5,11 @@ OpenAI client wrapper for AI services
 import json
 import logging
 from datetime import datetime
+from uuid import UUID
 
 from openai import OpenAI
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
 
 from taskagent_api.ai.models import TaskPlan, WeeklyPlanContext, WeeklyPlanResponse
 from taskagent_api.ai.prompts import (
@@ -15,6 +18,8 @@ from taskagent_api.ai.prompts import (
     get_function_definitions,
 )
 from taskagent_api.config import settings
+from taskagent_api.crypto import crypto_service
+from taskagent_api.models import UserSettings
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +27,12 @@ logger = logging.getLogger(__name__)
 class OpenAIClient:
     """OpenAI client for AI services"""
 
-    def __init__(self):
-        """Initialize OpenAI client"""
-        if (
+    def __init__(self, api_key: str | None = None, model: str | None = None):
+        """Initialize OpenAI client with optional user-specific API key"""
+        if api_key:
+            self.client = OpenAI(api_key=api_key)
+            self.model = model or "gpt-4-1106-preview"
+        elif (
             not settings.openai_api_key
             or settings.openai_api_key == "your_openai_api_key"
         ):
@@ -40,6 +48,26 @@ class OpenAIClient:
     def is_available(self) -> bool:
         """Check if OpenAI client is available"""
         return self.client is not None
+
+    @classmethod
+    async def create_for_user(
+        cls, user_id: UUID, session: AsyncSession
+    ) -> "OpenAIClient":
+        """Create OpenAI client for a specific user with their API key"""
+        # Get user settings
+        result = await session.execute(
+            select(UserSettings).where(UserSettings.user_id == user_id)
+        )
+        user_settings = result.scalar_one_or_none()
+
+        if user_settings and user_settings.openai_api_key_encrypted:
+            # Decrypt API key
+            api_key = crypto_service.decrypt(user_settings.openai_api_key_encrypted)
+            if api_key:
+                return cls(api_key=api_key, model=user_settings.openai_model)
+
+        # Fall back to system API key or no client
+        return cls()
 
     async def generate_weekly_plan(
         self, context: WeeklyPlanContext
@@ -95,7 +123,9 @@ class OpenAIClient:
             total_planned_hours=0.0,
             task_plans=[],
             recommendations=["OpenAI API key not configured - AI features unavailable"],
-            insights=["Please configure OPENAI_API_KEY to enable AI planning"],
+            insights=[
+                "Please configure your OpenAI API key in settings to enable AI planning"
+            ],
             generated_at=datetime.now(),
         )
 

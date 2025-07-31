@@ -28,6 +28,16 @@ class Settings(BaseSettings):
     # OpenAI Configuration
     openai_api_key: str = Field(..., description="OpenAI API key")
 
+    # Security Configuration
+    secret_key: str = Field(
+        default="taskagent-secret-key-change-in-production",
+        description="Secret key for encryption",
+    )
+    encryption_key: str | None = Field(
+        default=None,
+        description="Optional encryption key for API keys (base64 encoded)",
+    )
+
     # Environment
     environment: str = Field(
         default="development", pattern="^(development|staging|production|test)$"
@@ -126,3 +136,5 @@ except Exception as e:
     settings.supabase_url = "https://dev.supabase.co"
     settings.supabase_anon_key = "dev-anon-key"
     settings.supabase_service_role_key = "dev-service-key"
+    settings.secret_key = "taskagent-secret-key-change-in-production"
+    settings.encryption_key = None

@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { useProjects } from '@/hooks/use-projects';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,7 +23,8 @@ import {
   Loader2,
   BarChart3,
   Target,
-  ArrowLeft
+  ArrowLeft,
+  Key
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { aiPlanningApi } from '@/lib/api';
@@ -48,6 +50,30 @@ export default function AIPlanningPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [weeklyPlan, setWeeklyPlan] = useState<WeeklyPlanResponse | null>(null);
   const [workloadAnalysis, setWorkloadAnalysis] = useState<WorkloadAnalysis | null>(null);
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
+  const [checkingApiKey, setCheckingApiKey] = useState(true);
+
+  useEffect(() => {
+    checkUserSettings();
+  }, []);
+
+  const checkUserSettings = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/settings`, {
+        headers: {
+          Authorization: `Bearer ${user?.id}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setHasApiKey(data.has_api_key);
+      }
+    } catch (error) {
+      console.error('Failed to check user settings:', error);
+    } finally {
+      setCheckingApiKey(false);
+    }
+  };
   const [prioritySuggestions, setPrioritySuggestions] = useState<PrioritySuggestions | null>(null);
 
   if (authLoading || !user) {
@@ -146,7 +172,30 @@ export default function AIPlanningPage() {
         </p>
       </div>
 
-      <Tabs defaultValue="planning" className="space-y-6">
+      {checkingApiKey ? (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <span className="ml-2">設定を確認中...</span>
+        </div>
+      ) : !hasApiKey ? (
+        <Alert>
+          <Key className="h-4 w-4" />
+          <AlertTitle>OpenAI APIキーが未設定です</AlertTitle>
+          <AlertDescription>
+            AI機能を使用するには、まずOpenAI APIキーを設定してください。
+            <Button
+              variant="link"
+              className="ml-2 p-0"
+              onClick={() => router.push('/settings')}
+            >
+              設定ページへ移動
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {hasApiKey && (
+        <Tabs defaultValue="planning" className="space-y-6">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="planning">週間計画生成</TabsTrigger>
           <TabsTrigger value="analysis">ワークロード分析</TabsTrigger>
@@ -211,7 +260,7 @@ export default function AIPlanningPage() {
 
               <Button
                 onClick={generateWeeklyPlan}
-                disabled={isGenerating}
+                disabled={isGenerating || !hasApiKey}
                 className="w-full"
               >
                 {isGenerating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -501,6 +550,7 @@ export default function AIPlanningPage() {
           )}
         </TabsContent>
       </Tabs>
+      )}
     </div>
   );
 }

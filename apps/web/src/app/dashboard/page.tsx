@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Calendar, Plus, Brain, Settings, Clock, ExternalLink, History } from 'lucide-react'
+import { Calendar, Plus, Brain, Settings, Clock, ExternalLink, History, Key } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { schedulingApi } from '@/lib/api'
@@ -113,6 +113,14 @@ export default function DashboardPage() {
                   className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
                 >
                   スケジュール履歴
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => router.push('/settings')}
+                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                >
+                  <Key className="h-4 w-4 mr-2" />
+                  設定
                 </Button>
               </nav>
             </div>
