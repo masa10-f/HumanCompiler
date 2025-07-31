@@ -7,7 +7,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://taskagent-api.fly.dev/api/$1"
+      "destination": "https://taskagent-api-masa.fly.dev/api/$1"
     }
   ],
   "headers": [
