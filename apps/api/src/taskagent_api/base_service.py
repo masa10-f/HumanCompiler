@@ -3,7 +3,7 @@ Base service class with common CRUD operations
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone, UTC
 from typing import Generic, TypeVar
 from uuid import UUID, uuid4
 
@@ -112,7 +112,7 @@ class BaseService(ABC, Generic[T, CreateT, UpdateT]):
                     setattr(entity, field, value)
 
             if hasattr(entity, "updated_at"):
-                entity.updated_at = datetime.utcnow()
+                entity.updated_at = datetime.now(UTC)
 
             session.add(entity)
             session.flush()

@@ -39,7 +39,9 @@ def memory_db():
     """Create in-memory SQLite database for testing"""
     engine = create_engine("sqlite:///:memory:")
     SQLModel.metadata.create_all(engine)
-    return engine
+    yield engine
+    # Properly dispose of the engine after use
+    engine.dispose()
 
 
 @pytest.fixture

@@ -28,8 +28,12 @@ def test_session():
     )
     SQLModel.metadata.create_all(engine)
 
-    with Session(engine) as session:
-        yield session
+    try:
+        with Session(engine) as session:
+            yield session
+    finally:
+        # Properly dispose of the engine after use
+        engine.dispose()
 
 
 @pytest.fixture

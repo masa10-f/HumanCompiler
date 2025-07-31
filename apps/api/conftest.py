@@ -65,6 +65,8 @@ def db():
     finally:
         db.close()
         SQLModel.metadata.drop_all(bind=engine)
+        # Ensure all connections are properly closed
+        engine.dispose()
 
 
 @pytest.fixture(scope="function")

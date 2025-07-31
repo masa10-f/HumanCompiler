@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone, UTC
 from decimal import Decimal
 from enum import Enum
 from typing import Any
@@ -33,8 +33,8 @@ class User(UserBase, table=True):
     __tablename__ = "users"
 
     id: UUID | None = SQLField(default=None, primary_key=True)
-    created_at: datetime | None = SQLField(default_factory=datetime.utcnow)
-    updated_at: datetime | None = SQLField(default_factory=datetime.utcnow)
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
     projects: list["Project"] = Relationship(back_populates="owner")
@@ -55,8 +55,8 @@ class Project(ProjectBase, table=True):
 
     id: UUID | None = SQLField(default=None, primary_key=True)
     owner_id: UUID = SQLField(foreign_key="users.id")
-    created_at: datetime | None = SQLField(default_factory=datetime.utcnow)
-    updated_at: datetime | None = SQLField(default_factory=datetime.utcnow)
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
     owner: User | None = Relationship(back_populates="projects")
@@ -78,8 +78,8 @@ class Goal(GoalBase, table=True):
 
     id: UUID | None = SQLField(default=None, primary_key=True)
     project_id: UUID = SQLField(foreign_key="projects.id", ondelete="CASCADE")
-    created_at: datetime | None = SQLField(default_factory=datetime.utcnow)
-    updated_at: datetime | None = SQLField(default_factory=datetime.utcnow)
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
     project: Project | None = Relationship(back_populates="goals")
@@ -108,8 +108,8 @@ class Task(TaskBase, table=True):
 
     id: UUID | None = SQLField(default=None, primary_key=True)
     goal_id: UUID = SQLField(foreign_key="goals.id", ondelete="CASCADE")
-    created_at: datetime | None = SQLField(default_factory=datetime.utcnow)
-    updated_at: datetime | None = SQLField(default_factory=datetime.utcnow)
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
     goal: Goal | None = Relationship(back_populates="tasks")
@@ -130,8 +130,8 @@ class Schedule(ScheduleBase, table=True):
 
     id: UUID | None = SQLField(default=None, primary_key=True)
     user_id: UUID = SQLField(foreign_key="users.id")
-    created_at: datetime | None = SQLField(default_factory=datetime.utcnow)
-    updated_at: datetime | None = SQLField(default_factory=datetime.utcnow)
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
     user: User | None = Relationship(back_populates="schedules")
@@ -151,7 +151,7 @@ class Log(LogBase, table=True):
 
     id: UUID | None = SQLField(default=None, primary_key=True)
     task_id: UUID = SQLField(foreign_key="tasks.id", ondelete="CASCADE")
-    created_at: datetime | None = SQLField(default_factory=datetime.utcnow)
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
     task: Task | None = Relationship(back_populates="logs")

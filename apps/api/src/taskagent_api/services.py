@@ -2,7 +2,7 @@
 Refactored services using base service class
 """
 
-from datetime import datetime
+from datetime import datetime, timezone, UTC
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -68,7 +68,7 @@ class UserService:
         for field, value in update_data.items():
             setattr(user, field, value)
 
-        user.updated_at = datetime.utcnow()
+        user.updated_at = datetime.now(UTC)
         session.add(user)
         session.commit()
         session.refresh(user)

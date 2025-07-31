@@ -7,7 +7,7 @@ import logging
 # Always use mock implementation for Docker/Production deployments
 # Real scheduler package requires complex monorepo setup
 import os
-from datetime import datetime, time
+from datetime import datetime, time, timezone, UTC
 from typing import Any
 from uuid import uuid4
 
@@ -555,7 +555,7 @@ async def save_daily_schedule(
         if existing_schedule:
             # Update existing schedule
             existing_schedule.plan_json = plan_data
-            existing_schedule.updated_at = datetime.utcnow()
+            existing_schedule.updated_at = datetime.now(UTC)
             session.add(existing_schedule)
             session.commit()
             session.refresh(existing_schedule)
