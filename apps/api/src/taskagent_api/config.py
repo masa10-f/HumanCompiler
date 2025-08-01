@@ -144,7 +144,7 @@ except Exception as e:
 def validate_production_config():
     """Validate configuration for production deployment security."""
     if hasattr(settings, "environment") and settings.environment == "production":
-        default_secret = "taskagent-secret-key-change-in-production"
+        default_secret = "taskagent-secret-key-change-in-production"  # nosec B105
         if settings.secret_key == default_secret:
             raise RuntimeError(
                 "The default secret key cannot be used in production. "
