@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
@@ -19,17 +18,16 @@ import {
   Loader2,
   Plus,
   Trash2,
-  ArrowLeft,
   ExternalLink,
   Save
 } from 'lucide-react';
+import { AppHeader } from '@/components/layout/app-header';
 import { toast } from '@/hooks/use-toast';
 import { schedulingApi } from '@/lib/api';
 import type { ScheduleRequest, ScheduleResult, TimeSlot } from '@/types/ai-planning';
 
 export default function SchedulingPage() {
   const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
 
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date();
@@ -154,26 +152,21 @@ export default function SchedulingPage() {
   };
 
   return (
-    <div className="container mx-auto py-8">
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Settings className="h-8 w-8 text-blue-600" />
-            スケジュール最適化
-          </h1>
-          <Button
-            variant="outline"
-            onClick={() => router.back()}
-            className="flex items-center gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            戻る
-          </Button>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <AppHeader currentPage="scheduling" />
+
+      <div className="container mx-auto py-8">
+        <div className="mb-8">
+          <div className="mb-4">
+            <h1 className="text-3xl font-bold flex items-center gap-2">
+              <Settings className="h-8 w-8 text-blue-600" />
+              スケジュール最適化
+            </h1>
+          </div>
+          <p className="text-gray-600">
+            OR-Toolsを使用してタスクの最適なスケジューリングを行います。
+          </p>
         </div>
-        <p className="text-gray-600">
-          OR-Toolsを使用してタスクの最適なスケジューリングを行います。
-        </p>
-      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Schedule Configuration */}
@@ -496,6 +489,7 @@ export default function SchedulingPage() {
             </CardContent>
           </Card>
         </div>
+      </div>
       </div>
     </div>
   );

@@ -2,8 +2,15 @@
 
 # dependencies
 /node_modules
+**/node_modules/
 /.pnp
 .pnp.js
+
+# npm/yarn lock files and package management
+package-lock.json
+yarn.lock
+.yarn/
+.pnp.*
 
 # testing
 /coverage
@@ -85,3 +92,30 @@ dmypy.json
 
 # pnpm
 pnpm-debug.log*
+.pnpm-store/
+
+# pnpm generated files (temporary symlinks and cache)
+node_modules/.*
+**/node_modules/.*
+
+# Package manager caches and temp files
+.npm/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# npm scripts and build artifacts
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# ESLint cache
+.eslintcache
+
+# Turborepo cache
+.turbo

@@ -7,16 +7,25 @@ repos:
         args: [--fix, --exit-non-zero-on-fix]
       - id: ruff-format
 
-  # MyPy for type checking (disabled in pre-commit, runs in CI)
-  # - repo: local
-  #   hooks:
-  #     - id: mypy
-  #       name: mypy
-  #       entry: python -m mypy
-  #       language: system
-  #       types: [python]
-  #       args: [src, --config-file=pyproject.toml]
-  #       pass_filenames: false
+  # MyPy for type checking
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: bash -c 'cd apps/api && python -m mypy src --config-file=pyproject.toml'
+        language: system
+        types: [python]
+        pass_filenames: false
+
+  # Pytest for running tests
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: bash -c 'cd apps/api && PYTHONPATH=src python -m pytest'
+        language: system
+        types: [python]
+        pass_filenames: false
 
   # Bandit for security scanning
   - repo: https://github.com/PyCQA/bandit

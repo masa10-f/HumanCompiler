@@ -39,6 +39,8 @@ class User(UserBase, table=True):
     # Relationships
     projects: list["Project"] = Relationship(back_populates="owner")
     schedules: list["Schedule"] = Relationship(back_populates="user")
+    settings: "UserSettings" = Relationship(back_populates="user")
+    api_usage_logs: list["ApiUsageLog"] = Relationship(back_populates="user")
 
 
 class ProjectBase(SQLModel):
@@ -59,7 +61,7 @@ class Project(ProjectBase, table=True):
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
-    owner: User | None = Relationship(back_populates="projects")
+    owner: User = Relationship(back_populates="projects")
     goals: list["Goal"] = Relationship(back_populates="project")
 
 
@@ -82,7 +84,7 @@ class Goal(GoalBase, table=True):
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
-    project: Project | None = Relationship(back_populates="goals")
+    project: Project = Relationship(back_populates="goals")
     tasks: list["Task"] = Relationship(back_populates="goal")
 
 
@@ -112,7 +114,7 @@ class Task(TaskBase, table=True):
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
-    goal: Goal | None = Relationship(back_populates="tasks")
+    goal: Goal = Relationship(back_populates="tasks")
     logs: list["Log"] = Relationship(back_populates="task")
 
 
@@ -134,7 +136,7 @@ class Schedule(ScheduleBase, table=True):
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
-    user: User | None = Relationship(back_populates="schedules")
+    user: User = Relationship(back_populates="schedules")
 
 
 class LogBase(SQLModel):
@@ -154,7 +156,53 @@ class Log(LogBase, table=True):
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
-    task: Task | None = Relationship(back_populates="logs")
+    task: Task = Relationship(back_populates="logs")
+
+
+class UserSettingsBase(SQLModel):
+    """Base user settings model"""
+
+    openai_api_key_encrypted: str | None = SQLField(default=None, max_length=500)
+    openai_model: str = SQLField(default="gpt-4", max_length=50)
+    ai_features_enabled: bool = SQLField(default=False)
+
+
+class UserSettings(UserSettingsBase, table=True):
+    """User settings database model"""
+
+    __tablename__ = "user_settings"
+
+    id: UUID | None = SQLField(default=None, primary_key=True)
+    user_id: UUID = SQLField(foreign_key="users.id", unique=True)
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+
+    # Relationships
+    user: User = Relationship(back_populates="settings")
+
+
+class ApiUsageLogBase(SQLModel):
+    """Base API usage log model"""
+
+    endpoint: str = SQLField(max_length=100)
+    tokens_used: int = SQLField(default=0)
+    cost_usd: Decimal = SQLField(default=0, max_digits=10, decimal_places=4)
+    response_status: str = SQLField(max_length=20)
+
+
+class ApiUsageLog(ApiUsageLogBase, table=True):
+    """API usage log database model"""
+
+    __tablename__ = "api_usage_logs"
+
+    id: UUID | None = SQLField(default=None, primary_key=True)
+    user_id: UUID = SQLField(foreign_key="users.id")
+    request_timestamp: datetime | None = SQLField(
+        default_factory=lambda: datetime.now(UTC)
+    )
+
+    # Relationships
+    user: User = Relationship(back_populates="api_usage_logs")
 
 
 # API Request/Response Models (Pydantic)
@@ -299,6 +347,44 @@ class LogResponse(LogBase):
     id: UUID
     task_id: UUID
     created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserSettingsCreate(BaseModel):
+    """User settings creation request"""
+
+    openai_api_key: str = Field(min_length=1)
+    openai_model: str = Field(default="gpt-4", max_length=50)
+
+
+class UserSettingsUpdate(BaseModel):
+    """User settings update request"""
+
+    openai_api_key: str | None = Field(None, min_length=1)
+    openai_model: str | None = Field(None, max_length=50)
+
+
+class UserSettingsResponse(BaseModel):
+    """User settings response model"""
+
+    id: UUID
+    user_id: UUID
+    openai_model: str
+    ai_features_enabled: bool
+    created_at: datetime
+    updated_at: datetime
+    has_api_key: bool = Field(description="Whether API key is configured")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ApiUsageLogResponse(ApiUsageLogBase):
+    """API usage log response model"""
+
+    id: UUID
+    user_id: UUID
+    request_timestamp: datetime
 
     model_config = ConfigDict(from_attributes=True)
 

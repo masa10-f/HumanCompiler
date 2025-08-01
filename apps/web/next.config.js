@@ -5,6 +5,9 @@ const nextConfig = {
   experimental: {
     typedRoutes: true,
   },
+  eslint: {
+    // ESLint is now properly configured and all critical errors have been resolved
+  },
   images: {
     remotePatterns: [
       {
