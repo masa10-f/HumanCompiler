@@ -4,7 +4,7 @@ export interface WeeklyPlanRequest {
   week_start_date: string;
   capacity_hours: number;
   project_filter?: string[];
-  preferences?: Record<string, any>;
+  preferences?: Record<string, unknown>;
 }
 
 export interface TaskPlan {
@@ -75,7 +75,7 @@ export interface ScheduleRequest {
   time_slots: TimeSlot[];
   project_id?: string;
   goal_id?: string;
-  preferences?: Record<string, any>;
+  preferences?: Record<string, unknown>;
 }
 
 export interface TaskAssignment {
