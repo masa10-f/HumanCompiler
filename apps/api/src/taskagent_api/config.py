@@ -138,3 +138,15 @@ except Exception as e:
     settings.supabase_service_role_key = "dev-service-key"
     settings.secret_key = "taskagent-secret-key-change-in-production"  # nosec B105
     settings.encryption_key = None
+
+
+# Production security check
+def validate_production_config():
+    """Validate configuration for production deployment security."""
+    if hasattr(settings, "environment") and settings.environment == "production":
+        default_secret = "taskagent-secret-key-change-in-production"
+        if settings.secret_key == default_secret:
+            raise RuntimeError(
+                "The default secret key cannot be used in production. "
+                "Please set a secure SECRET_KEY environment variable."
+            )

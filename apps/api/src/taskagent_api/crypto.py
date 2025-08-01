@@ -24,7 +24,14 @@ class CryptoService:
         else:
             # Derive key from a secret (should be set in environment)
             password = settings.secret_key.encode()
-            salt = b"taskagent-salt-v1"  # Static salt for key derivation
+
+            # Generate or retrieve a unique salt for key derivation
+            if hasattr(settings, "encryption_salt") and settings.encryption_salt:
+                salt = base64.urlsafe_b64decode(settings.encryption_salt.encode())
+            else:
+                # For development/demo only - in production, salt should be set via environment
+                salt = b"taskagent-salt-v1-dev-only"  # Static salt for development
+
             kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
                 length=32,

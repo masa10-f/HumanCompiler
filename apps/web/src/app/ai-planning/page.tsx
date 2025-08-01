@@ -58,8 +58,20 @@ export default function AIPlanningPage() {
   }, []);
 
   const checkUserSettings = async () => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (!apiUrl) {
+      console.error('Environment variable NEXT_PUBLIC_API_URL is not defined.');
+      toast({
+        title: 'エラー',
+        description: 'ユーザー設定を取得できません。サポートまでお問い合わせください。',
+        variant: 'destructive',
+      });
+      setCheckingApiKey(false);
+      return;
+    }
+
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/settings`, {
+      const response = await fetch(`${apiUrl}/api/user/settings`, {
         headers: {
           Authorization: `Bearer ${user?.id}`,
         },

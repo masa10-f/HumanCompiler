@@ -452,10 +452,10 @@ Use the create_week_plan function to structure your response."""
         self, user_id: str, endpoint: str, tokens_used: int, response_status: str
     ) -> None:
         """Log API usage to database."""
-        if not hasattr(self, "session") or not self.session:
-            return
-
         try:
+            # Use a separate session for logging to avoid interfering with main transaction
+            from taskagent_api.database import get_db
+
             # Estimate cost (GPT-4 Turbo pricing as of 2024)
             # Input: $0.01 / 1K tokens, Output: $0.03 / 1K tokens
             # Using average for simplicity
@@ -469,8 +469,17 @@ Use the create_week_plan function to structure your response."""
                 cost_usd=cost_usd,
                 response_status=response_status,
             )
-            self.session.add(usage_log)
-            await self.session.commit()
+
+            # Use separate session for logging
+            for logging_session in get_db():
+                try:
+                    logging_session.add(usage_log)
+                    logging_session.commit()
+                    break
+                except Exception as commit_error:
+                    logging_session.rollback()
+                    logger.error(f"Failed to commit API usage log: {commit_error}")
+
         except Exception as e:
             logger.error(f"Failed to log API usage: {e}")
 

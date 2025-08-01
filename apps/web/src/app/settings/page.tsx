@@ -10,6 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Eye, EyeOff, Key, AlertCircle, CheckCircle, TrendingUp, Hash, DollarSign } from "lucide-react"
 import { AppHeader } from "@/components/layout/app-header"
+import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { supabase } from "@/lib/supabase"
 
 export default function SettingsPage() {
@@ -27,6 +28,7 @@ export default function SettingsPage() {
     total_cost: number
     request_count: number
   } | null>(null)
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
 
   useEffect(() => {
     fetchUserSettings()
@@ -127,9 +129,11 @@ export default function SettingsPage() {
   }
 
   const handleDeleteApiKey = async () => {
-    if (!confirm("Are you sure you want to delete your API key? AI features will be disabled.")) {
-      return
-    }
+    setIsDeleteModalOpen(true)
+  }
+
+  const confirmDeleteApiKey = async () => {
+    setIsDeleteModalOpen(false)
 
     setLoading(true)
     setError("")
@@ -361,6 +365,18 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       )}
+
+      <ConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={confirmDeleteApiKey}
+        title="API キーを削除"
+        description="API キーを削除してもよろしいですか？AI機能が無効になります。"
+        confirmText="削除"
+        cancelText="キャンセル"
+        variant="destructive"
+        loading={loading}
+      />
       </div>
     </div>
   )

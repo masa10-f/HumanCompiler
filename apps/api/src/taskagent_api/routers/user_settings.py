@@ -34,13 +34,28 @@ async def validate_openai_api_key(api_key: str) -> bool:
         True if valid, False otherwise
     """
     import openai
+    import logging
+
+    # Configure logging to avoid leaking API key in logs
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("openai").setLevel(logging.WARNING)
 
     try:
-        client = openai.OpenAI(api_key=api_key)
+        client = openai.OpenAI(
+            api_key=api_key,
+            timeout=10.0,  # Add timeout to prevent hanging
+        )
         # Make a minimal API call to validate the key
         client.models.list()
         return True
+    except openai.AuthenticationError:
+        # Invalid API key
+        return False
+    except openai.RateLimitError:
+        # API key is valid but rate limited - still consider valid
+        return True
     except Exception:
+        # Network or other errors - consider invalid for safety
         return False
 
 
