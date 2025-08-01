@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Eye, EyeOff, Key, AlertCircle, CheckCircle, TrendingUp, Hash, DollarSign } from "lucide-react"
-import { getSupabase } from "@/lib/supabase/client"
+import { supabase } from "@/lib/supabase"
 
 export default function SettingsPage() {
   const router = useRouter()
@@ -33,7 +33,6 @@ export default function SettingsPage() {
 
   const fetchUserSettings = async () => {
     try {
-      const supabase = getSupabase()
       const { data: { user } } = await supabase.auth.getUser()
 
       if (!user) {
@@ -92,7 +91,6 @@ export default function SettingsPage() {
     setSuccess("")
 
     try {
-      const supabase = getSupabase()
       const { data: { user } } = await supabase.auth.getUser()
 
       if (!user) {
@@ -137,7 +135,6 @@ export default function SettingsPage() {
     setSuccess("")
 
     try {
-      const supabase = getSupabase()
       const { data: { user } } = await supabase.auth.getUser()
 
       if (!user) {
