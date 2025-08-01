@@ -12,7 +12,7 @@ import { schedulingApi } from '@/lib/api'
 import Link from 'next/link'
 
 export default function DashboardPage() {
-  const { user, loading, signOut, isAuthenticated } = useAuth()
+  const { loading, isAuthenticated } = useAuth()
   const router = useRouter()
   const [todaySchedule, setTodaySchedule] = useState<{
     plan_json: {

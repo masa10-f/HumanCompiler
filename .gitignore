@@ -2,8 +2,15 @@
 
 # dependencies
 /node_modules
+**/node_modules/
 /.pnp
 .pnp.js
+
+# npm/yarn lock files and package management
+package-lock.json
+yarn.lock
+.yarn/
+.pnp.*
 
 # testing
 /coverage
@@ -26,13 +33,14 @@ apps/web/out/
 /build
 
 # misc
-.DS_Store
 *.pem
 
 # debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+api.log
+*.log
 
 # local env files
 .env*.local
@@ -43,10 +51,15 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+**/*.tsbuildinfo
 next-env.d.ts
+
+# TypeScript cache
+.tscache/
 
 # Python
 __pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -73,6 +86,16 @@ venv/
 .dmypy.json
 dmypy.json
 
+# Python test coverage
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
 # Supabase
 .supabase/
 
@@ -83,5 +106,48 @@ dmypy.json
 *.swo
 *~
 
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.orig
+
 # pnpm
 pnpm-debug.log*
+.pnpm-store/
+
+# pnpm generated files (temporary symlinks and cache)
+node_modules/.*
+**/node_modules/.*
+
+# Package manager caches and temp files
+.npm/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# npm scripts and build artifacts
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# ESLint cache
+.eslintcache
+
+# Turborepo cache
+.turbo

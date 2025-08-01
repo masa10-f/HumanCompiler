@@ -167,7 +167,7 @@ class UserSettingsBase(SQLModel):
     ai_features_enabled: bool = SQLField(default=False)
 
 
-class UserSettings(UserSettingsBase, table=True):  # type: ignore[call-arg]
+class UserSettings(UserSettingsBase, table=True):
     """User settings database model"""
 
     __tablename__ = "user_settings"
@@ -190,7 +190,7 @@ class ApiUsageLogBase(SQLModel):
     response_status: str = SQLField(max_length=20)
 
 
-class ApiUsageLog(ApiUsageLogBase, table=True):  # type: ignore[call-arg]
+class ApiUsageLog(ApiUsageLogBase, table=True):
     """API usage log database model"""
 
     __tablename__ = "api_usage_logs"

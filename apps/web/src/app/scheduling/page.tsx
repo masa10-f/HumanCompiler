@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
@@ -29,7 +28,6 @@ import type { ScheduleRequest, ScheduleResult, TimeSlot } from '@/types/ai-plann
 
 export default function SchedulingPage() {
   const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
 
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date();
