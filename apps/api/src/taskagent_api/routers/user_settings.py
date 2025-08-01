@@ -39,7 +39,7 @@ async def validate_openai_api_key(api_key: str) -> bool:
     try:
         client = openai.OpenAI(api_key=api_key)
         # Make a minimal API call to validate the key
-        client.models.list(limit=1)
+        client.models.list()
         return True
     except Exception:
         return False
