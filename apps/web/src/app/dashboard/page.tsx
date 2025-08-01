@@ -4,7 +4,8 @@ import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Calendar, Plus, Brain, Settings, Clock, ExternalLink, History, Key } from 'lucide-react'
+import { Calendar, Plus, Brain, Settings, Clock, ExternalLink, History } from 'lucide-react'
+import { AppHeader } from '@/components/layout/app-header'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { schedulingApi } from '@/lib/api'
@@ -70,71 +71,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
-      <header className="bg-white dark:bg-gray-800 shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-8">
-              <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
-                TaskAgent
-              </h1>
-              <nav className="hidden md:flex space-x-4">
-                <Button
-                  variant="ghost"
-                  onClick={() => router.push('/dashboard')}
-                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
-                >
-                  ダッシュボード
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => router.push('/projects')}
-                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
-                >
-                  プロジェクト
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => router.push('/ai-planning')}
-                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
-                >
-                  AI計画
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => router.push('/scheduling')}
-                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
-                >
-                  スケジューリング
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => router.push('/schedule-history')}
-                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
-                >
-                  スケジュール履歴
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => router.push('/settings')}
-                  className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
-                >
-                  <Key className="h-4 w-4 mr-2" />
-                  設定
-                </Button>
-              </nav>
-            </div>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600 dark:text-gray-300">
-                {user?.email}
-              </span>
-              <Button variant="outline" onClick={signOut}>
-                ログアウト
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <AppHeader currentPage="dashboard" />
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

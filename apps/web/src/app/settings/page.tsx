@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Eye, EyeOff, Key, AlertCircle, CheckCircle, TrendingUp, Hash, DollarSign } from "lucide-react"
+import { AppHeader } from "@/components/layout/app-header"
 import { supabase } from "@/lib/supabase"
 
 export default function SettingsPage() {
@@ -175,8 +176,11 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="container mx-auto py-8 max-w-4xl">
-      <h1 className="text-3xl font-bold mb-8">Settings</h1>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <AppHeader currentPage="settings" />
+
+      <div className="container mx-auto py-8 max-w-4xl">
+        <h1 className="text-3xl font-bold mb-8">設定</h1>
 
       <Card>
         <CardHeader>
@@ -357,6 +361,7 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       )}
+      </div>
     </div>
   )
 }

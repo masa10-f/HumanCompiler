@@ -23,9 +23,9 @@ import {
   Loader2,
   BarChart3,
   Target,
-  ArrowLeft,
   Key
 } from 'lucide-react';
+import { AppHeader } from '@/components/layout/app-header';
 import { toast } from '@/hooks/use-toast';
 import { aiPlanningApi } from '@/lib/api';
 import type { WeeklyPlanResponse, WorkloadAnalysis, PrioritySuggestions } from '@/types/ai-planning';
@@ -151,26 +151,21 @@ export default function AIPlanningPage() {
   };
 
   return (
-    <div className="container mx-auto py-8">
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Brain className="h-8 w-8 text-purple-600" />
-            AI週間計画
-          </h1>
-          <Button
-            variant="outline"
-            onClick={() => router.back()}
-            className="flex items-center gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            戻る
-          </Button>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <AppHeader currentPage="ai-planning" />
+
+      <div className="container mx-auto py-8">
+        <div className="mb-8">
+          <div className="mb-4">
+            <h1 className="text-3xl font-bold flex items-center gap-2">
+              <Brain className="h-8 w-8 text-purple-600" />
+              AI週間計画
+            </h1>
+          </div>
+          <p className="text-gray-600">
+            AIがあなたのタスクを分析し、最適な週間計画を提案します。
+          </p>
         </div>
-        <p className="text-gray-600">
-          AIがあなたのタスクを分析し、最適な週間計画を提案します。
-        </p>
-      </div>
 
       {checkingApiKey ? (
         <div className="flex items-center justify-center py-8">
@@ -551,6 +546,7 @@ export default function AIPlanningPage() {
         </TabsContent>
       </Tabs>
       )}
+      </div>
     </div>
   );
 }
