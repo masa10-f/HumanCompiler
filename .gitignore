@@ -40,6 +40,8 @@ apps/web/out/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+api.log
+*.log
 
 # local env files
 .env*.local
