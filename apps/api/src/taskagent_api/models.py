@@ -27,7 +27,7 @@ class UserBase(SQLModel):
     email: str = SQLField(unique=True, index=True)
 
 
-class User(UserBase, table=True):
+class User(UserBase, table=True):  # type: ignore[call-arg]
     """User database model"""
 
     __tablename__ = "users"
@@ -50,7 +50,7 @@ class ProjectBase(SQLModel):
     description: str | None = SQLField(default=None, max_length=1000)
 
 
-class Project(ProjectBase, table=True):
+class Project(ProjectBase, table=True):  # type: ignore[call-arg]
     """Project database model"""
 
     __tablename__ = "projects"
@@ -73,7 +73,7 @@ class GoalBase(SQLModel):
     estimate_hours: Decimal = SQLField(gt=0, max_digits=5, decimal_places=2)
 
 
-class Goal(GoalBase, table=True):
+class Goal(GoalBase, table=True):  # type: ignore[call-arg]
     """Goal database model"""
 
     __tablename__ = "goals"
@@ -103,7 +103,7 @@ class TaskBase(SQLModel):
     )
 
 
-class Task(TaskBase, table=True):
+class Task(TaskBase, table=True):  # type: ignore[call-arg]
     """Task database model"""
 
     __tablename__ = "tasks"
@@ -125,7 +125,7 @@ class ScheduleBase(SQLModel):
     plan_json: dict[str, Any] = SQLField(sa_column=Column(JSON), default_factory=dict)
 
 
-class Schedule(ScheduleBase, table=True):
+class Schedule(ScheduleBase, table=True):  # type: ignore[call-arg]
     """Schedule database model"""
 
     __tablename__ = "schedules"
@@ -146,7 +146,7 @@ class LogBase(SQLModel):
     comment: str | None = SQLField(default=None, max_length=500)
 
 
-class Log(LogBase, table=True):
+class Log(LogBase, table=True):  # type: ignore[call-arg]
     """Log database model"""
 
     __tablename__ = "logs"
@@ -167,7 +167,7 @@ class UserSettingsBase(SQLModel):
     ai_features_enabled: bool = SQLField(default=False)
 
 
-class UserSettings(UserSettingsBase, table=True):
+class UserSettings(UserSettingsBase, table=True):  # type: ignore[call-arg]
     """User settings database model"""
 
     __tablename__ = "user_settings"
@@ -190,7 +190,7 @@ class ApiUsageLogBase(SQLModel):
     response_status: str = SQLField(max_length=20)
 
 
-class ApiUsageLog(ApiUsageLogBase, table=True):
+class ApiUsageLog(ApiUsageLogBase, table=True):  # type: ignore[call-arg]
     """API usage log database model"""
 
     __tablename__ = "api_usage_logs"

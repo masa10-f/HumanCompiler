@@ -10,7 +10,7 @@ try:
     from taskagent_api.ai_service import WeeklyPlanService
 except ImportError:
     # Fallback if ai_service.py doesn't exist
-    WeeklyPlanService = None
+    WeeklyPlanService = None  # type: ignore[misc, assignment]
 
 __all__ = [
     "weekly_plan_service",
