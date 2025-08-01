@@ -76,7 +76,12 @@ class CryptoService:
             encrypted_bytes = base64.urlsafe_b64decode(ciphertext.encode())
             decrypted_bytes = self.fernet.decrypt(encrypted_bytes)
             return decrypted_bytes.decode()
-        except Exception:
+        except Exception as e:
+            # Log the exception for debugging while maintaining security
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to decrypt data: {type(e).__name__}")
             # Return empty string if decryption fails
             return ""
 
