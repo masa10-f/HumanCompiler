@@ -36,7 +36,7 @@ export default function SettingsPage() {
       const { data: { user } } = await supabase.auth.getUser()
 
       if (!user) {
-        router.push("/auth/signin")
+        router.push("/login")
         return
       }
 
@@ -94,7 +94,7 @@ export default function SettingsPage() {
       const { data: { user } } = await supabase.auth.getUser()
 
       if (!user) {
-        router.push("/auth/signin")
+        router.push("/login")
         return
       }
 
@@ -138,7 +138,7 @@ export default function SettingsPage() {
       const { data: { user } } = await supabase.auth.getUser()
 
       if (!user) {
-        router.push("/auth/signin")
+        router.push("/login")
         return
       }
 
