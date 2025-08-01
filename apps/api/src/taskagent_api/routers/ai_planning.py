@@ -7,10 +7,12 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
+from uuid import UUID
 
-from taskagent_api.ai import WeeklyPlanRequest, WeeklyPlanResponse, weekly_plan_service
+from taskagent_api.ai import WeeklyPlanRequest, WeeklyPlanResponse, WeeklyPlanService
+from taskagent_api.ai_service import OpenAIService
 from taskagent_api.auth import get_current_user_id
-from taskagent_api.database import db
+from taskagent_api.database import get_session, db
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ai", tags=["ai-planning"])
@@ -20,7 +22,7 @@ router = APIRouter(prefix="/ai", tags=["ai-planning"])
 async def generate_weekly_plan(
     request: WeeklyPlanRequest,
     user_id: str = Depends(get_current_user_id),
-    session: Session = Depends(db.get_session),
+    session: Session = Depends(get_session),
 ):
     """
     Generate AI-powered weekly plan using OpenAI Assistants API.
@@ -60,7 +62,13 @@ async def generate_weekly_plan(
                 detail="Cannot create plans for weeks more than 7 days in the past",
             )
 
-        # Generate weekly plan using singleton service
+        # Create user-specific OpenAI service
+        openai_service = OpenAIService.create_for_user_sync(UUID(user_id), session)
+
+        # Create weekly plan service with user's OpenAI service
+        weekly_plan_service = WeeklyPlanService(openai_service=openai_service)
+
+        # Generate weekly plan
         plan_response = await weekly_plan_service.generate_weekly_plan(
             session=session, user_id=user_id, request=request
         )
@@ -113,7 +121,7 @@ async def test_ai_integration():
 async def analyze_workload(
     project_ids: list[str] | None = None,
     user_id: str = Depends(get_current_user_id),
-    session: Session = Depends(db.get_session),
+    session: Session = Depends(get_session),
 ):
     """
     Analyze current workload and provide recommendations.
@@ -226,7 +234,7 @@ async def analyze_workload(
 async def suggest_task_priorities(
     project_id: str | None = None,
     user_id: str = Depends(get_current_user_id),
-    session: Session = Depends(db.get_session),
+    session: Session = Depends(get_session),
 ):
     """
     Get AI suggestions for task prioritization.

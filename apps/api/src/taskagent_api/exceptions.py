@@ -39,6 +39,10 @@ class ValidationError(TaskAgentException):
         super().__init__(message, "VALIDATION_ERROR")
 
 
+# Aliases for common exception names
+NotFoundError = ResourceNotFoundError
+
+
 async def http_exception_handler(request: Request, exc: HTTPException):
     """Handle HTTP exceptions"""
     return JSONResponse(
