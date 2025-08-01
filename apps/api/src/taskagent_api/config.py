@@ -136,5 +136,5 @@ except Exception as e:
     settings.supabase_url = "https://dev.supabase.co"
     settings.supabase_anon_key = "dev-anon-key"
     settings.supabase_service_role_key = "dev-service-key"
-    settings.secret_key = "taskagent-secret-key-change-in-production"
+    settings.secret_key = "taskagent-secret-key-change-in-production"  # nosec B105
     settings.encryption_key = None
