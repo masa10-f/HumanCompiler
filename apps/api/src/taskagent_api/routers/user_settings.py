@@ -5,9 +5,8 @@ from uuid import UUID
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func
-from sqlmodel import select
+from sqlmodel import Session, select
 
 from taskagent_api.auth import get_current_user_id
 from taskagent_api.crypto import crypto_service
@@ -48,14 +47,12 @@ async def validate_openai_api_key(api_key: str) -> bool:
 @router.get("/settings", response_model=UserSettingsResponse)
 async def get_user_settings(
     user_id: Annotated[UUID, Depends(get_current_user_id)],
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[Session, Depends(get_session)],
 ) -> UserSettingsResponse:
     """Get current user's settings."""
     # Get user settings
-    result = await session.execute(
-        select(UserSettings).where(UserSettings.user_id == user_id)
-    )
-    settings = result.scalar_one_or_none()
+    statement = select(UserSettings).where(UserSettings.user_id == user_id)
+    settings = session.exec(statement).one_or_none()
 
     if not settings:
         # Return default settings if not found
@@ -89,7 +86,7 @@ async def get_user_settings(
 async def create_user_settings(
     user_id: Annotated[UUID, Depends(get_current_user_id)],
     settings_data: UserSettingsCreate,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[Session, Depends(get_session)],
 ) -> UserSettingsResponse:
     """Create or update user settings."""
     # Validate OpenAI API key
@@ -97,10 +94,8 @@ async def create_user_settings(
         raise ValidationError("Invalid OpenAI API key")
 
     # Check if settings already exist
-    result = await session.execute(
-        select(UserSettings).where(UserSettings.user_id == user_id)
-    )
-    existing_settings = result.scalar_one_or_none()
+    statement = select(UserSettings).where(UserSettings.user_id == user_id)
+    existing_settings = session.exec(statement).one_or_none()
 
     if existing_settings:
         # Update existing settings
@@ -109,8 +104,8 @@ async def create_user_settings(
         )
         existing_settings.openai_model = settings_data.openai_model
         existing_settings.ai_features_enabled = True
-        await session.commit()
-        await session.refresh(existing_settings)
+        session.commit()
+        session.refresh(existing_settings)
         settings = existing_settings
     else:
         # Create new settings
@@ -123,8 +118,8 @@ async def create_user_settings(
             ai_features_enabled=True,
         )
         session.add(settings)
-        await session.commit()
-        await session.refresh(settings)
+        session.commit()
+        session.refresh(settings)
 
     return UserSettingsResponse(
         id=settings.id,
@@ -141,14 +136,12 @@ async def create_user_settings(
 async def update_user_settings(
     user_id: Annotated[UUID, Depends(get_current_user_id)],
     settings_data: UserSettingsUpdate,
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[Session, Depends(get_session)],
 ) -> UserSettingsResponse:
     """Update user settings."""
     # Get existing settings
-    result = await session.execute(
-        select(UserSettings).where(UserSettings.user_id == user_id)
-    )
-    settings = result.scalar_one_or_none()
+    statement = select(UserSettings).where(UserSettings.user_id == user_id)
+    settings = session.exec(statement).one_or_none()
 
     if not settings:
         raise NotFoundError("User settings not found")
@@ -166,8 +159,8 @@ async def update_user_settings(
     if settings_data.openai_model is not None:
         settings.openai_model = settings_data.openai_model
 
-    await session.commit()
-    await session.refresh(settings)
+    session.commit()
+    session.refresh(settings)
 
     return UserSettingsResponse(
         id=settings.id,
@@ -183,14 +176,12 @@ async def update_user_settings(
 @router.delete("/settings/openai-key", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_openai_key(
     user_id: Annotated[UUID, Depends(get_current_user_id)],
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[Session, Depends(get_session)],
 ) -> None:
     """Delete user's OpenAI API key."""
     # Get existing settings
-    result = await session.execute(
-        select(UserSettings).where(UserSettings.user_id == user_id)
-    )
-    settings = result.scalar_one_or_none()
+    statement = select(UserSettings).where(UserSettings.user_id == user_id)
+    settings = session.exec(statement).one_or_none()
 
     if not settings:
         raise NotFoundError("User settings not found")
@@ -199,24 +190,23 @@ async def delete_openai_key(
     settings.openai_api_key_encrypted = None
     settings.ai_features_enabled = False
 
-    await session.commit()
+    session.commit()
 
 
 @router.get("/usage")
 async def get_api_usage(
     user_id: Annotated[UUID, Depends(get_current_user_id)],
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[Session, Depends(get_session)],
 ) -> dict:
     """Get user's API usage statistics."""
     # Query aggregated usage data
-    result = await session.execute(
-        select(
-            func.sum(ApiUsageLog.tokens_used).label("total_tokens"),
-            func.sum(ApiUsageLog.cost_usd).label("total_cost"),
-            func.count(ApiUsageLog.id).label("request_count"),
-        ).where(ApiUsageLog.user_id == user_id)
-    )
+    statement = select(
+        func.sum(ApiUsageLog.tokens_used).label("total_tokens"),
+        func.sum(ApiUsageLog.cost_usd).label("total_cost"),
+        func.count(ApiUsageLog.id).label("request_count"),
+    ).where(ApiUsageLog.user_id == user_id)
 
+    result = session.exec(statement)
     row = result.one()
 
     return {

@@ -130,6 +130,10 @@ def get_db() -> Generator[Session, None, None]:
     yield from db.get_session()
 
 
+# Alias for compatibility
+get_session = get_db
+
+
 # SQLModel Base for tests
 # ruff: noqa: E402
 from sqlmodel import SQLModel

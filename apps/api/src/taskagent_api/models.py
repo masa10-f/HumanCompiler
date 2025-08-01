@@ -39,7 +39,7 @@ class User(UserBase, table=True):  # type: ignore[call-arg]
     # Relationships
     projects: list["Project"] = Relationship(back_populates="owner")
     schedules: list["Schedule"] = Relationship(back_populates="user")
-    settings: "UserSettings | None" = Relationship(back_populates="user")
+    settings: "UserSettings" = Relationship(back_populates="user")
     api_usage_logs: list["ApiUsageLog"] = Relationship(back_populates="user")
 
 
@@ -61,7 +61,7 @@ class Project(ProjectBase, table=True):  # type: ignore[call-arg]
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
-    owner: User | None = Relationship(back_populates="projects")
+    owner: User = Relationship(back_populates="projects")
     goals: list["Goal"] = Relationship(back_populates="project")
 
 
@@ -84,7 +84,7 @@ class Goal(GoalBase, table=True):  # type: ignore[call-arg]
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
-    project: Project | None = Relationship(back_populates="goals")
+    project: Project = Relationship(back_populates="goals")
     tasks: list["Task"] = Relationship(back_populates="goal")
 
 
@@ -114,7 +114,7 @@ class Task(TaskBase, table=True):  # type: ignore[call-arg]
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
-    goal: Goal | None = Relationship(back_populates="tasks")
+    goal: Goal = Relationship(back_populates="tasks")
     logs: list["Log"] = Relationship(back_populates="task")
 
 
@@ -136,7 +136,7 @@ class Schedule(ScheduleBase, table=True):  # type: ignore[call-arg]
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
-    user: User | None = Relationship(back_populates="schedules")
+    user: User = Relationship(back_populates="schedules")
 
 
 class LogBase(SQLModel):
@@ -156,7 +156,7 @@ class Log(LogBase, table=True):  # type: ignore[call-arg]
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
-    task: Task | None = Relationship(back_populates="logs")
+    task: Task = Relationship(back_populates="logs")
 
 
 class UserSettingsBase(SQLModel):
@@ -178,7 +178,7 @@ class UserSettings(UserSettingsBase, table=True):  # type: ignore[call-arg]
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
-    user: User | None = Relationship(back_populates="settings")
+    user: User = Relationship(back_populates="settings")
 
 
 class ApiUsageLogBase(SQLModel):
@@ -202,7 +202,7 @@ class ApiUsageLog(ApiUsageLogBase, table=True):  # type: ignore[call-arg]
     )
 
     # Relationships
-    user: User | None = Relationship(back_populates="api_usage_logs")
+    user: User = Relationship(back_populates="api_usage_logs")
 
 
 # API Request/Response Models (Pydantic)

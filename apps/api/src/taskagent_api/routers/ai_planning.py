@@ -7,7 +7,6 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
-from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 
 from taskagent_api.ai import WeeklyPlanRequest, WeeklyPlanResponse, WeeklyPlanService
@@ -23,7 +22,7 @@ router = APIRouter(prefix="/ai", tags=["ai-planning"])
 async def generate_weekly_plan(
     request: WeeklyPlanRequest,
     user_id: str = Depends(get_current_user_id),
-    session: AsyncSession = Depends(get_session),
+    session: Session = Depends(get_session),
 ):
     """
     Generate AI-powered weekly plan using OpenAI Assistants API.
@@ -122,7 +121,7 @@ async def test_ai_integration():
 async def analyze_workload(
     project_ids: list[str] | None = None,
     user_id: str = Depends(get_current_user_id),
-    session: AsyncSession = Depends(get_session),
+    session: Session = Depends(get_session),
 ):
     """
     Analyze current workload and provide recommendations.
@@ -235,7 +234,7 @@ async def analyze_workload(
 async def suggest_task_priorities(
     project_id: str | None = None,
     user_id: str = Depends(get_current_user_id),
-    session: AsyncSession = Depends(get_session),
+    session: Session = Depends(get_session),
 ):
     """
     Get AI suggestions for task prioritization.
