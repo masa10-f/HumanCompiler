@@ -11,11 +11,11 @@ from typing import Any
 from openai import OpenAI
 from pydantic import BaseModel, Field, ConfigDict, field_serializer
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
+from sqlmodel import Session, select
 from uuid import UUID
 
 from taskagent_api.config import settings
-from taskagent_api.crypto import crypto_service
+from taskagent_api.crypto import get_crypto_service
 from taskagent_api.models import Goal, Project, Task, UserSettings, ApiUsageLog
 from taskagent_api.services import goal_service, project_service, task_service
 
@@ -101,7 +101,19 @@ class OpenAIService:
     async def create_for_user(
         cls, user_id: UUID, session: AsyncSession
     ) -> "OpenAIService":
-        """Create OpenAI service for a specific user with their API key."""
+        """Create OpenAI service for a specific user with their API key.
+
+        Args:
+            user_id (UUID): The ID of the user.
+            session (AsyncSession): An asynchronous SQLAlchemy session.
+
+        Returns:
+            OpenAIService: An instance of the OpenAIService configured for the user.
+
+        Note:
+            Ensure that an AsyncSession is passed to this method. Using a regular
+            Session will result in runtime errors.
+        """
         # Get user settings
         result = await session.execute(
             select(UserSettings).where(UserSettings.user_id == user_id)
@@ -110,7 +122,36 @@ class OpenAIService:
 
         if user_settings and user_settings.openai_api_key_encrypted:
             # Decrypt API key
-            api_key = crypto_service.decrypt(user_settings.openai_api_key_encrypted)
+            api_key = get_crypto_service().decrypt(
+                user_settings.openai_api_key_encrypted
+            )
+            if api_key:
+                return cls(api_key=api_key, model=user_settings.openai_model)
+
+        # Fall back to system API key or no client
+        return cls()
+
+    @classmethod
+    def create_for_user_sync(cls, user_id: UUID, session: Session) -> "OpenAIService":
+        """Create OpenAI service for a specific user with their API key (synchronous version).
+
+        Args:
+            user_id (UUID): The ID of the user.
+            session (Session): A synchronous SQLAlchemy session.
+
+        Returns:
+            OpenAIService: An instance of the OpenAIService configured for the user.
+        """
+        # Get user settings
+        user_settings = session.exec(
+            select(UserSettings).where(UserSettings.user_id == user_id)
+        ).one_or_none()
+
+        if user_settings and user_settings.openai_api_key_encrypted:
+            # Decrypt API key
+            api_key = get_crypto_service().decrypt(
+                user_settings.openai_api_key_encrypted
+            )
             if api_key:
                 return cls(api_key=api_key, model=user_settings.openai_model)
 
@@ -470,15 +511,20 @@ Use the create_week_plan function to structure your response."""
                 response_status=response_status,
             )
 
-            # Use separate session for logging
-            for logging_session in get_db():
+            # Use separate session for logging with proper context management
+            db_gen = get_db()
+            logging_session = next(db_gen)
+            try:
+                logging_session.add(usage_log)
+                logging_session.commit()
+            except Exception as commit_error:
+                logging_session.rollback()
+                logger.error(f"Failed to commit API usage log: {commit_error}")
+            finally:
                 try:
-                    logging_session.add(usage_log)
-                    logging_session.commit()
-                    break
-                except Exception as commit_error:
-                    logging_session.rollback()
-                    logger.error(f"Failed to commit API usage log: {commit_error}")
+                    next(db_gen)  # Close the generator
+                except StopIteration:
+                    pass
 
         except Exception as e:
             logger.error(f"Failed to log API usage: {e}")

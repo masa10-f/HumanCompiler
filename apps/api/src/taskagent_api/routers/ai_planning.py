@@ -63,7 +63,7 @@ async def generate_weekly_plan(
             )
 
         # Create user-specific OpenAI service
-        openai_service = await OpenAIService.create_for_user(UUID(user_id), session)
+        openai_service = OpenAIService.create_for_user_sync(UUID(user_id), session)
 
         # Create weekly plan service with user's OpenAI service
         weekly_plan_service = WeeklyPlanService(openai_service=openai_service)

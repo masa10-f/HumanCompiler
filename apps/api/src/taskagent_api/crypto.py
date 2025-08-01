@@ -29,8 +29,11 @@ class CryptoService:
             if hasattr(settings, "encryption_salt") and settings.encryption_salt:
                 salt = base64.urlsafe_b64decode(settings.encryption_salt.encode())
             else:
-                # For development/demo only - in production, salt should be set via environment
-                salt = b"taskagent-salt-v1-dev-only"  # Static salt for development
+                # Fail fast if encryption_salt is not set in the environment
+                raise ValueError(
+                    "Encryption salt is not configured. Please set 'ENCRYPTION_SALT' "
+                    "environment variable with a base64-encoded 16-byte salt."
+                )
 
             kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
@@ -78,5 +81,13 @@ class CryptoService:
             return ""
 
 
-# Global instance
-crypto_service = CryptoService()
+# Global instance - initialized lazily
+crypto_service = None
+
+
+def get_crypto_service() -> CryptoService:
+    """Get the global crypto service instance, initializing it if needed."""
+    global crypto_service
+    if crypto_service is None:
+        crypto_service = CryptoService()
+    return crypto_service

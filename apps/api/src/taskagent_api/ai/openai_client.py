@@ -18,7 +18,7 @@ from taskagent_api.ai.prompts import (
     get_function_definitions,
 )
 from taskagent_api.config import settings
-from taskagent_api.crypto import crypto_service
+from taskagent_api.crypto import get_crypto_service
 from taskagent_api.models import UserSettings
 
 logger = logging.getLogger(__name__)
@@ -62,7 +62,9 @@ class OpenAIClient:
 
         if user_settings and user_settings.openai_api_key_encrypted:
             # Decrypt API key
-            api_key = crypto_service.decrypt(user_settings.openai_api_key_encrypted)
+            api_key = get_crypto_service().decrypt(
+                user_settings.openai_api_key_encrypted
+            )
             if api_key:
                 return cls(api_key=api_key, model=user_settings.openai_model)
 

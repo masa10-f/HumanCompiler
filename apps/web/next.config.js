@@ -8,6 +8,8 @@ const nextConfig = {
   eslint: {
     // Warning: This allows production builds to successfully complete even if
     // your project has ESLint errors.
+    // TODO: Remove this once all ESLint issues are resolved - this is temporary
+    // to allow CI/CD pipeline to work while addressing type safety issues
     ignoreDuringBuilds: true,
   },
   images: {

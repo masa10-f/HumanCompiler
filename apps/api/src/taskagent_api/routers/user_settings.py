@@ -9,7 +9,7 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from taskagent_api.auth import get_current_user_id
-from taskagent_api.crypto import crypto_service
+from taskagent_api.crypto import get_crypto_service
 from taskagent_api.database import get_session
 from taskagent_api.exceptions import NotFoundError, ValidationError
 from taskagent_api.models import (
@@ -45,8 +45,12 @@ async def validate_openai_api_key(api_key: str) -> bool:
             api_key=api_key,
             timeout=10.0,  # Add timeout to prevent hanging
         )
-        # Make a minimal API call to validate the key
-        client.models.list()
+        # Make a lightweight API call to validate the key
+        client.chat.completions.create(
+            model="gpt-3.5-turbo",  # Use a lightweight model for validation
+            messages=[{"role": "system", "content": "ping"}],  # Minimal input
+            max_tokens=1,  # Limit response size
+        )
         return True
     except openai.AuthenticationError:
         # Invalid API key
@@ -114,7 +118,7 @@ async def create_user_settings(
 
     if existing_settings:
         # Update existing settings
-        existing_settings.openai_api_key_encrypted = crypto_service.encrypt(
+        existing_settings.openai_api_key_encrypted = get_crypto_service().encrypt(
             settings_data.openai_api_key
         )
         existing_settings.openai_model = settings_data.openai_model
@@ -126,7 +130,7 @@ async def create_user_settings(
         # Create new settings
         settings = UserSettings(
             user_id=user_id,
-            openai_api_key_encrypted=crypto_service.encrypt(
+            openai_api_key_encrypted=get_crypto_service().encrypt(
                 settings_data.openai_api_key
             ),
             openai_model=settings_data.openai_model,
@@ -166,7 +170,7 @@ async def update_user_settings(
         # Validate new API key
         if not await validate_openai_api_key(settings_data.openai_api_key):
             raise ValidationError("Invalid OpenAI API key")
-        settings.openai_api_key_encrypted = crypto_service.encrypt(
+        settings.openai_api_key_encrypted = get_crypto_service().encrypt(
             settings_data.openai_api_key
         )
         settings.ai_features_enabled = True

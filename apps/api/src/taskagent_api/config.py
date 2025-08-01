@@ -138,6 +138,8 @@ except Exception as e:
     settings.supabase_service_role_key = "dev-service-key"
     settings.secret_key = "taskagent-secret-key-change-in-production"  # nosec B105
     settings.encryption_key = None
+    # Development salt (base64-encoded 16 bytes) - change in production
+    settings.encryption_salt = "dGFza2FnZW50LXNhbHQtZGV2"  # nosec B105
 
 
 # Production security check
