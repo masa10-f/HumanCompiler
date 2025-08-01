@@ -28,6 +28,16 @@ class Settings(BaseSettings):
     # OpenAI Configuration
     openai_api_key: str = Field(..., description="OpenAI API key")
 
+    # Security Configuration
+    secret_key: str = Field(
+        default="taskagent-secret-key-change-in-production",
+        description="Secret key for encryption",
+    )
+    encryption_key: str | None = Field(
+        default=None,
+        description="Optional encryption key for API keys (base64 encoded)",
+    )
+
     # Environment
     environment: str = Field(
         default="development", pattern="^(development|staging|production|test)$"
@@ -126,3 +136,19 @@ except Exception as e:
     settings.supabase_url = "https://dev.supabase.co"
     settings.supabase_anon_key = "dev-anon-key"
     settings.supabase_service_role_key = "dev-service-key"
+    settings.secret_key = "taskagent-secret-key-change-in-production"  # nosec B105
+    settings.encryption_key = None
+    # Development salt (base64-encoded 16 bytes) - change in production
+    settings.encryption_salt = "dGFza2FnZW50LXNhbHQtZGV2"  # nosec B105
+
+
+# Production security check
+def validate_production_config():
+    """Validate configuration for production deployment security."""
+    if hasattr(settings, "environment") and settings.environment == "production":
+        default_secret = "taskagent-secret-key-change-in-production"  # nosec B105
+        if settings.secret_key == default_secret:
+            raise RuntimeError(
+                "The default secret key cannot be used in production. "
+                "Please set a secure SECRET_KEY environment variable."
+            )

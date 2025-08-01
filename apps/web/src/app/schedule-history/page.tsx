@@ -12,11 +12,11 @@ import { Label } from '@/components/ui/label';
 import {
   Calendar,
   Clock,
-  ArrowLeft,
   ExternalLink,
   Search,
   ChevronRight
 } from 'lucide-react';
+import { AppHeader } from '@/components/layout/app-header';
 import { toast } from '@/hooks/use-toast';
 import { schedulingApi } from '@/lib/api';
 
@@ -131,27 +131,22 @@ export default function ScheduleHistoryPage() {
   }
 
   return (
-    <div className="container mx-auto py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Calendar className="h-8 w-8 text-blue-600" />
-            スケジュール履歴
-          </h1>
-          <Button
-            variant="outline"
-            onClick={() => router.back()}
-            className="flex items-center gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            戻る
-          </Button>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <AppHeader currentPage="schedule-history" />
+
+      <div className="container mx-auto py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="mb-4">
+            <h1 className="text-3xl font-bold flex items-center gap-2">
+              <Calendar className="h-8 w-8 text-blue-600" />
+              スケジュール履歴
+            </h1>
+          </div>
+          <p className="text-gray-600">
+            過去に作成・保存されたスケジュールの履歴を確認できます。
+          </p>
         </div>
-        <p className="text-gray-600">
-          過去に作成・保存されたスケジュールの履歴を確認できます。
-        </p>
-      </div>
 
       {/* Search Filter */}
       <div className="mb-6">
@@ -327,6 +322,7 @@ export default function ScheduleHistoryPage() {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }

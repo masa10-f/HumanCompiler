@@ -89,6 +89,7 @@ strict_optional = false  # Allow implicit Optional for gradual adoption
 warn_redundant_casts = false
 warn_unused_ignores = false
 check_untyped_defs = false  # Don't check untyped functions yet
+# plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]  # Not available in pre-commit env
 no_implicit_reexport = false
 # Focus on critical errors only
 warn_unreachable = true
