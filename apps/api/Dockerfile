@@ -28,7 +28,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Note: Using mock scheduler implementation for containerized deployments
-# Real OR-Tools scheduler requires additional setup complexity
+# The scheduler package has been removed; a mock implementation is now provided in 'src/taskagent_api/routers/scheduler.py'
+# This mock exposes the same interface as the original scheduler for compatibility
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash appuser && \

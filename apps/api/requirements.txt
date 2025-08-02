@@ -21,4 +21,3 @@ bandit>=1.7.5
 safety>=2.3.0
 cryptography>=41.0.0
 # OR-Tools already included above
-# Local scheduler package will be copied during Docker build
