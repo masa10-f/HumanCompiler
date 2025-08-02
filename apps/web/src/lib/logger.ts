@@ -198,7 +198,7 @@ class Logger {
 // Export singleton logger instance
 export const logger = new Logger();
 
-// Export convenience functions for easier migration
+// Export convenience functions for cleaner import syntax
 export const log = {
   debug: (message: string, data?: unknown, context?: LogContext) => logger.debug(message, data, context),
   info: (message: string, data?: unknown, context?: LogContext) => logger.info(message, data, context),

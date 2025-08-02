@@ -1,4 +1,5 @@
 const path = require('path')
+const TerserPlugin = require('terser-webpack-plugin')
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -30,7 +31,6 @@ const nextConfig = {
 
     // Remove console statements in production builds
     if (!dev && !isServer) {
-      const TerserPlugin = require('terser-webpack-plugin');
       config.optimization.minimizer = config.optimization.minimizer || [];
       config.optimization.minimizer.push(
         new TerserPlugin({
