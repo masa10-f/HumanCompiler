@@ -82,7 +82,7 @@ class Logger {
           const debugArgs: unknown[] = [logPrefix, entry.message];
           if (entry.data !== undefined && entry.data !== null) debugArgs.push(entry.data);
           if (entry.context !== undefined && entry.context !== null) debugArgs.push(entry.context);
-          console.debug(...debugArgs);
+          console.log(...debugArgs); // Use console.log for better browser compatibility
         }
         break;
       case LogLevel.INFO:
