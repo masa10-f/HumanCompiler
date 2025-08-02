@@ -190,8 +190,8 @@ export default function ScheduleHistoryPage() {
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant={schedule.success ? 'default' : 'destructive'}>
-                      {schedule.optimization_status}
+                    <Badge variant={schedule.plan_json.success ? 'default' : 'destructive'}>
+                      {schedule.plan_json.optimization_status}
                     </Badge>
                     <ChevronRight className="h-5 w-5 text-gray-400" />
                   </div>
@@ -202,30 +202,30 @@ export default function ScheduleHistoryPage() {
                 <div className="grid grid-cols-3 gap-4 mb-4">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-blue-600">
-                      {schedule.assignments.length}
+                      {schedule.plan_json.assignments.length}
                     </div>
                     <div className="text-sm text-gray-500">スケジュール済み</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-green-600">
-                      {schedule.total_scheduled_hours.toFixed(1)}h
+                      {schedule.plan_json.total_scheduled_hours.toFixed(1)}h
                     </div>
                     <div className="text-sm text-gray-500">総時間</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-orange-600">
-                      {schedule.unscheduled_tasks.length}
+                      {schedule.plan_json.unscheduled_tasks.length}
                     </div>
                     <div className="text-sm text-gray-500">未スケジュール</div>
                   </div>
                 </div>
 
                 {/* Task Assignments Preview */}
-                {schedule.assignments.length > 0 && (
+                {schedule.plan_json.assignments.length > 0 && (
                   <div>
                     <h4 className="font-semibold mb-2">スケジュール済みタスク</h4>
                     <div className="space-y-2">
-                      {schedule.assignments.slice(0, 3).map((assignment, index) => (
+                      {schedule.plan_json.assignments.slice(0, 3).map((assignment, index) => (
                         <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                           <div className="flex items-center gap-3">
                             <div className="text-sm font-semibold text-gray-600">
@@ -253,9 +253,9 @@ export default function ScheduleHistoryPage() {
                           )}
                         </div>
                       ))}
-                      {schedule.assignments.length > 3 && (
+                      {schedule.plan_json.assignments.length > 3 && (
                         <div className="text-center text-sm text-gray-500 pt-2">
-                          他 {schedule.assignments.length - 3} 個のタスク
+                          他 {schedule.plan_json.assignments.length - 3} 個のタスク
                         </div>
                       )}
                     </div>
@@ -263,18 +263,18 @@ export default function ScheduleHistoryPage() {
                 )}
 
                 {/* Unscheduled Tasks */}
-                {schedule.unscheduled_tasks.length > 0 && (
+                {schedule.plan_json.unscheduled_tasks.length > 0 && (
                   <div className="mt-4">
                     <h4 className="font-semibold text-orange-600 mb-2">未スケジュールタスク</h4>
                     <div className="text-sm text-gray-600">
-                      {schedule.unscheduled_tasks.slice(0, 2).map((task, index) => (
+                      {schedule.plan_json.unscheduled_tasks.slice(0, 2).map((task, index) => (
                         <div key={index} className="mb-1">
                           • {task.title} ({task.estimate_hours.toFixed(1)}h)
                         </div>
                       ))}
-                      {schedule.unscheduled_tasks.length > 2 && (
+                      {schedule.plan_json.unscheduled_tasks.length > 2 && (
                         <div className="text-gray-500">
-                          他 {schedule.unscheduled_tasks.length - 2} 個
+                          他 {schedule.plan_json.unscheduled_tasks.length - 2} 個
                         </div>
                       )}
                     </div>
