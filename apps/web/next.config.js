@@ -3,7 +3,7 @@ const path = require('path')
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    typedRoutes: true,
+    typedRoutes: false,
   },
   eslint: {
     // ESLint is now properly configured and all critical errors have been resolved

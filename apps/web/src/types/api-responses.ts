@@ -17,6 +17,7 @@ export interface DailySchedule {
   id: string;
   user_id: string;
   date: string;
+  success: boolean;
   assignments: Array<{
     task_id: string;
     task_title: string;

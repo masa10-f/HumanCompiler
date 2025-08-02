@@ -10,24 +10,12 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { schedulingApi } from '@/lib/api'
 import Link from 'next/link'
+import type { DailySchedule } from '@/types/api-responses'
 
 export default function DashboardPage() {
   const { loading, isAuthenticated } = useAuth()
   const router = useRouter()
-  const [todaySchedule, setTodaySchedule] = useState<{
-    plan_json: {
-      assignments: Array<{
-        task_title: string;
-        start_time: string;
-        duration_hours: number;
-        slot_kind: string;
-        project_id: string;
-        goal_id: string;
-      }>;
-      total_scheduled_hours: number;
-      unscheduled_tasks: Array<unknown>;
-    };
-  } | null>(null)
+  const [todaySchedule, setTodaySchedule] = useState<DailySchedule | null>(null)
   const [scheduleLoading, setScheduleLoading] = useState(true)
 
   useEffect(() => {
@@ -133,7 +121,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Today's Schedule */}
-        {!scheduleLoading && todaySchedule && todaySchedule.plan_json?.assignments?.length > 0 && (
+        {!scheduleLoading && todaySchedule && todaySchedule.assignments?.length > 0 && (
           <div className="mb-8">
             <Card>
               <CardHeader>
@@ -174,7 +162,7 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {todaySchedule.plan_json.assignments.map((assignment, index: number) => (
+                  {todaySchedule.assignments.map((assignment, index: number) => (
                     <div key={index} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                       <div className="flex items-center gap-3">
                         <div className="text-lg font-semibold text-gray-600">
@@ -209,12 +197,12 @@ export default function DashboardPage() {
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-500">総スケジュール時間</span>
                     <span className="font-semibold">
-                      {todaySchedule.plan_json.total_scheduled_hours.toFixed(1)}時間
+                      {todaySchedule.total_scheduled_hours.toFixed(1)}時間
                     </span>
                   </div>
-                  {todaySchedule.plan_json.unscheduled_tasks?.length > 0 && (
+                  {todaySchedule.unscheduled_tasks?.length > 0 && (
                     <div className="mt-2 text-sm text-orange-600">
-                      未スケジュール: {todaySchedule.plan_json.unscheduled_tasks.length}個のタスク
+                      未スケジュール: {todaySchedule.unscheduled_tasks.length}個のタスク
                     </div>
                   )}
                 </div>
