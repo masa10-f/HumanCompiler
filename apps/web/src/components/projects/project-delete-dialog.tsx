@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { log } from '@/lib/logger';
 import {
   Dialog,
   DialogContent,
@@ -29,7 +30,7 @@ export function ProjectDeleteDialog({ project, children }: ProjectDeleteDialogPr
       await deleteProject(project.id);
       setOpen(false);
     } catch (error) {
-      console.error('Failed to delete project:', error);
+      log.error('Failed to delete project', error, { component: 'ProjectDeleteDialog', projectId: project.id, action: 'deleteProject' });
     } finally {
       setIsDeleting(false);
     }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { log } from '@/lib/logger';
 import {
   Dialog,
   DialogContent,
@@ -29,7 +30,7 @@ export function TaskDeleteDialog({ task, children }: TaskDeleteDialogProps) {
       await deleteTask(task.id);
       setOpen(false);
     } catch (error) {
-      console.error('Failed to delete task:', error);
+      log.error('Failed to delete task', error, { component: 'TaskDeleteDialog', taskId: task.id, action: 'deleteTask' });
     } finally {
       setIsDeleting(false);
     }

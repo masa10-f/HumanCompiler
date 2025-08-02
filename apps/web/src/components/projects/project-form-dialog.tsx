@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { log } from '@/lib/logger';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -59,7 +60,7 @@ export function ProjectFormDialog({ children }: ProjectFormDialogProps) {
       form.reset();
       setOpen(false);
     } catch (error) {
-      console.error('Failed to create project:', error);
+      log.error('Failed to create project', error, { component: 'ProjectFormDialog', action: 'createProject' });
     } finally {
       setIsSubmitting(false);
     }

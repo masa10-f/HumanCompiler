@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { log } from '@/lib/logger';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -68,7 +69,7 @@ export function ProjectEditDialog({ project, children }: ProjectEditDialogProps)
       });
       setOpen(false);
     } catch (error) {
-      console.error('Failed to update project:', error);
+      log.error('Failed to update project', error, { component: 'ProjectEditDialog', projectId: project.id, action: 'updateProject' });
     } finally {
       setIsSubmitting(false);
     }
