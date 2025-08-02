@@ -28,7 +28,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Note: Using mock scheduler implementation for containerized deployments
-# Real OR-Tools scheduler requires additional setup complexity
+# Scheduler package has been removed and replaced with inline mock implementation
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash appuser && \
