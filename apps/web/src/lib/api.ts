@@ -83,7 +83,10 @@ class ApiClient {
 
         try {
           errorData = await response.json();
-          errorMessage = (errorData.detail as string) || (errorData.message as string) || `HTTP ${response.status}: ${response.statusText}`;
+          errorMessage =
+            (typeof errorData.detail === 'string' ? errorData.detail : undefined) ||
+            (typeof errorData.message === 'string' ? errorData.message : undefined) ||
+            `HTTP ${response.status}: ${response.statusText}`;
         } catch {
           errorMessage = `HTTP ${response.status}: ${response.statusText}`;
           errorData = { detail: errorMessage };

@@ -172,6 +172,13 @@ export class ValidationError extends AppError {
   }
 }
 
+export class InternalLogicError extends AppError {
+  constructor(message: string, context: ErrorContext = {}) {
+    super(ErrorCode.UNKNOWN_ERROR, message, context);
+    this.name = 'InternalLogicError';
+  }
+}
+
 // Error handling utilities
 export function isRetryableError(error: Error): boolean {
   if (error instanceof AppError) {
@@ -201,7 +208,7 @@ export function logError(error: Error, context?: Record<string, unknown>): void 
   };
 
   if (error instanceof AppError) {
-    errorInfo.context = { ...(errorInfo.context ?? {}), ...(error.context ?? {}) };
+    errorInfo.context = { ...(error.context ?? {}), ...(errorInfo.context ?? {}) };
   }
 
   console.error('Application Error:', errorInfo);

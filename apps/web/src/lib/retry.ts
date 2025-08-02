@@ -1,6 +1,6 @@
 // Retry utility for API calls with exponential backoff
 
-import { isRetryableError, logError } from './errors';
+import { isRetryableError, logError, InternalLogicError } from './errors';
 
 export interface RetryOptions {
   maxRetries?: number;
@@ -84,7 +84,7 @@ export async function withRetry<T>(
   }
 
   // This should never happen, but provide a fallback
-  throw new Error('All retries exhausted, but no error was captured.');
+  throw new InternalLogicError('All retries exhausted, but no error was captured.');
 }
 
 /**

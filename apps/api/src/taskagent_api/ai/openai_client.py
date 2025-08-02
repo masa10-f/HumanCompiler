@@ -7,8 +7,13 @@ import logging
 from datetime import datetime
 from uuid import UUID
 
-import openai
-from openai import OpenAI
+from openai import (
+    RateLimitError,
+    AuthenticationError,
+    APIConnectionError,
+    APIError,
+    OpenAI,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -110,23 +115,23 @@ class OpenAIClient:
                     context, "Failed to generate plan - please try again"
                 )
 
-        except openai.RateLimitError as e:
+        except RateLimitError as e:
             logger.warning(f"OpenAI rate limit exceeded: {e}")
             return self._create_error_response(
                 context,
                 "リクエストが多すぎます。しばらく待ってから再度お試しください。",
             )
-        except openai.AuthenticationError as e:
+        except AuthenticationError as e:
             logger.error(f"OpenAI authentication failed: {e}")
             return self._create_error_response(
                 context, "AI サービスの認証に失敗しました。"
             )
-        except openai.APIConnectionError as e:
+        except APIConnectionError as e:
             logger.error(f"OpenAI connection failed: {e}")
             return self._create_error_response(
                 context, "AI サービスへの接続に失敗しました。"
             )
-        except openai.APIError as e:
+        except APIError as e:
             logger.error(f"OpenAI API error: {e}")
             return self._create_error_response(
                 context, "AI サービスでエラーが発生しました。"
