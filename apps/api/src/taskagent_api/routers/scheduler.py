@@ -3,9 +3,8 @@ Scheduler API endpoints for task scheduling optimization.
 """
 
 import logging
-import os
 from dataclasses import dataclass, field
-from datetime import datetime, time, timezone, UTC
+from datetime import datetime, time, UTC
 from enum import Enum
 from typing import Any
 from uuid import uuid4
@@ -20,8 +19,9 @@ from taskagent_api.exceptions import ResourceNotFoundError, ValidationError
 from taskagent_api.models import Schedule, ScheduleResponse
 from taskagent_api.services import goal_service, task_service
 
-# Use mock implementation since scheduler package has been removed
-logging.warning("Using mock scheduler implementation for containerized deployment")
+# Mock scheduler implementation - provides compatible interface for production deployment
+logger = logging.getLogger(__name__)
+logger.info("Using mock scheduler implementation (scheduler package has been removed)")
 
 
 class TaskKind(Enum):
@@ -58,10 +58,20 @@ class TimeSlot:
 
 
 @dataclass
+class Assignment:
+    """Represents a task assignment to a time slot."""
+
+    task_id: str
+    slot_index: int
+    start_time: time
+    duration_hours: float
+
+
+@dataclass
 class ScheduleResult:
     success: bool
-    assignments: list = field(default_factory=list)
-    unscheduled_tasks: list = field(default_factory=list)
+    assignments: list[Assignment] = field(default_factory=list)
+    unscheduled_tasks: list[str] = field(default_factory=list)
     total_scheduled_hours: float = 0.0
     optimization_status: str = "MOCKED"
     solve_time_seconds: float = 0.0
@@ -69,28 +79,83 @@ class ScheduleResult:
 
 
 def optimize_schedule(tasks, time_slots, date=None):
+    """
+    Mock scheduler implementation providing basic task assignment logic.
+
+    In production, this would be replaced with OR-Tools CP-SAT optimization.
+    Current mock implementation provides simple round-robin task assignment.
+    """
+    if not tasks or not time_slots:
+        return ScheduleResult(
+            success=True,
+            assignments=[],
+            unscheduled_tasks=[task.id for task in tasks] if tasks else [],
+            total_scheduled_hours=0.0,
+            optimization_status="NO_TASKS_OR_SLOTS",
+        )
+
+    # Track slot occupancy for proper scheduling
+    slot_occupancy = [0.0] * len(time_slots)  # Hours used per slot
+    slot_capacity = []
+
+    # Calculate slot capacities
+    for slot in time_slots:
+        slot_duration = (
+            datetime.combine(datetime.today(), slot.end)
+            - datetime.combine(datetime.today(), slot.start)
+        ).total_seconds() / 3600
+        slot_capacity.append(slot_duration)
+
+    assignments = []
+    unscheduled_tasks = []
+    total_hours = 0.0
+
+    # Assign tasks using round-robin with capacity constraints
+    for task in tasks:
+        assigned = False
+
+        # Try to assign to the least occupied slot that has capacity
+        for attempt in range(len(time_slots)):
+            slot_idx = (len(assignments) + attempt) % len(time_slots)
+            slot = time_slots[slot_idx]
+
+            # Check if slot has remaining capacity
+            remaining_capacity = slot_capacity[slot_idx] - slot_occupancy[slot_idx]
+            if remaining_capacity > 0:
+                # Use minimum of task estimate and remaining slot capacity
+                duration = min(task.estimate_hours, remaining_capacity)
+
+                assignments.append(
+                    Assignment(
+                        task_id=task.id,
+                        slot_index=slot_idx,
+                        start_time=slot.start,
+                        duration_hours=duration,
+                    )
+                )
+
+                slot_occupancy[slot_idx] += duration
+                total_hours += duration
+                assigned = True
+                break
+
+        if not assigned:
+            unscheduled_tasks.append(task.id)
+
     return ScheduleResult(
         success=True,
-        assignments=[],
-        unscheduled_tasks=[],
-        total_scheduled_hours=0.0,
-        optimization_status="NO_TASKS",
+        assignments=assignments,
+        unscheduled_tasks=unscheduled_tasks,
+        total_scheduled_hours=total_hours,
+        optimization_status="MOCK_OPTIMAL",
+        solve_time_seconds=0.001,  # Mock solve time
+        objective_value=total_hours,  # Simple objective: maximize scheduled hours
     )
 
 
-def optimize_schedule_api(tasks, time_slots, date=None):
-    return optimize_schedule(tasks, time_slots, date)
+# Note: Helper functions removed - using optimize_schedule directly
 
 
-def validate_schedule_request(request):
-    return True
-
-
-def format_schedule_result(result):
-    return result
-
-
-logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 router = APIRouter(prefix="/schedule", tags=["scheduling"])
 
@@ -448,15 +513,17 @@ async def test_scheduler():
 
         return {
             "status": "success",
-            "message": "Scheduler package imported successfully",
+            "message": "Mock scheduler implementation working correctly",
             "test_task_id": test_task.id,
             "ortools_available": "True",
+            "implementation": "mock",
         }
     except Exception as e:
         return {
             "status": "error",
-            "message": f"Scheduler package test failed: {str(e)}",
+            "message": f"Mock scheduler test failed: {str(e)}",
             "ortools_available": "False",
+            "implementation": "mock",
         }
 
 
