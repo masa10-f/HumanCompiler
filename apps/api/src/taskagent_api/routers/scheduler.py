@@ -3,9 +3,8 @@ Scheduler API endpoints for task scheduling optimization.
 """
 
 import logging
-import os
 from dataclasses import dataclass, field
-from datetime import datetime, time, timezone, UTC
+from datetime import datetime, time, UTC
 from enum import Enum
 from typing import Any
 from uuid import uuid4
@@ -20,8 +19,9 @@ from taskagent_api.exceptions import ResourceNotFoundError, ValidationError
 from taskagent_api.models import Schedule, ScheduleResponse
 from taskagent_api.services import goal_service, task_service
 
-# Use mock implementation since scheduler package has been removed
-logging.warning("Using mock scheduler implementation for containerized deployment")
+# Mock scheduler implementation - provides compatible interface for production deployment
+logger = logging.getLogger(__name__)
+logger.info("Using mock scheduler implementation (scheduler package has been removed)")
 
 
 class TaskKind(Enum):
@@ -69,28 +69,71 @@ class ScheduleResult:
 
 
 def optimize_schedule(tasks, time_slots, date=None):
+    """
+    Mock scheduler implementation providing basic task assignment logic.
+
+    In production, this would be replaced with OR-Tools CP-SAT optimization.
+    Current mock implementation provides simple round-robin task assignment.
+    """
+    if not tasks or not time_slots:
+        return ScheduleResult(
+            success=True,
+            assignments=[],
+            unscheduled_tasks=[task.id for task in tasks] if tasks else [],
+            total_scheduled_hours=0.0,
+            optimization_status="NO_TASKS_OR_SLOTS",
+        )
+
+    # Simple mock assignment: assign tasks to slots sequentially
+    assignments = []
+    unscheduled_tasks = []
+    total_hours = 0.0
+
+    for i, task in enumerate(tasks[: len(time_slots)]):  # Limit to available slots
+        slot_idx = i % len(time_slots)
+        slot = time_slots[slot_idx]
+
+        # Calculate slot duration
+        slot_duration = (
+            datetime.combine(datetime.today(), slot.end)
+            - datetime.combine(datetime.today(), slot.start)
+        ).total_seconds() / 3600
+
+        # Use minimum of task estimate and slot capacity
+        duration = min(task.estimate_hours, slot_duration)
+
+        assignments.append(
+            type(
+                "Assignment",
+                (),
+                {
+                    "task_id": task.id,
+                    "slot_index": slot_idx,
+                    "start_time": slot.start,
+                    "duration_hours": duration,
+                },
+            )()
+        )
+
+        total_hours += duration
+
+    # Add remaining tasks to unscheduled
+    unscheduled_tasks.extend([task.id for task in tasks[len(time_slots) :]])
+
     return ScheduleResult(
         success=True,
-        assignments=[],
-        unscheduled_tasks=[],
-        total_scheduled_hours=0.0,
-        optimization_status="NO_TASKS",
+        assignments=assignments,
+        unscheduled_tasks=unscheduled_tasks,
+        total_scheduled_hours=total_hours,
+        optimization_status="MOCK_OPTIMAL",
+        solve_time_seconds=0.001,  # Mock solve time
+        objective_value=total_hours,  # Simple objective: maximize scheduled hours
     )
 
 
-def optimize_schedule_api(tasks, time_slots, date=None):
-    return optimize_schedule(tasks, time_slots, date)
+# Note: Helper functions removed - using optimize_schedule directly
 
 
-def validate_schedule_request(request):
-    return True
-
-
-def format_schedule_result(result):
-    return result
-
-
-logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 router = APIRouter(prefix="/schedule", tags=["scheduling"])
 
@@ -448,15 +491,17 @@ async def test_scheduler():
 
         return {
             "status": "success",
-            "message": "Scheduler package imported successfully",
+            "message": "Mock scheduler implementation working correctly",
             "test_task_id": test_task.id,
             "ortools_available": "True",
+            "implementation": "mock",
         }
     except Exception as e:
         return {
             "status": "error",
-            "message": f"Scheduler package test failed: {str(e)}",
+            "message": f"Mock scheduler test failed: {str(e)}",
             "ortools_available": "False",
+            "implementation": "mock",
         }
 
 
