@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { log } from '@/lib/logger';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -88,7 +89,7 @@ export function TaskEditDialog({ task, children }: TaskEditDialogProps) {
       });
       setOpen(false);
     } catch (error) {
-      console.error('Failed to update task:', error);
+      log.error('Failed to update task', error, { component: 'TaskEditDialog', taskId: task.id, action: 'updateTask' });
     } finally {
       setIsSubmitting(false);
     }

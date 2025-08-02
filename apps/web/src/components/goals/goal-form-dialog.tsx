@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { log } from '@/lib/logger';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -64,7 +65,7 @@ export function GoalFormDialog({ projectId, children }: GoalFormDialogProps) {
       form.reset();
       setOpen(false);
     } catch (error) {
-      console.error('Failed to create goal:', error);
+      log.error('Failed to create goal', error, { component: 'GoalFormDialog', projectId, action: 'createGoal' });
     } finally {
       setIsSubmitting(false);
     }

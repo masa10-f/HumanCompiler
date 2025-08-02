@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { log } from '@/lib/logger';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -72,7 +73,7 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
       });
       setOpen(false);
     } catch (error) {
-      console.error('Failed to update goal:', error);
+      log.error('Failed to update goal', error, { component: 'GoalEditDialog', goalId: goal.id, action: 'updateGoal' });
     } finally {
       setIsSubmitting(false);
     }

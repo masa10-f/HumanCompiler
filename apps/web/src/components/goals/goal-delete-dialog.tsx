@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { log } from '@/lib/logger';
 import {
   Dialog,
   DialogContent,
@@ -29,7 +30,7 @@ export function GoalDeleteDialog({ goal, children }: GoalDeleteDialogProps) {
       await deleteGoal(goal.id);
       setOpen(false);
     } catch (error) {
-      console.error('Failed to delete goal:', error);
+      log.error('Failed to delete goal', error, { component: 'GoalDeleteDialog', goalId: goal.id, action: 'deleteGoal' });
     } finally {
       setIsDeleting(false);
     }

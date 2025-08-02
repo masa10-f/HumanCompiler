@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { tasksApi } from '@/lib/api';
+import { log } from '@/lib/logger';
 import type { Task, TaskCreate, TaskUpdate } from '@/types/task';
 
 export interface UseTasksReturn {
@@ -35,12 +36,12 @@ export function useTasks(goalId: string): UseTasksReturn {
   const createTask = useCallback(async (data: TaskCreate) => {
     try {
       setError(null);
-      console.log('[useTasks] Creating task with data:', data);
+      log.component('useTasks', 'createTask', data, { goalId });
       const newTask = await tasksApi.create(data);
-      console.log('[useTasks] Task created successfully:', newTask);
+      log.component('useTasks', 'taskCreated', newTask, { goalId, taskId: newTask.id });
       setTasks(prev => [...prev, newTask]);
     } catch (err) {
-      console.error('[useTasks] Error creating task:', err);
+      log.error('Failed to create task', err, { component: 'useTasks', goalId, action: 'createTask' });
       setError(err instanceof Error ? err.message : 'Failed to create task');
       throw err;
     }

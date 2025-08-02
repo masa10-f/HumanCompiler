@@ -1,4 +1,5 @@
 const path = require('path')
+const TerserPlugin = require('terser-webpack-plugin')
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -19,7 +20,7 @@ const nextConfig = {
   env: {
     CUSTOM_KEY: process.env.CUSTOM_KEY,
   },
-  webpack: (config) => {
+  webpack: (config, { dev, isServer }) => {
     config.resolve.alias = {
       ...config.resolve.alias,
       '@': path.resolve(__dirname, 'src'),
@@ -27,6 +28,24 @@ const nextConfig = {
       '@/lib': path.resolve(__dirname, 'src/lib'),
       '@/hooks': path.resolve(__dirname, 'src/hooks'),
     }
+
+    // Remove console statements in production builds (excluding logger utility)
+    if (!dev && !isServer) {
+      config.optimization.minimizer = config.optimization.minimizer || [];
+      config.optimization.minimizer.push(
+        new TerserPlugin({
+          test: /\.js(\?.*)?$/i,
+          exclude: /src\/lib\/logger\.(js|ts)$/, // Exclude logger file to preserve console methods
+          terserOptions: {
+            compress: {
+              drop_console: true,
+              drop_debugger: true,
+            },
+          },
+        })
+      );
+    }
+
     return config
   },
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { projectsApi } from '@/lib/api';
 import type { Project, ProjectCreate, ProjectUpdate } from '@/types/project';
+import { log } from '@/lib/logger';
 
 export interface UseProjectsReturn {
   projects: Project[];
@@ -21,13 +22,13 @@ export function useProjects(): UseProjectsReturn {
     try {
       setLoading(true);
       setError(null);
-      console.log('[useProjects] Fetching projects...');
+      log.component('useProjects', 'fetching', { action: 'fetch_projects' });
 
       const data = await projectsApi.getAll();
-      console.log('[useProjects] Success:', data);
+      log.component('useProjects', 'fetch_success', { count: data.length });
       setProjects(data);
     } catch (err) {
-      console.error('[useProjects] Error:', err);
+      log.error('Failed to fetch projects', err, { component: 'useProjects', action: 'fetch_error' });
       setError(err instanceof Error ? err.message : 'Failed to fetch projects');
     } finally {
       setLoading(false);
@@ -37,14 +38,14 @@ export function useProjects(): UseProjectsReturn {
   const createProject = useCallback(async (data: ProjectCreate) => {
     try {
       setError(null);
-      console.log('[useProjects] Creating project:', data);
+      log.userAction('create_project', data, { component: 'useProjects' });
 
       const newProject = await projectsApi.create(data);
-      console.log('[useProjects] Created project:', newProject);
+      log.component('useProjects', 'create_success', { projectId: newProject.id });
 
       setProjects(prev => [...prev, newProject]);
     } catch (err) {
-      console.error('[useProjects] Create error:', err);
+      log.error('Failed to create project', err, { component: 'useProjects', action: 'create_error' });
       setError(err instanceof Error ? err.message : 'Failed to create project');
       throw err;
     }
@@ -79,7 +80,7 @@ export function useProjects(): UseProjectsReturn {
 
     const loadProjects = async () => {
       if (!mounted) return;
-      console.log('[useProjects] Component mounted, fetching projects...');
+      log.component('useProjects', 'mounted');
       await fetchProjects();
     };
 

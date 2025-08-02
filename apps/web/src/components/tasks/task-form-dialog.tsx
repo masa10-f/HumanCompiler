@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { log } from '@/lib/logger';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -57,9 +58,6 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
   const onSubmit = async (data: TaskFormData) => {
     try {
       setIsSubmitting(true);
-      console.log('[TaskForm] Submitting task data:', data);
-      console.log('[TaskForm] Goal ID:', goalId);
-
       const taskData = {
         title: data.title,
         description: data.description || undefined,
@@ -68,14 +66,14 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
         goal_id: goalId,
       };
 
-      console.log('[TaskForm] Final task data:', taskData);
+      log.component('TaskFormDialog', 'submitTask', taskData, { goalId });
       await createTask(taskData);
-      console.log('[TaskForm] Task created successfully');
+      log.component('TaskFormDialog', 'taskCreated', { taskTitle: data.title }, { goalId });
 
       form.reset();
       setOpen(false);
     } catch (error) {
-      console.error('[TaskForm] Failed to create task:', error);
+      log.error('Failed to create task', error, { component: 'TaskFormDialog', goalId, action: 'submitTask' });
     } finally {
       setIsSubmitting(false);
     }

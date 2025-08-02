@@ -12,6 +12,7 @@ import { Eye, EyeOff, Key, AlertCircle, CheckCircle, TrendingUp, Hash, DollarSig
 import { AppHeader } from "@/components/layout/app-header"
 import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { supabase } from "@/lib/supabase"
+import { log } from "@/lib/logger"
 
 export default function SettingsPage() {
   const router = useRouter()
@@ -60,7 +61,7 @@ export default function SettingsPage() {
         }
       }
     } catch (err) {
-      console.error("Failed to fetch settings:", err)
+      log.error('Failed to fetch settings', err as Error, { component: 'Settings' })
     } finally {
       setLoadingSettings(false)
     }
@@ -79,7 +80,7 @@ export default function SettingsPage() {
         setUsageData(data)
       }
     } catch (err) {
-      console.error("Failed to fetch usage data:", err)
+      log.error('Failed to fetch usage data', err as Error, { component: 'Settings' })
     }
   }
 

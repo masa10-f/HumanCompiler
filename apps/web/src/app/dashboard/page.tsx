@@ -9,6 +9,7 @@ import { AppHeader } from '@/components/layout/app-header'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { schedulingApi } from '@/lib/api'
+import { log } from '@/lib/logger'
 import Link from 'next/link'
 import type { DailySchedule } from '@/types/api-responses'
 
@@ -28,12 +29,12 @@ export default function DashboardPage() {
     const fetchTodaySchedule = async () => {
       if (!isAuthenticated) return
 
+      const today = new Date().toISOString().split('T')[0]
       try {
-        const today = new Date().toISOString().split('T')[0]
         const schedule = await schedulingApi.getByDate(today as string)
         setTodaySchedule(schedule)
       } catch (error) {
-        console.log('No schedule found for today')
+        log.debug('No schedule found for today', { component: 'Dashboard', date: today })
       } finally {
         setScheduleLoading(false)
       }
