@@ -3,11 +3,10 @@ Scheduler API endpoints for task scheduling optimization.
 """
 
 import logging
-
-# Always use mock implementation - scheduler package has been removed
-# Future optimization: implement OR-Tools directly in this module
 import os
+from dataclasses import dataclass, field
 from datetime import datetime, time, timezone, UTC
+from enum import Enum
 from typing import Any
 from uuid import uuid4
 
@@ -22,73 +21,73 @@ from taskagent_api.models import Schedule, ScheduleResponse
 from taskagent_api.services import goal_service, task_service
 
 # Use mock implementation since scheduler package has been removed
-USE_MOCK_SCHEDULER = True
+logging.warning("Using mock scheduler implementation for containerized deployment")
 
-if USE_MOCK_SCHEDULER:
-    logging.warning("Using mock scheduler implementation for containerized deployment")
-    # Define mock classes and functions for testing
-    from dataclasses import dataclass
-    from datetime import datetime, time
-    from enum import Enum
 
-    class TaskKind(Enum):
-        LIGHT = "light"
-        DEEP = "deep"
-        STUDY = "study"
-        MEETING = "meeting"
+class TaskKind(Enum):
+    LIGHT = "light"
+    DEEP = "deep"
+    STUDY = "study"
+    MEETING = "meeting"
 
-    class SlotKind(Enum):
-        LIGHT = "light"
-        DEEP = "deep"
-        STUDY = "study"
-        MEETING = "meeting"
 
-    @dataclass
-    class SchedulerTask:
-        id: str
-        title: str
-        estimate_hours: float
-        priority: int = 1
-        due_date: datetime | None = None
-        kind: TaskKind = TaskKind.LIGHT
-        goal_id: str | None = None
+class SlotKind(Enum):
+    LIGHT = "light"
+    DEEP = "deep"
+    STUDY = "study"
+    MEETING = "meeting"
 
-    @dataclass
-    class TimeSlot:
-        start: time
-        end: time
-        kind: SlotKind
-        capacity_hours: float | None = None
 
-    from dataclasses import field
+@dataclass
+class SchedulerTask:
+    id: str
+    title: str
+    estimate_hours: float
+    priority: int = 1
+    due_date: datetime | None = None
+    kind: TaskKind = TaskKind.LIGHT
+    goal_id: str | None = None
 
-    @dataclass
-    class ScheduleResult:
-        success: bool
-        assignments: list = field(default_factory=list)
-        unscheduled_tasks: list = field(default_factory=list)
-        total_scheduled_hours: float = 0.0
-        optimization_status: str = "MOCKED"
-        solve_time_seconds: float = 0.0
-        objective_value: float = 0.0
 
-    def optimize_schedule(tasks, time_slots, date=None):
-        return ScheduleResult(
-            success=True,
-            assignments=[],
-            unscheduled_tasks=[],
-            total_scheduled_hours=0.0,
-            optimization_status="NO_TASKS",
-        )
+@dataclass
+class TimeSlot:
+    start: time
+    end: time
+    kind: SlotKind
+    capacity_hours: float | None = None
 
-    def optimize_schedule_api(tasks, time_slots, date=None):
-        return optimize_schedule(tasks, time_slots, date)
 
-    def validate_schedule_request(request):
-        return True
+@dataclass
+class ScheduleResult:
+    success: bool
+    assignments: list = field(default_factory=list)
+    unscheduled_tasks: list = field(default_factory=list)
+    total_scheduled_hours: float = 0.0
+    optimization_status: str = "MOCKED"
+    solve_time_seconds: float = 0.0
+    objective_value: float = 0.0
 
-    def format_schedule_result(result):
-        return result
+
+def optimize_schedule(tasks, time_slots, date=None):
+    return ScheduleResult(
+        success=True,
+        assignments=[],
+        unscheduled_tasks=[],
+        total_scheduled_hours=0.0,
+        optimization_status="NO_TASKS",
+    )
+
+
+def optimize_schedule_api(tasks, time_slots, date=None):
+    return optimize_schedule(tasks, time_slots, date)
+
+
+def validate_schedule_request(request):
+    return True
+
+
+def format_schedule_result(result):
+    return result
 
 
 logger = logging.getLogger(__name__)
