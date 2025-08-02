@@ -64,13 +64,16 @@ class Logger {
     const logPrefix = `${prefix}${component}${action}`;
 
     // Choose console method based on log level
+    // Note: This logger intentionally uses console.* methods as its output mechanism.
+    // The "replacing console statements" goal refers to replacing scattered console.*
+    // calls throughout the app with structured logging via this centralized logger.
     switch (entry.level) {
       case LogLevel.DEBUG:
         if (this.isDevelopment) {
           const debugArgs: unknown[] = [logPrefix, entry.message];
           if (entry.data !== undefined && entry.data !== null) debugArgs.push(entry.data);
           if (entry.context !== undefined && entry.context !== null) debugArgs.push(entry.context);
-          console.log(...debugArgs);
+          console.debug(...debugArgs);
         }
         break;
       case LogLevel.INFO:
