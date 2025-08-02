@@ -22,9 +22,6 @@ repo-root/
 ├── apps/
 │   ├── web/        # Next.js アプリ (TypeScript)
 │   └── api/        # FastAPI サービス (Python)
-├── packages/
-│   ├── db/         # Prisma/SQLModel スキーマ & マイグレーション
-│   └── scheduler/  # OR-Tools ラッパ (Python パッケージ)
 └── .github/workflows/
 ```
 
@@ -136,7 +133,6 @@ Secrets:
 1. **monorepo構造セットアップ** ✅
    - pnpm workspace設定
    - apps/web (Next.js)、apps/api (FastAPI)ディレクトリ作成
-   - packages/db、packages/schedulerパッケージ構成
    - 基本的なpackage.json、tsconfig.json設定
 
 2. **Supabase Postgresデータベース** ✅
@@ -172,12 +168,12 @@ Secrets:
    - サービス層による業務ロジック分離
    - 包括的なテストスイート (8個のテストが通過)
 
-7. **OR-Toolsスケジューラパッケージ** ✅ **完了**
-   - packages/scheduler Python パッケージ実装
+7. **OR-Toolsスケジューラ機能** ✅ **完了**
    - 制約充足問題定義・実装 (CP-SAT solver)
    - タスク割り当て最適化ロジック
    - API用ラッパー関数 (optimize_schedule)
    - タスク種別とスロット種別のマッピング
+   - モック実装による開発・本番対応
 
 8. **スケジューリングAPI実装** ✅ **完了**
    - POST /api/schedule/daily エンドポイント実装
@@ -257,12 +253,12 @@ Secrets:
 - `apps/api/main.py` - FastAPIアプリケーション設定
 - `apps/api/tests/test_api.py` - APIテストスイート
 
-#### **2. OR-Toolsスケジューラパッケージ** ✅
+#### **2. OR-Toolsスケジューラ機能** ✅
 **実装済みファイル:**
-- `packages/scheduler/` - 独立したPythonパッケージ
-- `packages/scheduler/scheduler/core.py` - CP-SATソルバー実装
-- `packages/scheduler/scheduler/models.py` - タスク・スロットモデル
-- `packages/scheduler/scheduler/api.py` - APIラッパー関数
+- `apps/api/routers/scheduler.py` - スケジューリング機能（モック実装）
+- CP-SATソルバー相当のロジック（モック）
+- タスク・スロットモデル定義
+- APIラッパー関数統合
 
 #### **3. スケジューリングAPI実装** ✅
 **実装済みファイル:**

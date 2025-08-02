@@ -4,8 +4,8 @@ Scheduler API endpoints for task scheduling optimization.
 
 import logging
 
-# Always use mock implementation for Docker/Production deployments
-# Real scheduler package requires complex monorepo setup
+# Always use mock implementation - scheduler package has been removed
+# Future optimization: implement OR-Tools directly in this module
 import os
 from datetime import datetime, time, timezone, UTC
 from typing import Any
@@ -21,39 +21,8 @@ from taskagent_api.exceptions import ResourceNotFoundError, ValidationError
 from taskagent_api.models import Schedule, ScheduleResponse
 from taskagent_api.services import goal_service, task_service
 
-# Check if we're in a containerized environment (Docker/Production)
-USE_MOCK_SCHEDULER = os.environ.get(
-    "ENVIRONMENT", "development"
-) == "production" or os.path.exists("/.dockerenv")
-
-if not USE_MOCK_SCHEDULER:
-    # Development environment - try to import real scheduler
-    try:
-        # Add scheduler package to Python path for monorepo structure
-        import sys
-
-        packages_path = os.path.join(
-            os.path.dirname(__file__), "..", "..", "..", "packages"
-        )
-        if packages_path not in sys.path:
-            sys.path.insert(0, packages_path)
-
-        from scheduler import optimize_schedule
-        from scheduler.api import optimize_schedule_api
-        from scheduler.models import SlotKind, TaskKind, TimeSlot
-        from scheduler.models import Task as SchedulerTask
-
-        def validate_schedule_request(request):
-            return True
-
-        def format_schedule_result(result):
-            return result
-
-    except ImportError as e:
-        logging.warning(
-            f"Scheduler package not available in development, using mocks: {e}"
-        )
-        USE_MOCK_SCHEDULER = True
+# Use mock implementation since scheduler package has been removed
+USE_MOCK_SCHEDULER = True
 
 if USE_MOCK_SCHEDULER:
     logging.warning("Using mock scheduler implementation for containerized deployment")

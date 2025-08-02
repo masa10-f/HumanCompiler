@@ -2,8 +2,7 @@
   "name": "task-agent",
   "private": true,
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "apps/*"
   ],
   "packageManager": "pnpm@9.0.0",
   "engines": {
