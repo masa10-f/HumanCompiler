@@ -112,25 +112,13 @@ class ApiClient {
       }
 
       // Handle network errors (fetch failures)
-      if (error instanceof TypeError || (error instanceof Error && error.message?.includes('fetch'))) {
+      if (error instanceof TypeError) {
         const networkError = new NetworkError(
           `Network request failed: ${error.message}`,
           context
         );
         logError(networkError, context);
         throw networkError;
-      }
-
-      // Handle authentication errors
-      if (error instanceof Error && (error.message?.includes('auth') || error.message?.includes('token'))) {
-        const authError = new ApiError(
-          401,
-          error.message,
-          context,
-          'ログインセッションが無効です。再度ログインしてください。'
-        );
-        logError(authError, context);
-        throw authError;
       }
 
       // Fallback for unknown errors

@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { toast } from '@/hooks/use-toast';
-import { AppError, getErrorMessage, isRetryableError } from './errors';
+import { AppError, getErrorMessage, isRetryableError, ErrorCode } from './errors';
 import { ToastAction } from '@/components/ui/toast';
 
 export interface ErrorToastOptions {
@@ -33,7 +33,7 @@ export function showErrorToast(
 
   if (error instanceof AppError) {
     // For authentication errors, use default variant
-    if (error.code === 'UNAUTHORIZED' || error.code === 'AUTHENTICATION_REQUIRED') {
+    if (error.code === ErrorCode.UNAUTHORIZED || error.code === ErrorCode.AUTHENTICATION_REQUIRED) {
       variant = 'default';
     }
   }

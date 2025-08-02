@@ -33,7 +33,7 @@ export async function withRetry<T>(
   options: RetryOptions = {}
 ): Promise<T> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
-  let lastError: Error;
+  let lastError: Error | undefined;
 
   for (let attempt = 1; attempt <= opts.maxRetries + 1; attempt++) {
     try {
@@ -75,11 +75,15 @@ export async function withRetry<T>(
   }
 
   // All retries exhausted
-  logError(lastError!, {
-    reason: 'All retries exhausted',
-    totalAttempts: opts.maxRetries + 1
-  });
-  throw lastError!;
+  if (lastError) {
+    logError(lastError, {
+      reason: 'All retries exhausted',
+      totalAttempts: opts.maxRetries + 1
+    });
+    throw lastError;
+  } else {
+    throw new Error('All retries exhausted, but no error was captured.');
+  }
 }
 
 /**
