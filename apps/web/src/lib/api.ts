@@ -22,6 +22,12 @@ import type {
   ScheduleRequest,
   ScheduleResult
 } from '@/types/ai-planning';
+import type {
+  TestAIIntegrationResponse,
+  SaveDailyScheduleResponse,
+  DailySchedule,
+  TestSchedulerResponse
+} from '@/types/api-responses';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ||
   (process.env.NODE_ENV === 'production'
@@ -196,8 +202,8 @@ class ApiClient {
     });
   }
 
-  async testAIIntegration(): Promise<any> {
-    return this.request<any>('/api/ai/weekly-plan/test');
+  async testAIIntegration(): Promise<TestAIIntegrationResponse> {
+    return this.request<TestAIIntegrationResponse>('/api/ai/weekly-plan/test');
   }
 
   // Scheduling API methods
@@ -208,27 +214,27 @@ class ApiClient {
     });
   }
 
-  async saveDailySchedule(scheduleData: ScheduleResult & { date: string; generated_at: string }): Promise<any> {
-    return this.request<any>('/api/schedule/daily/save', {
+  async saveDailySchedule(scheduleData: ScheduleResult & { date: string; generated_at: string }): Promise<SaveDailyScheduleResponse> {
+    return this.request<SaveDailyScheduleResponse>('/api/schedule/daily/save', {
       method: 'POST',
       body: JSON.stringify(scheduleData),
     });
   }
 
-  async getDailySchedule(date: string): Promise<any> {
-    return this.request<any>(`/api/schedule/daily/${date}`);
+  async getDailySchedule(date: string): Promise<DailySchedule> {
+    return this.request<DailySchedule>(`/api/schedule/daily/${date}`);
   }
 
-  async listDailySchedules(skip?: number, limit?: number): Promise<any[]> {
+  async listDailySchedules(skip?: number, limit?: number): Promise<DailySchedule[]> {
     const params = new URLSearchParams();
     if (skip !== undefined) params.append('skip', skip.toString());
     if (limit !== undefined) params.append('limit', limit.toString());
 
-    return this.request<any[]>(`/api/schedule/daily/list?${params.toString()}`);
+    return this.request<DailySchedule[]>(`/api/schedule/daily/list?${params.toString()}`);
   }
 
-  async testScheduler(): Promise<any> {
-    return this.request<any>('/api/schedule/test');
+  async testScheduler(): Promise<TestSchedulerResponse> {
+    return this.request<TestSchedulerResponse>('/api/schedule/test');
   }
 }
 

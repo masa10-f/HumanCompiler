@@ -19,52 +19,15 @@ import {
 import { AppHeader } from '@/components/layout/app-header';
 import { toast } from '@/hooks/use-toast';
 import { schedulingApi } from '@/lib/api';
-
-interface Schedule {
-  id: string;
-  user_id: string;
-  date: string;
-  plan_json: {
-    success: boolean;
-    assignments: Array<{
-      task_id: string;
-      task_title: string;
-      goal_id: string;
-      project_id: string;
-      slot_index: number;
-      start_time: string;
-      duration_hours: number;
-      slot_start: string;
-      slot_end: string;
-      slot_kind: string;
-    }>;
-    unscheduled_tasks: Array<{
-      id: string;
-      title: string;
-      estimate_hours: number;
-      priority: number;
-      kind: string;
-      due_date?: string;
-      goal_id?: string;
-      project_id?: string;
-    }>;
-    total_scheduled_hours: number;
-    optimization_status: string;
-    solve_time_seconds: number;
-    objective_value?: number;
-    generated_at: string;
-  };
-  created_at: string;
-  updated_at: string;
-}
+import type { DailySchedule } from '@/types/api-responses';
 
 export default function ScheduleHistoryPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [schedules, setSchedules] = useState<DailySchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState('');
-  const [filteredSchedules, setFilteredSchedules] = useState<Schedule[]>([]);
+  const [filteredSchedules, setFilteredSchedules] = useState<DailySchedule[]>([]);
 
   useEffect(() => {
     if (!authLoading && !user) {

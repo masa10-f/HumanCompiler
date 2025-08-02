@@ -378,7 +378,7 @@ export default function SchedulingPage() {
                                 </div>
                                 {taskLink && (
                                   <Link
-                                    href={taskLink as any}
+                                    href={taskLink || '#'}
                                     className="text-blue-500 hover:text-blue-700 transition-colors"
                                     title="タスク詳細を表示"
                                   >
@@ -430,7 +430,7 @@ export default function SchedulingPage() {
                                 </span>
                                 {taskLink && (
                                   <Link
-                                    href={taskLink as any}
+                                    href={taskLink || '#'}
                                     className="text-red-500 hover:text-red-700 transition-colors"
                                     title="タスク詳細を表示"
                                   >

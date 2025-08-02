@@ -10,24 +10,12 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { schedulingApi } from '@/lib/api'
 import Link from 'next/link'
+import type { DailySchedule } from '@/types/api-responses'
 
 export default function DashboardPage() {
   const { loading, isAuthenticated } = useAuth()
   const router = useRouter()
-  const [todaySchedule, setTodaySchedule] = useState<{
-    plan_json: {
-      assignments: Array<{
-        task_title: string;
-        start_time: string;
-        duration_hours: number;
-        slot_kind: string;
-        project_id: string;
-        goal_id: string;
-      }>;
-      total_scheduled_hours: number;
-      unscheduled_tasks: Array<unknown>;
-    };
-  } | null>(null)
+  const [todaySchedule, setTodaySchedule] = useState<DailySchedule | null>(null)
   const [scheduleLoading, setScheduleLoading] = useState(true)
 
   useEffect(() => {
