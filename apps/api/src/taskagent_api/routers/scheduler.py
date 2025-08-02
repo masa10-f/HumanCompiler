@@ -3,11 +3,10 @@ Scheduler API endpoints for task scheduling optimization.
 """
 
 import logging
-
-# Always use mock implementation for Docker/Production deployments
-# Real scheduler package requires complex monorepo setup
 import os
+from dataclasses import dataclass, field
 from datetime import datetime, time, timezone, UTC
+from enum import Enum
 from typing import Any
 from uuid import uuid4
 
@@ -21,105 +20,74 @@ from taskagent_api.exceptions import ResourceNotFoundError, ValidationError
 from taskagent_api.models import Schedule, ScheduleResponse
 from taskagent_api.services import goal_service, task_service
 
-# Check if we're in a containerized environment (Docker/Production)
-USE_MOCK_SCHEDULER = os.environ.get(
-    "ENVIRONMENT", "development"
-) == "production" or os.path.exists("/.dockerenv")
+# Use mock implementation since scheduler package has been removed
+logging.warning("Using mock scheduler implementation for containerized deployment")
 
-if not USE_MOCK_SCHEDULER:
-    # Development environment - try to import real scheduler
-    try:
-        # Add scheduler package to Python path for monorepo structure
-        import sys
 
-        packages_path = os.path.join(
-            os.path.dirname(__file__), "..", "..", "..", "packages"
-        )
-        if packages_path not in sys.path:
-            sys.path.insert(0, packages_path)
+class TaskKind(Enum):
+    LIGHT = "light"
+    DEEP = "deep"
+    STUDY = "study"
+    MEETING = "meeting"
 
-        from scheduler import optimize_schedule
-        from scheduler.api import optimize_schedule_api
-        from scheduler.models import SlotKind, TaskKind, TimeSlot
-        from scheduler.models import Task as SchedulerTask
 
-        def validate_schedule_request(request):
-            return True
+class SlotKind(Enum):
+    LIGHT = "light"
+    DEEP = "deep"
+    STUDY = "study"
+    MEETING = "meeting"
 
-        def format_schedule_result(result):
-            return result
 
-    except ImportError as e:
-        logging.warning(
-            f"Scheduler package not available in development, using mocks: {e}"
-        )
-        USE_MOCK_SCHEDULER = True
+@dataclass
+class SchedulerTask:
+    id: str
+    title: str
+    estimate_hours: float
+    priority: int = 1
+    due_date: datetime | None = None
+    kind: TaskKind = TaskKind.LIGHT
+    goal_id: str | None = None
 
-if USE_MOCK_SCHEDULER:
-    logging.warning("Using mock scheduler implementation for containerized deployment")
-    # Define mock classes and functions for testing
-    from dataclasses import dataclass
-    from datetime import datetime, time
-    from enum import Enum
 
-    class TaskKind(Enum):
-        LIGHT = "light"
-        DEEP = "deep"
-        STUDY = "study"
-        MEETING = "meeting"
+@dataclass
+class TimeSlot:
+    start: time
+    end: time
+    kind: SlotKind
+    capacity_hours: float | None = None
 
-    class SlotKind(Enum):
-        LIGHT = "light"
-        DEEP = "deep"
-        STUDY = "study"
-        MEETING = "meeting"
 
-    @dataclass
-    class SchedulerTask:
-        id: str
-        title: str
-        estimate_hours: float
-        priority: int = 1
-        due_date: datetime | None = None
-        kind: TaskKind = TaskKind.LIGHT
-        goal_id: str | None = None
+@dataclass
+class ScheduleResult:
+    success: bool
+    assignments: list = field(default_factory=list)
+    unscheduled_tasks: list = field(default_factory=list)
+    total_scheduled_hours: float = 0.0
+    optimization_status: str = "MOCKED"
+    solve_time_seconds: float = 0.0
+    objective_value: float = 0.0
 
-    @dataclass
-    class TimeSlot:
-        start: time
-        end: time
-        kind: SlotKind
-        capacity_hours: float | None = None
 
-    from dataclasses import field
+def optimize_schedule(tasks, time_slots, date=None):
+    return ScheduleResult(
+        success=True,
+        assignments=[],
+        unscheduled_tasks=[],
+        total_scheduled_hours=0.0,
+        optimization_status="NO_TASKS",
+    )
 
-    @dataclass
-    class ScheduleResult:
-        success: bool
-        assignments: list = field(default_factory=list)
-        unscheduled_tasks: list = field(default_factory=list)
-        total_scheduled_hours: float = 0.0
-        optimization_status: str = "MOCKED"
-        solve_time_seconds: float = 0.0
-        objective_value: float = 0.0
 
-    def optimize_schedule(tasks, time_slots, date=None):
-        return ScheduleResult(
-            success=True,
-            assignments=[],
-            unscheduled_tasks=[],
-            total_scheduled_hours=0.0,
-            optimization_status="NO_TASKS",
-        )
+def optimize_schedule_api(tasks, time_slots, date=None):
+    return optimize_schedule(tasks, time_slots, date)
 
-    def optimize_schedule_api(tasks, time_slots, date=None):
-        return optimize_schedule(tasks, time_slots, date)
 
-    def validate_schedule_request(request):
-        return True
+def validate_schedule_request(request):
+    return True
 
-    def format_schedule_result(result):
-        return result
+
+def format_schedule_result(result):
+    return result
 
 
 logger = logging.getLogger(__name__)
