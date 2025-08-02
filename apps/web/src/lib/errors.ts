@@ -199,19 +199,32 @@ export function getErrorMessage(error: Error): string {
 }
 
 export function logError(error: Error, context?: Record<string, unknown>): void {
-  const errorInfo = {
-    message: error.message,
-    name: error.name,
-    stack: error.stack,
-    context,
-    timestamp: new Date().toISOString()
-  };
+  // Import logger dynamically to avoid circular dependencies
+  import('./logger').then(({ logger }) => {
+    const errorContext = error instanceof AppError ? error.context : {};
+    const combinedContext = { ...(errorContext ?? {}), ...(context ?? {}) };
 
-  if (error instanceof AppError) {
-    errorInfo.context = { ...(error.context ?? {}), ...(errorInfo.context ?? {}) };
-  }
+    logger.error(
+      `Application Error: ${error.message}`,
+      error,
+      combinedContext
+    );
+  }).catch(() => {
+    // Fallback to console.error if logger import fails
+    const errorInfo = {
+      message: error.message,
+      name: error.name,
+      stack: error.stack,
+      context,
+      timestamp: new Date().toISOString()
+    };
 
-  console.error('Application Error:', errorInfo);
+    if (error instanceof AppError) {
+      errorInfo.context = { ...(error.context ?? {}), ...(errorInfo.context ?? {}) };
+    }
+
+    console.error('Application Error:', errorInfo);
+  });
 
   // Here you could add integration with error tracking services like Sentry
   // if (window.Sentry) {

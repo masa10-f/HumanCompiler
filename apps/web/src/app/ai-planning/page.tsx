@@ -28,6 +28,7 @@ import {
 import { AppHeader } from '@/components/layout/app-header';
 import { toast } from '@/hooks/use-toast';
 import { aiPlanningApi } from '@/lib/api';
+import { log } from '@/lib/logger';
 import type { WeeklyPlanResponse, WorkloadAnalysis, PrioritySuggestions } from '@/types/ai-planning';
 
 export default function AIPlanningPage() {
@@ -60,7 +61,7 @@ export default function AIPlanningPage() {
   const checkUserSettings = async () => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     if (!apiUrl) {
-      console.error('Environment variable NEXT_PUBLIC_API_URL is not defined.');
+      log.error('Environment variable NEXT_PUBLIC_API_URL is not defined', null, { component: 'AIPlanning' });
       toast({
         title: 'エラー',
         description: 'ユーザー設定を取得できません。サポートまでお問い合わせください。',
@@ -81,7 +82,7 @@ export default function AIPlanningPage() {
         setHasApiKey(data.has_api_key);
       }
     } catch (error) {
-      console.error('Failed to check user settings:', error);
+      log.error('Failed to check user settings', error as Error, { component: 'AIPlanning' });
     } finally {
       setCheckingApiKey(false);
     }

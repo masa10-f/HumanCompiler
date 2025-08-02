@@ -14,6 +14,7 @@ import { TaskEditDialog } from '@/components/tasks/task-edit-dialog';
 import { TaskDeleteDialog } from '@/components/tasks/task-delete-dialog';
 import { ArrowLeft, Plus, Clock, Calendar } from 'lucide-react';
 import { taskStatusLabels, taskStatusColors } from '@/types/task';
+import { log } from '@/lib/logger';
 import type { Goal } from '@/types/goal';
 import type { Project } from '@/types/project';
 
@@ -46,7 +47,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
       try {
         setGoalLoading(true);
         setGoalError(null);
-        console.log('[GoalDetail] Fetching data for goal:', params.goalId, 'project:', params.id);
+        log.component('GoalDetail', 'fetchData', { goalId: params.goalId, projectId: params.id });
 
         // Fetch goal and project data
         const [goalData, projectData] = await Promise.all([
@@ -54,11 +55,11 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
           projectsApi.getById(params.id)
         ]);
 
-        console.log('[GoalDetail] Data fetched successfully:', { goalData, projectData });
+        log.component('GoalDetail', 'dataFetched', { goalData, projectData });
         setGoal(goalData);
         setProject(projectData);
       } catch (err) {
-        console.error('[GoalDetail] Error fetching data:', err);
+        log.error('Failed to fetch goal and project data', err as Error, { component: 'GoalDetail', goalId: params.goalId, projectId: params.id });
         setGoalError(err instanceof Error ? err.message : 'Failed to fetch data');
       } finally {
         setGoalLoading(false);
@@ -102,19 +103,27 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
   const completedTasks = tasks.filter(task => task.status === 'completed').length;
 
   // Debug: Log tasks data to understand the structure
-  console.log('[GoalDetail] Tasks data:', tasks.map(t => ({
-    id: t.id,
-    title: t.title,
-    estimate_hours: t.estimate_hours,
-    type: typeof t.estimate_hours
-  })));
+  log.debug('Tasks data for goal detail', {
+    goalId: params.goalId,
+    tasksData: tasks.map(t => ({
+      id: t.id,
+      title: t.title,
+      estimate_hours: t.estimate_hours,
+      type: typeof t.estimate_hours
+    }))
+  });
 
   // Ensure estimate_hours is treated as number and fix potential string concatenation issues
   const totalEstimateHours = tasks.reduce((sum, task) => {
     const hours = typeof task.estimate_hours === 'string'
       ? parseFloat(task.estimate_hours)
       : task.estimate_hours || 0;
-    console.log(`[GoalDetail] Task ${task.title}: hours=${hours}, type=${typeof task.estimate_hours}`);
+    log.debug('Task hours calculation', {
+      taskTitle: task.title,
+      hours,
+      originalType: typeof task.estimate_hours,
+      goalId: params.goalId
+    });
     return sum + hours;
   }, 0);
 
@@ -131,7 +140,8 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
   // TODO: Implement actual time tracking with logs API
   const totalActualHours = completedEstimateHours;
 
-  console.log('[GoalDetail] Calculated values:', {
+  log.debug('Goal detail calculated values', {
+    goalId: params.goalId,
     totalEstimateHours,
     completedEstimateHours,
     totalActualHours

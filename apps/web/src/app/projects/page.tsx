@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Plus } from 'lucide-react';
 import { AppHeader } from '@/components/layout/app-header';
+import { log } from '@/lib/logger';
 
 export default function ProjectsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -30,19 +31,19 @@ export default function ProjectsPage() {
 
     try {
       setCreating(true);
-      console.log('[Projects] Creating:', { title, description });
+      log.component('Projects', 'createProject', { title, description });
 
       await createProject({
         title: title.trim(),
         description: description.trim() || undefined,
       });
 
-      console.log('[Projects] Project created successfully');
+      log.component('Projects', 'projectCreated', { title });
       setTitle('');
       setDescription('');
       setShowCreateForm(false);
     } catch (err) {
-      console.error('[Projects] Create error:', err);
+      log.error('Failed to create project', err as Error, { component: 'Projects', title, description });
     } finally {
       setCreating(false);
     }
