@@ -58,10 +58,20 @@ class TimeSlot:
 
 
 @dataclass
+class Assignment:
+    """Represents a task assignment to a time slot."""
+
+    task_id: str
+    slot_index: int
+    start_time: time
+    duration_hours: float
+
+
+@dataclass
 class ScheduleResult:
     success: bool
-    assignments: list = field(default_factory=list)
-    unscheduled_tasks: list = field(default_factory=list)
+    assignments: list[Assignment] = field(default_factory=list)
+    unscheduled_tasks: list[str] = field(default_factory=list)
     total_scheduled_hours: float = 0.0
     optimization_status: str = "MOCKED"
     solve_time_seconds: float = 0.0
@@ -84,41 +94,53 @@ def optimize_schedule(tasks, time_slots, date=None):
             optimization_status="NO_TASKS_OR_SLOTS",
         )
 
-    # Simple mock assignment: assign tasks to slots sequentially
-    assignments = []
-    unscheduled_tasks = []
-    total_hours = 0.0
+    # Track slot occupancy for proper scheduling
+    slot_occupancy = [0.0] * len(time_slots)  # Hours used per slot
+    slot_capacity = []
 
-    for i, task in enumerate(tasks[: len(time_slots)]):  # Limit to available slots
-        slot_idx = i % len(time_slots)
-        slot = time_slots[slot_idx]
-
-        # Calculate slot duration
+    # Calculate slot capacities
+    for slot in time_slots:
         slot_duration = (
             datetime.combine(datetime.today(), slot.end)
             - datetime.combine(datetime.today(), slot.start)
         ).total_seconds() / 3600
+        slot_capacity.append(slot_duration)
 
-        # Use minimum of task estimate and slot capacity
-        duration = min(task.estimate_hours, slot_duration)
+    assignments = []
+    unscheduled_tasks = []
+    total_hours = 0.0
 
-        assignments.append(
-            type(
-                "Assignment",
-                (),
-                {
-                    "task_id": task.id,
-                    "slot_index": slot_idx,
-                    "start_time": slot.start,
-                    "duration_hours": duration,
-                },
-            )()
-        )
+    # Assign tasks using round-robin with capacity constraints
+    for task in tasks:
+        assigned = False
 
-        total_hours += duration
+        # Try to assign to the least occupied slot that has capacity
+        for attempt in range(len(time_slots)):
+            slot_idx = (len(assignments) + attempt) % len(time_slots)
+            slot = time_slots[slot_idx]
 
-    # Add remaining tasks to unscheduled
-    unscheduled_tasks.extend([task.id for task in tasks[len(time_slots) :]])
+            # Check if slot has remaining capacity
+            remaining_capacity = slot_capacity[slot_idx] - slot_occupancy[slot_idx]
+            if remaining_capacity > 0:
+                # Use minimum of task estimate and remaining slot capacity
+                duration = min(task.estimate_hours, remaining_capacity)
+
+                assignments.append(
+                    Assignment(
+                        task_id=task.id,
+                        slot_index=slot_idx,
+                        start_time=slot.start,
+                        duration_hours=duration,
+                    )
+                )
+
+                slot_occupancy[slot_idx] += duration
+                total_hours += duration
+                assigned = True
+                break
+
+        if not assigned:
+            unscheduled_tasks.append(task.id)
 
     return ScheduleResult(
         success=True,
