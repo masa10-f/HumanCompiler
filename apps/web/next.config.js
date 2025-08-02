@@ -29,11 +29,13 @@ const nextConfig = {
       '@/hooks': path.resolve(__dirname, 'src/hooks'),
     }
 
-    // Remove console statements in production builds
+    // Remove console statements in production builds (excluding logger utility)
     if (!dev && !isServer) {
       config.optimization.minimizer = config.optimization.minimizer || [];
       config.optimization.minimizer.push(
         new TerserPlugin({
+          test: /\.js(\?.*)?$/i,
+          exclude: /logger\.js$/, // Exclude logger file to preserve console methods
           terserOptions: {
             compress: {
               drop_console: true,

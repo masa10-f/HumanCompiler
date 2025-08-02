@@ -33,7 +33,15 @@ class Logger {
 
   constructor() {
     this.isDevelopment = process.env.NODE_ENV === 'development';
-    this.logLevel = this.isDevelopment ? LogLevel.DEBUG : LogLevel.WARN;
+
+    // Configurable log level via environment variable
+    const envLogLevel = process.env.NEXT_PUBLIC_LOG_LEVEL?.toLowerCase();
+    if (envLogLevel && Object.values(LogLevel).includes(envLogLevel as LogLevel)) {
+      this.logLevel = envLogLevel as LogLevel;
+    } else {
+      // Default: DEBUG in development, WARN in production
+      this.logLevel = this.isDevelopment ? LogLevel.DEBUG : LogLevel.WARN;
+    }
   }
 
   /**
