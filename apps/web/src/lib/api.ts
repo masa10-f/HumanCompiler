@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { ApiError, NetworkError, logError } from './errors';
 import type {
   Project,
   ProjectCreate,
@@ -59,6 +60,12 @@ class ApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
+    const context = {
+      endpoint,
+      method: options.method || 'GET',
+      timestamp: new Date()
+    };
+
     try {
       const headers = await this.getAuthHeaders();
 
@@ -71,8 +78,25 @@ class ApiClient {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-        throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+        let errorData: Record<string, unknown>;
+        let errorMessage: string;
+
+        try {
+          errorData = await response.json();
+          errorMessage = (errorData.detail as string) || (errorData.message as string) || `HTTP ${response.status}: ${response.statusText}`;
+        } catch {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+          errorData = { detail: errorMessage };
+        }
+
+        const apiError = new ApiError(
+          response.status,
+          errorMessage,
+          { ...context, statusCode: response.status, responseData: errorData }
+        );
+
+        logError(apiError, context);
+        throw apiError;
       }
 
       // Handle 204 No Content responses
@@ -82,8 +106,43 @@ class ApiClient {
 
       return response.json();
     } catch (error) {
-      console.error(`API request failed for ${endpoint}:`, error);
-      throw error;
+      // If it's already an ApiError, re-throw it
+      if (error instanceof ApiError) {
+        throw error;
+      }
+
+      // Handle network errors (fetch failures)
+      if (error instanceof TypeError || (error instanceof Error && error.message?.includes('fetch'))) {
+        const networkError = new NetworkError(
+          `Network request failed: ${error.message}`,
+          context
+        );
+        logError(networkError, context);
+        throw networkError;
+      }
+
+      // Handle authentication errors
+      if (error instanceof Error && (error.message?.includes('auth') || error.message?.includes('token'))) {
+        const authError = new ApiError(
+          401,
+          error.message,
+          context,
+          'ログインセッションが無効です。再度ログインしてください。'
+        );
+        logError(authError, context);
+        throw authError;
+      }
+
+      // Fallback for unknown errors
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const unknownError = new ApiError(
+        500,
+        `Unexpected error: ${errorMessage}`,
+        context,
+        '予期しないエラーが発生しました。'
+      );
+      logError(unknownError, context);
+      throw unknownError;
     }
   }
 
