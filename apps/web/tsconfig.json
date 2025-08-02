@@ -11,8 +11,7 @@
       "@/*": ["./src/*"],
       "@/components/*": ["./src/components/*"],
       "@/lib/*": ["./src/lib/*"],
-      "@/hooks/*": ["./src/hooks/*"],
-      "@task-agent/db": ["../../packages/db/src"]
+      "@/hooks/*": ["./src/hooks/*"]
     }
   },
   "include": [

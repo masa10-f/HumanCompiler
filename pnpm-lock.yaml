@@ -133,21 +133,6 @@ importers:
         specifier: ^5.3.0
         version: 5.8.3
 
-  packages/db:
-    dependencies:
-      '@supabase/supabase-js':
-        specifier: ^2.45.0
-        version: 2.50.2
-      zod:
-        specifier: ^3.23.0
-        version: 3.25.67
-    devDependencies:
-      typescript:
-        specifier: ^5.3.0
-        version: 5.8.3
-
-  packages/scheduler: {}
-
 packages:
 
   '@alloc/quick-lru@5.2.0':
