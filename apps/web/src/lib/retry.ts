@@ -81,9 +81,10 @@ export async function withRetry<T>(
       totalAttempts: opts.maxRetries + 1
     });
     throw lastError;
-  } else {
-    throw new Error('All retries exhausted, but no error was captured.');
   }
+
+  // This should never happen, but provide a fallback
+  throw new Error('All retries exhausted, but no error was captured.');
 }
 
 /**

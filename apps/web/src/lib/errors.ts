@@ -201,9 +201,7 @@ export function logError(error: Error, context?: Record<string, unknown>): void 
   };
 
   if (error instanceof AppError) {
-    errorInfo.context = errorInfo.context
-      ? { ...errorInfo.context, ...(error.context ?? {}) }
-      : (error.context ?? {});
+    errorInfo.context = { ...(errorInfo.context ?? {}), ...(error.context ?? {}) };
   }
 
   console.error('Application Error:', errorInfo);
