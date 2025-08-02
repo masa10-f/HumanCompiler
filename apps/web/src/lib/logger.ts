@@ -27,6 +27,10 @@ export interface LogEntry {
   error?: Error;
 }
 
+/**
+ * Centralized logger that intentionally uses console.* methods as output mechanism.
+ * The goal is to replace scattered console.* calls with structured logging.
+ */
 class Logger {
   private isDevelopment: boolean;
   private logLevel: LogLevel;
@@ -72,9 +76,6 @@ class Logger {
     const logPrefix = `${prefix}${component}${action}`;
 
     // Choose console method based on log level
-    // Note: This logger intentionally uses console.* methods as its output mechanism.
-    // The "replacing console statements" goal refers to replacing scattered console.*
-    // calls throughout the app with structured logging via this centralized logger.
     switch (entry.level) {
       case LogLevel.DEBUG:
         if (this.isDevelopment) {
@@ -87,6 +88,7 @@ class Logger {
       case LogLevel.INFO:
         const infoArgs: unknown[] = [logPrefix, entry.message];
         if (entry.data !== undefined && entry.data !== null) infoArgs.push(entry.data);
+        if (entry.context !== undefined && entry.context !== null) infoArgs.push(entry.context);
         console.info(...infoArgs);
         break;
       case LogLevel.WARN:

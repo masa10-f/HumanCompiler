@@ -35,7 +35,7 @@ const nextConfig = {
       config.optimization.minimizer.push(
         new TerserPlugin({
           test: /\.js(\?.*)?$/i,
-          exclude: /logger\.js$/, // Exclude logger file to preserve console methods
+          exclude: /logger\.(js|ts)$/, // Exclude logger file to preserve console methods
           terserOptions: {
             compress: {
               drop_console: true,
