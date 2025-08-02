@@ -29,8 +29,8 @@ export default function DashboardPage() {
     const fetchTodaySchedule = async () => {
       if (!isAuthenticated) return
 
+      const today = new Date().toISOString().split('T')[0]
       try {
-        const today = new Date().toISOString().split('T')[0]
         const schedule = await schedulingApi.getByDate(today as string)
         setTodaySchedule(schedule)
       } catch (error) {
