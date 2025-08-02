@@ -67,17 +67,29 @@ class Logger {
     switch (entry.level) {
       case LogLevel.DEBUG:
         if (this.isDevelopment) {
-          console.log(logPrefix, entry.message, entry.data || '', entry.context || '');
+          const debugArgs: unknown[] = [logPrefix, entry.message];
+          if (entry.data !== undefined && entry.data !== null) debugArgs.push(entry.data);
+          if (entry.context !== undefined && entry.context !== null) debugArgs.push(entry.context);
+          console.log(...debugArgs);
         }
         break;
       case LogLevel.INFO:
-        console.info(logPrefix, entry.message, entry.data || '');
+        const infoArgs: unknown[] = [logPrefix, entry.message];
+        if (entry.data !== undefined && entry.data !== null) infoArgs.push(entry.data);
+        console.info(...infoArgs);
         break;
       case LogLevel.WARN:
-        console.warn(logPrefix, entry.message, entry.data || '', entry.context || '');
+        const warnArgs: unknown[] = [logPrefix, entry.message];
+        if (entry.data !== undefined && entry.data !== null) warnArgs.push(entry.data);
+        if (entry.context !== undefined && entry.context !== null) warnArgs.push(entry.context);
+        console.warn(...warnArgs);
         break;
       case LogLevel.ERROR:
-        console.error(logPrefix, entry.message, entry.error || entry.data || '', entry.context || '');
+        const errorArgs: unknown[] = [logPrefix, entry.message];
+        if (entry.error !== undefined && entry.error !== null) errorArgs.push(entry.error);
+        else if (entry.data !== undefined && entry.data !== null) errorArgs.push(entry.data);
+        if (entry.context !== undefined && entry.context !== null) errorArgs.push(entry.context);
+        console.error(...errorArgs);
 
         // In production, you might want to send errors to an external service
         if (!this.isDevelopment && entry.error) {
