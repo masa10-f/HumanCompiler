@@ -63,9 +63,9 @@ def setup_connection_listeners(engine):
                     cursor.execute("PRAGMA synchronous=NORMAL")
                     cursor.close()
                     logger.debug("SQLite pragmas configured")
-            except Exception:
+            except Exception as e:
                 # Not SQLite or error setting pragmas
-                pass
+                logger.debug(f"Failed to set SQLite pragmas: {e}")
 
     @event.listens_for(Pool, "connect")
     def set_postgresql_search_path(dbapi_connection, connection_record):
@@ -82,8 +82,8 @@ def setup_connection_listeners(engine):
                     cursor.execute("SET search_path TO public")
                     logger.debug("PostgreSQL search path configured")
                 cursor.close()
-            except Exception:
+            except Exception as e:
                 # Not PostgreSQL or error setting search path
-                pass
+                logger.debug(f"Failed to set PostgreSQL search path: {e}")
 
     logger.info("Database connection listeners configured")
