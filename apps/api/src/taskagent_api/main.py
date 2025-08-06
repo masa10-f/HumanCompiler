@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from taskagent_api.config import settings
 from taskagent_api.database import db
+from taskagent_api.performance_monitor import performance_monitor
 from taskagent_api.exceptions import (
     TaskAgentException,
     general_exception_handler,
@@ -19,6 +20,7 @@ from taskagent_api.exceptions import (
 from taskagent_api.routers import (
     ai_planning,
     goals,
+    monitoring,
     projects,
     scheduler,
     tasks,
@@ -43,6 +45,10 @@ async def lifespan(app: FastAPI):
     try:
         if await db.health_check():
             logger.info("✅ Database connection successful")
+            # Setup performance monitoring
+            engine = db.get_engine()
+            performance_monitor.setup_listeners(engine)
+            logger.info("✅ Performance monitoring enabled")
         else:
             logger.warning("⚠️ Database connection failed, continuing in degraded mode")
     except Exception as e:
@@ -88,6 +94,7 @@ app.include_router(tasks.router, prefix="/api")
 app.include_router(scheduler.router, prefix="/api")
 app.include_router(ai_planning.router, prefix="/api")
 app.include_router(user_settings.router)
+app.include_router(monitoring.router)
 
 
 # Health check endpoint
