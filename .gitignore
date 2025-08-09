@@ -151,3 +151,48 @@ pids
 
 # Turborepo cache
 .turbo
+
+# Additional Python tools and caches
+.ruff_cache/
+.pytype/
+bandit.json
+.ipynb_checkpoints/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Security and secrets
+*.key
+*.crt
+*.cert
+client_secret.json
+credentials.json
+token.json
+service-account*.json
+
+# FastAPI specific
+instance/
+uploads/
+media/
+static/uploads/
+
+# Additional editor files
+*.sublime-project
+*.sublime-workspace
+
+# Docker
+.dockerignore
+
+# CI/CD
+.gitlab-ci-local/
+
+# Profiling and debugging
+*.prof
+*.lprof
+*.stats
+*.trace
