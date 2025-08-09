@@ -70,7 +70,7 @@ def test_validation_error():
 def test_project_endpoints_structure(mock_session, mock_user):
     """Test that project endpoints are properly structured"""
     # Mock authenticated user
-    mock_user.return_value = Mock(user_id="test-user-id")
+    mock_user.return_value = Mock(user_id="87654321-4321-8765-4321-876543218765")
     mock_session.return_value = Mock()
 
     # Test endpoint accessibility (will fail on service layer, but endpoint should be reachable)
