@@ -28,8 +28,9 @@ def mock_session():
 @pytest.fixture
 def weekly_plan_request():
     """Mock weekly plan request"""
+    future_date = "2025-12-01"
     return WeeklyPlanRequest(
-        week_start_date="2024-01-01",
+        week_start_date=future_date,
         capacity_hours=40.0,
         project_filter=None,
         preferences={},
@@ -39,9 +40,10 @@ def weekly_plan_request():
 @pytest.fixture
 def mock_plan_response():
     """Mock weekly plan response"""
+    future_date = "2025-12-01"
     return WeeklyPlanResponse(
         success=True,
-        week_start_date="2024-01-01",
+        week_start_date=future_date,
         total_planned_hours=25.0,
         task_plans=[],
         recommendations=["Focus on deep work in the morning"],
@@ -66,7 +68,9 @@ async def test_generate_weekly_plan_success(
             mock_service_class.return_value = mock_service
 
             result = await generate_weekly_plan(
-                weekly_plan_request, "test-user-id", mock_session
+                weekly_plan_request,
+                "87654321-4321-8765-4321-876543218765",
+                mock_session,
             )
 
             assert result == mock_plan_response
@@ -79,7 +83,9 @@ async def test_generate_weekly_plan_invalid_date_format(mock_session):
     request = WeeklyPlanRequest(week_start_date="invalid-date", capacity_hours=40.0)
 
     with pytest.raises(HTTPException) as exc_info:
-        await generate_weekly_plan(request, "test-user-id", mock_session)
+        await generate_weekly_plan(
+            request, "87654321-4321-8765-4321-876543218765", mock_session
+        )
 
     assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
     assert "INVALID_DATE_FORMAT" in str(exc_info.value.detail)
@@ -96,7 +102,9 @@ async def test_generate_weekly_plan_past_date(mock_session):
     request = WeeklyPlanRequest(week_start_date=past_date, capacity_hours=40.0)
 
     with pytest.raises(HTTPException) as exc_info:
-        await generate_weekly_plan(request, "test-user-id", mock_session)
+        await generate_weekly_plan(
+            request, "87654321-4321-8765-4321-876543218765", mock_session
+        )
 
     assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
     assert "INVALID_DATE_RANGE" in str(exc_info.value.detail)
@@ -111,7 +119,9 @@ async def test_generate_weekly_plan_service_error(weekly_plan_request, mock_sess
     ):
         with pytest.raises(HTTPException) as exc_info:
             await generate_weekly_plan(
-                weekly_plan_request, "test-user-id", mock_session
+                weekly_plan_request,
+                "87654321-4321-8765-4321-876543218765",
+                mock_session,
             )
 
         assert exc_info.value.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -144,7 +154,7 @@ async def test_generate_weekly_plan_current_week_allowed(mock_session):
             mock_service_class.return_value = mock_service
 
             result = await generate_weekly_plan(
-                today_request, "test-user-id", mock_session
+                today_request, "87654321-4321-8765-4321-876543218765", mock_session
             )
 
             assert result.success is True
@@ -208,18 +218,20 @@ async def test_analyze_workload_success(mock_session):
     ]
 
     with patch(
-        "taskagent_api.routers.ai_planning.project_service.get_projects",
+        "taskagent_api.services.project_service.get_projects",
         return_value=mock_projects,
     ):
         with patch(
-            "taskagent_api.routers.ai_planning.goal_service.get_goals_by_project",
+            "taskagent_api.services.goal_service.get_goals_by_project",
             return_value=mock_goals,
         ):
             with patch(
-                "taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal",
+                "taskagent_api.services.task_service.get_tasks_by_goal",
                 return_value=mock_tasks,
             ):
-                result = await analyze_workload(None, "test-user-id", mock_session)
+                result = await analyze_workload(
+                    None, "87654321-4321-8765-4321-876543218765", mock_session
+                )
 
                 assert result["success"] is True
                 assert result["analysis"]["total_estimated_hours"] == 8.0
@@ -243,19 +255,19 @@ async def test_analyze_workload_with_project_filter(mock_session):
     ]
 
     with patch(
-        "taskagent_api.routers.ai_planning.project_service.get_project",
+        "taskagent_api.services.project_service.get_project",
         return_value=mock_project,
     ):
         with patch(
-            "taskagent_api.routers.ai_planning.goal_service.get_goals_by_project",
+            "taskagent_api.services.goal_service.get_goals_by_project",
             return_value=mock_goals,
         ):
             with patch(
-                "taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal",
+                "taskagent_api.services.task_service.get_tasks_by_goal",
                 return_value=mock_tasks,
             ):
                 result = await analyze_workload(
-                    ["project-1"], "test-user-id", mock_session
+                    ["project-1"], "87654321-4321-8765-4321-876543218765", mock_session
                 )
 
                 assert result["success"] is True
@@ -280,18 +292,20 @@ async def test_analyze_workload_overload_recommendations(mock_session):
     ]
 
     with patch(
-        "taskagent_api.routers.ai_planning.project_service.get_projects",
+        "taskagent_api.services.project_service.get_projects",
         return_value=mock_projects,
     ):
         with patch(
-            "taskagent_api.routers.ai_planning.goal_service.get_goals_by_project",
+            "taskagent_api.services.goal_service.get_goals_by_project",
             return_value=mock_goals,
         ):
             with patch(
-                "taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal",
+                "taskagent_api.services.task_service.get_tasks_by_goal",
                 return_value=mock_tasks,
             ):
-                result = await analyze_workload(None, "test-user-id", mock_session)
+                result = await analyze_workload(
+                    None, "87654321-4321-8765-4321-876543218765", mock_session
+                )
 
                 assert result["success"] is True
                 assert result["analysis"]["total_estimated_hours"] == 50.0
@@ -321,18 +335,20 @@ async def test_analyze_workload_with_overdue_tasks(mock_session):
     ]
 
     with patch(
-        "taskagent_api.routers.ai_planning.project_service.get_projects",
+        "taskagent_api.services.project_service.get_projects",
         return_value=mock_projects,
     ):
         with patch(
-            "taskagent_api.routers.ai_planning.goal_service.get_goals_by_project",
+            "taskagent_api.services.goal_service.get_goals_by_project",
             return_value=mock_goals,
         ):
             with patch(
-                "taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal",
+                "taskagent_api.services.task_service.get_tasks_by_goal",
                 return_value=mock_tasks,
             ):
-                result = await analyze_workload(None, "test-user-id", mock_session)
+                result = await analyze_workload(
+                    None, "87654321-4321-8765-4321-876543218765", mock_session
+                )
 
                 assert result["success"] is True
                 assert result["analysis"]["overdue_tasks"] == 1
@@ -346,11 +362,13 @@ async def test_analyze_workload_with_overdue_tasks(mock_session):
 async def test_analyze_workload_error(mock_session):
     """Test workload analysis error handling"""
     with patch(
-        "taskagent_api.routers.ai_planning.project_service.get_projects",
+        "taskagent_api.services.project_service.get_projects",
         side_effect=Exception("DB error"),
     ):
         with pytest.raises(HTTPException) as exc_info:
-            await analyze_workload(None, "test-user-id", mock_session)
+            await analyze_workload(
+                None, "87654321-4321-8765-4321-876543218765", mock_session
+            )
 
         assert exc_info.value.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
 
@@ -380,19 +398,19 @@ async def test_suggest_task_priorities_success(mock_session):
     ]
 
     with patch(
-        "taskagent_api.routers.ai_planning.project_service.get_projects",
+        "taskagent_api.services.project_service.get_projects",
         return_value=mock_projects,
     ):
         with patch(
-            "taskagent_api.routers.ai_planning.goal_service.get_goals_by_project",
+            "taskagent_api.services.goal_service.get_goals_by_project",
             return_value=mock_goals,
         ):
             with patch(
-                "taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal",
+                "taskagent_api.services.task_service.get_tasks_by_goal",
                 return_value=mock_tasks,
             ):
                 result = await suggest_task_priorities(
-                    None, "test-user-id", mock_session
+                    None, "87654321-4321-8765-4321-876543218765", mock_session
                 )
 
                 assert result["success"] is True
@@ -418,19 +436,19 @@ async def test_suggest_task_priorities_specific_project(mock_session):
     ]
 
     with patch(
-        "taskagent_api.routers.ai_planning.project_service.get_project",
+        "taskagent_api.services.project_service.get_project",
         return_value=mock_project,
     ):
         with patch(
-            "taskagent_api.routers.ai_planning.goal_service.get_goals_by_project",
+            "taskagent_api.services.goal_service.get_goals_by_project",
             return_value=mock_goals,
         ):
             with patch(
-                "taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal",
+                "taskagent_api.services.task_service.get_tasks_by_goal",
                 return_value=mock_tasks,
             ):
                 result = await suggest_task_priorities(
-                    "project-1", "test-user-id", mock_session
+                    "project-1", "87654321-4321-8765-4321-876543218765", mock_session
                 )
 
                 assert result["success"] is True
@@ -441,12 +459,14 @@ async def test_suggest_task_priorities_specific_project(mock_session):
 async def test_suggest_task_priorities_project_not_found(mock_session):
     """Test task priority suggestions when project not found"""
     with patch(
-        "taskagent_api.routers.ai_planning.project_service.get_project",
+        "taskagent_api.services.project_service.get_project",
         return_value=None,
     ):
         with pytest.raises(HTTPException) as exc_info:
             await suggest_task_priorities(
-                "nonexistent-project", "test-user-id", mock_session
+                "nonexistent-project",
+                "87654321-4321-8765-4321-876543218765",
+                mock_session,
             )
 
         assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
@@ -490,19 +510,19 @@ async def test_suggest_task_priorities_scoring_algorithm(mock_session):
     mock_tasks = [overdue_task, urgent_task, regular_task]
 
     with patch(
-        "taskagent_api.routers.ai_planning.project_service.get_projects",
+        "taskagent_api.services.project_service.get_projects",
         return_value=mock_projects,
     ):
         with patch(
-            "taskagent_api.routers.ai_planning.goal_service.get_goals_by_project",
+            "taskagent_api.services.goal_service.get_goals_by_project",
             return_value=mock_goals,
         ):
             with patch(
-                "taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal",
+                "taskagent_api.services.task_service.get_tasks_by_goal",
                 return_value=mock_tasks,
             ):
                 result = await suggest_task_priorities(
-                    None, "test-user-id", mock_session
+                    None, "87654321-4321-8765-4321-876543218765", mock_session
                 )
 
                 suggestions = result["priority_suggestions"]
@@ -517,11 +537,13 @@ async def test_suggest_task_priorities_scoring_algorithm(mock_session):
 async def test_suggest_task_priorities_error(mock_session):
     """Test task priority suggestions error handling"""
     with patch(
-        "taskagent_api.routers.ai_planning.project_service.get_projects",
+        "taskagent_api.services.project_service.get_projects",
         side_effect=Exception("DB error"),
     ):
         with pytest.raises(HTTPException) as exc_info:
-            await suggest_task_priorities(None, "test-user-id", mock_session)
+            await suggest_task_priorities(
+                None, "87654321-4321-8765-4321-876543218765", mock_session
+            )
 
         assert exc_info.value.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
 

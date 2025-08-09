@@ -328,6 +328,7 @@ async def test_weekly_plan_service_generate_plan():
     mock_session = Mock()
     request = WeeklyPlanRequest(week_start_date="2024-01-01", capacity_hours=40.0)
 
+    future_date = "2025-12-01"
     mock_context = WeeklyPlanContext(
         user_id="user-1",
         week_start_date=date.today(),
@@ -340,7 +341,7 @@ async def test_weekly_plan_service_generate_plan():
 
     mock_response = WeeklyPlanResponse(
         success=True,
-        week_start_date="2024-01-01",
+        week_start_date=future_date,
         total_planned_hours=10.0,
         task_plans=[],
         recommendations=[],
@@ -366,17 +367,19 @@ async def test_weekly_plan_service_generate_plan():
 
 def test_weekly_plan_request_validation():
     """Test weekly plan request model validation"""
+    future_date = "2025-12-01"
+
     # Valid request
     request = WeeklyPlanRequest(
-        week_start_date="2024-01-01", capacity_hours=40.0, project_filter=["project-1"]
+        week_start_date=future_date, capacity_hours=40.0, project_filter=["project-1"]
     )
 
-    assert request.week_start_date == "2024-01-01"
+    assert request.week_start_date == future_date
     assert request.capacity_hours == 40.0
     assert request.project_filter == ["project-1"]
 
     # Request with defaults
-    minimal_request = WeeklyPlanRequest(week_start_date="2024-01-01")
+    minimal_request = WeeklyPlanRequest(week_start_date=future_date)
     assert minimal_request.capacity_hours == 40.0
     assert minimal_request.project_filter is None
 
@@ -402,9 +405,10 @@ def test_task_plan_model():
 def test_weekly_plan_response_serialization():
     """Test WeeklyPlanResponse serialization"""
     now = datetime.now()
+    future_date = "2025-12-01"
     response = WeeklyPlanResponse(
         success=True,
-        week_start_date="2024-01-01",
+        week_start_date=future_date,
         total_planned_hours=10.0,
         task_plans=[],
         recommendations=["Test recommendation"],

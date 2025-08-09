@@ -33,13 +33,16 @@ def mock_credentials():
 @pytest.fixture
 def auth_user():
     """Mock AuthUser instance"""
-    return AuthUser(user_id="test-user-id", email="test@example.com")
+    return AuthUser(
+        user_id="87654321-4321-8765-4321-876543218765", email="test@example.com"
+    )
 
 
 def test_auth_user_initialization():
     """Test AuthUser class initialization"""
-    user = AuthUser(user_id="user123", email="user@test.com")
-    assert user.user_id == "user123"
+    user_id = "87654321-4321-8765-4321-876543218765"
+    user = AuthUser(user_id=user_id, email="user@test.com")
+    assert user.user_id == user_id
     assert user.email == "user@test.com"
 
 
@@ -159,7 +162,7 @@ async def test_ensure_user_exists_error_handling():
 async def test_get_current_user_success(mock_credentials):
     """Test successful user authentication"""
     mock_user = Mock()
-    mock_user.id = "test-user-id"
+    mock_user.id = "87654321-4321-8765-4321-876543218765"
     mock_user.email = "test@example.com"
 
     mock_user_response = Mock()
@@ -173,7 +176,7 @@ async def test_get_current_user_success(mock_credentials):
 
             result = await get_current_user(mock_credentials)
 
-            assert result.user_id == "test-user-id"
+            assert result.user_id == "87654321-4321-8765-4321-876543218765"
             assert result.email == "test@example.com"
 
 
@@ -251,14 +254,14 @@ async def test_get_optional_user_auth_failure(mock_credentials):
 async def test_get_current_user_id(auth_user):
     """Test getting current user ID"""
     result = await get_current_user_id(auth_user)
-    assert result == "test-user-id"
+    assert result == "87654321-4321-8765-4321-876543218765"
 
 
 @pytest.mark.asyncio
 async def test_get_current_user_no_email(mock_credentials):
     """Test authentication with user having no email"""
     mock_user = Mock()
-    mock_user.id = "test-user-id"
+    mock_user.id = "87654321-4321-8765-4321-876543218765"
     mock_user.email = None
 
     mock_user_response = Mock()
@@ -270,7 +273,7 @@ async def test_get_current_user_no_email(mock_credentials):
         with patch("asyncio.wait_for", return_value=mock_user_response):
             result = await get_current_user(mock_credentials)
 
-            assert result.user_id == "test-user-id"
+            assert result.user_id == "87654321-4321-8765-4321-876543218765"
             assert result.email == "unknown@example.com"
 
 

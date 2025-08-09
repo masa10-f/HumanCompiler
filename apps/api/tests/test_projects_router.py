@@ -36,7 +36,9 @@ def mock_session():
 @pytest.fixture
 def auth_user():
     """Mock authenticated user"""
-    return AuthUser(user_id="test-user-id", email="test@example.com")
+    return AuthUser(
+        user_id="87654321-4321-8765-4321-876543218765", email="test@example.com"
+    )
 
 
 @pytest.fixture
@@ -54,11 +56,15 @@ def project_update_data():
 @pytest.fixture
 def mock_project():
     """Mock project object"""
+    from datetime import datetime
+
     project = Mock()
     project.id = UUID("12345678-1234-5678-1234-567812345678")
     project.title = "Test Project"
     project.description = "Test description"
-    project.owner_id = "test-user-id"
+    project.owner_id = UUID("87654321-4321-8765-4321-876543218765")
+    project.created_at = datetime.now()
+    project.updated_at = datetime.now()
     return project
 
 
@@ -96,9 +102,16 @@ async def test_create_project_success(
 @pytest.mark.asyncio
 async def test_get_projects_success(mock_session, auth_user):
     """Test successful projects retrieval"""
-    mock_projects = [
-        Mock(id=UUID("12345678-1234-5678-1234-567812345678"), title="Project 1")
-    ]
+    from datetime import datetime
+
+    mock_project = Mock()
+    mock_project.id = UUID("12345678-1234-5678-1234-567812345678")
+    mock_project.title = "Project 1"
+    mock_project.description = "Test description"
+    mock_project.owner_id = UUID("87654321-4321-8765-4321-876543218765")
+    mock_project.created_at = datetime.now()
+    mock_project.updated_at = datetime.now()
+    mock_projects = [mock_project]
 
     with patch(
         "taskagent_api.routers.projects.project_service.get_projects",
@@ -127,9 +140,16 @@ async def test_get_projects_with_pagination(mock_session, auth_user):
 @pytest.mark.asyncio
 async def test_get_projects_with_timing_logs(mock_session, auth_user):
     """Test projects retrieval includes timing logs"""
-    mock_projects = [
-        Mock(id=UUID("12345678-1234-5678-1234-567812345678"), title="Project 1")
-    ]
+    from datetime import datetime
+
+    mock_project = Mock()
+    mock_project.id = UUID("12345678-1234-5678-1234-567812345678")
+    mock_project.title = "Project 1"
+    mock_project.description = "Test description"
+    mock_project.owner_id = UUID("87654321-4321-8765-4321-876543218765")
+    mock_project.created_at = datetime.now()
+    mock_project.updated_at = datetime.now()
+    mock_projects = [mock_project]
 
     with patch(
         "taskagent_api.routers.projects.project_service.get_projects",
@@ -327,6 +347,6 @@ def test_error_response_creation():
         details={"project_id": str(project_id)},
     )
 
-    assert error.code == "RESOURCE_NOT_FOUND"
-    assert error.message == "Project not found"
-    assert error.details["project_id"] == str(project_id)
+    assert error.error.code == "RESOURCE_NOT_FOUND"
+    assert error.error.message == "Project not found"
+    assert error.error.details["project_id"] == str(project_id)
