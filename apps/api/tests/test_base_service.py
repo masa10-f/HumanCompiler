@@ -9,7 +9,7 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from taskagent_api.base_service import BaseService
 from taskagent_api.common.error_handlers import ResourceNotFoundError, ValidationError
-from taskagent_api.models import Project, ProjectCreate, ProjectUpdate
+from taskagent_api.models import Project, ProjectCreate, ProjectUpdate, User
 
 
 def create_test_project_service():
@@ -37,7 +37,13 @@ def create_test_project_service():
 @pytest.fixture
 def memory_db():
     """Create in-memory SQLite database for testing"""
+    from taskagent_api.database_config import setup_connection_listeners
+
     engine = create_engine("sqlite:///:memory:")
+
+    # Setup connection listeners to enable foreign keys
+    setup_connection_listeners(engine)
+
     SQLModel.metadata.create_all(engine)
     yield engine
     # Properly dispose of the engine after use
@@ -58,9 +64,13 @@ def service():
 
 
 @pytest.fixture
-def user_id():
-    """Test user ID"""
-    return uuid4()
+def user_id(session):
+    """Create test user and return user ID"""
+    user_uuid = uuid4()
+    user = User(id=user_uuid, email=f"test-{user_uuid}@example.com")
+    session.add(user)
+    session.commit()
+    return user_uuid
 
 
 @pytest.fixture
@@ -104,11 +114,16 @@ def test_get_by_id_different_user(service, session, user_id, project_data):
     # Create project with user_id
     created_project = service.create(session, project_data, user_id)
 
-    # Try to get with different user ID
-    different_user_id = uuid4()
+    # Create different user and get ID
+    different_user_uuid = uuid4()
+    different_user = User(
+        id=different_user_uuid, email=f"different-{different_user_uuid}@example.com"
+    )
+    session.add(different_user)
+    session.commit()
 
     with pytest.raises(ResourceNotFoundError):
-        service.get_by_id(session, created_project.id, different_user_id)
+        service.get_by_id(session, created_project.id, different_user_uuid)
 
 
 def test_update_project(service, session, user_id, project_data):
