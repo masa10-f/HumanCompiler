@@ -91,6 +91,94 @@ class MigrationManager:
                 return line.replace("-- Description:", "").strip()
         return ""
 
+    def _split_sql_statements(self, sql_content: str) -> list[str]:
+        """
+        Split SQL content into individual statements, accounting for:
+        - Strings (both single and double quoted)
+        - Comments (both -- and /* */ style)
+        - Semicolons within strings or comments
+
+        Note: This is a simple implementation. For production use,
+        consider using a proper SQL parser library.
+        """
+        statements = []
+        current_statement = []
+        in_single_quote = False
+        in_double_quote = False
+        in_line_comment = False
+        in_block_comment = False
+        i = 0
+
+        while i < len(sql_content):
+            char = sql_content[i]
+
+            # Handle line comments
+            if not in_single_quote and not in_double_quote and not in_block_comment:
+                if (
+                    char == "-"
+                    and i + 1 < len(sql_content)
+                    and sql_content[i + 1] == "-"
+                ):
+                    in_line_comment = True
+
+            # Handle block comments
+            if not in_single_quote and not in_double_quote and not in_line_comment:
+                if (
+                    char == "/"
+                    and i + 1 < len(sql_content)
+                    and sql_content[i + 1] == "*"
+                ):
+                    in_block_comment = True
+                    current_statement.append(char)
+                    i += 1
+                    continue
+                elif (
+                    char == "*"
+                    and i + 1 < len(sql_content)
+                    and sql_content[i + 1] == "/"
+                ):
+                    in_block_comment = False
+                    current_statement.append(char)
+                    current_statement.append("/")
+                    i += 2
+                    continue
+
+            # Handle string quotes
+            if not in_line_comment and not in_block_comment:
+                if char == "'" and (i == 0 or sql_content[i - 1] != "\\"):
+                    in_single_quote = not in_single_quote
+                elif char == '"' and (i == 0 or sql_content[i - 1] != "\\"):
+                    in_double_quote = not in_double_quote
+
+            # Handle newlines (end line comments)
+            if char == "\n":
+                in_line_comment = False
+
+            # Handle statement delimiter
+            if (
+                char == ";"
+                and not in_single_quote
+                and not in_double_quote
+                and not in_line_comment
+                and not in_block_comment
+            ):
+                # End of statement
+                statement = "".join(current_statement).strip()
+                if statement:
+                    statements.append(statement)
+                current_statement = []
+            else:
+                current_statement.append(char)
+
+            i += 1
+
+        # Add final statement if any
+        final_statement = "".join(current_statement).strip()
+        if final_statement:
+            statements.append(final_statement)
+
+        return statements
+
     def get_pending_migrations(self) -> list[tuple[str, Path]]:
         """Get list of pending migrations to apply"""
         if not self.migrations_dir.exists():
@@ -133,10 +221,11 @@ class MigrationManager:
             # Apply migration
             start_time = datetime.now()
             with Session(self.engine) as session:
-                # Execute migration statements
-                for statement in content.split(";"):
-                    statement = statement.strip()
-                    if statement:
+                # Execute migration statements using a more robust approach
+                # This splits SQL properly, accounting for strings and comments
+                statements = self._split_sql_statements(content)
+                for statement in statements:
+                    if statement.strip():
                         session.exec(text(statement))
 
                 # Record migration
@@ -192,10 +281,10 @@ class MigrationManager:
 
             # Apply rollback
             with Session(self.engine) as session:
-                # Execute rollback statements
-                for statement in content.split(";"):
-                    statement = statement.strip()
-                    if statement:
+                # Execute rollback statements using robust SQL splitting
+                statements = self._split_sql_statements(content)
+                for statement in statements:
+                    if statement.strip():
                         session.exec(text(statement))
 
                 # Remove migration record

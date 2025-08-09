@@ -13,6 +13,21 @@ from taskagent_api.performance_monitor import performance_monitor
 router = APIRouter(prefix="/api/monitoring", tags=["monitoring"])
 
 
+# TODO: Implement admin authorization when User model has is_admin field
+# def get_current_admin_user(
+#     current_user_id: str = Depends(get_current_user_id),
+#     db: Session = Depends(get_db),
+# ) -> User:
+#     """Verify current user has admin privileges"""
+#     user = db.get(User, current_user_id)
+#     if not user or not getattr(user, "is_admin", False):
+#         raise HTTPException(
+#             status_code=status.HTTP_403_FORBIDDEN,
+#             detail="Admin privileges required to access performance metrics.",
+#         )
+#     return user
+
+
 @router.get("/performance", response_model=dict[str, Any])
 async def get_performance_metrics(
     current_user: str = Depends(get_current_user_id),
@@ -21,10 +36,11 @@ async def get_performance_metrics(
     """
     Get database performance metrics
 
-    Note: This endpoint is restricted to admin users in production
+    Note: This endpoint should be restricted to admin users in production.
+    TODO: Replace get_current_user_id with get_current_admin_user when admin field is available.
     """
-    # In production, you should check if the user is an admin
-    # For now, we'll allow any authenticated user to view metrics
+    # WARNING: In production, ensure proper admin authorization is implemented
+    # before exposing sensitive performance metrics
 
     try:
         report = performance_monitor.generate_performance_report(db)

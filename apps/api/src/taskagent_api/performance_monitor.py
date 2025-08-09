@@ -17,8 +17,16 @@ logger = logging.getLogger(__name__)
 class PerformanceMonitor:
     """Monitor and log database performance metrics"""
 
-    def __init__(self):
-        self.slow_query_threshold_ms = 100  # Log queries slower than 100ms
+    def __init__(self, slow_query_threshold_ms: int | None = None):
+        if slow_query_threshold_ms is not None:
+            self.slow_query_threshold_ms = slow_query_threshold_ms
+        else:
+            # Get from environment or use default
+            from taskagent_api.config import settings
+
+            self.slow_query_threshold_ms = getattr(
+                settings, "slow_query_threshold_ms", 100
+            )
         self.query_stats: list[dict[str, Any]] = []
         self.connection_stats = {
             "total_connections": 0,
@@ -54,13 +62,13 @@ class PerformanceMonitor:
                     f"Slow query detected ({duration_ms:.2f}ms): {query[:100]}..."
                 )
 
-            # Store query stats
+            # Store query stats with sanitized parameters
             self.query_stats.append(
                 {
                     "query": query,
                     "duration_ms": duration_ms,
                     "timestamp": datetime.utcnow(),
-                    "parameters": str(parameters)[:100] if parameters else None,
+                    "parameters": self._sanitize_parameters(parameters),
                 }
             )
 
@@ -85,6 +93,41 @@ class PerformanceMonitor:
             self.connection_stats["idle_connections"] += 1
 
         logger.info("Performance monitoring listeners configured")
+
+    def _sanitize_parameters(self, parameters: Any) -> str | None:
+        """Sanitize SQL parameters to prevent sensitive data exposure"""
+        if not parameters:
+            return None
+
+        # Convert parameters to string
+        param_str = str(parameters)
+
+        # List of patterns that might indicate sensitive data
+        sensitive_patterns = [
+            "password",
+            "secret",
+            "token",
+            "api_key",
+            "apikey",
+            "auth",
+            "credential",
+            "private",
+            "ssn",
+            "email",
+        ]
+
+        # Check if parameters might contain sensitive data
+        param_lower = param_str.lower()
+        for pattern in sensitive_patterns:
+            if pattern in param_lower:
+                # Return a sanitized version
+                return "[SANITIZED - possibly contains sensitive data]"
+
+        # Truncate long parameters
+        if len(param_str) > 100:
+            return param_str[:100] + "..."
+
+        return param_str
 
     @contextmanager
     def monitor_operation(self, operation_name: str):
