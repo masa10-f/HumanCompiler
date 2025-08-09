@@ -70,7 +70,7 @@ def handle_service_error(error: Exception) -> HTTPException:
                 message=error.message,
                 details={"field": error.field}
                 if hasattr(error, "field") and error.field
-                else {},
+                else None,
             ).model_dump(),
         )
     elif isinstance(error, AuthorizationError):

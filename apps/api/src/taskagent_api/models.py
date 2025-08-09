@@ -395,8 +395,8 @@ class ErrorDetail(BaseModel):
 
     code: str = Field(..., description="Error code for programmatic handling")
     message: str = Field(..., description="Human-readable error message")
-    details: dict[str, Any] = Field(
-        default_factory=dict, description="Additional error context"
+    details: dict[str, Any] | None = Field(
+        default=None, description="Additional error context"
     )
 
 
@@ -410,7 +410,7 @@ class ErrorResponse(BaseModel):
         cls, code: str, message: str, details: dict[str, Any] | None = None
     ) -> "ErrorResponse":
         """Create a standardized error response"""
-        return cls(error=ErrorDetail(code=code, message=message, details=details or {}))
+        return cls(error=ErrorDetail(code=code, message=message, details=details))
 
 
 class ValidationErrorResponse(BaseModel):

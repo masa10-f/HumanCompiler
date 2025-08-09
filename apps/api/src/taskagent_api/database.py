@@ -15,6 +15,18 @@ configure_database_extensions()
 
 logger = logging.getLogger(__name__)
 
+# Database pool configuration constants
+POOL_SIZE_DEFAULT = 5
+POOL_SIZE_MIN = 1
+POOL_SIZE_MAX = 50
+
+MAX_OVERFLOW_DEFAULT = 10
+MAX_OVERFLOW_MIN = 0
+MAX_OVERFLOW_MAX = 100
+
+POOL_TIMEOUT_DEFAULT = 30
+POOL_RECYCLE_DEFAULT = 3600
+
 
 class Database:
     """Database connection manager"""
@@ -65,20 +77,22 @@ class Database:
             # Configure pool settings with environment variable overrides
             import os
 
-            pool_size = int(os.getenv("DB_POOL_SIZE", "5"))
-            max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "10"))
-            pool_timeout = int(os.getenv("DB_POOL_TIMEOUT", "30"))
-            pool_recycle = int(os.getenv("DB_POOL_RECYCLE", "3600"))
+            pool_size = int(os.getenv("DB_POOL_SIZE", str(POOL_SIZE_DEFAULT)))
+            max_overflow = int(os.getenv("DB_MAX_OVERFLOW", str(MAX_OVERFLOW_DEFAULT)))
+            pool_timeout = int(os.getenv("DB_POOL_TIMEOUT", str(POOL_TIMEOUT_DEFAULT)))
+            pool_recycle = int(os.getenv("DB_POOL_RECYCLE", str(POOL_RECYCLE_DEFAULT)))
 
             # Validate pool settings
-            if pool_size < 1 or pool_size > 50:
-                logger.warning(f"Invalid pool_size: {pool_size}, using default: 5")
-                pool_size = 5
-            if max_overflow < 0 or max_overflow > 100:
+            if pool_size < POOL_SIZE_MIN or pool_size > POOL_SIZE_MAX:
                 logger.warning(
-                    f"Invalid max_overflow: {max_overflow}, using default: 10"
+                    f"Invalid pool_size: {pool_size}, using default: {POOL_SIZE_DEFAULT}"
                 )
-                max_overflow = 10
+                pool_size = POOL_SIZE_DEFAULT
+            if max_overflow < MAX_OVERFLOW_MIN or max_overflow > MAX_OVERFLOW_MAX:
+                logger.warning(
+                    f"Invalid max_overflow: {max_overflow}, using default: {MAX_OVERFLOW_DEFAULT}"
+                )
+                max_overflow = MAX_OVERFLOW_DEFAULT
 
             # Create engine with optimized pool settings for better performance
             self._engine = create_engine(
