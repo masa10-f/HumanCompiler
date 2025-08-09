@@ -1,5 +1,4 @@
 const path = require('path')
-const TerserPlugin = require('terser-webpack-plugin')
 const withBundleAnalyzer = require('@next/bundle-analyzer')({
   enabled: process.env.ANALYZE === 'true',
 })
@@ -8,46 +7,14 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 const nextConfig = {
   experimental: {
     typedRoutes: false,
-    optimizeCss: true, // Enable CSS optimization
   },
   eslint: {
     // ESLint is now properly configured and all critical errors have been resolved
   },
-  // Enable bundle analysis in development
-  bundleAnalyzer: process.env.ANALYZE === 'true',
-  // Enable dynamic imports optimization
-  optimize: {
-    splitChunks: {
-      chunks: 'all',
-      cacheGroups: {
-        default: false,
-        vendors: false,
-        // Separate vendor chunks for better caching
-        vendor: {
-          name: 'vendor',
-          chunks: 'all',
-          test: /[\\/]node_modules[\\/]/,
-          priority: 20,
-        },
-        // Separate common chunks
-        common: {
-          name: 'common',
-          minChunks: 2,
-          chunks: 'all',
-          priority: 10,
-          reuseExistingChunk: true,
-          enforce: true,
-        },
-        // Heavy UI components chunk
-        ui: {
-          name: 'ui',
-          chunks: 'all',
-          test: /[\\/]src[\\/]components[\\/]ui[\\/]/,
-          priority: 15,
-        },
-      },
-    },
-  },
+  // Enable gzip compression
+  compress: true,
+  // Enable React strict mode
+  reactStrictMode: true,
   images: {
     remotePatterns: [
       {
@@ -70,6 +37,7 @@ const nextConfig = {
     CUSTOM_KEY: process.env.CUSTOM_KEY,
   },
   webpack: (config, { dev, isServer }) => {
+    // Add path aliases
     config.resolve.alias = {
       ...config.resolve.alias,
       '@': path.resolve(__dirname, 'src'),
@@ -78,21 +46,31 @@ const nextConfig = {
       '@/hooks': path.resolve(__dirname, 'src/hooks'),
     }
 
-    // Remove console statements in production builds (excluding logger utility)
-    if (!dev && !isServer) {
-      config.optimization.minimizer = config.optimization.minimizer || [];
-      config.optimization.minimizer.push(
-        new TerserPlugin({
-          test: /\.js(\?.*)?$/i,
-          exclude: /src\/lib\/logger\.(js|ts)$/, // Exclude logger file to preserve console methods
-          terserOptions: {
-            compress: {
-              drop_console: true,
-              drop_debugger: true,
+    // Enable chunk splitting for better caching
+    if (!dev) {
+      config.optimization = {
+        ...config.optimization,
+        splitChunks: {
+          chunks: 'all',
+          cacheGroups: {
+            default: false,
+            vendors: false,
+            vendor: {
+              name: 'vendor',
+              chunks: 'all',
+              test: /[\\/]node_modules[\\/]/,
+              priority: 20,
+            },
+            common: {
+              name: 'common',
+              minChunks: 2,
+              chunks: 'all',
+              priority: 10,
+              reuseExistingChunk: true,
             },
           },
-        })
-      );
+        },
+      }
     }
 
     return config
