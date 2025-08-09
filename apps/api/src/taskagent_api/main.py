@@ -1,7 +1,8 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
@@ -9,6 +10,7 @@ from pydantic import ValidationError
 from taskagent_api.config import settings
 from taskagent_api.database import db
 from taskagent_api.performance_monitor import performance_monitor
+from taskagent_api.rate_limiter import configure_rate_limiting, limiter
 from taskagent_api.exceptions import (
     TaskAgentException,
     general_exception_handler,
@@ -79,6 +81,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Configure rate limiting
+configure_rate_limiting(app)
+
 # Add exception handlers
 app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
@@ -99,28 +104,28 @@ app.include_router(monitoring.router)
 
 # Health check endpoint
 @app.get("/health")
-async def health_check():
+@limiter.limit("1000 per minute")
+async def health_check(request: Request):
     """Health check endpoint"""
     db_healthy = await db.health_check()
 
-    return {
-        "status": "healthy" if db_healthy else "unhealthy",
-        "message": "TaskAgent API is running",
-        "version": settings.api_version,
-        "database": "connected" if db_healthy else "disconnected",
-    }
+    # Minimal information exposure for security
+    if db_healthy:
+        return JSONResponse({"status": "healthy", "message": "OK"})
+    else:
+        return JSONResponse(
+            {"status": "unhealthy", "message": "Service temporarily unavailable"},
+            status_code=503,
+        )
 
 
 # Root endpoint
 @app.get("/")
-async def root():
+@limiter.limit("1000 per minute")
+async def root(request: Request):
     """Root endpoint with API information"""
-    return {
-        "message": "Welcome to TaskAgent API",
-        "version": settings.api_version,
-        "docs": "/docs",
-        "health": "/health",
-    }
+    # Minimal information exposure for security
+    return JSONResponse({"message": "TaskAgent API", "status": "active"})
 
 
 if __name__ == "__main__":

@@ -58,7 +58,11 @@ class Settings(BaseSettings):
     )
 
     # CORS Configuration
-    cors_origins: list[str] | str = "*"  # Allow all origins for production debugging
+    # Allow Vercel deployments and local development
+    cors_origins: list[str] | str = Field(
+        default="https://taskagent.vercel.app,https://taskagent*.vercel.app,http://localhost:3000,http://localhost:3001",
+        description="Allowed CORS origins",
+    )
 
     @field_validator("supabase_url")
     @classmethod
