@@ -1,9 +1,8 @@
 {
-  "buildCommand": "cd ../.. && pnpm --filter @task-agent/web build",
-  "outputDirectory": ".next",
+  "buildCommand": "cd apps/web && npm run build",
+  "outputDirectory": "apps/web/.next",
   "framework": "nextjs",
-  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
-  "devCommand": "cd ../.. && pnpm --filter @task-agent/web dev",
+  "installCommand": "cd apps/web && npm install",
   "rewrites": [
     {
       "source": "/api/(.*)",
