@@ -5,35 +5,13 @@ from sqlmodel import Session, create_engine
 from supabase import Client, create_client
 
 from taskagent_api.config import settings
+from taskagent_api.database_config import (
+    configure_database_extensions,
+    setup_connection_listeners,
+)
 
-# Monkey patch to disable hstore entirely - only if psycopg2 is available
-try:
-    import psycopg2.extras
-
-    def _disabled_get_oids(connection):
-        """Disabled version of HstoreAdapter.get_oids to prevent SSL issues"""
-        return None, None
-
-    # Apply the monkey patch
-    psycopg2.extras.HstoreAdapter.get_oids = staticmethod(_disabled_get_oids)
-
-    # Also patch the register_hstore function to prevent any hstore setup
-    original_register_hstore = psycopg2.extras.register_hstore
-except ImportError:
-    # psycopg2 not available, continue without patching
-    original_register_hstore = None
-
-
-def _disabled_register_hstore(*args, **kwargs):
-    """Disabled version of register_hstore"""
-    pass
-
-
-# Apply the register_hstore patch only if psycopg2 is available
-if original_register_hstore is not None:
-    import psycopg2.extras
-
-    psycopg2.extras.register_hstore = _disabled_register_hstore
+# Configure database extensions before any connections are made
+configure_database_extensions()
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +74,10 @@ class Database:
                 connect_args=connect_args,
             )
 
-            logger.info("✅ SQLModel engine initialized with hstore globally disabled")
+            # Setup connection event listeners
+            setup_connection_listeners(self._engine)
+
+            logger.info("✅ SQLModel engine initialized with optimized configuration")
         return self._engine
 
     def get_session(self) -> Generator[Session, None, None]:

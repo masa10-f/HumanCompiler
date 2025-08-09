@@ -1,5 +1,80 @@
 # Database Migrations
 
+This directory contains SQL migration files for the TaskAgent database schema.
+
+## Migration Files
+
+- `001_initial_schema.sql` - Initial database schema with all base tables
+- `002_add_user_settings_and_api_usage.sql` - Adds user settings and API usage tracking tables
+- `003_add_performance_indexes.sql` - Performance optimization indexes
+
+## Running Migrations
+
+### Using the Migration Manager (Recommended)
+
+The project includes a migration manager that tracks applied migrations and ensures they're run in order:
+
+```bash
+# From the api directory
+cd TaskAgent/apps/api
+
+# Check migration status
+python migrate.py status
+
+# Apply all pending migrations
+python migrate.py apply
+
+# Rollback a specific migration
+python migrate.py rollback --version=003
+```
+
+### Manual Application
+
+You can also apply migrations manually through:
+
+1. **Supabase Dashboard**:
+   - Go to SQL Editor in your Supabase project
+   - Copy and paste the migration content
+   - Execute the query
+
+2. **Supabase CLI**:
+   ```bash
+   supabase db push
+   ```
+
+3. **Direct PostgreSQL connection**:
+   ```bash
+   psql -h <your-db-host> -U postgres -d postgres -f migrations/001_initial_schema.sql
+   ```
+
+## Migration Guidelines
+
+1. **Naming Convention**:
+   - Format: `XXX_description.sql` where XXX is a 3-digit sequential number
+   - Rollback files: `XXX_description_rollback.sql`
+
+2. **Content Structure**:
+   ```sql
+   -- Migration: Brief title
+   -- Date: YYYY-MM-DD
+   -- Description: Detailed description of changes
+
+   -- Your SQL statements here
+   ```
+
+3. **Best Practices**:
+   - Always include IF NOT EXISTS/IF EXISTS clauses for idempotency
+   - Add comments to document complex changes
+   - Include a corresponding rollback file for reversibility
+   - Test migrations in development before production
+
+## Notes
+
+- Migrations are designed to be idempotent (safe to run multiple times)
+- The migration manager tracks which migrations have been applied
+- Always backup your database before running migrations in production
+- Test migrations in a development environment first
+
 ## Supabase 本番環境セットアップ
 
 ### 1. Supabase プロジェクト作成
