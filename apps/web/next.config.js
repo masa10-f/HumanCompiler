@@ -1,5 +1,7 @@
 const path = require('path')
-const TerserPlugin = require('terser-webpack-plugin')
+const withBundleAnalyzer = require('@next/bundle-analyzer')({
+  enabled: process.env.ANALYZE === 'true',
+})
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -9,18 +11,37 @@ const nextConfig = {
   eslint: {
     // ESLint is now properly configured and all critical errors have been resolved
   },
+  // Enable gzip compression
+  compress: true,
+  // Enable React strict mode
+  reactStrictMode: true,
   images: {
     remotePatterns: [
       {
         protocol: 'https',
         hostname: 'images.unsplash.com',
       },
+      // Add other common image hosts as needed
+      {
+        protocol: 'https',
+        hostname: '*.supabase.co',
+      },
     ],
+    // Enable next-gen image formats for better performance
+    formats: ['image/webp', 'image/avif'],
+    // Cache optimized images for 1 day
+    minimumCacheTTL: 86400,
+    // Restrict SVG for security
+    dangerouslyAllowSVG: false,
+    // Responsive image sizes for different devices
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
   },
   env: {
     CUSTOM_KEY: process.env.CUSTOM_KEY,
   },
   webpack: (config, { dev, isServer }) => {
+    // Add path aliases
     config.resolve.alias = {
       ...config.resolve.alias,
       '@': path.resolve(__dirname, 'src'),
@@ -29,25 +50,35 @@ const nextConfig = {
       '@/hooks': path.resolve(__dirname, 'src/hooks'),
     }
 
-    // Remove console statements in production builds (excluding logger utility)
-    if (!dev && !isServer) {
-      config.optimization.minimizer = config.optimization.minimizer || [];
-      config.optimization.minimizer.push(
-        new TerserPlugin({
-          test: /\.js(\?.*)?$/i,
-          exclude: /src\/lib\/logger\.(js|ts)$/, // Exclude logger file to preserve console methods
-          terserOptions: {
-            compress: {
-              drop_console: true,
-              drop_debugger: true,
+    // Enable chunk splitting for better caching
+    if (!dev) {
+      config.optimization = {
+        ...config.optimization,
+        splitChunks: {
+          chunks: 'all',
+          cacheGroups: {
+            default: false,
+            vendors: false,
+            vendor: {
+              name: 'vendor',
+              chunks: 'all',
+              test: /[\\/]node_modules[\\/]/,
+              priority: 20,
+            },
+            common: {
+              name: 'common',
+              minChunks: 2,
+              chunks: 'all',
+              priority: 10,
+              reuseExistingChunk: true,
             },
           },
-        })
-      );
+        },
+      }
     }
 
     return config
   },
 }
 
-module.exports = nextConfig
+module.exports = withBundleAnalyzer(nextConfig)

@@ -62,16 +62,45 @@ class Database:
             # Minimal connection args
             connect_args = {"connect_timeout": 10, "application_name": "TaskAgent-API"}
 
-            # Create engine with optimized pool settings for local development
+            # Configure pool settings with environment variable overrides
+            import os
+
+            pool_size = int(os.getenv("DB_POOL_SIZE", "5"))
+            max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "10"))
+            pool_timeout = int(os.getenv("DB_POOL_TIMEOUT", "30"))
+            pool_recycle = int(os.getenv("DB_POOL_RECYCLE", "3600"))
+
+            # Validate pool settings
+            if pool_size < 1 or pool_size > 50:
+                logger.warning(f"Invalid pool_size: {pool_size}, using default: 5")
+                pool_size = 5
+            if max_overflow < 0 or max_overflow > 100:
+                logger.warning(
+                    f"Invalid max_overflow: {max_overflow}, using default: 10"
+                )
+                max_overflow = 10
+
+            # Create engine with optimized pool settings for better performance
             self._engine = create_engine(
                 database_url,
                 echo=settings.debug,  # Show SQL queries in debug mode
                 pool_pre_ping=True,  # Enable connection health checks
-                pool_recycle=3600,  # Recycle connections after 1 hour
-                pool_size=10,  # Increase pool size for concurrent requests
-                max_overflow=20,  # Allow more overflow connections
-                pool_timeout=60,  # Longer timeout for busy periods
+                pool_recycle=pool_recycle,  # Recycle connections periodically
+                pool_size=pool_size,  # Configurable pool size
+                max_overflow=max_overflow,  # Configurable overflow connections
+                pool_timeout=pool_timeout,  # Configurable timeout
+                pool_reset_on_return="commit",  # Reset connections on return for consistency
                 connect_args=connect_args,
+                # Enable query result caching for better performance
+                execution_options={
+                    "compiled_cache": {},
+                    "isolation_level": "READ_COMMITTED",
+                },
+            )
+
+            logger.info(
+                f"✅ Database pool configured: pool_size={pool_size}, "
+                f"max_overflow={max_overflow}, pool_timeout={pool_timeout}s"
             )
 
             # Setup connection event listeners
