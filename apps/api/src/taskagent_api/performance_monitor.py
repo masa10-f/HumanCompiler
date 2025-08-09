@@ -1,7 +1,9 @@
 """Database performance monitoring for TaskAgent"""
 
 import logging
+import re
 import time
+from collections import deque
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Any, Optional
@@ -37,7 +39,8 @@ class PerformanceMonitor:
         else:
             self.max_query_stats = getattr(settings, "max_query_stats", 1000)
 
-        self.query_stats: list[dict[str, Any]] = []
+        # Use deque with maxlen for O(1) append operations and automatic size management
+        self.query_stats: deque[dict[str, Any]] = deque(maxlen=self.max_query_stats)
         self.connection_stats = {
             "total_connections": 0,
             "active_connections": 0,
@@ -73,6 +76,7 @@ class PerformanceMonitor:
                 )
 
             # Store query stats with sanitized parameters
+            # deque with maxlen automatically handles size management - no need to manually trim
             self.query_stats.append(
                 {
                     "query": query,
@@ -81,10 +85,6 @@ class PerformanceMonitor:
                     "parameters": self._sanitize_parameters(parameters),
                 }
             )
-
-            # Keep only last max_query_stats queries in memory
-            if len(self.query_stats) > self.max_query_stats:
-                self.query_stats.pop(0)
 
         # Monitor connection pool
         @event.listens_for(Pool, "connect", once=False)
@@ -123,7 +123,6 @@ class PerformanceMonitor:
             "credential",
             "private",
             "ssn",
-            "email",  # Added to prevent logging of PII (email addresses)
         ]
 
         # Check if parameters might contain sensitive data
@@ -132,6 +131,11 @@ class PerformanceMonitor:
             if pattern in param_lower:
                 # Return a sanitized version
                 return "[SANITIZED - possibly contains sensitive data]"
+
+        # Check for actual email addresses using regex pattern
+        email_pattern = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
+        if re.search(email_pattern, param_str):
+            return "[SANITIZED - contains email address]"
 
         # Truncate long parameters
         if len(param_str) > 100:

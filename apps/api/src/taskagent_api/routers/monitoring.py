@@ -1,5 +1,6 @@
 """Performance monitoring endpoints for TaskAgent"""
 
+import hmac
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -23,8 +24,11 @@ def get_current_admin_user(
     """
     from taskagent_api.config import settings
 
-    # Check if user is in admin list
-    if current_user_id not in settings.admin_user_ids:
+    # Check if user is in admin list using constant-time comparison to prevent timing attacks
+    if not any(
+        hmac.compare_digest(current_user_id, admin_id)
+        for admin_id in settings.admin_user_ids
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin privileges required to access performance metrics.",
@@ -53,16 +57,11 @@ async def get_performance_metrics(
     including query patterns, table statistics, and system internals that could be
     used to identify vulnerabilities or plan attacks.
 
-    TODO: Replace get_current_user_id with get_current_admin_user when admin field is available.
-
     In production, you MUST:
-    1. Implement proper admin authorization
-    2. Consider rate limiting these endpoints
-    3. Log access to monitoring endpoints
-    4. Potentially restrict to internal network only
+    1. Consider rate limiting these endpoints
+    2. Log access to monitoring endpoints
+    3. Potentially restrict to internal network only
     """
-    # CRITICAL SECURITY WARNING: Currently ANY authenticated user can access these metrics!
-    # This is a security risk in production environments
 
     try:
         report = performance_monitor.generate_performance_report(db)

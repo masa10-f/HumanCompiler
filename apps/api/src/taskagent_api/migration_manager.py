@@ -73,19 +73,18 @@ class MigrationManager:
         - Strings (both single and double quoted)
         - Comments (both -- and /* */ style)
         - Semicolons within strings or comments
+        - Proper escape sequence handling
 
-        WARNING: This is a simple implementation that may not handle all edge cases:
-        - Escaped quotes within strings
-        - Nested block comments
-        - SQL-specific string literals (e.g., E'string' in PostgreSQL)
-        - Dollar-quoted strings in PostgreSQL
-
-        For production use, consider using sqlparse library:
+        WARNING: While this implementation handles many cases, for production use with
+        complex SQL files, consider using sqlparse library for more robust parsing:
         ```
         pip install sqlparse
         import sqlparse
         statements = sqlparse.split(sql_content)
         ```
+
+        The current implementation is sufficient for most migration files but may not
+        handle all edge cases like nested block comments or PostgreSQL-specific features.
         """
         statements = []
         current_statement = []
@@ -129,11 +128,23 @@ class MigrationManager:
                     i += 2
                     continue
 
-            # Handle string quotes
+            # Handle string quotes - check for proper escaping
             if not in_line_comment and not in_block_comment:
-                if char == "'" and (i == 0 or sql_content[i - 1] != "\\"):
+
+                def count_preceding_backslashes(s, idx):
+                    """Count consecutive backslashes preceding the given index"""
+                    count = 0
+                    j = idx - 1
+                    while j >= 0 and s[j] == "\\":
+                        count += 1
+                        j -= 1
+                    return count
+
+                if char == "'" and count_preceding_backslashes(sql_content, i) % 2 == 0:
                     in_single_quote = not in_single_quote
-                elif char == '"' and (i == 0 or sql_content[i - 1] != "\\"):
+                elif (
+                    char == '"' and count_preceding_backslashes(sql_content, i) % 2 == 0
+                ):
                     in_double_quote = not in_double_quote
 
             # Handle newlines (end line comments)
