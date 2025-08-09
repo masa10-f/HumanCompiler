@@ -141,7 +141,7 @@ async def test_ai_integration():
 
 
 @router.post(
-    "/workload-analyses",
+    "/workload-analysis",
     responses={
         500: {"model": ErrorResponse, "description": "Internal server error"},
     },
@@ -263,7 +263,7 @@ async def analyze_workload(
 
 
 @router.post(
-    "/priority-suggestions",
+    "/priority-suggestion",
     responses={
         404: {"model": ErrorResponse, "description": "Project not found"},
         500: {"model": ErrorResponse, "description": "Internal server error"},
