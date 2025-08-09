@@ -1,8 +1,5 @@
 {
-  "buildCommand": "pnpm --filter @task-agent/web build",
-  "outputDirectory": "apps/web/.next",
   "framework": "nextjs",
-  "installCommand": "pnpm install",
   "rewrites": [
     {
       "source": "/api/(.*)",
