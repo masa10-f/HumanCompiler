@@ -21,17 +21,23 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'images.unsplash.com',
       },
+      // Add other common image hosts as needed
+      {
+        protocol: 'https',
+        hostname: '*.supabase.co',
+      },
     ],
-    // Enable image optimization
+    // Enable next-gen image formats for better performance
     formats: ['image/webp', 'image/avif'],
-    minimumCacheTTL: 60,
-    dangerouslyAllowSVG: true,
-    contentDispositionType: 'attachment',
-    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
-    // Enable lazy loading by default
-    loader: 'default',
-    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+    // Cache optimized images for 1 day
+    minimumCacheTTL: 86400,
+    // Restrict SVG for security
+    dangerouslyAllowSVG: false,
+    // Responsive image sizes for different devices
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+    // Quality settings for different use cases
+    quality: 85, // Balanced quality vs file size
   },
   env: {
     CUSTOM_KEY: process.env.CUSTOM_KEY,
