@@ -127,14 +127,16 @@ class PerformanceMonitor:
 
         # Check if parameters might contain sensitive data
         param_lower = param_str.lower()
-        for pattern in sensitive_patterns:
-            if pattern in param_lower:
-                # Return a sanitized version
-                return "[SANITIZED - possibly contains sensitive data]"
+        has_sensitive_pattern = any(
+            pattern in param_lower for pattern in sensitive_patterns
+        )
+        if has_sensitive_pattern:
+            return "[SANITIZED - possibly contains sensitive data]"
 
         # Check for actual email addresses using regex pattern
         email_pattern = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
-        if re.search(email_pattern, param_str):
+        email_match = re.search(email_pattern, param_str)
+        if email_match is not None:
             return "[SANITIZED - contains email address]"
 
         # Truncate long parameters
