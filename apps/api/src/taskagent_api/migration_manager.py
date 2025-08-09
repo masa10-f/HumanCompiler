@@ -60,34 +60,6 @@ class MigrationManager:
 
         return hashlib.sha256(content.encode()).hexdigest()
 
-    def _record_migration(
-        self,
-        session: Session,
-        version: str,
-        execution_time_ms: int,
-        checksum: str,
-        description: str = "",
-    ):
-        """Record successful migration execution
-
-        Note: This method is kept for backward compatibility but is no longer used.
-        Migration recording is now done within the transaction in apply_migration().
-        """
-        insert_sql = """
-        INSERT INTO schema_migrations (version, execution_time_ms, checksum, description)
-        VALUES (:version, :execution_time_ms, :checksum, :description)
-        """
-        session.exec(
-            text(insert_sql),
-            {
-                "version": version,
-                "execution_time_ms": execution_time_ms,
-                "checksum": checksum,
-                "description": description,
-            },
-        )
-        session.commit()
-
     def _extract_description(self, content: str) -> str:
         """Extract description from migration file comments"""
         for line in content.split("\n"):

@@ -21,6 +21,15 @@ class Settings(BaseSettings):
     slow_query_threshold_ms: int = Field(
         default=100, description="Threshold in milliseconds for logging slow queries"
     )
+    max_query_stats: int = Field(
+        default=1000, description="Maximum number of query statistics to keep in memory"
+    )
+
+    # Admin Configuration (temporary until User model has is_admin field)
+    admin_user_ids: list[str] = Field(
+        default_factory=list,
+        description="List of user IDs with admin privileges for monitoring endpoints",
+    )
 
     # Supabase Configuration
     supabase_url: str = Field(..., description="Supabase project URL")
@@ -147,6 +156,8 @@ except Exception as e:
     settings.encryption_salt = "dGFza2FnZW50LXNhbHQtZGV2"  # nosec B105
     # Performance monitoring settings
     settings.slow_query_threshold_ms = 100
+    settings.max_query_stats = 1000
+    settings.admin_user_ids = []
 
 
 # Production security check

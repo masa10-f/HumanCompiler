@@ -17,16 +17,26 @@ logger = logging.getLogger(__name__)
 class PerformanceMonitor:
     """Monitor and log database performance metrics"""
 
-    def __init__(self, slow_query_threshold_ms: int | None = None):
+    def __init__(
+        self,
+        slow_query_threshold_ms: int | None = None,
+        max_query_stats: int | None = None,
+    ):
+        # Get from settings or use defaults
+        from taskagent_api.config import settings
+
         if slow_query_threshold_ms is not None:
             self.slow_query_threshold_ms = slow_query_threshold_ms
         else:
-            # Get from environment or use default
-            from taskagent_api.config import settings
-
             self.slow_query_threshold_ms = getattr(
                 settings, "slow_query_threshold_ms", 100
             )
+
+        if max_query_stats is not None:
+            self.max_query_stats = max_query_stats
+        else:
+            self.max_query_stats = getattr(settings, "max_query_stats", 1000)
+
         self.query_stats: list[dict[str, Any]] = []
         self.connection_stats = {
             "total_connections": 0,
@@ -72,8 +82,8 @@ class PerformanceMonitor:
                 }
             )
 
-            # Keep only last 1000 queries in memory
-            if len(self.query_stats) > 1000:
+            # Keep only last max_query_stats queries in memory
+            if len(self.query_stats) > self.max_query_stats:
                 self.query_stats.pop(0)
 
         # Monitor connection pool
@@ -113,8 +123,7 @@ class PerformanceMonitor:
             "credential",
             "private",
             "ssn",
-            # Note: "email" removed as it's often needed for legitimate debugging
-            # Consider adding it back if your application handles PII strictly
+            "email",  # Added to prevent logging of PII (email addresses)
         ]
 
         # Check if parameters might contain sensitive data

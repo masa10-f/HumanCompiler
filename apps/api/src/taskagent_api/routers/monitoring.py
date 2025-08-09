@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 
 from taskagent_api.auth import get_current_user_id
@@ -13,24 +13,37 @@ from taskagent_api.performance_monitor import performance_monitor
 router = APIRouter(prefix="/api/monitoring", tags=["monitoring"])
 
 
-# TODO: Implement admin authorization when User model has is_admin field
-# def get_current_admin_user(
-#     current_user_id: str = Depends(get_current_user_id),
-#     db: Session = Depends(get_db),
-# ) -> User:
-#     """Verify current user has admin privileges"""
-#     user = db.get(User, current_user_id)
-#     if not user or not getattr(user, "is_admin", False):
-#         raise HTTPException(
-#             status_code=status.HTTP_403_FORBIDDEN,
-#             detail="Admin privileges required to access performance metrics.",
-#         )
-#     return user
+def get_current_admin_user(
+    current_user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+) -> User:
+    """Verify current user has admin privileges
+
+    Temporary implementation using config admin_user_ids until User model has is_admin field.
+    """
+    from taskagent_api.config import settings
+
+    # Check if user is in admin list
+    if current_user_id not in settings.admin_user_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required to access performance metrics.",
+        )
+
+    # Get user from database
+    user = db.get(User, current_user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    return user
 
 
 @router.get("/performance", response_model=dict[str, Any])
 async def get_performance_metrics(
-    current_user: str = Depends(get_current_user_id),
+    current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """
@@ -62,7 +75,7 @@ async def get_performance_metrics(
 
 @router.get("/performance/queries", response_model=dict[str, Any])
 async def get_query_statistics(
-    current_user: str = Depends(get_current_user_id),
+    current_user: User = Depends(get_current_admin_user),
 ) -> dict[str, Any]:
     """Get query performance statistics
 
@@ -76,7 +89,7 @@ async def get_query_statistics(
 
 @router.get("/performance/connections", response_model=dict[str, Any])
 async def get_connection_pool_stats(
-    current_user: str = Depends(get_current_user_id),
+    current_user: User = Depends(get_current_admin_user),
 ) -> dict[str, Any]:
     """Get connection pool statistics"""
     return performance_monitor.get_connection_pool_stats()
@@ -84,7 +97,7 @@ async def get_connection_pool_stats(
 
 @router.get("/performance/indexes", response_model=dict[str, Any])
 async def get_index_analysis(
-    current_user: str = Depends(get_current_user_id),
+    current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Analyze index usage and recommendations"""
@@ -96,7 +109,7 @@ async def get_index_analysis(
 
 @router.get("/performance/tables", response_model=dict[str, Any])
 async def get_table_statistics(
-    current_user: str = Depends(get_current_user_id),
+    current_user: User = Depends(get_current_admin_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Get table-level statistics"""
@@ -105,8 +118,18 @@ async def get_table_statistics(
 
 @router.post("/performance/reset")
 async def reset_performance_metrics(
-    current_user: str = Depends(get_current_user_id),
+    current_admin: User = Depends(get_current_admin_user),
+    confirm: bool = False,
 ) -> dict[str, str]:
-    """Reset performance metrics (clears query history)"""
+    """Reset performance metrics (clears query history)
+
+    Only admins can perform this operation. Requires confirmation.
+    """
+    if not confirm:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Confirmation required to reset performance metrics. Pass confirm=true.",
+        )
+
     performance_monitor.query_stats.clear()
     return {"message": "Performance metrics reset successfully"}
