@@ -68,7 +68,11 @@ class MigrationManager:
         checksum: str,
         description: str = "",
     ):
-        """Record successful migration execution"""
+        """Record successful migration execution
+
+        Note: This method is kept for backward compatibility but is no longer used.
+        Migration recording is now done within the transaction in apply_migration().
+        """
         insert_sql = """
         INSERT INTO schema_migrations (version, execution_time_ms, checksum, description)
         VALUES (:version, :execution_time_ms, :checksum, :description)
@@ -98,8 +102,18 @@ class MigrationManager:
         - Comments (both -- and /* */ style)
         - Semicolons within strings or comments
 
-        Note: This is a simple implementation. For production use,
-        consider using a proper SQL parser library.
+        WARNING: This is a simple implementation that may not handle all edge cases:
+        - Escaped quotes within strings
+        - Nested block comments
+        - SQL-specific string literals (e.g., E'string' in PostgreSQL)
+        - Dollar-quoted strings in PostgreSQL
+
+        For production use, consider using sqlparse library:
+        ```
+        pip install sqlparse
+        import sqlparse
+        statements = sqlparse.split(sql_content)
+        ```
         """
         statements = []
         current_statement = []
@@ -221,20 +235,34 @@ class MigrationManager:
             # Apply migration
             start_time = datetime.now()
             with Session(self.engine) as session:
-                # Execute migration statements using a more robust approach
-                # This splits SQL properly, accounting for strings and comments
-                statements = self._split_sql_statements(content)
-                for statement in statements:
-                    if statement.strip():
-                        session.exec(text(statement))
+                # Use transaction to ensure atomicity
+                with session.begin():
+                    # Execute migration statements using a more robust approach
+                    # This splits SQL properly, accounting for strings and comments
+                    statements = self._split_sql_statements(content)
+                    for statement in statements:
+                        if statement.strip():
+                            session.exec(text(statement))
 
-                # Record migration
-                execution_time_ms = int(
-                    (datetime.now() - start_time).total_seconds() * 1000
-                )
-                self._record_migration(
-                    session, version, execution_time_ms, checksum, description
-                )
+                    # Record migration within the same transaction
+                    execution_time_ms = int(
+                        (datetime.now() - start_time).total_seconds() * 1000
+                    )
+
+                    # Record migration - this is now part of the same transaction
+                    insert_sql = """
+                    INSERT INTO schema_migrations (version, execution_time_ms, checksum, description)
+                    VALUES (:version, :execution_time_ms, :checksum, :description)
+                    """
+                    session.exec(
+                        text(insert_sql),
+                        {
+                            "version": version,
+                            "execution_time_ms": execution_time_ms,
+                            "checksum": checksum,
+                            "description": description,
+                        },
+                    )
 
             logger.info(
                 f"✅ Migration {version} applied successfully in {execution_time_ms}ms"
@@ -281,16 +309,19 @@ class MigrationManager:
 
             # Apply rollback
             with Session(self.engine) as session:
-                # Execute rollback statements using robust SQL splitting
-                statements = self._split_sql_statements(content)
-                for statement in statements:
-                    if statement.strip():
-                        session.exec(text(statement))
+                # Use transaction to ensure atomicity
+                with session.begin():
+                    # Execute rollback statements using robust SQL splitting
+                    statements = self._split_sql_statements(content)
+                    for statement in statements:
+                        if statement.strip():
+                            session.exec(text(statement))
 
-                # Remove migration record
-                delete_sql = "DELETE FROM schema_migrations WHERE version = :version"
-                session.exec(text(delete_sql), {"version": version})
-                session.commit()
+                    # Remove migration record within the same transaction
+                    delete_sql = (
+                        "DELETE FROM schema_migrations WHERE version = :version"
+                    )
+                    session.exec(text(delete_sql), {"version": version})
 
             logger.info(f"✅ Migration {version} rolled back successfully")
             return True

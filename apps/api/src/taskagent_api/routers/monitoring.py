@@ -36,11 +36,20 @@ async def get_performance_metrics(
     """
     Get database performance metrics
 
-    Note: This endpoint should be restricted to admin users in production.
+    **SECURITY WARNING**: This endpoint exposes sensitive database performance data
+    including query patterns, table statistics, and system internals that could be
+    used to identify vulnerabilities or plan attacks.
+
     TODO: Replace get_current_user_id with get_current_admin_user when admin field is available.
+
+    In production, you MUST:
+    1. Implement proper admin authorization
+    2. Consider rate limiting these endpoints
+    3. Log access to monitoring endpoints
+    4. Potentially restrict to internal network only
     """
-    # WARNING: In production, ensure proper admin authorization is implemented
-    # before exposing sensitive performance metrics
+    # CRITICAL SECURITY WARNING: Currently ANY authenticated user can access these metrics!
+    # This is a security risk in production environments
 
     try:
         report = performance_monitor.generate_performance_report(db)
@@ -55,7 +64,10 @@ async def get_performance_metrics(
 async def get_query_statistics(
     current_user: str = Depends(get_current_user_id),
 ) -> dict[str, Any]:
-    """Get query performance statistics"""
+    """Get query performance statistics
+
+    **SECURITY WARNING**: Exposes actual SQL queries which may reveal database schema
+    """
     return {
         "statistics": performance_monitor.get_query_statistics(),
         "slowest_queries": performance_monitor.get_slowest_queries(10),

@@ -113,7 +113,8 @@ class PerformanceMonitor:
             "credential",
             "private",
             "ssn",
-            "email",
+            # Note: "email" removed as it's often needed for legitimate debugging
+            # Consider adding it back if your application handles PII strictly
         ]
 
         # Check if parameters might contain sensitive data
