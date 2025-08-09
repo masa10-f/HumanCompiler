@@ -1,8 +1,8 @@
 {
-  "buildCommand": "cd apps/web && npm run build",
+  "buildCommand": "pnpm --filter @task-agent/web build",
   "outputDirectory": "apps/web/.next",
   "framework": "nextjs",
-  "installCommand": "cd apps/web && npm install",
+  "installCommand": "pnpm install",
   "rewrites": [
     {
       "source": "/api/(.*)",
