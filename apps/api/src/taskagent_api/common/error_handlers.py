@@ -7,6 +7,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlmodel import Session
+from taskagent_api.models import ErrorResponse
 
 logger = logging.getLogger(__name__)
 
@@ -53,28 +54,48 @@ class ExternalServiceError(ServiceError):
 
 
 def handle_service_error(error: Exception) -> HTTPException:
-    """Convert service errors to HTTP exceptions"""
+    """Convert service errors to HTTP exceptions with standardized format"""
     if isinstance(error, ResourceNotFoundError):
         return HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=error.message
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ErrorResponse.create(
+                code=error.error_code or "RESOURCE_NOT_FOUND", message=error.message
+            ).model_dump(),
         )
     elif isinstance(error, ValidationError):
         return HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=error.message
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorResponse.create(
+                code=error.error_code or "VALIDATION_ERROR",
+                message=error.message,
+                details={"field": error.field}
+                if hasattr(error, "field") and error.field
+                else None,
+            ).model_dump(),
         )
     elif isinstance(error, AuthorizationError):
         return HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=error.message
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ErrorResponse.create(
+                code=error.error_code or "AUTHORIZATION_ERROR", message=error.message
+            ).model_dump(),
         )
     elif isinstance(error, ExternalServiceError):
         return HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error.message
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=ErrorResponse.create(
+                code=error.error_code or "EXTERNAL_SERVICE_ERROR", message=error.message
+            ).model_dump(),
         )
     else:
         logger.error(f"Unhandled service error: {error}")
         return HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
+            detail=ErrorResponse.create(
+                code="INTERNAL_SERVER_ERROR",
+                message="Internal server error",
+                details={"error_type": type(error).__name__},
+            ).model_dump(),
         )
 
 

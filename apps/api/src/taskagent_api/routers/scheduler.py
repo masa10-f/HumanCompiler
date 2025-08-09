@@ -16,7 +16,7 @@ from sqlmodel import Session, select
 from taskagent_api.auth import get_current_user_id
 from taskagent_api.database import db
 from taskagent_api.exceptions import ResourceNotFoundError, ValidationError
-from taskagent_api.models import Schedule, ScheduleResponse
+from taskagent_api.models import Schedule, ScheduleResponse, ErrorResponse
 from taskagent_api.services import goal_service, task_service
 
 # Mock scheduler implementation - provides compatible interface for production deployment
@@ -483,17 +483,31 @@ async def create_daily_schedule(
 
     except ValidationError as e:
         logger.error(f"Validation error in schedule creation: {e}")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorResponse.create(
+                code="VALIDATION_ERROR", message=str(e), details={"date": request.date}
+            ).model_dump(),
+        )
 
     except ResourceNotFoundError as e:
         logger.error(f"Resource not found in schedule creation: {e}")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ErrorResponse.create(
+                code="RESOURCE_NOT_FOUND", message=str(e)
+            ).model_dump(),
+        )
 
     except Exception as e:
         logger.error(f"Unexpected error in schedule creation: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error during schedule optimization",
+            detail=ErrorResponse.create(
+                code="INTERNAL_SERVER_ERROR",
+                message="Internal server error during schedule optimization",
+                details={"error_type": type(e).__name__},
+            ).model_dump(),
         )
 
 
@@ -618,7 +632,11 @@ async def save_daily_schedule(
         logger.error(f"Error saving schedule: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to save schedule",
+            detail=ErrorResponse.create(
+                code="INTERNAL_SERVER_ERROR",
+                message="Failed to save schedule",
+                details={"error_type": type(e).__name__, "date": schedule_data.date},
+            ).model_dump(),
         )
 
 
@@ -724,7 +742,11 @@ async def get_daily_schedule(
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Date must be in YYYY-MM-DD format",
+                detail=ErrorResponse.create(
+                    code="INVALID_DATE_FORMAT",
+                    message="Date must be in YYYY-MM-DD format",
+                    details={"provided_date": date},
+                ).model_dump(),
             )
 
         logger.info(f"Fetching schedule for user {user_id} on {date}")
@@ -739,7 +761,11 @@ async def get_daily_schedule(
         if not schedule:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No schedule found for date {date}",
+                detail=ErrorResponse.create(
+                    code="RESOURCE_NOT_FOUND",
+                    message="No schedule found for date",
+                    details={"date": date, "user_id": user_id},
+                ).model_dump(),
             )
 
         return ScheduleResponse.model_validate(schedule)
@@ -750,5 +776,9 @@ async def get_daily_schedule(
         logger.error(f"Error fetching schedule: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch schedule",
+            detail=ErrorResponse.create(
+                code="INTERNAL_SERVER_ERROR",
+                message="Failed to fetch schedule",
+                details={"error_type": type(e).__name__, "date": date},
+            ).model_dump(),
         )

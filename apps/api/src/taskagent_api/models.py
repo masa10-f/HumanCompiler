@@ -390,15 +390,43 @@ class ApiUsageLogResponse(ApiUsageLogBase):
 
 
 # Error Response Models
-class ErrorResponse(BaseModel):
-    """Error response model"""
+class ErrorDetail(BaseModel):
+    """Error detail model following API standardization"""
 
-    detail: str
-    error_code: str | None = None
+    code: str = Field(..., description="Error code for programmatic handling")
+    message: str = Field(..., description="Human-readable error message")
+    details: dict[str, Any] | None = Field(
+        default=None, description="Additional error context"
+    )
+
+
+class ErrorResponse(BaseModel):
+    """Standardized error response model"""
+
+    error: ErrorDetail
+
+    @classmethod
+    def create(
+        cls, code: str, message: str, details: dict[str, Any] | None = None
+    ) -> "ErrorResponse":
+        """Create a standardized error response"""
+        return cls(error=ErrorDetail(code=code, message=message, details=details))
 
 
 class ValidationErrorResponse(BaseModel):
     """Validation error response model"""
 
-    detail: str
-    errors: list[dict]
+    error: ErrorDetail
+
+    @classmethod
+    def create(
+        cls, message: str, validation_errors: list[dict[str, Any]]
+    ) -> "ValidationErrorResponse":
+        """Create a validation error response"""
+        return cls(
+            error=ErrorDetail(
+                code="VALIDATION_ERROR",
+                message=message,
+                details={"validation_errors": validation_errors},
+            )
+        )

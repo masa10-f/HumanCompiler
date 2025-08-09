@@ -77,7 +77,12 @@ async def get_goal(
     goal = goal_service.get_goal(session, goal_id, current_user.user_id)
     if not goal:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ErrorResponse.create(
+                code="RESOURCE_NOT_FOUND",
+                message="Goal not found",
+                details={"goal_id": goal_id},
+            ).model_dump(),
         )
     return GoalResponse.model_validate(goal)
 

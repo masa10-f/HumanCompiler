@@ -98,7 +98,12 @@ async def get_task(
     task = task_service.get_task(session, task_id, current_user.user_id)
     if not task:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ErrorResponse.create(
+                code="RESOURCE_NOT_FOUND",
+                message="Task not found",
+                details={"task_id": task_id},
+            ).model_dump(),
         )
     return TaskResponse.model_validate(task)
 
