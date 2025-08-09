@@ -62,16 +62,22 @@ class Database:
             # Minimal connection args
             connect_args = {"connect_timeout": 10, "application_name": "TaskAgent-API"}
 
-            # Create engine with optimized pool settings for local development
+            # Create engine with optimized pool settings for better performance
             self._engine = create_engine(
                 database_url,
                 echo=settings.debug,  # Show SQL queries in debug mode
                 pool_pre_ping=True,  # Enable connection health checks
                 pool_recycle=3600,  # Recycle connections after 1 hour
-                pool_size=10,  # Increase pool size for concurrent requests
-                max_overflow=20,  # Allow more overflow connections
-                pool_timeout=60,  # Longer timeout for busy periods
+                pool_size=5,  # Optimal pool size for most workloads
+                max_overflow=10,  # Reduced overflow for better resource management
+                pool_timeout=30,  # Faster timeout for better responsiveness
+                pool_reset_on_return="commit",  # Reset connections on return for consistency
                 connect_args=connect_args,
+                # Enable query result caching for better performance
+                execution_options={
+                    "compiled_cache": {},
+                    "isolation_level": "READ_COMMITTED",
+                },
             )
 
             # Setup connection event listeners
