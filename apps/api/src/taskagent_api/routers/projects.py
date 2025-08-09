@@ -100,7 +100,12 @@ async def get_project(
     project = project_service.get_project(session, project_id, current_user.user_id)
     if not project:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ErrorResponse.create(
+                code="RESOURCE_NOT_FOUND",
+                message="Project not found",
+                details={"project_id": str(project_id)},
+            ).model_dump(),
         )
     return ProjectResponse.model_validate(project)
 
@@ -151,5 +156,9 @@ async def delete_project(
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Project deletion failed: {str(e)}",
+            detail=ErrorResponse.create(
+                code="INTERNAL_SERVER_ERROR",
+                message="Project deletion failed",
+                details={"error_type": type(e).__name__, "project_id": str(project_id)},
+            ).model_dump(),
         )

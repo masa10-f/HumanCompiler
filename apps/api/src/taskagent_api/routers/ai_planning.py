@@ -13,12 +13,20 @@ from taskagent_api.ai import WeeklyPlanRequest, WeeklyPlanResponse, WeeklyPlanSe
 from taskagent_api.ai_service import OpenAIService
 from taskagent_api.auth import get_current_user_id
 from taskagent_api.database import get_session, db
+from taskagent_api.models import ErrorResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ai", tags=["ai-planning"])
 
 
-@router.post("/weekly-plan", response_model=WeeklyPlanResponse)
+@router.post(
+    "/weekly-plan",
+    response_model=WeeklyPlanResponse,
+    responses={
+        400: {"model": ErrorResponse, "description": "Bad request"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
 async def generate_weekly_plan(
     request: WeeklyPlanRequest,
     user_id: str = Depends(get_current_user_id),
@@ -51,7 +59,11 @@ async def generate_weekly_plan(
         except ValueError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid date format. Use YYYY-MM-DD",
+                detail=ErrorResponse.create(
+                    code="INVALID_DATE_FORMAT",
+                    message="Invalid date format. Use YYYY-MM-DD",
+                    details={"provided_date": request.week_start_date},
+                ).model_dump(),
             ) from e
 
         # Check if date is in the past (allow current week)
@@ -59,7 +71,14 @@ async def generate_weekly_plan(
         if week_start < today and (today - week_start).days > 7:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot create plans for weeks more than 7 days in the past",
+                detail=ErrorResponse.create(
+                    code="INVALID_DATE_RANGE",
+                    message="Cannot create plans for weeks more than 7 days in the past",
+                    details={
+                        "provided_date": str(week_start),
+                        "current_date": str(today),
+                    },
+                ).model_dump(),
             )
 
         # Create user-specific OpenAI service
@@ -84,7 +103,11 @@ async def generate_weekly_plan(
         logger.error(f"Unexpected error in weekly plan generation: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error during plan generation",
+            detail=ErrorResponse.create(
+                code="INTERNAL_SERVER_ERROR",
+                message="Internal server error during plan generation",
+                details={"error_type": type(e).__name__},
+            ).model_dump(),
         )
 
 
@@ -117,14 +140,19 @@ async def test_ai_integration():
         }
 
 
-@router.post("/analyze-workload")
-async def analyze_workload(
+@router.post(
+    "/workload-analyses",
+    responses={
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def create_workload_analysis(
     project_ids: list[str] | None = None,
     user_id: str = Depends(get_current_user_id),
     session: Session = Depends(get_session),
 ):
     """
-    Analyze current workload and provide recommendations.
+    Create a workload analysis report with recommendations.
 
     This endpoint analyzes:
     - Total estimated hours vs capacity
@@ -226,18 +254,28 @@ async def analyze_workload(
         logger.error(f"Error in workload analysis: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error during workload analysis",
+            detail=ErrorResponse.create(
+                code="INTERNAL_SERVER_ERROR",
+                message="Internal server error during workload analysis",
+                details={"error_type": type(e).__name__},
+            ).model_dump(),
         )
 
 
-@router.post("/suggest-priorities")
-async def suggest_task_priorities(
+@router.post(
+    "/priority-suggestions",
+    responses={
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def create_priority_suggestions(
     project_id: str | None = None,
     user_id: str = Depends(get_current_user_id),
     session: Session = Depends(get_session),
 ):
     """
-    Get AI suggestions for task prioritization.
+    Create AI-generated task priority suggestions.
 
     Uses heuristics to suggest task priorities based on:
     - Due dates and urgency
@@ -253,7 +291,12 @@ async def suggest_task_priorities(
             project = project_service.get_project(session, project_id, user_id)
             if not project:
                 raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse.create(
+                        code="RESOURCE_NOT_FOUND",
+                        message="Project not found",
+                        details={"project_id": project_id},
+                    ).model_dump(),
                 )
 
             goals = goal_service.get_goals_by_project(session, project_id, user_id)
@@ -363,5 +406,9 @@ async def suggest_task_priorities(
         logger.error(f"Error in priority suggestions: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error during priority analysis",
+            detail=ErrorResponse.create(
+                code="INTERNAL_SERVER_ERROR",
+                message="Internal server error during priority analysis",
+                details={"error_type": type(e).__name__},
+            ).model_dump(),
         )
