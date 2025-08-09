@@ -36,8 +36,6 @@ const nextConfig = {
     // Responsive image sizes for different devices
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
-    // Quality settings for different use cases
-    quality: 85, // Balanced quality vs file size
   },
   env: {
     CUSTOM_KEY: process.env.CUSTOM_KEY,
