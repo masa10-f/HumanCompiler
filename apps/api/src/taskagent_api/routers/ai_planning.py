@@ -146,13 +146,13 @@ async def test_ai_integration():
         500: {"model": ErrorResponse, "description": "Internal server error"},
     },
 )
-async def create_workload_analysis(
+async def analyze_workload(
     project_ids: list[str] | None = None,
     user_id: str = Depends(get_current_user_id),
     session: Session = Depends(get_session),
 ):
     """
-    Create a workload analysis report with recommendations.
+    Analyze current workload and provide recommendations.
 
     This endpoint analyzes:
     - Total estimated hours vs capacity
@@ -269,13 +269,13 @@ async def create_workload_analysis(
         500: {"model": ErrorResponse, "description": "Internal server error"},
     },
 )
-async def create_priority_suggestions(
+async def suggest_task_priorities(
     project_id: str | None = None,
     user_id: str = Depends(get_current_user_id),
     session: Session = Depends(get_session),
 ):
     """
-    Create AI-generated task priority suggestions.
+    Get AI suggestions for task prioritization.
 
     Uses heuristics to suggest task priorities based on:
     - Due dates and urgency
