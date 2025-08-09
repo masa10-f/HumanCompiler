@@ -10,7 +10,12 @@ from fastapi import HTTPException, status
 from sqlmodel import Session
 
 from taskagent_api.auth import AuthUser
-from taskagent_api.models import ProjectCreate, ProjectUpdate, ProjectResponse, ErrorResponse
+from taskagent_api.models import (
+    ProjectCreate,
+    ProjectUpdate,
+    ProjectResponse,
+    ErrorResponse,
+)
 from taskagent_api.routers.projects import (
     router,
     get_session,
@@ -37,19 +42,13 @@ def auth_user():
 @pytest.fixture
 def project_create_data():
     """Mock project creation data"""
-    return ProjectCreate(
-        title="Test Project",
-        description="Test description"
-    )
+    return ProjectCreate(title="Test Project", description="Test description")
 
 
 @pytest.fixture
 def project_update_data():
     """Mock project update data"""
-    return ProjectUpdate(
-        title="Updated Project",
-        description="Updated description"
-    )
+    return ProjectUpdate(title="Updated Project", description="Updated description")
 
 
 @pytest.fixture
@@ -81,9 +80,14 @@ def test_get_session():
 
 
 @pytest.mark.asyncio
-async def test_create_project_success(mock_session, auth_user, project_create_data, mock_project):
+async def test_create_project_success(
+    mock_session, auth_user, project_create_data, mock_project
+):
     """Test successful project creation"""
-    with patch("taskagent_api.routers.projects.project_service.create_project", return_value=mock_project):
+    with patch(
+        "taskagent_api.routers.projects.project_service.create_project",
+        return_value=mock_project,
+    ):
         result = await create_project(project_create_data, mock_session, auth_user)
 
         assert isinstance(result, ProjectResponse)
@@ -92,9 +96,14 @@ async def test_create_project_success(mock_session, auth_user, project_create_da
 @pytest.mark.asyncio
 async def test_get_projects_success(mock_session, auth_user):
     """Test successful projects retrieval"""
-    mock_projects = [Mock(id=UUID("12345678-1234-5678-1234-567812345678"), title="Project 1")]
+    mock_projects = [
+        Mock(id=UUID("12345678-1234-5678-1234-567812345678"), title="Project 1")
+    ]
 
-    with patch("taskagent_api.routers.projects.project_service.get_projects", return_value=mock_projects):
+    with patch(
+        "taskagent_api.routers.projects.project_service.get_projects",
+        return_value=mock_projects,
+    ):
         result = await get_projects(mock_session, auth_user)
 
         assert isinstance(result, list)
@@ -106,7 +115,10 @@ async def test_get_projects_with_pagination(mock_session, auth_user):
     """Test projects retrieval with pagination"""
     mock_projects = []
 
-    with patch("taskagent_api.routers.projects.project_service.get_projects", return_value=mock_projects):
+    with patch(
+        "taskagent_api.routers.projects.project_service.get_projects",
+        return_value=mock_projects,
+    ):
         result = await get_projects(mock_session, auth_user, skip=10, limit=5)
 
         assert isinstance(result, list)
@@ -115,9 +127,14 @@ async def test_get_projects_with_pagination(mock_session, auth_user):
 @pytest.mark.asyncio
 async def test_get_projects_with_timing_logs(mock_session, auth_user):
     """Test projects retrieval includes timing logs"""
-    mock_projects = [Mock(id=UUID("12345678-1234-5678-1234-567812345678"), title="Project 1")]
+    mock_projects = [
+        Mock(id=UUID("12345678-1234-5678-1234-567812345678"), title="Project 1")
+    ]
 
-    with patch("taskagent_api.routers.projects.project_service.get_projects", return_value=mock_projects):
+    with patch(
+        "taskagent_api.routers.projects.project_service.get_projects",
+        return_value=mock_projects,
+    ):
         with patch("logging.getLogger") as mock_logger:
             mock_log_instance = Mock()
             mock_logger.return_value = mock_log_instance
@@ -126,13 +143,18 @@ async def test_get_projects_with_timing_logs(mock_session, auth_user):
 
             # Verify logging calls were made
             assert mock_log_instance.info.called
-            assert "Getting projects for user" in str(mock_log_instance.info.call_args_list[0])
+            assert "Getting projects for user" in str(
+                mock_log_instance.info.call_args_list[0]
+            )
 
 
 @pytest.mark.asyncio
 async def test_get_projects_error_handling(mock_session, auth_user):
     """Test projects retrieval error handling"""
-    with patch("taskagent_api.routers.projects.project_service.get_projects", side_effect=Exception("Database error")):
+    with patch(
+        "taskagent_api.routers.projects.project_service.get_projects",
+        side_effect=Exception("Database error"),
+    ):
         with patch("logging.getLogger") as mock_logger:
             mock_log_instance = Mock()
             mock_logger.return_value = mock_log_instance
@@ -149,7 +171,10 @@ async def test_get_project_success(mock_session, auth_user, mock_project):
     """Test successful single project retrieval"""
     project_id = UUID("12345678-1234-5678-1234-567812345678")
 
-    with patch("taskagent_api.routers.projects.project_service.get_project", return_value=mock_project):
+    with patch(
+        "taskagent_api.routers.projects.project_service.get_project",
+        return_value=mock_project,
+    ):
         result = await get_project(project_id, mock_session, auth_user)
 
         assert isinstance(result, ProjectResponse)
@@ -160,7 +185,9 @@ async def test_get_project_not_found(mock_session, auth_user):
     """Test project not found scenario"""
     project_id = UUID("12345678-1234-5678-1234-567812345678")
 
-    with patch("taskagent_api.routers.projects.project_service.get_project", return_value=None):
+    with patch(
+        "taskagent_api.routers.projects.project_service.get_project", return_value=None
+    ):
         with pytest.raises(HTTPException) as exc_info:
             await get_project(project_id, mock_session, auth_user)
 
@@ -168,12 +195,19 @@ async def test_get_project_not_found(mock_session, auth_user):
 
 
 @pytest.mark.asyncio
-async def test_update_project_success(mock_session, auth_user, project_update_data, mock_project):
+async def test_update_project_success(
+    mock_session, auth_user, project_update_data, mock_project
+):
     """Test successful project update"""
     project_id = UUID("12345678-1234-5678-1234-567812345678")
 
-    with patch("taskagent_api.routers.projects.project_service.update_project", return_value=mock_project):
-        result = await update_project(project_id, project_update_data, mock_session, auth_user)
+    with patch(
+        "taskagent_api.routers.projects.project_service.update_project",
+        return_value=mock_project,
+    ):
+        result = await update_project(
+            project_id, project_update_data, mock_session, auth_user
+        )
 
         assert isinstance(result, ProjectResponse)
 
@@ -194,7 +228,10 @@ async def test_delete_project_error(mock_session, auth_user):
     """Test project deletion error handling"""
     project_id = UUID("12345678-1234-5678-1234-567812345678")
 
-    with patch("taskagent_api.routers.projects.project_service.delete_project", side_effect=Exception("Delete error")):
+    with patch(
+        "taskagent_api.routers.projects.project_service.delete_project",
+        side_effect=Exception("Delete error"),
+    ):
         with patch("logging.getLogger") as mock_logger:
             mock_log_instance = Mock()
             mock_logger.return_value = mock_log_instance
@@ -207,19 +244,28 @@ async def test_delete_project_error(mock_session, auth_user):
             assert mock_log_instance.error.called
 
 
-@pytest.mark.asyncio 
-async def test_create_project_service_call(mock_session, auth_user, project_create_data, mock_project):
+@pytest.mark.asyncio
+async def test_create_project_service_call(
+    mock_session, auth_user, project_create_data, mock_project
+):
     """Test that create_project calls service with correct parameters"""
-    with patch("taskagent_api.routers.projects.project_service.create_project", return_value=mock_project) as mock_create:
+    with patch(
+        "taskagent_api.routers.projects.project_service.create_project",
+        return_value=mock_project,
+    ) as mock_create:
         await create_project(project_create_data, mock_session, auth_user)
 
-        mock_create.assert_called_once_with(mock_session, project_create_data, auth_user.user_id)
+        mock_create.assert_called_once_with(
+            mock_session, project_create_data, auth_user.user_id
+        )
 
 
 @pytest.mark.asyncio
 async def test_get_projects_service_call(mock_session, auth_user):
     """Test that get_projects calls service with correct parameters"""
-    with patch("taskagent_api.routers.projects.project_service.get_projects", return_value=[]) as mock_get:
+    with patch(
+        "taskagent_api.routers.projects.project_service.get_projects", return_value=[]
+    ) as mock_get:
         await get_projects(mock_session, auth_user, skip=5, limit=10)
 
         mock_get.assert_called_once_with(mock_session, auth_user.user_id, 5, 10)
@@ -230,21 +276,31 @@ async def test_get_project_service_call(mock_session, auth_user, mock_project):
     """Test that get_project calls service with correct parameters"""
     project_id = UUID("12345678-1234-5678-1234-567812345678")
 
-    with patch("taskagent_api.routers.projects.project_service.get_project", return_value=mock_project) as mock_get:
+    with patch(
+        "taskagent_api.routers.projects.project_service.get_project",
+        return_value=mock_project,
+    ) as mock_get:
         await get_project(project_id, mock_session, auth_user)
 
         mock_get.assert_called_once_with(mock_session, project_id, auth_user.user_id)
 
 
 @pytest.mark.asyncio
-async def test_update_project_service_call(mock_session, auth_user, project_update_data, mock_project):
+async def test_update_project_service_call(
+    mock_session, auth_user, project_update_data, mock_project
+):
     """Test that update_project calls service with correct parameters"""
     project_id = UUID("12345678-1234-5678-1234-567812345678")
 
-    with patch("taskagent_api.routers.projects.project_service.update_project", return_value=mock_project) as mock_update:
+    with patch(
+        "taskagent_api.routers.projects.project_service.update_project",
+        return_value=mock_project,
+    ) as mock_update:
         await update_project(project_id, project_update_data, mock_session, auth_user)
 
-        mock_update.assert_called_once_with(mock_session, project_id, auth_user.user_id, project_update_data)
+        mock_update.assert_called_once_with(
+            mock_session, project_id, auth_user.user_id, project_update_data
+        )
 
 
 @pytest.mark.asyncio
@@ -252,7 +308,9 @@ async def test_delete_project_service_call(mock_session, auth_user):
     """Test that delete_project calls service with correct parameters"""
     project_id = UUID("12345678-1234-5678-1234-567812345678")
 
-    with patch("taskagent_api.routers.projects.project_service.delete_project") as mock_delete:
+    with patch(
+        "taskagent_api.routers.projects.project_service.delete_project"
+    ) as mock_delete:
         await delete_project(project_id, mock_session, auth_user)
 
         mock_delete.assert_called_once_with(mock_session, project_id, auth_user.user_id)

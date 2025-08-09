@@ -27,10 +27,7 @@ from taskagent_api.models import UserCreate
 @pytest.fixture
 def mock_credentials():
     """Mock HTTP authorization credentials"""
-    return HTTPAuthorizationCredentials(
-        scheme="Bearer", 
-        credentials="mock_token"
-    )
+    return HTTPAuthorizationCredentials(scheme="Bearer", credentials="mock_token")
 
 
 @pytest.fixture
@@ -94,7 +91,16 @@ def test_check_rate_limit_window_expiry():
     _check_rate_limit(client_ip)
 
     # Old attempts should be cleaned up
-    assert len([a for a in _auth_attempts[client_ip] if time.time() - a < RATE_LIMIT_WINDOW]) == 1
+    assert (
+        len(
+            [
+                a
+                for a in _auth_attempts[client_ip]
+                if time.time() - a < RATE_LIMIT_WINDOW
+            ]
+        )
+        == 1
+    )
 
 
 @pytest.mark.asyncio
@@ -129,7 +135,9 @@ async def test_ensure_user_exists_existing_user():
     existing_user = Mock()
 
     with patch("taskagent_api.auth.db.get_session", return_value=mock_session_gen):
-        with patch("taskagent_api.auth.UserService.get_user", return_value=existing_user):
+        with patch(
+            "taskagent_api.auth.UserService.get_user", return_value=existing_user
+        ):
             with patch("taskagent_api.auth.UserService.create_user") as mock_create:
                 await ensure_user_exists("existing-user-id", "existing@example.com")
 
@@ -140,7 +148,9 @@ async def test_ensure_user_exists_existing_user():
 @pytest.mark.asyncio
 async def test_ensure_user_exists_error_handling():
     """Test ensure_user_exists error handling"""
-    with patch("taskagent_api.auth.db.get_session", side_effect=Exception("Database error")):
+    with patch(
+        "taskagent_api.auth.db.get_session", side_effect=Exception("Database error")
+    ):
         # Should not raise exception even on error
         await ensure_user_exists("user-id", "user@example.com")
 
@@ -201,7 +211,9 @@ async def test_get_current_user_timeout(mock_credentials):
 @pytest.mark.asyncio
 async def test_get_current_user_general_exception(mock_credentials):
     """Test authentication with general exception"""
-    with patch("taskagent_api.auth.db.get_client", side_effect=Exception("General error")):
+    with patch(
+        "taskagent_api.auth.db.get_client", side_effect=Exception("General error")
+    ):
         with pytest.raises(HTTPException) as exc_info:
             await get_current_user(mock_credentials)
 
@@ -227,7 +239,10 @@ async def test_get_optional_user_without_credentials():
 @pytest.mark.asyncio
 async def test_get_optional_user_auth_failure(mock_credentials):
     """Test optional authentication with authentication failure"""
-    with patch("taskagent_api.auth.get_current_user", side_effect=HTTPException(401, "Auth failed")):
+    with patch(
+        "taskagent_api.auth.get_current_user",
+        side_effect=HTTPException(401, "Auth failed"),
+    ):
         result = await get_optional_user(mock_credentials)
         assert result is None
 

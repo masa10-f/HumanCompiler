@@ -32,7 +32,7 @@ def weekly_plan_request():
         week_start_date="2024-01-01",
         capacity_hours=40.0,
         project_filter=None,
-        preferences={}
+        preferences={},
     )
 
 
@@ -46,20 +46,28 @@ def mock_plan_response():
         task_plans=[],
         recommendations=["Focus on deep work in the morning"],
         insights=["Good workload distribution"],
-        generated_at=datetime.now()
+        generated_at=datetime.now(),
     )
 
 
 @pytest.mark.asyncio
-async def test_generate_weekly_plan_success(weekly_plan_request, mock_plan_response, mock_session):
+async def test_generate_weekly_plan_success(
+    weekly_plan_request, mock_plan_response, mock_session
+):
     """Test successful weekly plan generation"""
-    with patch("taskagent_api.routers.ai_planning.OpenAIService.create_for_user_sync") as mock_openai:
-        with patch("taskagent_api.routers.ai_planning.WeeklyPlanService") as mock_service_class:
+    with patch(
+        "taskagent_api.routers.ai_planning.OpenAIService.create_for_user_sync"
+    ) as mock_openai:
+        with patch(
+            "taskagent_api.routers.ai_planning.WeeklyPlanService"
+        ) as mock_service_class:
             mock_service = AsyncMock()
             mock_service.generate_weekly_plan.return_value = mock_plan_response
             mock_service_class.return_value = mock_service
 
-            result = await generate_weekly_plan(weekly_plan_request, "test-user-id", mock_session)
+            result = await generate_weekly_plan(
+                weekly_plan_request, "test-user-id", mock_session
+            )
 
             assert result == mock_plan_response
             assert result.success is True
@@ -68,10 +76,7 @@ async def test_generate_weekly_plan_success(weekly_plan_request, mock_plan_respo
 @pytest.mark.asyncio
 async def test_generate_weekly_plan_invalid_date_format(mock_session):
     """Test weekly plan generation with invalid date format"""
-    request = WeeklyPlanRequest(
-        week_start_date="invalid-date",
-        capacity_hours=40.0
-    )
+    request = WeeklyPlanRequest(week_start_date="invalid-date", capacity_hours=40.0)
 
     with pytest.raises(HTTPException) as exc_info:
         await generate_weekly_plan(request, "test-user-id", mock_session)
@@ -84,12 +89,11 @@ async def test_generate_weekly_plan_invalid_date_format(mock_session):
 async def test_generate_weekly_plan_past_date(mock_session):
     """Test weekly plan generation with date too far in past"""
     # Create a date more than 7 days in the past
-    past_date = (date.today().replace(day=1) - dt.timedelta(days=10)).strftime("%Y-%m-%d")
-
-    request = WeeklyPlanRequest(
-        week_start_date=past_date,
-        capacity_hours=40.0
+    past_date = (date.today().replace(day=1) - dt.timedelta(days=10)).strftime(
+        "%Y-%m-%d"
     )
+
+    request = WeeklyPlanRequest(week_start_date=past_date, capacity_hours=40.0)
 
     with pytest.raises(HTTPException) as exc_info:
         await generate_weekly_plan(request, "test-user-id", mock_session)
@@ -101,9 +105,14 @@ async def test_generate_weekly_plan_past_date(mock_session):
 @pytest.mark.asyncio
 async def test_generate_weekly_plan_service_error(weekly_plan_request, mock_session):
     """Test weekly plan generation with service error"""
-    with patch("taskagent_api.routers.ai_planning.OpenAIService.create_for_user_sync", side_effect=Exception("Service error")):
+    with patch(
+        "taskagent_api.routers.ai_planning.OpenAIService.create_for_user_sync",
+        side_effect=Exception("Service error"),
+    ):
         with pytest.raises(HTTPException) as exc_info:
-            await generate_weekly_plan(weekly_plan_request, "test-user-id", mock_session)
+            await generate_weekly_plan(
+                weekly_plan_request, "test-user-id", mock_session
+            )
 
         assert exc_info.value.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         assert "INTERNAL_SERVER_ERROR" in str(exc_info.value.detail)
@@ -114,12 +123,13 @@ async def test_generate_weekly_plan_current_week_allowed(mock_session):
     """Test that current week planning is allowed"""
     # Use today's date
     today_request = WeeklyPlanRequest(
-        week_start_date=date.today().strftime("%Y-%m-%d"),
-        capacity_hours=40.0
+        week_start_date=date.today().strftime("%Y-%m-%d"), capacity_hours=40.0
     )
 
     with patch("taskagent_api.routers.ai_planning.OpenAIService.create_for_user_sync"):
-        with patch("taskagent_api.routers.ai_planning.WeeklyPlanService") as mock_service_class:
+        with patch(
+            "taskagent_api.routers.ai_planning.WeeklyPlanService"
+        ) as mock_service_class:
             mock_service = AsyncMock()
             mock_response = WeeklyPlanResponse(
                 success=True,
@@ -128,12 +138,14 @@ async def test_generate_weekly_plan_current_week_allowed(mock_session):
                 task_plans=[],
                 recommendations=[],
                 insights=[],
-                generated_at=datetime.now()
+                generated_at=datetime.now(),
             )
             mock_service.generate_weekly_plan.return_value = mock_response
             mock_service_class.return_value = mock_service
 
-            result = await generate_weekly_plan(today_request, "test-user-id", mock_session)
+            result = await generate_weekly_plan(
+                today_request, "test-user-id", mock_session
+            )
 
             assert result.success is True
 
@@ -144,13 +156,13 @@ async def test_test_ai_integration_success():
     mock_client = Mock()
     mock_client.model = "gpt-4-1106-preview"
 
-    mock_functions = [
-        {"name": "create_week_plan"},
-        {"name": "update_plan"}
-    ]
+    mock_functions = [{"name": "create_week_plan"}, {"name": "update_plan"}]
 
     with patch("taskagent_api.ai.openai_client.OpenAIClient", return_value=mock_client):
-        with patch("taskagent_api.ai.prompts.get_function_definitions", return_value=mock_functions):
+        with patch(
+            "taskagent_api.ai.prompts.get_function_definitions",
+            return_value=mock_functions,
+        ):
             result = await test_ai_integration()
 
             assert result["status"] == "success"
@@ -162,7 +174,9 @@ async def test_test_ai_integration_success():
 @pytest.mark.asyncio
 async def test_test_ai_integration_error():
     """Test AI integration test endpoint error"""
-    with patch("taskagent_api.ai.openai_client.OpenAIClient", side_effect=Exception("AI error")):
+    with patch(
+        "taskagent_api.ai.openai_client.OpenAIClient", side_effect=Exception("AI error")
+    ):
         result = await test_ai_integration()
 
         assert result["status"] == "error"
@@ -177,13 +191,34 @@ async def test_analyze_workload_success(mock_session):
     mock_projects = [Mock(id="project-1", title="Test Project")]
     mock_goals = [Mock(id="goal-1", project_id="project-1")]
     mock_tasks = [
-        Mock(id="task-1", goal_id="goal-1", estimate_hours=5.0, status="pending", due_date=None),
-        Mock(id="task-2", goal_id="goal-1", estimate_hours=3.0, status="in_progress", due_date=None)
+        Mock(
+            id="task-1",
+            goal_id="goal-1",
+            estimate_hours=5.0,
+            status="pending",
+            due_date=None,
+        ),
+        Mock(
+            id="task-2",
+            goal_id="goal-1",
+            estimate_hours=3.0,
+            status="in_progress",
+            due_date=None,
+        ),
     ]
 
-    with patch("taskagent_api.routers.ai_planning.project_service.get_projects", return_value=mock_projects):
-        with patch("taskagent_api.routers.ai_planning.goal_service.get_goals_by_project", return_value=mock_goals):
-            with patch("taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal", return_value=mock_tasks):
+    with patch(
+        "taskagent_api.routers.ai_planning.project_service.get_projects",
+        return_value=mock_projects,
+    ):
+        with patch(
+            "taskagent_api.routers.ai_planning.goal_service.get_goals_by_project",
+            return_value=mock_goals,
+        ):
+            with patch(
+                "taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal",
+                return_value=mock_tasks,
+            ):
                 result = await analyze_workload(None, "test-user-id", mock_session)
 
                 assert result["success"] is True
@@ -197,12 +232,31 @@ async def test_analyze_workload_with_project_filter(mock_session):
     """Test workload analysis with specific projects"""
     mock_project = Mock(id="project-1", title="Test Project")
     mock_goals = [Mock(id="goal-1", project_id="project-1")]
-    mock_tasks = [Mock(id="task-1", goal_id="goal-1", estimate_hours=5.0, status="pending", due_date=None)]
+    mock_tasks = [
+        Mock(
+            id="task-1",
+            goal_id="goal-1",
+            estimate_hours=5.0,
+            status="pending",
+            due_date=None,
+        )
+    ]
 
-    with patch("taskagent_api.routers.ai_planning.project_service.get_project", return_value=mock_project):
-        with patch("taskagent_api.routers.ai_planning.goal_service.get_goals_by_project", return_value=mock_goals):
-            with patch("taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal", return_value=mock_tasks):
-                result = await analyze_workload(["project-1"], "test-user-id", mock_session)
+    with patch(
+        "taskagent_api.routers.ai_planning.project_service.get_project",
+        return_value=mock_project,
+    ):
+        with patch(
+            "taskagent_api.routers.ai_planning.goal_service.get_goals_by_project",
+            return_value=mock_goals,
+        ):
+            with patch(
+                "taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal",
+                return_value=mock_tasks,
+            ):
+                result = await analyze_workload(
+                    ["project-1"], "test-user-id", mock_session
+                )
 
                 assert result["success"] is True
                 assert result["analysis"]["total_estimated_hours"] == 5.0
@@ -215,19 +269,37 @@ async def test_analyze_workload_overload_recommendations(mock_session):
     mock_goals = [Mock(id="goal-1", project_id="project-1")]
     # Create tasks that exceed 40 hours
     mock_tasks = [
-        Mock(id=f"task-{i}", goal_id="goal-1", estimate_hours=10.0, status="pending", due_date=None)
+        Mock(
+            id=f"task-{i}",
+            goal_id="goal-1",
+            estimate_hours=10.0,
+            status="pending",
+            due_date=None,
+        )
         for i in range(5)  # 50 hours total
     ]
 
-    with patch("taskagent_api.routers.ai_planning.project_service.get_projects", return_value=mock_projects):
-        with patch("taskagent_api.routers.ai_planning.goal_service.get_goals_by_project", return_value=mock_goals):
-            with patch("taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal", return_value=mock_tasks):
+    with patch(
+        "taskagent_api.routers.ai_planning.project_service.get_projects",
+        return_value=mock_projects,
+    ):
+        with patch(
+            "taskagent_api.routers.ai_planning.goal_service.get_goals_by_project",
+            return_value=mock_goals,
+        ):
+            with patch(
+                "taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal",
+                return_value=mock_tasks,
+            ):
                 result = await analyze_workload(None, "test-user-id", mock_session)
 
                 assert result["success"] is True
                 assert result["analysis"]["total_estimated_hours"] == 50.0
                 # Should contain overload recommendation
-                assert any("consider prioritizing or deferring" in rec for rec in result["recommendations"])
+                assert any(
+                    "consider prioritizing or deferring" in rec
+                    for rec in result["recommendations"]
+                )
 
 
 @pytest.mark.asyncio
@@ -239,24 +311,44 @@ async def test_analyze_workload_with_overdue_tasks(mock_session):
     # Create overdue task
     yesterday = datetime.now() - dt.timedelta(days=1)
     mock_tasks = [
-        Mock(id="task-1", goal_id="goal-1", estimate_hours=5.0, status="pending", 
-             due_date=yesterday)
+        Mock(
+            id="task-1",
+            goal_id="goal-1",
+            estimate_hours=5.0,
+            status="pending",
+            due_date=yesterday,
+        )
     ]
 
-    with patch("taskagent_api.routers.ai_planning.project_service.get_projects", return_value=mock_projects):
-        with patch("taskagent_api.routers.ai_planning.goal_service.get_goals_by_project", return_value=mock_goals):
-            with patch("taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal", return_value=mock_tasks):
+    with patch(
+        "taskagent_api.routers.ai_planning.project_service.get_projects",
+        return_value=mock_projects,
+    ):
+        with patch(
+            "taskagent_api.routers.ai_planning.goal_service.get_goals_by_project",
+            return_value=mock_goals,
+        ):
+            with patch(
+                "taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal",
+                return_value=mock_tasks,
+            ):
                 result = await analyze_workload(None, "test-user-id", mock_session)
 
                 assert result["success"] is True
                 assert result["analysis"]["overdue_tasks"] == 1
-                assert any("overdue tasks require immediate attention" in rec for rec in result["recommendations"])
+                assert any(
+                    "overdue tasks require immediate attention" in rec
+                    for rec in result["recommendations"]
+                )
 
 
 @pytest.mark.asyncio
 async def test_analyze_workload_error(mock_session):
     """Test workload analysis error handling"""
-    with patch("taskagent_api.routers.ai_planning.project_service.get_projects", side_effect=Exception("DB error")):
+    with patch(
+        "taskagent_api.routers.ai_planning.project_service.get_projects",
+        side_effect=Exception("DB error"),
+    ):
         with pytest.raises(HTTPException) as exc_info:
             await analyze_workload(None, "test-user-id", mock_session)
 
@@ -269,16 +361,39 @@ async def test_suggest_task_priorities_success(mock_session):
     mock_projects = [Mock(id="project-1", title="Test Project")]
     mock_goals = [Mock(id="goal-1", project_id="project-1")]
     mock_tasks = [
-        Mock(id="task-1", goal_id="goal-1", title="Urgent Task", estimate_hours=2.0, 
-             status="pending", due_date=datetime.now() + dt.timedelta(days=1)),
-        Mock(id="task-2", goal_id="goal-1", title="Regular Task", estimate_hours=5.0, 
-             status="pending", due_date=None)
+        Mock(
+            id="task-1",
+            goal_id="goal-1",
+            title="Urgent Task",
+            estimate_hours=2.0,
+            status="pending",
+            due_date=datetime.now() + dt.timedelta(days=1),
+        ),
+        Mock(
+            id="task-2",
+            goal_id="goal-1",
+            title="Regular Task",
+            estimate_hours=5.0,
+            status="pending",
+            due_date=None,
+        ),
     ]
 
-    with patch("taskagent_api.routers.ai_planning.project_service.get_projects", return_value=mock_projects):
-        with patch("taskagent_api.routers.ai_planning.goal_service.get_goals_by_project", return_value=mock_goals):
-            with patch("taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal", return_value=mock_tasks):
-                result = await suggest_task_priorities(None, "test-user-id", mock_session)
+    with patch(
+        "taskagent_api.routers.ai_planning.project_service.get_projects",
+        return_value=mock_projects,
+    ):
+        with patch(
+            "taskagent_api.routers.ai_planning.goal_service.get_goals_by_project",
+            return_value=mock_goals,
+        ):
+            with patch(
+                "taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal",
+                return_value=mock_tasks,
+            ):
+                result = await suggest_task_priorities(
+                    None, "test-user-id", mock_session
+                )
 
                 assert result["success"] is True
                 assert result["total_tasks_analyzed"] == 2
@@ -292,14 +407,31 @@ async def test_suggest_task_priorities_specific_project(mock_session):
     mock_project = Mock(id="project-1", title="Test Project")
     mock_goals = [Mock(id="goal-1", project_id="project-1")]
     mock_tasks = [
-        Mock(id="task-1", goal_id="goal-1", title="Test Task", estimate_hours=3.0, 
-             status="pending", due_date=None)
+        Mock(
+            id="task-1",
+            goal_id="goal-1",
+            title="Test Task",
+            estimate_hours=3.0,
+            status="pending",
+            due_date=None,
+        )
     ]
 
-    with patch("taskagent_api.routers.ai_planning.project_service.get_project", return_value=mock_project):
-        with patch("taskagent_api.routers.ai_planning.goal_service.get_goals_by_project", return_value=mock_goals):
-            with patch("taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal", return_value=mock_tasks):
-                result = await suggest_task_priorities("project-1", "test-user-id", mock_session)
+    with patch(
+        "taskagent_api.routers.ai_planning.project_service.get_project",
+        return_value=mock_project,
+    ):
+        with patch(
+            "taskagent_api.routers.ai_planning.goal_service.get_goals_by_project",
+            return_value=mock_goals,
+        ):
+            with patch(
+                "taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal",
+                return_value=mock_tasks,
+            ):
+                result = await suggest_task_priorities(
+                    "project-1", "test-user-id", mock_session
+                )
 
                 assert result["success"] is True
                 assert result["total_tasks_analyzed"] == 1
@@ -308,9 +440,14 @@ async def test_suggest_task_priorities_specific_project(mock_session):
 @pytest.mark.asyncio
 async def test_suggest_task_priorities_project_not_found(mock_session):
     """Test task priority suggestions when project not found"""
-    with patch("taskagent_api.routers.ai_planning.project_service.get_project", return_value=None):
+    with patch(
+        "taskagent_api.routers.ai_planning.project_service.get_project",
+        return_value=None,
+    ):
         with pytest.raises(HTTPException) as exc_info:
-            await suggest_task_priorities("nonexistent-project", "test-user-id", mock_session)
+            await suggest_task_priorities(
+                "nonexistent-project", "test-user-id", mock_session
+            )
 
         assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
         assert "RESOURCE_NOT_FOUND" in str(exc_info.value.detail)
@@ -324,37 +461,65 @@ async def test_suggest_task_priorities_scoring_algorithm(mock_session):
 
     # Create tasks with different characteristics
     overdue_task = Mock(
-        id="overdue", goal_id="goal-1", title="Overdue Task", estimate_hours=2.0,
-        status="pending", due_date=datetime.now() - dt.timedelta(days=1)
+        id="overdue",
+        goal_id="goal-1",
+        title="Overdue Task",
+        estimate_hours=2.0,
+        status="pending",
+        due_date=datetime.now() - dt.timedelta(days=1),
     )
 
     urgent_task = Mock(
-        id="urgent", goal_id="goal-1", title="Urgent Task", estimate_hours=1.0,
-        status="pending", due_date=datetime.now() + dt.timedelta(days=1)
+        id="urgent",
+        goal_id="goal-1",
+        title="Urgent Task",
+        estimate_hours=1.0,
+        status="pending",
+        due_date=datetime.now() + dt.timedelta(days=1),
     )
 
     regular_task = Mock(
-        id="regular", goal_id="goal-1", title="Regular Task", estimate_hours=8.0,
-        status="pending", due_date=None
+        id="regular",
+        goal_id="goal-1",
+        title="Regular Task",
+        estimate_hours=8.0,
+        status="pending",
+        due_date=None,
     )
 
     mock_tasks = [overdue_task, urgent_task, regular_task]
 
-    with patch("taskagent_api.routers.ai_planning.project_service.get_projects", return_value=mock_projects):
-        with patch("taskagent_api.routers.ai_planning.goal_service.get_goals_by_project", return_value=mock_goals):
-            with patch("taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal", return_value=mock_tasks):
-                result = await suggest_task_priorities(None, "test-user-id", mock_session)
+    with patch(
+        "taskagent_api.routers.ai_planning.project_service.get_projects",
+        return_value=mock_projects,
+    ):
+        with patch(
+            "taskagent_api.routers.ai_planning.goal_service.get_goals_by_project",
+            return_value=mock_goals,
+        ):
+            with patch(
+                "taskagent_api.routers.ai_planning.task_service.get_tasks_by_goal",
+                return_value=mock_tasks,
+            ):
+                result = await suggest_task_priorities(
+                    None, "test-user-id", mock_session
+                )
 
                 suggestions = result["priority_suggestions"]
                 # Overdue task should have highest score
                 assert suggestions[0]["task_id"] == "overdue"
-                assert suggestions[0]["priority_score"] > suggestions[1]["priority_score"]
+                assert (
+                    suggestions[0]["priority_score"] > suggestions[1]["priority_score"]
+                )
 
 
 @pytest.mark.asyncio
 async def test_suggest_task_priorities_error(mock_session):
     """Test task priority suggestions error handling"""
-    with patch("taskagent_api.routers.ai_planning.project_service.get_projects", side_effect=Exception("DB error")):
+    with patch(
+        "taskagent_api.routers.ai_planning.project_service.get_projects",
+        side_effect=Exception("DB error"),
+    ):
         with pytest.raises(HTTPException) as exc_info:
             await suggest_task_priorities(None, "test-user-id", mock_session)
 

@@ -221,20 +221,22 @@ async def test_generate_weekly_plan_success(mock_context):
     mock_openai_response.choices = [Mock()]
     mock_openai_response.choices[0].message.function_call = Mock()
     mock_openai_response.choices[0].message.function_call.name = "create_week_plan"
-    mock_openai_response.choices[0].message.function_call.arguments = json.dumps({
-        "task_plans": [
-            {
-                "task_id": "task-1",
-                "estimated_hours": 5.0,
-                "priority": 1,
-                "suggested_day": "Monday",
-                "suggested_time_slot": "morning",
-                "rationale": "High priority task for morning focus"
-            }
-        ],
-        "recommendations": ["Focus on deep work in the morning"],
-        "insights": ["Good workload distribution"]
-    })
+    mock_openai_response.choices[0].message.function_call.arguments = json.dumps(
+        {
+            "task_plans": [
+                {
+                    "task_id": "task-1",
+                    "estimated_hours": 5.0,
+                    "priority": 1,
+                    "suggested_day": "Monday",
+                    "suggested_time_slot": "morning",
+                    "rationale": "High priority task for morning focus",
+                }
+            ],
+            "recommendations": ["Focus on deep work in the morning"],
+            "insights": ["Good workload distribution"],
+        }
+    )
     mock_openai_response.usage = Mock()
     mock_openai_response.usage.total_tokens = 500
 
@@ -244,7 +246,7 @@ async def test_generate_weekly_plan_success(mock_context):
     service = OpenAIService()
     service.client = mock_client
 
-    with patch.object(service, '_log_api_usage', new_callable=AsyncMock):
+    with patch.object(service, "_log_api_usage", new_callable=AsyncMock):
         response = await service.generate_weekly_plan(mock_context)
 
     assert response.success
@@ -263,7 +265,7 @@ async def test_generate_weekly_plan_openai_error(mock_context):
     service = OpenAIService()
     service.client = mock_client
 
-    with patch.object(service, '_log_api_usage', new_callable=AsyncMock):
+    with patch.object(service, "_log_api_usage", new_callable=AsyncMock):
         response = await service.generate_weekly_plan(mock_context)
 
     assert not response.success
@@ -280,7 +282,9 @@ async def test_log_api_usage():
     mock_db_gen = iter([mock_session, StopIteration])
 
     with patch("taskagent_api.ai_service.get_db", return_value=mock_db_gen):
-        await service._log_api_usage("12345678-1234-5678-1234-567812345678", "weekly-plan", 100, "success")
+        await service._log_api_usage(
+            "12345678-1234-5678-1234-567812345678", "weekly-plan", 100, "success"
+        )
 
         mock_session.add.assert_called_once()
         mock_session.commit.assert_called_once()
@@ -291,15 +295,23 @@ async def test_weekly_plan_service_collect_context():
     """Test WeeklyPlanService context collection"""
     mock_session = Mock()
 
-    with patch("taskagent_api.ai_service.project_service.get_projects", return_value=[]):
-        with patch("taskagent_api.ai_service.goal_service.get_goals_by_project", return_value=[]):
-            with patch("taskagent_api.ai_service.task_service.get_tasks_by_goal", return_value=[]):
+    with patch(
+        "taskagent_api.ai_service.project_service.get_projects", return_value=[]
+    ):
+        with patch(
+            "taskagent_api.ai_service.goal_service.get_goals_by_project",
+            return_value=[],
+        ):
+            with patch(
+                "taskagent_api.ai_service.task_service.get_tasks_by_goal",
+                return_value=[],
+            ):
                 service = WeeklyPlanService()
                 context = await service.collect_context(
                     session=mock_session,
                     user_id="user-1",
                     week_start_date=date.today(),
-                    capacity_hours=35.0
+                    capacity_hours=35.0,
                 )
 
                 assert context.user_id == "user-1"
@@ -314,10 +326,7 @@ async def test_weekly_plan_service_collect_context():
 async def test_weekly_plan_service_generate_plan():
     """Test WeeklyPlanService plan generation"""
     mock_session = Mock()
-    request = WeeklyPlanRequest(
-        week_start_date="2024-01-01",
-        capacity_hours=40.0
-    )
+    request = WeeklyPlanRequest(week_start_date="2024-01-01", capacity_hours=40.0)
 
     mock_context = WeeklyPlanContext(
         user_id="user-1",
@@ -326,7 +335,7 @@ async def test_weekly_plan_service_generate_plan():
         goals=[],
         tasks=[],
         capacity_hours=40.0,
-        preferences={}
+        preferences={},
     )
 
     mock_response = WeeklyPlanResponse(
@@ -336,13 +345,15 @@ async def test_weekly_plan_service_generate_plan():
         task_plans=[],
         recommendations=[],
         insights=[],
-        generated_at=datetime.now()
+        generated_at=datetime.now(),
     )
 
     service = WeeklyPlanService()
 
-    with patch.object(service, 'collect_context', return_value=mock_context):
-        with patch("taskagent_api.ai_service.OpenAIService.create_for_user") as mock_create:
+    with patch.object(service, "collect_context", return_value=mock_context):
+        with patch(
+            "taskagent_api.ai_service.OpenAIService.create_for_user"
+        ) as mock_create:
             mock_openai_service = AsyncMock()
             mock_openai_service.generate_weekly_plan.return_value = mock_response
             mock_create.return_value = mock_openai_service
@@ -357,9 +368,7 @@ def test_weekly_plan_request_validation():
     """Test weekly plan request model validation"""
     # Valid request
     request = WeeklyPlanRequest(
-        week_start_date="2024-01-01", 
-        capacity_hours=40.0, 
-        project_filter=["project-1"]
+        week_start_date="2024-01-01", capacity_hours=40.0, project_filter=["project-1"]
     )
 
     assert request.week_start_date == "2024-01-01"
@@ -381,7 +390,7 @@ def test_task_plan_model():
         priority=1,
         suggested_day="Monday",
         suggested_time_slot="morning",
-        rationale="Test rationale"
+        rationale="Test rationale",
     )
 
     assert plan.task_id == "task-1"
@@ -400,7 +409,7 @@ def test_weekly_plan_response_serialization():
         task_plans=[],
         recommendations=["Test recommendation"],
         insights=["Test insight"],
-        generated_at=now
+        generated_at=now,
     )
 
     # Test datetime serialization
