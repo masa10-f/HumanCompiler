@@ -38,6 +38,16 @@ def auth_user():
     )
 
 
+@pytest.fixture(autouse=True)
+def clean_auth_attempts():
+    """Clean up auth attempts before and after each test to prevent interference"""
+    # Clear before test
+    _auth_attempts.clear()
+    yield
+    # Clear after test
+    _auth_attempts.clear()
+
+
 def test_auth_user_initialization():
     """Test AuthUser class initialization"""
     user_id = "87654321-4321-8765-4321-876543218765"
