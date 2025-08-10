@@ -5,6 +5,9 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'export',
+  trailingSlash: true,
+  images: { unoptimized: true },
   experimental: {
     typedRoutes: false,
   },
@@ -15,28 +18,8 @@ const nextConfig = {
   compress: true,
   // Enable React strict mode
   reactStrictMode: true,
-  images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'images.unsplash.com',
-      },
-      // Add other common image hosts as needed
-      {
-        protocol: 'https',
-        hostname: '*.supabase.co',
-      },
-    ],
-    // Enable next-gen image formats for better performance
-    formats: ['image/webp', 'image/avif'],
-    // Cache optimized images for 1 day
-    minimumCacheTTL: 86400,
-    // Restrict SVG for security
-    dangerouslyAllowSVG: false,
-    // Responsive image sizes for different devices
-    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048],
-    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
-  },
+  // Images configuration simplified for static export
+  // images: { unoptimized: true } - already set above
   env: {
     CUSTOM_KEY: process.env.CUSTOM_KEY,
   },

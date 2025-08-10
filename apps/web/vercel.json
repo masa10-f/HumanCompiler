@@ -1,5 +1,8 @@
 {
   "framework": "nextjs",
+  "buildCommand": "cd apps/web && npm run build",
+  "outputDirectory": "apps/web/out",
+  "installCommand": "pnpm install",
   "rewrites": [
     {
       "source": "/api/(.*)",
