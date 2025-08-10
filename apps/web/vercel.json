@@ -1,8 +1,4 @@
 {
-  "framework": "nextjs",
-  "buildCommand": "cd apps/web && npm run build",
-  "outputDirectory": "apps/web/out",
-  "installCommand": "pnpm install",
   "rewrites": [
     {
       "source": "/api/(.*)",
@@ -57,9 +53,5 @@
       ]
     }
   ],
-  "env": {
-    "NEXT_PUBLIC_APP_URL": "https://taskagent.vercel.app",
-    "NEXT_PUBLIC_API_URL": "https://taskagent-api-masa.fly.dev"
-  },
   "regions": ["hnd1"]
 }
