@@ -147,6 +147,7 @@ class Settings(BaseSettings):
         allowed_patterns = [
             "taskagent",
             "taskagent-",  # For dynamic deployments
+            "taskagent-git-",  # For feature branch deployments
         ]
 
         for pattern in allowed_patterns:
