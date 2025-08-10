@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/health",
+      "destination": "https://taskagent-api-masa.fly.dev/health"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "https://taskagent-api-masa.fly.dev/api/$1"
     }
@@ -34,10 +38,6 @@
     {
       "source": "/api/(.*)",
       "headers": [
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "https://taskagent-five.vercel.app"
-        },
         {
           "key": "Access-Control-Allow-Methods",
           "value": "GET, POST, PUT, DELETE, OPTIONS"
