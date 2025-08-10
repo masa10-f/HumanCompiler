@@ -72,7 +72,51 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Configure CORS
+
+# Configure CORS with dynamic Vercel domain support
+def is_origin_allowed(origin: str) -> bool:
+    """Check if origin is allowed based on our CORS policy"""
+    # Check static allowed origins
+    if origin in settings.cors_origins_list:
+        return True
+
+    # Check dynamic Vercel domains
+    if settings.is_vercel_domain_allowed(origin):
+        return True
+
+    return False
+
+
+# Custom CORS middleware for dynamic Vercel domains
+@app.middleware("http")
+async def cors_middleware(request, call_next):
+    origin = request.headers.get("origin")
+
+    response = await call_next(request)
+
+    if origin and is_origin_allowed(origin):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = (
+            "GET, POST, PUT, DELETE, OPTIONS"
+        )
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Max-Age"] = "86400"
+
+    # Handle preflight requests
+    if request.method == "OPTIONS":
+        if origin and is_origin_allowed(origin):
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Methods"] = (
+                "GET, POST, PUT, DELETE, OPTIONS"
+            )
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            response.headers["Access-Control-Max-Age"] = "86400"
+
+    return response
+
+
+# Add standard CORS middleware as fallback
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
