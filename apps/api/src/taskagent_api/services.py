@@ -24,6 +24,7 @@ from taskagent_api.models import (
     UserCreate,
     UserUpdate,
 )
+from core.cache import cached, invalidate_cache, CacheManager
 
 
 class UserService:
@@ -95,12 +96,14 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
         """Get filter for project ownership"""
         return Project.owner_id == user_id
 
+    @cached(cache_type="short", key_prefix="projects_list")
     def get_projects(
         self, session: Session, owner_id: str | UUID, skip: int = 0, limit: int = 100
     ) -> list[Project]:
         """Get projects for specific owner"""
         return self.get_all(session, owner_id, skip, limit)
 
+    @cached(cache_type="medium", key_prefix="project_detail")
     def get_project(
         self, session: Session, project_id: str | UUID, owner_id: str | UUID
     ) -> Project | None:
@@ -111,7 +114,10 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
         self, session: Session, project_data: ProjectCreate, owner_id: str | UUID
     ) -> Project:
         """Create a new project"""
-        return self.create(session, project_data, owner_id)
+        result = self.create(session, project_data, owner_id)
+        # Invalidate cache after creation
+        invalidate_cache("short", f"projects_list:{owner_id}")
+        return result
 
     def update_project(
         self,
@@ -121,7 +127,11 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
         project_data: ProjectUpdate,
     ) -> Project:
         """Update project"""
-        return self.update(session, project_id, project_data, owner_id)
+        result = self.update(session, project_id, project_data, owner_id)
+        # Invalidate cache after update
+        invalidate_cache("short", f"projects_list:{owner_id}")
+        invalidate_cache("medium", f"project_detail:{project_id}:{owner_id}")
+        return result
 
     def delete_project(
         self, session: Session, project_id: str | UUID, owner_id: str | UUID
@@ -199,6 +209,11 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
         # Step 6: Delete the project
         session.delete(project)
         session.commit()
+
+        # Invalidate cache after deletion
+        invalidate_cache("short", f"projects_list:{project.owner_id}")
+        invalidate_cache("medium", f"project_detail:{project_id}")
+
         return True
 
 
@@ -238,12 +253,14 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
             )
         return self.create(session, goal_data, owner_id)
 
+    @cached(cache_type="medium", key_prefix="goal_detail")
     def get_goal(
         self, session: Session, goal_id: str | UUID, owner_id: str | UUID
     ) -> Goal | None:
         """Get goal by ID for specific owner"""
         return self.get_by_id(session, goal_id, owner_id)
 
+    @cached(cache_type="short", key_prefix="goals_by_project")
     def get_goals_by_project(
         self,
         session: Session,
@@ -321,12 +338,14 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             )
         return self.create(session, task_data, owner_id)
 
+    @cached(cache_type="medium", key_prefix="task_detail")
     def get_task(
         self, session: Session, task_id: str | UUID, owner_id: str | UUID
     ) -> Task | None:
         """Get task by ID for specific owner"""
         return self.get_by_id(session, task_id, owner_id)
 
+    @cached(cache_type="short", key_prefix="tasks_by_goal")
     def get_tasks_by_goal(
         self,
         session: Session,
@@ -344,6 +363,7 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             )
         return self.get_all(session, owner_id, skip, limit, goal_id=goal_id)
 
+    @cached(cache_type="short", key_prefix="tasks_by_project")
     def get_tasks_by_project(
         self,
         session: Session,

@@ -18,6 +18,7 @@ from taskagent_api.config import settings
 from taskagent_api.crypto import get_crypto_service
 from taskagent_api.models import Goal, Project, Task, UserSettings, ApiUsageLog
 from taskagent_api.services import goal_service, project_service, task_service
+from core.cache import cached, invalidate_cache
 
 logger = logging.getLogger(__name__)
 
@@ -358,6 +359,7 @@ When creating weekly plans, use the create_week_plan function. When updating exi
 
         return context_str
 
+    @cached(cache_type="long", key_prefix="openai_weekly_plan")
     async def generate_weekly_plan(
         self, context: WeeklyPlanContext, session: AsyncSession | None = None
     ) -> WeeklyPlanResponse:
