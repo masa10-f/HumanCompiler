@@ -60,8 +60,8 @@ class Settings(BaseSettings):
     # CORS Configuration
     # Allow Vercel deployments and local development
     cors_origins: list[str] | str = Field(
-        default="https://taskagent.vercel.app,http://localhost:3000,http://localhost:3001",
-        description="Allowed CORS origins - specific domains for security",
+        default="https://taskagent-five.vercel.app,https://taskagent.vercel.app,http://localhost:3000,http://localhost:3001",
+        description="Allowed CORS origins - includes actual deployed domain",
     )
 
     @field_validator("supabase_url")
@@ -138,7 +138,7 @@ except Exception as e:
     # Create settings with default values for development
     from types import SimpleNamespace
 
-    settings: Any = SimpleNamespace()
+    settings = SimpleNamespace()
     settings.api_title = "TaskAgent API"
     settings.api_version = "0.1.0"
     settings.api_description = "AI-powered task management and scheduling API"
@@ -155,9 +155,9 @@ except Exception as e:
     settings.supabase_anon_key = "dev-anon-key"
     settings.supabase_service_role_key = "dev-service-key"
     settings.secret_key = "taskagent-secret-key-change-in-production"  # nosec B105
-    settings.encryption_key = None
-    # Development salt (base64-encoded 16 bytes) - change in production
-    settings.encryption_salt = "dGFza2FnZW50LXNhbHQtZGV2"  # nosec B105
+    settings.encryption_key = (
+        "dGFza2FnZW50LXNhbHQtZGV2"  # Development key (base64-encoded)
+    )
     # Performance monitoring settings
     settings.slow_query_threshold_ms = 100
     settings.max_query_stats = 1000
