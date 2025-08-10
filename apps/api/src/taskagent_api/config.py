@@ -193,9 +193,7 @@ except Exception as e:
     settings.supabase_anon_key = "dev-anon-key"
     settings.supabase_service_role_key = "dev-service-key"
     settings.secret_key = "taskagent-secret-key-change-in-production"  # nosec B105
-    settings.encryption_key = (
-        "dGFza2FnZW50LXNhbHQtZGV2"  # Development key (base64-encoded)
-    )
+    settings.encryption_key = "ZGV2ZWxvcG1lbnQtZW5jcnlwdGlvbi1rZXktMTIzNA=="  # Development key (base64-encoded, distinct from salt)
     # Performance monitoring settings
     settings.slow_query_threshold_ms = 100
     settings.max_query_stats = 1000

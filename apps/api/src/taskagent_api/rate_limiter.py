@@ -44,14 +44,6 @@ RATE_LIMITS = {
 }
 
 
-async def add_rate_limit_headers(request: Request, response: Response):
-    """
-    Add rate limit information to response headers
-    """
-    # These headers will be automatically added by slowapi
-    pass
-
-
 def get_rate_limit_for_path(path: str) -> str:
     """
     Get the appropriate rate limit for a given path
