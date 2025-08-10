@@ -37,7 +37,7 @@
       "headers": [
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "https://taskagent*.vercel.app"
+          "value": "*"
         },
         {
           "key": "Access-Control-Allow-Methods",
@@ -55,7 +55,8 @@
     }
   ],
   "env": {
-    "NEXT_PUBLIC_APP_URL": "https://taskagent.vercel.app"
+    "NEXT_PUBLIC_APP_URL": "https://taskagent.vercel.app",
+    "NEXT_PUBLIC_API_URL": "https://taskagent-api-masa.fly.dev"
   },
   "regions": ["hnd1"]
 }
