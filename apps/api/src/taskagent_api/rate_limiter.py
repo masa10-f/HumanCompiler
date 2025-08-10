@@ -16,7 +16,7 @@ limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["200 per minute", "1000 per hour"],
     headers_enabled=True,  # Include rate limit headers in responses
-    storage_uri=None,  # Use in-memory storage for now (consider Redis for production)
+    storage_uri=None,  # In-memory storage for development (use Redis for production clustering)
 )
 
 # Custom rate limit configurations for different endpoints
@@ -85,3 +85,11 @@ def configure_rate_limiting(app):
         logger.info(f"  {path}: {limit}")
 
     return limiter
+
+
+# Production Redis configuration example:
+# For production deployment, replace storage_uri=None with:
+# storage_uri="redis://localhost:6379"
+#
+# This ensures rate limits persist across server restarts and work correctly
+# in multi-instance deployments (Fly.io scaling, Kubernetes, etc.)
