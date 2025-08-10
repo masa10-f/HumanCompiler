@@ -122,7 +122,7 @@ export default function SettingsPage() {
         const data = await response.json()
         setError(data.detail || "Failed to save API key")
       }
-    } catch (err) {
+    } catch {
       setError("An error occurred while saving the API key")
     } finally {
       setLoading(false)
@@ -162,7 +162,7 @@ export default function SettingsPage() {
         const data = await response.json()
         setError(data.detail || "Failed to delete API key")
       }
-    } catch (err) {
+    } catch {
       setError("An error occurred while deleting the API key")
     } finally {
       setLoading(false)

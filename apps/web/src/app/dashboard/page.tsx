@@ -33,7 +33,7 @@ export default function DashboardPage() {
       try {
         const schedule = await schedulingApi.getByDate(today as string)
         setTodaySchedule(schedule)
-      } catch (error) {
+      } catch {
         log.debug('No schedule found for today', { component: 'Dashboard', date: today })
       } finally {
         setScheduleLoading(false)

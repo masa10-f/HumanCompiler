@@ -43,7 +43,7 @@ export default function ScheduleHistoryPage() {
         const data = await schedulingApi.list();
         setSchedules(data);
         setFilteredSchedules(data);
-      } catch (error) {
+      } catch {
         toast({
           title: 'データ取得エラー',
           description: 'スケジュール履歴の取得に失敗しました',

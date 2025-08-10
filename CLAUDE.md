@@ -3,6 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 プロンプトに対する返答は必ず日本語で答えてください。
 機能単位の変更に対してgit commitを行うようにしてください。git pushは行わないでください。
+mainブランチ・各Pull requestでpushするごとにvercelによる自動のデプロイが行われるようになっています。勝手にローカル環境でデプロイを行う必要性はありません。
 
 ## プロジェクト概要
 
