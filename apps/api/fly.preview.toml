@@ -10,6 +10,8 @@ primary_region = "nrt"  # Tokyo region for lower latency
   PYTHONPATH = "/app/src"
   ENVIRONMENT = "staging"  # Different from production
   DEBUG = "true"  # More verbose logging for debugging
+  # Optional: Enable read-only mode for shared database safety
+  # READ_ONLY_MODE = "true"  # Uncomment to prevent write operations
 
 [http_service]
   internal_port = 8000

@@ -85,8 +85,11 @@ jobs:
       - name: 🔧 Set Preview secrets
         working-directory: ./apps/api
         run: |
+          # Use preview database if available, otherwise fallback to production DB
+          DATABASE_URL_VALUE="${{ secrets.DATABASE_URL_PREVIEW || secrets.DATABASE_URL }}"
+
           flyctl secrets set \
-            DATABASE_URL="${{ secrets.DATABASE_URL_PREVIEW }}" \
+            DATABASE_URL="$DATABASE_URL_VALUE" \
             OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
             SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
             SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
