@@ -30,10 +30,42 @@ import type {
   TestSchedulerResponse
 } from '@/types/api-responses';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ||
-  (process.env.NODE_ENV === 'production'
+// Determine API URL based on environment
+const getApiBaseUrl = () => {
+  // If explicitly set via environment variable, use it
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+
+  // For Vercel deployments, check if it's a preview deployment
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+
+    // If it's a Vercel preview deployment, use preview API
+    if (hostname.includes('-masato-fukushimas-projects.vercel.app') ||
+        (hostname.includes('vercel.app') && hostname !== 'taskagent.vercel.app')) {
+      return 'https://taskagent-api-masa-preview.fly.dev';
+    }
+
+    // Production Vercel deployment
+    if (hostname === 'taskagent.vercel.app') {
+      return 'https://taskagent-api-masa.fly.dev';
+    }
+  }
+
+  // Default fallback based on NODE_ENV
+  return process.env.NODE_ENV === 'production'
     ? 'https://taskagent-api-masa.fly.dev'
-    : 'http://localhost:8000');
+    : 'http://localhost:8000';
+};
+
+const API_BASE_URL = getApiBaseUrl();
+
+// Debug logging for API endpoint selection
+if (typeof window !== 'undefined') {
+  console.log(`🔗 TaskAgent API Endpoint: ${API_BASE_URL}`);
+  console.log(`🌐 Current hostname: ${window.location.hostname}`);
+}
 
 // API client configuration
 class ApiClient {
