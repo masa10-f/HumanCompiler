@@ -41,15 +41,19 @@ def get_cache_key(prefix: str, *args, **kwargs) -> str:
         elif hasattr(arg, "id"):
             key_parts.append(f"{arg.__class__.__name__}:{arg.id}")
         else:
-            # For complex objects, use hash
-            key_parts.append(hashlib.md5(str(arg).encode()).hexdigest()[:8])
+            # For complex objects, use hash (not for security)
+            key_parts.append(
+                hashlib.md5(str(arg).encode(), usedforsecurity=False).hexdigest()[:8]
+            )
 
     # Add keyword arguments
     for k, v in sorted(kwargs.items()):
         if isinstance(v, str | int | float | bool):
             key_parts.append(f"{k}:{v}")
         else:
-            key_parts.append(f"{k}:{hashlib.md5(str(v).encode()).hexdigest()[:8]}")
+            key_parts.append(
+                f"{k}:{hashlib.md5(str(v).encode(), usedforsecurity=False).hexdigest()[:8]}"
+            )
 
     return ":".join(key_parts)
 

@@ -1,17 +1,43 @@
 {
   "errors": [],
-  "generated_at": "2025-07-30T12:14:01Z",
+  "generated_at": "2025-08-11T03:33:06Z",
   "metrics": {
     "_totals": {
       "CONFIDENCE.HIGH": 0,
       "CONFIDENCE.LOW": 0,
-      "CONFIDENCE.MEDIUM": 2,
+      "CONFIDENCE.MEDIUM": 0,
       "CONFIDENCE.UNDEFINED": 0,
       "SEVERITY.HIGH": 0,
       "SEVERITY.LOW": 0,
-      "SEVERITY.MEDIUM": 2,
+      "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 3346,
+      "loc": 5200,
+      "nosec": 0,
+      "skipped_tests": 4
+    },
+    "src/core/__init__.py": {
+      "CONFIDENCE.HIGH": 0,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 0,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 1,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    "src/core/cache.py": {
+      "CONFIDENCE.HIGH": 0,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 0,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 145,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -37,7 +63,20 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 6,
+      "loc": 15,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    "src/taskagent_api/ai/analysis_cache.py": {
+      "CONFIDENCE.HIGH": 0,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 0,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 185,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -63,7 +102,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 46,
+      "loc": 48,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -76,7 +115,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 129,
+      "loc": 190,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -115,7 +154,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 384,
+      "loc": 490,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -167,20 +206,33 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 90,
+      "loc": 111,
       "nosec": 0,
       "skipped_tests": 0
     },
     "src/taskagent_api/config.py": {
       "CONFIDENCE.HIGH": 0,
       "CONFIDENCE.LOW": 0,
-      "CONFIDENCE.MEDIUM": 2,
+      "CONFIDENCE.MEDIUM": 0,
       "CONFIDENCE.UNDEFINED": 0,
       "SEVERITY.HIGH": 0,
       "SEVERITY.LOW": 0,
-      "SEVERITY.MEDIUM": 2,
+      "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 90,
+      "loc": 153,
+      "nosec": 0,
+      "skipped_tests": 4
+    },
+    "src/taskagent_api/crypto.py": {
+      "CONFIDENCE.HIGH": 0,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 0,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 69,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -193,7 +245,20 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 89,
+      "loc": 117,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    "src/taskagent_api/database_config.py": {
+      "CONFIDENCE.HIGH": 0,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 0,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 58,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -206,7 +271,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 103,
+      "loc": 104,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -219,7 +284,20 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 80,
+      "loc": 133,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    "src/taskagent_api/migration_manager.py": {
+      "CONFIDENCE.HIGH": 0,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 0,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 334,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -232,24 +310,11 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 197,
+      "loc": 268,
       "nosec": 0,
       "skipped_tests": 0
     },
-    "src/taskagent_api/routers/__init__.py": {
-      "CONFIDENCE.HIGH": 0,
-      "CONFIDENCE.LOW": 0,
-      "CONFIDENCE.MEDIUM": 0,
-      "CONFIDENCE.UNDEFINED": 0,
-      "SEVERITY.HIGH": 0,
-      "SEVERITY.LOW": 0,
-      "SEVERITY.MEDIUM": 0,
-      "SEVERITY.UNDEFINED": 0,
-      "loc": 0,
-      "nosec": 0,
-      "skipped_tests": 0
-    },
-    "src/taskagent_api/routers/ai_planning.py": {
+    "src/taskagent_api/performance_monitor.py": {
       "CONFIDENCE.HIGH": 0,
       "CONFIDENCE.LOW": 0,
       "CONFIDENCE.MEDIUM": 0,
@@ -262,6 +327,45 @@
       "nosec": 0,
       "skipped_tests": 0
     },
+    "src/taskagent_api/rate_limiter.py": {
+      "CONFIDENCE.HIGH": 0,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 0,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 55,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    "src/taskagent_api/routers/__init__.py": {
+      "CONFIDENCE.HIGH": 0,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 0,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 20,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    "src/taskagent_api/routers/ai_planning.py": {
+      "CONFIDENCE.HIGH": 0,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 0,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 191,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
     "src/taskagent_api/routers/goals.py": {
       "CONFIDENCE.HIGH": 0,
       "CONFIDENCE.LOW": 0,
@@ -271,7 +375,20 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 101,
+      "loc": 106,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    "src/taskagent_api/routers/monitoring.py": {
+      "CONFIDENCE.HIGH": 0,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 0,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 104,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -284,7 +401,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 132,
+      "loc": 141,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -297,7 +414,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 570,
+      "loc": 629,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -310,7 +427,20 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 120,
+      "loc": 125,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    "src/taskagent_api/routers/user_settings.py": {
+      "CONFIDENCE.HIGH": 0,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 0,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 184,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -336,51 +466,10 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 319,
+      "loc": 334,
       "nosec": 0,
       "skipped_tests": 0
     }
   },
-  "results": [
-    {
-      "code": "15     # Server Configuration\n16     host: str = \"0.0.0.0\"\n17     port: int = 8000\n",
-      "col_offset": 16,
-      "end_col_offset": 25,
-      "filename": "src/taskagent_api/config.py",
-      "issue_confidence": "MEDIUM",
-      "issue_cwe": {
-        "id": 605,
-        "link": "https://cwe.mitre.org/data/definitions/605.html"
-      },
-      "issue_severity": "MEDIUM",
-      "issue_text": "Possible binding to all interfaces.",
-      "line_number": 16,
-      "line_range": [
-        16
-      ],
-      "more_info": "https://bandit.readthedocs.io/en/1.8.6/plugins/b104_hardcoded_bind_all_interfaces.html",
-      "test_id": "B104",
-      "test_name": "hardcoded_bind_all_interfaces"
-    },
-    {
-      "code": "116     settings.api_description = \"AI-powered task management and scheduling API\"\n117     settings.host = \"0.0.0.0\"\n118     settings.port = 8000\n",
-      "col_offset": 20,
-      "end_col_offset": 29,
-      "filename": "src/taskagent_api/config.py",
-      "issue_confidence": "MEDIUM",
-      "issue_cwe": {
-        "id": 605,
-        "link": "https://cwe.mitre.org/data/definitions/605.html"
-      },
-      "issue_severity": "MEDIUM",
-      "issue_text": "Possible binding to all interfaces.",
-      "line_number": 117,
-      "line_range": [
-        117
-      ],
-      "more_info": "https://bandit.readthedocs.io/en/1.8.6/plugins/b104_hardcoded_bind_all_interfaces.html",
-      "test_id": "B104",
-      "test_name": "hardcoded_bind_all_interfaces"
-    }
-  ]
+  "results": []
 }
