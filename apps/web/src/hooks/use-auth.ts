@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import type { User } from '@supabase/supabase-js'
+import type { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { toast } from '@/hooks/use-toast'
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
+  const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [initialLoad, setInitialLoad] = useState(true)
   const router = useRouter()
@@ -18,6 +19,7 @@ export function useAuth() {
     const getInitialSession = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       setUser(session?.user ?? null)
+      setSession(session)
       setLoading(false)
       setInitialLoad(false)
     }
@@ -28,6 +30,7 @@ export function useAuth() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         setUser(session?.user ?? null)
+        setSession(session)
         setLoading(false)
 
         // Only redirect on actual sign in/out events, not on session restoration
@@ -72,6 +75,7 @@ export function useAuth() {
 
   return {
     user,
+    session,
     loading,
     signOut,
     isAuthenticated: !!user,
