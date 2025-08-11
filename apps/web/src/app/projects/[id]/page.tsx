@@ -1,17 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
-import { useGoals } from '@/hooks/use-goals';
-import { projectsApi } from '@/lib/api';
+import { useProject } from '@/hooks/use-project-query';
+import { useGoalsByProject } from '@/hooks/use-goals-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { GoalFormDialog } from '@/components/goals/goal-form-dialog';
 import { GoalEditDialog } from '@/components/goals/goal-edit-dialog';
 import { GoalDeleteDialog } from '@/components/goals/goal-delete-dialog';
 import { ArrowLeft, Plus } from 'lucide-react';
-import type { Project } from '@/types/project';
 
 interface ProjectDetailPageProps {
   params: {
@@ -21,10 +20,20 @@ interface ProjectDetailPageProps {
 
 export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   const { user, loading: authLoading } = useAuth();
-  const { goals, loading: goalsLoading, error: goalsError, refetch } = useGoals(params.id);
-  const [project, setProject] = useState<Project | null>(null);
-  const [projectLoading, setProjectLoading] = useState(true);
-  const [projectError, setProjectError] = useState<string | null>(null);
+  const {
+    data: project,
+    isLoading: projectLoading,
+    error: projectError,
+    refetch: refetchProject
+  } = useProject(params.id);
+
+  const {
+    data: goals = [],
+    isLoading: goalsLoading,
+    error: goalsError,
+    refetch: refetchGoals
+  } = useGoalsByProject(params.id);
+
   const router = useRouter();
 
   useEffect(() => {
@@ -32,27 +41,6 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
       router.push('/login');
     }
   }, [user, authLoading, router]);
-
-  useEffect(() => {
-    const fetchProject = async () => {
-      if (!params.id) return;
-
-      try {
-        setProjectLoading(true);
-        setProjectError(null);
-        const projectData = await projectsApi.getById(params.id);
-        setProject(projectData);
-      } catch (err) {
-        setProjectError(err instanceof Error ? err.message : 'Failed to fetch project');
-      } finally {
-        setProjectLoading(false);
-      }
-    };
-
-    if (user) {
-      fetchProject();
-    }
-  }, [params.id, user]);
 
   if (authLoading || !user) {
     return (
@@ -72,16 +60,24 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     );
   }
 
-  if (projectError || !project) {
+  if (projectError || (!projectLoading && !project)) {
     return (
       <div className="container mx-auto py-8">
         <div className="text-center">
-          <div className="text-red-600 mb-4">エラー: {projectError || 'プロジェクトが見つかりません'}</div>
-          <Button onClick={() => router.push('/projects')}>プロジェクト一覧に戻る</Button>
+          <div className="text-red-600 mb-4">
+            エラー: {projectError?.message || 'プロジェクトが見つかりません'}
+          </div>
+          <div className="flex gap-2 justify-center">
+            <Button onClick={() => refetchProject()}>再試行</Button>
+            <Button variant="outline" onClick={() => router.push('/projects')}>プロジェクト一覧に戻る</Button>
+          </div>
         </div>
       </div>
     );
   }
+
+  // Return early if project is not loaded yet
+  if (!project) return null;
 
   return (
     <div className="container mx-auto py-8">
@@ -136,8 +132,8 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
           <Card>
             <CardContent className="pt-6">
               <div className="text-center">
-                <div className="text-red-600 mb-4">エラー: {goalsError}</div>
-                <Button onClick={refetch}>再試行</Button>
+                <div className="text-red-600 mb-4">エラー: {goalsError.message}</div>
+                <Button onClick={() => refetchGoals()}>再試行</Button>
               </div>
             </CardContent>
           </Card>

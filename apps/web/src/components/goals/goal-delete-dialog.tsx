@@ -11,7 +11,8 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { useGoals } from '@/hooks/use-goals';
+import { useDeleteGoal } from '@/hooks/use-goals-query';
+import { toast } from '@/hooks/use-toast';
 import type { Goal } from '@/types/goal';
 
 interface GoalDeleteDialogProps {
@@ -21,18 +22,26 @@ interface GoalDeleteDialogProps {
 
 export function GoalDeleteDialog({ goal, children }: GoalDeleteDialogProps) {
   const [open, setOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const { deleteGoal } = useGoals(goal.project_id);
+  const deleteGoalMutation = useDeleteGoal();
 
   const handleDelete = async () => {
     try {
-      setIsDeleting(true);
-      await deleteGoal(goal.id);
+      await deleteGoalMutation.mutateAsync(goal.id);
+
+      toast({
+        title: 'ゴールを削除しました',
+        description: `「${goal.title}」が正常に削除されました。`,
+      });
+
       setOpen(false);
     } catch (error) {
       log.error('Failed to delete goal', error, { component: 'GoalDeleteDialog', goalId: goal.id, action: 'deleteGoal' });
-    } finally {
-      setIsDeleting(false);
+
+      toast({
+        title: 'エラー',
+        description: 'ゴールの削除に失敗しました。再試行してください。',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -53,16 +62,16 @@ export function GoalDeleteDialog({ goal, children }: GoalDeleteDialogProps) {
             type="button"
             variant="outline"
             onClick={() => setOpen(false)}
-            disabled={isDeleting}
+            disabled={deleteGoalMutation.isPending}
           >
             キャンセル
           </Button>
           <Button
             variant="destructive"
             onClick={handleDelete}
-            disabled={isDeleting}
+            disabled={deleteGoalMutation.isPending}
           >
-            {isDeleting ? '削除中...' : '削除'}
+            {deleteGoalMutation.isPending ? '削除中...' : '削除'}
           </Button>
         </div>
       </DialogContent>
