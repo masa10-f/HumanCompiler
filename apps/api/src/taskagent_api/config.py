@@ -137,7 +137,12 @@ class Settings(BaseSettings):
 
     def is_vercel_domain_allowed(self, origin: str) -> bool:
         """Check if a Vercel domain matches our security patterns"""
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         if not origin.endswith(".vercel.app"):
+            logger.info(f"CORS: {origin} not a vercel.app domain")
             return False
 
         # Extract subdomain
@@ -146,6 +151,8 @@ class Settings(BaseSettings):
             .replace("http://", "")
             .replace(".vercel.app", "")
         )
+
+        logger.info(f"CORS: Vercel domain check - subdomain: '{subdomain}'")
 
         # Allow taskagent-related domains only
         allowed_patterns = [
@@ -162,9 +169,10 @@ class Settings(BaseSettings):
         if "masato-fukushimas-projects" in subdomain:
             return True
 
-        # Also check for plain taskagent domains (from error log: taskagent-pl61j0wyg)
+        # Also check for plain taskagent domains and git feature branches
+        # Patterns: taskagent-[hash], taskagent-git-feature-*, etc.
         if subdomain.startswith("taskagent-") and len(subdomain) > 10:
-            # Likely a Vercel preview domain
+            # Likely a Vercel preview domain (including git feature branches)
             return True
 
         for pattern in allowed_patterns:
