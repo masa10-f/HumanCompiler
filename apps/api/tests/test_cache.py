@@ -244,7 +244,7 @@ def test_cache_stats():
     assert "extended" in stats
 
     # Check structure
-    for cache_name, cache_info in stats.items():
+    for _cache_name, cache_info in stats.items():
         assert "size" in cache_info
         assert "maxsize" in cache_info
         assert "ttl" in cache_info
