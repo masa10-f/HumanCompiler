@@ -24,7 +24,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { useGoals } from '@/hooks/use-goals';
+import { useUpdateGoal } from '@/hooks/use-goals-query';
+import { toast } from '@/hooks/use-toast';
 import type { Goal } from '@/types/goal';
 
 const goalFormSchema = z.object({
@@ -42,8 +43,7 @@ interface GoalEditDialogProps {
 
 export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
   const [open, setOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const { updateGoal } = useGoals(goal.project_id);
+  const updateGoalMutation = useUpdateGoal();
 
   const form = useForm<GoalFormData>({
     resolver: zodResolver(goalFormSchema),
@@ -65,17 +65,29 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
 
   const onSubmit = async (data: GoalFormData) => {
     try {
-      setIsSubmitting(true);
-      await updateGoal(goal.id, {
-        title: data.title,
-        description: data.description || undefined,
-        estimate_hours: data.estimate_hours,
+      await updateGoalMutation.mutateAsync({
+        id: goal.id,
+        data: {
+          title: data.title,
+          description: data.description || undefined,
+          estimate_hours: data.estimate_hours,
+        }
       });
+
+      toast({
+        title: 'ゴールを更新しました',
+        description: `「${data.title}」が正常に更新されました。`,
+      });
+
       setOpen(false);
     } catch (error) {
       log.error('Failed to update goal', error, { component: 'GoalEditDialog', goalId: goal.id, action: 'updateGoal' });
-    } finally {
-      setIsSubmitting(false);
+
+      toast({
+        title: 'エラー',
+        description: 'ゴールの更新に失敗しました。再試行してください。',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -152,12 +164,12 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
                 type="button"
                 variant="outline"
                 onClick={() => setOpen(false)}
-                disabled={isSubmitting}
+                disabled={updateGoalMutation.isPending}
               >
                 キャンセル
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? '更新中...' : '更新'}
+              <Button type="submit" disabled={updateGoalMutation.isPending}>
+                {updateGoalMutation.isPending ? '更新中...' : '更新'}
               </Button>
             </div>
           </form>

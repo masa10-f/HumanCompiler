@@ -24,7 +24,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { useGoals } from '@/hooks/use-goals';
+import { useCreateGoal } from '@/hooks/use-goals-query';
+import { toast } from '@/hooks/use-toast';
 
 const goalFormSchema = z.object({
   title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
@@ -41,8 +42,7 @@ interface GoalFormDialogProps {
 
 export function GoalFormDialog({ projectId, children }: GoalFormDialogProps) {
   const [open, setOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const { createGoal } = useGoals(projectId);
+  const createGoalMutation = useCreateGoal();
 
   const form = useForm<GoalFormData>({
     resolver: zodResolver(goalFormSchema),
@@ -55,19 +55,28 @@ export function GoalFormDialog({ projectId, children }: GoalFormDialogProps) {
 
   const onSubmit = async (data: GoalFormData) => {
     try {
-      setIsSubmitting(true);
-      await createGoal({
+      await createGoalMutation.mutateAsync({
         title: data.title,
         description: data.description || undefined,
         estimate_hours: data.estimate_hours,
         project_id: projectId,
       });
+
+      toast({
+        title: 'ゴールを作成しました',
+        description: `「${data.title}」が正常に作成されました。`,
+      });
+
       form.reset();
       setOpen(false);
     } catch (error) {
       log.error('Failed to create goal', error, { component: 'GoalFormDialog', projectId, action: 'createGoal' });
-    } finally {
-      setIsSubmitting(false);
+
+      toast({
+        title: 'エラー',
+        description: 'ゴールの作成に失敗しました。再試行してください。',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -144,12 +153,12 @@ export function GoalFormDialog({ projectId, children }: GoalFormDialogProps) {
                 type="button"
                 variant="outline"
                 onClick={() => setOpen(false)}
-                disabled={isSubmitting}
+                disabled={createGoalMutation.isPending}
               >
                 キャンセル
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? '作成中...' : '作成'}
+              <Button type="submit" disabled={createGoalMutation.isPending}>
+                {createGoalMutation.isPending ? '作成中...' : '作成'}
               </Button>
             </div>
           </form>

@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
-import { useProjects } from '@/hooks/use-projects';
+import { useProjects, useCreateProject } from '@/hooks/use-project-query';
+import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -16,10 +17,10 @@ import { log } from '@/lib/logger';
 export default function ProjectsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const { projects, loading, error, createProject, refetch } = useProjects();
+  const { data: projects = [], isLoading: loading, error, refetch } = useProjects();
+  const createProjectMutation = useCreateProject();
 
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [creating, setCreating] = useState(false);
 
   // Form state
   const [title, setTitle] = useState('');
@@ -30,12 +31,16 @@ export default function ProjectsPage() {
     if (!title.trim()) return;
 
     try {
-      setCreating(true);
       log.component('Projects', 'createProject', { title, description });
 
-      await createProject({
+      await createProjectMutation.mutateAsync({
         title: title.trim(),
         description: description.trim() || undefined,
+      });
+
+      toast({
+        title: 'プロジェクトを作成しました',
+        description: `「${title}」が正常に作成されました。`,
       });
 
       log.component('Projects', 'projectCreated', { title });
@@ -44,8 +49,12 @@ export default function ProjectsPage() {
       setShowCreateForm(false);
     } catch (err) {
       log.error('Failed to create project', err as Error, { component: 'Projects', title, description });
-    } finally {
-      setCreating(false);
+
+      toast({
+        title: 'エラー',
+        description: 'プロジェクトの作成に失敗しました。再試行してください。',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -85,12 +94,12 @@ export default function ProjectsPage() {
 
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-800">{error}</p>
+            <p className="text-red-800">{error.message}</p>
             <Button
               variant="outline"
               size="sm"
               className="mt-2"
-              onClick={refetch}
+              onClick={() => refetch()}
             >
               再試行
             </Button>
@@ -137,12 +146,12 @@ export default function ProjectsPage() {
                       setTitle('');
                       setDescription('');
                     }}
-                    disabled={creating}
+                    disabled={createProjectMutation.isPending}
                   >
                     キャンセル
                   </Button>
-                  <Button type="submit" disabled={creating || !title.trim()}>
-                    {creating ? '作成中...' : '作成'}
+                  <Button type="submit" disabled={createProjectMutation.isPending || !title.trim()}>
+                    {createProjectMutation.isPending ? '作成中...' : '作成'}
                   </Button>
                 </div>
               </form>

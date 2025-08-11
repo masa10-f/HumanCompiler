@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
-import { useTasks } from '@/hooks/use-tasks';
-import { goalsApi, projectsApi } from '@/lib/api';
+import { useTasksByGoal } from '@/hooks/use-tasks-query';
+import { useGoal } from '@/hooks/use-goals-query';
+import { useProject } from '@/hooks/use-project-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -15,8 +16,6 @@ import { TaskDeleteDialog } from '@/components/tasks/task-delete-dialog';
 import { ArrowLeft, Plus, Clock, Calendar } from 'lucide-react';
 import { taskStatusLabels, taskStatusColors } from '@/types/task';
 import { log } from '@/lib/logger';
-import type { Goal } from '@/types/goal';
-import type { Project } from '@/types/project';
 
 interface GoalDetailPageProps {
   params: {
@@ -27,11 +26,27 @@ interface GoalDetailPageProps {
 
 export default function GoalDetailPage({ params }: GoalDetailPageProps) {
   const { user, loading: authLoading } = useAuth();
-  const { tasks, loading: tasksLoading, error: tasksError, refetch } = useTasks(params.goalId);
-  const [goal, setGoal] = useState<Goal | null>(null);
-  const [project, setProject] = useState<Project | null>(null);
-  const [goalLoading, setGoalLoading] = useState(true);
-  const [goalError, setGoalError] = useState<string | null>(null);
+  const {
+    data: tasks = [],
+    isLoading: tasksLoading,
+    error: tasksError,
+    refetch: refetchTasks
+  } = useTasksByGoal(params.goalId);
+
+  const {
+    data: goal,
+    isLoading: goalLoading,
+    error: goalError,
+    refetch: refetchGoal
+  } = useGoal(params.goalId);
+
+  const {
+    data: project,
+    isLoading: projectLoading,
+    error: projectError,
+    refetch: refetchProject
+  } = useProject(params.id);
+
   const router = useRouter();
 
   useEffect(() => {
@@ -40,36 +55,6 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
     }
   }, [user, authLoading, router]);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!params.goalId || !params.id) return;
-
-      try {
-        setGoalLoading(true);
-        setGoalError(null);
-        log.component('GoalDetail', 'fetchData', { goalId: params.goalId, projectId: params.id });
-
-        // Fetch goal and project data
-        const [goalData, projectData] = await Promise.all([
-          goalsApi.getById(params.goalId),
-          projectsApi.getById(params.id)
-        ]);
-
-        log.component('GoalDetail', 'dataFetched', { goalData, projectData });
-        setGoal(goalData);
-        setProject(projectData);
-      } catch (err) {
-        log.error('Failed to fetch goal and project data', err as Error, { component: 'GoalDetail', goalId: params.goalId, projectId: params.id });
-        setGoalError(err instanceof Error ? err.message : 'Failed to fetch data');
-      } finally {
-        setGoalLoading(false);
-      }
-    };
-
-    if (user) {
-      fetchData();
-    }
-  }, [params.goalId, params.id, user]);
 
   if (authLoading || !user) {
     return (
@@ -79,26 +64,34 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
     );
   }
 
-  if (goalLoading) {
+  if (goalLoading || projectLoading) {
     return (
       <div className="container mx-auto py-8">
         <div className="flex items-center justify-center">
-          <div className="text-lg">ゴールを読み込み中...</div>
+          <div className="text-lg">データを読み込み中...</div>
         </div>
       </div>
     );
   }
 
-  if (goalError || !goal || !project) {
+  if (goalError || projectError || (!goalLoading && !goal) || (!projectLoading && !project)) {
     return (
       <div className="container mx-auto py-8">
         <div className="text-center">
-          <div className="text-red-600 mb-4">エラー: {goalError || 'ゴールが見つかりません'}</div>
-          <Button onClick={() => router.push(`/projects/${params.id}`)}>プロジェクトに戻る</Button>
+          <div className="text-red-600 mb-4">
+            エラー: {goalError?.message || projectError?.message || 'データが見つかりません'}
+          </div>
+          <div className="flex gap-2 justify-center">
+            <Button onClick={() => { refetchGoal(); refetchProject(); }}>再試行</Button>
+            <Button variant="outline" onClick={() => router.push(`/projects/${params.id}`)}>プロジェクトに戻る</Button>
+          </div>
         </div>
       </div>
     );
   }
+
+  // Return early if data is not loaded yet
+  if (!goal || !project) return null;
 
   const completedTasks = tasks.filter(task => task.status === 'completed').length;
 
@@ -248,8 +241,8 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
           <Card>
             <CardContent className="pt-6">
               <div className="text-center">
-                <div className="text-red-600 mb-4">エラー: {tasksError}</div>
-                <Button onClick={refetch}>再試行</Button>
+                <div className="text-red-600 mb-4">エラー: {tasksError.message}</div>
+                <Button onClick={() => refetchTasks()}>再試行</Button>
               </div>
             </CardContent>
           </Card>
