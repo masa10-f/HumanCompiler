@@ -131,24 +131,24 @@ async def cors_middleware(request, call_next):
     # Handle preflight requests
     if request.method == "OPTIONS":
         if origin and is_origin_allowed(origin):
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Methods"] = (
+            # Create a successful OPTIONS response
+            from fastapi.responses import Response
+
+            preflight_response = Response(status_code=200)
+            preflight_response.headers["Access-Control-Allow-Origin"] = origin
+            preflight_response.headers["Access-Control-Allow-Credentials"] = "true"
+            preflight_response.headers["Access-Control-Allow-Methods"] = (
                 "GET, POST, PUT, DELETE, OPTIONS"
             )
-            response.headers["Access-Control-Allow-Headers"] = "*"
-            response.headers["Access-Control-Max-Age"] = "86400"
+            preflight_response.headers["Access-Control-Allow-Headers"] = "*"
+            preflight_response.headers["Access-Control-Max-Age"] = "86400"
+            return preflight_response
 
     return response
 
 
-# Add standard CORS middleware as fallback
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-)
+# Remove standard CORS middleware - using custom CORS middleware only
+# The custom cors_middleware function above handles all CORS processing
 
 # Configure rate limiting
 configure_rate_limiting(app)

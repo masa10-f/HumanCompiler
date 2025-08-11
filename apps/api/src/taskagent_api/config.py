@@ -167,12 +167,14 @@ class Settings(BaseSettings):
         # - taskagent-[hash] (actual from error log)
         # - Any domain ending with masato-fukushimas-projects
         if "masato-fukushimas-projects" in subdomain:
+            logger.info(f"CORS: Allowed masato-fukushimas-projects domain: {subdomain}")
             return True
 
         # Also check for plain taskagent domains and git feature branches
         # Patterns: taskagent-[hash], taskagent-git-feature-*, etc.
         if subdomain.startswith("taskagent-") and len(subdomain) > 10:
             # Likely a Vercel preview domain (including git feature branches)
+            logger.info(f"CORS: Allowed taskagent- preview domain: {subdomain}")
             return True
 
         for pattern in allowed_patterns:
