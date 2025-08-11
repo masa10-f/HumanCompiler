@@ -37,42 +37,49 @@ const getApiBaseUrl = () => {
     return process.env.NEXT_PUBLIC_API_URL;
   }
 
-  // For Vercel deployments, check if it's a preview deployment
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-
-    // If it's a Vercel preview deployment, use preview API
-    if (hostname.includes('-masato-fukushimas-projects.vercel.app') ||
-        (hostname.includes('vercel.app') && hostname !== 'taskagent.vercel.app')) {
-      return 'https://taskagent-api-masa-preview.fly.dev';
-    }
-
-    // Production Vercel deployment
-    if (hostname === 'taskagent.vercel.app') {
-      return 'https://taskagent-api-masa.fly.dev';
-    }
+  // Server-side: use environment-based detection
+  if (typeof window === 'undefined') {
+    // During SSR, default to production API, will be corrected on client-side
+    return process.env.NODE_ENV === 'production'
+      ? 'https://taskagent-api-masa.fly.dev'
+      : 'http://localhost:8000';
   }
 
-  // Default fallback based on NODE_ENV
+  // Client-side: use hostname detection
+  const hostname = window.location.hostname;
+
+  // Debug logging
+  console.log(`🌐 Current hostname: ${hostname}`);
+
+  // Production Vercel deployment (exact match)
+  if (hostname === 'taskagent.vercel.app') {
+    console.log(`🏭 Using Production API`);
+    return 'https://taskagent-api-masa.fly.dev';
+  }
+
+  // Vercel preview deployments (any other vercel.app domain)
+  if (hostname.endsWith('.vercel.app')) {
+    console.log(`🔬 Using Preview API`);
+    return 'https://taskagent-api-masa-preview.fly.dev';
+  }
+
+  // Local development
+  if (hostname === 'localhost' || hostname.startsWith('localhost:')) {
+    console.log(`💻 Using Local API`);
+    return 'http://localhost:8000';
+  }
+
+  // Default fallback
+  console.log(`🔄 Using Default API (NODE_ENV: ${process.env.NODE_ENV})`);
   return process.env.NODE_ENV === 'production'
     ? 'https://taskagent-api-masa.fly.dev'
     : 'http://localhost:8000';
 };
 
-const API_BASE_URL = getApiBaseUrl();
-
-// Debug logging for API endpoint selection
-if (typeof window !== 'undefined') {
-  console.log(`🔗 TaskAgent API Endpoint: ${API_BASE_URL}`);
-  console.log(`🌐 Current hostname: ${window.location.hostname}`);
-}
-
 // API client configuration
 class ApiClient {
-  private baseURL: string;
-
-  constructor(baseURL: string) {
-    this.baseURL = baseURL;
+  private getBaseURL(): string {
+    return getApiBaseUrl();
   }
 
   private async getAuthHeaders(): Promise<HeadersInit> {
@@ -101,7 +108,7 @@ class ApiClient {
     try {
       const headers = await this.getAuthHeaders();
 
-      const response = await fetch(`${this.baseURL}${endpoint}`, {
+      const response = await fetch(`${this.getBaseURL()}${endpoint}`, {
         ...options,
         headers: {
           ...headers,
@@ -320,7 +327,7 @@ class ApiClient {
   }
 }
 
-export const apiClient = new ApiClient(API_BASE_URL);
+export const apiClient = new ApiClient();
 
 // Export individual API functions for easier use
 export const projectsApi = {
