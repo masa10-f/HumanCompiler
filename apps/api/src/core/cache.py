@@ -3,11 +3,12 @@ Caching module for TaskAgent API
 Provides TTL-based in-memory caching with configurable strategies
 """
 
-from typing import Any, Optional, TypeVar, Union
+from typing import Any, Optional, TypeVar, Union, Awaitable
 from collections.abc import Callable
 from functools import wraps
 import hashlib
 import json
+import asyncio
 from datetime import datetime, timedelta
 from cachetools import TTLCache
 from cachetools.keys import hashkey
@@ -66,12 +67,16 @@ def cached(
         condition: Optional function to determine if result should be cached
     """
 
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        async def async_wrapper(*args, **kwargs) -> T:
+        async def async_wrapper(*args, **kwargs) -> Any:
             # Skip caching if condition is False
             if condition and not condition(*args, **kwargs):
-                return await func(*args, **kwargs)
+                # Type: ignore because we know func is async
+                result = func(*args, **kwargs)  # type: ignore
+                if asyncio.iscoroutine(result):
+                    return await result
+                return result
 
             # Generate cache key
             prefix = key_prefix or f"{func.__module__}.{func.__name__}"
@@ -87,7 +92,10 @@ def cached(
 
             # Execute function and cache result
             logger.debug(f"Cache miss for {cache_key}")
-            result = await func(*args, **kwargs)
+            # Type: ignore because we know func is async
+            result = func(*args, **kwargs)  # type: ignore
+            if asyncio.iscoroutine(result):
+                result = await result
 
             # Store in cache if not None
             if result is not None:
@@ -97,7 +105,7 @@ def cached(
             return result
 
         @wraps(func)
-        def sync_wrapper(*args, **kwargs) -> T:
+        def sync_wrapper(*args, **kwargs) -> Any:
             # Skip caching if condition is False
             if condition and not condition(*args, **kwargs):
                 return func(*args, **kwargs)
@@ -126,8 +134,6 @@ def cached(
             return result
 
         # Return appropriate wrapper based on function type
-        import asyncio
-
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
         else:
