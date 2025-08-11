@@ -11,6 +11,11 @@ on:
     paths:
       - 'apps/api/**'
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
   test:
     name: 🧪 Run Tests
@@ -74,6 +79,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
 
     steps:
       - name: 📥 Checkout repository
@@ -106,20 +115,34 @@ jobs:
 
       - name: 💬 Comment Preview URL
         uses: actions/github-script@v7
+        continue-on-error: true
         with:
           script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `🚀 **Preview Environment Deployed!**
+            try {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `🚀 **Preview Environment Deployed!**
 
-              📡 API: https://taskagent-api-masa-preview.fly.dev
-              📊 Docs: https://taskagent-api-masa-preview.fly.dev/docs
-              🏥 Health: https://taskagent-api-masa-preview.fly.dev/health
+                📡 API: https://taskagent-api-masa-preview.fly.dev
+                📊 Docs: https://taskagent-api-masa-preview.fly.dev/docs
+                🏥 Health: https://taskagent-api-masa-preview.fly.dev/health
 
-              This preview will auto-scale to zero after 5 minutes of inactivity to save costs.`
-            })
+                This preview will auto-scale to zero after 5 minutes of inactivity to save costs.`
+              })
+              console.log('✅ Successfully commented preview URL on PR')
+            } catch (error) {
+              console.log('⚠️ Failed to comment on PR:', error.message)
+              console.log('📡 Preview deployed at: https://taskagent-api-masa-preview.fly.dev')
+            }
+
+      - name: ✅ Preview deployment success
+        if: success()
+        run: |
+          echo "🎉 Preview API successfully deployed!"
+          echo "📡 Preview URL: https://taskagent-api-masa-preview.fly.dev"
+          echo "📊 Docs: https://taskagent-api-masa-preview.fly.dev/docs"
 
   deploy-production:
     name: 🚀 Deploy to Production (Fly.io)
