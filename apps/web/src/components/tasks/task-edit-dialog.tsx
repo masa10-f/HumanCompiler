@@ -31,7 +31,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useTasks } from '@/hooks/use-tasks';
+import { useUpdateTask } from '@/hooks/use-tasks-query';
+import { toast } from '@/hooks/use-toast';
 import { taskStatusLabels } from '@/types/task';
 import type { Task } from '@/types/task';
 
@@ -52,8 +53,7 @@ interface TaskEditDialogProps {
 
 export function TaskEditDialog({ task, children }: TaskEditDialogProps) {
   const [open, setOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const { updateTask } = useTasks(task.goal_id);
+  const updateTaskMutation = useUpdateTask();
 
   const form = useForm<TaskFormData>({
     resolver: zodResolver(taskFormSchema),
@@ -79,19 +79,31 @@ export function TaskEditDialog({ task, children }: TaskEditDialogProps) {
 
   const onSubmit = async (data: TaskFormData) => {
     try {
-      setIsSubmitting(true);
-      await updateTask(task.id, {
-        title: data.title,
-        description: data.description || undefined,
-        estimate_hours: data.estimate_hours,
-        due_date: data.due_date || undefined,
-        status: data.status,
+      await updateTaskMutation.mutateAsync({
+        id: task.id,
+        data: {
+          title: data.title,
+          description: data.description || undefined,
+          estimate_hours: data.estimate_hours,
+          due_date: data.due_date || undefined,
+          status: data.status,
+        }
       });
+
+      toast({
+        title: 'タスクを更新しました',
+        description: `「${data.title}」が正常に更新されました。`,
+      });
+
       setOpen(false);
     } catch (error) {
       log.error('Failed to update task', error, { component: 'TaskEditDialog', taskId: task.id, action: 'updateTask' });
-    } finally {
-      setIsSubmitting(false);
+
+      toast({
+        title: 'エラー',
+        description: 'タスクの更新に失敗しました。再試行してください。',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -208,12 +220,12 @@ export function TaskEditDialog({ task, children }: TaskEditDialogProps) {
                 type="button"
                 variant="outline"
                 onClick={() => setOpen(false)}
-                disabled={isSubmitting}
+                disabled={updateTaskMutation.isPending}
               >
                 キャンセル
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? '更新中...' : '更新'}
+              <Button type="submit" disabled={updateTaskMutation.isPending}>
+                {updateTaskMutation.isPending ? '更新中...' : '更新'}
               </Button>
             </div>
           </form>

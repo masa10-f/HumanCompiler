@@ -24,7 +24,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { useTasks } from '@/hooks/use-tasks';
+import { useCreateTask } from '@/hooks/use-tasks-query';
+import { toast } from '@/hooks/use-toast';
 
 const taskFormSchema = z.object({
   title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
@@ -42,8 +43,7 @@ interface TaskFormDialogProps {
 
 export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
   const [open, setOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const { createTask } = useTasks(goalId);
+  const createTaskMutation = useCreateTask();
 
   const form = useForm<TaskFormData>({
     resolver: zodResolver(taskFormSchema),
@@ -57,7 +57,6 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
 
   const onSubmit = async (data: TaskFormData) => {
     try {
-      setIsSubmitting(true);
       const taskData = {
         title: data.title,
         description: data.description || undefined,
@@ -67,15 +66,24 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
       };
 
       log.component('TaskFormDialog', 'submitTask', taskData, { goalId });
-      await createTask(taskData);
+      await createTaskMutation.mutateAsync(taskData);
       log.component('TaskFormDialog', 'taskCreated', { taskTitle: data.title }, { goalId });
+
+      toast({
+        title: 'タスクを作成しました',
+        description: `「${data.title}」が正常に作成されました。`,
+      });
 
       form.reset();
       setOpen(false);
     } catch (error) {
       log.error('Failed to create task', error, { component: 'TaskFormDialog', goalId, action: 'submitTask' });
-    } finally {
-      setIsSubmitting(false);
+
+      toast({
+        title: 'エラー',
+        description: 'タスクの作成に失敗しました。再試行してください。',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -168,12 +176,12 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
                 type="button"
                 variant="outline"
                 onClick={() => setOpen(false)}
-                disabled={isSubmitting}
+                disabled={createTaskMutation.isPending}
               >
                 キャンセル
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? '作成中...' : '作成'}
+              <Button type="submit" disabled={createTaskMutation.isPending}>
+                {createTaskMutation.isPending ? '作成中...' : '作成'}
               </Button>
             </div>
           </form>
