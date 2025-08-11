@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { useProjects } from '@/hooks/use-projects';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -72,9 +73,23 @@ export default function AIPlanningPage() {
     }
 
     try {
+      // Get proper Supabase session with access token
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        log.error('No authenticated session found', null, { component: 'AIPlanning' });
+        toast({
+          title: 'エラー',
+          description: '認証が必要です。ログインしてください。',
+          variant: 'destructive',
+        });
+        setCheckingApiKey(false);
+        return;
+      }
+
       const response = await fetch(`${apiUrl}/api/user/settings`, {
         headers: {
-          Authorization: `Bearer ${user?.id}`,
+          Authorization: `Bearer ${session.access_token}`,
         },
       });
       if (response.ok) {

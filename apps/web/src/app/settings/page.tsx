@@ -38,15 +38,16 @@ export default function SettingsPage() {
   const fetchUserSettings = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
+      const { data: { session } } = await supabase.auth.getSession()
 
-      if (!user) {
+      if (!user || !session?.access_token) {
         router.push("/login")
         return
       }
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/settings`, {
         headers: {
-          Authorization: `Bearer ${user.id}`,
+          Authorization: `Bearer ${session.access_token}`,
         },
       })
 
@@ -57,7 +58,7 @@ export default function SettingsPage() {
 
         // Fetch usage data if API key is configured
         if (data.has_api_key) {
-          fetchUsageData(user.id)
+          fetchUsageData(session.access_token)
         }
       }
     } catch (err) {
@@ -67,11 +68,11 @@ export default function SettingsPage() {
     }
   }
 
-  const fetchUsageData = async (userId: string) => {
+  const fetchUsageData = async (accessToken: string) => {
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/usage`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${accessToken}`,
         },
       })
 
@@ -96,8 +97,9 @@ export default function SettingsPage() {
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
+      const { data: { session } } = await supabase.auth.getSession()
 
-      if (!user) {
+      if (!user || !session?.access_token) {
         router.push("/login")
         return
       }
@@ -106,7 +108,7 @@ export default function SettingsPage() {
         method: hasApiKey ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${user.id}`,
+          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           openai_api_key: apiKey,
@@ -142,8 +144,9 @@ export default function SettingsPage() {
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
+      const { data: { session } } = await supabase.auth.getSession()
 
-      if (!user) {
+      if (!user || !session?.access_token) {
         router.push("/login")
         return
       }
@@ -151,7 +154,7 @@ export default function SettingsPage() {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/settings/openai-key`, {
         method: "DELETE",
         headers: {
-          Authorization: `Bearer ${user.id}`,
+          Authorization: `Bearer ${session.access_token}`,
         },
       })
 
