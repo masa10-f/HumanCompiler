@@ -30,17 +30,72 @@ import type {
   TestSchedulerResponse
 } from '@/types/api-responses';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ||
-  (process.env.NODE_ENV === 'production'
+// Determine API URL based on environment
+const getApiBaseUrl = () => {
+  console.log(`🚀 getApiBaseUrl() called at ${new Date().toISOString()}`);
+
+  // If explicitly set via environment variable, use it
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    console.log(`🔧 Using env var NEXT_PUBLIC_API_URL: ${process.env.NEXT_PUBLIC_API_URL}`);
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+
+  // Server-side: use environment-based detection
+  if (typeof window === 'undefined') {
+    // During SSR, default to production API, will be corrected on client-side
+    return process.env.NODE_ENV === 'production'
+      ? 'https://taskagent-api-masa.fly.dev'
+      : 'http://localhost:8000';
+  }
+
+  // Client-side: use hostname detection
+  const hostname = window.location.hostname;
+
+  // Debug logging
+  console.log(`🌐 Current hostname: ${hostname}`);
+
+  // Add to window object for debugging
+  (window as any).taskAgentDebug = {
+    hostname,
+    timestamp: new Date().toISOString()
+  };
+
+  // Production Vercel deployment (exact match)
+  if (hostname === 'taskagent.vercel.app') {
+    console.log(`🏭 Using Production API`);
+    return 'https://taskagent-api-masa.fly.dev';
+  }
+
+  // Vercel preview deployments (any other vercel.app domain)
+  if (hostname.endsWith('.vercel.app')) {
+    console.log(`🔬 Using Preview API`);
+    console.log(`🔍 DEBUG: hostname="${hostname}", endsWith .vercel.app = true`);
+    // Temporary alert for debugging
+    if (hostname.includes('masato-fukushimas-projects')) {
+      alert(`DEBUG: Detected preview domain "${hostname}", switching to Preview API`);
+    }
+    return 'https://taskagent-api-masa-preview.fly.dev';
+  }
+
+  // Local development
+  if (hostname === 'localhost' || hostname.startsWith('localhost:')) {
+    console.log(`💻 Using Local API`);
+    return 'http://localhost:8000';
+  }
+
+  // Default fallback
+  console.log(`🔄 Using Default API (NODE_ENV: ${process.env.NODE_ENV})`);
+  return process.env.NODE_ENV === 'production'
     ? 'https://taskagent-api-masa.fly.dev'
-    : 'http://localhost:8000');
+    : 'http://localhost:8000';
+};
 
 // API client configuration
 class ApiClient {
-  private baseURL: string;
-
-  constructor(baseURL: string) {
-    this.baseURL = baseURL;
+  private getBaseURL(): string {
+    const url = getApiBaseUrl();
+    console.log(`🔗 ApiClient.getBaseURL() called, returning: ${url}`);
+    return url;
   }
 
   private async getAuthHeaders(): Promise<HeadersInit> {
@@ -69,7 +124,7 @@ class ApiClient {
     try {
       const headers = await this.getAuthHeaders();
 
-      const response = await fetch(`${this.baseURL}${endpoint}`, {
+      const response = await fetch(`${this.getBaseURL()}${endpoint}`, {
         ...options,
         headers: {
           ...headers,
@@ -288,7 +343,7 @@ class ApiClient {
   }
 }
 
-export const apiClient = new ApiClient(API_BASE_URL);
+export const apiClient = new ApiClient();
 
 // Export individual API functions for easier use
 export const projectsApi = {

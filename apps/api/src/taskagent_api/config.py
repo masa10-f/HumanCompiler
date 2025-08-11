@@ -137,24 +137,71 @@ class Settings(BaseSettings):
 
     def is_vercel_domain_allowed(self, origin: str) -> bool:
         """Check if a Vercel domain matches our security patterns"""
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         if not origin.endswith(".vercel.app"):
+            logger.info(f"CORS: {origin} not a vercel.app domain")
             return False
 
         # Extract subdomain
-        subdomain = origin.replace("https://", "").replace(".vercel.app", "")
+        subdomain = (
+            origin.replace("https://", "")
+            .replace("http://", "")
+            .replace(".vercel.app", "")
+        )
+
+        logger.info(f"CORS: Vercel domain check - subdomain: '{subdomain}'")
 
         # Allow taskagent-related domains only
         allowed_patterns = [
-            "taskagent",
-            "taskagent-",  # For dynamic deployments
-            "taskagent-git-",  # For feature branch deployments
+            "taskagent",  # Main production domain
+            "taskagent-",  # For dynamic deployments (taskagent-*)
+            "taskagent-git-",  # For feature branch deployments (taskagent-git-*)
         ]
+
+        # Also allow Vercel's auto-generated preview domains for this project
+        # All possible patterns for masato-fukushimas-projects:
+        # - taskagent-[hash]-masato-fukushimas-projects (expected)
+        # - taskagent-[hash] (actual from error log)
+        # - Any domain ending with masato-fukushimas-projects
+        if "masato-fukushimas-projects" in subdomain:
+            logger.info(f"CORS: Allowed masato-fukushimas-projects domain: {subdomain}")
+            return True
+
+        # Also check for plain taskagent domains and git feature branches
+        # Patterns: taskagent-[hash], taskagent-git-feature-*, etc.
+        if subdomain.startswith("taskagent-") and len(subdomain) > 10:
+            # Likely a Vercel preview domain (including git feature branches)
+            logger.info(f"CORS: Allowed taskagent- preview domain: {subdomain}")
+            return True
 
         for pattern in allowed_patterns:
             if subdomain.startswith(pattern):
                 return True
 
         return False
+
+    def is_fly_domain_allowed(self, origin: str) -> bool:
+        """Check if a Fly.io domain is allowed for preview API access"""
+        if not origin.endswith(".fly.dev"):
+            return False
+
+        # Extract subdomain
+        subdomain = (
+            origin.replace("https://", "")
+            .replace("http://", "")
+            .replace(".fly.dev", "")
+        )
+
+        # Allow our Fly.io API domains
+        allowed_fly_domains = [
+            "taskagent-api-masa",  # Production API
+            "taskagent-api-masa-preview",  # Preview API
+        ]
+
+        return subdomain in allowed_fly_domains
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False

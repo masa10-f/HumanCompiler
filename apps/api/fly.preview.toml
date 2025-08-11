@@ -1,0 +1,38 @@
+# Fly.io configuration for TaskAgent API Preview Environment
+app = "taskagent-api-masa-preview"
+primary_region = "nrt"  # Tokyo region for lower latency
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8000"
+  PYTHONPATH = "/app/src"
+  ENVIRONMENT = "staging"  # Different from production
+  DEBUG = "true"  # More verbose logging for debugging
+  # Optional: Enable read-only mode for shared database safety
+  # READ_ONLY_MODE = "true"  # Uncomment to prevent write operations
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true  # Important: stop when not in use
+  auto_start_machines = true
+  min_machines_running = 0   # Scale to zero when not in use
+  processes = ["app"]
+
+[vm]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512  # Smaller instance for preview (vs 1024 for production)
+
+[deploy]
+  release_command = "python -c 'print(\"Starting TaskAgent API Preview...\")'"
+
+# Preview environment uses same database but different secrets for isolation
+# Required secrets (will be set via GitHub Actions):
+# - DATABASE_URL (can share with production or use separate staging DB)
+# - SUPABASE_URL
+# - SUPABASE_ANON_KEY
+# - SUPABASE_SERVICE_ROLE_KEY
+# - OPENAI_API_KEY

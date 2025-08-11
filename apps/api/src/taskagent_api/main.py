@@ -76,14 +76,39 @@ app = FastAPI(
 # Configure CORS with dynamic Vercel domain support
 def is_origin_allowed(origin: str) -> bool:
     """Check if origin is allowed based on our CORS policy"""
+    logger = logging.getLogger(__name__)
+
+    # Enhanced logging for debugging
+    logger.info(f"CORS: Checking origin: {origin}")
+
+    # Extract domain info for debugging
+    if origin.endswith(".vercel.app"):
+        subdomain = (
+            origin.replace("https://", "")
+            .replace("http://", "")
+            .replace(".vercel.app", "")
+        )
+        logger.info(f"CORS: Vercel subdomain extracted: '{subdomain}'")
+
     # Check static allowed origins
     if origin in settings.cors_origins_list:
+        logger.info(f"CORS: Origin {origin} allowed by static list")
         return True
 
     # Check dynamic Vercel domains
     if settings.is_vercel_domain_allowed(origin):
+        logger.info(f"CORS: Origin {origin} allowed by Vercel domain check")
         return True
 
+    # Check Fly.io API domains (for cross-environment access)
+    if settings.is_fly_domain_allowed(origin):
+        logger.info(f"CORS: Origin {origin} allowed by Fly.io domain check")
+        return True
+
+    logger.warning(
+        f"CORS: Origin {origin} BLOCKED - not in allowed list or domain patterns"
+    )
+    logger.info(f"CORS: Available static origins: {settings.cors_origins_list}")
     return False
 
 
@@ -106,24 +131,24 @@ async def cors_middleware(request, call_next):
     # Handle preflight requests
     if request.method == "OPTIONS":
         if origin and is_origin_allowed(origin):
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Methods"] = (
+            # Create a successful OPTIONS response
+            from fastapi.responses import Response
+
+            preflight_response = Response(status_code=200)
+            preflight_response.headers["Access-Control-Allow-Origin"] = origin
+            preflight_response.headers["Access-Control-Allow-Credentials"] = "true"
+            preflight_response.headers["Access-Control-Allow-Methods"] = (
                 "GET, POST, PUT, DELETE, OPTIONS"
             )
-            response.headers["Access-Control-Allow-Headers"] = "*"
-            response.headers["Access-Control-Max-Age"] = "86400"
+            preflight_response.headers["Access-Control-Allow-Headers"] = "*"
+            preflight_response.headers["Access-Control-Max-Age"] = "86400"
+            return preflight_response
 
     return response
 
 
-# Add standard CORS middleware as fallback
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-)
+# Remove standard CORS middleware - using custom CORS middleware only
+# The custom cors_middleware function above handles all CORS processing
 
 # Configure rate limiting
 configure_rate_limiting(app)
