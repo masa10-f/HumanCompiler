@@ -32,8 +32,11 @@ import type {
 
 // Determine API URL based on environment
 const getApiBaseUrl = () => {
+  console.log(`🚀 getApiBaseUrl() called at ${new Date().toISOString()}`);
+
   // If explicitly set via environment variable, use it
   if (process.env.NEXT_PUBLIC_API_URL) {
+    console.log(`🔧 Using env var NEXT_PUBLIC_API_URL: ${process.env.NEXT_PUBLIC_API_URL}`);
     return process.env.NEXT_PUBLIC_API_URL;
   }
 
@@ -51,6 +54,12 @@ const getApiBaseUrl = () => {
   // Debug logging
   console.log(`🌐 Current hostname: ${hostname}`);
 
+  // Add to window object for debugging
+  (window as any).taskAgentDebug = {
+    hostname,
+    timestamp: new Date().toISOString()
+  };
+
   // Production Vercel deployment (exact match)
   if (hostname === 'taskagent.vercel.app') {
     console.log(`🏭 Using Production API`);
@@ -60,6 +69,11 @@ const getApiBaseUrl = () => {
   // Vercel preview deployments (any other vercel.app domain)
   if (hostname.endsWith('.vercel.app')) {
     console.log(`🔬 Using Preview API`);
+    console.log(`🔍 DEBUG: hostname="${hostname}", endsWith .vercel.app = true`);
+    // Temporary alert for debugging
+    if (hostname.includes('masato-fukushimas-projects')) {
+      alert(`DEBUG: Detected preview domain "${hostname}", switching to Preview API`);
+    }
     return 'https://taskagent-api-masa-preview.fly.dev';
   }
 
@@ -79,7 +93,9 @@ const getApiBaseUrl = () => {
 // API client configuration
 class ApiClient {
   private getBaseURL(): string {
-    return getApiBaseUrl();
+    const url = getApiBaseUrl();
+    console.log(`🔗 ApiClient.getBaseURL() called, returning: ${url}`);
+    return url;
   }
 
   private async getAuthHeaders(): Promise<HeadersInit> {
