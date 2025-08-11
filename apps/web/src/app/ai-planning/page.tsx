@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { useProjects } from '@/hooks/use-projects';
-import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,7 +32,7 @@ import { log } from '@/lib/logger';
 import type { WeeklyPlanResponse, WorkloadAnalysis, PrioritySuggestions } from '@/types/ai-planning';
 
 export default function AIPlanningPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, session, loading: authLoading } = useAuth();
   const { projects } = useProjects();
   const router = useRouter();
 
@@ -55,11 +54,7 @@ export default function AIPlanningPage() {
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [checkingApiKey, setCheckingApiKey] = useState(true);
 
-  useEffect(() => {
-    checkUserSettings();
-  }, []);
-
-  const checkUserSettings = async () => {
+  const checkUserSettings = useCallback(async () => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     if (!apiUrl) {
       log.error('Environment variable NEXT_PUBLIC_API_URL is not defined', null, { component: 'AIPlanning' });
@@ -72,21 +67,18 @@ export default function AIPlanningPage() {
       return;
     }
 
+    if (!session?.access_token) {
+      log.error('No authenticated session found', null, { component: 'AIPlanning' });
+      toast({
+        title: 'エラー',
+        description: '認証が必要です。ログインしてください。',
+        variant: 'destructive',
+      });
+      setCheckingApiKey(false);
+      return;
+    }
+
     try {
-      // Get proper Supabase session with access token
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session?.access_token) {
-        log.error('No authenticated session found', null, { component: 'AIPlanning' });
-        toast({
-          title: 'エラー',
-          description: '認証が必要です。ログインしてください。',
-          variant: 'destructive',
-        });
-        setCheckingApiKey(false);
-        return;
-      }
-
       const response = await fetch(`${apiUrl}/api/user/settings`, {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
@@ -95,13 +87,24 @@ export default function AIPlanningPage() {
       if (response.ok) {
         const data = await response.json();
         setHasApiKey(data.has_api_key);
+      } else {
+        log.error('Failed to fetch user settings', null, { component: 'AIPlanning', status: response.status });
       }
     } catch (error) {
       log.error('Failed to check user settings', error as Error, { component: 'AIPlanning' });
     } finally {
       setCheckingApiKey(false);
     }
-  };
+  }, [session]);
+
+  useEffect(() => {
+    if (session) {
+      checkUserSettings();
+    } else if (!authLoading) {
+      setCheckingApiKey(false);
+    }
+  }, [session, authLoading, checkUserSettings]);
+
   const [prioritySuggestions, setPrioritySuggestions] = useState<PrioritySuggestions | null>(null);
 
   if (authLoading || !user) {
