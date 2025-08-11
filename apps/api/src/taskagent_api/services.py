@@ -286,13 +286,23 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
         goal_data: GoalUpdate,
     ) -> Goal:
         """Update goal"""
-        return self.update(session, goal_id, goal_data, owner_id)
+        result = self.update(session, goal_id, goal_data, owner_id)
+        # Invalidate caches that might contain this goal's data
+        invalidate_cache("short", "goals_list")
+        invalidate_cache("short", "goals_by_project")
+        invalidate_cache("medium", "goal_detail")
+        return result
 
     def delete_goal(
         self, session: Session, goal_id: str | UUID, owner_id: str | UUID
     ) -> bool:
         """Delete goal"""
-        return self.delete(session, goal_id, owner_id)
+        result = self.delete(session, goal_id, owner_id)
+        # Invalidate caches that might contain this goal's data
+        invalidate_cache("short", "goals_list")
+        invalidate_cache("short", "goals_by_project")
+        invalidate_cache("medium", "goal_detail")
+        return result
 
 
 class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
@@ -403,13 +413,25 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         task_data: TaskUpdate,
     ) -> Task:
         """Update task"""
-        return self.update(session, task_id, task_data, owner_id)
+        result = self.update(session, task_id, task_data, owner_id)
+        # Invalidate caches that might contain this task's data
+        invalidate_cache("short", "tasks_list")
+        invalidate_cache("short", "tasks_by_goal")
+        invalidate_cache("short", "tasks_by_project")
+        invalidate_cache("medium", "task_detail")
+        return result
 
     def delete_task(
         self, session: Session, task_id: str | UUID, owner_id: str | UUID
     ) -> bool:
         """Delete task"""
-        return self.delete(session, task_id, owner_id)
+        result = self.delete(session, task_id, owner_id)
+        # Invalidate caches that might contain this task's data
+        invalidate_cache("short", "tasks_list")
+        invalidate_cache("short", "tasks_by_goal")
+        invalidate_cache("short", "tasks_by_project")
+        invalidate_cache("medium", "task_detail")
+        return result
 
 
 # Create service instances for use in routers
