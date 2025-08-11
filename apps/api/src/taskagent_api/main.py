@@ -88,8 +88,13 @@ def is_origin_allowed(origin: str) -> bool:
         logger.info(f"CORS: Origin {origin} allowed by Vercel domain check")
         return True
 
+    # Check Fly.io API domains (for cross-environment access)
+    if settings.is_fly_domain_allowed(origin):
+        logger.info(f"CORS: Origin {origin} allowed by Fly.io domain check")
+        return True
+
     logger.warning(
-        f"CORS: Origin {origin} blocked - not in allowed list or Vercel patterns"
+        f"CORS: Origin {origin} blocked - not in allowed list or domain patterns"
     )
     return False
 

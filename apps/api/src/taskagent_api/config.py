@@ -167,6 +167,26 @@ class Settings(BaseSettings):
 
         return False
 
+    def is_fly_domain_allowed(self, origin: str) -> bool:
+        """Check if a Fly.io domain is allowed for preview API access"""
+        if not origin.endswith(".fly.dev"):
+            return False
+
+        # Extract subdomain
+        subdomain = (
+            origin.replace("https://", "")
+            .replace("http://", "")
+            .replace(".fly.dev", "")
+        )
+
+        # Allow our Fly.io API domains
+        allowed_fly_domains = [
+            "taskagent-api-masa",  # Production API
+            "taskagent-api-masa-preview",  # Preview API
+        ]
+
+        return subdomain in allowed_fly_domains
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False
     )
