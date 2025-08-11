@@ -155,10 +155,16 @@ class Settings(BaseSettings):
         ]
 
         # Also allow Vercel's auto-generated preview domains for this project
-        # Pattern: taskagent-[hash]-masato-fukushimas-projects
-        if "masato-fukushimas-projects" in subdomain and subdomain.startswith(
-            "taskagent-"
-        ):
+        # All possible patterns for masato-fukushimas-projects:
+        # - taskagent-[hash]-masato-fukushimas-projects (expected)
+        # - taskagent-[hash] (actual from error log)
+        # - Any domain ending with masato-fukushimas-projects
+        if "masato-fukushimas-projects" in subdomain:
+            return True
+
+        # Also check for plain taskagent domains (from error log: taskagent-pl61j0wyg)
+        if subdomain.startswith("taskagent-") and len(subdomain) > 10:
+            # Likely a Vercel preview domain
             return True
 
         for pattern in allowed_patterns:

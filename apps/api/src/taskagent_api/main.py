@@ -78,6 +78,18 @@ def is_origin_allowed(origin: str) -> bool:
     """Check if origin is allowed based on our CORS policy"""
     logger = logging.getLogger(__name__)
 
+    # Enhanced logging for debugging
+    logger.info(f"CORS: Checking origin: {origin}")
+
+    # Extract domain info for debugging
+    if origin.endswith(".vercel.app"):
+        subdomain = (
+            origin.replace("https://", "")
+            .replace("http://", "")
+            .replace(".vercel.app", "")
+        )
+        logger.info(f"CORS: Vercel subdomain extracted: '{subdomain}'")
+
     # Check static allowed origins
     if origin in settings.cors_origins_list:
         logger.info(f"CORS: Origin {origin} allowed by static list")
@@ -94,8 +106,9 @@ def is_origin_allowed(origin: str) -> bool:
         return True
 
     logger.warning(
-        f"CORS: Origin {origin} blocked - not in allowed list or domain patterns"
+        f"CORS: Origin {origin} BLOCKED - not in allowed list or domain patterns"
     )
+    logger.info(f"CORS: Available static origins: {settings.cors_origins_list}")
     return False
 
 
