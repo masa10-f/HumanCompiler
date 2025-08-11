@@ -32,6 +32,10 @@
         {
           "key": "Permissions-Policy",
           "value": "camera=(), microphone=(), geolocation=()"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://taskagent-api-masa.fly.dev https://taskagent-api-masa-preview.fly.dev https://*.supabase.co; font-src 'self' data:;"
         }
       ]
     },
