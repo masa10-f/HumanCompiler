@@ -141,14 +141,25 @@ class Settings(BaseSettings):
             return False
 
         # Extract subdomain
-        subdomain = origin.replace("https://", "").replace(".vercel.app", "")
+        subdomain = (
+            origin.replace("https://", "")
+            .replace("http://", "")
+            .replace(".vercel.app", "")
+        )
 
         # Allow taskagent-related domains only
         allowed_patterns = [
-            "taskagent",
-            "taskagent-",  # For dynamic deployments
-            "taskagent-git-",  # For feature branch deployments
+            "taskagent",  # Main production domain
+            "taskagent-",  # For dynamic deployments (taskagent-*)
+            "taskagent-git-",  # For feature branch deployments (taskagent-git-*)
         ]
+
+        # Also allow Vercel's auto-generated preview domains for this project
+        # Pattern: taskagent-[hash]-masato-fukushimas-projects
+        if "masato-fukushimas-projects" in subdomain and subdomain.startswith(
+            "taskagent-"
+        ):
+            return True
 
         for pattern in allowed_patterns:
             if subdomain.startswith(pattern):

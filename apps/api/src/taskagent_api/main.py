@@ -76,14 +76,21 @@ app = FastAPI(
 # Configure CORS with dynamic Vercel domain support
 def is_origin_allowed(origin: str) -> bool:
     """Check if origin is allowed based on our CORS policy"""
+    logger = logging.getLogger(__name__)
+
     # Check static allowed origins
     if origin in settings.cors_origins_list:
+        logger.info(f"CORS: Origin {origin} allowed by static list")
         return True
 
     # Check dynamic Vercel domains
     if settings.is_vercel_domain_allowed(origin):
+        logger.info(f"CORS: Origin {origin} allowed by Vercel domain check")
         return True
 
+    logger.warning(
+        f"CORS: Origin {origin} blocked - not in allowed list or Vercel patterns"
+    )
     return False
 
 
