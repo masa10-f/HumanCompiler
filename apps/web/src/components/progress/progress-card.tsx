@@ -89,7 +89,6 @@ export function ProjectProgressCard({ progress, className }: ProjectProgressCard
       estimateHours={progress.estimate_hours}
       actualMinutes={progress.actual_minutes}
       progressPercentage={progress.progress_percentage}
-      type="project"
       className={className}
     />
   );
@@ -107,7 +106,6 @@ export function GoalProgressCard({ progress, className }: GoalProgressCardProps)
       estimateHours={progress.estimate_hours}
       actualMinutes={progress.actual_minutes}
       progressPercentage={progress.progress_percentage}
-      type="goal"
       className={className}
     />
   );
@@ -125,7 +123,6 @@ export function TaskProgressCard({ progress, className }: TaskProgressCardProps)
       estimateHours={progress.estimate_hours}
       actualMinutes={progress.actual_minutes}
       progressPercentage={progress.progress_percentage}
-      type="task"
       status={progress.status}
       className={className}
     />
