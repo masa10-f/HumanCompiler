@@ -18,7 +18,7 @@ export default function SettingsPage() {
   const router = useRouter()
   const [apiKey, setApiKey] = useState("")
   const [showApiKey, setShowApiKey] = useState(false)
-  const [openaiModel, setOpenaiModel] = useState("gpt-4")
+  const [openaiModel, setOpenaiModel] = useState("gpt-5")
   const [hasApiKey, setHasApiKey] = useState(false)
   const [loading, setLoading] = useState(false)
   const [loadingSettings, setLoadingSettings] = useState(true)
@@ -222,7 +222,9 @@ export default function SettingsPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="gpt-4">GPT-4 (Recommended)</SelectItem>
+                <SelectItem value="gpt-5">GPT-5 (Latest & Recommended)</SelectItem>
+                <SelectItem value="gpt-4o-2024-11-20">GPT-4o (Latest)</SelectItem>
+                <SelectItem value="gpt-4">GPT-4</SelectItem>
                 <SelectItem value="gpt-4-turbo-preview">GPT-4 Turbo</SelectItem>
                 <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
               </SelectContent>
