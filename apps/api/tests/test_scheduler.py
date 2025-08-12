@@ -38,7 +38,7 @@ class TestSchedulerAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
-        assert "Mock scheduler implementation working correctly" in data["message"]
+        assert "OR-Tools CP-SAT scheduler working correctly" in data["message"]
 
     @patch("taskagent_api.routers.scheduler.goal_service.get_goal")
     @patch("taskagent_api.routers.scheduler.db.get_session")
