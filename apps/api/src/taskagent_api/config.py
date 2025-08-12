@@ -141,6 +141,8 @@ class Settings(BaseSettings):
 
         logger = logging.getLogger(__name__)
 
+        logger.info(f"CORS: Checking Vercel domain allowance for origin: {origin}")
+
         if not origin.endswith(".vercel.app"):
             logger.info(f"CORS: {origin} not a vercel.app domain")
             return False
@@ -162,10 +164,10 @@ class Settings(BaseSettings):
         ]
 
         # Allow all Vercel preview domains for masato-fukushimas-projects account
-        # Patterns we support:
+        # This covers all possible patterns:
         # - taskagent-[hash]-masato-fukushimas-projects
         # - taskagent-[hash] (from masato-fukushimas-projects account)
-        # - Any domain ending with masato-fukushimas-projects
+        # - Any domain containing masato-fukushimas-projects
         if "masato-fukushimas-projects" in subdomain:
             logger.info(f"CORS: Allowed masato-fukushimas-projects domain: {subdomain}")
             return True
