@@ -17,6 +17,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { AppHeader } from '@/components/layout/app-header';
+import { LogFormDialog } from '@/components/logs/log-form-dialog';
 import { toast } from '@/hooks/use-toast';
 import { schedulingApi } from '@/lib/api';
 import type { DailySchedule } from '@/types/api-responses';
@@ -243,14 +244,25 @@ export default function ScheduleHistoryPage() {
                               </div>
                             </div>
                           </div>
-                          {assignment.project_id && assignment.goal_id && (
-                            <Link
-                              href={`/projects/${assignment.project_id}/goals/${assignment.goal_id}`}
-                              className="text-blue-500 hover:text-blue-700 transition-colors"
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                            </Link>
-                          )}
+                          <div className="flex items-center gap-2">
+                            <LogFormDialog
+                              taskId={assignment.task_id}
+                              taskTitle={assignment.task_title}
+                              trigger={
+                                <Button variant="outline" size="sm">
+                                  時間記録
+                                </Button>
+                              }
+                            />
+                            {assignment.project_id && assignment.goal_id && (
+                              <Link
+                                href={`/projects/${assignment.project_id}/goals/${assignment.goal_id}`}
+                                className="text-blue-500 hover:text-blue-700 transition-colors"
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </Link>
+                            )}
+                          </div>
                         </div>
                       ))}
                       {schedule.plan_json.assignments.length > 3 && (
