@@ -411,7 +411,7 @@ Use the create_week_plan function to structure your response."""
                 ],
                 "functions": self.get_function_definitions(),
                 "function_call": {"name": "create_week_plan"},
-                "max_completion_tokens": 2000,
+                "max_completion_tokens": 4000,  # Increased for complex plans with many tasks
             }
 
             # GPT-5 models only support default temperature (1.0)
