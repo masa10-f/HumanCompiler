@@ -9,122 +9,130 @@ from taskagent_api.ai.models import WeeklyPlanContext
 
 
 def get_function_definitions() -> list[dict[str, Any]]:
-    """Get OpenAI function definitions for task planning."""
+    """Get OpenAI tools definitions for task planning."""
     return [
         {
-            "name": "create_week_plan",
-            "description": (
-                "Create an optimal weekly plan for tasks based on user "
-                "context and preferences"
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "task_plans": {
-                        "type": "array",
-                        "description": "List of planned tasks for the week",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "task_id": {
-                                    "type": "string",
-                                    "description": "Unique task identifier",
+            "type": "function",
+            "function": {
+                "name": "create_week_plan",
+                "description": (
+                    "Create an optimal weekly plan for tasks based on user "
+                    "context and preferences"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_plans": {
+                            "type": "array",
+                            "description": "List of planned tasks for the week",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "task_id": {
+                                        "type": "string",
+                                        "description": "Unique task identifier",
+                                    },
+                                    "estimated_hours": {
+                                        "type": "number",
+                                        "description": "Estimated hours for the task",
+                                    },
+                                    "priority": {
+                                        "type": "integer",
+                                        "description": (
+                                            "Task priority (1=highest, 5=lowest)"
+                                        ),
+                                    },
+                                    "suggested_day": {
+                                        "type": "string",
+                                        "description": (
+                                            "Suggested day of week (Monday, Tuesday, etc.)"
+                                        ),
+                                    },
+                                    "suggested_time_slot": {
+                                        "type": "string",
+                                        "description": (
+                                            "Suggested time slot "
+                                            "(morning, afternoon, evening)"
+                                        ),
+                                    },
+                                    "rationale": {
+                                        "type": "string",
+                                        "description": (
+                                            "Reasoning for this scheduling decision"
+                                        ),
+                                    },
                                 },
-                                "estimated_hours": {
-                                    "type": "number",
-                                    "description": "Estimated hours for the task",
-                                },
-                                "priority": {
-                                    "type": "integer",
-                                    "description": (
-                                        "Task priority (1=highest, 5=lowest)"
-                                    ),
-                                },
-                                "suggested_day": {
-                                    "type": "string",
-                                    "description": (
-                                        "Suggested day of week (Monday, Tuesday, etc.)"
-                                    ),
-                                },
-                                "suggested_time_slot": {
-                                    "type": "string",
-                                    "description": (
-                                        "Suggested time slot "
-                                        "(morning, afternoon, evening)"
-                                    ),
-                                },
-                                "rationale": {
-                                    "type": "string",
-                                    "description": (
-                                        "Reasoning for this scheduling decision"
-                                    ),
-                                },
+                                "required": [
+                                    "task_id",
+                                    "estimated_hours",
+                                    "priority",
+                                    "suggested_day",
+                                    "suggested_time_slot",
+                                    "rationale",
+                                ],
                             },
-                            "required": [
-                                "task_id",
-                                "estimated_hours",
-                                "priority",
-                                "suggested_day",
-                                "suggested_time_slot",
-                                "rationale",
-                            ],
+                        },
+                        "recommendations": {
+                            "type": "array",
+                            "description": "General recommendations for the week",
+                            "items": {"type": "string"},
+                        },
+                        "insights": {
+                            "type": "array",
+                            "description": (
+                                "Insights about workload and optimization opportunities"
+                            ),
+                            "items": {"type": "string"},
                         },
                     },
-                    "recommendations": {
-                        "type": "array",
-                        "description": "General recommendations for the week",
-                        "items": {"type": "string"},
-                    },
-                    "insights": {
-                        "type": "array",
-                        "description": (
-                            "Insights about workload and optimization opportunities"
-                        ),
-                        "items": {"type": "string"},
-                    },
+                    "required": ["task_plans", "recommendations", "insights"],
                 },
-                "required": ["task_plans", "recommendations", "insights"],
             },
         },
         {
-            "name": "update_plan",
-            "description": "Update an existing plan based on progress and changes",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "updated_tasks": {
-                        "type": "array",
-                        "description": "Tasks with updated planning",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "task_id": {
-                                    "type": "string",
-                                    "description": "Task identifier",
+            "type": "function",
+            "function": {
+                "name": "update_plan",
+                "description": "Update an existing plan based on progress and changes",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "updated_tasks": {
+                            "type": "array",
+                            "description": "Tasks with updated planning",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "task_id": {
+                                        "type": "string",
+                                        "description": "Task identifier",
+                                    },
+                                    "new_estimated_hours": {
+                                        "type": "number",
+                                        "description": "Updated time estimate",
+                                    },
+                                    "new_priority": {
+                                        "type": "integer",
+                                        "description": "Updated priority level",
+                                    },
+                                    "adjustment_reason": {
+                                        "type": "string",
+                                        "description": "Reason for the adjustment",
+                                    },
                                 },
-                                "new_estimated_hours": {
-                                    "type": "number",
-                                    "description": "Updated time estimate",
-                                },
-                                "new_priority": {
-                                    "type": "integer",
-                                    "description": "Updated priority level",
-                                },
-                                "adjustment_reason": {
-                                    "type": "string",
-                                    "description": "Reason for the adjustment",
-                                },
+                                "required": ["task_id", "adjustment_reason"],
                             },
-                            "required": ["task_id", "adjustment_reason"],
+                        },
+                        "plan_adjustments": {
+                            "type": "array",
+                            "description": (
+                                "Overall plan adjustments and recommendations"
+                            ),
+                            "items": {"type": "string"},
                         },
                     },
-                    "plan_adjustments": {
-                        "type": "array",
-                        "description": ("Overall plan adjustments and recommendations"),
-                        "items": {"type": "string"},
-                    },
+                    "required": ["updated_tasks", "plan_adjustments"],
                 },
-                "required": ["updated_tasks", "plan_adjustments"],
             },
         },
     ]

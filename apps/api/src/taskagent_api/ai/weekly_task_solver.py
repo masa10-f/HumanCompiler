@@ -7,6 +7,7 @@ to provide intelligent task selection, project allocation, and constraint-based 
 
 import json
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -134,9 +135,9 @@ class WeeklyTaskSolver:
                 context, request.constraints
             )
 
-            # Generate AI-powered task selection
+            # Generate AI-powered task selection using Responses API
             if self.openai_client:
-                ai_response = await self._generate_ai_task_selection(
+                ai_response = await self._generate_ai_task_selection_responses(
                     context, request.constraints, project_allocations
                 )
                 selected_tasks = ai_response.get("selected_tasks", [])
@@ -297,54 +298,28 @@ class WeeklyTaskSolver:
 
         return allocations
 
-    async def _generate_ai_task_selection(
+    async def _generate_ai_task_selection_responses(
         self,
         context: WeeklyPlanContext,
         constraints: WeeklyConstraints,
         project_allocations: list[ProjectAllocation],
     ) -> dict[str, Any]:
-        """Generate AI-powered task selection using GPT-5."""
+        """Generate AI-powered task selection using GPT-5 Responses API."""
         try:
-            system_prompt = self._create_solver_system_prompt()
-            user_message = self._create_solver_user_message(
+            solver_context = self._create_solver_context(
                 context, constraints, project_allocations
             )
 
-            # Use GPT-5's new response API pattern
-            if self.model == "gpt-5":
-                response = self.openai_client.responses.create(
-                    model=self.model,
-                    input=f"{system_prompt}\n\n{user_message}",
-                    # GPT-5 handles structured output natively
-                )
-                # Parse GPT-5 response (assuming it returns structured JSON)
-                try:
-                    import json
+            # Use new Responses API with GPT-5
+            response = self.openai_client.responses.create(
+                model=self.model,
+                input=solver_context,
+                tools=self._get_solver_tools_definitions(),
+                temperature=0.3,  # Lower temperature for consistent optimization
+            )
 
-                    response_data = json.loads(response.content)
-                    return self._parse_gpt5_response(response_data, context)
-                except (json.JSONDecodeError, AttributeError):
-                    # Fallback to text parsing if structured response fails
-                    return self._parse_text_response(response.content, context)
-            else:
-                # Fallback to legacy chat completions API for other models
-                response = self.openai_client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_message},
-                    ],
-                    functions=self._get_solver_function_definitions(),
-                    function_call={"name": "solve_weekly_tasks"},
-                    temperature=0.3,  # Lower temperature for more consistent optimization
-                    max_tokens=3000,
-                )
-
-                function_call = response.choices[0].message.function_call
-                if function_call and function_call.name == "solve_weekly_tasks":
-                    return self._parse_solver_response(function_call, context)
-                else:
-                    raise ValueError("AI did not return expected function call")
+            # Parse Responses API output
+            return self._parse_responses_solver_output(response, context)
 
         except (RateLimitError, AuthenticationError, APIError) as e:
             logger.error(f"OpenAI API error in task solver: {e}")
@@ -419,36 +394,13 @@ class WeeklyTaskSolver:
 
         return selected_tasks, insights
 
-    def _create_solver_system_prompt(self) -> str:
-        """Create system prompt for AI task solver."""
-        return """You are an advanced AI task allocation optimizer specializing in weekly planning.
-
-Your role is to intelligently select and schedule tasks for optimal productivity while respecting constraints.
-
-Key capabilities:
-- Analyze project priorities and deadlines
-- Balance workload across multiple projects
-- Optimize for deep work blocks and energy management
-- Respect capacity and time constraints
-- Provide strategic insights on task prioritization
-
-Consider these factors in your optimization:
-1. Deadline urgency and business impact
-2. Task dependencies and blocking relationships
-3. Cognitive load and context switching costs
-4. Energy levels throughout the week
-5. Project strategic importance and resource allocation
-
-Always provide clear rationale for your decisions and actionable insights."""
-
-    def _create_solver_user_message(
+    def _create_solver_context(
         self,
         context: WeeklyPlanContext,
         constraints: WeeklyConstraints,
         project_allocations: list[ProjectAllocation],
     ) -> str:
-        """Create user message for AI task solver."""
-        # Format context data
+        """Create context input for Responses API task solver."""
         projects_data = [
             {
                 "id": p.id,
@@ -482,74 +434,91 @@ Always provide clear rationale for your decisions and actionable insights."""
             for a in project_allocations
         ]
 
-        return f"""Optimize weekly task selection for user {context.user_id}.
+        return f"""週間タスクの最適選択と配分を実行してください。
 
-Week: {context.week_start_date.strftime("%Y-%m-%d")}
-Total Capacity: {constraints.total_capacity_hours} hours
-Available for Tasks: {constraints.total_capacity_hours - constraints.meeting_buffer_hours} hours
+あなたは週間計画に特化した高度なAIタスク配分最適化エージェントです。
 
-PROJECTS:
-{json.dumps(projects_data, indent=2)}
+## ユーザー情報
+- ユーザーID: {context.user_id}
+- 週開始日: {context.week_start_date.strftime("%Y-%m-%d")}
+- 総容量: {constraints.total_capacity_hours} 時間
+- タスク用利用可能時間: {constraints.total_capacity_hours - constraints.meeting_buffer_hours} 時間
 
-AVAILABLE TASKS:
-{json.dumps(tasks_data, indent=2)}
+## プロジェクト情報
+{json.dumps(projects_data, indent=2, ensure_ascii=False)}
 
-PROJECT ALLOCATIONS:
-{json.dumps(allocations_data, indent=2)}
+## 利用可能タスク
+{json.dumps(tasks_data, indent=2, ensure_ascii=False)}
 
-CONSTRAINTS:
-- Daily max: {constraints.daily_max_hours} hours
-- Deep work blocks needed: {constraints.deep_work_blocks} per day
-- Meeting buffer: {constraints.meeting_buffer_hours} hours
-- Deadline weight: {constraints.deadline_weight}
-- Project balance weight: {constraints.project_balance_weight}
-- Effort efficiency weight: {constraints.effort_efficiency_weight}
+## プロジェクト配分
+{json.dumps(allocations_data, indent=2, ensure_ascii=False)}
 
-Select optimal tasks considering deadlines, project balance, and capacity constraints.
-Provide strategic insights on workload optimization and task prioritization."""
+## 制約条件
+- 日次最大: {constraints.daily_max_hours} 時間
+- 必要ディープワークブロック: {constraints.deep_work_blocks} 回/日
+- ミーティングバッファ: {constraints.meeting_buffer_hours} 時間
+- 締切重み: {constraints.deadline_weight}
+- プロジェクトバランス重み: {constraints.project_balance_weight}
+- 工数効率重み: {constraints.effort_efficiency_weight}
 
-    def _get_solver_function_definitions(self) -> list[dict[str, Any]]:
-        """Get function definitions for AI task solver."""
+## 最適化要件
+以下の要素を考慮して最適なタスクを選択し、スケジューリングしてください：
+
+1. 締切の緊急度とビジネスインパクト
+2. タスク依存関係とブロック関係
+3. 認知負荷とコンテキストスイッチングコスト
+4. 週間のエネルギーレベル
+5. プロジェクトの戦略的重要度とリソース配分
+
+締切、プロジェクトバランス、容量制約を考慮して最適なタスクを選択し、作業負荷最適化とタスク優先順位について戦略的な洞察を提供してください。
+
+solve_weekly_tasks関数を使用して構造化された結果を返してください。"""
+
+    def _get_solver_tools_definitions(self) -> list[dict[str, Any]]:
+        """Get tools definitions for AI task solver."""
         return [
             {
-                "name": "solve_weekly_tasks",
-                "description": "Solve optimal weekly task allocation",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "selected_tasks": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "task_id": {"type": "string"},
-                                    "estimated_hours": {"type": "number"},
-                                    "priority": {"type": "integer"},
-                                    "suggested_day": {"type": "string"},
-                                    "suggested_time_slot": {"type": "string"},
-                                    "rationale": {"type": "string"},
+                "type": "function",
+                "function": {
+                    "name": "solve_weekly_tasks",
+                    "description": "Solve optimal weekly task allocation",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "selected_tasks": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "task_id": {"type": "string"},
+                                        "estimated_hours": {"type": "number"},
+                                        "priority": {"type": "integer"},
+                                        "suggested_day": {"type": "string"},
+                                        "suggested_time_slot": {"type": "string"},
+                                        "rationale": {"type": "string"},
+                                    },
+                                    "required": [
+                                        "task_id",
+                                        "estimated_hours",
+                                        "priority",
+                                        "suggested_day",
+                                        "suggested_time_slot",
+                                        "rationale",
+                                    ],
                                 },
-                                "required": [
-                                    "task_id",
-                                    "estimated_hours",
-                                    "priority",
-                                    "suggested_day",
-                                    "suggested_time_slot",
-                                    "rationale",
-                                ],
+                            },
+                            "insights": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Strategic insights and optimization recommendations",
+                            },
+                            "allocation_analysis": {
+                                "type": "object",
+                                "description": "Analysis of project time allocations",
                             },
                         },
-                        "insights": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Strategic insights and optimization recommendations",
-                        },
-                        "allocation_analysis": {
-                            "type": "object",
-                            "description": "Analysis of project time allocations",
-                        },
+                        "required": ["selected_tasks", "insights"],
                     },
-                    "required": ["selected_tasks", "insights"],
                 },
             }
         ]
@@ -594,68 +563,100 @@ Provide strategic insights on workload optimization and task prioritization."""
                 "insights": [f"Response parse error: {str(e)}"],
             }
 
-    def _parse_gpt5_response(
-        self, response_data: dict, context: WeeklyPlanContext
+    def _parse_responses_solver_output(
+        self, response, context: WeeklyPlanContext
     ) -> dict[str, Any]:
-        """Parse GPT-5 structured response data."""
+        """Parse Responses API output for task solver"""
         try:
-            # GPT-5 is expected to return structured data directly
-            selected_tasks = []
-            for plan in response_data.get("selected_tasks", []):
-                # Find task title
-                task_title = next(
-                    (t.title for t in context.tasks if t.id == plan["task_id"]),
-                    "Unknown Task",
-                )
+            # Handle different possible response formats
+            if hasattr(response, "tool_calls") and response.tool_calls:
+                # Tool was called
+                tool_call = response.tool_calls[0]
+                if tool_call.function.name == "solve_weekly_tasks":
+                    function_args = json.loads(tool_call.function.arguments)
+                    return self._create_solver_response(function_args, context)
+                else:
+                    # Unexpected tool call
+                    return {
+                        "selected_tasks": [],
+                        "insights": [
+                            f"Unexpected tool call: {tool_call.function.name}"
+                        ],
+                    }
 
-                task_plan = TaskPlan(
-                    task_id=plan["task_id"],
-                    task_title=task_title,
-                    estimated_hours=plan["estimated_hours"],
-                    priority=plan["priority"],
-                    suggested_day=plan["suggested_day"],
-                    suggested_time_slot=plan["suggested_time_slot"],
-                    rationale=plan["rationale"],
-                )
-                selected_tasks.append(task_plan)
+            # Check for output_text or similar attributes
+            elif hasattr(response, "output_text"):
+                # Try to parse structured output from text
+                return self._parse_solver_text_output(response.output_text, context)
 
-            return {
-                "selected_tasks": selected_tasks,
-                "insights": response_data.get("insights", []),
-                "allocation_analysis": response_data.get("allocation_analysis", {}),
-            }
+            # Fallback: treat entire response as text and try to extract JSON
+            else:
+                response_text = str(response)
+                return self._parse_solver_text_output(response_text, context)
 
-        except (KeyError, ValueError, TypeError) as e:
-            logger.error(f"Error parsing GPT-5 response: {e}")
+        except Exception as e:
+            logger.error(f"Error parsing Responses API solver output: {e}")
             return {
                 "selected_tasks": [],
-                "insights": [f"GPT-5 response parse error: {str(e)}"],
+                "insights": [f"ソルバーレスポンス解析エラー: {str(e)}"],
             }
 
-    def _parse_text_response(
-        self, response_text: str, context: WeeklyPlanContext
+    def _create_solver_response(
+        self, function_args: dict, context: WeeklyPlanContext
     ) -> dict[str, Any]:
-        """Fallback text parsing for GPT-5 responses."""
-        # Try to extract JSON from text response
-        import re
+        """Create solver response from function arguments"""
+        # Convert to TaskPlan objects
+        selected_tasks = []
+        for plan in function_args.get("selected_tasks", []):
+            # Find task title
+            task_title = next(
+                (t.title for t in context.tasks if t.id == plan["task_id"]),
+                "Unknown Task",
+            )
 
-        json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
-        if json_match:
-            try:
-                response_data = json.loads(json_match.group())
-                return self._parse_gpt5_response(response_data, context)
-            except (json.JSONDecodeError, ValueError) as e:
-                logger.error(f"Error parsing GPT-5 text response: {e}")
+            task_plan = TaskPlan(
+                task_id=plan["task_id"],
+                task_title=task_title,
+                estimated_hours=plan["estimated_hours"],
+                priority=plan["priority"],
+                suggested_day=plan["suggested_day"],
+                suggested_time_slot=plan["suggested_time_slot"],
+                rationale=plan["rationale"],
+            )
+            selected_tasks.append(task_plan)
+
+        return {
+            "selected_tasks": selected_tasks,
+            "insights": function_args.get("insights", []),
+            "allocation_analysis": function_args.get("allocation_analysis", {}),
+        }
+
+    def _parse_solver_text_output(
+        self, output_text: str, context: WeeklyPlanContext
+    ) -> dict[str, Any]:
+        """Parse structured output from text response"""
+        try:
+            # Look for JSON in the response
+            json_match = re.search(r"\{.*\}", output_text, re.DOTALL)
+            if json_match is not None:
+                json_data = json.loads(json_match.group())
+                return self._create_solver_response(json_data, context)
+            else:
+                # If no structured data, return basic response
                 return {
                     "selected_tasks": [],
-                    "insights": [f"GPT-5 text parse error: {str(e)}"],
+                    "insights": [
+                        output_text[:200] + "..."
+                        if len(output_text) > 200
+                        else output_text
+                    ],
+                    "allocation_analysis": {},
                 }
-        else:
-            # If no JSON found, return basic insights
-            return {  # type: ignore[unreachable]
+        except Exception as e:
+            logger.error(f"Error parsing solver text output: {e}")
+            return {
                 "selected_tasks": [],
-                "insights": [f"GPT-5 text response: {response_text[:200]}..."],
-                "allocation_analysis": {},
+                "insights": [f"テキストレスポンス解析エラー: {str(e)}"],
             }
 
     def _calculate_solver_metrics(
