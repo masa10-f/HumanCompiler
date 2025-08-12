@@ -319,11 +319,15 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          <LogFormDialog taskId={task.id} taskTitle={task.title}>
-                            <Button variant="outline" size="sm">
-                              時間記録
-                            </Button>
-                          </LogFormDialog>
+                          <LogFormDialog
+                            taskId={task.id}
+                            taskTitle={task.title}
+                            trigger={
+                              <Button variant="outline" size="sm">
+                                時間記録
+                              </Button>
+                            }
+                          />
                           <TaskEditDialog task={task}>
                             <Button variant="outline" size="sm">
                               編集

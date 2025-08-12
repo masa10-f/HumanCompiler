@@ -248,11 +248,12 @@ export default function ScheduleHistoryPage() {
                             <LogFormDialog
                               taskId={assignment.task_id}
                               taskTitle={assignment.task_title}
-                            >
-                              <Button variant="outline" size="sm">
-                                時間記録
-                              </Button>
-                            </LogFormDialog>
+                              trigger={
+                                <Button variant="outline" size="sm">
+                                  時間記録
+                                </Button>
+                              }
+                            />
                             {assignment.project_id && assignment.goal_id && (
                               <Link
                                 href={`/projects/${assignment.project_id}/goals/${assignment.goal_id}`}

@@ -37,11 +37,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     refetch: refetchGoals
   } = useGoalsByProject(params.id);
 
-  const {
-    data: projectProgress,
-    isLoading: progressLoading,
-    error: progressError,
-  } = useQuery({
+  const { data: projectProgress } = useQuery({
     queryKey: ['progress', 'project', params.id],
     queryFn: () => progressApi.getProject(params.id),
     enabled: !!project,

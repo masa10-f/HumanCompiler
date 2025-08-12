@@ -10,7 +10,6 @@ interface ProgressCardProps {
   estimateHours: number;
   actualMinutes: number;
   progressPercentage: number;
-  type: "project" | "goal" | "task";
   status?: string;
   className?: string;
 }
@@ -20,32 +19,11 @@ export function ProgressCard({
   estimateHours,
   actualMinutes,
   progressPercentage,
-  type,
   status,
   className = "",
 }: ProgressCardProps) {
   const actualHours = actualMinutes / 60;
   const isOvertime = actualHours > estimateHours;
-  
-  const getStatusColor = (status?: string) => {
-    switch (status) {
-      case "completed":
-        return "bg-green-500";
-      case "in_progress":
-        return "bg-blue-500";
-      case "cancelled":
-        return "bg-gray-500";
-      default:
-        return "bg-yellow-500";
-    }
-  };
-
-  const getProgressColor = () => {
-    if (progressPercentage >= 100) return "bg-green-500";
-    if (progressPercentage >= 75) return "bg-blue-500";
-    if (progressPercentage >= 50) return "bg-yellow-500";
-    return "bg-gray-300";
-  };
 
   return (
     <Card className={className}>
@@ -70,12 +48,12 @@ export function ProgressCard({
               {Math.round(progressPercentage)}%
             </span>
           </div>
-          <Progress 
-            value={Math.min(progressPercentage, 100)} 
+          <Progress
+            value={Math.min(progressPercentage, 100)}
             className="h-2"
           />
         </div>
-        
+
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <div className="text-muted-foreground">見積時間</div>
@@ -88,7 +66,7 @@ export function ProgressCard({
             </div>
           </div>
         </div>
-        
+
         {isOvertime && (
           <div className="text-xs text-red-600 bg-red-50 p-2 rounded">
             超過時間: {(actualHours - estimateHours).toFixed(1)}h

@@ -69,7 +69,7 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
     },
     onError: (error) => {
       console.error("Failed to create log:", error);
-      showErrorToast(error, "作業時間の登録に失敗しました");
+      showErrorToast(error, { title: "作業時間の登録に失敗しました" });
     },
   });
 
@@ -99,7 +99,7 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
             <div className="text-sm text-muted-foreground">
               タスク: {taskTitle}
             </div>
-            
+
             <FormField
               control={form.control}
               name="actual_minutes"
