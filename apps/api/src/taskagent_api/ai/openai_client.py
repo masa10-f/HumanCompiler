@@ -46,10 +46,10 @@ class OpenAIClient:
                 "OpenAI API key not configured - AI features will not be available"
             )
             self.client = None
-            self.model = "gpt-4-1106-preview"  # GPT-4 Turbo with function calling
+            self.model = "gpt-4o-2024-11-20"  # Latest GPT-4 model (GPT-5 placeholder)
         else:
             self.client = OpenAI(api_key=settings.openai_api_key)
-            self.model = "gpt-4-1106-preview"  # GPT-4 Turbo with function calling
+            self.model = "gpt-4o-2024-11-20"  # Latest GPT-4 model (GPT-5 placeholder)
 
     def is_available(self) -> bool:
         """Check if OpenAI client is available"""

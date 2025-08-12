@@ -10,6 +10,11 @@ from sqlmodel import Session
 from uuid import UUID
 
 from taskagent_api.ai import WeeklyPlanRequest, WeeklyPlanResponse, WeeklyPlanService
+from taskagent_api.ai.weekly_task_solver import (
+    WeeklyTaskSolver,
+    TaskSolverRequest,
+    TaskSolverResponse,
+)
 from taskagent_api.ai_service import OpenAIService
 from taskagent_api.auth import get_current_user_id
 from taskagent_api.database import get_session, db
@@ -107,6 +112,95 @@ async def generate_weekly_plan(
             detail=ErrorResponse.create(
                 code="INTERNAL_SERVER_ERROR",
                 message="Internal server error during plan generation",
+                details={"error_type": type(e).__name__},
+            ).model_dump(),
+        )
+
+
+@router.post(
+    "/weekly-task-solver",
+    response_model=TaskSolverResponse,
+    responses={
+        400: {"model": ErrorResponse, "description": "Bad request"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def solve_weekly_tasks(
+    request: TaskSolverRequest,
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(get_session),
+):
+    """
+    Advanced AI-powered weekly task solver using GPT-5.
+
+    This endpoint provides intelligent task selection and allocation optimization:
+    1. Analyzes project priorities and deadline constraints
+    2. Optimizes time allocation across multiple projects
+    3. Selects optimal tasks considering capacity and constraints
+    4. Provides strategic insights on workload optimization
+
+    The solver considers:
+    - Project allocation strategies and time budgets
+    - Deadline urgency and business impact
+    - Weekly capacity and daily time constraints
+    - Deep work scheduling and energy management
+    - Task dependencies and context switching costs
+    """
+    try:
+        logger.info(
+            f"Starting weekly task solving for user {user_id} starting {request.week_start_date}"
+        )
+
+        # Validate week start date
+        try:
+            week_start = datetime.strptime(request.week_start_date, "%Y-%m-%d").date()
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ErrorResponse.create(
+                    code="INVALID_DATE_FORMAT",
+                    message="Invalid date format. Use YYYY-MM-DD",
+                    details={"provided_date": request.week_start_date},
+                ).model_dump(),
+            ) from e
+
+        # Check if date is in the past (allow current week)
+        today = date.today()
+        if week_start < today and (today - week_start).days > 7:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ErrorResponse.create(
+                    code="INVALID_DATE_RANGE",
+                    message="Cannot create plans for weeks more than 7 days in the past",
+                    details={
+                        "provided_date": str(week_start),
+                        "current_date": str(today),
+                    },
+                ).model_dump(),
+            )
+
+        # Create user-specific task solver
+        task_solver = await WeeklyTaskSolver.create_for_user(UUID(user_id), session)
+
+        # Solve weekly tasks
+        solver_response = await task_solver.solve_weekly_tasks(
+            session=session, user_id=user_id, request=request
+        )
+
+        logger.info(
+            f"Weekly task solving completed: {len(solver_response.selected_tasks)} tasks selected"
+        )
+        return solver_response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in weekly task solver: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse.create(
+                code="INTERNAL_SERVER_ERROR",
+                message="Internal server error during task solving",
                 details={"error_type": type(e).__name__},
             ).model_dump(),
         )
