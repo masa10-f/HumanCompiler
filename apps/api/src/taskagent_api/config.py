@@ -51,6 +51,10 @@ class Settings(BaseSettings):
         default=None,
         description="Optional encryption key for API keys (base64 encoded)",
     )
+    encryption_salt: str | None = Field(
+        default=None,
+        description="Base64-encoded salt for key derivation (required for encryption)",
+    )
 
     # Environment
     environment: str = Field(
