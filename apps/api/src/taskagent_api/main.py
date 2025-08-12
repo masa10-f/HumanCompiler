@@ -129,18 +129,7 @@ def is_origin_allowed(origin: str) -> bool:
 async def cors_middleware(request, call_next):
     origin = request.headers.get("origin")
 
-    response = await call_next(request)
-
-    if origin and is_origin_allowed(origin):
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Allow-Methods"] = (
-            "GET, POST, PUT, DELETE, OPTIONS"
-        )
-        response.headers["Access-Control-Allow-Headers"] = "*"
-        response.headers["Access-Control-Max-Age"] = "86400"
-
-    # Handle preflight requests
+    # Handle preflight requests first
     if request.method == "OPTIONS":
         if origin and is_origin_allowed(origin):
             # Create a successful OPTIONS response
@@ -155,6 +144,31 @@ async def cors_middleware(request, call_next):
             preflight_response.headers["Access-Control-Allow-Headers"] = "*"
             preflight_response.headers["Access-Control-Max-Age"] = "86400"
             return preflight_response
+
+    # Wrap call_next in try-catch to ensure CORS headers are always added
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        # Create error response with CORS headers
+        from fastapi.responses import JSONResponse
+
+        logger = logging.getLogger(__name__)
+        logger.error(f"Request processing failed: {e}")
+
+        response = JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error", "error_code": None},
+        )
+
+    # Always add CORS headers for allowed origins
+    if origin and is_origin_allowed(origin):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = (
+            "GET, POST, PUT, DELETE, OPTIONS"
+        )
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Max-Age"] = "86400"
 
     return response
 
