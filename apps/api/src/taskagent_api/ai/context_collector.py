@@ -2,11 +2,14 @@
 Context collection service for AI planning
 """
 
+import logging
 from datetime import date
 from typing import Any
 
 from taskagent_api.ai.models import WeeklyPlanContext
 from taskagent_api.services import goal_service, project_service, task_service
+
+logger = logging.getLogger(__name__)
 
 
 class ContextCollector:
@@ -28,12 +31,16 @@ class ContextCollector:
     ) -> WeeklyPlanContext:
         """Collect context data for weekly planning"""
 
+        logger.debug(f"Context Collection: Starting for user {user_id}")
+
         # Get user's projects
         projects = self.project_service.get_projects(session, user_id)
+        logger.debug(f"Context Collection: Found {len(projects)} projects")
 
         # Filter projects if specified
         if project_filter:
             projects = [p for p in projects if str(p.id) in project_filter]
+            logger.debug(f"Context Collection: Filtered to {len(projects)} projects")
 
         # Get goals for the projects
         goals = []
@@ -43,17 +50,27 @@ class ContextCollector:
             )
             goals.extend(project_goals)
 
-        # Get pending tasks for the goals
+        logger.debug(f"Context Collection: Total {len(goals)} goals found")
+
+        # Get active tasks for the goals
         tasks = []
         for goal in goals:
             goal_tasks = self.task_service.get_tasks_by_goal(session, goal.id, user_id)
-            # Only include pending and in-progress tasks
-            pending_tasks = [
-                t for t in goal_tasks if t.status in ["pending", "in_progress"]
-            ]
-            tasks.extend(pending_tasks)
 
-        return WeeklyPlanContext(
+            # Include tasks that are not completed or cancelled
+            active_tasks = [
+                t
+                for t in goal_tasks
+                if t.status not in ["completed", "cancelled", "done", "finished"]
+            ]
+
+            tasks.extend(active_tasks)
+
+        logger.info(
+            f"Context Collection: Collected {len(projects)} projects, {len(goals)} goals, {len(tasks)} active tasks"
+        )
+
+        context = WeeklyPlanContext(
             user_id=user_id,
             week_start_date=week_start_date,
             projects=projects,
@@ -62,3 +79,4 @@ class ContextCollector:
             capacity_hours=capacity_hours,
             preferences=preferences or {},
         )
+        return context
