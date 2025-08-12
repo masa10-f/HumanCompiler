@@ -411,7 +411,7 @@ Use the create_week_plan function to structure your response."""
                 functions=self.get_function_definitions(),
                 function_call={"name": "create_week_plan"},
                 temperature=0.7,
-                max_tokens=2000,
+                max_completion_tokens=2000,
             )
 
             # Log API usage

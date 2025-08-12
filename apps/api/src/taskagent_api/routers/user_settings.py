@@ -49,7 +49,7 @@ async def validate_openai_api_key(api_key: str) -> bool:
         client.chat.completions.create(
             model="gpt-3.5-turbo",  # Use a lightweight model for validation
             messages=[{"role": "system", "content": "ping"}],  # Minimal input
-            max_tokens=1,  # Limit response size
+            max_completion_tokens=1,  # Limit response size
         )
         return True
     except openai.AuthenticationError:
