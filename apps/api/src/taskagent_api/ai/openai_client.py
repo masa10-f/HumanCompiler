@@ -88,13 +88,33 @@ class OpenAIClient:
             # Create structured input for Responses API
             planning_context = self._format_planning_context(context)
 
-            # Use new Responses API (GPT-5)
-            # Note: GPT-5 Responses API only supports default temperature (1.0)
-            response = self.client.responses.create(
-                model=self.model,
-                input=planning_context,
-                tools=self._get_planning_tools(),
-            )
+            # Try Responses API first, fallback to Chat Completions if not available
+            try:
+                # Use new Responses API (GPT-5)
+                # Note: GPT-5 Responses API only supports default temperature (1.0)
+                response = self.client.responses.create(
+                    model=self.model,
+                    input=planning_context,
+                    tools=self._get_planning_tools(),
+                )
+            except AttributeError as attr_error:
+                # Responses API not available, fallback to Chat Completions
+                logger.warning(
+                    f"Responses API not available: {attr_error}, falling back to Chat Completions"
+                )
+                return await self._fallback_to_chat_completions(
+                    context, planning_context
+                )
+            except APIError as api_error:
+                if "Unknown API" in str(api_error) or "not found" in str(api_error):
+                    logger.warning(
+                        f"Responses API not supported: {api_error}, falling back to Chat Completions"
+                    )
+                    return await self._fallback_to_chat_completions(
+                        context, planning_context
+                    )
+                else:
+                    raise  # Re-raise other API errors
 
             # Parse response (structure may vary based on SDK version)
             return self._parse_responses_api_output(response, context)
@@ -371,3 +391,72 @@ class OpenAIClient:
             return self._create_error_response(
                 context, "テキストレスポンスの解析に失敗しました。"
             )
+
+    async def _fallback_to_chat_completions(
+        self, context: WeeklyPlanContext, planning_context: str
+    ) -> WeeklyPlanResponse:
+        """Fallback to Chat Completions API when Responses API is not available"""
+        try:
+            logger.info(f"Using Chat Completions API fallback for model {self.model}")
+
+            # Prepare API parameters for Chat Completions
+            api_params = {
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "あなたは週間計画作成の専門家です。与えられたコンテキストに基づいて最適な週間計画を作成してください。",
+                    },
+                    {"role": "user", "content": planning_context},
+                ],
+                "tools": self._get_planning_tools(),
+                "tool_choice": "auto",
+                "max_completion_tokens": 2000,
+            }
+
+            # GPT-5 models only support default temperature (1.0)
+            if not self.model.startswith("gpt-5"):
+                api_params["temperature"] = 0.7
+
+            response = self.client.chat.completions.create(**api_params)
+
+            # Parse Chat Completions response
+            return self._parse_chat_completions_response(response, context)
+
+        except Exception as e:
+            logger.error(f"Chat Completions fallback failed: {e}")
+            return self._create_error_response(
+                context, f"AI処理でエラーが発生しました: {str(e)}"
+            )
+
+    def _parse_chat_completions_response(
+        self, response, context: WeeklyPlanContext
+    ) -> WeeklyPlanResponse:
+        """Parse Chat Completions API response"""
+        try:
+            message = response.choices[0].message
+
+            if message.tool_calls:
+                # Tool was called
+                tool_call = message.tool_calls[0]
+                if tool_call.function.name == "create_weekly_plan":
+                    import json
+
+                    function_args = json.loads(tool_call.function.arguments)
+                    return self._create_weekly_plan_response(function_args, context)
+                else:
+                    return self._create_error_response(
+                        context, f"予期しないツール呼び出し: {tool_call.function.name}"
+                    )
+            else:
+                # No tool call, try to parse text content
+                if message.content:
+                    return self._parse_structured_text_output(message.content, context)
+                else:
+                    return self._create_error_response(
+                        context, "AIからの応答が空でした。"
+                    )
+
+        except Exception as e:
+            logger.error(f"Error parsing Chat Completions response: {e}")
+            return self._create_error_response(context, "AI応答の解析に失敗しました。")

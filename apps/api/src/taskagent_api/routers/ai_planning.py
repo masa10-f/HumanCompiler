@@ -224,7 +224,7 @@ async def test_ai_integration():
             "message": "OpenAI integration working",
             "model": ai_client.model,
             "functions_available": len(functions),
-            "function_names": [f["name"] for f in functions],
+            "function_names": [f["function"]["name"] for f in functions],
         }
     except Exception as e:
         return {

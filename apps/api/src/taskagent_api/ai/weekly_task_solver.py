@@ -310,13 +310,23 @@ class WeeklyTaskSolver:
                 context, constraints, project_allocations
             )
 
-            # Use new Responses API with GPT-5
-            # Note: GPT-5 Responses API only supports default temperature (1.0)
-            response = self.openai_client.responses.create(
-                model=self.model,
-                input=solver_context,
-                tools=self._get_solver_tools_definitions(),
-            )
+            # Try Responses API first, fallback to Chat Completions if not available
+            try:
+                # Use new Responses API with GPT-5
+                # Note: GPT-5 Responses API only supports default temperature (1.0)
+                response = self.openai_client.responses.create(
+                    model=self.model,
+                    input=solver_context,
+                    tools=self._get_solver_tools_definitions(),
+                )
+            except (AttributeError, APIError) as e:
+                # Responses API not available, fallback to Chat Completions
+                logger.warning(
+                    f"Responses API not available: {e}, falling back to Chat Completions"
+                )
+                return self._fallback_to_chat_completions(
+                    context, solver_context, constraints, project_allocations
+                )
 
             # Parse Responses API output
             return self._parse_responses_solver_output(response, context)
@@ -718,3 +728,86 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
             "projects_involved": len(project_hours),
             "project_distribution": project_hours,
         }
+
+    def _fallback_to_chat_completions(
+        self,
+        context: WeeklyPlanContext,
+        solver_context: str,
+        constraints: WeeklyConstraints,
+        project_allocations: list[ProjectAllocation],
+    ) -> dict[str, Any]:
+        """Fallback to Chat Completions API when Responses API is not available"""
+        try:
+            logger.info(
+                f"Using Chat Completions fallback for task solver with model {self.model}"
+            )
+
+            # Prepare API parameters for Chat Completions
+            api_params = {
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "あなたは週間タスク最適化の専門家です。与えられた制約とプロジェクト情報に基づいて最適なタスク選択を行ってください。",
+                    },
+                    {"role": "user", "content": solver_context},
+                ],
+                "tools": self._get_solver_tools_definitions(),
+                "tool_choice": "auto",
+                "max_completion_tokens": 2000,
+            }
+
+            # GPT-5 models only support default temperature (1.0)
+            if not self.model.startswith("gpt-5"):
+                api_params["temperature"] = (
+                    0.3  # Lower temperature for consistent optimization
+                )
+
+            response = self.openai_client.chat.completions.create(**api_params)
+
+            # Parse Chat Completions response
+            return self._parse_chat_completions_solver_response(response, context)
+
+        except Exception as e:
+            logger.error(f"Chat Completions fallback failed for task solver: {e}")
+            return {
+                "selected_tasks": [],
+                "insights": [f"ソルバーフォールバックエラー: {str(e)}"],
+            }
+
+    def _parse_chat_completions_solver_response(
+        self, response, context: WeeklyPlanContext
+    ) -> dict[str, Any]:
+        """Parse Chat Completions API response for task solver"""
+        try:
+            message = response.choices[0].message
+
+            if message.tool_calls:
+                # Tool was called
+                tool_call = message.tool_calls[0]
+                if tool_call.function.name == "solve_weekly_tasks":
+                    function_args = json.loads(tool_call.function.arguments)
+                    return self._create_solver_response(function_args, context)
+                else:
+                    return {
+                        "selected_tasks": [],
+                        "insights": [
+                            f"予期しないツール呼び出し: {tool_call.function.name}"
+                        ],
+                    }
+            else:
+                # No tool call, try to parse text content
+                if message.content:
+                    return self._parse_solver_text_output(message.content, context)
+                else:
+                    return {
+                        "selected_tasks": [],
+                        "insights": ["AIからの応答が空でした。"],
+                    }
+
+        except Exception as e:
+            logger.error(f"Error parsing Chat Completions solver response: {e}")
+            return {
+                "selected_tasks": [],
+                "insights": [f"ソルバー応答解析エラー: {str(e)}"],
+            }
