@@ -235,6 +235,49 @@ async def test_ai_integration():
         }
 
 
+@router.get("/diagnose")
+async def diagnose_ai_setup(
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(get_session),
+):
+    """Diagnose AI setup and configuration for debugging"""
+    try:
+        from taskagent_api.ai.openai_client import OpenAIClient
+        from taskagent_api.models import UserSettings
+        from sqlmodel import select
+
+        # Get user settings
+        result = session.execute(
+            select(UserSettings).where(UserSettings.user_id == user_id)
+        )
+        user_settings = result.scalar_one_or_none()
+
+        # Create user-specific client
+        client = await OpenAIClient.create_for_user(UUID(user_id), session)
+
+        return {
+            "status": "success",
+            "user_id": user_id,
+            "has_user_settings": user_settings is not None,
+            "has_api_key": bool(
+                user_settings and user_settings.openai_api_key_encrypted
+            ),
+            "configured_model": user_settings.openai_model if user_settings else "N/A",
+            "client_available": client.is_available(),
+            "client_model": client.model,
+            "ai_features_enabled": user_settings.ai_features_enabled
+            if user_settings
+            else False,
+        }
+    except Exception as e:
+        logger.error(f"Error in AI diagnosis: {e}")
+        return {
+            "status": "error",
+            "message": f"Diagnosis failed: {str(e)}",
+            "error_type": type(e).__name__,
+        }
+
+
 @router.post(
     "/analyze-workload",
     responses={

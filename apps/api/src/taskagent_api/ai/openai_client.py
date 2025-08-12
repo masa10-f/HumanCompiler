@@ -83,7 +83,14 @@ class OpenAIClient:
 
             # Check if OpenAI client is available
             if not self.is_available():
+                logger.warning("OpenAI client is not available")
                 return self._create_unavailable_response(context)
+
+            # Log diagnostic information
+            logger.info(f"Starting plan generation with model: {self.model}")
+            logger.info(
+                f"Context: {len(context.tasks)} tasks, {len(context.projects)} projects"
+            )
 
             # Create structured input for Responses API
             planning_context = self._format_planning_context(context)
@@ -137,14 +144,20 @@ class OpenAIClient:
             )
         except APIError as e:
             logger.error(f"OpenAI API error: {e}")
+            logger.error(
+                f"API error details - status: {getattr(e, 'status_code', 'N/A')}, type: {getattr(e, 'type', 'N/A')}"
+            )
             return self._create_error_response(
-                context, "AI サービスでエラーが発生しました。"
+                context, f"AI サービスでエラーが発生しました: {str(e)}"
             )
         except Exception as e:
             logger.error(f"Unexpected error generating weekly plan: {e}")
+            logger.error(f"Error type: {type(e).__name__}")
+            logger.error(f"Model being used: {self.model}")
+            logger.error(f"Client available: {self.is_available()}")
             return self._create_error_response(
                 context,
-                "予期しないエラーが発生しました。管理者にお問い合わせください。",
+                f"予期しないエラーが発生しました: {str(e)}",
             )
 
     def _create_unavailable_response(
@@ -425,6 +438,10 @@ class OpenAIClient:
 
         except Exception as e:
             logger.error(f"Chat Completions fallback failed: {e}")
+            logger.error(f"Fallback error type: {type(e).__name__}")
+            logger.error(
+                f"Model: {self.model}, Client available: {self.client is not None}"
+            )
             return self._create_error_response(
                 context, f"AI処理でエラーが発生しました: {str(e)}"
             )
