@@ -223,7 +223,6 @@ try:
 except Exception as e:
     # In development or when env vars are missing, use minimal config
     import warnings
-    from typing import Any
 
     warnings.warn(
         f"Failed to load full settings: {e}. Using minimal configuration for development."

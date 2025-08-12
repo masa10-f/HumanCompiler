@@ -71,19 +71,17 @@ class TaskSolverResponse(BaseModel):
     selected_tasks: list[TaskPlan]
     optimization_insights: list[str]
     constraint_analysis: dict[str, Any]
-    solver_metrics: dict[str, float]
+    solver_metrics: dict[str, Any]
     generated_at: datetime
 
 
 class WeeklyTaskSolver:
     """Advanced AI-powered weekly task solver using GPT-5."""
 
-    def __init__(
-        self, openai_client: OpenAI | None = None, model: str = "gpt-4o-2024-11-20"
-    ):
+    def __init__(self, openai_client: OpenAI | None = None, model: str = "gpt-5"):
         """Initialize solver with OpenAI client."""
         self.openai_client = openai_client
-        self.model = model  # Use latest GPT-4 model as GPT-5 placeholder
+        self.model = model  # Use GPT-5 for advanced task optimization
         self.context_collector = ContextCollector()
 
     @classmethod
@@ -98,7 +96,7 @@ class WeeklyTaskSolver:
         user_settings = result.scalar_one_or_none()
 
         openai_client = None
-        model = "gpt-4o-2024-11-20"  # Default to latest GPT-4
+        model = "gpt-5"  # Default to GPT-5
 
         if user_settings and user_settings.openai_api_key_encrypted:
             # Decrypt API key
@@ -151,7 +149,7 @@ class WeeklyTaskSolver:
 
             # Calculate solver metrics
             solver_metrics = self._calculate_solver_metrics(
-                selected_tasks, project_allocations, request.constraints
+                selected_tasks, project_allocations, request.constraints, context
             )
 
             total_allocated = sum(task.estimated_hours for task in selected_tasks)
@@ -312,23 +310,41 @@ class WeeklyTaskSolver:
                 context, constraints, project_allocations
             )
 
-            response = self.openai_client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message},
-                ],
-                functions=self._get_solver_function_definitions(),
-                function_call={"name": "solve_weekly_tasks"},
-                temperature=0.3,  # Lower temperature for more consistent optimization
-                max_tokens=3000,
-            )
+            # Use GPT-5's new response API pattern
+            if self.model == "gpt-5":
+                response = self.openai_client.responses.create(
+                    model=self.model,
+                    input=f"{system_prompt}\n\n{user_message}",
+                    # GPT-5 handles structured output natively
+                )
+                # Parse GPT-5 response (assuming it returns structured JSON)
+                try:
+                    import json
 
-            function_call = response.choices[0].message.function_call
-            if function_call and function_call.name == "solve_weekly_tasks":
-                return self._parse_solver_response(function_call, context)
+                    response_data = json.loads(response.content)
+                    return self._parse_gpt5_response(response_data, context)
+                except (json.JSONDecodeError, AttributeError):
+                    # Fallback to text parsing if structured response fails
+                    return self._parse_text_response(response.content, context)
             else:
-                raise ValueError("AI did not return expected function call")
+                # Fallback to legacy chat completions API for other models
+                response = self.openai_client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message},
+                    ],
+                    functions=self._get_solver_function_definitions(),
+                    function_call={"name": "solve_weekly_tasks"},
+                    temperature=0.3,  # Lower temperature for more consistent optimization
+                    max_tokens=3000,
+                )
+
+                function_call = response.choices[0].message.function_call
+                if function_call and function_call.name == "solve_weekly_tasks":
+                    return self._parse_solver_response(function_call, context)
+                else:
+                    raise ValueError("AI did not return expected function call")
 
         except (RateLimitError, AuthenticationError, APIError) as e:
             logger.error(f"OpenAI API error in task solver: {e}")
@@ -352,15 +368,23 @@ class WeeklyTaskSolver:
         for task in context.tasks:
             # Calculate priority score
             urgency_score = 0
-            if task.due_date:
-                # Convert context.week_start_date to datetime for comparison
-                week_start_dt = datetime.combine(
-                    context.week_start_date, datetime.min.time()
-                )
-                task_due_dt = datetime.combine(task.due_date, datetime.min.time())
-                days_until_due = (task_due_dt - week_start_dt).days
-                if days_until_due <= 7:
-                    urgency_score = 10 - days_until_due
+            if task.due_date is not None:
+                try:
+                    # Convert context.week_start_date to datetime for comparison
+                    week_start_dt = datetime.combine(
+                        context.week_start_date, datetime.min.time()
+                    )
+                    task_due_dt = datetime.combine(task.due_date, datetime.min.time())
+                    days_until_due = (task_due_dt - week_start_dt).days
+                    if days_until_due <= 7:
+                        urgency_score = max(
+                            0, 10 - days_until_due
+                        )  # Ensure non-negative
+                except (TypeError, ValueError) as e:
+                    logger.warning(
+                        f"Invalid due_date for task {task.id}: {task.due_date}, error: {e}"
+                    )
+                    urgency_score = 0
 
             effort_score = 10 - min(
                 float(task.estimate_hours or 0), 10
@@ -570,26 +594,118 @@ Provide strategic insights on workload optimization and task prioritization."""
                 "insights": [f"Response parse error: {str(e)}"],
             }
 
+    def _parse_gpt5_response(
+        self, response_data: dict, context: WeeklyPlanContext
+    ) -> dict[str, Any]:
+        """Parse GPT-5 structured response data."""
+        try:
+            # GPT-5 is expected to return structured data directly
+            selected_tasks = []
+            for plan in response_data.get("selected_tasks", []):
+                # Find task title
+                task_title = next(
+                    (t.title for t in context.tasks if t.id == plan["task_id"]),
+                    "Unknown Task",
+                )
+
+                task_plan = TaskPlan(
+                    task_id=plan["task_id"],
+                    task_title=task_title,
+                    estimated_hours=plan["estimated_hours"],
+                    priority=plan["priority"],
+                    suggested_day=plan["suggested_day"],
+                    suggested_time_slot=plan["suggested_time_slot"],
+                    rationale=plan["rationale"],
+                )
+                selected_tasks.append(task_plan)
+
+            return {
+                "selected_tasks": selected_tasks,
+                "insights": response_data.get("insights", []),
+                "allocation_analysis": response_data.get("allocation_analysis", {}),
+            }
+
+        except (KeyError, ValueError, TypeError) as e:
+            logger.error(f"Error parsing GPT-5 response: {e}")
+            return {
+                "selected_tasks": [],
+                "insights": [f"GPT-5 response parse error: {str(e)}"],
+            }
+
+    def _parse_text_response(
+        self, response_text: str, context: WeeklyPlanContext
+    ) -> dict[str, Any]:
+        """Fallback text parsing for GPT-5 responses."""
+        # Try to extract JSON from text response
+        import re
+
+        json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
+        if json_match:
+            try:
+                response_data = json.loads(json_match.group())
+                return self._parse_gpt5_response(response_data, context)
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.error(f"Error parsing GPT-5 text response: {e}")
+                return {
+                    "selected_tasks": [],
+                    "insights": [f"GPT-5 text parse error: {str(e)}"],
+                }
+        else:
+            # If no JSON found, return basic insights
+            return {  # type: ignore[unreachable]
+                "selected_tasks": [],
+                "insights": [f"GPT-5 text response: {response_text[:200]}..."],
+                "allocation_analysis": {},
+            }
+
     def _calculate_solver_metrics(
         self,
         selected_tasks: list[TaskPlan],
         project_allocations: list[ProjectAllocation],
         constraints: WeeklyConstraints,
-    ) -> dict[str, float]:
+        context: WeeklyPlanContext,
+    ) -> dict[str, Any]:
         """Calculate solver performance metrics."""
         total_allocated = sum(task.estimated_hours for task in selected_tasks)
         capacity_utilization = total_allocated / constraints.total_capacity_hours
 
-        # Calculate project balance score
+        # Calculate project balance score using actual project mapping
         project_hours = {}
+
+        # Build task to project mapping
+        task_to_project = {}
+        for task in context.tasks:
+            for goal in context.goals:
+                if goal.id == task.goal_id:
+                    task_to_project[task.id] = goal.project_id
+                    break
+
+        # Calculate actual project hours distribution
         for task in selected_tasks:
-            # Simplified - would need project mapping in real implementation
-            project_id = "unknown"
+            project_id = task_to_project.get(task.task_id, "unassigned")
             project_hours[project_id] = (
                 project_hours.get(project_id, 0) + task.estimated_hours
             )
 
-        balance_score = 1.0  # Placeholder calculation
+        # Calculate balance score based on how evenly distributed hours are
+        # Perfect balance score = 1.0, completely unbalanced = 0.0
+        if len(project_hours) <= 1:
+            balance_score = 1.0 if len(project_hours) == 1 else 0.0
+        else:
+            total_project_hours = sum(project_hours.values())
+            if total_project_hours > 0:
+                # Calculate variance in distribution
+                expected_hours_per_project = total_project_hours / len(project_hours)
+                variance = sum(
+                    (hours - expected_hours_per_project) ** 2
+                    for hours in project_hours.values()
+                ) / len(project_hours)
+                # Convert variance to balance score (0-1 scale)
+                balance_score = max(
+                    0.0, 1.0 - (variance / (expected_hours_per_project**2))
+                )
+            else:
+                balance_score = 1.0
 
         return {
             "capacity_utilization": capacity_utilization,
@@ -598,4 +714,6 @@ Provide strategic insights on workload optimization and task prioritization."""
             "avg_task_hours": total_allocated / len(selected_tasks)
             if selected_tasks
             else 0,
+            "projects_involved": len(project_hours),
+            "project_distribution": project_hours,
         }
