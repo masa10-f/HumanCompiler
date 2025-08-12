@@ -64,11 +64,41 @@ class ContextCollector:
                 if t.status not in ["completed", "cancelled", "done", "finished"]
             ]
 
+            # Debug task filtering
+            if len(goal_tasks) > 0:
+                logger.info(
+                    f"Goal {goal.id} ({goal.title}): {len(goal_tasks)} total tasks, {len(active_tasks)} active"
+                )
+                if len(goal_tasks) != len(active_tasks):
+                    filtered_statuses = [
+                        t.status
+                        for t in goal_tasks
+                        if t.status in ["completed", "cancelled", "done", "finished"]
+                    ]
+                    logger.info(f"Filtered out statuses: {set(filtered_statuses)}")
+
             tasks.extend(active_tasks)
 
+        # Add detailed debugging for production issues
         logger.info(
             f"Context Collection: Collected {len(projects)} projects, {len(goals)} goals, {len(tasks)} active tasks"
         )
+
+        # Log detailed context for debugging
+        if len(projects) > 0:
+            logger.info(f"Project details: {[(p.id, p.title) for p in projects]}")
+        if len(goals) > 0:
+            logger.info(
+                f"Goal details: {[(g.id, g.title, g.project_id) for g in goals]}"
+            )
+        if len(tasks) > 0:
+            logger.info(
+                f"Task details: {[(t.id, t.title, t.goal_id, t.status) for t in tasks][:10]}..."
+            )  # First 10 tasks
+        else:
+            logger.warning(
+                "🚨 No active tasks found - this may cause AI to return empty plans"
+            )
 
         context = WeeklyPlanContext(
             user_id=user_id,
