@@ -1,8 +1,8 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 from sqlmodel import Session, select, func
 
 from taskagent_api.auth import AuthUser, get_current_user
@@ -22,6 +22,11 @@ class TaskProgress(BaseModel):
     progress_percentage: float
     status: str
 
+    @field_serializer("estimate_hours")
+    def serialize_estimate_hours(self, value: Decimal) -> float:
+        """Convert Decimal to float for JSON serialization"""
+        return float(value)
+
 
 class GoalProgress(BaseModel):
     """Goal progress information"""
@@ -33,6 +38,11 @@ class GoalProgress(BaseModel):
     progress_percentage: float
     tasks: list[TaskProgress]
 
+    @field_serializer("estimate_hours")
+    def serialize_estimate_hours(self, value: Decimal) -> float:
+        """Convert Decimal to float for JSON serialization"""
+        return float(value)
+
 
 class ProjectProgress(BaseModel):
     """Project progress information"""
@@ -43,6 +53,11 @@ class ProjectProgress(BaseModel):
     actual_minutes: int
     progress_percentage: float
     goals: list[GoalProgress]
+
+    @field_serializer("estimate_hours")
+    def serialize_estimate_hours(self, value: Decimal) -> float:
+        """Convert Decimal to float for JSON serialization"""
+        return float(value)
 
 
 def get_session():
@@ -120,11 +135,14 @@ async def get_project_progress(
             # Get total actual minutes from the map
             task_actual_minutes = log_map.get(str(task.id), 0)
             task_estimate_minutes = int(task.estimate_hours * 60)
-            task_progress = (
-                (task_actual_minutes / task_estimate_minutes * 100)
-                if task_estimate_minutes > 0
-                else 0.0
-            )
+            # Use Decimal for precise progress calculation
+            if task_estimate_minutes > 0:
+                progress_decimal = (
+                    Decimal(task_actual_minutes) / Decimal(task_estimate_minutes) * 100
+                ).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+                task_progress = float(progress_decimal)
+            else:
+                task_progress = 0.0
 
             task_progress_info = TaskProgress(
                 task_id=str(task.id),
@@ -138,11 +156,15 @@ async def get_project_progress(
             goal_total_actual += task_actual_minutes
 
         goal_estimate_minutes = int(goal_total_estimate * 60)
-        goal_progress = (
-            (goal_total_actual / goal_estimate_minutes * 100)
-            if goal_estimate_minutes > 0
-            else 0.0
-        )
+
+        # Use Decimal for precise goal progress calculation
+        if goal_estimate_minutes > 0:
+            goal_progress_decimal = (
+                Decimal(goal_total_actual) / Decimal(goal_estimate_minutes) * 100
+            ).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+            goal_progress = float(goal_progress_decimal)
+        else:
+            goal_progress = 0.0
 
         goal_progress_info = GoalProgress(
             goal_id=str(goal.id),
@@ -158,11 +180,15 @@ async def get_project_progress(
         project_total_actual += goal_total_actual
 
     project_estimate_minutes = int(project_total_estimate * 60)
-    project_progress = (
-        (project_total_actual / project_estimate_minutes * 100)
-        if project_estimate_minutes > 0
-        else 0.0
-    )
+
+    # Use Decimal for precise project progress calculation
+    if project_estimate_minutes > 0:
+        project_progress_decimal = (
+            Decimal(project_total_actual) / Decimal(project_estimate_minutes) * 100
+        ).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+        project_progress = float(project_progress_decimal)
+    else:
+        project_progress = 0.0
 
     return ProjectProgress(
         project_id=str(project.id),
@@ -223,11 +249,14 @@ async def get_goal_progress(
         # Get total actual minutes from the map
         task_actual_minutes = log_map.get(str(task.id), 0)
         task_estimate_minutes = int(task.estimate_hours * 60)
-        task_progress = (
-            (task_actual_minutes / task_estimate_minutes * 100)
-            if task_estimate_minutes > 0
-            else 0.0
-        )
+        # Use Decimal for precise progress calculation
+        if task_estimate_minutes > 0:
+            progress_decimal = (
+                Decimal(task_actual_minutes) / Decimal(task_estimate_minutes) * 100
+            ).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+            task_progress = float(progress_decimal)
+        else:
+            task_progress = 0.0
 
         task_progress_info = TaskProgress(
             task_id=str(task.id),
@@ -241,11 +270,15 @@ async def get_goal_progress(
         goal_total_actual += task_actual_minutes
 
     goal_estimate_minutes = int(goal.estimate_hours * 60)
-    goal_progress = (
-        (goal_total_actual / goal_estimate_minutes * 100)
-        if goal_estimate_minutes > 0
-        else 0.0
-    )
+
+    # Use Decimal for precise goal progress calculation
+    if goal_estimate_minutes > 0:
+        goal_progress_decimal = (
+            Decimal(goal_total_actual) / Decimal(goal_estimate_minutes) * 100
+        ).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+        goal_progress = float(goal_progress_decimal)
+    else:
+        goal_progress = 0.0
 
     return GoalProgress(
         goal_id=str(goal.id),
@@ -282,18 +315,24 @@ async def get_task_progress(
             status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
         )
 
-    # Get total actual minutes for this task
-    task_actual_query = session.exec(
-        select(func.sum(Log.actual_minutes)).where(Log.task_id == task_id)
+    # Get total actual minutes for this task using GROUP BY for consistency
+    log_sums = session.exec(
+        select(Log.task_id, func.sum(Log.actual_minutes))
+        .where(Log.task_id == task_id)
+        .group_by(Log.task_id)
     ).first()
 
-    task_actual_minutes = task_actual_query or 0
+    task_actual_minutes = int(log_sums[1]) if log_sums else 0
     task_estimate_minutes = int(task.estimate_hours * 60)
-    task_progress = (
-        (task_actual_minutes / task_estimate_minutes * 100)
-        if task_estimate_minutes > 0
-        else 0.0
-    )
+
+    # Use Decimal for precise progress calculation
+    if task_estimate_minutes > 0:
+        progress_decimal = (
+            Decimal(task_actual_minutes) / Decimal(task_estimate_minutes) * 100
+        ).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+        task_progress = float(progress_decimal)
+    else:
+        task_progress = 0.0
 
     return TaskProgress(
         task_id=str(task.id),

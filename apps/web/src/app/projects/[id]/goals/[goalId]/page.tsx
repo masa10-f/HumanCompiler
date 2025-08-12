@@ -6,6 +6,8 @@ import { useAuth } from '@/hooks/use-auth';
 import { useTasksByGoal } from '@/hooks/use-tasks-query';
 import { useGoal } from '@/hooks/use-goals-query';
 import { useProject } from '@/hooks/use-project-query';
+import { useQuery } from '@tanstack/react-query';
+import { progressApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +49,13 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
     error: projectError,
     refetch: refetchProject
   } = useProject(params.id);
+
+  // Get goal progress data for actual work hours
+  const { data: goalProgress } = useQuery({
+    queryKey: ['progress', 'goal', params.goalId],
+    queryFn: () => progressApi.getGoal(params.goalId),
+    enabled: !!goal,
+  });
 
   const router = useRouter();
 
@@ -130,9 +139,8 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
       return sum + hours;
     }, 0);
 
-  // For now, show completed estimate hours as "actual" hours
-  // TODO: Implement actual time tracking with logs API
-  const totalActualHours = completedEstimateHours;
+  // Get actual hours from goal progress API
+  const totalActualHours = goalProgress ? goalProgress.actual_minutes / 60 : 0;
 
   log.debug('Goal detail calculated values', {
     goalId: params.goalId,

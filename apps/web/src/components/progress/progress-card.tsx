@@ -22,9 +22,15 @@ export function ProgressCard({
   status,
   className = "",
 }: ProgressCardProps) {
+  // Safe number conversion with validation
   const safeEstimateHours = Number(estimateHours) || 0;
   const actualHours = actualMinutes / 60;
   const isOvertime = actualHours > safeEstimateHours;
+
+  // Helper function for safe number formatting
+  const formatHours = (value: number): string => {
+    return Number(value).toFixed(1);
+  };
 
   return (
     <Card className={className}>
@@ -58,19 +64,19 @@ export function ProgressCard({
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <div className="text-muted-foreground">見積時間</div>
-            <div className="font-medium">{safeEstimateHours.toFixed(1)}h</div>
+            <div className="font-medium">{formatHours(safeEstimateHours)}h</div>
           </div>
           <div>
             <div className="text-muted-foreground">実作業時間</div>
             <div className={`font-medium ${isOvertime ? "text-red-600" : ""}`}>
-              {actualHours.toFixed(1)}h
+              {formatHours(actualHours)}h
             </div>
           </div>
         </div>
 
         {isOvertime && (
           <div className="text-xs text-red-600 bg-red-50 p-2 rounded">
-            超過時間: {(actualHours - safeEstimateHours).toFixed(1)}h
+            超過時間: {formatHours(actualHours - safeEstimateHours)}h
           </div>
         )}
       </CardContent>
