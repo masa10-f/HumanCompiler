@@ -50,3 +50,4 @@ primary_region = "nrt"  # Tokyo region for lower latency
 # - SUPABASE_KEY
 # - SUPABASE_SERVICE_ROLE_KEY
 # - OPENAI_API_KEY
+# - ENCRYPTION_SALT
