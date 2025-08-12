@@ -429,6 +429,32 @@ Use the create_week_plan function to structure your response."""
                     response_status="success",
                 )
 
+            # Debug: Log OpenAI response structure
+            logger.info(f"🔍 OpenAI Response: {len(response.choices)} choices")
+            for i, choice in enumerate(response.choices):
+                logger.info(f"🔍 Choice {i}: finish_reason = {choice.finish_reason}")
+                logger.info(f"🔍 Choice {i}: message.role = {choice.message.role}")
+                logger.info(
+                    f"🔍 Choice {i}: has function_call = {hasattr(choice.message, 'function_call')}"
+                )
+                if hasattr(choice.message, "function_call"):
+                    fc = choice.message.function_call
+                    logger.info(f"🔍 Choice {i}: function_call = {fc}")
+                    logger.info(
+                        f"🔍 Choice {i}: function_call.name = {fc.name if fc else 'None'}"
+                    )
+                if hasattr(choice.message, "content"):
+                    content_preview = (
+                        str(choice.message.content)[:200]
+                        if choice.message.content
+                        else "None"
+                    )
+                    logger.info(f"🔍 Choice {i}: content preview = {content_preview}")
+                if hasattr(choice.message, "tool_calls"):
+                    logger.info(
+                        f"🔍 Choice {i}: tool_calls = {choice.message.tool_calls}"
+                    )
+
             # Parse function call response
             function_call = response.choices[0].message.function_call
             if function_call and function_call.name == "create_week_plan":
