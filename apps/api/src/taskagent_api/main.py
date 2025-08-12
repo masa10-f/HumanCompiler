@@ -150,15 +150,25 @@ async def cors_middleware(request, call_next):
         response = await call_next(request)
     except Exception as e:
         # Create error response with CORS headers
+        from fastapi import HTTPException
         from fastapi.responses import JSONResponse
 
         logger = logging.getLogger(__name__)
-        logger.error(f"Request processing failed: {e}")
 
-        response = JSONResponse(
-            status_code=500,
-            content={"detail": "Internal server error", "error_code": None},
-        )
+        # Preserve original status code for HTTPException
+        if isinstance(e, HTTPException):
+            logger.warning(f"HTTP {e.status_code} error: {e.detail}")
+            response = JSONResponse(
+                status_code=e.status_code,
+                content={"detail": e.detail, "error_code": None},
+            )
+        else:
+            # Only use 500 for unexpected errors
+            logger.error(f"Unexpected error: {type(e).__name__}: {e}")
+            response = JSONResponse(
+                status_code=500,
+                content={"detail": "Internal server error", "error_code": None},
+            )
 
     # Always add CORS headers for allowed origins
     if origin and is_origin_allowed(origin):
