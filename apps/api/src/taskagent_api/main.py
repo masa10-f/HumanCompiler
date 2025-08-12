@@ -49,6 +49,16 @@ async def lifespan(app: FastAPI):
     try:
         if await db.health_check():
             logger.info("✅ Database connection successful")
+
+            # Run database migrations
+            try:
+                from taskagent_api.migrations import run_migrations
+
+                await run_migrations()
+                logger.info("✅ Database migrations completed")
+            except Exception as migration_error:
+                logger.warning(f"⚠️ Migration warning: {migration_error}")
+
             # Setup performance monitoring
             engine = db.get_engine()
             performance_monitor.setup_listeners(engine)

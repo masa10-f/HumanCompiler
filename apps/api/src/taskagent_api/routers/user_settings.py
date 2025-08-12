@@ -81,7 +81,7 @@ async def get_user_settings(
         return UserSettingsResponse(
             id=UUID("00000000-0000-0000-0000-000000000000"),
             user_id=user_id,
-            openai_model="gpt-4",
+            openai_model="gpt-5",
             ai_features_enabled=False,
             has_api_key=False,
             created_at=default_timestamp,
