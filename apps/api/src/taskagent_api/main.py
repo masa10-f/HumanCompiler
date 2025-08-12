@@ -164,10 +164,18 @@ async def cors_middleware(request, call_next):
             )
         else:
             # Only use 500 for unexpected errors
+            import traceback
+
             logger.error(f"Unexpected error: {type(e).__name__}: {e}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             response = JSONResponse(
                 status_code=500,
-                content={"detail": "Internal server error", "error_code": None},
+                content={
+                    "detail": "Internal server error",
+                    "error_code": None,
+                    "error_type": type(e).__name__,
+                    "debug_message": str(e) if str(e) else "No details available",
+                },
             )
 
     # Always add CORS headers for allowed origins
