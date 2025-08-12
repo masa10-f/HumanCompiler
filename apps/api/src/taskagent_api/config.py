@@ -161,20 +161,28 @@ class Settings(BaseSettings):
             "taskagent-git-",  # For feature branch deployments (taskagent-git-*)
         ]
 
-        # Also allow Vercel's auto-generated preview domains for this project
-        # All possible patterns for masato-fukushimas-projects:
-        # - taskagent-[hash]-masato-fukushimas-projects (expected)
-        # - taskagent-[hash] (actual from error log)
+        # Allow all Vercel preview domains for masato-fukushimas-projects account
+        # Patterns we support:
+        # - taskagent-[hash]-masato-fukushimas-projects
+        # - taskagent-[hash] (from masato-fukushimas-projects account)
         # - Any domain ending with masato-fukushimas-projects
         if "masato-fukushimas-projects" in subdomain:
             logger.info(f"CORS: Allowed masato-fukushimas-projects domain: {subdomain}")
             return True
 
-        # Also check for plain taskagent domains and git feature branches
-        # Patterns: taskagent-[hash], taskagent-git-feature-*, etc.
+        # Check for taskagent preview domains (with hash)
+        # Patterns:
+        # - taskagent-[9char_hash] (e.g., taskagent-9qbeqspf7)
+        # - taskagent-[hash]-masato-fukushimas-projects (full pattern)
         if subdomain.startswith("taskagent-") and len(subdomain) > 10:
-            # Likely a Vercel preview domain (including git feature branches)
-            logger.info(f"CORS: Allowed taskagent- preview domain: {subdomain}")
+            # Likely a Vercel preview domain with hash
+            logger.info(f"CORS: Allowed taskagent preview domain: {subdomain}")
+            return True
+
+        # Also check for git feature branch domains
+        # Patterns: taskagent-git-feature-*, etc.
+        if subdomain.startswith("taskagent-git-"):
+            logger.info(f"CORS: Allowed taskagent git feature domain: {subdomain}")
             return True
 
         for pattern in allowed_patterns:
