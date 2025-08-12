@@ -402,17 +402,23 @@ Focus on:
 Use the create_week_plan function to structure your response."""
 
             # Call OpenAI API
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
+            # Prepare API parameters
+            api_params = {
+                "model": self.model,
+                "messages": [
                     {"role": "system", "content": self.create_system_prompt()},
                     {"role": "user", "content": user_message},
                 ],
-                functions=self.get_function_definitions(),
-                function_call={"name": "create_week_plan"},
-                temperature=0.7,
-                max_completion_tokens=2000,
-            )
+                "functions": self.get_function_definitions(),
+                "function_call": {"name": "create_week_plan"},
+                "max_completion_tokens": 2000,
+            }
+
+            # GPT-5 models only support default temperature (1.0)
+            if not self.model.startswith("gpt-5"):
+                api_params["temperature"] = 0.7
+
+            response = self.client.chat.completions.create(**api_params)
 
             # Log API usage
             if hasattr(response, "usage") and response.usage:

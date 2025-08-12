@@ -311,11 +311,11 @@ class WeeklyTaskSolver:
             )
 
             # Use new Responses API with GPT-5
+            # Note: GPT-5 Responses API only supports default temperature (1.0)
             response = self.openai_client.responses.create(
                 model=self.model,
                 input=solver_context,
                 tools=self._get_solver_tools_definitions(),
-                temperature=0.3,  # Lower temperature for consistent optimization
             )
 
             # Parse Responses API output

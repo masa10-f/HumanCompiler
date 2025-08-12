@@ -89,11 +89,11 @@ class OpenAIClient:
             planning_context = self._format_planning_context(context)
 
             # Use new Responses API (GPT-5)
+            # Note: GPT-5 Responses API only supports default temperature (1.0)
             response = self.client.responses.create(
                 model=self.model,
                 input=planning_context,
                 tools=self._get_planning_tools(),
-                temperature=0.7,
             )
 
             # Parse response (structure may vary based on SDK version)
