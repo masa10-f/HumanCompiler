@@ -3,6 +3,7 @@ Scheduler API endpoints for task scheduling optimization.
 """
 
 import logging
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, time, UTC
 from enum import Enum
@@ -116,11 +117,15 @@ def optimize_schedule(tasks, time_slots, date=None):
             datetime.combine(datetime.today(), slot.end)
             - datetime.combine(datetime.today(), slot.start)
         ).total_seconds() / 60  # Convert to minutes
-        capacity = slot.capacity_hours * 60 if slot.capacity_hours else slot_duration
+        capacity = (
+            slot.capacity_hours * 60
+            if slot.capacity_hours is not None
+            else slot_duration
+        )
         slot_capacities.append(min(capacity, slot_duration))
 
     # Convert task estimates to minutes
-    task_durations = [int(task.estimate_hours * 60) for task in tasks]
+    task_durations = [math.ceil(task.estimate_hours * 60) for task in tasks]
 
     # Decision variables: x[i][j] = 1 if task i is assigned to slot j
     x = {}
@@ -138,8 +143,9 @@ def optimize_schedule(tasks, time_slots, date=None):
                 0, max_duration, f"duration_{i}_{j}"
             )
 
-            # If task is assigned to slot, duration must be positive
-            model.Add(assigned_durations[i, j] >= 1).OnlyEnforceIf(x[i, j])
+            # If task is assigned to slot, duration must be positive (if possible)
+            if max_duration >= 1:
+                model.Add(assigned_durations[i, j] >= 1).OnlyEnforceIf(x[i, j])
             model.Add(assigned_durations[i, j] == 0).OnlyEnforceIf(x[i, j].Not())
 
     # Constraint 1: Each task is assigned to at most one slot
@@ -176,7 +182,12 @@ def optimize_schedule(tasks, time_slots, date=None):
         for i, task in enumerate(tasks):
             for j, _slot in enumerate(time_slots):
                 if task.due_date:
-                    days_until_due = (task.due_date.date() - schedule_date.date()).days
+                    # Ensure both are date objects
+                    if isinstance(task.due_date, datetime):
+                        due_date_obj = task.due_date.date()
+                    else:
+                        due_date_obj = task.due_date
+                    days_until_due = (due_date_obj - schedule_date.date()).days
                     # Bonus for scheduling tasks closer to deadline
                     deadline_bonus[i, j] = (
                         max(1, 10 - days_until_due) if days_until_due >= 0 else 1
@@ -243,9 +254,7 @@ def optimize_schedule(tasks, time_slots, date=None):
             optimization_status = "FEASIBLE"
 
         success = True
-        objective_value = (
-            solver.ObjectiveValue() if status == cp_model.OPTIMAL else None
-        )
+        objective_value = solver.ObjectiveValue()
 
     else:
         # No solution found
