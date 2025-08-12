@@ -5,11 +5,14 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { useProject } from '@/hooks/use-project-query';
 import { useGoalsByProject } from '@/hooks/use-goals-query';
+import { useQuery } from '@tanstack/react-query';
+import { progressApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { GoalFormDialog } from '@/components/goals/goal-form-dialog';
 import { GoalEditDialog } from '@/components/goals/goal-edit-dialog';
 import { GoalDeleteDialog } from '@/components/goals/goal-delete-dialog';
+import { ProjectProgressCard } from '@/components/progress/progress-card';
 import { ArrowLeft, Plus } from 'lucide-react';
 
 interface ProjectDetailPageProps {
@@ -33,6 +36,16 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     error: goalsError,
     refetch: refetchGoals
   } = useGoalsByProject(params.id);
+
+  const {
+    data: projectProgress,
+    isLoading: progressLoading,
+    error: progressError,
+  } = useQuery({
+    queryKey: ['progress', 'project', params.id],
+    queryFn: () => progressApi.getProject(params.id),
+    enabled: !!project,
+  });
 
   const router = useRouter();
 
@@ -108,6 +121,14 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
           )}
         </div>
       </div>
+
+      {/* Progress Section */}
+      {projectProgress && (
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold mb-4">進捗状況</h2>
+          <ProjectProgressCard progress={projectProgress} />
+        </div>
+      )}
 
       {/* Goals Section */}
       <div className="space-y-6">

@@ -14,6 +14,8 @@ from taskagent_api.models import (
     GoalCreate,
     GoalUpdate,
     Log,
+    LogCreate,
+    LogUpdate,
     Project,
     ProjectCreate,
     ProjectUpdate,
@@ -434,7 +436,99 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         return result
 
 
+class LogService(BaseService[Log, LogCreate, LogUpdate]):
+    """Log service using base service"""
+
+    def __init__(self, task_service: TaskService = None):
+        super().__init__(Log)
+        self.task_service = task_service or TaskService()
+
+    def _create_instance(self, data: LogCreate, user_id: str | UUID, **kwargs) -> Log:
+        """Create a new log instance"""
+        return Log(
+            task_id=data.task_id,
+            actual_minutes=data.actual_minutes,
+            comment=data.comment,
+        )
+
+    def _get_user_filter(self, user_id: str | UUID):
+        """Get filter for log ownership through task, goal and project"""
+        return Log.task_id.in_(
+            select(Task.id).where(
+                Task.goal_id.in_(
+                    select(Goal.id).where(
+                        Goal.project_id.in_(
+                            select(Project.id).where(Project.owner_id == user_id)
+                        )
+                    )
+                )
+            )
+        )
+
+    def create_log(
+        self, session: Session, log_data: LogCreate, owner_id: str | UUID
+    ) -> Log:
+        """Create a new work time log"""
+        # Verify task ownership through goal and project
+        task = self.task_service.get_task(session, log_data.task_id, owner_id)
+        if not task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+            )
+        return self.create(session, log_data, owner_id)
+
+    @cached(cache_type="medium", key_prefix="log_detail")
+    def get_log(
+        self, session: Session, log_id: str | UUID, owner_id: str | UUID
+    ) -> Log | None:
+        """Get log by ID for specific owner"""
+        return self.get_by_id(session, log_id, owner_id)
+
+    @cached(cache_type="short", key_prefix="logs_by_task")
+    def get_logs_by_task(
+        self,
+        session: Session,
+        task_id: str | UUID,
+        owner_id: str | UUID,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> list[Log]:
+        """Get logs for specific task"""
+        # Verify task ownership
+        task = self.task_service.get_task(session, task_id, owner_id)
+        if not task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+            )
+        return self.get_all(session, owner_id, skip, limit, task_id=task_id)
+
+    def update_log(
+        self,
+        session: Session,
+        log_id: str | UUID,
+        owner_id: str | UUID,
+        log_data: LogUpdate,
+    ) -> Log:
+        """Update log"""
+        result = self.update(session, log_id, log_data, owner_id)
+        # Invalidate caches that might contain this log's data
+        invalidate_cache("short", "logs_by_task")
+        invalidate_cache("medium", "log_detail")
+        return result
+
+    def delete_log(
+        self, session: Session, log_id: str | UUID, owner_id: str | UUID
+    ) -> bool:
+        """Delete log"""
+        result = self.delete(session, log_id, owner_id)
+        # Invalidate caches that might contain this log's data
+        invalidate_cache("short", "logs_by_task")
+        invalidate_cache("medium", "log_detail")
+        return result
+
+
 # Create service instances for use in routers
 project_service = ProjectService()
 goal_service = GoalService()
 task_service = TaskService()
+log_service = LogService()

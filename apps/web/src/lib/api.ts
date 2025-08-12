@@ -16,6 +16,16 @@ import type {
   TaskUpdate
 } from '@/types/task';
 import type {
+  Log,
+  LogCreate,
+  LogUpdate
+} from '@/types/log';
+import type {
+  ProjectProgress,
+  GoalProgress,
+  TaskProgress
+} from '@/types/progress';
+import type {
   WeeklyPlanRequest,
   WeeklyPlanResponse,
   WorkloadAnalysis,
@@ -341,6 +351,48 @@ class ApiClient {
   async testScheduler(): Promise<TestSchedulerResponse> {
     return this.request<TestSchedulerResponse>('/api/schedule/test');
   }
+
+  // Log API methods
+  async getLogsByTask(taskId: string, skip: number = 0, limit: number = 20): Promise<Log[]> {
+    return this.request<Log[]>(`/api/logs/task/${taskId}?skip=${skip}&limit=${limit}`);
+  }
+
+  async getLog(logId: string): Promise<Log> {
+    return this.request<Log>(`/api/logs/${logId}`);
+  }
+
+  async createLog(logData: LogCreate): Promise<Log> {
+    return this.request<Log>('/api/logs/', {
+      method: 'POST',
+      body: JSON.stringify(logData),
+    });
+  }
+
+  async updateLog(logId: string, logData: LogUpdate): Promise<Log> {
+    return this.request<Log>(`/api/logs/${logId}`, {
+      method: 'PUT',
+      body: JSON.stringify(logData),
+    });
+  }
+
+  async deleteLog(logId: string): Promise<void> {
+    return this.request<void>(`/api/logs/${logId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Progress API methods
+  async getProjectProgress(projectId: string): Promise<ProjectProgress> {
+    return this.request<ProjectProgress>(`/api/progress/project/${projectId}`);
+  }
+
+  async getGoalProgress(goalId: string): Promise<GoalProgress> {
+    return this.request<GoalProgress>(`/api/progress/goal/${goalId}`);
+  }
+
+  async getTaskProgress(taskId: string): Promise<TaskProgress> {
+    return this.request<TaskProgress>(`/api/progress/task/${taskId}`);
+  }
 }
 
 export const apiClient = new ApiClient();
@@ -387,4 +439,19 @@ export const schedulingApi = {
   getByDate: (date: string) => apiClient.getDailySchedule(date),
   list: (skip?: number, limit?: number) => apiClient.listDailySchedules(skip, limit),
   test: () => apiClient.testScheduler(),
+};
+
+export const logsApi = {
+  getByTask: (taskId: string, skip?: number, limit?: number) =>
+    apiClient.getLogsByTask(taskId, skip, limit),
+  getById: (id: string) => apiClient.getLog(id),
+  create: (data: LogCreate) => apiClient.createLog(data),
+  update: (id: string, data: LogUpdate) => apiClient.updateLog(id, data),
+  delete: (id: string) => apiClient.deleteLog(id),
+};
+
+export const progressApi = {
+  getProject: (projectId: string) => apiClient.getProjectProgress(projectId),
+  getGoal: (goalId: string) => apiClient.getGoalProgress(goalId),
+  getTask: (taskId: string) => apiClient.getTaskProgress(taskId),
 };

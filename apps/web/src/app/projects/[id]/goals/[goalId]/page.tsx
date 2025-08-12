@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { TaskFormDialog } from '@/components/tasks/task-form-dialog';
 import { TaskEditDialog } from '@/components/tasks/task-edit-dialog';
 import { TaskDeleteDialog } from '@/components/tasks/task-delete-dialog';
+import { LogFormDialog } from '@/components/logs/log-form-dialog';
 import { ArrowLeft, Plus, Clock, Calendar } from 'lucide-react';
 import { taskStatusLabels, taskStatusColors } from '@/types/task';
 import { log } from '@/lib/logger';
@@ -317,7 +318,12 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
                         </span>
                       </TableCell>
                       <TableCell>
-                        <div className="flex gap-2">
+                        <div className="flex gap-1">
+                          <LogFormDialog taskId={task.id} taskTitle={task.title}>
+                            <Button variant="outline" size="sm">
+                              時間記録
+                            </Button>
+                          </LogFormDialog>
                           <TaskEditDialog task={task}>
                             <Button variant="outline" size="sm">
                               編集
