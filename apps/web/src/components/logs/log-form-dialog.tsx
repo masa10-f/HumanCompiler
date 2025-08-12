@@ -49,7 +49,7 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
   const form = useForm<LogFormData>({
     resolver: zodResolver(logFormSchema),
     defaultValues: {
-      actual_minutes: 0,
+      actual_minutes: undefined,
       comment: "",
     },
   });
@@ -65,7 +65,10 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
         description: `${taskTitle}の実作業時間を記録しました。`,
       });
       setOpen(false);
-      form.reset();
+      form.reset({
+        actual_minutes: undefined,
+        comment: "",
+      });
     },
     onError: (error) => {
       console.error("Failed to create log:", error);
@@ -111,8 +114,11 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
                       type="number"
                       min={1}
                       {...field}
-                      onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                      placeholder="例: 120"
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        field.onChange(value === "" ? undefined : parseInt(value) || undefined);
+                      }}
+                      placeholder="例: 120（2時間）"
                     />
                   </FormControl>
                   <FormMessage />
