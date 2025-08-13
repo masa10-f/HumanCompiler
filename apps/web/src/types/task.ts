@@ -1,12 +1,18 @@
 // Task type definitions for frontend
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 
+export interface TaskDependencyTaskInfo {
+  id: string;
+  title: string;
+  status: TaskStatus;
+}
+
 export interface TaskDependency {
   id: string;
   task_id: string;
   depends_on_task_id: string;
   created_at: string;
-  depends_on_task?: Task | null;
+  depends_on_task?: TaskDependencyTaskInfo | null;
 }
 
 export interface Task {
