@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_serializer
 from sqlalchemy import JSON, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
 from sqlmodel import Column, Relationship, SQLModel
@@ -318,6 +318,11 @@ class GoalResponse(GoalBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @field_serializer("estimate_hours")
+    def serialize_estimate_hours(self, value: Decimal) -> float:
+        """Convert Decimal to float for JSON serialization"""
+        return float(value)
+
 
 class TaskCreate(TaskBase):
     """Task creation request"""
@@ -344,6 +349,11 @@ class TaskResponse(TaskBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("estimate_hours")
+    def serialize_estimate_hours(self, value: Decimal) -> float:
+        """Convert Decimal to float for JSON serialization"""
+        return float(value)
 
 
 class ScheduleCreate(ScheduleBase):

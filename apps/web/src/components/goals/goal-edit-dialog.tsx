@@ -50,7 +50,7 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
     defaultValues: {
       title: goal.title,
       description: goal.description || '',
-      estimate_hours: goal.estimate_hours,
+      estimate_hours: typeof goal.estimate_hours === 'string' ? parseFloat(goal.estimate_hours) : goal.estimate_hours,
     },
   });
 
@@ -59,7 +59,7 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
     form.reset({
       title: goal.title,
       description: goal.description || '',
-      estimate_hours: goal.estimate_hours,
+      estimate_hours: typeof goal.estimate_hours === 'string' ? parseFloat(goal.estimate_hours) : goal.estimate_hours,
     });
   }, [goal, form]);
 
