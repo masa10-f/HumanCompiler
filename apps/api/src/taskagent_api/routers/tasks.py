@@ -193,7 +193,16 @@ async def add_task_dependency(
     dependency = task_service.add_task_dependency(
         session, task_id, dependency_data.depends_on_task_id, current_user.user_id
     )
-    return TaskDependencyResponse.model_validate(dependency)
+    # Load the depends_on_task for the response
+    depends_on_task = task_service.get_task(
+        session, dependency.depends_on_task_id, current_user.user_id
+    )
+    dependency_response = TaskDependencyResponse.model_validate(dependency)
+    if depends_on_task:
+        dependency_response.depends_on_task = TaskDependencyTaskInfo.model_validate(
+            depends_on_task
+        )
+    return dependency_response
 
 
 @router.get(

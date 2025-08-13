@@ -299,7 +299,6 @@ class ApiClient {
     return this.request<TaskDependency>(`/api/tasks/${taskId}/dependencies`, {
       method: 'POST',
       body: JSON.stringify({
-        task_id: taskId,
         depends_on_task_id: dependsOnTaskId,
       }),
     });

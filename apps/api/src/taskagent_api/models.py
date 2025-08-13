@@ -447,7 +447,6 @@ class ApiUsageLogResponse(ApiUsageLogBase):
 class TaskDependencyCreate(BaseModel):
     """Task dependency creation request"""
 
-    task_id: UUID
     depends_on_task_id: UUID
 
 
