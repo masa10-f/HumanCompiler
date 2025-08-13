@@ -71,7 +71,6 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
       });
     },
     onError: (error) => {
-      console.error("Failed to create log:", error);
       showErrorToast(error, { title: "作業時間の登録に失敗しました" });
     },
   });

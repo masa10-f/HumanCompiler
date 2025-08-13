@@ -120,6 +120,10 @@ class Task(TaskBase, table=True):  # type: ignore[call-arg]
         back_populates="task",
         sa_relationship_kwargs={"foreign_keys": "TaskDependency.task_id"}
     )
+    dependent_tasks: list["TaskDependency"] = Relationship(
+        back_populates="depends_on_task",
+        sa_relationship_kwargs={"foreign_keys": "TaskDependency.depends_on_task_id"}
+    )
 
 
 class ScheduleBase(SQLModel):
@@ -184,6 +188,7 @@ class TaskDependency(TaskDependencyBase, table=True):  # type: ignore[call-arg]
         sa_relationship_kwargs={"foreign_keys": "TaskDependency.task_id"}
     )
     depends_on_task: Task = Relationship(
+        back_populates="dependent_tasks",
         sa_relationship_kwargs={"foreign_keys": "TaskDependency.depends_on_task_id"}
     )
 
@@ -428,7 +433,7 @@ class ApiUsageLogResponse(ApiUsageLogBase):
 
 class TaskDependencyCreate(TaskDependencyBase):
     """Task dependency creation request"""
-    
+
     pass
 
 

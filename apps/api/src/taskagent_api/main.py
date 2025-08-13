@@ -27,6 +27,7 @@ from taskagent_api.routers import (
     progress,
     projects,
     scheduler,
+    task_dependencies,
     tasks,
     users,
     user_settings,
@@ -209,6 +210,7 @@ app.include_router(users.router, prefix="/api")
 app.include_router(projects.router, prefix="/api")
 app.include_router(goals.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
+app.include_router(task_dependencies.router)
 app.include_router(logs.router, prefix="/api")
 app.include_router(progress.router, prefix="/api")
 app.include_router(scheduler.router, prefix="/api")

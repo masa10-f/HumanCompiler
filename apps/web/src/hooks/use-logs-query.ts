@@ -23,6 +23,38 @@ export function useLogsByTask(taskId: string, skip = 0, limit = 50) {
   })
 }
 
+// Hook for batch fetching logs for multiple tasks
+export function useBatchLogsQuery(taskIds: string[]) {
+  return useQuery({
+    queryKey: ['logs', 'batch', ...taskIds.sort()],
+    queryFn: async () => {
+      const results: Record<string, Log[]> = {};
+      
+      // Fetch logs for all tasks in parallel
+      const promises = taskIds.map(async (taskId) => {
+        try {
+          const logs = await logsApi.getByTask(taskId);
+          return { taskId, logs };
+        } catch (error) {
+          console.error(`Failed to fetch logs for task ${taskId}:`, error);
+          return { taskId, logs: [] };
+        }
+      });
+      
+      const responses = await Promise.all(promises);
+      
+      responses.forEach(({ taskId, logs }) => {
+        results[taskId] = logs;
+      });
+      
+      return results;
+    },
+    enabled: taskIds.length > 0,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+  });
+}
+
 // Hook for fetching a single log
 export function useLog(logId: string) {
   return useQuery({
