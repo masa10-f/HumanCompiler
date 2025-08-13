@@ -349,7 +349,7 @@ class TaskResponse(TaskBase):
     goal_id: UUID
     created_at: datetime
     updated_at: datetime
-    dependencies: list["TaskDependencyResponse"] = []
+    dependencies: list["TaskDependencyResponse"] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 

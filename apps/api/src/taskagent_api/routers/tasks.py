@@ -68,8 +68,10 @@ async def get_tasks_by_goal(
         print(f"Processing task {i + 1}/{len(tasks)}: {task.id} - {task.title}")
 
         # Create basic task response without dependencies first
-        task_response = TaskResponse.model_validate(task)
-        task_response.dependencies = []  # Always start with empty dependencies
+        # Convert task to dict to avoid validation issues with missing dependencies field
+        task_dict = task.__dict__.copy()
+        task_dict["dependencies"] = []  # Ensure dependencies field exists
+        task_response = TaskResponse.model_validate(task_dict)
         print(f"✓ Task {task.id} validated successfully")
 
         # Skip dependency processing for now to isolate the issue
