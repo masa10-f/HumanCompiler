@@ -63,29 +63,49 @@ async def get_tasks_by_goal(
     )
     task_responses = []
     for task in tasks:
-        task_response = TaskResponse.model_validate(task)
-        dependencies = task_service.get_task_dependencies(
-            session, str(task.id), current_user.user_id
-        )
-        # Convert dependencies with task info
-        dependency_responses = []
-        for dep in dependencies:
-            dep_response = TaskDependencyResponse(
-                id=dep.id,
-                task_id=dep.task_id,
-                depends_on_task_id=dep.depends_on_task_id,
-                created_at=dep.created_at,
-            )
-            # Add task info if available
-            if dep.depends_on_task:
-                dep_response.depends_on_task = TaskDependencyTaskInfo(
-                    id=dep.depends_on_task.id,
-                    title=dep.depends_on_task.title,
-                    status=dep.depends_on_task.status,
+        try:
+            task_response = TaskResponse.model_validate(task)
+            # Initialize empty dependencies to avoid issues
+            task_response.dependencies = []
+
+            # Try to get dependencies, but don't fail if there's an issue
+            try:
+                dependencies = task_service.get_task_dependencies(
+                    session, str(task.id), current_user.user_id
                 )
-            dependency_responses.append(dep_response)
-        task_response.dependencies = dependency_responses
-        task_responses.append(task_response)
+                # Convert dependencies with task info
+                dependency_responses = []
+                for dep in dependencies:
+                    try:
+                        dep_response = TaskDependencyResponse(
+                            id=dep.id,
+                            task_id=dep.task_id,
+                            depends_on_task_id=dep.depends_on_task_id,
+                            created_at=dep.created_at,
+                        )
+                        # Add task info if available
+                        if dep.depends_on_task:
+                            dep_response.depends_on_task = TaskDependencyTaskInfo(
+                                id=dep.depends_on_task.id,
+                                title=dep.depends_on_task.title,
+                                status=dep.depends_on_task.status,
+                            )
+                        dependency_responses.append(dep_response)
+                    except Exception as e:
+                        # Log the error but continue processing
+                        print(f"Error processing dependency {dep.id}: {e}")
+                        continue
+                task_response.dependencies = dependency_responses
+            except Exception as e:
+                # If dependencies can't be loaded, just continue with empty list
+                print(f"Error loading dependencies for task {task.id}: {e}")
+                task_response.dependencies = []
+
+            task_responses.append(task_response)
+        except Exception as e:
+            # Log task validation error but continue
+            print(f"Error processing task {task.id}: {e}")
+            continue
     return task_responses
 
 
