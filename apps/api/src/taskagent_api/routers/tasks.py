@@ -65,7 +65,7 @@ async def get_tasks_by_goal(
     print(f"Processing {len(tasks)} tasks for goal {goal_id}")
 
     for i, task in enumerate(tasks):
-        print(f"Processing task {i+1}/{len(tasks)}: {task.id} - {task.title}")
+        print(f"Processing task {i + 1}/{len(tasks)}: {task.id} - {task.title}")
 
         # Create basic task response without dependencies first
         task_response = TaskResponse.model_validate(task)
