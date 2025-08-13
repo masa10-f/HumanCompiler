@@ -95,34 +95,12 @@ class OpenAIClient:
                 f"Context: {len(context.tasks)} tasks, {len(context.projects)} projects"
             )
 
-            # Create structured input for API
+            # Create structured input for Chat Completions API
             planning_context = self._format_planning_context(context)
 
-            # Try Responses API first (GPT-5 recommended), fallback to Chat Completions if needed
-            try:
-                # Use Responses API for GPT-5 (simplified and more powerful)
-                if hasattr(self.client, "responses"):
-                    logger.info(f"Using Responses API with model {self.model}")
-                    response = self.client.responses.create(
-                        model=self.model,
-                        input=planning_context,
-                        tools=self._get_planning_tools(),
-                    )
-                    return self._parse_responses_api_output(response, context)
-                else:
-                    # Fallback to Chat Completions if Responses API not available
-                    logger.info("Responses API not available, using Chat Completions")
-                    return await self._fallback_to_chat_completions(
-                        context, planning_context
-                    )
-            except (AttributeError, APIError) as e:
-                # If Responses API fails, fallback to Chat Completions
-                logger.warning(
-                    f"Responses API failed: {e}, falling back to Chat Completions"
-                )
-                return await self._fallback_to_chat_completions(
-                    context, planning_context
-                )
+            # Use Chat Completions API directly (Responses API is experimental/not available)
+            logger.info(f"Using Chat Completions API with model {self.model}")
+            return self._use_chat_completions_api(context, planning_context)
 
         except RateLimitError as e:
             logger.warning(f"OpenAI rate limit exceeded: {e}")
@@ -447,10 +425,10 @@ class OpenAIClient:
                 context, "テキストレスポンスの解析に失敗しました。"
             )
 
-    async def _fallback_to_chat_completions(
+    def _use_chat_completions_api(
         self, context: WeeklyPlanContext, planning_context: str
     ) -> WeeklyPlanResponse:
-        """Fallback to Chat Completions API when Responses API is not available"""
+        """Use Chat Completions API for GPT-5 weekly planning"""
         try:
             logger.info(f"Using Chat Completions API fallback for model {self.model}")
 
@@ -470,7 +448,10 @@ class OpenAIClient:
                     {"role": "user", "content": planning_context},
                 ],
                 "tools": self._get_planning_tools(),
-                "tool_choice": "auto",
+                "tool_choice": {
+                    "type": "function",
+                    "function": {"name": "create_weekly_plan"},
+                },
                 "max_completion_tokens": 8000,  # Increased to avoid truncation
             }
 
