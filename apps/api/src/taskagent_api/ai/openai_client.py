@@ -36,11 +36,15 @@ class OpenAIClient:
         default_model = "gpt-5"  # GPT-5 flagship model for advanced planning
 
         if api_key:
+            logger.info(
+                f"Initializing OpenAI client with user API key (model: {model or default_model})"
+            )
             self.client = OpenAI(api_key=api_key)
             self.model = model or default_model
         elif (
             not settings.openai_api_key
             or settings.openai_api_key == "your_openai_api_key"
+            or settings.openai_api_key == "development-key-not-available"
         ):
             logger.warning(
                 "OpenAI API key not configured - AI features will not be available"
@@ -48,6 +52,9 @@ class OpenAIClient:
             self.client = None
             self.model = default_model
         else:
+            logger.info(
+                f"Initializing OpenAI client with system API key (model: {default_model})"
+            )
             self.client = OpenAI(api_key=settings.openai_api_key)
             self.model = default_model
 
@@ -67,12 +74,23 @@ class OpenAIClient:
         user_settings = result.scalar_one_or_none()
 
         if user_settings and user_settings.openai_api_key_encrypted:
-            # Decrypt API key
-            api_key = get_crypto_service().decrypt(
-                user_settings.openai_api_key_encrypted
-            )
-            if api_key:
-                return cls(api_key=api_key, model=user_settings.openai_model)
+            try:
+                # Decrypt API key
+                api_key = get_crypto_service().decrypt(
+                    user_settings.openai_api_key_encrypted
+                )
+                if api_key:
+                    logger.info(
+                        f"Successfully decrypted OpenAI API key for user {user_id}"
+                    )
+                    return cls(api_key=api_key, model=user_settings.openai_model)
+                else:
+                    logger.warning(
+                        f"Failed to decrypt OpenAI API key for user {user_id}"
+                    )
+            except Exception as e:
+                logger.error(f"Error decrypting OpenAI API key for user {user_id}: {e}")
+                logger.error(f"Crypto error type: {type(e).__name__}")
 
         # Fall back to system API key or no client
         return cls()
@@ -145,9 +163,12 @@ class OpenAIClient:
             week_start_date=context.week_start_date.strftime("%Y-%m-%d"),
             total_planned_hours=0.0,
             task_plans=[],
-            recommendations=["OpenAI API key not configured - AI features unavailable"],
+            recommendations=[
+                "OpenAI APIキーが設定されていません。設定画面でAPIキーを登録してください。"
+            ],
             insights=[
-                "Please configure your OpenAI API key in settings to enable AI planning"
+                "AI機能を使用するには、有効なOpenAI APIキーの設定が必要です。",
+                "設定画面からAPIキーを入力し、AI機能を有効にしてください。",
             ],
             generated_at=datetime.now(),
         )
@@ -508,8 +529,10 @@ class OpenAIClient:
                 if message.content:
                     return self._parse_structured_text_output(message.content, context)
                 else:
+                    logger.error("OpenAI returned empty response with no tool calls")
                     return self._create_error_response(
-                        context, "AIからの応答が空でした。"
+                        context,
+                        "AIからの応答が空でした。APIキーが正しく設定されているか確認してください。",
                     )
 
         except Exception as e:
