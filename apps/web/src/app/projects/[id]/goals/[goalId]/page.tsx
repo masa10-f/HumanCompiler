@@ -7,7 +7,7 @@ import { useTasksByGoal } from '@/hooks/use-tasks-query';
 import { useGoal } from '@/hooks/use-goals-query';
 import { useProject } from '@/hooks/use-project-query';
 import { useQuery } from '@tanstack/react-query';
-import { progressApi, logsApi } from '@/lib/api';
+import { progressApi } from '@/lib/api';
 import { useTaskActualMinutes } from '@/hooks/use-logs-query';
 import { useUpdateTask } from '@/hooks/use-tasks-query';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -34,7 +34,7 @@ interface GoalDetailPageProps {
 // Component to display actual time for a task
 function TaskActualTime({ taskId }: { taskId: string }) {
   const { totalHours } = useTaskActualMinutes(taskId);
-  
+
   return (
     <div className="flex items-center gap-1">
       <Clock className="h-3 w-3 text-green-600" />
@@ -46,7 +46,7 @@ function TaskActualTime({ taskId }: { taskId: string }) {
 // Component for inline status editing
 function TaskStatusSelect({ task }: { task: Task }) {
   const updateTaskMutation = useUpdateTask();
-  
+
   const handleStatusChange = async (newStatus: TaskStatus) => {
     try {
       await updateTaskMutation.mutateAsync({
@@ -54,10 +54,10 @@ function TaskStatusSelect({ task }: { task: Task }) {
         data: { status: newStatus }
       });
     } catch (error) {
-      log.error('Failed to update task status', error, { 
-        component: 'TaskStatusSelect', 
-        taskId: task.id, 
-        newStatus 
+      log.error('Failed to update task status', error, {
+        component: 'TaskStatusSelect',
+        taskId: task.id,
+        newStatus
       });
     }
   };
