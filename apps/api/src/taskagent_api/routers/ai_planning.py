@@ -87,11 +87,40 @@ async def generate_weekly_plan(
                 ).model_dump(),
             )
 
-        # Create user-specific OpenAI service
-        openai_service = OpenAIService.create_for_user_sync(UUID(user_id), session)
+        # Create user-specific OpenAI client (not OpenAIService)
+        from taskagent_api.ai.openai_client import OpenAIClient
+        from taskagent_api.models import UserSettings
+        from sqlmodel import select
 
-        # Create weekly plan service with user's OpenAI service
-        weekly_plan_service = WeeklyPlanService(openai_service=openai_service)
+        # Get user settings
+        result = session.execute(
+            select(UserSettings).where(UserSettings.user_id == user_id)
+        )
+        user_settings = result.scalar_one_or_none()
+
+        openai_client = None
+        if user_settings and user_settings.openai_api_key_encrypted:
+            # Decrypt API key (try-catch for test environments)
+            try:
+                from taskagent_api.crypto import get_crypto_service
+
+                api_key = get_crypto_service().decrypt(
+                    user_settings.openai_api_key_encrypted
+                )
+                if api_key:
+                    openai_client = OpenAIClient(
+                        api_key=api_key, model=user_settings.openai_model
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to decrypt API key: {e}")
+                # Continue without user-specific API key
+
+        if not openai_client:
+            # Fall back to system API key or no client
+            openai_client = OpenAIClient()
+
+        # Create weekly plan service with user's OpenAI client
+        weekly_plan_service = WeeklyPlanService(openai_service=openai_client)
 
         # Generate weekly plan
         plan_response = await weekly_plan_service.generate_weekly_plan(

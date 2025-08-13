@@ -28,13 +28,16 @@ logger = logging.getLogger(__name__)
 
 
 class OpenAIClient:
-    """OpenAI client using latest Responses API with GPT-5"""
+    """OpenAI client using Responses API and Chat Completions API with GPT-5"""
 
     def __init__(self, api_key: str | None = None, model: str | None = None):
         """Initialize OpenAI client with optional user-specific API key"""
+        # Use GPT-5 as default (latest flagship model)
+        default_model = "gpt-5"  # GPT-5 flagship model for advanced planning
+
         if api_key:
             self.client = OpenAI(api_key=api_key)
-            self.model = model or "gpt-5"  # Default to GPT-5
+            self.model = model or default_model
         elif (
             not settings.openai_api_key
             or settings.openai_api_key == "your_openai_api_key"
@@ -43,10 +46,10 @@ class OpenAIClient:
                 "OpenAI API key not configured - AI features will not be available"
             )
             self.client = None
-            self.model = "gpt-5"  # Use GPT-5 for advanced planning
+            self.model = default_model
         else:
             self.client = OpenAI(api_key=settings.openai_api_key)
-            self.model = "gpt-5"  # Use GPT-5 for advanced planning
+            self.model = default_model
 
     def is_available(self) -> bool:
         """Check if OpenAI client is available"""
@@ -92,39 +95,34 @@ class OpenAIClient:
                 f"Context: {len(context.tasks)} tasks, {len(context.projects)} projects"
             )
 
-            # Create structured input for Responses API
+            # Create structured input for API
             planning_context = self._format_planning_context(context)
 
-            # Try Responses API first, fallback to Chat Completions if not available
+            # Try Responses API first (GPT-5 recommended), fallback to Chat Completions if needed
             try:
-                # Use new Responses API (GPT-5)
-                # Note: GPT-5 Responses API only supports default temperature (1.0)
-                response = self.client.responses.create(
-                    model=self.model,
-                    input=planning_context,
-                    tools=self._get_planning_tools(),
-                )
-            except AttributeError as attr_error:
-                # Responses API not available, fallback to Chat Completions
+                # Use Responses API for GPT-5 (simplified and more powerful)
+                if hasattr(self.client, "responses"):
+                    logger.info(f"Using Responses API with model {self.model}")
+                    response = self.client.responses.create(
+                        model=self.model,
+                        input=planning_context,
+                        tools=self._get_planning_tools(),
+                    )
+                    return self._parse_responses_api_output(response, context)
+                else:
+                    # Fallback to Chat Completions if Responses API not available
+                    logger.info("Responses API not available, using Chat Completions")
+                    return await self._fallback_to_chat_completions(
+                        context, planning_context
+                    )
+            except (AttributeError, APIError) as e:
+                # If Responses API fails, fallback to Chat Completions
                 logger.warning(
-                    f"Responses API not available: {attr_error}, falling back to Chat Completions"
+                    f"Responses API failed: {e}, falling back to Chat Completions"
                 )
                 return await self._fallback_to_chat_completions(
                     context, planning_context
                 )
-            except APIError as api_error:
-                if "Unknown API" in str(api_error) or "not found" in str(api_error):
-                    logger.warning(
-                        f"Responses API not supported: {api_error}, falling back to Chat Completions"
-                    )
-                    return await self._fallback_to_chat_completions(
-                        context, planning_context
-                    )
-                else:
-                    raise  # Re-raise other API errors
-
-            # Parse response (structure may vary based on SDK version)
-            return self._parse_responses_api_output(response, context)
 
         except RateLimitError as e:
             logger.warning(f"OpenAI rate limit exceeded: {e}")
@@ -192,6 +190,11 @@ class OpenAIClient:
 
     def _format_planning_context(self, context: WeeklyPlanContext) -> str:
         """Format context for Responses API input"""
+        # Debug logging
+        logger.info(
+            f"Formatting context: {len(context.projects)} projects, {len(context.goals)} goals, {len(context.tasks)} tasks"
+        )
+
         projects_section = "\n".join(
             [
                 f"### {p.title}\n- ID: {p.id}\n- 説明: {p.description or '説明なし'}"
@@ -212,6 +215,12 @@ class OpenAIClient:
                 for t in context.tasks
             ]
         )
+
+        # Log sample task IDs being sent to OpenAI
+        if context.tasks:
+            logger.info(
+                f"Sample task IDs being sent to OpenAI: {[str(t.id) for t in context.tasks[:3]]}..."
+            )
 
         return f"""週間計画を作成してください。
 
@@ -308,28 +317,44 @@ class OpenAIClient:
     def _parse_responses_api_output(
         self, response, context: WeeklyPlanContext
     ) -> WeeklyPlanResponse:
-        """Parse Responses API output"""
+        """Parse Responses API output (GPT-5 format)"""
         try:
-            # Handle different possible response formats
+            logger.info(f"Parsing Responses API output: {type(response)}")
+
+            # Responses API format according to OpenAI documentation
             if hasattr(response, "tool_calls") and response.tool_calls:
                 # Tool was called
                 tool_call = response.tool_calls[0]
+                logger.info(f"Tool called via Responses API: {tool_call.function.name}")
                 if tool_call.function.name == "create_weekly_plan":
                     function_args = json.loads(tool_call.function.arguments)
                     return self._create_weekly_plan_response(function_args, context)
                 else:
-                    # Unexpected tool call
                     return self._create_error_response(
                         context, f"Unexpected tool call: {tool_call.function.name}"
                     )
 
-            # Check for output_text or similar attributes
+            # Check for output_text attribute (Responses API main output)
             elif hasattr(response, "output_text"):
-                # Try to parse structured output from text
-                return self._parse_structured_text_output(response.output_text, context)
+                logger.info("Processing output_text from Responses API")
+                # Check if the output contains tool execution results
+                output = response.output_text
+                if isinstance(output, str):
+                    return self._parse_structured_text_output(output, context)
+                else:
+                    # Try to extract structured data
+                    return self._create_weekly_plan_response(output, context)
+
+            # Handle other possible response formats
+            elif hasattr(response, "output"):
+                logger.info("Processing output from Responses API")
+                return self._parse_structured_text_output(str(response.output), context)
 
             # Fallback: treat entire response as text and try to extract JSON
             else:
+                logger.warning(
+                    f"Unknown Responses API format, attempting to parse: {response}"
+                )
                 response_text = str(response)
                 return self._parse_structured_text_output(response_text, context)
 
@@ -344,12 +369,29 @@ class OpenAIClient:
     ) -> WeeklyPlanResponse:
         """Create WeeklyPlanResponse from function arguments"""
         task_plans = []
+
+        # Debug logging
+        logger.info(
+            f"Processing function arguments with {len(function_args.get('task_plans', []))} task plans"
+        )
+        logger.info(
+            f"Available task IDs in context: {[str(t.id) for t in context.tasks][:10]}..."
+        )
+
         for plan in function_args.get("task_plans", []):
-            # Find task title
+            # Debug task ID matching
+            logger.debug(
+                f"Looking for task ID: {plan.get('task_id')} (type: {type(plan.get('task_id'))})"
+            )
+
+            # Find task title - try both string and UUID matching
             task_title = next(
-                (t.title for t in context.tasks if t.id == plan["task_id"]),
+                (t.title for t in context.tasks if str(t.id) == str(plan["task_id"])),
                 "Unknown Task",
             )
+
+            if task_title == "Unknown Task":
+                logger.warning(f"Task ID {plan['task_id']} not found in context tasks!")
 
             task_plan = TaskPlan(
                 task_id=plan["task_id"],
@@ -412,6 +454,11 @@ class OpenAIClient:
         try:
             logger.info(f"Using Chat Completions API fallback for model {self.model}")
 
+            # Debug - log the task context
+            logger.info(f"Context has {len(context.tasks)} tasks:")
+            for task in context.tasks[:5]:  # Log first 5 tasks
+                logger.info(f"  Task ID: {task.id}, Title: {task.title}")
+
             # Prepare API parameters for Chat Completions
             api_params = {
                 "model": self.model,
@@ -424,11 +471,11 @@ class OpenAIClient:
                 ],
                 "tools": self._get_planning_tools(),
                 "tool_choice": "auto",
-                "max_completion_tokens": 2000,
+                "max_completion_tokens": 8000,  # Increased to avoid truncation
             }
 
-            # GPT-5 models only support default temperature (1.0)
-            if not self.model.startswith("gpt-5"):
+            # Add temperature for non-o1 models
+            if not self.model.startswith("o1"):
                 api_params["temperature"] = 0.7
 
             response = self.client.chat.completions.create(**api_params)
@@ -456,10 +503,20 @@ class OpenAIClient:
             if message.tool_calls:
                 # Tool was called
                 tool_call = message.tool_calls[0]
+                logger.info(f"Tool called: {tool_call.function.name}")
+
                 if tool_call.function.name == "create_weekly_plan":
                     import json
 
                     function_args = json.loads(tool_call.function.arguments)
+                    logger.info(
+                        f"Function arguments received: {len(function_args.get('task_plans', []))} task plans"
+                    )
+
+                    # Log first few task IDs for debugging
+                    for i, plan in enumerate(function_args.get("task_plans", [])[:3]):
+                        logger.info(f"  Plan {i}: task_id={plan.get('task_id')}")
+
                     return self._create_weekly_plan_response(function_args, context)
                 else:
                     return self._create_error_response(

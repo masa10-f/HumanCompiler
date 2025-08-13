@@ -12,10 +12,15 @@ from taskagent_api.ai.openai_client import OpenAIClient
 class WeeklyPlanService:
     """Service for weekly plan generation and management"""
 
-    def __init__(self):
-        """Initialize service with modular components"""
+    def __init__(self, openai_service=None):
+        """Initialize service with modular components
+
+        Args:
+            openai_service: Optional OpenAIService instance for user-specific API key
+        """
         self.context_collector = ContextCollector()
-        self.openai_client = OpenAIClient()
+        # Use provided OpenAI service or create default one
+        self.openai_client = openai_service if openai_service else OpenAIClient()
 
     async def generate_weekly_plan(
         self, session, user_id: str, request: WeeklyPlanRequest

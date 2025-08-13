@@ -84,7 +84,7 @@ class OpenAIService:
         """Initialize OpenAI client with optional user-specific API key."""
         if api_key:
             self.client = OpenAI(api_key=api_key)
-            self.model = model or "gpt-4-1106-preview"
+            self.model = model or "gpt-5"  # Default to GPT-5
         elif (
             not settings.openai_api_key
             or settings.openai_api_key == "your_openai_api_key"
@@ -93,10 +93,10 @@ class OpenAIService:
                 "OpenAI API key not configured - AI features will not be available"
             )
             self.client = None
-            self.model = "gpt-4-1106-preview"  # GPT-4 Turbo with function calling
+            self.model = "gpt-5"  # GPT-5 flagship model
         else:
             self.client = OpenAI(api_key=settings.openai_api_key)
-            self.model = "gpt-4-1106-preview"  # GPT-4 Turbo with function calling
+            self.model = "gpt-5"  # GPT-5 flagship model
 
     @classmethod
     async def create_for_user(
