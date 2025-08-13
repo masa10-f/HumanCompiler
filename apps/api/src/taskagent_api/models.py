@@ -126,6 +126,34 @@ class Task(TaskBase, table=True):  # type: ignore[call-arg]
     )
 
 
+class TaskDependencyBase(SQLModel):
+    """Base task dependency model"""
+
+    pass
+
+
+class TaskDependency(TaskDependencyBase, table=True):  # type: ignore[call-arg]
+    """Task dependency database model"""
+
+    __tablename__ = "task_dependencies"
+    __table_args__ = {"extend_existing": True}
+
+    id: UUID | None = SQLField(default=None, primary_key=True)
+    task_id: UUID = SQLField(foreign_key="tasks.id", ondelete="CASCADE")
+    depends_on_task_id: UUID = SQLField(foreign_key="tasks.id", ondelete="CASCADE")
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+
+    # Relationships
+    task: Task = Relationship(
+        back_populates="dependencies",
+        sa_relationship_kwargs={"foreign_keys": "[TaskDependency.task_id]"},
+    )
+    depends_on_task: Task = Relationship(
+        back_populates="dependent_tasks",
+        sa_relationship_kwargs={"foreign_keys": "[TaskDependency.depends_on_task_id]"},
+    )
+
+
 class ScheduleBase(SQLModel):
     """Base schedule model"""
 
@@ -165,32 +193,6 @@ class Log(LogBase, table=True):  # type: ignore[call-arg]
 
     # Relationships
     task: Task = Relationship(back_populates="logs")
-
-
-class TaskDependencyBase(SQLModel):
-    """Base task dependency model"""
-
-    task_id: UUID = SQLField(foreign_key="tasks.id", ondelete="CASCADE")
-    depends_on_task_id: UUID = SQLField(foreign_key="tasks.id", ondelete="CASCADE")
-
-
-class TaskDependency(TaskDependencyBase, table=True):  # type: ignore[call-arg]
-    """Task dependency database model"""
-
-    __tablename__ = "task_dependencies"
-
-    id: UUID | None = SQLField(default=None, primary_key=True)
-    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
-
-    # Relationships
-    task: Task = Relationship(
-        back_populates="dependencies",
-        sa_relationship_kwargs={"foreign_keys": "TaskDependency.task_id"},
-    )
-    depends_on_task: Task = Relationship(
-        back_populates="dependent_tasks",
-        sa_relationship_kwargs={"foreign_keys": "TaskDependency.depends_on_task_id"},
-    )
 
 
 class UserSettingsBase(SQLModel):
@@ -347,6 +349,7 @@ class TaskResponse(TaskBase):
     goal_id: UUID
     created_at: datetime
     updated_at: datetime
+    dependencies: list["TaskDependencyResponse"] = []
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -441,17 +444,21 @@ class ApiUsageLogResponse(ApiUsageLogBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-class TaskDependencyCreate(TaskDependencyBase):
+class TaskDependencyCreate(BaseModel):
     """Task dependency creation request"""
 
-    pass
+    task_id: UUID
+    depends_on_task_id: UUID
 
 
-class TaskDependencyResponse(TaskDependencyBase):
+class TaskDependencyResponse(BaseModel):
     """Task dependency response model"""
 
     id: UUID
+    task_id: UUID
+    depends_on_task_id: UUID
     created_at: datetime
+    depends_on_task: "TaskResponse | None" = None
 
     model_config = ConfigDict(from_attributes=True)
 

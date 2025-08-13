@@ -19,9 +19,15 @@ import { TaskFormDialog } from '@/components/tasks/task-form-dialog';
 import { TaskEditDialog } from '@/components/tasks/task-edit-dialog';
 import { TaskDeleteDialog } from '@/components/tasks/task-delete-dialog';
 import { LogFormDialog } from '@/components/logs/log-form-dialog';
-import { ArrowLeft, Plus, Clock, Calendar } from 'lucide-react';
+import { ArrowLeft, Plus, Clock, Calendar, GitBranch, ArrowRight } from 'lucide-react';
 import { taskStatusLabels, taskStatusColors } from '@/types/task';
 import type { TaskStatus, Task } from '@/types/task';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { log } from '@/lib/logger';
 
 interface GoalDetailPageProps {
@@ -336,6 +342,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>タスク名</TableHead>
+                    <TableHead>依存関係</TableHead>
                     <TableHead>ステータス</TableHead>
                     <TableHead>見積時間</TableHead>
                     <TableHead>実績時間</TableHead>
@@ -356,6 +363,54 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
                             </div>
                           )}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {task.dependencies && task.dependencies.length > 0 ? (
+                          <TooltipProvider>
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1">
+                                <GitBranch className="h-4 w-4 text-blue-500" />
+                                <span className="text-sm text-muted-foreground">
+                                  {task.dependencies.length}件
+                                </span>
+                              </div>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="flex -space-x-2">
+                                    {task.dependencies.slice(0, 3).map((dep, index) => (
+                                      <div
+                                        key={dep.id}
+                                        className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 border border-white text-xs"
+                                      >
+                                        {index + 1}
+                                      </div>
+                                    ))}
+                                    {task.dependencies.length > 3 && (
+                                      <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 border border-white text-xs">
+                                        +{task.dependencies.length - 3}
+                                      </div>
+                                    )}
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <div className="space-y-1">
+                                    <div className="font-semibold mb-1">依存タスク:</div>
+                                    {task.dependencies.map((dep) => (
+                                      <div key={dep.id} className="flex items-center gap-2">
+                                        <ArrowRight className="h-3 w-3" />
+                                        <span className="text-sm">
+                                          {dep.depends_on_task?.title || '不明なタスク'}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+                          </TooltipProvider>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">なし</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <TaskStatusSelect task={task} />
@@ -395,7 +450,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
                               </Button>
                             }
                           />
-                          <TaskEditDialog task={task}>
+                          <TaskEditDialog task={task} availableTasks={tasks}>
                             <Button variant="outline" size="sm">
                               編集
                             </Button>

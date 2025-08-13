@@ -10,6 +10,8 @@ from taskagent_api.models import (
     TaskCreate,
     TaskResponse,
     TaskUpdate,
+    TaskDependencyCreate,
+    TaskDependencyResponse,
 )
 from taskagent_api.services import task_service
 
@@ -58,7 +60,17 @@ async def get_tasks_by_goal(
     tasks = task_service.get_tasks_by_goal(
         session, goal_id, current_user.user_id, skip, limit
     )
-    return [TaskResponse.model_validate(task) for task in tasks]
+    task_responses = []
+    for task in tasks:
+        task_response = TaskResponse.model_validate(task)
+        dependencies = task_service.get_task_dependencies(
+            session, str(task.id), current_user.user_id
+        )
+        task_response.dependencies = [
+            TaskDependencyResponse.model_validate(dep) for dep in dependencies
+        ]
+        task_responses.append(task_response)
+    return task_responses
 
 
 @router.get(
@@ -105,7 +117,15 @@ async def get_task(
                 details={"task_id": task_id},
             ).model_dump(),
         )
-    return TaskResponse.model_validate(task)
+    # Get dependencies for the task
+    task_response = TaskResponse.model_validate(task)
+    dependencies = task_service.get_task_dependencies(
+        session, task_id, current_user.user_id
+    )
+    task_response.dependencies = [
+        TaskDependencyResponse.model_validate(dep) for dep in dependencies
+    ]
+    return task_response
 
 
 @router.put(
@@ -140,3 +160,63 @@ async def delete_task(
 ) -> None:
     """Delete specific task"""
     task_service.delete_task(session, task_id, current_user.user_id)
+
+
+@router.post(
+    "/{task_id}/dependencies",
+    response_model=TaskDependencyResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        404: {"model": ErrorResponse, "description": "Task not found"},
+        400: {"model": ErrorResponse, "description": "Invalid dependency"},
+    },
+)
+async def add_task_dependency(
+    task_id: str,
+    dependency_data: TaskDependencyCreate,
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> TaskDependencyResponse:
+    """Add a dependency to a task"""
+    dependency = task_service.add_task_dependency(
+        session, task_id, dependency_data.depends_on_task_id, current_user.user_id
+    )
+    return TaskDependencyResponse.model_validate(dependency)
+
+
+@router.get(
+    "/{task_id}/dependencies",
+    response_model=list[TaskDependencyResponse],
+    responses={
+        404: {"model": ErrorResponse, "description": "Task not found"},
+    },
+)
+async def get_task_dependencies(
+    task_id: str,
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> list[TaskDependencyResponse]:
+    """Get all dependencies for a task"""
+    dependencies = task_service.get_task_dependencies(
+        session, task_id, current_user.user_id
+    )
+    return [TaskDependencyResponse.model_validate(dep) for dep in dependencies]
+
+
+@router.delete(
+    "/{task_id}/dependencies/{dependency_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        404: {"model": ErrorResponse, "description": "Dependency not found"},
+    },
+)
+async def delete_task_dependency(
+    task_id: str,
+    dependency_id: str,
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> None:
+    """Delete a task dependency"""
+    task_service.delete_task_dependency(
+        session, task_id, dependency_id, current_user.user_id
+    )

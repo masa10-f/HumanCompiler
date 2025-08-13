@@ -13,7 +13,8 @@ import type {
 import type {
   Task,
   TaskCreate,
-  TaskUpdate
+  TaskUpdate,
+  TaskDependency
 } from '@/types/task';
 import type {
   Log,
@@ -293,6 +294,27 @@ class ApiClient {
     });
   }
 
+  // Task dependency methods
+  async addTaskDependency(taskId: string, dependsOnTaskId: string): Promise<TaskDependency> {
+    return this.request<TaskDependency>(`/api/tasks/${taskId}/dependencies`, {
+      method: 'POST',
+      body: JSON.stringify({
+        task_id: taskId,
+        depends_on_task_id: dependsOnTaskId,
+      }),
+    });
+  }
+
+  async getTaskDependencies(taskId: string): Promise<TaskDependency[]> {
+    return this.request<TaskDependency[]>(`/api/tasks/${taskId}/dependencies`);
+  }
+
+  async deleteTaskDependency(taskId: string, dependencyId: string): Promise<void> {
+    return this.request<void>(`/api/tasks/${taskId}/dependencies/${dependencyId}`, {
+      method: 'DELETE',
+    });
+  }
+
   // AI Planning API methods
   async generateWeeklyPlan(planRequest: WeeklyPlanRequest): Promise<WeeklyPlanResponse> {
     return this.request<WeeklyPlanResponse>('/api/ai/weekly-plan', {
@@ -424,6 +446,11 @@ export const tasksApi = {
   create: (data: TaskCreate) => apiClient.createTask(data),
   update: (id: string, data: TaskUpdate) => apiClient.updateTask(id, data),
   delete: (id: string) => apiClient.deleteTask(id),
+  addDependency: (taskId: string, dependsOnTaskId: string) =>
+    apiClient.addTaskDependency(taskId, dependsOnTaskId),
+  getDependencies: (taskId: string) => apiClient.getTaskDependencies(taskId),
+  deleteDependency: (taskId: string, dependencyId: string) =>
+    apiClient.deleteTaskDependency(taskId, dependencyId),
 };
 
 export const aiPlanningApi = {

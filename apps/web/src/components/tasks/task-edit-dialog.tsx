@@ -31,9 +31,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useUpdateTask } from '@/hooks/use-tasks-query';
 import { toast } from '@/hooks/use-toast';
 import { taskStatusLabels } from '@/types/task';
+import { TaskDependenciesManager } from './task-dependencies-manager';
 import type { Task } from '@/types/task';
 
 const taskFormSchema = z.object({
@@ -53,10 +55,11 @@ type TaskFormData = z.infer<typeof taskFormSchema>;
 
 interface TaskEditDialogProps {
   task: Task;
+  availableTasks?: Task[];
   children: React.ReactNode;
 }
 
-export function TaskEditDialog({ task, children }: TaskEditDialogProps) {
+export function TaskEditDialog({ task, availableTasks = [], children }: TaskEditDialogProps) {
   const [open, setOpen] = useState(false);
   const updateTaskMutation = useUpdateTask();
 
@@ -124,9 +127,16 @@ export function TaskEditDialog({ task, children }: TaskEditDialogProps) {
             タスクの情報を編集してください。
           </DialogDescription>
         </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
+        <Tabs defaultValue="basic" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="basic">基本情報</TabsTrigger>
+            <TabsTrigger value="dependencies">依存関係</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="basic">
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
               control={form.control}
               name="title"
               render={({ field }) => (
@@ -240,9 +250,24 @@ export function TaskEditDialog({ task, children }: TaskEditDialogProps) {
               <Button type="submit" disabled={updateTaskMutation.isPending}>
                 {updateTaskMutation.isPending ? '更新中...' : '更新'}
               </Button>
-            </div>
-          </form>
-        </Form>
+                </div>
+              </form>
+            </Form>
+          </TabsContent>
+
+          <TabsContent value="dependencies">
+            <TaskDependenciesManager
+              task={task}
+              availableTasks={availableTasks}
+              onDependencyAdded={() => {
+                // Optionally refresh task data
+              }}
+              onDependencyRemoved={() => {
+                // Optionally refresh task data
+              }}
+            />
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
