@@ -67,16 +67,29 @@ async def get_tasks_by_goal(
     for i, task in enumerate(tasks):
         print(f"Processing task {i + 1}/{len(tasks)}: {task.id} - {task.title}")
 
-        # Create basic task response without dependencies first
-        # Convert task to dict to avoid validation issues with missing dependencies field
-        task_dict = task.__dict__.copy()
-        task_dict["dependencies"] = []  # Ensure dependencies field exists
-        task_response = TaskResponse.model_validate(task_dict)
-        print(f"✓ Task {task.id} validated successfully")
+        # Create task response with dependencies
+        task_response = TaskResponse.model_validate(task)
 
-        # Skip dependency processing for now to isolate the issue
-        # This will help us confirm if the task validation is working
-        print("  Skipping dependencies for debugging")
+        # Get dependencies for this task
+        dependencies = task_service.get_task_dependencies(
+            session, task.id, current_user.user_id
+        )
+
+        # Convert to response format and populate depends_on_task info
+        dependency_responses = []
+        for dep in dependencies:
+            dep_response = TaskDependencyResponse.model_validate(dep)
+            if dep.depends_on_task:
+                dep_response.depends_on_task = TaskDependencyTaskInfo.model_validate(
+                    dep.depends_on_task
+                )
+            dependency_responses.append(dep_response)
+
+        task_response.dependencies = dependency_responses
+
+        print(
+            f"✓ Task {task.id} loaded with {len(task_response.dependencies)} dependencies"
+        )
 
         task_responses.append(task_response)
         print(f"✓ Task {task.id} added to response (total: {len(task_responses)})")
