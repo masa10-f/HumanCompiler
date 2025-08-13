@@ -1,4 +1,8 @@
 {
+  "installCommand": "pnpm install --no-frozen-lockfile",
+  "buildCommand": "pnpm run build",
+  "devCommand": "pnpm run dev",
+  "framework": "nextjs",
   "rewrites": [
     {
       "source": "/api/health",
