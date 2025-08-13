@@ -63,22 +63,22 @@ async def get_tasks_by_goal(
     )
     task_responses = []
     print(f"Processing {len(tasks)} tasks for goal {goal_id}")
-    
+
     for i, task in enumerate(tasks):
         print(f"Processing task {i+1}/{len(tasks)}: {task.id} - {task.title}")
-        
+
         # Create basic task response without dependencies first
         task_response = TaskResponse.model_validate(task)
         task_response.dependencies = []  # Always start with empty dependencies
         print(f"✓ Task {task.id} validated successfully")
-        
+
         # Skip dependency processing for now to isolate the issue
         # This will help us confirm if the task validation is working
-        print(f"  Skipping dependencies for debugging")
-        
+        print("  Skipping dependencies for debugging")
+
         task_responses.append(task_response)
         print(f"✓ Task {task.id} added to response (total: {len(task_responses)})")
-    
+
     print(f"Returning {len(task_responses)} task responses")
     return task_responses
 
