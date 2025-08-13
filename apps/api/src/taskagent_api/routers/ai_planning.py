@@ -9,7 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 from uuid import UUID
 
-from taskagent_api.ai import WeeklyPlanRequest, WeeklyPlanResponse, WeeklyPlanService
+from taskagent_api.ai import WeeklyPlanRequest, WeeklyPlanResponse
+from taskagent_api.ai.planning_service import WeeklyPlanService
 from taskagent_api.ai.weekly_task_solver import (
     WeeklyTaskSolver,
     TaskSolverRequest,
