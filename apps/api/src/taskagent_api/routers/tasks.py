@@ -62,9 +62,15 @@ async def get_tasks_by_goal(
         session, goal_id, current_user.user_id, skip, limit
     )
     task_responses = []
-    for task in tasks:
+    print(f"Processing {len(tasks)} tasks for goal {goal_id}")
+    
+    for i, task in enumerate(tasks):
+        print(f"Processing task {i+1}/{len(tasks)}: {task.id} - {task.title}")
         try:
+            # First validate the basic task
             task_response = TaskResponse.model_validate(task)
+            print(f"✓ Task {task.id} validated successfully")
+            
             # Initialize empty dependencies to avoid issues
             task_response.dependencies = []
 
@@ -73,9 +79,11 @@ async def get_tasks_by_goal(
                 dependencies = task_service.get_task_dependencies(
                     session, str(task.id), current_user.user_id
                 )
+                print(f"  Found {len(dependencies)} dependencies for task {task.id}")
+                
                 # Convert dependencies with task info
                 dependency_responses = []
-                for dep in dependencies:
+                for j, dep in enumerate(dependencies):
                     try:
                         dep_response = TaskDependencyResponse(
                             id=dep.id,
@@ -91,21 +99,28 @@ async def get_tasks_by_goal(
                                 status=dep.depends_on_task.status,
                             )
                         dependency_responses.append(dep_response)
+                        print(f"  ✓ Dependency {j+1} processed successfully")
                     except Exception as e:
                         # Log the error but continue processing
-                        print(f"Error processing dependency {dep.id}: {e}")
+                        print(f"  ✗ Error processing dependency {dep.id}: {e}")
                         continue
                 task_response.dependencies = dependency_responses
+                print(f"  Final dependencies count: {len(dependency_responses)}")
             except Exception as e:
                 # If dependencies can't be loaded, just continue with empty list
-                print(f"Error loading dependencies for task {task.id}: {e}")
+                print(f"  ⚠ Error loading dependencies for task {task.id}: {e}")
                 task_response.dependencies = []
 
             task_responses.append(task_response)
+            print(f"✓ Task {task.id} added to response (total: {len(task_responses)})")
         except Exception as e:
             # Log task validation error but continue
-            print(f"Error processing task {task.id}: {e}")
+            print(f"✗ CRITICAL: Error processing task {task.id}: {e}")
+            import traceback
+            traceback.print_exc()
             continue
+    
+    print(f"Returning {len(task_responses)} task responses")
     return task_responses
 
 
