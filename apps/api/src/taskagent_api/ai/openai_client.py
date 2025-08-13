@@ -474,8 +474,8 @@ class OpenAIClient:
                 "max_completion_tokens": 8000,  # Increased to avoid truncation
             }
 
-            # Add temperature for non-o1 models
-            if not self.model.startswith("o1"):
+            # Add temperature for supported models (GPT-5 only supports default temperature)
+            if not self.model.startswith(("o1", "gpt-5")):
                 api_params["temperature"] = 0.7
 
             response = self.client.chat.completions.create(**api_params)
