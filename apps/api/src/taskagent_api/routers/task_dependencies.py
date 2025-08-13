@@ -17,7 +17,9 @@ from taskagent_api.models import (
 router = APIRouter(prefix="/api/task-dependencies", tags=["task-dependencies"])
 
 
-@router.post("/", response_model=TaskDependencyResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/", response_model=TaskDependencyResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_task_dependency(
     dependency: TaskDependencyCreate,
     db: Annotated[Session, Depends(get_db)],
@@ -29,28 +31,28 @@ async def create_task_dependency(
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task with id {dependency.task_id} not found"
+            detail=f"Task with id {dependency.task_id} not found",
         )
 
     depends_on_task = db.get(Task, dependency.depends_on_task_id)
     if not depends_on_task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task with id {dependency.depends_on_task_id} not found"
+            detail=f"Task with id {dependency.depends_on_task_id} not found",
         )
 
     # Validate no self-dependency (already handled by DB constraint)
     if dependency.task_id == dependency.depends_on_task_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Task cannot depend on itself"
+            detail="Task cannot depend on itself",
         )
 
     # Check for circular dependencies
     if _has_circular_dependency(db, dependency.task_id, dependency.depends_on_task_id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Creating this dependency would create a circular dependency"
+            detail="Creating this dependency would create a circular dependency",
         )
 
     # Check if dependency already exists
@@ -63,7 +65,7 @@ async def create_task_dependency(
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Task dependency already exists"
+            detail="Task dependency already exists",
         )
 
     # Create the dependency
@@ -87,7 +89,7 @@ async def get_task_dependencies(
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task with id {task_id} not found"
+            detail=f"Task with id {task_id} not found",
         )
 
     dependencies = db.exec(
@@ -108,17 +110,21 @@ async def delete_task_dependency(
     if not dependency:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task dependency with id {dependency_id} not found"
+            detail=f"Task dependency with id {dependency_id} not found",
         )
 
     db.delete(dependency)
     db.commit()
 
 
-def _has_circular_dependency(db: Session, task_id: UUID, depends_on_task_id: UUID) -> bool:
+def _has_circular_dependency(
+    db: Session, task_id: UUID, depends_on_task_id: UUID
+) -> bool:
     """Check if adding a dependency would create a circular dependency"""
 
-    def _check_path(current_task_id: UUID, target_task_id: UUID, visited: set[UUID]) -> bool:
+    def _check_path(
+        current_task_id: UUID, target_task_id: UUID, visited: set[UUID]
+    ) -> bool:
         if current_task_id in visited:
             return False  # Already visited, no cycle here
 
@@ -129,8 +135,9 @@ def _has_circular_dependency(db: Session, task_id: UUID, depends_on_task_id: UUI
 
         # Get all tasks that depend on the current task
         dependent_tasks = db.exec(
-            select(TaskDependency.task_id)
-            .where(TaskDependency.depends_on_task_id == current_task_id)
+            select(TaskDependency.task_id).where(
+                TaskDependency.depends_on_task_id == current_task_id
+            )
         ).all()
 
         for dependent_task_id in dependent_tasks:
