@@ -118,11 +118,11 @@ class Task(TaskBase, table=True):  # type: ignore[call-arg]
     logs: list["Log"] = Relationship(back_populates="task")
     dependencies: list["TaskDependency"] = Relationship(
         back_populates="task",
-        sa_relationship_kwargs={"foreign_keys": "TaskDependency.task_id"}
+        sa_relationship_kwargs={"foreign_keys": "TaskDependency.task_id"},
     )
     dependent_tasks: list["TaskDependency"] = Relationship(
         back_populates="depends_on_task",
-        sa_relationship_kwargs={"foreign_keys": "TaskDependency.depends_on_task_id"}
+        sa_relationship_kwargs={"foreign_keys": "TaskDependency.depends_on_task_id"},
     )
 
 
@@ -185,11 +185,11 @@ class TaskDependency(TaskDependencyBase, table=True):  # type: ignore[call-arg]
     # Relationships
     task: Task = Relationship(
         back_populates="dependencies",
-        sa_relationship_kwargs={"foreign_keys": "TaskDependency.task_id"}
+        sa_relationship_kwargs={"foreign_keys": "TaskDependency.task_id"},
     )
     depends_on_task: Task = Relationship(
         back_populates="dependent_tasks",
-        sa_relationship_kwargs={"foreign_keys": "TaskDependency.depends_on_task_id"}
+        sa_relationship_kwargs={"foreign_keys": "TaskDependency.depends_on_task_id"},
     )
 
 
