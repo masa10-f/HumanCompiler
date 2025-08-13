@@ -29,7 +29,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { LogCreate } from "@/types/log";
 
 const logFormSchema = z.object({
-  actual_minutes: z.number().min(1, "実作業時間は1分以上である必要があります"),
+  actual_hours: z.number().min(0.1, "実作業時間は0.1時間以上である必要があります"),
   comment: z.string().optional(),
 });
 
@@ -49,7 +49,7 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
   const form = useForm<LogFormData>({
     resolver: zodResolver(logFormSchema),
     defaultValues: {
-      actual_minutes: undefined,
+      actual_hours: undefined,
       comment: "",
     },
   });
@@ -66,7 +66,7 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
       });
       setOpen(false);
       form.reset({
-        actual_minutes: undefined,
+        actual_hours: undefined,
         comment: "",
       });
     },
@@ -79,7 +79,7 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
   const onSubmit = (data: LogFormData) => {
     createLogMutation.mutate({
       task_id: taskId,
-      actual_minutes: data.actual_minutes,
+      actual_minutes: Math.round(data.actual_hours * 60), // Convert hours to minutes for API
       comment: data.comment || undefined,
     });
   };
@@ -105,20 +105,22 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
 
             <FormField
               control={form.control}
-              name="actual_minutes"
+              name="actual_hours"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>実作業時間（分）</FormLabel>
+                  <FormLabel>実作業時間（時間）</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
-                      min={1}
+                      step="0.1"
+                      min="0.1"
+                      max="24"
                       {...field}
                       onChange={(e) => {
                         const value = e.target.value;
-                        field.onChange(value === "" ? undefined : parseInt(value) || undefined);
+                        field.onChange(value === "" ? undefined : parseFloat(value) || undefined);
                       }}
-                      placeholder="例: 120（2時間）"
+                      placeholder="例: 2.5（2時間30分）"
                     />
                   </FormControl>
                   <FormMessage />

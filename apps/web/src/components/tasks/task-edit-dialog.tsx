@@ -39,7 +39,12 @@ import type { Task } from '@/types/task';
 const taskFormSchema = z.object({
   title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
   description: z.string().max(500, '500文字以内で入力してください').optional(),
-  estimate_hours: z.number().min(0.1, '0.1時間以上で入力してください').max(1000, '1000時間以内で入力してください'),
+  estimate_hours: z.number()
+    .min(0.01, '0.01時間以上で入力してください')
+    .max(999.99, '999.99時間以内で入力してください')
+    .refine((val) => Number((val * 100).toFixed()) / 100 === val, {
+      message: '小数点以下は2桁以内で入力してください'
+    }),
   due_date: z.string().optional(),
   status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']),
 });
@@ -163,12 +168,20 @@ export function TaskEditDialog({ task, children }: TaskEditDialogProps) {
                   <FormControl>
                     <Input
                       type="number"
-                      step="0.1"
-                      min="0.1"
-                      max="1000"
-                      placeholder="1"
+                      step="0.01"
+                      min="0.01"
+                      max="999.99"
+                      placeholder="1.00"
                       {...field}
-                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value);
+                        if (!isNaN(value)) {
+                          // Round to 2 decimal places to prevent precision issues
+                          field.onChange(Math.round(value * 100) / 100);
+                        } else {
+                          field.onChange(0);
+                        }
+                      }}
                     />
                   </FormControl>
                   <FormMessage />

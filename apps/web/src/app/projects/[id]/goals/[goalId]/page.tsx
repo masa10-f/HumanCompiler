@@ -7,7 +7,10 @@ import { useTasksByGoal } from '@/hooks/use-tasks-query';
 import { useGoal } from '@/hooks/use-goals-query';
 import { useProject } from '@/hooks/use-project-query';
 import { useQuery } from '@tanstack/react-query';
-import { progressApi } from '@/lib/api';
+import { progressApi, logsApi } from '@/lib/api';
+import { useTaskActualMinutes } from '@/hooks/use-logs-query';
+import { useUpdateTask } from '@/hooks/use-tasks-query';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +21,7 @@ import { TaskDeleteDialog } from '@/components/tasks/task-delete-dialog';
 import { LogFormDialog } from '@/components/logs/log-form-dialog';
 import { ArrowLeft, Plus, Clock, Calendar } from 'lucide-react';
 import { taskStatusLabels, taskStatusColors } from '@/types/task';
+import type { TaskStatus, Task } from '@/types/task';
 import { log } from '@/lib/logger';
 
 interface GoalDetailPageProps {
@@ -25,6 +29,59 @@ interface GoalDetailPageProps {
     id: string;
     goalId: string;
   };
+}
+
+// Component to display actual time for a task
+function TaskActualTime({ taskId }: { taskId: string }) {
+  const { totalHours } = useTaskActualMinutes(taskId);
+  
+  return (
+    <div className="flex items-center gap-1">
+      <Clock className="h-3 w-3 text-green-600" />
+      {totalHours.toFixed(1)}h
+    </div>
+  );
+}
+
+// Component for inline status editing
+function TaskStatusSelect({ task }: { task: Task }) {
+  const updateTaskMutation = useUpdateTask();
+  
+  const handleStatusChange = async (newStatus: TaskStatus) => {
+    try {
+      await updateTaskMutation.mutateAsync({
+        id: task.id,
+        data: { status: newStatus }
+      });
+    } catch (error) {
+      log.error('Failed to update task status', error, { 
+        component: 'TaskStatusSelect', 
+        taskId: task.id, 
+        newStatus 
+      });
+    }
+  };
+
+  return (
+    <Select value={task.status} onValueChange={handleStatusChange} disabled={updateTaskMutation.isPending}>
+      <SelectTrigger className="w-auto min-w-[100px] h-auto p-1">
+        <SelectValue>
+          <Badge className={taskStatusColors[task.status]}>
+            {taskStatusLabels[task.status]}
+          </Badge>
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {Object.entries(taskStatusLabels).map(([value, label]) => (
+          <SelectItem key={value} value={value}>
+            <Badge className={taskStatusColors[value as TaskStatus]}>
+              {label}
+            </Badge>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 }
 
 export default function GoalDetailPage({ params }: GoalDetailPageProps) {
@@ -281,6 +338,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
                     <TableHead>タスク名</TableHead>
                     <TableHead>ステータス</TableHead>
                     <TableHead>見積時間</TableHead>
+                    <TableHead>実績時間</TableHead>
                     <TableHead>締切日</TableHead>
                     <TableHead>作成日</TableHead>
                     <TableHead>操作</TableHead>
@@ -300,15 +358,16 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge className={taskStatusColors[task.status]}>
-                          {taskStatusLabels[task.status]}
-                        </Badge>
+                        <TaskStatusSelect task={task} />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
                           {task.estimate_hours}h
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <TaskActualTime taskId={task.id} />
                       </TableCell>
                       <TableCell>
                         {task.due_date ? (
