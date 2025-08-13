@@ -451,6 +451,16 @@ class TaskDependencyCreate(BaseModel):
     depends_on_task_id: UUID
 
 
+class TaskDependencyTaskInfo(BaseModel):
+    """Task information for dependencies to avoid circular references"""
+
+    id: UUID
+    title: str
+    status: TaskStatus
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TaskDependencyResponse(BaseModel):
     """Task dependency response model"""
 
@@ -458,7 +468,7 @@ class TaskDependencyResponse(BaseModel):
     task_id: UUID
     depends_on_task_id: UUID
     created_at: datetime
-    depends_on_task: "TaskResponse | None" = None
+    depends_on_task: TaskDependencyTaskInfo | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -12,6 +12,7 @@ from taskagent_api.models import (
     TaskUpdate,
     TaskDependencyCreate,
     TaskDependencyResponse,
+    TaskDependencyTaskInfo,
 )
 from taskagent_api.services import task_service
 
@@ -66,9 +67,24 @@ async def get_tasks_by_goal(
         dependencies = task_service.get_task_dependencies(
             session, str(task.id), current_user.user_id
         )
-        task_response.dependencies = [
-            TaskDependencyResponse.model_validate(dep) for dep in dependencies
-        ]
+        # Convert dependencies with task info
+        dependency_responses = []
+        for dep in dependencies:
+            dep_response = TaskDependencyResponse(
+                id=dep.id,
+                task_id=dep.task_id,
+                depends_on_task_id=dep.depends_on_task_id,
+                created_at=dep.created_at,
+            )
+            # Add task info if available
+            if dep.depends_on_task:
+                dep_response.depends_on_task = TaskDependencyTaskInfo(
+                    id=dep.depends_on_task.id,
+                    title=dep.depends_on_task.title,
+                    status=dep.depends_on_task.status,
+                )
+            dependency_responses.append(dep_response)
+        task_response.dependencies = dependency_responses
         task_responses.append(task_response)
     return task_responses
 
