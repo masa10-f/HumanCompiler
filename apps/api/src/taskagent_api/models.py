@@ -138,7 +138,15 @@ class TaskDependency(TaskDependencyBase, table=True):  # type: ignore[call-arg]
     __tablename__ = "task_dependencies"
     __table_args__ = {"extend_existing": True}
 
-    id: UUID | None = SQLField(default=None, primary_key=True)
+    id: UUID | None = SQLField(
+        default=None,
+        sa_column=Column(
+            "id",
+            SQLAlchemyUUID,
+            primary_key=True,
+            server_default=text("gen_random_uuid()"),
+        ),
+    )
     task_id: UUID = SQLField(foreign_key="tasks.id", ondelete="CASCADE")
     depends_on_task_id: UUID = SQLField(foreign_key="tasks.id", ondelete="CASCADE")
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
