@@ -14,7 +14,15 @@ class CryptoService:
 
     def __init__(self):
         """Initialize the crypto service with encryption key."""
-        self.fernet = self._get_fernet()
+        import logging
+
+        logger = logging.getLogger(__name__)
+        try:
+            self.fernet = self._get_fernet()
+            logger.info("✅ CryptoService initialized successfully")
+        except Exception as e:
+            logger.error(f"❌ CryptoService initialization failed: {e}")
+            raise
 
     def _get_fernet(self) -> Fernet:
         """Get or create Fernet instance for encryption."""

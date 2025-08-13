@@ -49,6 +49,16 @@ async def lifespan(app: FastAPI):
     try:
         if await db.health_check():
             logger.info("✅ Database connection successful")
+
+            # Run database migrations
+            try:
+                from taskagent_api.migrations import run_migrations
+
+                await run_migrations()
+                logger.info("✅ Database migrations completed")
+            except Exception as migration_error:
+                logger.warning(f"⚠️ Migration warning: {migration_error}")
+
             # Setup performance monitoring
             engine = db.get_engine()
             performance_monitor.setup_listeners(engine)
@@ -119,18 +129,7 @@ def is_origin_allowed(origin: str) -> bool:
 async def cors_middleware(request, call_next):
     origin = request.headers.get("origin")
 
-    response = await call_next(request)
-
-    if origin and is_origin_allowed(origin):
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Allow-Methods"] = (
-            "GET, POST, PUT, DELETE, OPTIONS"
-        )
-        response.headers["Access-Control-Allow-Headers"] = "*"
-        response.headers["Access-Control-Max-Age"] = "86400"
-
-    # Handle preflight requests
+    # Handle preflight requests first
     if request.method == "OPTIONS":
         if origin and is_origin_allowed(origin):
             # Create a successful OPTIONS response
@@ -145,6 +144,49 @@ async def cors_middleware(request, call_next):
             preflight_response.headers["Access-Control-Allow-Headers"] = "*"
             preflight_response.headers["Access-Control-Max-Age"] = "86400"
             return preflight_response
+
+    # Wrap call_next in try-catch to ensure CORS headers are always added
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        # Create error response with CORS headers
+        from fastapi import HTTPException
+        from fastapi.responses import JSONResponse
+
+        logger = logging.getLogger(__name__)
+
+        # Preserve original status code for HTTPException
+        if isinstance(e, HTTPException):
+            logger.warning(f"HTTP {e.status_code} error: {e.detail}")
+            response = JSONResponse(
+                status_code=e.status_code,
+                content={"detail": e.detail, "error_code": None},
+            )
+        else:
+            # Only use 500 for unexpected errors
+            import traceback
+
+            logger.error(f"Unexpected error: {type(e).__name__}: {e}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            response = JSONResponse(
+                status_code=500,
+                content={
+                    "detail": "Internal server error",
+                    "error_code": None,
+                    "error_type": type(e).__name__,
+                    "debug_message": str(e) if str(e) else "No details available",
+                },
+            )
+
+    # Always add CORS headers for allowed origins
+    if origin and is_origin_allowed(origin):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = (
+            "GET, POST, PUT, DELETE, OPTIONS"
+        )
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Max-Age"] = "86400"
 
     return response
 

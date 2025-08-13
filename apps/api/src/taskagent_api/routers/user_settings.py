@@ -24,6 +24,46 @@ from taskagent_api.models import (
 router = APIRouter(prefix="/api/user", tags=["user-settings"])
 
 
+# Available OpenAI models based on openai_api.md (2025-08-12)
+AVAILABLE_MODELS = {
+    "gpt-5": {
+        "name": "GPT-5",
+        "description": "フラッグシップモデル - 高度推論・エージェント・コーディング",
+        "max_context": "400k tokens",
+        "max_output": "128k tokens",
+        "modalities": ["text", "image_input"],
+    },
+    "gpt-5-mini": {
+        "name": "GPT-5 mini",
+        "description": "低コスト・高速 - 明確なタスクに最適",
+        "max_context": "400k tokens",
+        "max_output": "128k tokens",
+        "modalities": ["text", "image_input"],
+    },
+    "gpt-5-nano": {
+        "name": "GPT-5 nano",
+        "description": "最小コスト・最速 - 要約・分類など",
+        "max_context": "400k tokens",
+        "max_output": "128k tokens",
+        "modalities": ["text", "image_input"],
+    },
+    "gpt-4o": {
+        "name": "GPT-4o",
+        "description": "汎用マルチモーダル - 実績のあるモデル",
+        "max_context": "128k tokens",
+        "max_output": "4k tokens",
+        "modalities": ["text", "image_input"],
+    },
+    "gpt-4o-mini": {
+        "name": "GPT-4o mini",
+        "description": "省コスト運用 - 軽量タスク向け",
+        "max_context": "128k tokens",
+        "max_output": "4k tokens",
+        "modalities": ["text"],
+    },
+}
+
+
 async def validate_openai_api_key(api_key: str) -> bool:
     """Validate OpenAI API key by making a test request.
 
@@ -49,7 +89,7 @@ async def validate_openai_api_key(api_key: str) -> bool:
         client.chat.completions.create(
             model="gpt-3.5-turbo",  # Use a lightweight model for validation
             messages=[{"role": "system", "content": "ping"}],  # Minimal input
-            max_tokens=1,  # Limit response size
+            max_completion_tokens=1,  # Limit response size
         )
         return True
     except openai.AuthenticationError:
@@ -61,6 +101,17 @@ async def validate_openai_api_key(api_key: str) -> bool:
     except Exception:
         # Network or other errors - consider invalid for safety
         return False
+
+
+def validate_model_choice(model: str) -> bool:
+    """Validate that the selected model is available."""
+    return model in AVAILABLE_MODELS
+
+
+@router.get("/models")
+async def get_available_models() -> dict:
+    """Get list of available OpenAI models with their specifications."""
+    return {"success": True, "models": AVAILABLE_MODELS, "default_model": "gpt-5"}
 
 
 @router.get("/settings", response_model=UserSettingsResponse)
@@ -81,7 +132,7 @@ async def get_user_settings(
         return UserSettingsResponse(
             id=UUID("00000000-0000-0000-0000-000000000000"),
             user_id=user_id,
-            openai_model="gpt-4",
+            openai_model="gpt-5",
             ai_features_enabled=False,
             has_api_key=False,
             created_at=default_timestamp,
@@ -111,6 +162,13 @@ async def create_user_settings(
     session: Annotated[Session, Depends(get_session)],
 ) -> UserSettingsResponse:
     """Create or update user settings."""
+    # Validate OpenAI model selection
+    if not validate_model_choice(settings_data.openai_model):
+        available_models = list(AVAILABLE_MODELS.keys())
+        raise ValidationError(
+            f"Invalid model '{settings_data.openai_model}'. Available models: {', '.join(available_models)}"
+        )
+
     # Validate OpenAI API key
     if not await validate_openai_api_key(settings_data.openai_api_key):
         raise ValidationError("Invalid OpenAI API key")
@@ -167,6 +225,14 @@ async def update_user_settings(
 
     if not settings:
         raise NotFoundError("User settings not found")
+
+    # Validate model selection if provided
+    if settings_data.openai_model is not None:
+        if not validate_model_choice(settings_data.openai_model):
+            available_models = list(AVAILABLE_MODELS.keys())
+            raise ValidationError(
+                f"Invalid model '{settings_data.openai_model}'. Available models: {', '.join(available_models)}"
+            )
 
     # Update fields if provided
     if settings_data.openai_api_key is not None:

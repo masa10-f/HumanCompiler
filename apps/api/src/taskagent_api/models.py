@@ -5,7 +5,7 @@ from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field, ConfigDict
-from sqlalchemy import JSON
+from sqlalchemy import JSON, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
 from sqlmodel import Column, Relationship, SQLModel
 from sqlmodel import Field as SQLField
@@ -163,7 +163,7 @@ class UserSettingsBase(SQLModel):
     """Base user settings model"""
 
     openai_api_key_encrypted: str | None = SQLField(default=None, max_length=500)
-    openai_model: str = SQLField(default="gpt-4", max_length=50)
+    openai_model: str = SQLField(default="gpt-5", max_length=50)
     ai_features_enabled: bool = SQLField(default=False)
 
 
@@ -172,7 +172,15 @@ class UserSettings(UserSettingsBase, table=True):
 
     __tablename__ = "user_settings"
 
-    id: UUID | None = SQLField(default=None, primary_key=True)
+    id: UUID | None = SQLField(
+        default=None,
+        sa_column=Column(
+            "id",
+            SQLAlchemyUUID,
+            primary_key=True,
+            server_default=text("gen_random_uuid()"),
+        ),
+    )
     user_id: UUID = SQLField(foreign_key="users.id", unique=True)
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
@@ -355,7 +363,7 @@ class UserSettingsCreate(BaseModel):
     """User settings creation request"""
 
     openai_api_key: str = Field(min_length=1)
-    openai_model: str = Field(default="gpt-4", max_length=50)
+    openai_model: str = Field(default="gpt-5", max_length=50)
 
 
 class UserSettingsUpdate(BaseModel):

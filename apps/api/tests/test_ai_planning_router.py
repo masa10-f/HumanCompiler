@@ -415,7 +415,7 @@ async def test_test_ai_integration_success():
             mock_client.model = "gpt-4-1106-preview"
             MockOpenAIClient.return_value = mock_client
 
-            mock_functions = [{"name": "test_function"}]
+            mock_functions = [{"function": {"name": "test_function"}}]
             MockFunctions.return_value = mock_functions
 
             result = await test_ai_integration()

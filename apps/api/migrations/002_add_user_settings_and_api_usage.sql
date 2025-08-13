@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     openai_api_key_encrypted TEXT,
-    openai_model VARCHAR(50) NOT NULL DEFAULT 'gpt-4',
+    openai_model VARCHAR(50) NOT NULL DEFAULT 'gpt-5',
     ai_features_enabled BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,

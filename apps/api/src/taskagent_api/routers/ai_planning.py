@@ -9,7 +9,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 from uuid import UUID
 
-from taskagent_api.ai import WeeklyPlanRequest, WeeklyPlanResponse, WeeklyPlanService
+from taskagent_api.ai import WeeklyPlanRequest, WeeklyPlanResponse
+from taskagent_api.ai.planning_service import WeeklyPlanService
+from taskagent_api.ai.weekly_task_solver import (
+    WeeklyTaskSolver,
+    TaskSolverRequest,
+    TaskSolverResponse,
+)
 from taskagent_api.ai_service import OpenAIService
 from taskagent_api.auth import get_current_user_id
 from taskagent_api.database import get_session, db
@@ -82,11 +88,40 @@ async def generate_weekly_plan(
                 ).model_dump(),
             )
 
-        # Create user-specific OpenAI service
-        openai_service = OpenAIService.create_for_user_sync(UUID(user_id), session)
+        # Create user-specific OpenAI client (not OpenAIService)
+        from taskagent_api.ai.openai_client import OpenAIClient
+        from taskagent_api.models import UserSettings
+        from sqlmodel import select
 
-        # Create weekly plan service with user's OpenAI service
-        weekly_plan_service = WeeklyPlanService(openai_service=openai_service)
+        # Get user settings
+        result = session.execute(
+            select(UserSettings).where(UserSettings.user_id == user_id)
+        )
+        user_settings = result.scalar_one_or_none()
+
+        openai_client = None
+        if user_settings and user_settings.openai_api_key_encrypted:
+            # Decrypt API key (try-catch for test environments)
+            try:
+                from taskagent_api.crypto import get_crypto_service
+
+                api_key = get_crypto_service().decrypt(
+                    user_settings.openai_api_key_encrypted
+                )
+                if api_key:
+                    openai_client = OpenAIClient(
+                        api_key=api_key, model=user_settings.openai_model
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to decrypt API key: {e}")
+                # Continue without user-specific API key
+
+        if not openai_client:
+            # Fall back to system API key or no client
+            openai_client = OpenAIClient()
+
+        # Create weekly plan service with user's OpenAI client
+        weekly_plan_service = WeeklyPlanService(openai_service=openai_client)
 
         # Generate weekly plan
         plan_response = await weekly_plan_service.generate_weekly_plan(
@@ -112,6 +147,95 @@ async def generate_weekly_plan(
         )
 
 
+@router.post(
+    "/weekly-task-solver",
+    response_model=TaskSolverResponse,
+    responses={
+        400: {"model": ErrorResponse, "description": "Bad request"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def solve_weekly_tasks(
+    request: TaskSolverRequest,
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(get_session),
+):
+    """
+    Advanced AI-powered weekly task solver using GPT-5.
+
+    This endpoint provides intelligent task selection and allocation optimization:
+    1. Analyzes project priorities and deadline constraints
+    2. Optimizes time allocation across multiple projects
+    3. Selects optimal tasks considering capacity and constraints
+    4. Provides strategic insights on workload optimization
+
+    The solver considers:
+    - Project allocation strategies and time budgets
+    - Deadline urgency and business impact
+    - Weekly capacity and daily time constraints
+    - Deep work scheduling and energy management
+    - Task dependencies and context switching costs
+    """
+    try:
+        logger.info(
+            f"Starting weekly task solving for user {user_id} starting {request.week_start_date}"
+        )
+
+        # Validate week start date
+        try:
+            week_start = datetime.strptime(request.week_start_date, "%Y-%m-%d").date()
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ErrorResponse.create(
+                    code="INVALID_DATE_FORMAT",
+                    message="Invalid date format. Use YYYY-MM-DD",
+                    details={"provided_date": request.week_start_date},
+                ).model_dump(),
+            ) from e
+
+        # Check if date is in the past (allow current week)
+        today = date.today()
+        if week_start < today and (today - week_start).days > 7:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ErrorResponse.create(
+                    code="INVALID_DATE_RANGE",
+                    message="Cannot create plans for weeks more than 7 days in the past",
+                    details={
+                        "provided_date": str(week_start),
+                        "current_date": str(today),
+                    },
+                ).model_dump(),
+            )
+
+        # Create user-specific task solver
+        task_solver = await WeeklyTaskSolver.create_for_user(UUID(user_id), session)
+
+        # Solve weekly tasks
+        solver_response = await task_solver.solve_weekly_tasks(
+            session=session, user_id=user_id, request=request
+        )
+
+        logger.info(
+            f"Weekly task solving completed: {len(solver_response.selected_tasks)} tasks selected"
+        )
+        return solver_response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in weekly task solver: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse.create(
+                code="INTERNAL_SERVER_ERROR",
+                message="Internal server error during task solving",
+                details={"error_type": type(e).__name__},
+            ).model_dump(),
+        )
+
+
 @router.get("/weekly-plan/test")
 async def test_ai_integration():
     """Test endpoint to verify OpenAI integration."""
@@ -130,7 +254,7 @@ async def test_ai_integration():
             "message": "OpenAI integration working",
             "model": ai_client.model,
             "functions_available": len(functions),
-            "function_names": [f["name"] for f in functions],
+            "function_names": [f["function"]["name"] for f in functions],
         }
     except Exception as e:
         return {
@@ -138,6 +262,49 @@ async def test_ai_integration():
             "message": f"OpenAI integration failed: {str(e)}",
             "model": None,
             "functions_available": 0,
+        }
+
+
+@router.get("/diagnose")
+async def diagnose_ai_setup(
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(get_session),
+):
+    """Diagnose AI setup and configuration for debugging"""
+    try:
+        from taskagent_api.ai.openai_client import OpenAIClient
+        from taskagent_api.models import UserSettings
+        from sqlmodel import select
+
+        # Get user settings
+        result = session.execute(
+            select(UserSettings).where(UserSettings.user_id == user_id)
+        )
+        user_settings = result.scalar_one_or_none()
+
+        # Create user-specific client
+        client = await OpenAIClient.create_for_user(UUID(user_id), session)
+
+        return {
+            "status": "success",
+            "user_id": user_id,
+            "has_user_settings": user_settings is not None,
+            "has_api_key": bool(
+                user_settings and user_settings.openai_api_key_encrypted
+            ),
+            "configured_model": user_settings.openai_model if user_settings else "N/A",
+            "client_available": client.is_available(),
+            "client_model": client.model,
+            "ai_features_enabled": user_settings.ai_features_enabled
+            if user_settings
+            else False,
+        }
+    except Exception as e:
+        logger.error(f"Error in AI diagnosis: {e}")
+        return {
+            "status": "error",
+            "message": f"Diagnosis failed: {str(e)}",
+            "error_type": type(e).__name__,
         }
 
 

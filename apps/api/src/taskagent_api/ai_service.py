@@ -84,7 +84,7 @@ class OpenAIService:
         """Initialize OpenAI client with optional user-specific API key."""
         if api_key:
             self.client = OpenAI(api_key=api_key)
-            self.model = model or "gpt-4-1106-preview"
+            self.model = model or "gpt-5"  # Default to GPT-5
         elif (
             not settings.openai_api_key
             or settings.openai_api_key == "your_openai_api_key"
@@ -93,10 +93,10 @@ class OpenAIService:
                 "OpenAI API key not configured - AI features will not be available"
             )
             self.client = None
-            self.model = "gpt-4-1106-preview"  # GPT-4 Turbo with function calling
+            self.model = "gpt-5"  # GPT-5 flagship model
         else:
             self.client = OpenAI(api_key=settings.openai_api_key)
-            self.model = "gpt-4-1106-preview"  # GPT-4 Turbo with function calling
+            self.model = "gpt-5"  # GPT-5 flagship model
 
     @classmethod
     async def create_for_user(
@@ -402,17 +402,23 @@ Focus on:
 Use the create_week_plan function to structure your response."""
 
             # Call OpenAI API
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
+            # Prepare API parameters
+            api_params = {
+                "model": self.model,
+                "messages": [
                     {"role": "system", "content": self.create_system_prompt()},
                     {"role": "user", "content": user_message},
                 ],
-                functions=self.get_function_definitions(),
-                function_call={"name": "create_week_plan"},
-                temperature=0.7,
-                max_tokens=2000,
-            )
+                "functions": self.get_function_definitions(),
+                "function_call": {"name": "create_week_plan"},
+                "max_completion_tokens": 8000,  # Generous limit for complex project plans
+            }
+
+            # GPT-5 models only support default temperature (1.0)
+            if not self.model.startswith("gpt-5"):
+                api_params["temperature"] = 0.7
+
+            response = self.client.chat.completions.create(**api_params)
 
             # Log API usage
             if hasattr(response, "usage") and response.usage:
@@ -422,6 +428,32 @@ Use the create_week_plan function to structure your response."""
                     tokens_used=response.usage.total_tokens,
                     response_status="success",
                 )
+
+            # Debug: Log OpenAI response structure
+            logger.info(f"🔍 OpenAI Response: {len(response.choices)} choices")
+            for i, choice in enumerate(response.choices):
+                logger.info(f"🔍 Choice {i}: finish_reason = {choice.finish_reason}")
+                logger.info(f"🔍 Choice {i}: message.role = {choice.message.role}")
+                logger.info(
+                    f"🔍 Choice {i}: has function_call = {hasattr(choice.message, 'function_call')}"
+                )
+                if hasattr(choice.message, "function_call"):
+                    fc = choice.message.function_call
+                    logger.info(f"🔍 Choice {i}: function_call = {fc}")
+                    logger.info(
+                        f"🔍 Choice {i}: function_call.name = {fc.name if fc else 'None'}"
+                    )
+                if hasattr(choice.message, "content"):
+                    content_preview = (
+                        str(choice.message.content)[:200]
+                        if choice.message.content
+                        else "None"
+                    )
+                    logger.info(f"🔍 Choice {i}: content preview = {content_preview}")
+                if hasattr(choice.message, "tool_calls"):
+                    logger.info(
+                        f"🔍 Choice {i}: tool_calls = {choice.message.tool_calls}"
+                    )
 
             # Parse function call response
             function_call = response.choices[0].message.function_call

@@ -18,7 +18,7 @@ export default function SettingsPage() {
   const router = useRouter()
   const [apiKey, setApiKey] = useState("")
   const [showApiKey, setShowApiKey] = useState(false)
-  const [openaiModel, setOpenaiModel] = useState("gpt-4")
+  const [openaiModel, setOpenaiModel] = useState("gpt-5")
   const [hasApiKey, setHasApiKey] = useState(false)
   const [loading, setLoading] = useState(false)
   const [loadingSettings, setLoadingSettings] = useState(true)
@@ -30,10 +30,33 @@ export default function SettingsPage() {
     request_count: number
   } | null>(null)
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [availableModels, setAvailableModels] = useState<{
+    [key: string]: {
+      name: string
+      description: string
+      max_context: string
+      max_output: string
+      modalities: string[]
+    }
+  } | null>(null)
 
   useEffect(() => {
     fetchUserSettings()
+    fetchAvailableModels()
   }, [])
+
+  const fetchAvailableModels = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/models`)
+
+      if (response.ok) {
+        const data = await response.json()
+        setAvailableModels(data.models)
+      }
+    } catch (err) {
+      log.error('Failed to fetch available models', err as Error, { component: 'Settings' })
+    }
+  }
 
   const fetchUserSettings = async () => {
     try {
@@ -222,13 +245,26 @@ export default function SettingsPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="gpt-4">GPT-4 (Recommended)</SelectItem>
-                <SelectItem value="gpt-4-turbo-preview">GPT-4 Turbo</SelectItem>
-                <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
+                {availableModels ? (
+                  Object.entries(availableModels).map(([modelId, modelInfo]) => (
+                    <SelectItem key={modelId} value={modelId}>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{modelInfo.name}</span>
+                        <span className="text-sm text-muted-foreground">{modelInfo.description}</span>
+                        <span className="text-xs text-muted-foreground">
+                          コンテキスト: {modelInfo.max_context} | 出力: {modelInfo.max_output}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))
+                ) : (
+                  // Fallback while loading
+                  <SelectItem value="gpt-5">GPT-5 (Loading...)</SelectItem>
+                )}
               </SelectContent>
             </Select>
             <p className="text-sm text-muted-foreground">
-              Choose the AI model for generating plans and insights
+              AI計画生成と洞察に使用するモデルを選択してください
             </p>
           </div>
 
