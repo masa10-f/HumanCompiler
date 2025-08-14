@@ -6,19 +6,55 @@ import { useAuth } from '@/hooks/use-auth';
 import { useProject } from '@/hooks/use-project-query';
 import { useGoalsByProject } from '@/hooks/use-goals-query';
 import { useQuery } from '@tanstack/react-query';
-import { progressApi } from '@/lib/api';
+import { progressApi, goalsApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { GoalFormDialog } from '@/components/goals/goal-form-dialog';
 import { GoalEditDialog } from '@/components/goals/goal-edit-dialog';
 import { GoalDeleteDialog } from '@/components/goals/goal-delete-dialog';
 import { ProjectProgressCard } from '@/components/progress/progress-card';
-import { ArrowLeft, Plus } from 'lucide-react';
+import { ArrowLeft, Plus, GitBranch } from 'lucide-react';
 
 interface ProjectDetailPageProps {
   params: {
     id: string;
   };
+}
+
+// Component to display goal dependencies
+function GoalDependencies({ goalId, projectId }: { goalId: string; projectId: string }) {
+  const { data: dependencies = [] } = useQuery({
+    queryKey: ['goalDependencies', goalId],
+    queryFn: () => goalsApi.getDependencies(goalId),
+  });
+
+  const { data: allGoals = [] } = useGoalsByProject(projectId);
+
+  if (dependencies.length === 0) {
+    return <span className="text-sm text-muted-foreground">なし</span>;
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
+        <GitBranch className="h-4 w-4 text-blue-500" />
+        <span className="text-sm text-muted-foreground">
+          {dependencies.length}件
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {dependencies.map((dep) => {
+          const dependsOnGoal = allGoals.find(g => g.id === dep.depends_on_goal_id);
+          return (
+            <Badge key={dep.id} variant="outline" className="text-xs">
+              {dependsOnGoal?.title || '不明'}
+            </Badge>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
@@ -186,25 +222,33 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex justify-between items-center mb-4">
-                    <div className="text-sm text-gray-600">
-                      見積時間: {goal.estimate_hours}h
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <div className="text-sm text-gray-600">
+                        見積時間: {goal.estimate_hours}h
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {new Date(goal.created_at).toLocaleDateString('ja-JP')}
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-500">
-                      {new Date(goal.created_at).toLocaleDateString('ja-JP')}
+
+                    <div>
+                      <div className="text-xs text-gray-500 mb-1">依存関係:</div>
+                      <GoalDependencies goalId={goal.id} projectId={params.id} />
                     </div>
-                  </div>
-                  <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                    <GoalEditDialog goal={goal}>
-                      <Button variant="outline" size="sm">
-                        編集
-                      </Button>
-                    </GoalEditDialog>
-                    <GoalDeleteDialog goal={goal}>
-                      <Button variant="outline" size="sm">
-                        削除
-                      </Button>
-                    </GoalDeleteDialog>
+
+                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                      <GoalEditDialog goal={goal}>
+                        <Button variant="outline" size="sm">
+                          編集
+                        </Button>
+                      </GoalEditDialog>
+                      <GoalDeleteDialog goal={goal}>
+                        <Button variant="outline" size="sm">
+                          削除
+                        </Button>
+                      </GoalDeleteDialog>
+                    </div>
                   </div>
                 </CardContent>
               </Card>

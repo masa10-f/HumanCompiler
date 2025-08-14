@@ -13,6 +13,7 @@ from taskagent_api.models import (
     Goal,
     GoalCreate,
     GoalUpdate,
+    GoalDependency,
     Log,
     LogCreate,
     LogUpdate,
@@ -310,6 +311,111 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
         invalidate_cache("short", "goals_by_project")
         invalidate_cache("medium", "goal_detail")
         return result
+
+    def add_goal_dependency(
+        self,
+        session: Session,
+        goal_id: str | UUID,
+        depends_on_goal_id: str | UUID,
+        owner_id: str | UUID,
+    ) -> GoalDependency:
+        """Add a dependency to a goal"""
+        # Verify both goals exist and belong to the owner
+        goal = self.get_goal(session, goal_id, owner_id)
+        if not goal:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found"
+            )
+
+        depends_on_goal = self.get_goal(session, depends_on_goal_id, owner_id)
+        if not depends_on_goal:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Dependency goal not found",
+            )
+
+        # Check for circular dependency
+        if goal_id == depends_on_goal_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Goal cannot depend on itself",
+            )
+
+        # Check if dependency already exists
+        existing = session.exec(
+            select(GoalDependency)
+            .where(GoalDependency.goal_id == goal_id)
+            .where(GoalDependency.depends_on_goal_id == depends_on_goal_id)
+        ).first()
+
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Dependency already exists",
+            )
+
+        # Create dependency
+        dependency = GoalDependency(
+            goal_id=goal_id, depends_on_goal_id=depends_on_goal_id
+        )
+        session.add(dependency)
+        session.commit()
+        session.refresh(dependency)
+
+        # Invalidate goal cache
+        invalidate_cache("medium", "goal_detail")
+
+        return dependency
+
+    def get_goal_dependencies(
+        self, session: Session, goal_id: str | UUID, owner_id: str | UUID
+    ) -> list[GoalDependency]:
+        """Get all dependencies for a goal"""
+        # Verify goal ownership
+        goal = self.get_goal(session, goal_id, owner_id)
+        if not goal:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found"
+            )
+
+        dependencies = session.exec(
+            select(GoalDependency).where(GoalDependency.goal_id == goal_id)
+        ).all()
+
+        # Load the depends_on_goal for each dependency
+        for dep in dependencies:
+            dep.depends_on_goal = session.get(Goal, dep.depends_on_goal_id)
+
+        return dependencies
+
+    def delete_goal_dependency(
+        self,
+        session: Session,
+        goal_id: str | UUID,
+        dependency_id: str | UUID,
+        owner_id: str | UUID,
+    ) -> bool:
+        """Delete a goal dependency"""
+        # Verify goal ownership
+        goal = self.get_goal(session, goal_id, owner_id)
+        if not goal:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found"
+            )
+
+        dependency = session.get(GoalDependency, dependency_id)
+        if not dependency or dependency.goal_id != UUID(str(goal_id)):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Dependency not found"
+            )
+
+        session.delete(dependency)
+        session.commit()
+
+        # Invalidate goal cache
+        invalidate_cache("medium", "goal_detail")
+
+        return True
 
 
 class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
