@@ -575,7 +575,7 @@ export default function AIPlanningPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => viewScheduleDetails(schedule.week_start_date)}
+                        onClick={() => viewScheduleDetails(schedule.week_start_date.split('T')[0])}
                       >
                         <Eye className="h-4 w-4 mr-1" />
                         詳細
@@ -583,7 +583,7 @@ export default function AIPlanningPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => deleteSchedule(schedule.week_start_date)}
+                        onClick={() => deleteSchedule(schedule.week_start_date.split('T')[0])}
                         className="text-red-600 hover:text-red-700"
                       >
                         <Trash2 className="h-4 w-4" />
