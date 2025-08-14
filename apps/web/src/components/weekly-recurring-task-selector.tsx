@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Clock, Tag } from "lucide-react"
-import { toast } from "@/components/ui/use-toast"
+import { useToast } from "@/components/ui/use-toast"
 
 interface WeeklyRecurringTask {
   id: string
@@ -31,6 +31,7 @@ export function WeeklyRecurringTaskSelector({
 }: WeeklyRecurringTaskSelectorProps) {
   const [tasks, setTasks] = useState<WeeklyRecurringTask[]>([])
   const [loading, setLoading] = useState(true)
+  const { toast } = useToast()
 
   useEffect(() => {
     fetchTasks()

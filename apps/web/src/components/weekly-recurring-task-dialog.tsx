@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { toast } from "@/components/ui/use-toast"
+import { useToast } from "@/components/ui/use-toast"
 
 interface WeeklyRecurringTask {
   id: string
@@ -66,6 +66,7 @@ export function WeeklyRecurringTaskDialog({
     is_active: true,
   })
   const [saving, setSaving] = useState(false)
+  const { toast } = useToast()
 
   useEffect(() => {
     if (task) {
