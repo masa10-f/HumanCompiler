@@ -25,9 +25,15 @@ def get_session():
 
 
 @router.post(
+    "",
+    response_model=WeeklyRecurringTaskResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+@router.post(
     "/",
     response_model=WeeklyRecurringTaskResponse,
     status_code=status.HTTP_201_CREATED,
+    include_in_schema=False,
 )
 async def create_weekly_recurring_task(
     task_data: WeeklyRecurringTaskCreate,
@@ -42,8 +48,13 @@ async def create_weekly_recurring_task(
 
 
 @router.get(
+    "",
+    response_model=list[WeeklyRecurringTaskResponse],
+)
+@router.get(
     "/",
     response_model=list[WeeklyRecurringTaskResponse],
+    include_in_schema=False,
 )
 async def get_weekly_recurring_tasks(
     session: Annotated[Session, Depends(get_session)],
