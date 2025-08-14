@@ -32,7 +32,8 @@ import type {
   WorkloadAnalysis,
   PrioritySuggestions,
   ScheduleRequest,
-  ScheduleResult
+  ScheduleResult,
+  SavedWeeklySchedule
 } from '@/types/ai-planning';
 import type {
   TestAIIntegrationResponse,
@@ -422,6 +423,31 @@ class ApiClient {
   async getTaskProgress(taskId: string): Promise<TaskProgress> {
     return this.request<TaskProgress>(`/api/progress/task/${taskId}`);
   }
+
+  // Weekly Schedule API methods
+  async getWeeklySchedules(skip = 0, limit = 30): Promise<SavedWeeklySchedule[]> {
+    return this.request<SavedWeeklySchedule[]>(`/api/weekly-schedule/list?skip=${skip}&limit=${limit}`);
+  }
+
+  async getWeeklySchedule(weekStartDate: string): Promise<SavedWeeklySchedule> {
+    return this.request<SavedWeeklySchedule>(`/api/weekly-schedule/${weekStartDate}`);
+  }
+
+  async saveWeeklySchedule(weekStartDate: string, scheduleData: any): Promise<SavedWeeklySchedule> {
+    return this.request<SavedWeeklySchedule>('/api/weekly-schedule/save', {
+      method: 'POST',
+      body: JSON.stringify({
+        week_start_date: weekStartDate,
+        schedule_data: scheduleData,
+      }),
+    });
+  }
+
+  async deleteWeeklySchedule(weekStartDate: string): Promise<{ message: string }> {
+    return this.request<{ message: string }>(`/api/weekly-schedule/${weekStartDate}`, {
+      method: 'DELETE',
+    });
+  }
 }
 
 export const apiClient = new ApiClient();
@@ -490,4 +516,11 @@ export const progressApi = {
   getProject: (projectId: string) => apiClient.getProjectProgress(projectId),
   getGoal: (goalId: string) => apiClient.getGoalProgress(goalId),
   getTask: (taskId: string) => apiClient.getTaskProgress(taskId),
+};
+
+export const weeklyScheduleApi = {
+  getAll: (skip?: number, limit?: number) => apiClient.getWeeklySchedules(skip, limit),
+  getByWeek: (weekStartDate: string) => apiClient.getWeeklySchedule(weekStartDate),
+  save: (weekStartDate: string, scheduleData: any) => apiClient.saveWeeklySchedule(weekStartDate, scheduleData),
+  delete: (weekStartDate: string) => apiClient.deleteWeeklySchedule(weekStartDate),
 };

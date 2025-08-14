@@ -42,8 +42,6 @@ class TaskPlan(BaseModel):
     task_title: str
     estimated_hours: float
     priority: int
-    suggested_day: str
-    suggested_time_slot: str
     rationale: str
 
 

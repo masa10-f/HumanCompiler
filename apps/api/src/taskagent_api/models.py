@@ -39,6 +39,7 @@ class User(UserBase, table=True):  # type: ignore[call-arg]
     # Relationships
     projects: list["Project"] = Relationship(back_populates="owner")
     schedules: list["Schedule"] = Relationship(back_populates="user")
+    weekly_schedules: list["WeeklySchedule"] = Relationship(back_populates="user")
     settings: "UserSettings" = Relationship(back_populates="user")
     api_usage_logs: list["ApiUsageLog"] = Relationship(back_populates="user")
 
@@ -170,7 +171,7 @@ class ScheduleBase(SQLModel):
 
 
 class Schedule(ScheduleBase, table=True):  # type: ignore[call-arg]
-    """Schedule database model"""
+    """Schedule database model for daily schedules"""
 
     __tablename__ = "schedules"
 
@@ -181,6 +182,31 @@ class Schedule(ScheduleBase, table=True):  # type: ignore[call-arg]
 
     # Relationships
     user: User = Relationship(back_populates="schedules")
+
+
+class WeeklyScheduleBase(SQLModel):
+    """Base weekly schedule model"""
+
+    week_start_date: datetime = SQLField(description="Start date of the week (Monday)")
+    schedule_json: dict[str, Any] = SQLField(
+        sa_column=Column(JSON),
+        default_factory=dict,
+        description="Weekly schedule data including selected tasks",
+    )
+
+
+class WeeklySchedule(WeeklyScheduleBase, table=True):  # type: ignore[call-arg]
+    """Weekly schedule database model for storing weekly task selection"""
+
+    __tablename__ = "weekly_schedules"
+
+    id: UUID | None = SQLField(default=None, primary_key=True)
+    user_id: UUID = SQLField(foreign_key="users.id", index=True)
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+
+    # Relationships
+    user: User = Relationship(back_populates="weekly_schedules")
 
 
 class LogBase(SQLModel):
@@ -382,6 +408,30 @@ class ScheduleUpdate(BaseModel):
 
 class ScheduleResponse(ScheduleBase):
     """Schedule response model"""
+
+    id: UUID
+    user_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WeeklyScheduleCreate(WeeklyScheduleBase):
+    """Weekly schedule creation request"""
+
+    pass
+
+
+class WeeklyScheduleUpdate(BaseModel):
+    """Weekly schedule update request"""
+
+    week_start_date: datetime | None = None
+    schedule_json: dict[str, Any] | None = None
+
+
+class WeeklyScheduleResponse(WeeklyScheduleBase):
+    """Weekly schedule response model"""
 
     id: UUID
     user_id: UUID

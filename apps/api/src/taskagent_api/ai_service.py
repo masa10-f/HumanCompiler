@@ -54,8 +54,6 @@ class TaskPlan(BaseModel):
     task_title: str
     estimated_hours: float
     priority: int
-    suggested_day: str
-    suggested_time_slot: str
     rationale: str
 
 
@@ -186,14 +184,6 @@ class OpenAIService:
                                         "type": "integer",
                                         "description": "Task priority (1=highest, 5=lowest)",
                                     },
-                                    "suggested_day": {
-                                        "type": "string",
-                                        "description": "Suggested day of week (Monday, Tuesday, etc.)",
-                                    },
-                                    "suggested_time_slot": {
-                                        "type": "string",
-                                        "description": "Suggested time slot (morning, afternoon, evening)",
-                                    },
                                     "rationale": {
                                         "type": "string",
                                         "description": "Reasoning for this scheduling decision",
@@ -203,8 +193,6 @@ class OpenAIService:
                                     "task_id",
                                     "estimated_hours",
                                     "priority",
-                                    "suggested_day",
-                                    "suggested_time_slot",
                                     "rationale",
                                 ],
                             },
@@ -474,8 +462,6 @@ Use the create_week_plan function to structure your response."""
                         task_title=task_title,
                         estimated_hours=plan["estimated_hours"],
                         priority=plan["priority"],
-                        suggested_day=plan["suggested_day"],
-                        suggested_time_slot=plan["suggested_time_slot"],
                         rationale=plan["rationale"],
                     )
                     task_plans.append(task_plan)

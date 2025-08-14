@@ -396,8 +396,6 @@ class WeeklyTaskSolver:
                         task_title=task.title,
                         estimated_hours=task_hours,
                         priority=int(score),
-                        suggested_day="Monday",  # Simple assignment
-                        suggested_time_slot="09:00-12:00",
                         rationale=f"Selected based on heuristic score: {score:.1f}",
                     )
                 )
@@ -477,15 +475,16 @@ class WeeklyTaskSolver:
 上記のタスク一覧に存在しないIDは使用しないでください。
 
 ## 最適化要件
-以下の要素を考慮して最適なタスクを選択し、スケジューリングしてください：
+以下の要素を考慮して最適なタスクを選択してください：
 
 1. 締切の緊急度とビジネスインパクト
 2. タスク依存関係とブロック関係
 3. 認知負荷とコンテキストスイッチングコスト
-4. 週間のエネルギーレベル
-5. プロジェクトの戦略的重要度とリソース配分
+4. プロジェクトの戦略的重要度とリソース配分
 
 締切、プロジェクトバランス、容量制約を考慮して最適なタスクを選択し、作業負荷最適化とタスク優先順位について戦略的な洞察を提供してください。
+
+注意：日ごとの詳細なスケジューリング（何曜日の何時にタスクを実行するか）は別のシステムで行うため、タスクの選択と優先順位付けに集中してください。
 
 solve_weekly_tasks関数を使用して構造化された結果を返してください。"""
 
@@ -508,16 +507,12 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                                         "task_id": {"type": "string"},
                                         "estimated_hours": {"type": "number"},
                                         "priority": {"type": "integer"},
-                                        "suggested_day": {"type": "string"},
-                                        "suggested_time_slot": {"type": "string"},
                                         "rationale": {"type": "string"},
                                     },
                                     "required": [
                                         "task_id",
                                         "estimated_hours",
                                         "priority",
-                                        "suggested_day",
-                                        "suggested_time_slot",
                                         "rationale",
                                     ],
                                 },

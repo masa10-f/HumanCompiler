@@ -12,8 +12,6 @@ export interface TaskPlan {
   task_title: string;
   estimated_hours: number;
   priority: number;
-  suggested_day: string;
-  suggested_time_slot: string;
   rationale: string;
 }
 
@@ -24,6 +22,7 @@ export interface WeeklyPlanResponse {
   task_plans: TaskPlan[];
   recommendations: string[];
   insights: string[];
+  project_allocations?: ProjectAllocation[];
   generated_at: string;
 }
 
@@ -110,4 +109,33 @@ export interface ScheduleResult {
   optimization_status: string;
   solve_time_seconds: number;
   objective_value?: number;
+}
+
+// Weekly Schedule Storage types
+export interface WeeklyScheduleData {
+  success: boolean;
+  selected_tasks: TaskPlan[];
+  total_allocated_hours: number;
+  project_allocations: ProjectAllocation[];
+  optimization_insights: string[];
+  constraint_analysis: Record<string, any>;
+  solver_metrics: Record<string, any>;
+  generated_at: string;
+}
+
+export interface ProjectAllocation {
+  project_id: string;
+  project_title: string;
+  target_hours: number;
+  max_hours: number;
+  priority_weight: number;
+}
+
+export interface SavedWeeklySchedule {
+  id: string;
+  user_id: string;
+  week_start_date: string;
+  schedule_json: WeeklyScheduleData;
+  created_at: string;
+  updated_at: string;
 }

@@ -5,7 +5,7 @@ Scheduler API endpoints for task scheduling optimization.
 import logging
 import math
 from dataclasses import dataclass, field
-from datetime import datetime, time, UTC
+from datetime import datetime, time, UTC, timedelta
 from enum import Enum
 from typing import Any
 from uuid import uuid4
@@ -18,7 +18,13 @@ from ortools.sat.python import cp_model
 from taskagent_api.auth import get_current_user_id
 from taskagent_api.database import db
 from taskagent_api.exceptions import ResourceNotFoundError, ValidationError
-from taskagent_api.models import Schedule, ScheduleResponse, ErrorResponse
+from taskagent_api.models import (
+    Schedule,
+    ScheduleResponse,
+    ErrorResponse,
+    WeeklySchedule,
+    Task,
+)
 from taskagent_api.services import goal_service, task_service
 
 # OR-Tools CP-SAT scheduler implementation
@@ -324,6 +330,9 @@ class DailyScheduleRequest(BaseModel):
     date: str = Field(..., description="Target date in YYYY-MM-DD format")
     project_id: str | None = Field(None, description="Filter tasks by project ID")
     goal_id: str | None = Field(None, description="Filter tasks by goal ID")
+    use_weekly_schedule: bool = Field(
+        False, description="Use tasks from weekly schedule if available"
+    )
     time_slots: list[TimeSlotInput] = Field(..., description="Available time slots")
     preferences: dict[str, Any] = Field(
         default_factory=dict, description="Scheduling preferences"
@@ -451,8 +460,29 @@ async def create_daily_schedule(
             f"Request params: project_id={request.project_id}, goal_id={request.goal_id}"
         )
 
-        # Fetch tasks based on filters
-        if request.goal_id:
+        # Fetch tasks based on filters and weekly schedule preference
+        if request.use_weekly_schedule:
+            # Get tasks from weekly schedule if available
+            logger.info("Attempting to fetch tasks from weekly schedule")
+            db_tasks = await _get_tasks_from_weekly_schedule(
+                session, user_id, request.date
+            )
+            if not db_tasks:
+                logger.info(
+                    "No weekly schedule found, falling back to regular task fetching"
+                )
+                # Fall back to regular task fetching if no weekly schedule
+                if request.goal_id:
+                    db_tasks = task_service.get_tasks_by_goal(
+                        session, request.goal_id, user_id
+                    )
+                elif request.project_id:
+                    db_tasks = task_service.get_tasks_by_project(
+                        session, request.project_id, user_id
+                    )
+                else:
+                    db_tasks = task_service.get_all_user_tasks(session, user_id)
+        elif request.goal_id:
             # Get tasks for specific goal
             logger.info(f"Fetching tasks for goal_id: {request.goal_id}")
             db_tasks = task_service.get_tasks_by_goal(session, request.goal_id, user_id)
@@ -875,6 +905,69 @@ async def list_daily_schedules(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch schedule list",
         )
+
+
+async def _get_tasks_from_weekly_schedule(
+    session: Session, user_id: str, date_str: str
+) -> list[Task]:
+    """
+    Get tasks from weekly schedule for the given date.
+
+    This function finds the appropriate weekly schedule for the given date
+    and returns the tasks selected for that week.
+    """
+    try:
+        # Parse the date and find the Monday of that week
+        target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        # Calculate the Monday of the week (0=Monday, 6=Sunday)
+        days_since_monday = target_date.weekday()
+        week_start = target_date - timedelta(days=days_since_monday)
+        week_start_datetime = datetime.combine(week_start, datetime.min.time())
+
+        logger.info(
+            f"Looking for weekly schedule starting {week_start} for date {date_str}"
+        )
+
+        # Get weekly schedule for this week
+        weekly_schedule = session.exec(
+            select(WeeklySchedule).where(
+                WeeklySchedule.user_id == user_id,
+                WeeklySchedule.week_start_date == week_start_datetime,
+            )
+        ).first()
+
+        if not weekly_schedule:
+            logger.info(f"No weekly schedule found for week starting {week_start}")
+            return []
+
+        # Extract task IDs from weekly schedule
+        schedule_data = weekly_schedule.schedule_json
+        if not schedule_data or "selected_tasks" not in schedule_data:
+            logger.info("Weekly schedule found but no selected_tasks data")
+            return []
+
+        task_ids = [task["task_id"] for task in schedule_data["selected_tasks"]]
+        logger.info(f"Found {len(task_ids)} tasks in weekly schedule")
+
+        if not task_ids:
+            return []
+
+        # Get the actual task objects from database
+        # Convert string UUIDs to UUID objects for query
+        from uuid import UUID
+
+        task_uuid_list = [UUID(task_id) for task_id in task_ids]
+
+        tasks = session.exec(select(Task).where(Task.id.in_(task_uuid_list))).all()
+
+        logger.info(
+            f"Retrieved {len(tasks)} tasks from database based on weekly schedule"
+        )
+        return list(tasks)
+
+    except Exception as e:
+        logger.error(f"Error getting tasks from weekly schedule: {e}")
+        return []
 
 
 @router.get("/daily/{date}", response_model=ScheduleResponse)
