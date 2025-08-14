@@ -67,9 +67,12 @@ async def save_weekly_schedule(
             )
 
         # Check if weekly schedule already exists
+        # Convert user_id to UUID if it's a string
+        user_uuid = UUID(user_id) if isinstance(user_id, str) else user_id
+
         existing_schedule = session.exec(
             select(WeeklySchedule).where(
-                WeeklySchedule.user_id == user_id,
+                WeeklySchedule.user_id == user_uuid,
                 WeeklySchedule.week_start_date == week_start,
             )
         ).first()
@@ -87,7 +90,7 @@ async def save_weekly_schedule(
             # Create new schedule
             new_schedule = WeeklySchedule(
                 id=uuid4(),
-                user_id=UUID(user_id),
+                user_id=user_uuid,
                 week_start_date=week_start,
                 schedule_json=request.schedule_data,
             )
@@ -137,10 +140,13 @@ async def list_weekly_schedules(
                 status_code=400, detail=f"Invalid limit parameter: {limit}"
             )
 
+        # Convert user_id to UUID if it's a string
+        user_uuid = UUID(user_id) if isinstance(user_id, str) else user_id
+
         # Get schedules from database ordered by week start date (newest first)
         schedules = session.exec(
             select(WeeklySchedule)
-            .where(WeeklySchedule.user_id == user_id)
+            .where(WeeklySchedule.user_id == user_uuid)
             .order_by(WeeklySchedule.week_start_date.desc())
             .offset(skip)
             .limit(limit)
@@ -202,10 +208,13 @@ async def get_weekly_schedule(
             f"Fetching weekly schedule for user {user_id} for week {week_start_date}"
         )
 
+        # Convert user_id to UUID if it's a string
+        user_uuid = UUID(user_id) if isinstance(user_id, str) else user_id
+
         # Get schedule from database
         schedule = session.exec(
             select(WeeklySchedule).where(
-                WeeklySchedule.user_id == user_id,
+                WeeklySchedule.user_id == user_uuid,
                 WeeklySchedule.week_start_date == week_start,
             )
         ).first()
@@ -268,10 +277,13 @@ async def delete_weekly_schedule(
             f"Deleting weekly schedule for user {user_id} for week {week_start_date}"
         )
 
+        # Convert user_id to UUID if it's a string
+        user_uuid = UUID(user_id) if isinstance(user_id, str) else user_id
+
         # Get schedule from database
         schedule = session.exec(
             select(WeeklySchedule).where(
-                WeeklySchedule.user_id == user_id,
+                WeeklySchedule.user_id == user_uuid,
                 WeeklySchedule.week_start_date == week_start,
             )
         ).first()
