@@ -5,6 +5,7 @@ TaskAgentがgit repositoryです。
 pythonは仮想環境 .venv/bin/ を使用してください。
 コード中のコメント、コミットメッセージ、issue, PRの記述は英語でお願いします。
 コードの実装面で問題だと思うことがあればissueとして切り出してください。
+データベースに登録されているデータを初期化するような操作は行わないでください。
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## プロジェクト概要
@@ -253,6 +254,129 @@ fly secrets set SUPABASE_SERVICE_ROLE_KEY=eyJh...
 - ✅ **メモリ効率**: SQLModel + FastAPIの効率的なORM
 - ✅ **監視**: パフォーマンスメトリクス収集
 
+## データベースマイグレーション戦略
+
+**⚠️ 重要**: 2025年8月14日にWorkType機能実装時にデータ消失事故が発生しました。今後は以下の安全なマイグレーション手順を必須とします。
+
+### 安全なマイグレーション手順
+
+#### 1. **事前バックアップ（必須）**
+```python
+from taskagent_api.safe_migration import DataBackupManager
+
+# 必ずマイグレーション前にバックアップを作成
+backup_manager = DataBackupManager()
+backup_path = backup_manager.create_backup("pre_migration_backup")
+print(f"Backup created: {backup_path}")
+```
+
+#### 2. **テーブル構造変更の禁止事項**
+以下の操作は**絶対に実行しないこと**：
+- `SQLModel.metadata.drop_all(engine)` - 全テーブル削除
+- `DROP TABLE` - テーブル削除
+- `TRUNCATE TABLE` - データ削除
+- 本番環境での直接SQL実行
+
+#### 3. **安全な変更方法**
+
+##### **新しいカラム追加**
+```python
+from taskagent_api.safe_migration import AddColumnMigration
+
+# 安全にカラムを追加
+migration = AddColumnMigration(
+    table_name="tasks",
+    column_definition="new_column VARCHAR(255) DEFAULT 'default_value'"
+)
+backup_path = migration.execute_safe_migration("add_new_column")
+```
+
+##### **Enum値の変更**
+```python
+from taskagent_api.safe_migration import EnumMigration
+
+# 安全にEnum値を変更
+migration = EnumMigration(
+    enum_name="worktype",
+    old_values=["light_work", "study", "focused_work"],
+    new_values=["light_work", "study", "focused_work", "meeting"]
+)
+backup_path = migration.execute_safe_migration("update_work_type_enum")
+```
+
+#### 4. **マイグレーション実行コマンド**
+```bash
+# 開発環境での安全なマイグレーション
+PYTHONPATH=src python -c "
+from taskagent_api.safe_migration import SafeMigrationManager
+migration = SafeMigrationManager()
+migration.execute_safe_migration('migration_name')
+"
+
+# バックアップの復旧（緊急時）
+PYTHONPATH=src python -c "
+from taskagent_api.safe_migration import DataBackupManager
+manager = DataBackupManager()
+manager.restore_backup('backups/backup_20250814_120000.json')
+"
+```
+
+#### 5. **マイグレーション検証手順**
+1. **ローカルテスト**: 必ずローカル環境で先にテスト
+2. **バックアップ確認**: バックアップファイルの内容を確認
+3. **ロールバックテスト**: 復旧手順をテスト実行
+4. **段階的実行**: 本番環境では段階的に実行
+
+#### 6. **緊急時の対応**
+データ消失が発生した場合：
+```bash
+# 1. 最新バックアップを確認
+ls -la backups/
+
+# 2. バックアップから復旧
+PYTHONPATH=src python -c "
+from taskagent_api.safe_migration import DataBackupManager
+manager = DataBackupManager()
+manager.restore_backup('backups/最新のバックアップファイル.json')
+"
+
+# 3. データ整合性チェック
+PYTHONPATH=src python -c "
+from taskagent_api.database import db
+from sqlmodel import Session, select, text
+from taskagent_api.models import User, Project, Goal, Task
+
+engine = db.get_engine()
+with Session(engine) as session:
+    users = len(session.exec(select(User)).all())
+    projects = len(session.exec(select(Project)).all())
+    goals = len(session.exec(select(Goal)).all())
+    tasks = len(session.exec(select(Task)).all())
+    print(f'Data check - Users: {users}, Projects: {projects}, Goals: {goals}, Tasks: {tasks}')
+"
+```
+
+### スキーマ変更時のチェックリスト
+
+- [ ] 事前バックアップ作成済み
+- [ ] ローカル環境でテスト済み
+- [ ] ロールバック手順確認済み
+- [ ] 本番データへの影響評価済み
+- [ ] チーム内でレビュー済み
+
+### 自動バックアップ設定
+
+マイグレーション実行時に自動バックアップを作成する設定：
+```python
+# apps/api/src/taskagent_api/database.py に追加
+import atexit
+from taskagent_api.safe_migration import DataBackupManager
+
+# アプリ終了時に自動バックアップ
+backup_manager = DataBackupManager()
+atexit.register(lambda: backup_manager.create_backup("auto_shutdown_backup"))
+```
+
 ## 開発時の注意事項
 
 - プロンプトに対する返答は必ず日本語で行う
@@ -260,3 +384,4 @@ fly secrets set SUPABASE_SERVICE_ROLE_KEY=eyJh...
 - 既存ファイルの編集を優先し、新規ファイル作成は最小限に
 - エラーハンドリング・ログ出力を適切に実装
 - テストケースの作成・実行を忘れずに行う
+- **データベース変更時は必ず上記のマイグレーション手順に従う**

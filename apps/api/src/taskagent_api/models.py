@@ -136,6 +136,9 @@ class TaskBase(SQLModel):
     )
     work_type: WorkType = SQLField(
         default=WorkType.LIGHT_WORK,
+        sa_column=Column(
+            SQLEnum(WorkType, values_callable=lambda x: [e.value for e in x])
+        ),
         description="Work type classification for scheduling optimization",
     )
 
