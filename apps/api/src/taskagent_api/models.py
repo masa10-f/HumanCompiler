@@ -147,13 +147,6 @@ class Task(TaskBase, table=True):  # type: ignore[call-arg]
 
     id: UUID | None = SQLField(default=None, primary_key=True)
     goal_id: UUID = SQLField(foreign_key="goals.id", ondelete="CASCADE")
-    work_type: WorkType = SQLField(
-        default=WorkType.LIGHT_WORK,
-        sa_column=Column(
-            SQLEnum(WorkType, values_callable=lambda x: [e.value for e in x])
-        ),
-        description="Work type classification for scheduling optimization",
-    )
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 

@@ -279,7 +279,7 @@ def optimize_schedule(tasks, time_slots, date=None):
         total_scheduled_hours=total_scheduled_hours,
         optimization_status=optimization_status,
         solve_time_seconds=solve_time,
-        objective_value=objective_value,
+        objective_value=objective_value if objective_value is not None else 0.0,
     )
 
 
@@ -548,7 +548,9 @@ async def create_daily_schedule(
             scheduler_task = SchedulerTask(
                 id=str(db_task.id),  # Convert UUID to string
                 title=db_task.title,
-                estimate_hours=db_task.estimate_hours,
+                estimate_hours=float(
+                    db_task.estimate_hours
+                ),  # Convert Decimal to float
                 priority=3,  # Default priority - could be enhanced
                 due_date=db_task.due_date,
                 kind=task_kind,
@@ -562,7 +564,9 @@ async def create_daily_schedule(
             task_info_map[str(db_task.id)] = TaskInfo(
                 id=str(db_task.id),  # Convert UUID to string
                 title=db_task.title,
-                estimate_hours=db_task.estimate_hours,
+                estimate_hours=float(
+                    db_task.estimate_hours
+                ),  # Convert Decimal to float
                 priority=3,
                 kind=task_kind.value,
                 due_date=db_task.due_date,
@@ -870,10 +874,12 @@ async def list_daily_schedules(
 
         # Get schedules from database ordered by date (newest first)
         logger.info("Executing database query...")
+        from sqlalchemy import desc
+
         schedules = session.exec(
             select(Schedule)
             .where(Schedule.user_id == user_id)
-            .order_by(Schedule.date.desc())
+            .order_by(desc(Schedule.date))
             .offset(skip)
             .limit(limit)
         ).all()
@@ -902,7 +908,7 @@ async def list_daily_schedules(
         raise
     except ValidationError as e:
         logger.error(f"Validation error in schedule list: {e}")
-        logger.error(f"Validation error details: {e.errors()}")
+        logger.error(f"Validation error details: {str(e)}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     except Exception as e:
@@ -968,7 +974,12 @@ async def _get_tasks_from_weekly_schedule(
 
         task_uuid_list = [UUID(task_id) for task_id in task_ids]
 
-        tasks = session.exec(select(Task).where(Task.id.in_(task_uuid_list))).all()
+        # Use SQLModel's built-in filtering
+        tasks = []
+        for task_uuid in task_uuid_list:
+            task = session.get(Task, task_uuid)
+            if task:
+                tasks.append(task)
 
         logger.info(
             f"Retrieved {len(tasks)} tasks from database based on weekly schedule"
