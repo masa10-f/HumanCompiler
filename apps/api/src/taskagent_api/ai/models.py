@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ConfigDict, field_serializer
 
-from taskagent_api.models import Goal, Project, Task
+from taskagent_api.models import Goal, Project, Task, WeeklyRecurringTask
 
 
 @dataclass
@@ -20,6 +20,8 @@ class WeeklyPlanContext:
     projects: list[Project]
     goals: list[Goal]
     tasks: list[Task]
+    weekly_recurring_tasks: list[WeeklyRecurringTask]
+    selected_recurring_task_ids: list[str]
     capacity_hours: float
     preferences: dict[str, Any]
 
@@ -30,6 +32,9 @@ class WeeklyPlanRequest(BaseModel):
     week_start_date: str = Field(..., description="Week start date (YYYY-MM-DD)")
     capacity_hours: float = Field(40.0, description="Available hours for the week")
     project_filter: list[str] | None = Field(None, description="Filter by project IDs")
+    selected_recurring_task_ids: list[str] = Field(
+        default_factory=list, description="Selected weekly recurring task IDs"
+    )
     preferences: dict[str, Any] = Field(
         default_factory=dict, description="User preferences"
     )

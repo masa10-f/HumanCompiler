@@ -31,6 +31,7 @@ import {
   Save
 } from 'lucide-react';
 import { AppHeader } from '@/components/layout/app-header';
+import { WeeklyRecurringTaskSelector } from '@/components/weekly-recurring-task-selector';
 import { toast } from '@/hooks/use-toast';
 import { aiPlanningApi, weeklyScheduleApi } from '@/lib/api';
 import { log } from '@/lib/logger';
@@ -42,6 +43,7 @@ export default function AIPlanningPage() {
   const router = useRouter();
 
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
+  const [selectedRecurringTaskIds, setSelectedRecurringTaskIds] = useState<string[]>([]);
   const [weekStartDate, setWeekStartDate] = useState(() => {
     const today = new Date();
     const monday = new Date(today);
@@ -140,6 +142,7 @@ export default function AIPlanningPage() {
         week_start_date: weekStartDate as string,
         capacity_hours: capacityHours,
         project_filter: selectedProjects.length > 0 ? selectedProjects : undefined,
+        selected_recurring_task_ids: selectedRecurringTaskIds,
         preferences: {}
       });
 
@@ -378,6 +381,12 @@ export default function AIPlanningPage() {
                   ))}
                 </div>
               </div>
+
+              <WeeklyRecurringTaskSelector
+                selectedTaskIds={selectedRecurringTaskIds}
+                onSelectionChange={setSelectedRecurringTaskIds}
+                disabled={isGenerating}
+              />
 
               <Button
                 onClick={generateWeeklyPlan}

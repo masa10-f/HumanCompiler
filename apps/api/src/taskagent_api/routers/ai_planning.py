@@ -266,6 +266,9 @@ async def solve_weekly_tasks(
         if existing_schedule:
             # Update existing schedule
             existing_schedule.schedule_json = schedule_data
+            existing_schedule.selected_recurring_task_ids = [
+                UUID(task_id) for task_id in request.selected_recurring_task_ids
+            ]
             existing_schedule.updated_at = datetime.now()
             session.add(existing_schedule)
         else:
@@ -275,6 +278,9 @@ async def solve_weekly_tasks(
                 user_id=UUID(user_id),
                 week_start_date=week_start_datetime,
                 schedule_json=schedule_data,
+                selected_recurring_task_ids=[
+                    UUID(task_id) for task_id in request.selected_recurring_task_ids
+                ],
             )
             session.add(new_schedule)
 
