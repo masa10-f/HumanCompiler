@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,6 +14,24 @@ import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { supabase } from "@/lib/supabase"
 import { log } from "@/lib/logger"
 
+interface ApiUsageData {
+  total_tokens: number
+  total_cost: number
+  request_count: number
+}
+
+interface ModelInfo {
+  name: string
+  description: string
+  max_context: string
+  max_output: string
+  modalities: string[]
+}
+
+interface AvailableModels {
+  [key: string]: ModelInfo
+}
+
 export default function SettingsPage() {
   const router = useRouter()
   const [apiKey, setApiKey] = useState("")
@@ -24,27 +42,35 @@ export default function SettingsPage() {
   const [loadingSettings, setLoadingSettings] = useState(true)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
-  const [usageData, setUsageData] = useState<{
-    total_tokens: number
-    total_cost: number
-    request_count: number
-  } | null>(null)
+  const [usageData, setUsageData] = useState<ApiUsageData | null>(null)
+  const [usageError, setUsageError] = useState("")
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [loadingUsage, setLoadingUsage] = useState(false)
-  const [availableModels, setAvailableModels] = useState<{
-    [key: string]: {
-      name: string
-      description: string
-      max_context: string
-      max_output: string
-      modalities: string[]
-    }
-  } | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [availableModels, setAvailableModels] = useState<AvailableModels | null>(null)
 
   useEffect(() => {
     fetchUserSettings()
     fetchAvailableModels()
-  }, [])
+  }, []) // Empty dependency array is intentional - only run on mount
+
+  // Memoize model options for performance
+  const modelOptions = useMemo(() => {
+    if (!availableModels) {
+      return <SelectItem value="gpt-5">GPT-5 (Loading...)</SelectItem>
+    }
+    return Object.entries(availableModels).map(([modelId, modelInfo]) => (
+      <SelectItem key={modelId} value={modelId}>
+        <div className="flex flex-col">
+          <span className="font-medium">{modelInfo.name}</span>
+          <span className="text-sm text-muted-foreground">{modelInfo.description}</span>
+          <span className="text-xs text-muted-foreground">
+            コンテキスト: {modelInfo.max_context} | 出力: {modelInfo.max_output}
+          </span>
+        </div>
+      </SelectItem>
+    ))
+  }, [availableModels])
 
   const fetchAvailableModels = async () => {
     try {
@@ -95,6 +121,7 @@ export default function SettingsPage() {
   const fetchUsageData = async (accessToken: string) => {
     try {
       setLoadingUsage(true)
+      setUsageError("") // Clear previous errors
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/usage`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -104,8 +131,12 @@ export default function SettingsPage() {
       if (response.ok) {
         const data = await response.json()
         setUsageData(data)
+      } else {
+        const errorData = await response.json().catch(() => ({ detail: "Failed to fetch usage data" }))
+        setUsageError(errorData.detail || "Failed to load usage data")
       }
     } catch (err) {
+      setUsageError("Network error occurred while loading usage data")
       log.error('Failed to fetch usage data', err as Error, { component: 'Settings' })
     } finally {
       setLoadingUsage(false)
@@ -147,6 +178,8 @@ export default function SettingsPage() {
         setSuccess("API key saved successfully! AI features are now enabled.")
         setHasApiKey(true)
         setApiKey("") // Clear the input for security
+        // Ensure complete cleanup of sensitive data
+        setTimeout(() => setApiKey(""), 0)
         // Refresh usage data after saving
         fetchUsageData(session.access_token)
       } else {
@@ -204,13 +237,18 @@ export default function SettingsPage() {
   }
 
   const handleRefreshUsage = async () => {
+    if (isRefreshing) return // Prevent multiple concurrent requests
+
     try {
+      setIsRefreshing(true)
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.access_token) {
         await fetchUsageData(session.access_token)
       }
     } catch (err) {
       log.error('Failed to refresh usage data', err as Error, { component: 'Settings' })
+    } finally {
+      setIsRefreshing(false)
     }
   }
 
@@ -311,22 +349,7 @@ export default function SettingsPage() {
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {availableModels ? (
-                    Object.entries(availableModels).map(([modelId, modelInfo]) => (
-                      <SelectItem key={modelId} value={modelId}>
-                        <div className="flex flex-col">
-                          <span className="font-medium">{modelInfo.name}</span>
-                          <span className="text-sm text-muted-foreground">{modelInfo.description}</span>
-                          <span className="text-xs text-muted-foreground">
-                            コンテキスト: {modelInfo.max_context} | 出力: {modelInfo.max_output}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))
-                  ) : (
-                    // Fallback while loading
-                    <SelectItem value="gpt-5">GPT-5 (Loading...)</SelectItem>
-                  )}
+                  {modelOptions}
                 </SelectContent>
               </Select>
               {hasApiKey && (
@@ -436,9 +459,9 @@ export default function SettingsPage() {
                 onClick={handleRefreshUsage}
                 variant="outline"
                 size="sm"
-                disabled={loadingUsage}
+                disabled={loadingUsage || isRefreshing}
               >
-                {loadingUsage ? (
+                {loadingUsage || isRefreshing ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900" />
                 ) : (
                   <RefreshCw className="h-4 w-4" />
@@ -447,6 +470,12 @@ export default function SettingsPage() {
             </div>
           </CardHeader>
           <CardContent>
+            {usageError && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{usageError}</AlertDescription>
+              </Alert>
+            )}
             {usageData ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Card>
@@ -469,7 +498,7 @@ export default function SettingsPage() {
                       <DollarSign className="h-4 w-4 text-green-600" />
                       <div>
                         <div className="text-2xl font-bold">
-                          ${usageData.total_cost.toFixed(4)}
+                          ${typeof usageData.total_cost === 'number' ? usageData.total_cost.toFixed(4) : '0.0000'}
                         </div>
                         <div className="text-xs text-muted-foreground">Estimated Cost</div>
                       </div>
