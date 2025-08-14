@@ -31,6 +31,7 @@ from taskagent_api.routers import (
     tasks,
     users,
     user_settings,
+    weekly_schedule,
 )
 
 
@@ -214,6 +215,7 @@ app.include_router(task_dependencies.router)
 app.include_router(logs.router, prefix="/api")
 app.include_router(progress.router, prefix="/api")
 app.include_router(scheduler.router, prefix="/api")
+app.include_router(weekly_schedule.router, prefix="/api")
 app.include_router(ai_planning.router, prefix="/api")
 app.include_router(user_settings.router)
 app.include_router(monitoring.router)

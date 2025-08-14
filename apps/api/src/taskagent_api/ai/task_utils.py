@@ -65,8 +65,6 @@ def filter_valid_tasks(
             task_title=task.title,
             estimated_hours=plan["estimated_hours"],
             priority=plan["priority"],
-            suggested_day=plan["suggested_day"],
-            suggested_time_slot=plan["suggested_time_slot"],
             rationale=plan["rationale"],
         )
         selected_tasks.append(task_plan)
