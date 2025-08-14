@@ -360,12 +360,6 @@ export default function AIPlanningPage() {
                           <div className="text-sm text-gray-600">{plan.rationale}</div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Badge variant="outline">
-                            {plan.suggested_day}
-                          </Badge>
-                          <Badge variant="outline">
-                            {plan.suggested_time_slot}
-                          </Badge>
                           <div className="text-sm text-gray-500">
                             {plan.estimated_hours}h
                           </div>

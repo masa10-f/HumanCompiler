@@ -12,8 +12,6 @@ export interface TaskPlan {
   task_title: string;
   estimated_hours: number;
   priority: number;
-  suggested_day: string;
-  suggested_time_slot: string;
   rationale: string;
 }
 
