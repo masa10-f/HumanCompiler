@@ -23,13 +23,17 @@ import {
   Loader2,
   BarChart3,
   Target,
-  Key
+  Key,
+  Archive,
+  Eye,
+  Trash2,
+  RefreshCw
 } from 'lucide-react';
 import { AppHeader } from '@/components/layout/app-header';
 import { toast } from '@/hooks/use-toast';
-import { aiPlanningApi } from '@/lib/api';
+import { aiPlanningApi, weeklyScheduleApi } from '@/lib/api';
 import { log } from '@/lib/logger';
-import type { WeeklyPlanResponse, WorkloadAnalysis, PrioritySuggestions } from '@/types/ai-planning';
+import type { WeeklyPlanResponse, WorkloadAnalysis, PrioritySuggestions, SavedWeeklySchedule } from '@/types/ai-planning';
 
 export default function AIPlanningPage() {
   const { user, session, loading: authLoading } = useAuth();
@@ -106,6 +110,9 @@ export default function AIPlanningPage() {
   }, [session, authLoading, checkUserSettings]);
 
   const [prioritySuggestions, setPrioritySuggestions] = useState<PrioritySuggestions | null>(null);
+  const [savedSchedules, setSavedSchedules] = useState<SavedWeeklySchedule[]>([]);
+  const [loadingSchedules, setLoadingSchedules] = useState(false);
+  const [selectedSchedule, setSelectedSchedule] = useState<SavedWeeklySchedule | null>(null);
 
   if (authLoading || !user) {
     return (
@@ -181,6 +188,54 @@ export default function AIPlanningPage() {
     }
   };
 
+  const loadSavedSchedules = async () => {
+    try {
+      setLoadingSchedules(true);
+      const schedules = await weeklyScheduleApi.getAll();
+      setSavedSchedules(schedules);
+    } catch (error) {
+      toast({
+        title: '保存済み週間スケジュールの取得に失敗しました',
+        description: error instanceof Error ? error.message : '不明なエラーが発生しました',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingSchedules(false);
+    }
+  };
+
+  const viewScheduleDetails = async (weekStartDate: string) => {
+    try {
+      const schedule = await weeklyScheduleApi.getByWeek(weekStartDate);
+      setSelectedSchedule(schedule);
+    } catch (error) {
+      toast({
+        title: '週間スケジュールの詳細取得に失敗しました',
+        description: error instanceof Error ? error.message : '不明なエラーが発生しました',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const deleteSchedule = async (weekStartDate: string) => {
+    try {
+      await weeklyScheduleApi.delete(weekStartDate);
+      setSavedSchedules(prev => prev.filter(s => s.week_start_date !== weekStartDate));
+      if (selectedSchedule?.week_start_date === weekStartDate) {
+        setSelectedSchedule(null);
+      }
+      toast({
+        title: '週間スケジュールを削除しました',
+      });
+    } catch (error) {
+      toast({
+        title: '週間スケジュールの削除に失敗しました',
+        description: error instanceof Error ? error.message : '不明なエラーが発生しました',
+        variant: 'destructive',
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <AppHeader currentPage="ai-planning" />
@@ -222,8 +277,9 @@ export default function AIPlanningPage() {
 
       {hasApiKey && (
         <Tabs defaultValue="planning" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="planning">週間計画生成</TabsTrigger>
+          <TabsTrigger value="saved">保存済みスケジュール</TabsTrigger>
           <TabsTrigger value="analysis">ワークロード分析</TabsTrigger>
           <TabsTrigger value="priorities">優先度提案</TabsTrigger>
         </TabsList>
@@ -403,6 +459,205 @@ export default function AIPlanningPage() {
                         </li>
                       ))}
                     </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="saved" className="space-y-6">
+          {/* Saved Schedules List */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Archive className="h-5 w-5" />
+                保存済み週間スケジュール
+              </CardTitle>
+              <CardDescription>
+                過去に生成した週間スケジュールを閲覧・管理できます。
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                onClick={loadSavedSchedules}
+                disabled={loadingSchedules}
+                className="w-full mb-4"
+              >
+                {loadingSchedules && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <RefreshCw className="mr-2 h-4 w-4" />
+                スケジュール一覧を更新
+              </Button>
+
+              {savedSchedules.length === 0 && !loadingSchedules && (
+                <div className="text-center py-8 text-gray-500">
+                  保存済みの週間スケジュールがありません。
+                  <br />
+                  「週間計画生成」タブで新しい計画を作成してください。
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {savedSchedules.map((schedule) => (
+                  <div key={schedule.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex-1">
+                      <div className="font-medium">
+                        {new Date(schedule.week_start_date).toLocaleDateString('ja-JP', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}週の計画
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        {schedule.schedule_json.selected_tasks.length}個のタスク・
+                        {schedule.schedule_json.total_allocated_hours}時間
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        作成日: {new Date(schedule.created_at).toLocaleDateString('ja-JP')}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => viewScheduleDetails(schedule.week_start_date)}
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        詳細
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => deleteSchedule(schedule.week_start_date)}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Schedule Details */}
+          {selectedSchedule && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  週間スケジュール詳細
+                </CardTitle>
+                <CardDescription>
+                  {new Date(selectedSchedule.week_start_date).toLocaleDateString('ja-JP', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  })}週の計画詳細
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center gap-2">
+                        <Target className="h-4 w-4 text-blue-600" />
+                        <div>
+                          <div className="text-2xl font-bold">
+                            {selectedSchedule.schedule_json.selected_tasks.length}
+                          </div>
+                          <div className="text-xs text-gray-500">選択されたタスク</div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-purple-600" />
+                        <div>
+                          <div className="text-2xl font-bold">
+                            {selectedSchedule.schedule_json.total_allocated_hours}h
+                          </div>
+                          <div className="text-xs text-gray-500">割り当て時間</div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center gap-2">
+                        <BarChart3 className="h-4 w-4 text-green-600" />
+                        <div>
+                          <div className="text-2xl font-bold">
+                            {selectedSchedule.schedule_json.project_allocations.length}
+                          </div>
+                          <div className="text-xs text-gray-500">関与プロジェクト</div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Separator />
+
+                <div>
+                  <h4 className="text-lg font-semibold mb-3">選択されたタスク</h4>
+                  <div className="space-y-2">
+                    {selectedSchedule.schedule_json.selected_tasks.map((task, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div className="flex-1">
+                          <div className="font-medium">{task.task_title}</div>
+                          <div className="text-sm text-gray-600">{task.rationale}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm text-gray-500">
+                            {task.estimated_hours}h
+                          </div>
+                          <Badge
+                            className={
+                              task.priority <= 2 ? 'bg-red-100 text-red-800' :
+                              task.priority <= 3 ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-green-100 text-green-800'
+                            }
+                          >
+                            優先度{task.priority}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {selectedSchedule.schedule_json.optimization_insights?.length > 0 && (
+                  <div>
+                    <h4 className="text-lg font-semibold mb-3">最適化の洞察</h4>
+                    <ul className="space-y-1">
+                      {selectedSchedule.schedule_json.optimization_insights.map((insight, index) => (
+                        <li key={index} className="flex items-start gap-2 text-sm">
+                          <TrendingUp className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                          {insight}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {selectedSchedule.schedule_json.project_allocations?.length > 0 && (
+                  <div>
+                    <h4 className="text-lg font-semibold mb-3">プロジェクト配分</h4>
+                    <div className="space-y-2">
+                      {selectedSchedule.schedule_json.project_allocations.map((allocation, index) => (
+                        <div key={index} className="flex items-center justify-between p-2 border rounded">
+                          <span className="font-medium">{allocation.project_title}</span>
+                          <div className="text-sm text-gray-600">
+                            目標: {allocation.target_hours}h / 最大: {allocation.max_hours}h
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </CardContent>
