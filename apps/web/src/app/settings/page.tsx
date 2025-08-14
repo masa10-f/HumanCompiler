@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,52 +8,112 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Eye, EyeOff, Key, AlertCircle, CheckCircle, TrendingUp, Hash, DollarSign } from "lucide-react"
+import { Eye, EyeOff, Key, AlertCircle, CheckCircle, TrendingUp, Hash, DollarSign, RefreshCw } from "lucide-react"
 import { AppHeader } from "@/components/layout/app-header"
 import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { supabase } from "@/lib/supabase"
 import { log } from "@/lib/logger"
 
+interface ApiUsageData {
+  total_tokens: number
+  total_cost: number
+  request_count: number
+}
+
+interface ModelInfo {
+  name: string
+  description: string
+  max_context: string
+  max_output: string
+  modalities: string[]
+}
+
+interface AvailableModels {
+  [key: string]: ModelInfo
+}
+
+// OpenAI API key validation regex
+const OPENAI_API_KEY_REGEX = /^sk-[a-zA-Z0-9]{48}$/
+
+// Default model from environment or fallback
+const DEFAULT_MODEL = process.env.NEXT_PUBLIC_DEFAULT_OPENAI_MODEL || "gpt-5"
+
 export default function SettingsPage() {
   const router = useRouter()
+  const abortControllerRef = useRef<AbortController | null>(null)
   const [apiKey, setApiKey] = useState("")
   const [showApiKey, setShowApiKey] = useState(false)
-  const [openaiModel, setOpenaiModel] = useState("gpt-5")
+  const [openaiModel, setOpenaiModel] = useState(DEFAULT_MODEL)
   const [hasApiKey, setHasApiKey] = useState(false)
   const [loading, setLoading] = useState(false)
   const [loadingSettings, setLoadingSettings] = useState(true)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
-  const [usageData, setUsageData] = useState<{
-    total_tokens: number
-    total_cost: number
-    request_count: number
-  } | null>(null)
+  const [usageData, setUsageData] = useState<ApiUsageData | null>(null)
+  const [usageError, setUsageError] = useState("")
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
-  const [availableModels, setAvailableModels] = useState<{
-    [key: string]: {
-      name: string
-      description: string
-      max_context: string
-      max_output: string
-      modalities: string[]
-    }
-  } | null>(null)
+  const [loadingUsage, setLoadingUsage] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [availableModels, setAvailableModels] = useState<AvailableModels | null>(null)
 
   useEffect(() => {
+    // Create AbortController for cleanup
+    abortControllerRef.current = new AbortController()
+
     fetchUserSettings()
     fetchAvailableModels()
-  }, [])
+
+    // Cleanup function
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Empty dependency array is intentional - only run on mount
+
+  // Memoize model options for performance
+  const modelOptions = useMemo(() => {
+    if (!availableModels) {
+      return <SelectItem value={DEFAULT_MODEL}>{DEFAULT_MODEL.toUpperCase()} (Loading...)</SelectItem>
+    }
+    return Object.entries(availableModels).map(([modelId, modelInfo]) => (
+      <SelectItem key={modelId} value={modelId}>
+        <div className="flex flex-col">
+          <span className="font-medium">{modelInfo.name}</span>
+          <span className="text-sm text-muted-foreground">{modelInfo.description}</span>
+          <span className="text-xs text-muted-foreground">
+            コンテキスト: {modelInfo.max_context} | 出力: {modelInfo.max_output}
+          </span>
+        </div>
+      </SelectItem>
+    ))
+  }, [availableModels])
 
   const fetchAvailableModels = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/models`)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/models`, {
+        signal: abortControllerRef.current?.signal
+      })
 
       if (response.ok) {
         const data = await response.json()
         setAvailableModels(data.models)
+
+        // Ensure current model selection is valid
+        const modelIds = Object.keys(data.models)
+        if (modelIds.length > 0 && !modelIds.includes(openaiModel)) {
+          // Set to first available model if current selection is invalid
+          const firstModel = modelIds[0]
+          if (firstModel) {
+            setOpenaiModel(firstModel)
+          }
+        }
       }
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return // Request was aborted, ignore the error
+      }
       log.error('Failed to fetch available models', err as Error, { component: 'Settings' })
     }
   }
@@ -72,6 +132,7 @@ export default function SettingsPage() {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
+        signal: abortControllerRef.current?.signal
       })
 
       if (response.ok) {
@@ -85,6 +146,9 @@ export default function SettingsPage() {
         }
       }
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return // Request was aborted, ignore the error
+      }
       log.error('Failed to fetch settings', err as Error, { component: 'Settings' })
     } finally {
       setLoadingSettings(false)
@@ -93,24 +157,41 @@ export default function SettingsPage() {
 
   const fetchUsageData = async (accessToken: string) => {
     try {
+      setLoadingUsage(true)
+      setUsageError("") // Clear previous errors
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/usage`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
+        signal: abortControllerRef.current?.signal
       })
 
       if (response.ok) {
         const data = await response.json()
         setUsageData(data)
+      } else {
+        const errorData = await response.json().catch(() => ({ detail: "Failed to load usage data" }))
+        setUsageError(errorData.detail || "Failed to load usage data")
       }
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return // Request was aborted, ignore the error
+      }
+      setUsageError("Network error occurred while loading usage data")
       log.error('Failed to fetch usage data', err as Error, { component: 'Settings' })
+    } finally {
+      setLoadingUsage(false)
     }
   }
 
   const handleSaveApiKey = async () => {
     if (!apiKey) {
       setError("Please enter an API key")
+      return
+    }
+
+    if (!OPENAI_API_KEY_REGEX.test(apiKey)) {
+      setError("Please enter a valid OpenAI API key (format: sk-...)")
       return
     }
 
@@ -143,6 +224,8 @@ export default function SettingsPage() {
         setSuccess("API key saved successfully! AI features are now enabled.")
         setHasApiKey(true)
         setApiKey("") // Clear the input for security
+        // Refresh usage data after saving
+        fetchUsageData(session.access_token)
       } else {
         const data = await response.json()
         setError(data.detail || "Failed to save API key")
@@ -151,6 +234,65 @@ export default function SettingsPage() {
       setError("An error occurred while saving the API key")
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleSaveModelOnly = async () => {
+    if (!hasApiKey) {
+      setError("Please configure an API key first")
+      return
+    }
+
+    setLoading(true)
+    setError("")
+    setSuccess("")
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (!user || !session?.access_token) {
+        router.push("/login")
+        return
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/settings`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          openai_model: openaiModel,
+        }),
+      })
+
+      if (response.ok) {
+        setSuccess("Model updated successfully!")
+      } else {
+        const data = await response.json()
+        setError(data.detail || "Failed to update model")
+      }
+    } catch {
+      setError("An error occurred while updating the model")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleRefreshUsage = async () => {
+    if (isRefreshing) return // Prevent multiple concurrent requests
+
+    try {
+      setIsRefreshing(true)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.access_token) {
+        await fetchUsageData(session.access_token)
+      }
+    } catch (err) {
+      log.error('Failed to refresh usage data', err as Error, { component: 'Settings' })
+    } finally {
+      setIsRefreshing(false)
     }
   }
 
@@ -198,7 +340,7 @@ export default function SettingsPage() {
   if (loadingSettings) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
+        <div className="flex flex-col items-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mb-4"></div>
           <p>Loading settings...</p>
         </div>
@@ -240,29 +382,30 @@ export default function SettingsPage() {
 
           <div className="space-y-2">
             <Label htmlFor="model">AI Model</Label>
-            <Select value={openaiModel} onValueChange={setOpenaiModel}>
-              <SelectTrigger id="model">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {availableModels ? (
-                  Object.entries(availableModels).map(([modelId, modelInfo]) => (
-                    <SelectItem key={modelId} value={modelId}>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{modelInfo.name}</span>
-                        <span className="text-sm text-muted-foreground">{modelInfo.description}</span>
-                        <span className="text-xs text-muted-foreground">
-                          コンテキスト: {modelInfo.max_context} | 出力: {modelInfo.max_output}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))
-                ) : (
-                  // Fallback while loading
-                  <SelectItem value="gpt-5">GPT-5 (Loading...)</SelectItem>
-                )}
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2">
+              <Select value={openaiModel} onValueChange={setOpenaiModel}>
+                <SelectTrigger id="model" className="flex-1">
+                  <SelectValue>
+                    {availableModels && availableModels[openaiModel] ?
+                      availableModels[openaiModel].name :
+                      openaiModel
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {modelOptions}
+                </SelectContent>
+              </Select>
+              {hasApiKey && (
+                <Button
+                  onClick={handleSaveModelOnly}
+                  disabled={loading}
+                  variant="outline"
+                >
+                  {loading ? "Updating..." : "Update Model"}
+                </Button>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground">
               AI計画生成と洞察に使用するモデルを選択してください
             </p>
@@ -343,61 +486,89 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {hasApiKey && usageData && (
+      {hasApiKey && (
         <Card className="mt-6">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5" />
-              API Usage Dashboard
-            </CardTitle>
-            <CardDescription>
-              Your OpenAI API usage for the current period
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  API Usage Dashboard
+                </CardTitle>
+                <CardDescription>
+                  Your OpenAI API usage for the current period
+                </CardDescription>
+              </div>
+              <Button
+                onClick={handleRefreshUsage}
+                variant="outline"
+                size="sm"
+                disabled={loadingUsage || isRefreshing}
+              >
+                {loadingUsage || isRefreshing ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-2">
-                    <Hash className="h-4 w-4 text-blue-600" />
-                    <div>
-                      <div className="text-2xl font-bold">
-                        {usageData.total_tokens.toLocaleString()}
+            {usageError && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{usageError}</AlertDescription>
+              </Alert>
+            )}
+            {usageData ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-2">
+                      <Hash className="h-4 w-4 text-blue-600" />
+                      <div>
+                        <div className="text-2xl font-bold">
+                          {usageData.total_tokens.toLocaleString()}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Total Tokens</div>
                       </div>
-                      <div className="text-xs text-muted-foreground">Total Tokens</div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
 
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="h-4 w-4 text-green-600" />
-                    <div>
-                      <div className="text-2xl font-bold">
-                        ${usageData.total_cost.toFixed(4)}
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="h-4 w-4 text-green-600" />
+                      <div>
+                        <div className="text-2xl font-bold">
+                          ${typeof usageData.total_cost === 'number' ? usageData.total_cost.toFixed(4) : '0.0000'}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Estimated Cost</div>
                       </div>
-                      <div className="text-xs text-muted-foreground">Estimated Cost</div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
 
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-purple-600" />
-                    <div>
-                      <div className="text-2xl font-bold">
-                        {usageData.request_count}
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4 text-purple-600" />
+                      <div>
+                        <div className="text-2xl font-bold">
+                          {usageData.request_count}
+                        </div>
+                        <div className="text-xs text-muted-foreground">API Requests</div>
                       </div>
-                      <div className="text-xs text-muted-foreground">API Requests</div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                  </CardContent>
+                </Card>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>No usage data available yet. Start using AI features to see your usage statistics.</p>
+              </div>
+            )}
 
             <div className="mt-4 text-sm text-muted-foreground">
               <p>Usage data is updated after each AI operation. Costs are estimated based on current OpenAI pricing.</p>
