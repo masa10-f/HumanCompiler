@@ -213,12 +213,7 @@ export default function ScheduleHistoryPage() {
                     </div>
                     <div className="text-sm text-gray-500">総時間</div>
                   </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-orange-600">
-                      {schedule.plan_json.unscheduled_tasks.length}
-                    </div>
-                    <div className="text-sm text-gray-500">未スケジュール</div>
-                  </div>
+                  {/* Note: Unscheduled tasks count is intentionally not displayed per issue #85 */}
                 </div>
 
                 {/* Task Assignments Preview */}
@@ -274,24 +269,7 @@ export default function ScheduleHistoryPage() {
                   </div>
                 )}
 
-                {/* Unscheduled Tasks */}
-                {schedule.plan_json.unscheduled_tasks.length > 0 && (
-                  <div className="mt-4">
-                    <h4 className="font-semibold text-orange-600 mb-2">未スケジュールタスク</h4>
-                    <div className="text-sm text-gray-600">
-                      {schedule.plan_json.unscheduled_tasks.slice(0, 2).map((task, index) => (
-                        <div key={index} className="mb-1">
-                          • {task.title} ({task.estimate_hours.toFixed(1)}h)
-                        </div>
-                      ))}
-                      {schedule.plan_json.unscheduled_tasks.length > 2 && (
-                        <div className="text-gray-500">
-                          他 {schedule.plan_json.unscheduled_tasks.length - 2} 個
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
+                {/* Note: Unscheduled tasks are intentionally not displayed per issue #85 */}
               </CardContent>
             </Card>
           ))}

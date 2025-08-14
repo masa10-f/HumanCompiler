@@ -408,48 +408,7 @@ export default function SchedulingPage() {
                   </div>
                 )}
 
-                {/* Unscheduled Tasks */}
-                {scheduleResult.unscheduled_tasks.length > 0 && (
-                  <div>
-                    <h4 className="text-lg font-semibold mb-3 text-red-600">
-                      未スケジュールタスク
-                    </h4>
-                    <div className="space-y-2">
-                      {scheduleResult.unscheduled_tasks.map((task, index) => {
-                        // unscheduled_tasks is now TaskInfo objects, not just IDs
-                        const taskLink = task.project_id && task.goal_id
-                          ? `/projects/${task.project_id}/goals/${task.goal_id}`
-                          : null;
-
-                        return (
-                          <div key={index} className="p-2 border border-red-200 rounded text-red-600">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium">
-                                  {typeof task === 'string' ? `タスク ID: ${task}` : task.title || task.id}
-                                </span>
-                                {taskLink && (
-                                  <Link
-                                    href={taskLink || '#'}
-                                    className="text-red-500 hover:text-red-700 transition-colors"
-                                    title="タスク詳細を表示"
-                                  >
-                                    <ExternalLink className="h-3 w-3" />
-                                  </Link>
-                                )}
-                              </div>
-                              {typeof task === 'object' && (
-                                <span className="text-xs">
-                                  {task.estimate_hours?.toFixed(1)}h
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                {/* Note: Unscheduled tasks are intentionally not displayed per issue #85 */}
               </CardContent>
             </Card>
           )}
