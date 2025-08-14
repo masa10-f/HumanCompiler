@@ -18,6 +18,7 @@ from sqlmodel import Session, select
 
 from taskagent_api.ai.context_collector import ContextCollector
 from taskagent_api.ai.models import WeeklyPlanContext, TaskPlan
+from taskagent_api.ai.task_utils import filter_valid_tasks
 from taskagent_api.models import Project, Goal, Task, UserSettings
 from taskagent_api.crypto import get_crypto_service
 
@@ -593,43 +594,24 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
     def _create_solver_response(
         self, function_args: dict, context: WeeklyPlanContext
     ) -> dict[str, Any]:
-        """Create solver response from function arguments"""
-        # Convert to TaskPlan objects, filtering out unknown tasks
-        selected_tasks = []
-        skipped_tasks = []
+        """
+        Create solver response from function arguments with task filtering.
 
-        for plan in function_args.get("task_plans", []):
-            # Find matching task in context
-            task = next(
-                (t for t in context.tasks if str(t.id) == str(plan["task_id"])),
-                None,
-            )
+        This method processes AI-generated task plans and filters out any task IDs
+        that don't exist in the database context. Only valid tasks are included
+        in the final response to prevent "Unknown Task" entries.
 
-            if task is None:
-                # Skip unknown tasks and log them
-                skipped_tasks.append(plan["task_id"])
-                logger.warning(
-                    f"Skipping unknown task ID: {plan['task_id']} - not found in task database"
-                )
-                continue
+        Args:
+            function_args: Dictionary containing task_plans, insights, and allocation_analysis
+            context: Weekly plan context with available tasks for validation
 
-            task_plan = TaskPlan(
-                task_id=plan["task_id"],
-                task_title=task.title,
-                estimated_hours=plan["estimated_hours"],
-                priority=plan["priority"],
-                suggested_day=plan["suggested_day"],
-                suggested_time_slot=plan["suggested_time_slot"],
-                rationale=plan["rationale"],
-            )
-            selected_tasks.append(task_plan)
-
-        # Log summary of filtered results
-        logger.info(
-            f"Task filtering results: {len(selected_tasks)} valid tasks selected, {len(skipped_tasks)} unknown tasks skipped"
+        Returns:
+            Dictionary with filtered selected_tasks, insights, and allocation_analysis
+        """
+        # Use shared utility function for task filtering
+        selected_tasks, skipped_tasks = filter_valid_tasks(
+            function_args.get("task_plans", []), context, "weekly solver"
         )
-        if skipped_tasks:
-            logger.warning(f"Skipped task IDs: {skipped_tasks}")
 
         return {
             "selected_tasks": selected_tasks,
