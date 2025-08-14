@@ -43,10 +43,13 @@ export function WeeklyRecurringTaskSelector({
     try {
       const headers = await getAuthHeaders()
       const apiUrl = getSecureApiUrl();
+      console.log(`🔄 WeeklyRecurringTaskSelector: Using API URL: ${apiUrl}`);
       if (!apiUrl) {
         throw new Error('API URL is not configured');
       }
-      const response = await fetch(`${apiUrl}/api/weekly-recurring-tasks?is_active=true`, {
+      const fullUrl = `${apiUrl}/api/weekly-recurring-tasks?is_active=true`;
+      console.log(`📡 WeeklyRecurringTaskSelector: Fetching from: ${fullUrl}`);
+      const response = await fetch(fullUrl, {
         headers,
       })
 

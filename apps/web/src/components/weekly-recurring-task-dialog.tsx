@@ -115,12 +115,14 @@ export function WeeklyRecurringTaskDialog({
 
     try {
       const apiUrl = getSecureApiUrl();
+      console.log(`🔄 WeeklyRecurringTaskDialog: Using API URL: ${apiUrl}`);
       if (!apiUrl) {
         throw new Error('API URL is not configured');
       }
       const url = task
         ? `${apiUrl}/api/weekly-recurring-tasks/${task.id}`
         : `${apiUrl}/api/weekly-recurring-tasks`
+      console.log(`📡 WeeklyRecurringTaskDialog: ${task ? 'Updating' : 'Creating'} at: ${url}`);
 
       const method = task ? "PUT" : "POST"
       const headers = await getAuthHeaders()

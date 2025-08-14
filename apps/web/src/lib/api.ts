@@ -45,10 +45,19 @@ import type {
 // Helper function to ensure HTTPS protocol
 const ensureHttps = (url: string): string => {
   if (!url) return url;
-  // Force HTTPS for production API endpoints
-  if (url.startsWith('http://') && (url.includes('taskagent-api-masa') || url.includes('.fly.dev'))) {
-    return url.replace('http://', 'https://');
+
+  // Force HTTPS for production API endpoints (including all fly.dev and taskagent domains)
+  if (url.startsWith('http://') &&
+      (url.includes('taskagent-api-masa') ||
+       url.includes('.fly.dev') ||
+       url.includes('taskagent') ||
+       url.includes('vercel.app'))) {
+    const httpsUrl = url.replace('http://', 'https://');
+    console.log(`🔒 ensureHttps: Converting ${url} to ${httpsUrl}`);
+    return httpsUrl;
   }
+
+  console.log(`🔒 ensureHttps: No change needed for ${url}`);
   return url;
 };
 
@@ -58,8 +67,9 @@ const getApiBaseUrl = () => {
 
   // If explicitly set via environment variable, use it
   if (process.env.NEXT_PUBLIC_API_URL) {
-    const secureUrl = ensureHttps(process.env.NEXT_PUBLIC_API_URL);
-    console.log(`🔧 Using env var NEXT_PUBLIC_API_URL: ${secureUrl}`);
+    const originalUrl = process.env.NEXT_PUBLIC_API_URL;
+    const secureUrl = ensureHttps(originalUrl);
+    console.log(`🔧 Using env var NEXT_PUBLIC_API_URL: ${originalUrl} -> ${secureUrl}`);
     return secureUrl;
   }
 
@@ -539,5 +549,7 @@ export const weeklyScheduleApi = {
 // Export helper function for getting secure API URL
 export const getSecureApiUrl = (): string => {
   const baseUrl = getApiBaseUrl();
-  return ensureHttps(baseUrl);
+  const secureUrl = ensureHttps(baseUrl);
+  console.log(`🔗 getSecureApiUrl: ${baseUrl} -> ${secureUrl}`);
+  return secureUrl;
 };
