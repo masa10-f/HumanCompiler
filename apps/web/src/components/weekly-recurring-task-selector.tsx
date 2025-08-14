@@ -41,7 +41,8 @@ export function WeeklyRecurringTaskSelector({
   const fetchTasks = async () => {
     try {
       const headers = await getAuthHeaders()
-      const response = await fetch("/api/weekly-recurring-tasks?is_active=true", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const response = await fetch(`${apiUrl}/api/weekly-recurring-tasks?is_active=true`, {
         headers,
       })
 

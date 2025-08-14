@@ -28,14 +28,30 @@ import {
   Eye,
   Trash2,
   RefreshCw,
-  Save
+  Save,
+  Plus,
+  Edit,
+  Tag
 } from 'lucide-react';
 import { AppHeader } from '@/components/layout/app-header';
 import { WeeklyRecurringTaskSelector } from '@/components/weekly-recurring-task-selector';
+import { WeeklyRecurringTaskDialog } from '@/components/weekly-recurring-task-dialog';
 import { toast } from '@/hooks/use-toast';
 import { aiPlanningApi, weeklyScheduleApi } from '@/lib/api';
 import { log } from '@/lib/logger';
 import type { WeeklyPlanResponse, WorkloadAnalysis, PrioritySuggestions, SavedWeeklySchedule } from '@/types/ai-planning';
+import { getAuthHeaders } from '@/lib/auth';
+
+interface WeeklyRecurringTask {
+  id: string;
+  title: string;
+  description?: string;
+  estimate_hours: number;
+  category: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
 
 export default function AIPlanningPage() {
   const { user, session, loading: authLoading } = useAuth();
@@ -117,6 +133,12 @@ export default function AIPlanningPage() {
   const [loadingSchedules, setLoadingSchedules] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<SavedWeeklySchedule | null>(null);
   const [savingSchedule, setSavingSchedule] = useState(false);
+
+  // Weekly Recurring Tasks state
+  const [weeklyTasks, setWeeklyTasks] = useState<WeeklyRecurringTask[]>([]);
+  const [loadingWeeklyTasks, setLoadingWeeklyTasks] = useState(false);
+  const [weeklyTaskDialogOpen, setWeeklyTaskDialogOpen] = useState(false);
+  const [editingWeeklyTask, setEditingWeeklyTask] = useState<WeeklyRecurringTask | null>(null);
 
   if (authLoading || !user) {
     return (
@@ -278,6 +300,98 @@ export default function AIPlanningPage() {
     }
   };
 
+  // Weekly Recurring Tasks functions
+  const fetchWeeklyTasks = async () => {
+    try {
+      setLoadingWeeklyTasks(true);
+      const headers = await getAuthHeaders();
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+
+      const response = await fetch(`${apiUrl}/api/weekly-recurring-tasks`, {
+        headers,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch weekly tasks');
+      }
+
+      const data = await response.json();
+      setWeeklyTasks(data);
+    } catch (error) {
+      toast({
+        title: 'エラー',
+        description: '週課の取得に失敗しました',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingWeeklyTasks(false);
+    }
+  };
+
+  const handleCreateWeeklyTask = () => {
+    setEditingWeeklyTask(null);
+    setWeeklyTaskDialogOpen(true);
+  };
+
+  const handleEditWeeklyTask = (task: WeeklyRecurringTask) => {
+    setEditingWeeklyTask(task);
+    setWeeklyTaskDialogOpen(true);
+  };
+
+  const handleDeleteWeeklyTask = async (taskId: string) => {
+    if (!confirm('この週課を削除しますか？')) {
+      return;
+    }
+
+    try {
+      const headers = await getAuthHeaders();
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+
+      const response = await fetch(`${apiUrl}/api/weekly-recurring-tasks/${taskId}`, {
+        method: 'DELETE',
+        headers,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete task');
+      }
+
+      toast({
+        title: '成功',
+        description: '週課を削除しました',
+      });
+
+      fetchWeeklyTasks();
+    } catch (error) {
+      toast({
+        title: 'エラー',
+        description: '週課の削除に失敗しました',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleWeeklyTaskSaved = () => {
+    setWeeklyTaskDialogOpen(false);
+    setEditingWeeklyTask(null);
+    fetchWeeklyTasks();
+    // Force refresh of WeeklyRecurringTaskSelector component by updating a key
+    setSelectedRecurringTaskIds([]); // Reset selected tasks to force refresh
+  };
+
+  const getCategoryColor = (category: string) => {
+    const colors: Record<string, string> = {
+      meeting: 'bg-blue-100 text-blue-800',
+      study: 'bg-green-100 text-green-800',
+      exercise: 'bg-orange-100 text-orange-800',
+      hobby: 'bg-purple-100 text-purple-800',
+      admin: 'bg-gray-100 text-gray-800',
+      maintenance: 'bg-indigo-100 text-indigo-800',
+      review: 'bg-pink-100 text-pink-800',
+    };
+    return colors[category] || 'bg-gray-100 text-gray-800';
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <AppHeader currentPage="ai-planning" />
@@ -319,8 +433,9 @@ export default function AIPlanningPage() {
 
       {hasApiKey && (
         <Tabs defaultValue="planning" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="planning">週間計画生成</TabsTrigger>
+          <TabsTrigger value="weekly-tasks">週課管理</TabsTrigger>
           <TabsTrigger value="saved">保存済みスケジュール</TabsTrigger>
           <TabsTrigger value="analysis">ワークロード分析</TabsTrigger>
           <TabsTrigger value="priorities">優先度提案</TabsTrigger>
@@ -528,6 +643,102 @@ export default function AIPlanningPage() {
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+
+        <TabsContent value="weekly-tasks" className="space-y-6">
+          {/* Weekly Tasks Management */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <RefreshCw className="h-5 w-5" />
+                    週課管理
+                  </CardTitle>
+                  <CardDescription>
+                    定期的に行う週単位のタスクを管理します
+                  </CardDescription>
+                </div>
+                <Button
+                  onClick={handleCreateWeeklyTask}
+                  className="flex items-center gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  新しい週課を追加
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Button
+                onClick={fetchWeeklyTasks}
+                disabled={loadingWeeklyTasks}
+                className="w-full mb-4"
+                variant="outline"
+              >
+                {loadingWeeklyTasks && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <RefreshCw className="mr-2 h-4 w-4" />
+                週課一覧を更新
+              </Button>
+
+              {weeklyTasks.length === 0 && !loadingWeeklyTasks && (
+                <div className="text-center py-12 text-gray-500">
+                  週課が登録されていません。
+                  <br />
+                  新しい週課を追加してください。
+                </div>
+              )}
+
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {weeklyTasks.map((task) => (
+                  <Card key={task.id} className={`${!task.is_active ? 'opacity-50' : ''}`}>
+                    <CardHeader className="pb-3">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <CardTitle className="text-lg">{task.title}</CardTitle>
+                          <div className="flex items-center gap-2 mt-2">
+                            <Badge className={getCategoryColor(task.category)}>
+                              <Tag className="h-3 w-3 mr-1" />
+                              {task.category}
+                            </Badge>
+                            {!task.is_active && (
+                              <Badge variant="secondary">無効</Badge>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditWeeklyTask(task)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteWeeklyTask(task.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {task.description && (
+                        <CardDescription className="mb-3">
+                          {task.description}
+                        </CardDescription>
+                      )}
+                      <div className="flex items-center gap-2 text-sm text-gray-500">
+                        <Clock className="h-4 w-4" />
+                        {task.estimate_hours}時間
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="saved" className="space-y-6">
@@ -896,6 +1107,14 @@ export default function AIPlanningPage() {
         </TabsContent>
       </Tabs>
       )}
+
+      {/* Weekly Recurring Task Dialog */}
+      <WeeklyRecurringTaskDialog
+        open={weeklyTaskDialogOpen}
+        onOpenChange={setWeeklyTaskDialogOpen}
+        task={editingWeeklyTask}
+        onSaved={handleWeeklyTaskSaved}
+      />
       </div>
     </div>
   );
