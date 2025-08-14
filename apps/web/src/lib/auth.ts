@@ -57,3 +57,17 @@ export async function updatePassword(password: string) {
 export function isAuthenticated(user: User | null): user is User {
   return user !== null
 }
+
+// Get authentication headers for API requests
+export async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession()
+
+  if (!session?.access_token) {
+    throw new Error('No authentication token available')
+  }
+
+  return {
+    'Authorization': `Bearer ${session.access_token}`,
+    'Content-Type': 'application/json',
+  }
+}

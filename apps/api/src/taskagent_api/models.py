@@ -20,6 +20,19 @@ class TaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class TaskCategory(str, Enum):
+    """Weekly recurring task category enum"""
+
+    MEETING = "meeting"
+    STUDY = "study"
+    EXERCISE = "exercise"
+    HOBBY = "hobby"
+    ADMIN = "admin"
+    MAINTENANCE = "maintenance"
+    REVIEW = "review"
+    OTHER = "other"
+
+
 # Database Models (SQLModel)
 class UserBase(SQLModel):
     """Base user model"""
@@ -40,6 +53,9 @@ class User(UserBase, table=True):  # type: ignore[call-arg]
     projects: list["Project"] = Relationship(back_populates="owner")
     schedules: list["Schedule"] = Relationship(back_populates="user")
     weekly_schedules: list["WeeklySchedule"] = Relationship(back_populates="user")
+    weekly_recurring_tasks: list["WeeklyRecurringTask"] = Relationship(
+        back_populates="user"
+    )
     settings: "UserSettings" = Relationship(back_populates="user")
     api_usage_logs: list["ApiUsageLog"] = Relationship(back_populates="user")
 
@@ -184,6 +200,45 @@ class Schedule(ScheduleBase, table=True):  # type: ignore[call-arg]
     user: User = Relationship(back_populates="schedules")
 
 
+class WeeklyRecurringTaskBase(SQLModel):
+    """Base weekly recurring task model"""
+
+    title: str = SQLField(min_length=1, max_length=200)
+    description: str | None = SQLField(default=None, max_length=1000)
+    estimate_hours: Decimal = SQLField(gt=0, max_digits=5, decimal_places=2)
+    category: TaskCategory = SQLField(
+        default=TaskCategory.OTHER,
+        description="Task category from predefined enum values",
+    )
+    is_active: bool = SQLField(
+        default=True, description="Whether this recurring task is active"
+    )
+    deleted_at: datetime | None = SQLField(
+        default=None, description="Timestamp when the task was soft deleted"
+    )
+
+
+class WeeklyRecurringTask(WeeklyRecurringTaskBase, table=True):  # type: ignore[call-arg]
+    """Weekly recurring task database model for storing weekly recurring tasks"""
+
+    __tablename__ = "weekly_recurring_tasks"
+
+    id: UUID | None = SQLField(default=None, primary_key=True)
+    user_id: UUID = SQLField(foreign_key="users.id", index=True)
+    category: TaskCategory = SQLField(
+        default=TaskCategory.OTHER,
+        sa_column=Column(
+            SQLEnum(TaskCategory, values_callable=lambda x: [e.value for e in x])
+        ),
+        description="Task category from predefined enum values",
+    )
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+
+    # Relationships
+    user: User = Relationship(back_populates="weekly_recurring_tasks")
+
+
 class WeeklyScheduleBase(SQLModel):
     """Base weekly schedule model"""
 
@@ -192,6 +247,11 @@ class WeeklyScheduleBase(SQLModel):
         sa_column=Column(JSON),
         default_factory=dict,
         description="Weekly schedule data including selected tasks",
+    )
+    selected_recurring_task_ids: list[UUID] = SQLField(
+        sa_column=Column(JSON),
+        default_factory=list,
+        description="IDs of selected weekly recurring tasks for this week",
     )
 
 
@@ -439,6 +499,38 @@ class WeeklyScheduleResponse(WeeklyScheduleBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class WeeklyRecurringTaskCreate(WeeklyRecurringTaskBase):
+    """Weekly recurring task creation request"""
+
+    pass
+
+
+class WeeklyRecurringTaskUpdate(BaseModel):
+    """Weekly recurring task update request"""
+
+    title: str | None = Field(None, min_length=1, max_length=200)
+    description: str | None = Field(None, max_length=1000)
+    estimate_hours: Decimal | None = Field(None, gt=0)
+    category: TaskCategory | None = None
+    is_active: bool | None = None
+
+
+class WeeklyRecurringTaskResponse(WeeklyRecurringTaskBase):
+    """Weekly recurring task response model"""
+
+    id: UUID
+    user_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("estimate_hours")
+    def serialize_estimate_hours(self, value: Decimal) -> float:
+        """Convert Decimal to float for JSON serialization"""
+        return float(value)
 
 
 class LogCreate(LogBase):

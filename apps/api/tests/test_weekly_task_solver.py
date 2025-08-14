@@ -85,6 +85,8 @@ class TestWeeklyTaskSolver:
             tasks=[],
             capacity_hours=40.0,
             preferences={},
+            weekly_recurring_tasks=[],
+            selected_recurring_task_ids=[],
         )
 
         constraints = WeeklyConstraints()
@@ -122,6 +124,8 @@ class TestWeeklyTaskSolver:
             tasks=[task1, task2],
             capacity_hours=40.0,
             preferences={},
+            weekly_recurring_tasks=[],
+            selected_recurring_task_ids=[],
         )
 
         constraints = WeeklyConstraints()
@@ -197,6 +201,8 @@ class TestWeeklyTaskSolver:
             tasks=[task1, task2],
             capacity_hours=40.0,
             preferences={},
+            weekly_recurring_tasks=[],
+            selected_recurring_task_ids=[],
         )
 
         metrics = solver._calculate_solver_metrics(
@@ -229,6 +235,8 @@ class TestWeeklyTaskSolver:
             tasks=[],
             capacity_hours=40.0,
             preferences={},
+            weekly_recurring_tasks=[],
+            selected_recurring_task_ids=[],
         )
         solver.context_collector.collect_weekly_plan_context.return_value = context
 
@@ -268,6 +276,8 @@ class TestWeeklyTaskSolver:
             tasks=[task1, task2],
             capacity_hours=40.0,
             preferences={},
+            weekly_recurring_tasks=[],
+            selected_recurring_task_ids=[],
         )
 
         constraints = WeeklyConstraints(

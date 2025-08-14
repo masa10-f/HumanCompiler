@@ -38,6 +38,7 @@ class WeeklyPlanService:
             project_filter=request.project_filter,
             capacity_hours=request.capacity_hours,
             preferences=request.preferences,
+            selected_recurring_task_ids=request.selected_recurring_task_ids,
         )
 
         # Generate plan using OpenAI

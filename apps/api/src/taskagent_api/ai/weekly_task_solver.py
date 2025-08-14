@@ -60,6 +60,9 @@ class TaskSolverRequest(BaseModel):
     week_start_date: str = Field(..., description="Week start date (YYYY-MM-DD)")
     constraints: WeeklyConstraints = Field(default_factory=WeeklyConstraints)
     project_filter: list[str] | None = Field(None, description="Filter by project IDs")
+    selected_recurring_task_ids: list[str] = Field(
+        default_factory=list, description="Selected weekly recurring task IDs"
+    )
     preferences: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -191,6 +194,7 @@ class WeeklyTaskSolver:
             user_id=user_id,
             week_start_date=week_start,
             project_filter=request.project_filter,
+            selected_recurring_task_ids=request.selected_recurring_task_ids,
             capacity_hours=request.constraints.total_capacity_hours,
             preferences=request.preferences,
         )
