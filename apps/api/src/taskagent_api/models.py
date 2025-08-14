@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_serializer
 from sqlalchemy import JSON, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
 from sqlmodel import Column, Relationship, SQLModel
@@ -116,6 +116,50 @@ class Task(TaskBase, table=True):  # type: ignore[call-arg]
     # Relationships
     goal: Goal = Relationship(back_populates="tasks")
     logs: list["Log"] = Relationship(back_populates="task")
+    dependencies: list["TaskDependency"] = Relationship(
+        back_populates="task",
+        sa_relationship_kwargs={"foreign_keys": "TaskDependency.task_id"},
+    )
+    dependent_tasks: list["TaskDependency"] = Relationship(
+        back_populates="depends_on_task",
+        sa_relationship_kwargs={"foreign_keys": "TaskDependency.depends_on_task_id"},
+    )
+
+
+class TaskDependencyBase(SQLModel):
+    """Base task dependency model"""
+
+    pass
+
+
+class TaskDependency(TaskDependencyBase, table=True):  # type: ignore[call-arg]
+    """Task dependency database model"""
+
+    __tablename__ = "task_dependencies"
+    __table_args__ = {"extend_existing": True}
+
+    id: UUID | None = SQLField(
+        default=None,
+        sa_column=Column(
+            "id",
+            SQLAlchemyUUID,
+            primary_key=True,
+            server_default=text("gen_random_uuid()"),
+        ),
+    )
+    task_id: UUID = SQLField(foreign_key="tasks.id", ondelete="CASCADE")
+    depends_on_task_id: UUID = SQLField(foreign_key="tasks.id", ondelete="CASCADE")
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+
+    # Relationships
+    task: Task = Relationship(
+        back_populates="dependencies",
+        sa_relationship_kwargs={"foreign_keys": "[TaskDependency.task_id]"},
+    )
+    depends_on_task: Task = Relationship(
+        back_populates="dependent_tasks",
+        sa_relationship_kwargs={"foreign_keys": "[TaskDependency.depends_on_task_id]"},
+    )
 
 
 class ScheduleBase(SQLModel):
@@ -284,6 +328,11 @@ class GoalResponse(GoalBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @field_serializer("estimate_hours")
+    def serialize_estimate_hours(self, value: Decimal) -> float:
+        """Convert Decimal to float for JSON serialization"""
+        return float(value)
+
 
 class TaskCreate(TaskBase):
     """Task creation request"""
@@ -308,8 +357,14 @@ class TaskResponse(TaskBase):
     goal_id: UUID
     created_at: datetime
     updated_at: datetime
+    dependencies: list["TaskDependencyResponse"] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("estimate_hours")
+    def serialize_estimate_hours(self, value: Decimal) -> float:
+        """Convert Decimal to float for JSON serialization"""
+        return float(value)
 
 
 class ScheduleCreate(ScheduleBase):
@@ -393,6 +448,34 @@ class ApiUsageLogResponse(ApiUsageLogBase):
     id: UUID
     user_id: UUID
     request_timestamp: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TaskDependencyCreate(BaseModel):
+    """Task dependency creation request"""
+
+    depends_on_task_id: UUID
+
+
+class TaskDependencyTaskInfo(BaseModel):
+    """Task information for dependencies to avoid circular references"""
+
+    id: UUID
+    title: str
+    status: TaskStatus
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TaskDependencyResponse(BaseModel):
+    """Task dependency response model"""
+
+    id: UUID
+    task_id: UUID
+    depends_on_task_id: UUID
+    created_at: datetime
+    depends_on_task: TaskDependencyTaskInfo | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

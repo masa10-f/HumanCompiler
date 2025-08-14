@@ -22,6 +22,7 @@ from taskagent_api.models import (
     Task,
     TaskCreate,
     TaskUpdate,
+    TaskDependency,
     User,
     UserCreate,
     UserUpdate,
@@ -435,6 +436,111 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         invalidate_cache("medium", "task_detail")
         return result
 
+    def add_task_dependency(
+        self,
+        session: Session,
+        task_id: str | UUID,
+        depends_on_task_id: str | UUID,
+        owner_id: str | UUID,
+    ) -> TaskDependency:
+        """Add a dependency to a task"""
+        # Verify both tasks exist and belong to the owner
+        task = self.get_task(session, task_id, owner_id)
+        if not task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+            )
+
+        depends_on_task = self.get_task(session, depends_on_task_id, owner_id)
+        if not depends_on_task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Dependency task not found",
+            )
+
+        # Check for circular dependency
+        if task_id == depends_on_task_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Task cannot depend on itself",
+            )
+
+        # Check if dependency already exists
+        existing = session.exec(
+            select(TaskDependency)
+            .where(TaskDependency.task_id == task_id)
+            .where(TaskDependency.depends_on_task_id == depends_on_task_id)
+        ).first()
+
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Dependency already exists",
+            )
+
+        # Create dependency
+        dependency = TaskDependency(
+            task_id=task_id, depends_on_task_id=depends_on_task_id
+        )
+        session.add(dependency)
+        session.commit()
+        session.refresh(dependency)
+
+        # Invalidate task cache
+        invalidate_cache("medium", "task_detail")
+
+        return dependency
+
+    def get_task_dependencies(
+        self, session: Session, task_id: str | UUID, owner_id: str | UUID
+    ) -> list[TaskDependency]:
+        """Get all dependencies for a task"""
+        # Verify task ownership
+        task = self.get_task(session, task_id, owner_id)
+        if not task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+            )
+
+        dependencies = session.exec(
+            select(TaskDependency).where(TaskDependency.task_id == task_id)
+        ).all()
+
+        # Load the depends_on_task for each dependency
+        for dep in dependencies:
+            dep.depends_on_task = session.get(Task, dep.depends_on_task_id)
+
+        return dependencies
+
+    def delete_task_dependency(
+        self,
+        session: Session,
+        task_id: str | UUID,
+        dependency_id: str | UUID,
+        owner_id: str | UUID,
+    ) -> bool:
+        """Delete a task dependency"""
+        # Verify task ownership
+        task = self.get_task(session, task_id, owner_id)
+        if not task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+            )
+
+        dependency = session.get(TaskDependency, dependency_id)
+        if not dependency or dependency.task_id != UUID(str(task_id)):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Dependency not found"
+            )
+
+        session.delete(dependency)
+        session.commit()
+
+        # Invalidate task cache
+        invalidate_cache("medium", "task_detail")
+
+        return True
+
 
 class LogService(BaseService[Log, LogCreate, LogUpdate]):
     """Log service using base service"""
@@ -501,6 +607,59 @@ class LogService(BaseService[Log, LogCreate, LogUpdate]):
                 status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
             )
         return self.get_all(session, owner_id, skip, limit, task_id=task_id)
+
+    def get_logs_batch(
+        self,
+        session: Session,
+        task_ids: list[str | UUID],
+        owner_id: str | UUID,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> dict[str, list[Log]]:
+        """Get logs for multiple tasks efficiently in a single query"""
+        from sqlmodel import select, and_
+
+        result = {}
+
+        # First, verify task ownership for all tasks
+        # Get all tasks that belong to the user through their goals and projects
+        task_query = (
+            select(Task)
+            .join(Goal, Task.goal_id == Goal.id)
+            .join(Project, Goal.project_id == Project.id)
+            .where(and_(Project.owner_id == owner_id, Task.id.in_(task_ids)))
+        )
+        valid_tasks = session.exec(task_query).all()
+        valid_task_ids = {str(task.id) for task in valid_tasks}
+
+        # Initialize result with empty lists for all requested tasks
+        for task_id in task_ids:
+            result[str(task_id)] = []
+
+        # If no valid tasks found, return empty results
+        if not valid_task_ids:
+            return result
+
+        # Fetch all logs for valid tasks in a single query
+        logs_query = (
+            select(Log)
+            .where(Log.task_id.in_(valid_task_ids))
+            .order_by(Log.created_at.desc())
+            .offset(skip)
+            .limit(limit * len(valid_task_ids))  # Adjust limit for multiple tasks
+        )
+
+        all_logs = session.exec(logs_query).all()
+
+        # Group logs by task_id
+        for log in all_logs:
+            task_id_str = str(log.task_id)
+            if task_id_str in result:
+                # Respect per-task limit
+                if len(result[task_id_str]) < limit:
+                    result[task_id_str].append(log)
+
+        return result
 
     def update_log(
         self,

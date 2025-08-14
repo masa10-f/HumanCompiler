@@ -8,6 +8,9 @@ import { useGoal } from '@/hooks/use-goals-query';
 import { useProject } from '@/hooks/use-project-query';
 import { useQuery } from '@tanstack/react-query';
 import { progressApi } from '@/lib/api';
+import { useTaskActualMinutes } from '@/hooks/use-logs-query';
+import { useUpdateTask } from '@/hooks/use-tasks-query';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,8 +19,9 @@ import { TaskFormDialog } from '@/components/tasks/task-form-dialog';
 import { TaskEditDialog } from '@/components/tasks/task-edit-dialog';
 import { TaskDeleteDialog } from '@/components/tasks/task-delete-dialog';
 import { LogFormDialog } from '@/components/logs/log-form-dialog';
-import { ArrowLeft, Plus, Clock, Calendar } from 'lucide-react';
+import { ArrowLeft, Plus, Clock, Calendar, GitBranch } from 'lucide-react';
 import { taskStatusLabels, taskStatusColors } from '@/types/task';
+import type { TaskStatus, Task } from '@/types/task';
 import { log } from '@/lib/logger';
 
 interface GoalDetailPageProps {
@@ -25,6 +29,59 @@ interface GoalDetailPageProps {
     id: string;
     goalId: string;
   };
+}
+
+// Component to display actual time for a task
+function TaskActualTime({ taskId }: { taskId: string }) {
+  const { totalHours } = useTaskActualMinutes(taskId);
+
+  return (
+    <div className="flex items-center gap-1">
+      <Clock className="h-3 w-3 text-green-600" />
+      {totalHours.toFixed(1)}h
+    </div>
+  );
+}
+
+// Component for inline status editing
+function TaskStatusSelect({ task }: { task: Task }) {
+  const updateTaskMutation = useUpdateTask();
+
+  const handleStatusChange = async (newStatus: TaskStatus) => {
+    try {
+      await updateTaskMutation.mutateAsync({
+        id: task.id,
+        data: { status: newStatus }
+      });
+    } catch (error) {
+      log.error('Failed to update task status', error, {
+        component: 'TaskStatusSelect',
+        taskId: task.id,
+        newStatus
+      });
+    }
+  };
+
+  return (
+    <Select value={task.status} onValueChange={handleStatusChange} disabled={updateTaskMutation.isPending}>
+      <SelectTrigger className="w-auto min-w-[100px] h-auto p-1">
+        <SelectValue>
+          <Badge className={taskStatusColors[task.status]}>
+            {taskStatusLabels[task.status]}
+          </Badge>
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {Object.entries(taskStatusLabels).map(([value, label]) => (
+          <SelectItem key={value} value={value}>
+            <Badge className={taskStatusColors[value as TaskStatus]}>
+              {label}
+            </Badge>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 }
 
 export default function GoalDetailPage({ params }: GoalDetailPageProps) {
@@ -279,8 +336,10 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>タスク名</TableHead>
+                    <TableHead>依存関係</TableHead>
                     <TableHead>ステータス</TableHead>
                     <TableHead>見積時間</TableHead>
+                    <TableHead>実績時間</TableHead>
                     <TableHead>締切日</TableHead>
                     <TableHead>作成日</TableHead>
                     <TableHead>操作</TableHead>
@@ -300,15 +359,46 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge className={taskStatusColors[task.status]}>
-                          {taskStatusLabels[task.status]}
-                        </Badge>
+                        {task.dependencies && task.dependencies.length > 0 ? (
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1">
+                              <GitBranch className="h-4 w-4 text-blue-500" />
+                              <span className="text-sm text-muted-foreground">
+                                {task.dependencies.length}件
+                              </span>
+                            </div>
+                            <div className="flex -space-x-2" title={`依存タスク: ${task.dependencies.map(d => d.depends_on_task?.title || '不明').join(', ')}`}>
+                              {task.dependencies.slice(0, 3).map((dep, index) => (
+                                <div
+                                  key={dep.id}
+                                  className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 border border-white text-xs"
+                                  title={dep.depends_on_task?.title || '不明なタスク'}
+                                >
+                                  {index + 1}
+                                </div>
+                              ))}
+                              {task.dependencies.length > 3 && (
+                                <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 border border-white text-xs">
+                                  +{task.dependencies.length - 3}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">なし</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <TaskStatusSelect task={task} />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
                           {task.estimate_hours}h
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <TaskActualTime taskId={task.id} />
                       </TableCell>
                       <TableCell>
                         {task.due_date ? (
@@ -336,7 +426,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
                               </Button>
                             }
                           />
-                          <TaskEditDialog task={task}>
+                          <TaskEditDialog task={task} availableTasks={tasks}>
                             <Button variant="outline" size="sm">
                               編集
                             </Button>

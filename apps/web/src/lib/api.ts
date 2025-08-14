@@ -13,7 +13,8 @@ import type {
 import type {
   Task,
   TaskCreate,
-  TaskUpdate
+  TaskUpdate,
+  TaskDependency
 } from '@/types/task';
 import type {
   Log,
@@ -293,6 +294,26 @@ class ApiClient {
     });
   }
 
+  // Task dependency methods
+  async addTaskDependency(taskId: string, dependsOnTaskId: string): Promise<TaskDependency> {
+    return this.request<TaskDependency>(`/api/tasks/${taskId}/dependencies`, {
+      method: 'POST',
+      body: JSON.stringify({
+        depends_on_task_id: dependsOnTaskId,
+      }),
+    });
+  }
+
+  async getTaskDependencies(taskId: string): Promise<TaskDependency[]> {
+    return this.request<TaskDependency[]>(`/api/tasks/${taskId}/dependencies`);
+  }
+
+  async deleteTaskDependency(taskId: string, dependencyId: string): Promise<void> {
+    return this.request<void>(`/api/tasks/${taskId}/dependencies/${dependencyId}`, {
+      method: 'DELETE',
+    });
+  }
+
   // AI Planning API methods
   async generateWeeklyPlan(planRequest: WeeklyPlanRequest): Promise<WeeklyPlanResponse> {
     return this.request<WeeklyPlanResponse>('/api/ai/weekly-plan', {
@@ -355,6 +376,14 @@ class ApiClient {
   // Log API methods
   async getLogsByTask(taskId: string, skip: number = 0, limit: number = 20): Promise<Log[]> {
     return this.request<Log[]>(`/api/logs/task/${taskId}?skip=${skip}&limit=${limit}`);
+  }
+
+  async getLogsBatch(taskIds: string[], skip: number = 0, limit: number = 20): Promise<Record<string, Log[]>> {
+    if (taskIds.length === 0) {
+      return {};
+    }
+    const taskIdsParam = taskIds.join(',');
+    return this.request<Record<string, Log[]>>(`/api/logs/batch?task_ids=${taskIdsParam}&skip=${skip}&limit=${limit}`);
   }
 
   async getLog(logId: string): Promise<Log> {
@@ -424,6 +453,11 @@ export const tasksApi = {
   create: (data: TaskCreate) => apiClient.createTask(data),
   update: (id: string, data: TaskUpdate) => apiClient.updateTask(id, data),
   delete: (id: string) => apiClient.deleteTask(id),
+  addDependency: (taskId: string, dependsOnTaskId: string) =>
+    apiClient.addTaskDependency(taskId, dependsOnTaskId),
+  getDependencies: (taskId: string) => apiClient.getTaskDependencies(taskId),
+  deleteDependency: (taskId: string, dependencyId: string) =>
+    apiClient.deleteTaskDependency(taskId, dependencyId),
 };
 
 export const aiPlanningApi = {
@@ -444,6 +478,8 @@ export const schedulingApi = {
 export const logsApi = {
   getByTask: (taskId: string, skip?: number, limit?: number) =>
     apiClient.getLogsByTask(taskId, skip, limit),
+  getBatch: (taskIds: string[], skip?: number, limit?: number) =>
+    apiClient.getLogsBatch(taskIds, skip, limit),
   getById: (id: string) => apiClient.getLog(id),
   create: (data: LogCreate) => apiClient.createLog(data),
   update: (id: string, data: LogUpdate) => apiClient.updateLog(id, data),

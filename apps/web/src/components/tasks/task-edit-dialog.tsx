@@ -31,15 +31,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useUpdateTask } from '@/hooks/use-tasks-query';
 import { toast } from '@/hooks/use-toast';
 import { taskStatusLabels } from '@/types/task';
+import { TaskDependenciesManager } from './task-dependencies-manager';
 import type { Task } from '@/types/task';
+import { roundToDecimals, parseFloatSafe } from '@/lib/number-utils';
 
 const taskFormSchema = z.object({
   title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
   description: z.string().max(500, '500文字以内で入力してください').optional(),
-  estimate_hours: z.number().min(0.1, '0.1時間以上で入力してください').max(1000, '1000時間以内で入力してください'),
+  estimate_hours: z.number()
+    .min(0.01, '0.01時間以上で入力してください')
+    .max(999.99, '999.99時間以内で入力してください')
+    .refine((val) => Number((val * 100).toFixed()) / 100 === val, {
+      message: '小数点以下は2桁以内で入力してください'
+    }),
   due_date: z.string().optional(),
   status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']),
 });
@@ -48,10 +56,11 @@ type TaskFormData = z.infer<typeof taskFormSchema>;
 
 interface TaskEditDialogProps {
   task: Task;
+  availableTasks?: Task[];
   children: React.ReactNode;
 }
 
-export function TaskEditDialog({ task, children }: TaskEditDialogProps) {
+export function TaskEditDialog({ task, availableTasks = [], children }: TaskEditDialogProps) {
   const [open, setOpen] = useState(false);
   const updateTaskMutation = useUpdateTask();
 
@@ -60,7 +69,7 @@ export function TaskEditDialog({ task, children }: TaskEditDialogProps) {
     defaultValues: {
       title: task.title,
       description: task.description || '',
-      estimate_hours: task.estimate_hours,
+      estimate_hours: typeof task.estimate_hours === 'string' ? parseFloat(task.estimate_hours) : task.estimate_hours,
       due_date: task.due_date?.split('T')[0] || '',
       status: task.status,
     },
@@ -71,7 +80,7 @@ export function TaskEditDialog({ task, children }: TaskEditDialogProps) {
     form.reset({
       title: task.title,
       description: task.description || '',
-      estimate_hours: task.estimate_hours,
+      estimate_hours: typeof task.estimate_hours === 'string' ? parseFloat(task.estimate_hours) : task.estimate_hours,
       due_date: task.due_date?.split('T')[0] || '',
       status: task.status,
     });
@@ -119,9 +128,16 @@ export function TaskEditDialog({ task, children }: TaskEditDialogProps) {
             タスクの情報を編集してください。
           </DialogDescription>
         </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
+        <Tabs defaultValue="basic" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="basic">基本情報</TabsTrigger>
+            <TabsTrigger value="dependencies">依存関係</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="basic">
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
               control={form.control}
               name="title"
               render={({ field }) => (
@@ -163,12 +179,16 @@ export function TaskEditDialog({ task, children }: TaskEditDialogProps) {
                   <FormControl>
                     <Input
                       type="number"
-                      step="0.1"
-                      min="0.1"
-                      max="1000"
-                      placeholder="1"
+                      step="0.01"
+                      min="0.01"
+                      max="999.99"
+                      placeholder="1.00"
                       {...field}
-                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => {
+                        const value = parseFloatSafe(e.target.value, 0);
+                        // Use proper rounding utility to avoid floating point issues
+                        field.onChange(roundToDecimals(value, 2));
+                      }}
                     />
                   </FormControl>
                   <FormMessage />
@@ -227,9 +247,24 @@ export function TaskEditDialog({ task, children }: TaskEditDialogProps) {
               <Button type="submit" disabled={updateTaskMutation.isPending}>
                 {updateTaskMutation.isPending ? '更新中...' : '更新'}
               </Button>
-            </div>
-          </form>
-        </Form>
+                </div>
+              </form>
+            </Form>
+          </TabsContent>
+
+          <TabsContent value="dependencies">
+            <TaskDependenciesManager
+              task={task}
+              availableTasks={availableTasks}
+              onDependencyAdded={() => {
+                // Optionally refresh task data
+              }}
+              onDependencyRemoved={() => {
+                // Optionally refresh task data
+              }}
+            />
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );

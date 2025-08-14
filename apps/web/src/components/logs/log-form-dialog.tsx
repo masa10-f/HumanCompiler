@@ -27,10 +27,15 @@ import { logsApi } from "@/lib/api";
 import { showErrorToast } from "@/lib/error-toast";
 import { useToast } from "@/hooks/use-toast";
 import type { LogCreate } from "@/types/log";
+import { sanitizeInput, isInputSafe } from "@/lib/sanitize";
+import { queryKeys } from "@/lib/query-keys";
 
 const logFormSchema = z.object({
-  actual_minutes: z.number().min(1, "実作業時間は1分以上である必要があります"),
-  comment: z.string().optional(),
+  actual_hours: z.number().min(0.1, "実作業時間は0.1時間以上である必要があります"),
+  comment: z.string().optional().refine(
+    (value) => !value || isInputSafe(value),
+    { message: "コメントに不正な内容が含まれています" }
+  ),
 });
 
 type LogFormData = z.infer<typeof logFormSchema>;
@@ -49,7 +54,7 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
   const form = useForm<LogFormData>({
     resolver: zodResolver(logFormSchema),
     defaultValues: {
-      actual_minutes: undefined,
+      actual_hours: undefined,
       comment: "",
     },
   });
@@ -57,21 +62,20 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
   const createLogMutation = useMutation({
     mutationFn: (data: LogCreate) => logsApi.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["logs", "task", taskId] });
-      queryClient.invalidateQueries({ queryKey: ["progress"] });
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.logs.byTask(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.progress.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
       toast({
         title: "作業時間を登録しました",
         description: `${taskTitle}の実作業時間を記録しました。`,
       });
       setOpen(false);
       form.reset({
-        actual_minutes: undefined,
+        actual_hours: undefined,
         comment: "",
       });
     },
     onError: (error) => {
-      console.error("Failed to create log:", error);
       showErrorToast(error, { title: "作業時間の登録に失敗しました" });
     },
   });
@@ -79,8 +83,8 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
   const onSubmit = (data: LogFormData) => {
     createLogMutation.mutate({
       task_id: taskId,
-      actual_minutes: data.actual_minutes,
-      comment: data.comment || undefined,
+      actual_minutes: Math.round(data.actual_hours * 60), // Convert hours to minutes for API
+      comment: data.comment ? sanitizeInput(data.comment) : undefined,
     });
   };
 
@@ -105,20 +109,22 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
 
             <FormField
               control={form.control}
-              name="actual_minutes"
+              name="actual_hours"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>実作業時間（分）</FormLabel>
+                  <FormLabel>実作業時間（時間）</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
-                      min={1}
+                      step="0.1"
+                      min="0.1"
+                      max="24"
                       {...field}
                       onChange={(e) => {
                         const value = e.target.value;
-                        field.onChange(value === "" ? undefined : parseInt(value) || undefined);
+                        field.onChange(value === "" ? undefined : parseFloat(value) || undefined);
                       }}
-                      placeholder="例: 120（2時間）"
+                      placeholder="例: 2.5（2時間30分）"
                     />
                   </FormControl>
                   <FormMessage />
