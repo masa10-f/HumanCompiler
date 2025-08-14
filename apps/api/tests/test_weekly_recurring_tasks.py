@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
 
 from taskagent_api.models import (
+    TaskCategory,
     WeeklyRecurringTask,
     WeeklyRecurringTaskCreate,
     WeeklyRecurringTaskUpdate,
@@ -51,7 +52,7 @@ def sample_weekly_recurring_task_data():
         "title": "週次振り返り会議",
         "description": "チームの週次振り返り会議",
         "estimate_hours": 2.0,
-        "category": "meeting",
+        "category": TaskCategory.MEETING,
         "is_active": True,
     }
 
@@ -69,14 +70,14 @@ def test_create_weekly_recurring_task(
     assert task.title == "週次振り返り会議"
     assert task.description == "チームの週次振り返り会議"
     assert task.estimate_hours == Decimal("2.0")
-    assert task.category == "meeting"
+    assert task.category == TaskCategory.MEETING
     assert task.is_active is True
     assert task.user_id == test_user.id
     assert task.id is not None
 
 
 def test_get_weekly_recurring_tasks(
-    db_session: Session, test_user_id: str, sample_weekly_recurring_task_data
+    test_session: Session, test_user, sample_weekly_recurring_task_data
 ):
     """Test getting weekly recurring tasks."""
     # Create multiple tasks
@@ -85,20 +86,20 @@ def test_get_weekly_recurring_tasks(
         title="運動",
         description="週3回の運動",
         estimate_hours=3.0,
-        category="exercise",
+        category=TaskCategory.EXERCISE,
         is_active=True,
     )
 
     task1 = weekly_recurring_task_service.create_weekly_recurring_task(
-        db_session, task_data_1, test_user_id
+        test_session, task_data_1, test_user.id
     )
     task2 = weekly_recurring_task_service.create_weekly_recurring_task(
-        db_session, task_data_2, test_user_id
+        test_session, task_data_2, test_user.id
     )
 
     # Get all tasks
     tasks = weekly_recurring_task_service.get_weekly_recurring_tasks(
-        db_session, test_user_id
+        test_session, test_user.id
     )
 
     assert len(tasks) >= 2
@@ -107,67 +108,65 @@ def test_get_weekly_recurring_tasks(
     assert task2.id in task_ids
 
 
-def test_get_weekly_recurring_tasks_with_filters(
-    db_session: Session, test_user_id: str
-):
+def test_get_weekly_recurring_tasks_with_filters(test_session: Session, test_user):
     """Test getting weekly recurring tasks with filters."""
     # Create tasks with different categories and statuses
     active_meeting_task = weekly_recurring_task_service.create_weekly_recurring_task(
-        db_session,
+        test_session,
         WeeklyRecurringTaskCreate(
             title="週次会議",
             estimate_hours=1.5,
-            category="meeting",
+            category=TaskCategory.MEETING,
             is_active=True,
         ),
-        test_user_id,
+        test_user.id,
     )
 
     inactive_study_task = weekly_recurring_task_service.create_weekly_recurring_task(
-        db_session,
+        test_session,
         WeeklyRecurringTaskCreate(
             title="勉強",
             estimate_hours=2.0,
-            category="study",
+            category=TaskCategory.STUDY,
             is_active=False,
         ),
-        test_user_id,
+        test_user.id,
     )
 
     # Filter by category
     meeting_tasks = weekly_recurring_task_service.get_weekly_recurring_tasks(
-        db_session, test_user_id, category="meeting"
+        test_session, test_user.id, category=TaskCategory.MEETING
     )
     assert len(meeting_tasks) >= 1
-    assert all(task.category == "meeting" for task in meeting_tasks)
+    assert all(task.category == TaskCategory.MEETING for task in meeting_tasks)
 
     # Filter by active status
     active_tasks = weekly_recurring_task_service.get_weekly_recurring_tasks(
-        db_session, test_user_id, is_active=True
+        test_session, test_user.id, is_active=True
     )
     assert len(active_tasks) >= 1
     assert all(task.is_active is True for task in active_tasks)
 
     # Filter by inactive status
     inactive_tasks = weekly_recurring_task_service.get_weekly_recurring_tasks(
-        db_session, test_user_id, is_active=False
+        test_session, test_user.id, is_active=False
     )
     assert len(inactive_tasks) >= 1
     assert all(task.is_active is False for task in inactive_tasks)
 
 
 def test_get_weekly_recurring_task(
-    db_session: Session, test_user_id: str, sample_weekly_recurring_task_data
+    test_session: Session, test_user, sample_weekly_recurring_task_data
 ):
     """Test getting a specific weekly recurring task."""
     task_data = WeeklyRecurringTaskCreate(**sample_weekly_recurring_task_data)
 
     created_task = weekly_recurring_task_service.create_weekly_recurring_task(
-        db_session, task_data, test_user_id
+        test_session, task_data, test_user.id
     )
 
     retrieved_task = weekly_recurring_task_service.get_weekly_recurring_task(
-        db_session, created_task.id, test_user_id
+        test_session, created_task.id, test_user.id
     )
 
     assert retrieved_task is not None
@@ -176,13 +175,13 @@ def test_get_weekly_recurring_task(
 
 
 def test_update_weekly_recurring_task(
-    db_session: Session, test_user_id: str, sample_weekly_recurring_task_data
+    test_session: Session, test_user, sample_weekly_recurring_task_data
 ):
     """Test updating a weekly recurring task."""
     task_data = WeeklyRecurringTaskCreate(**sample_weekly_recurring_task_data)
 
     created_task = weekly_recurring_task_service.create_weekly_recurring_task(
-        db_session, task_data, test_user_id
+        test_session, task_data, test_user.id
     )
 
     update_data = WeeklyRecurringTaskUpdate(
@@ -192,7 +191,7 @@ def test_update_weekly_recurring_task(
     )
 
     updated_task = weekly_recurring_task_service.update_weekly_recurring_task(
-        db_session, created_task.id, test_user_id, update_data
+        test_session, created_task.id, test_user.id, update_data
     )
 
     assert updated_task.title == "更新された会議"
@@ -204,28 +203,39 @@ def test_update_weekly_recurring_task(
 
 
 def test_delete_weekly_recurring_task(
-    db_session: Session, test_user_id: str, sample_weekly_recurring_task_data
+    test_session: Session, test_user, sample_weekly_recurring_task_data
 ):
     """Test deleting a weekly recurring task."""
     task_data = WeeklyRecurringTaskCreate(**sample_weekly_recurring_task_data)
 
     created_task = weekly_recurring_task_service.create_weekly_recurring_task(
-        db_session, task_data, test_user_id
+        test_session, task_data, test_user.id
     )
 
     # Delete the task
     result = weekly_recurring_task_service.delete_weekly_recurring_task(
-        db_session, created_task.id, test_user_id
+        test_session, created_task.id, test_user.id
     )
 
     assert result is True
 
-    # Verify the task is deleted
+    # Refresh session to ensure we see the latest data
+    test_session.expire_all()
+
+    # First, verify the task was actually soft deleted by checking directly
+    from sqlmodel import select
+
+    raw_task = test_session.exec(
+        select(WeeklyRecurringTask).where(WeeklyRecurringTask.id == created_task.id)
+    ).first()
+    assert raw_task.deleted_at is not None  # Verify soft delete worked
+
+    # Verify the task is soft deleted (not returned by get_weekly_recurring_task)
     deleted_task = weekly_recurring_task_service.get_weekly_recurring_task(
-        db_session, created_task.id, test_user_id
+        test_session, created_task.id, test_user.id
     )
 
-    assert deleted_task is None
+    assert deleted_task is None  # Should return None because it's soft deleted
 
 
 def test_weekly_recurring_task_api_endpoints(client: TestClient, auth_headers: dict):
@@ -236,7 +246,7 @@ def test_weekly_recurring_task_api_endpoints(client: TestClient, auth_headers: d
         "title": "API テスト会議",
         "description": "API経由で作成された会議",
         "estimate_hours": 1.0,
-        "category": "meeting",
+        "category": TaskCategory.MEETING,
         "is_active": True,
     }
 
@@ -304,14 +314,14 @@ def test_weekly_recurring_task_filter_by_category(
     meeting_task = {
         "title": "会議",
         "estimate_hours": 1.0,
-        "category": "meeting",
+        "category": TaskCategory.MEETING,
         "is_active": True,
     }
 
     study_task = {
         "title": "勉強",
         "estimate_hours": 2.0,
-        "category": "study",
+        "category": TaskCategory.STUDY,
         "is_active": True,
     }
 
@@ -334,7 +344,7 @@ def test_weekly_recurring_task_filter_by_category(
     assert response.status_code == 200
     tasks = response.json()
     assert len(tasks) >= 1
-    assert all(task["category"] == "meeting" for task in tasks)
+    assert all(task["category"] == TaskCategory.MEETING for task in tasks)
 
     # Filter by study category
     response = client.get(
@@ -344,7 +354,7 @@ def test_weekly_recurring_task_filter_by_category(
     assert response.status_code == 200
     tasks = response.json()
     assert len(tasks) >= 1
-    assert all(task["category"] == "study" for task in tasks)
+    assert all(task["category"] == TaskCategory.STUDY for task in tasks)
 
 
 def test_weekly_recurring_task_filter_by_active_status(

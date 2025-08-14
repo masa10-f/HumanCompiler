@@ -20,6 +20,19 @@ class TaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class TaskCategory(str, Enum):
+    """Weekly recurring task category enum"""
+
+    MEETING = "meeting"
+    STUDY = "study"
+    EXERCISE = "exercise"
+    HOBBY = "hobby"
+    ADMIN = "admin"
+    MAINTENANCE = "maintenance"
+    REVIEW = "review"
+    OTHER = "other"
+
+
 # Database Models (SQLModel)
 class UserBase(SQLModel):
     """Base user model"""
@@ -193,13 +206,15 @@ class WeeklyRecurringTaskBase(SQLModel):
     title: str = SQLField(min_length=1, max_length=200)
     description: str | None = SQLField(default=None, max_length=1000)
     estimate_hours: Decimal = SQLField(gt=0, max_digits=5, decimal_places=2)
-    category: str = SQLField(
-        min_length=1,
-        max_length=100,
-        description="Task category (e.g., meeting, study, exercise)",
+    category: TaskCategory = SQLField(
+        default=TaskCategory.OTHER,
+        description="Task category from predefined enum values",
     )
     is_active: bool = SQLField(
         default=True, description="Whether this recurring task is active"
+    )
+    deleted_at: datetime | None = SQLField(
+        default=None, description="Timestamp when the task was soft deleted"
     )
 
 
@@ -210,6 +225,13 @@ class WeeklyRecurringTask(WeeklyRecurringTaskBase, table=True):  # type: ignore[
 
     id: UUID | None = SQLField(default=None, primary_key=True)
     user_id: UUID = SQLField(foreign_key="users.id", index=True)
+    category: TaskCategory = SQLField(
+        default=TaskCategory.OTHER,
+        sa_column=Column(
+            SQLEnum(TaskCategory, values_callable=lambda x: [e.value for e in x])
+        ),
+        description="Task category from predefined enum values",
+    )
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 

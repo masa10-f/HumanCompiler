@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/components/ui/use-toast"
+import { getAuthHeaders } from "@/lib/auth"
 
 interface WeeklyRecurringTask {
   id: string
@@ -117,13 +118,11 @@ export function WeeklyRecurringTaskDialog({
         : "/api/weekly-recurring-tasks"
 
       const method = task ? "PUT" : "POST"
+      const headers = await getAuthHeaders()
 
       const response = await fetch(url, {
         method,
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${localStorage.getItem("token")}`,
-        },
+        headers,
         body: JSON.stringify(formData),
       })
 

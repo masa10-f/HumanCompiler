@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Clock, Tag } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
+import { getAuthHeaders } from "@/lib/auth"
 
 interface WeeklyRecurringTask {
   id: string
@@ -39,10 +40,9 @@ export function WeeklyRecurringTaskSelector({
 
   const fetchTasks = async () => {
     try {
+      const headers = await getAuthHeaders()
       const response = await fetch("/api/weekly-recurring-tasks?is_active=true", {
-        headers: {
-          "Authorization": `Bearer ${localStorage.getItem("token")}`,
-        },
+        headers,
       })
 
       if (!response.ok) {

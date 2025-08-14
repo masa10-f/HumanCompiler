@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Plus, Edit, Trash2, Clock, Tag } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { WeeklyRecurringTaskDialog } from "@/components/weekly-recurring-task-dialog"
+import { getAuthHeaders } from "@/lib/auth"
 
 interface WeeklyRecurringTask {
   id: string
@@ -27,10 +28,9 @@ export default function WeeklyTasksPage() {
 
   const fetchTasks = async () => {
     try {
+      const headers = await getAuthHeaders()
       const response = await fetch("/api/weekly-recurring-tasks", {
-        headers: {
-          "Authorization": `Bearer ${localStorage.getItem("token")}`,
-        },
+        headers,
       })
 
       if (!response.ok) {
@@ -71,11 +71,10 @@ export default function WeeklyTasksPage() {
     }
 
     try {
+      const headers = await getAuthHeaders()
       const response = await fetch(`/api/weekly-recurring-tasks/${taskId}`, {
         method: "DELETE",
-        headers: {
-          "Authorization": `Bearer ${localStorage.getItem("token")}`,
-        },
+        headers,
       })
 
       if (!response.ok) {

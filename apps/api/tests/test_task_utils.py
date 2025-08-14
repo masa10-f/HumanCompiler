@@ -96,6 +96,8 @@ def mock_context():
                 "goal2",
             ),
         ],
+        weekly_recurring_tasks=[],
+        selected_recurring_task_ids=[],
     )
 
     # Add task IDs to context for easy access

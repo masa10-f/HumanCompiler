@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session
@@ -7,6 +8,7 @@ from taskagent_api.auth import AuthUser, get_current_user
 from taskagent_api.database import db
 from taskagent_api.models import (
     ErrorResponse,
+    TaskCategory,
     WeeklyRecurringTaskCreate,
     WeeklyRecurringTaskResponse,
     WeeklyRecurringTaskUpdate,
@@ -48,7 +50,7 @@ async def get_weekly_recurring_tasks(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
-    category: Annotated[str | None, Query()] = None,
+    category: Annotated[TaskCategory | None, Query()] = None,
     is_active: Annotated[bool | None, Query()] = None,
 ) -> list[WeeklyRecurringTaskResponse]:
     """Get weekly recurring tasks for current user"""
@@ -66,7 +68,7 @@ async def get_weekly_recurring_tasks(
     },
 )
 async def get_weekly_recurring_task(
-    task_id: str,
+    task_id: UUID,
     session: Annotated[Session, Depends(get_session)],
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> WeeklyRecurringTaskResponse:
@@ -94,7 +96,7 @@ async def get_weekly_recurring_task(
     },
 )
 async def update_weekly_recurring_task(
-    task_id: str,
+    task_id: UUID,
     task_data: WeeklyRecurringTaskUpdate,
     session: Annotated[Session, Depends(get_session)],
     current_user: Annotated[AuthUser, Depends(get_current_user)],
@@ -114,7 +116,7 @@ async def update_weekly_recurring_task(
     },
 )
 async def delete_weekly_recurring_task(
-    task_id: str,
+    task_id: UUID,
     session: Annotated[Session, Depends(get_session)],
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> None:
