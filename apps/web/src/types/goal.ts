@@ -1,3 +1,23 @@
+// Goal dependency type definitions
+export interface GoalDependencyGoalInfo {
+  id: string;
+  title: string;
+  project_id: string;
+}
+
+export interface GoalDependency {
+  id: string;
+  goal_id: string;
+  depends_on_goal_id: string;
+  created_at: string;
+  depends_on_goal?: GoalDependencyGoalInfo;
+}
+
+export interface GoalDependencyCreate {
+  goal_id: string;
+  depends_on_goal_id: string;
+}
+
 // Goal type definitions for frontend
 export interface Goal {
   id: string;
@@ -7,6 +27,7 @@ export interface Goal {
   project_id: string;
   created_at: string;
   updated_at: string;
+  dependencies?: GoalDependency[];
 }
 
 export interface GoalCreate {

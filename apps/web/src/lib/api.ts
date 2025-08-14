@@ -8,7 +8,9 @@ import type {
 import type {
   Goal,
   GoalCreate,
-  GoalUpdate
+  GoalUpdate,
+  GoalDependency,
+  GoalDependencyCreate
 } from '@/types/goal';
 import type {
   Task,
@@ -278,6 +280,24 @@ class ApiClient {
     });
   }
 
+  // Goal dependency methods
+  async addGoalDependency(dependencyData: GoalDependencyCreate): Promise<GoalDependency> {
+    return this.request<GoalDependency>('/api/goal-dependencies/', {
+      method: 'POST',
+      body: JSON.stringify(dependencyData),
+    });
+  }
+
+  async getGoalDependencies(goalId: string): Promise<GoalDependency[]> {
+    return this.request<GoalDependency[]>(`/api/goal-dependencies/goal/${goalId}`);
+  }
+
+  async deleteGoalDependency(dependencyId: string): Promise<void> {
+    return this.request<void>(`/api/goal-dependencies/${dependencyId}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Task API methods
   async getTasksByGoal(goalId: string, skip: number = 0, limit: number = 20): Promise<Task[]> {
     return this.request<Task[]>(`/api/tasks/goal/${goalId}?skip=${skip}&limit=${limit}`);
@@ -484,6 +504,9 @@ export const goalsApi = {
   create: (data: GoalCreate) => apiClient.createGoal(data),
   update: (id: string, data: GoalUpdate) => apiClient.updateGoal(id, data),
   delete: (id: string) => apiClient.deleteGoal(id),
+  addDependency: (data: GoalDependencyCreate) => apiClient.addGoalDependency(data),
+  getDependencies: (goalId: string) => apiClient.getGoalDependencies(goalId),
+  deleteDependency: (dependencyId: string) => apiClient.deleteGoalDependency(dependencyId),
 };
 
 export const tasksApi = {
