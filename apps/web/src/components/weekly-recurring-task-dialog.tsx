@@ -113,9 +113,13 @@ export function WeeklyRecurringTaskDialog({
     setSaving(true)
 
     try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (!apiUrl) {
+        throw new Error('API URL is not configured');
+      }
       const url = task
-        ? `/api/weekly-recurring-tasks/${task.id}`
-        : "/api/weekly-recurring-tasks"
+        ? `${apiUrl}/api/weekly-recurring-tasks/${task.id}`
+        : `${apiUrl}/api/weekly-recurring-tasks`
 
       const method = task ? "PUT" : "POST"
       const headers = await getAuthHeaders()

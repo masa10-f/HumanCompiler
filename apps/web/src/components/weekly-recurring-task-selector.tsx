@@ -42,6 +42,9 @@ export function WeeklyRecurringTaskSelector({
     try {
       const headers = await getAuthHeaders()
       const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (!apiUrl) {
+        throw new Error('API URL is not configured');
+      }
       const response = await fetch(`${apiUrl}/api/weekly-recurring-tasks?is_active=true`, {
         headers,
       })

@@ -29,7 +29,11 @@ export default function WeeklyTasksPage() {
   const fetchTasks = async () => {
     try {
       const headers = await getAuthHeaders()
-      const response = await fetch("/api/weekly-recurring-tasks", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (!apiUrl) {
+        throw new Error('API URL is not configured');
+      }
+      const response = await fetch(`${apiUrl}/api/weekly-recurring-tasks`, {
         headers,
       })
 
@@ -72,7 +76,11 @@ export default function WeeklyTasksPage() {
 
     try {
       const headers = await getAuthHeaders()
-      const response = await fetch(`/api/weekly-recurring-tasks/${taskId}`, {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (!apiUrl) {
+        throw new Error('API URL is not configured');
+      }
+      const response = await fetch(`${apiUrl}/api/weekly-recurring-tasks/${taskId}`, {
         method: "DELETE",
         headers,
       })
