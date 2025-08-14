@@ -237,6 +237,10 @@ class OpenAIClient:
 ## 保留中のタスク ({len(context.tasks)} 件)
 {tasks_section}
 
+## 重要な制約
+**必ず「保留中のタスク」セクションに記載されているタスクIDのみを選択してください。**
+上記のタスク一覧に存在しないIDは使用しないでください。
+
 重点項目:
 1. 重要目標の前進につながるタスクを優先
 2. ディープワーク時間の最適配分
@@ -368,6 +372,7 @@ class OpenAIClient:
     ) -> WeeklyPlanResponse:
         """Create WeeklyPlanResponse from function arguments"""
         task_plans = []
+        skipped_tasks = []
 
         # Debug logging
         logger.info(
@@ -383,18 +388,23 @@ class OpenAIClient:
                 f"Looking for task ID: {plan.get('task_id')} (type: {type(plan.get('task_id'))})"
             )
 
-            # Find task title - try both string and UUID matching
-            task_title = next(
-                (t.title for t in context.tasks if str(t.id) == str(plan["task_id"])),
-                "Unknown Task",
+            # Find matching task in context
+            task = next(
+                (t for t in context.tasks if str(t.id) == str(plan["task_id"])),
+                None,
             )
 
-            if task_title == "Unknown Task":
-                logger.warning(f"Task ID {plan['task_id']} not found in context tasks!")
+            if task is None:
+                # Skip unknown tasks and log them
+                skipped_tasks.append(plan["task_id"])
+                logger.warning(
+                    f"Skipping unknown task ID: {plan['task_id']} - not found in task database"
+                )
+                continue
 
             task_plan = TaskPlan(
                 task_id=plan["task_id"],
-                task_title=task_title,
+                task_title=task.title,
                 estimated_hours=plan["estimated_hours"],
                 priority=plan["priority"],
                 suggested_day=plan["suggested_day"],
@@ -402,6 +412,13 @@ class OpenAIClient:
                 rationale=plan["rationale"],
             )
             task_plans.append(task_plan)
+
+        # Log summary of filtered results
+        logger.info(
+            f"Task filtering results: {len(task_plans)} valid tasks selected, {len(skipped_tasks)} unknown tasks skipped"
+        )
+        if skipped_tasks:
+            logger.warning(f"Skipped task IDs: {skipped_tasks}")
 
         total_hours = sum(plan.estimated_hours for plan in task_plans)
 

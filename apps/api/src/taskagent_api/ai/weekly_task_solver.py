@@ -471,6 +471,10 @@ class WeeklyTaskSolver:
 - プロジェクトバランス重み: {constraints.project_balance_weight}
 - 工数効率重み: {constraints.effort_efficiency_weight}
 
+## 重要な制約
+**必ず「利用可能タスク」セクションに記載されているタスクIDのみを選択してください。**
+上記のタスク一覧に存在しないIDは使用しないでください。
+
 ## 最適化要件
 以下の要素を考慮して最適なタスクを選択し、スケジューリングしてください：
 
@@ -539,32 +543,7 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
         """Parse AI solver response."""
         try:
             function_args = json.loads(function_call.arguments)
-
-            # Convert to TaskPlan objects
-            selected_tasks = []
-            for plan in function_args.get("selected_tasks", []):
-                # Find task title
-                task_title = next(
-                    (t.title for t in context.tasks if t.id == plan["task_id"]),
-                    "Unknown Task",
-                )
-
-                task_plan = TaskPlan(
-                    task_id=plan["task_id"],
-                    task_title=task_title,
-                    estimated_hours=plan["estimated_hours"],
-                    priority=plan["priority"],
-                    suggested_day=plan["suggested_day"],
-                    suggested_time_slot=plan["suggested_time_slot"],
-                    rationale=plan["rationale"],
-                )
-                selected_tasks.append(task_plan)
-
-            return {
-                "selected_tasks": selected_tasks,
-                "insights": function_args.get("insights", []),
-                "allocation_analysis": function_args.get("allocation_analysis", {}),
-            }
+            return self._create_solver_response(function_args, context)
 
         except (KeyError, ValueError, TypeError) as e:
             logger.error(f"Error parsing solver response: {e}")
@@ -615,18 +594,28 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
         self, function_args: dict, context: WeeklyPlanContext
     ) -> dict[str, Any]:
         """Create solver response from function arguments"""
-        # Convert to TaskPlan objects
+        # Convert to TaskPlan objects, filtering out unknown tasks
         selected_tasks = []
-        for plan in function_args.get("selected_tasks", []):
-            # Find task title
-            task_title = next(
-                (t.title for t in context.tasks if t.id == plan["task_id"]),
-                "Unknown Task",
+        skipped_tasks = []
+
+        for plan in function_args.get("task_plans", []):
+            # Find matching task in context
+            task = next(
+                (t for t in context.tasks if str(t.id) == str(plan["task_id"])),
+                None,
             )
+
+            if task is None:
+                # Skip unknown tasks and log them
+                skipped_tasks.append(plan["task_id"])
+                logger.warning(
+                    f"Skipping unknown task ID: {plan['task_id']} - not found in task database"
+                )
+                continue
 
             task_plan = TaskPlan(
                 task_id=plan["task_id"],
-                task_title=task_title,
+                task_title=task.title,
                 estimated_hours=plan["estimated_hours"],
                 priority=plan["priority"],
                 suggested_day=plan["suggested_day"],
@@ -634,6 +623,13 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                 rationale=plan["rationale"],
             )
             selected_tasks.append(task_plan)
+
+        # Log summary of filtered results
+        logger.info(
+            f"Task filtering results: {len(selected_tasks)} valid tasks selected, {len(skipped_tasks)} unknown tasks skipped"
+        )
+        if skipped_tasks:
+            logger.warning(f"Skipped task IDs: {skipped_tasks}")
 
         return {
             "selected_tasks": selected_tasks,
