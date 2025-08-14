@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -32,11 +32,18 @@ interface AvailableModels {
   [key: string]: ModelInfo
 }
 
+// OpenAI API key validation regex
+const OPENAI_API_KEY_REGEX = /^sk-[a-zA-Z0-9]{48}$/
+
+// Default model from environment or fallback
+const DEFAULT_MODEL = process.env.NEXT_PUBLIC_DEFAULT_OPENAI_MODEL || "gpt-5"
+
 export default function SettingsPage() {
   const router = useRouter()
+  const abortControllerRef = useRef<AbortController | null>(null)
   const [apiKey, setApiKey] = useState("")
   const [showApiKey, setShowApiKey] = useState(false)
-  const [openaiModel, setOpenaiModel] = useState("gpt-5")
+  const [openaiModel, setOpenaiModel] = useState(DEFAULT_MODEL)
   const [hasApiKey, setHasApiKey] = useState(false)
   const [loading, setLoading] = useState(false)
   const [loadingSettings, setLoadingSettings] = useState(true)
@@ -50,14 +57,25 @@ export default function SettingsPage() {
   const [availableModels, setAvailableModels] = useState<AvailableModels | null>(null)
 
   useEffect(() => {
+    // Create AbortController for cleanup
+    abortControllerRef.current = new AbortController()
+
     fetchUserSettings()
     fetchAvailableModels()
+
+    // Cleanup function
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Empty dependency array is intentional - only run on mount
 
   // Memoize model options for performance
   const modelOptions = useMemo(() => {
     if (!availableModels) {
-      return <SelectItem value="gpt-5">GPT-5 (Loading...)</SelectItem>
+      return <SelectItem value={DEFAULT_MODEL}>{DEFAULT_MODEL.toUpperCase()} (Loading...)</SelectItem>
     }
     return Object.entries(availableModels).map(([modelId, modelInfo]) => (
       <SelectItem key={modelId} value={modelId}>
@@ -74,13 +92,28 @@ export default function SettingsPage() {
 
   const fetchAvailableModels = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/models`)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/models`, {
+        signal: abortControllerRef.current?.signal
+      })
 
       if (response.ok) {
         const data = await response.json()
         setAvailableModels(data.models)
+
+        // Ensure current model selection is valid
+        const modelIds = Object.keys(data.models)
+        if (modelIds.length > 0 && !modelIds.includes(openaiModel)) {
+          // Set to first available model if current selection is invalid
+          const firstModel = modelIds[0]
+          if (firstModel) {
+            setOpenaiModel(firstModel)
+          }
+        }
       }
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return // Request was aborted, ignore the error
+      }
       log.error('Failed to fetch available models', err as Error, { component: 'Settings' })
     }
   }
@@ -99,6 +132,7 @@ export default function SettingsPage() {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
+        signal: abortControllerRef.current?.signal
       })
 
       if (response.ok) {
@@ -112,6 +146,9 @@ export default function SettingsPage() {
         }
       }
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return // Request was aborted, ignore the error
+      }
       log.error('Failed to fetch settings', err as Error, { component: 'Settings' })
     } finally {
       setLoadingSettings(false)
@@ -126,16 +163,20 @@ export default function SettingsPage() {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
+        signal: abortControllerRef.current?.signal
       })
 
       if (response.ok) {
         const data = await response.json()
         setUsageData(data)
       } else {
-        const errorData = await response.json().catch(() => ({ detail: "Failed to fetch usage data" }))
+        const errorData = await response.json().catch(() => ({ detail: "Failed to load usage data" }))
         setUsageError(errorData.detail || "Failed to load usage data")
       }
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return // Request was aborted, ignore the error
+      }
       setUsageError("Network error occurred while loading usage data")
       log.error('Failed to fetch usage data', err as Error, { component: 'Settings' })
     } finally {
@@ -146,6 +187,11 @@ export default function SettingsPage() {
   const handleSaveApiKey = async () => {
     if (!apiKey) {
       setError("Please enter an API key")
+      return
+    }
+
+    if (!OPENAI_API_KEY_REGEX.test(apiKey)) {
+      setError("Please enter a valid OpenAI API key (format: sk-...)")
       return
     }
 
@@ -178,8 +224,6 @@ export default function SettingsPage() {
         setSuccess("API key saved successfully! AI features are now enabled.")
         setHasApiKey(true)
         setApiKey("") // Clear the input for security
-        // Ensure complete cleanup of sensitive data
-        setTimeout(() => setApiKey(""), 0)
         // Refresh usage data after saving
         fetchUsageData(session.access_token)
       } else {
