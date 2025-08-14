@@ -103,6 +103,14 @@ class Goal(GoalBase, table=True):  # type: ignore[call-arg]
     # Relationships
     project: Project = Relationship(back_populates="goals")
     tasks: list["Task"] = Relationship(back_populates="goal")
+    dependencies: list["GoalDependency"] = Relationship(
+        back_populates="goal",
+        sa_relationship_kwargs={"foreign_keys": "GoalDependency.goal_id"},
+    )
+    dependent_goals: list["GoalDependency"] = Relationship(
+        back_populates="depends_on_goal",
+        sa_relationship_kwargs={"foreign_keys": "GoalDependency.depends_on_goal_id"},
+    )
 
 
 class TaskBase(SQLModel):
@@ -140,6 +148,42 @@ class Task(TaskBase, table=True):  # type: ignore[call-arg]
     dependent_tasks: list["TaskDependency"] = Relationship(
         back_populates="depends_on_task",
         sa_relationship_kwargs={"foreign_keys": "TaskDependency.depends_on_task_id"},
+    )
+
+
+class GoalDependencyBase(SQLModel):
+    """Base goal dependency model"""
+
+    pass
+
+
+class GoalDependency(GoalDependencyBase, table=True):  # type: ignore[call-arg]
+    """Goal dependency database model"""
+
+    __tablename__ = "goal_dependencies"
+    __table_args__ = {"extend_existing": True}
+
+    id: UUID | None = SQLField(
+        default=None,
+        sa_column=Column(
+            "id",
+            SQLAlchemyUUID,
+            primary_key=True,
+            server_default=text("gen_random_uuid()"),
+        ),
+    )
+    goal_id: UUID = SQLField(foreign_key="goals.id", ondelete="CASCADE")
+    depends_on_goal_id: UUID = SQLField(foreign_key="goals.id", ondelete="CASCADE")
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+
+    # Relationships
+    goal: "Goal" = Relationship(
+        back_populates="dependencies",
+        sa_relationship_kwargs={"foreign_keys": "[GoalDependency.goal_id]"},
+    )
+    depends_on_goal: "Goal" = Relationship(
+        back_populates="dependent_goals",
+        sa_relationship_kwargs={"foreign_keys": "[GoalDependency.depends_on_goal_id]"},
     )
 
 
@@ -411,6 +455,7 @@ class GoalResponse(GoalBase):
     project_id: UUID
     created_at: datetime
     updated_at: datetime
+    dependencies: list["GoalDependencyResponse"] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -618,6 +663,35 @@ class TaskDependencyResponse(BaseModel):
     depends_on_task_id: UUID
     created_at: datetime
     depends_on_task: TaskDependencyTaskInfo | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GoalDependencyCreate(BaseModel):
+    """Goal dependency creation request"""
+
+    goal_id: UUID
+    depends_on_goal_id: UUID
+
+
+class GoalDependencyGoalInfo(BaseModel):
+    """Goal information for dependencies to avoid circular references"""
+
+    id: UUID
+    title: str
+    project_id: UUID
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GoalDependencyResponse(BaseModel):
+    """Goal dependency response model"""
+
+    id: UUID
+    goal_id: UUID
+    depends_on_goal_id: UUID
+    created_at: datetime
+    depends_on_goal: GoalDependencyGoalInfo | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

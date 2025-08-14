@@ -22,6 +22,7 @@ from taskagent_api.exceptions import (
 )
 from taskagent_api.routers import (
     ai_planning,
+    goal_dependencies,
     goals,
     logs,
     monitoring,
@@ -214,6 +215,7 @@ app.include_router(projects.router, prefix="/api")
 app.include_router(goals.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
 app.include_router(task_dependencies.router)
+app.include_router(goal_dependencies.router)
 app.include_router(logs.router, prefix="/api")
 app.include_router(progress.router, prefix="/api")
 app.include_router(scheduler.router, prefix="/api")
