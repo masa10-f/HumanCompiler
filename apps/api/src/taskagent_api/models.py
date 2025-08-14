@@ -513,7 +513,7 @@ class WeeklyRecurringTaskUpdate(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = Field(None, max_length=1000)
     estimate_hours: Decimal | None = Field(None, gt=0)
-    category: str | None = Field(None, min_length=1, max_length=100)
+    category: TaskCategory | None = None
     is_active: bool | None = None
 
 

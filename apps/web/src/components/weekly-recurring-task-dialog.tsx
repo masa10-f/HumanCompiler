@@ -240,7 +240,7 @@ export function WeeklyRecurringTaskDialog({
             <Switch
               id="is_active"
               checked={formData.is_active}
-              onCheckedChange={(checked) =>
+              onCheckedChange={(checked: boolean) =>
                 setFormData({ ...formData, is_active: checked })
               }
             />

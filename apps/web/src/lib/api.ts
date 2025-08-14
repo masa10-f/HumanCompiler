@@ -102,11 +102,6 @@ const getApiBaseUrl = () => {
   // Vercel preview deployments (any other vercel.app domain)
   if (hostname.endsWith('.vercel.app')) {
     console.log(`🔬 Using Preview API`);
-    console.log(`🔍 DEBUG: hostname="${hostname}", endsWith .vercel.app = true`);
-    // Temporary alert for debugging
-    if (hostname.includes('masato-fukushimas-projects')) {
-      alert(`DEBUG: Detected preview domain "${hostname}", switching to Preview API`);
-    }
     return 'https://taskagent-api-masa-preview.fly.dev';
   }
 
