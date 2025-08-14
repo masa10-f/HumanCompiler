@@ -1,16 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { logsApi } from '@/lib/api'
 import type { Log, LogCreate, LogUpdate } from '@/types/log'
+import { queryKeys } from '@/lib/query-keys'
 
-// Query keys for consistent caching
-export const logKeys = {
-  all: ['logs'] as const,
-  lists: () => [...logKeys.all, 'list'] as const,
-  list: (filters: string) => [...logKeys.lists(), { filters }] as const,
-  details: () => [...logKeys.all, 'detail'] as const,
-  detail: (id: string) => [...logKeys.details(), id] as const,
-  byTask: (taskId: string) => [...logKeys.all, 'task', taskId] as const,
-}
+// Re-export log keys for backward compatibility
+export const logKeys = queryKeys.logs
 
 // Hook for fetching logs by task
 export function useLogsByTask(taskId: string, skip = 0, limit = 50) {
@@ -26,28 +20,10 @@ export function useLogsByTask(taskId: string, skip = 0, limit = 50) {
 // Hook for batch fetching logs for multiple tasks
 export function useBatchLogsQuery(taskIds: string[]) {
   return useQuery({
-    queryKey: ['logs', 'batch', ...taskIds.sort()],
+    queryKey: queryKeys.logs.batch(taskIds),
     queryFn: async () => {
-      const results: Record<string, Log[]> = {};
-      
-      // Fetch logs for all tasks in parallel
-      const promises = taskIds.map(async (taskId) => {
-        try {
-          const logs = await logsApi.getByTask(taskId);
-          return { taskId, logs };
-        } catch (error) {
-          console.error(`Failed to fetch logs for task ${taskId}:`, error);
-          return { taskId, logs: [] };
-        }
-      });
-      
-      const responses = await Promise.all(promises);
-      
-      responses.forEach(({ taskId, logs }) => {
-        results[taskId] = logs;
-      });
-      
-      return results;
+      // Use the new batch API endpoint for efficient fetching
+      return await logsApi.getBatch(taskIds);
     },
     enabled: taskIds.length > 0,
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -79,7 +55,7 @@ export function useCreateLog() {
       })
 
       // Invalidate progress data as it depends on logs
-      queryClient.invalidateQueries({ queryKey: ['progress'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.progress.all })
 
       // Add the new log to cache
       queryClient.setQueryData(
@@ -110,7 +86,7 @@ export function useUpdateLog() {
       })
 
       // Invalidate progress data as it depends on logs
-      queryClient.invalidateQueries({ queryKey: ['progress'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.progress.all })
     },
   })
 }
@@ -139,7 +115,7 @@ export function useDeleteLog() {
       }
 
       // Invalidate progress data as it depends on logs
-      queryClient.invalidateQueries({ queryKey: ['progress'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.progress.all })
     },
   })
 }
@@ -147,9 +123,9 @@ export function useDeleteLog() {
 // Helper hook to calculate total actual minutes for a task
 export function useTaskActualMinutes(taskId: string) {
   const { data: logs = [] } = useLogsByTask(taskId)
-  
+
   const totalMinutes = logs.reduce((sum, log) => sum + log.actual_minutes, 0)
-  
+
   return {
     totalMinutes,
     totalHours: totalMinutes / 60,

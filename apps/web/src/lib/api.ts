@@ -378,6 +378,14 @@ class ApiClient {
     return this.request<Log[]>(`/api/logs/task/${taskId}?skip=${skip}&limit=${limit}`);
   }
 
+  async getLogsBatch(taskIds: string[], skip: number = 0, limit: number = 20): Promise<Record<string, Log[]>> {
+    if (taskIds.length === 0) {
+      return {};
+    }
+    const taskIdsParam = taskIds.join(',');
+    return this.request<Record<string, Log[]>>(`/api/logs/batch?task_ids=${taskIdsParam}&skip=${skip}&limit=${limit}`);
+  }
+
   async getLog(logId: string): Promise<Log> {
     return this.request<Log>(`/api/logs/${logId}`);
   }
@@ -470,6 +478,8 @@ export const schedulingApi = {
 export const logsApi = {
   getByTask: (taskId: string, skip?: number, limit?: number) =>
     apiClient.getLogsByTask(taskId, skip, limit),
+  getBatch: (taskIds: string[], skip?: number, limit?: number) =>
+    apiClient.getLogsBatch(taskIds, skip, limit),
   getById: (id: string) => apiClient.getLog(id),
   create: (data: LogCreate) => apiClient.createLog(data),
   update: (id: string, data: LogUpdate) => apiClient.updateLog(id, data),

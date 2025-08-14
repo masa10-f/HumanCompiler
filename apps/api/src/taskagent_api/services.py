@@ -608,6 +608,59 @@ class LogService(BaseService[Log, LogCreate, LogUpdate]):
             )
         return self.get_all(session, owner_id, skip, limit, task_id=task_id)
 
+    def get_logs_batch(
+        self,
+        session: Session,
+        task_ids: list[str | UUID],
+        owner_id: str | UUID,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> dict[str, list[Log]]:
+        """Get logs for multiple tasks efficiently in a single query"""
+        from sqlmodel import select, and_
+
+        result = {}
+
+        # First, verify task ownership for all tasks
+        # Get all tasks that belong to the user through their goals and projects
+        task_query = (
+            select(Task)
+            .join(Goal, Task.goal_id == Goal.id)
+            .join(Project, Goal.project_id == Project.id)
+            .where(and_(Project.owner_id == owner_id, Task.id.in_(task_ids)))
+        )
+        valid_tasks = session.exec(task_query).all()
+        valid_task_ids = {str(task.id) for task in valid_tasks}
+
+        # Initialize result with empty lists for all requested tasks
+        for task_id in task_ids:
+            result[str(task_id)] = []
+
+        # If no valid tasks found, return empty results
+        if not valid_task_ids:
+            return result
+
+        # Fetch all logs for valid tasks in a single query
+        logs_query = (
+            select(Log)
+            .where(Log.task_id.in_(valid_task_ids))
+            .order_by(Log.created_at.desc())
+            .offset(skip)
+            .limit(limit * len(valid_task_ids))  # Adjust limit for multiple tasks
+        )
+
+        all_logs = session.exec(logs_query).all()
+
+        # Group logs by task_id
+        for log in all_logs:
+            task_id_str = str(log.task_id)
+            if task_id_str in result:
+                # Respect per-task limit
+                if len(result[task_id_str]) < limit:
+                    result[task_id_str].append(log)
+
+        return result
+
     def update_log(
         self,
         session: Session,

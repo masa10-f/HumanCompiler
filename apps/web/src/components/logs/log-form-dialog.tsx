@@ -27,10 +27,15 @@ import { logsApi } from "@/lib/api";
 import { showErrorToast } from "@/lib/error-toast";
 import { useToast } from "@/hooks/use-toast";
 import type { LogCreate } from "@/types/log";
+import { sanitizeInput, isInputSafe } from "@/lib/sanitize";
+import { queryKeys } from "@/lib/query-keys";
 
 const logFormSchema = z.object({
   actual_hours: z.number().min(0.1, "実作業時間は0.1時間以上である必要があります"),
-  comment: z.string().optional(),
+  comment: z.string().optional().refine(
+    (value) => !value || isInputSafe(value),
+    { message: "コメントに不正な内容が含まれています" }
+  ),
 });
 
 type LogFormData = z.infer<typeof logFormSchema>;
@@ -57,9 +62,9 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
   const createLogMutation = useMutation({
     mutationFn: (data: LogCreate) => logsApi.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["logs", "task", taskId] });
-      queryClient.invalidateQueries({ queryKey: ["progress"] });
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.logs.byTask(taskId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.progress.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
       toast({
         title: "作業時間を登録しました",
         description: `${taskTitle}の実作業時間を記録しました。`,
@@ -79,7 +84,7 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
     createLogMutation.mutate({
       task_id: taskId,
       actual_minutes: Math.round(data.actual_hours * 60), // Convert hours to minutes for API
-      comment: data.comment || undefined,
+      comment: data.comment ? sanitizeInput(data.comment) : undefined,
     });
   };
 
