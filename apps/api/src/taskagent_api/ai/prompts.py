@@ -42,19 +42,6 @@ def get_function_definitions() -> list[dict[str, Any]]:
                                             "Task priority (1=highest, 5=lowest)"
                                         ),
                                     },
-                                    "suggested_day": {
-                                        "type": "string",
-                                        "description": (
-                                            "Suggested day of week (Monday, Tuesday, etc.)"
-                                        ),
-                                    },
-                                    "suggested_time_slot": {
-                                        "type": "string",
-                                        "description": (
-                                            "Suggested time slot "
-                                            "(morning, afternoon, evening)"
-                                        ),
-                                    },
                                     "rationale": {
                                         "type": "string",
                                         "description": (
@@ -66,8 +53,6 @@ def get_function_definitions() -> list[dict[str, Any]]:
                                     "task_id",
                                     "estimated_hours",
                                     "priority",
-                                    "suggested_day",
-                                    "suggested_time_slot",
                                     "rationale",
                                 ],
                             },

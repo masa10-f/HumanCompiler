@@ -29,11 +29,64 @@ class WeeklyScheduleSaveRequest(BaseModel):
     """Request to save weekly schedule data."""
 
     week_start_date: str = Field(
-        ..., description="Week start date in YYYY-MM-DD format"
+        ..., description="Week start date in YYYY-MM-DD format (must be a Monday)"
     )
     schedule_data: dict = Field(
         ..., description="Weekly schedule data including selected tasks"
     )
+
+
+def validate_week_start_date(date_str: str) -> datetime:
+    """
+    Validate and parse week start date.
+
+    Args:
+        date_str: Date string in YYYY-MM-DD format
+
+    Returns:
+        Parsed datetime object
+
+    Raises:
+        HTTPException: If date format is invalid or not a Monday
+    """
+    try:
+        parsed_date = datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorResponse.create(
+                code="INVALID_DATE_FORMAT",
+                message="Week start date must be in YYYY-MM-DD format",
+                details={"provided_date": date_str},
+            ).model_dump(),
+        )
+
+    # Check if the date is a Monday (weekday() returns 0 for Monday)
+    if parsed_date.weekday() != 0:
+        day_names = [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday",
+        ]
+        actual_day = day_names[parsed_date.weekday()]
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ErrorResponse.create(
+                code="INVALID_WEEK_START_DATE",
+                message="Week start date must be a Monday",
+                details={
+                    "provided_date": date_str,
+                    "actual_day": actual_day,
+                    "expected_day": "Monday",
+                },
+            ).model_dump(),
+        )
+
+    return parsed_date
 
 
 @router.post("/save", response_model=WeeklyScheduleResponse)
@@ -54,27 +107,19 @@ async def save_weekly_schedule(
         )
 
         # Parse and validate week start date
-        try:
-            week_start = datetime.strptime(request.week_start_date, "%Y-%m-%d")
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=ErrorResponse.create(
-                    code="INVALID_DATE_FORMAT",
-                    message="Week start date must be in YYYY-MM-DD format",
-                    details={"provided_date": request.week_start_date},
-                ).model_dump(),
-            )
+        week_start = validate_week_start_date(request.week_start_date)
 
         # Check if weekly schedule already exists
         # Convert user_id to UUID if it's a string
         user_uuid = UUID(user_id) if isinstance(user_id, str) else user_id
 
         existing_schedule = session.exec(
-            select(WeeklySchedule).where(
+            select(WeeklySchedule)
+            .where(
                 WeeklySchedule.user_id == user_uuid,
                 WeeklySchedule.week_start_date == week_start,
             )
+            .limit(1)
         ).first()
 
         if existing_schedule:
@@ -132,12 +177,22 @@ async def list_weekly_schedules(
         # Validate parameters
         if skip < 0:
             raise HTTPException(
-                status_code=400, detail=f"Invalid skip parameter: {skip}"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ErrorResponse.create(
+                    code="INVALID_SKIP_PARAMETER",
+                    message="Skip parameter must be non-negative",
+                    details={"provided_skip": skip, "minimum_value": 0},
+                ).model_dump(),
             )
 
         if limit < 1 or limit > 100:
             raise HTTPException(
-                status_code=400, detail=f"Invalid limit parameter: {limit}"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ErrorResponse.create(
+                    code="INVALID_LIMIT_PARAMETER",
+                    message="Limit parameter must be between 1 and 100",
+                    details={"provided_limit": limit, "valid_range": "1-100"},
+                ).model_dump(),
             )
 
         # Convert user_id to UUID if it's a string
@@ -175,7 +230,11 @@ async def list_weekly_schedules(
         logger.error(f"Unexpected error fetching weekly schedule list: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch weekly schedule list",
+            detail=ErrorResponse.create(
+                code="INTERNAL_SERVER_ERROR",
+                message="Failed to fetch weekly schedule list",
+                details={"error_type": type(e).__name__, "user_id": user_id},
+            ).model_dump(),
         )
 
 
@@ -188,21 +247,11 @@ async def get_weekly_schedule(
     """
     Get saved weekly schedule for specific week.
 
-    Week start date should be in YYYY-MM-DD format.
+    Week start date should be in YYYY-MM-DD format (must be a Monday).
     """
     try:
-        # Validate date format
-        try:
-            week_start = datetime.strptime(week_start_date, "%Y-%m-%d")
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=ErrorResponse.create(
-                    code="INVALID_DATE_FORMAT",
-                    message="Week start date must be in YYYY-MM-DD format",
-                    details={"provided_date": week_start_date},
-                ).model_dump(),
-            )
+        # Validate date format and ensure it's a Monday
+        week_start = validate_week_start_date(week_start_date)
 
         logger.info(
             f"Fetching weekly schedule for user {user_id} for week {week_start_date}"
@@ -213,10 +262,12 @@ async def get_weekly_schedule(
 
         # Get schedule from database
         schedule = session.exec(
-            select(WeeklySchedule).where(
+            select(WeeklySchedule)
+            .where(
                 WeeklySchedule.user_id == user_uuid,
                 WeeklySchedule.week_start_date == week_start,
             )
+            .limit(1)
         ).first()
 
         if not schedule:
@@ -257,21 +308,11 @@ async def delete_weekly_schedule(
     """
     Delete saved weekly schedule for specific week.
 
-    Week start date should be in YYYY-MM-DD format.
+    Week start date should be in YYYY-MM-DD format (must be a Monday).
     """
     try:
-        # Validate date format
-        try:
-            week_start = datetime.strptime(week_start_date, "%Y-%m-%d")
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=ErrorResponse.create(
-                    code="INVALID_DATE_FORMAT",
-                    message="Week start date must be in YYYY-MM-DD format",
-                    details={"provided_date": week_start_date},
-                ).model_dump(),
-            )
+        # Validate date format and ensure it's a Monday
+        week_start = validate_week_start_date(week_start_date)
 
         logger.info(
             f"Deleting weekly schedule for user {user_id} for week {week_start_date}"
@@ -282,10 +323,12 @@ async def delete_weekly_schedule(
 
         # Get schedule from database
         schedule = session.exec(
-            select(WeeklySchedule).where(
+            select(WeeklySchedule)
+            .where(
                 WeeklySchedule.user_id == user_uuid,
                 WeeklySchedule.week_start_date == week_start,
             )
+            .limit(1)
         ).first()
 
         if not schedule:

@@ -278,14 +278,6 @@ class OpenAIClient:
                                             "type": "integer",
                                             "description": "優先度 (1=最高, 5=最低)",
                                         },
-                                        "suggested_day": {
-                                            "type": "string",
-                                            "description": "推奨曜日",
-                                        },
-                                        "suggested_time_slot": {
-                                            "type": "string",
-                                            "description": "推奨時間帯",
-                                        },
                                         "rationale": {
                                             "type": "string",
                                             "description": "スケジューリングの根拠",
@@ -295,8 +287,6 @@ class OpenAIClient:
                                         "task_id",
                                         "estimated_hours",
                                         "priority",
-                                        "suggested_day",
-                                        "suggested_time_slot",
                                         "rationale",
                                     ],
                                 },
