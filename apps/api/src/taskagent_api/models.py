@@ -33,6 +33,14 @@ class TaskCategory(str, Enum):
     OTHER = "other"
 
 
+class WorkType(str, Enum):
+    """Work type classification for tasks"""
+
+    LIGHT_WORK = "light_work"
+    STUDY = "study"
+    FOCUSED_WORK = "focused_work"
+
+
 # Database Models (SQLModel)
 class UserBase(SQLModel):
     """Base user model"""
@@ -126,6 +134,10 @@ class TaskBase(SQLModel):
             SQLEnum(TaskStatus, values_callable=lambda x: [e.value for e in x])
         ),
     )
+    work_type: WorkType = SQLField(
+        default=WorkType.LIGHT_WORK,
+        description="Work type classification for scheduling optimization",
+    )
 
 
 class Task(TaskBase, table=True):  # type: ignore[call-arg]
@@ -135,6 +147,13 @@ class Task(TaskBase, table=True):  # type: ignore[call-arg]
 
     id: UUID | None = SQLField(default=None, primary_key=True)
     goal_id: UUID = SQLField(foreign_key="goals.id", ondelete="CASCADE")
+    work_type: WorkType = SQLField(
+        default=WorkType.LIGHT_WORK,
+        sa_column=Column(
+            SQLEnum(WorkType, values_callable=lambda x: [e.value for e in x])
+        ),
+        description="Work type classification for scheduling optimization",
+    )
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
@@ -479,6 +498,7 @@ class TaskUpdate(BaseModel):
     estimate_hours: Decimal | None = Field(None, gt=0)
     due_date: datetime | None = None
     status: TaskStatus | None = None
+    work_type: WorkType | None = None
 
 
 class TaskResponse(TaskBase):

@@ -50,6 +50,7 @@ const taskFormSchema = z.object({
     }),
   due_date: z.string().optional(),
   status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']),
+  work_type: z.enum(['light_work', 'study', 'focused_work']).optional(),
 });
 
 type TaskFormData = z.infer<typeof taskFormSchema>;
@@ -72,6 +73,7 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
       estimate_hours: typeof task.estimate_hours === 'string' ? parseFloat(task.estimate_hours) : task.estimate_hours,
       due_date: task.due_date?.split('T')[0] || '',
       status: task.status,
+      work_type: task.work_type || 'light_work',
     },
   });
 
@@ -83,6 +85,7 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
       estimate_hours: typeof task.estimate_hours === 'string' ? parseFloat(task.estimate_hours) : task.estimate_hours,
       due_date: task.due_date?.split('T')[0] || '',
       status: task.status,
+      work_type: task.work_type || 'light_work',
     });
   }, [task, form]);
 
@@ -96,6 +99,7 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
           estimate_hours: data.estimate_hours,
           due_date: data.due_date || undefined,
           status: data.status,
+          work_type: data.work_type || 'light_work',
         }
       });
 
@@ -229,6 +233,31 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
                           {label}
                         </SelectItem>
                       ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="work_type"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>作業種別</FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="作業種別を選択" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="light_work">軽作業</SelectItem>
+                      <SelectItem value="study">学習</SelectItem>
+                      <SelectItem value="focused_work">集中作業</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />

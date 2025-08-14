@@ -24,6 +24,7 @@ from taskagent_api.models import (
     ErrorResponse,
     WeeklySchedule,
     Task,
+    WorkType,
 )
 from taskagent_api.services import goal_service, task_service
 
@@ -33,17 +34,15 @@ logger.info("Using OR-Tools CP-SAT constraint solver for scheduling optimization
 
 
 class TaskKind(Enum):
-    LIGHT = "light"
-    DEEP = "deep"
+    LIGHT_WORK = "light_work"
+    FOCUSED_WORK = "focused_work"
     STUDY = "study"
-    MEETING = "meeting"
 
 
 class SlotKind(Enum):
-    LIGHT = "light"
-    DEEP = "deep"
+    LIGHT_WORK = "light_work"
+    FOCUSED_WORK = "focused_work"
     STUDY = "study"
-    MEETING = "meeting"
 
 
 @dataclass
@@ -53,7 +52,7 @@ class SchedulerTask:
     estimate_hours: float
     priority: int = 1
     due_date: datetime | None = None
-    kind: TaskKind = TaskKind.LIGHT
+    kind: TaskKind = TaskKind.LIGHT_WORK
     goal_id: str | None = None
 
 
@@ -296,7 +295,9 @@ class TimeSlotInput(BaseModel):
 
     start: str = Field(..., description="Start time in HH:MM format")
     end: str = Field(..., description="End time in HH:MM format")
-    kind: str = Field("light", description="Slot type: deep, light, study, meeting")
+    kind: str = Field(
+        "light_work", description="Slot type: light_work, focused_work, study"
+    )
     capacity_hours: float | None = Field(
         None, description="Maximum hours for this slot"
     )
@@ -318,7 +319,7 @@ class TimeSlotInput(BaseModel):
     @field_validator("kind")
     @classmethod
     def validate_kind(cls, v):
-        valid_kinds = ["deep", "light", "study", "meeting"]
+        valid_kinds = ["light_work", "focused_work", "study"]
         if v.lower() not in valid_kinds:
             raise ValueError(f"Kind must be one of: {valid_kinds}")
         return v.lower()
@@ -403,21 +404,28 @@ class DailyScheduleResponse(BaseModel):
         return value.isoformat()
 
 
-def map_task_kind(status: str) -> TaskKind:
-    """Map task status or type to scheduler TaskKind."""
-    # This is a simple mapping - could be enhanced based on task properties
+def map_task_kind_from_work_type(work_type: WorkType) -> TaskKind:
+    """Map WorkType from database to scheduler TaskKind."""
     mapping = {
-        "research": TaskKind.DEEP,
-        "analysis": TaskKind.DEEP,
-        "coding": TaskKind.DEEP,
-        "development": TaskKind.DEEP,
+        WorkType.LIGHT_WORK: TaskKind.LIGHT_WORK,
+        WorkType.FOCUSED_WORK: TaskKind.FOCUSED_WORK,
+        WorkType.STUDY: TaskKind.STUDY,
+    }
+    return mapping.get(work_type, TaskKind.LIGHT_WORK)
+
+
+def map_task_kind(status: str) -> TaskKind:
+    """Map task status or type to scheduler TaskKind (fallback for tasks without work_type)."""
+    mapping = {
+        "research": TaskKind.FOCUSED_WORK,
+        "analysis": TaskKind.FOCUSED_WORK,
+        "coding": TaskKind.FOCUSED_WORK,
+        "development": TaskKind.FOCUSED_WORK,
         "study": TaskKind.STUDY,
         "learning": TaskKind.STUDY,
-        "meeting": TaskKind.MEETING,
-        "discussion": TaskKind.MEETING,
-        "review": TaskKind.LIGHT,
-        "planning": TaskKind.LIGHT,
-        "admin": TaskKind.LIGHT,
+        "review": TaskKind.LIGHT_WORK,
+        "planning": TaskKind.LIGHT_WORK,
+        "admin": TaskKind.LIGHT_WORK,
     }
 
     # Simple keyword matching in task title/description
@@ -425,18 +433,17 @@ def map_task_kind(status: str) -> TaskKind:
         if keyword in status.lower():
             return kind
 
-    return TaskKind.LIGHT  # Default
+    return TaskKind.LIGHT_WORK  # Default
 
 
 def map_slot_kind(kind_str: str) -> SlotKind:
     """Map input slot kind to scheduler SlotKind."""
     mapping = {
-        "deep": SlotKind.DEEP,
-        "light": SlotKind.LIGHT,
+        "light_work": SlotKind.LIGHT_WORK,
+        "focused_work": SlotKind.FOCUSED_WORK,
         "study": SlotKind.STUDY,
-        "meeting": SlotKind.MEETING,
     }
-    return mapping.get(kind_str.lower(), SlotKind.LIGHT)
+    return mapping.get(kind_str.lower(), SlotKind.LIGHT_WORK)
 
 
 @router.post("/daily", response_model=DailyScheduleResponse)
@@ -525,8 +532,11 @@ async def create_daily_schedule(
                 )
                 continue
 
-            # Determine task kind based on title/description
-            task_kind = map_task_kind(db_task.title)
+            # Determine task kind from work_type field or fallback to title analysis
+            if hasattr(db_task, "work_type") and db_task.work_type:
+                task_kind = map_task_kind_from_work_type(db_task.work_type)
+            else:
+                task_kind = map_task_kind(db_task.title)
             logger.debug(
                 f"Including task {db_task.id}: {db_task.title}, status: {db_task.status}, kind: {task_kind}"
             )
@@ -674,17 +684,17 @@ async def test_scheduler():
         test_tasks = [
             SchedulerTask(
                 id="test_1",
-                title="Test Deep Work Task",
+                title="Test Focused Work Task",
                 estimate_hours=2.0,
                 priority=1,
-                kind=TaskKind.DEEP,
+                kind=TaskKind.FOCUSED_WORK,
             ),
             SchedulerTask(
                 id="test_2",
-                title="Test Light Task",
+                title="Test Light Work Task",
                 estimate_hours=1.0,
                 priority=2,
-                kind=TaskKind.LIGHT,
+                kind=TaskKind.LIGHT_WORK,
             ),
         ]
 
@@ -692,13 +702,13 @@ async def test_scheduler():
             TimeSlot(
                 start=time(9, 0),
                 end=time(11, 0),
-                kind=SlotKind.DEEP,
+                kind=SlotKind.FOCUSED_WORK,
                 capacity_hours=2.0,
             ),
             TimeSlot(
                 start=time(14, 0),
                 end=time(15, 0),
-                kind=SlotKind.LIGHT,
+                kind=SlotKind.LIGHT_WORK,
                 capacity_hours=1.0,
             ),
         ]

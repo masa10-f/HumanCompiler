@@ -66,7 +66,7 @@ export interface PrioritySuggestions {
 export interface TimeSlot {
   start: string;
   end: string;
-  kind: 'study' | 'deep' | 'light' | 'meeting';
+  kind: 'study' | 'focused_work' | 'light_work';
   capacity_hours?: number;
 }
 
