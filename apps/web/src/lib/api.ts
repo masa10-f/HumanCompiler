@@ -433,6 +433,16 @@ class ApiClient {
     return this.request<SavedWeeklySchedule>(`/api/weekly-schedule/${weekStartDate}`);
   }
 
+  async saveWeeklySchedule(weekStartDate: string, scheduleData: any): Promise<SavedWeeklySchedule> {
+    return this.request<SavedWeeklySchedule>('/api/weekly-schedule/save', {
+      method: 'POST',
+      body: JSON.stringify({
+        week_start_date: weekStartDate,
+        schedule_data: scheduleData,
+      }),
+    });
+  }
+
   async deleteWeeklySchedule(weekStartDate: string): Promise<{ message: string }> {
     return this.request<{ message: string }>(`/api/weekly-schedule/${weekStartDate}`, {
       method: 'DELETE',
@@ -511,5 +521,6 @@ export const progressApi = {
 export const weeklyScheduleApi = {
   getAll: (skip?: number, limit?: number) => apiClient.getWeeklySchedules(skip, limit),
   getByWeek: (weekStartDate: string) => apiClient.getWeeklySchedule(weekStartDate),
+  save: (weekStartDate: string, scheduleData: any) => apiClient.saveWeeklySchedule(weekStartDate, scheduleData),
   delete: (weekStartDate: string) => apiClient.deleteWeeklySchedule(weekStartDate),
 };

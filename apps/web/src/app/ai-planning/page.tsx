@@ -27,7 +27,8 @@ import {
   Archive,
   Eye,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  Save
 } from 'lucide-react';
 import { AppHeader } from '@/components/layout/app-header';
 import { toast } from '@/hooks/use-toast';
@@ -113,6 +114,7 @@ export default function AIPlanningPage() {
   const [savedSchedules, setSavedSchedules] = useState<SavedWeeklySchedule[]>([]);
   const [loadingSchedules, setLoadingSchedules] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<SavedWeeklySchedule | null>(null);
+  const [savingSchedule, setSavingSchedule] = useState(false);
 
   if (authLoading || !user) {
     return (
@@ -214,6 +216,43 @@ export default function AIPlanningPage() {
         description: error instanceof Error ? error.message : '不明なエラーが発生しました',
         variant: 'destructive',
       });
+    }
+  };
+
+  const saveWeeklySchedule = async () => {
+    if (!weeklyPlan) return;
+
+    try {
+      setSavingSchedule(true);
+      const scheduleData = {
+        selected_tasks: weeklyPlan.task_plans,
+        total_allocated_hours: weeklyPlan.total_planned_hours,
+        project_allocations: weeklyPlan.project_allocations || [],
+        optimization_insights: weeklyPlan.insights || [],
+        recommendations: weeklyPlan.recommendations || [],
+        capacity_hours: capacityHours,
+        generation_timestamp: new Date().toISOString(),
+      };
+
+      await weeklyScheduleApi.save(weeklyPlan.week_start_date, scheduleData);
+
+      toast({
+        title: '週間スケジュールを保存しました',
+        description: `${weeklyPlan.week_start_date}週の計画が保存されました`,
+      });
+
+      // Refresh saved schedules list if it's loaded
+      if (savedSchedules.length > 0) {
+        loadSavedSchedules();
+      }
+    } catch (error) {
+      toast({
+        title: '週間スケジュールの保存に失敗しました',
+        description: error instanceof Error ? error.message : '不明なエラーが発生しました',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingSchedule(false);
     }
   };
 
@@ -355,13 +394,29 @@ export default function AIPlanningPage() {
           {weeklyPlan && (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                  週間計画結果
-                </CardTitle>
-                <CardDescription>
-                  {weeklyPlan.week_start_date}週の計画が生成されました
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                      週間計画結果
+                    </CardTitle>
+                    <CardDescription>
+                      {weeklyPlan.week_start_date}週の計画が生成されました
+                    </CardDescription>
+                  </div>
+                  <Button
+                    onClick={saveWeeklySchedule}
+                    disabled={savingSchedule}
+                    className="flex items-center gap-2"
+                  >
+                    {savingSchedule ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    スケジュールを保存
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

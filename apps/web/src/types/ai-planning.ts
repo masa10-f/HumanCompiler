@@ -22,6 +22,7 @@ export interface WeeklyPlanResponse {
   task_plans: TaskPlan[];
   recommendations: string[];
   insights: string[];
+  project_allocations?: ProjectAllocation[];
   generated_at: string;
 }
 
