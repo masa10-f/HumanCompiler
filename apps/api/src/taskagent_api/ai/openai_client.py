@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from taskagent_api.ai.models import TaskPlan, WeeklyPlanContext, WeeklyPlanResponse
+from taskagent_api.ai.task_utils import filter_valid_tasks
 from taskagent_api.config import settings
 from taskagent_api.crypto import get_crypto_service
 from taskagent_api.models import UserSettings
@@ -237,6 +238,10 @@ class OpenAIClient:
 ## 保留中のタスク ({len(context.tasks)} 件)
 {tasks_section}
 
+## 重要な制約
+**必ず「保留中のタスク」セクションに記載されているタスクIDのみを選択してください。**
+上記のタスク一覧に存在しないIDは使用しないでください。
+
 重点項目:
 1. 重要目標の前進につながるタスクを優先
 2. ディープワーク時間の最適配分
@@ -366,42 +371,33 @@ class OpenAIClient:
     def _create_weekly_plan_response(
         self, function_args: dict, context: WeeklyPlanContext
     ) -> WeeklyPlanResponse:
-        """Create WeeklyPlanResponse from function arguments"""
-        task_plans = []
+        """
+        Create WeeklyPlanResponse from function arguments with task filtering.
 
+        This method processes AI-generated task plans and filters out any task IDs
+        that don't exist in the database context. Only valid tasks are included
+        in the final response to prevent "Unknown Task" entries.
+
+        Args:
+            function_args: Dictionary containing task_plans, recommendations, and insights
+            context: Weekly plan context with available tasks for validation
+
+        Returns:
+            WeeklyPlanResponse with filtered task plans and original recommendations/insights
+        """
         # Debug logging
         logger.info(
-            f"Processing function arguments with {len(function_args.get('task_plans', []))} task plans"
+            f"Processing function arguments with {len(function_args.get('task_plans', []))} task plans "
+            f"(user: {context.user_id}, week: {context.week_start_date.strftime('%Y-%m-%d')})"
         )
         logger.info(
             f"Available task IDs in context: {[str(t.id) for t in context.tasks][:10]}..."
         )
 
-        for plan in function_args.get("task_plans", []):
-            # Debug task ID matching
-            logger.debug(
-                f"Looking for task ID: {plan.get('task_id')} (type: {type(plan.get('task_id'))})"
-            )
-
-            # Find task title - try both string and UUID matching
-            task_title = next(
-                (t.title for t in context.tasks if str(t.id) == str(plan["task_id"])),
-                "Unknown Task",
-            )
-
-            if task_title == "Unknown Task":
-                logger.warning(f"Task ID {plan['task_id']} not found in context tasks!")
-
-            task_plan = TaskPlan(
-                task_id=plan["task_id"],
-                task_title=task_title,
-                estimated_hours=plan["estimated_hours"],
-                priority=plan["priority"],
-                suggested_day=plan["suggested_day"],
-                suggested_time_slot=plan["suggested_time_slot"],
-                rationale=plan["rationale"],
-            )
-            task_plans.append(task_plan)
+        # Use shared utility function for task filtering
+        task_plans, skipped_tasks = filter_valid_tasks(
+            function_args.get("task_plans", []), context, "openai client"
+        )
 
         total_hours = sum(plan.estimated_hours for plan in task_plans)
 

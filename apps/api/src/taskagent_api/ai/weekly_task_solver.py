@@ -18,6 +18,7 @@ from sqlmodel import Session, select
 
 from taskagent_api.ai.context_collector import ContextCollector
 from taskagent_api.ai.models import WeeklyPlanContext, TaskPlan
+from taskagent_api.ai.task_utils import filter_valid_tasks
 from taskagent_api.models import Project, Goal, Task, UserSettings
 from taskagent_api.crypto import get_crypto_service
 
@@ -471,6 +472,10 @@ class WeeklyTaskSolver:
 - プロジェクトバランス重み: {constraints.project_balance_weight}
 - 工数効率重み: {constraints.effort_efficiency_weight}
 
+## 重要な制約
+**必ず「利用可能タスク」セクションに記載されているタスクIDのみを選択してください。**
+上記のタスク一覧に存在しないIDは使用しないでください。
+
 ## 最適化要件
 以下の要素を考慮して最適なタスクを選択し、スケジューリングしてください：
 
@@ -539,32 +544,7 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
         """Parse AI solver response."""
         try:
             function_args = json.loads(function_call.arguments)
-
-            # Convert to TaskPlan objects
-            selected_tasks = []
-            for plan in function_args.get("selected_tasks", []):
-                # Find task title
-                task_title = next(
-                    (t.title for t in context.tasks if t.id == plan["task_id"]),
-                    "Unknown Task",
-                )
-
-                task_plan = TaskPlan(
-                    task_id=plan["task_id"],
-                    task_title=task_title,
-                    estimated_hours=plan["estimated_hours"],
-                    priority=plan["priority"],
-                    suggested_day=plan["suggested_day"],
-                    suggested_time_slot=plan["suggested_time_slot"],
-                    rationale=plan["rationale"],
-                )
-                selected_tasks.append(task_plan)
-
-            return {
-                "selected_tasks": selected_tasks,
-                "insights": function_args.get("insights", []),
-                "allocation_analysis": function_args.get("allocation_analysis", {}),
-            }
+            return self._create_solver_response(function_args, context)
 
         except (KeyError, ValueError, TypeError) as e:
             logger.error(f"Error parsing solver response: {e}")
@@ -614,26 +594,24 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
     def _create_solver_response(
         self, function_args: dict, context: WeeklyPlanContext
     ) -> dict[str, Any]:
-        """Create solver response from function arguments"""
-        # Convert to TaskPlan objects
-        selected_tasks = []
-        for plan in function_args.get("selected_tasks", []):
-            # Find task title
-            task_title = next(
-                (t.title for t in context.tasks if t.id == plan["task_id"]),
-                "Unknown Task",
-            )
+        """
+        Create solver response from function arguments with task filtering.
 
-            task_plan = TaskPlan(
-                task_id=plan["task_id"],
-                task_title=task_title,
-                estimated_hours=plan["estimated_hours"],
-                priority=plan["priority"],
-                suggested_day=plan["suggested_day"],
-                suggested_time_slot=plan["suggested_time_slot"],
-                rationale=plan["rationale"],
-            )
-            selected_tasks.append(task_plan)
+        This method processes AI-generated task plans and filters out any task IDs
+        that don't exist in the database context. Only valid tasks are included
+        in the final response to prevent "Unknown Task" entries.
+
+        Args:
+            function_args: Dictionary containing task_plans, insights, and allocation_analysis
+            context: Weekly plan context with available tasks for validation
+
+        Returns:
+            Dictionary with filtered selected_tasks, insights, and allocation_analysis
+        """
+        # Use shared utility function for task filtering
+        selected_tasks, skipped_tasks = filter_valid_tasks(
+            function_args.get("task_plans", []), context, "weekly solver"
+        )
 
         return {
             "selected_tasks": selected_tasks,
