@@ -33,6 +33,14 @@ class TaskCategory(str, Enum):
     OTHER = "other"
 
 
+class WorkType(str, Enum):
+    """Work type classification for tasks"""
+
+    LIGHT_WORK = "light_work"
+    STUDY = "study"
+    FOCUSED_WORK = "focused_work"
+
+
 # Database Models (SQLModel)
 class UserBase(SQLModel):
     """Base user model"""
@@ -125,6 +133,13 @@ class TaskBase(SQLModel):
         sa_column=Column(
             SQLEnum(TaskStatus, values_callable=lambda x: [e.value for e in x])
         ),
+    )
+    work_type: WorkType = SQLField(
+        default=WorkType.LIGHT_WORK,
+        sa_column=Column(
+            SQLEnum(WorkType, values_callable=lambda x: [e.value for e in x])
+        ),
+        description="Work type classification for scheduling optimization",
     )
 
 
@@ -479,6 +494,7 @@ class TaskUpdate(BaseModel):
     estimate_hours: Decimal | None = Field(None, gt=0)
     due_date: datetime | None = None
     status: TaskStatus | None = None
+    work_type: WorkType | None = None
 
 
 class TaskResponse(TaskBase):

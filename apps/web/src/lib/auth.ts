@@ -18,13 +18,29 @@ export async function signUp(email: string, password: string) {
 }
 
 export async function signIn(email: string, password: string) {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  })
+  console.log('🔑 Attempting sign in with:', { email, passwordLength: password.length })
 
-  if (error) throw error
-  return data
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (error) {
+      console.error('❌ Supabase sign in error:', {
+        message: error.message,
+        status: error.status,
+        name: error.name
+      })
+      throw new Error(error.message || 'ログインに失敗しました')
+    }
+
+    console.log('✅ Sign in successful:', { userId: data.user?.id })
+    return data
+  } catch (error) {
+    console.error('❌ Sign in failed:', error)
+    throw error
+  }
 }
 
 export async function signOut() {

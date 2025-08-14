@@ -77,7 +77,7 @@ class TestSchedulerAPI:
         request_data = {
             "date": "2025-06-23",
             "goal_id": goal_id,
-            "time_slots": [{"start": "09:00", "end": "12:00", "kind": "deep"}],
+            "time_slots": [{"start": "09:00", "end": "12:00", "kind": "focused_work"}],
         }
 
         # No need for auth header since we're using dependency override
@@ -127,7 +127,7 @@ class TestSchedulerAPI:
         request_data = {
             "date": "2025-06-23",
             "project_id": project_id,
-            "time_slots": [{"start": "14:00", "end": "16:00", "kind": "light"}],
+            "time_slots": [{"start": "14:00", "end": "16:00", "kind": "light_work"}],
         }
 
         response = client.post("/api/schedule/daily", json=request_data)
@@ -155,7 +155,7 @@ class TestSchedulerAPI:
 
         request_data = {
             "date": "2025-06-23",
-            "time_slots": [{"start": "09:00", "end": "12:00", "kind": "deep"}],
+            "time_slots": [{"start": "09:00", "end": "12:00", "kind": "focused_work"}],
         }
 
         response = client.post("/api/schedule/daily", json=request_data)
@@ -171,7 +171,7 @@ class TestSchedulerAPI:
         request_data = {
             "date": "invalid-date",
             "goal_id": str(uuid4()),
-            "time_slots": [{"start": "09:00", "end": "12:00", "kind": "deep"}],
+            "time_slots": [{"start": "09:00", "end": "12:00", "kind": "focused_work"}],
         }
 
         response = client.post("/api/schedule/daily", json=request_data)
@@ -187,7 +187,7 @@ class TestSchedulerAPI:
                 {
                     "start": "25:00",  # Invalid hour
                     "end": "12:00",
-                    "kind": "deep",
+                    "kind": "focused_work",
                 }
             ],
         }
@@ -209,16 +209,16 @@ class TestSchedulerAPI:
         from taskagent_api.routers.scheduler import TimeSlotInput
 
         # Valid time slot
-        valid_slot = TimeSlotInput(start="09:00", end="12:00", kind="deep")
+        valid_slot = TimeSlotInput(start="09:00", end="12:00", kind="focused_work")
         assert valid_slot.start == "09:00"
-        assert valid_slot.kind == "deep"
+        assert valid_slot.kind == "focused_work"
 
         # Invalid time format
         with pytest.raises(ValueError):
             TimeSlotInput(
                 start="9:00am",  # Invalid format
                 end="12:00",
-                kind="deep",
+                kind="focused_work",
             )
 
         # Invalid kind
@@ -230,23 +230,21 @@ class TestSchedulerAPI:
         from taskagent_api.routers.scheduler import TaskKind, map_task_kind
 
         # Test mapping
-        assert map_task_kind("Research Project") == TaskKind.DEEP
-        assert map_task_kind("Data Analysis") == TaskKind.DEEP
+        assert map_task_kind("Research Project") == TaskKind.FOCUSED_WORK
+        assert map_task_kind("Data Analysis") == TaskKind.FOCUSED_WORK
         assert map_task_kind("Study Session") == TaskKind.STUDY
-        assert map_task_kind("Team Meeting") == TaskKind.MEETING
-        assert map_task_kind("Email Review") == TaskKind.LIGHT
-        assert map_task_kind("Random Task") == TaskKind.LIGHT  # Default
+        assert map_task_kind("Email Review") == TaskKind.LIGHT_WORK
+        assert map_task_kind("Random Task") == TaskKind.LIGHT_WORK  # Default
 
     def test_slot_kind_mapping(self):
         """Test slot kind mapping function."""
         from taskagent_api.routers.scheduler import SlotKind, map_slot_kind
 
         # Test mapping
-        assert map_slot_kind("deep") == SlotKind.DEEP
-        assert map_slot_kind("LIGHT") == SlotKind.LIGHT  # Case insensitive
+        assert map_slot_kind("focused_work") == SlotKind.FOCUSED_WORK
+        assert map_slot_kind("light_work") == SlotKind.LIGHT_WORK  # Case insensitive
         assert map_slot_kind("study") == SlotKind.STUDY
-        assert map_slot_kind("meeting") == SlotKind.MEETING
-        assert map_slot_kind("unknown") == SlotKind.LIGHT  # Default
+        assert map_slot_kind("unknown") == SlotKind.LIGHT_WORK  # Default
 
     @patch("taskagent_api.routers.scheduler.goal_service.get_goal")
     @patch("taskagent_api.routers.scheduler.db.get_session")
@@ -267,7 +265,7 @@ class TestSchedulerAPI:
         request_data = {
             "date": "2025-06-23",
             "goal_id": str(uuid4()),
-            "time_slots": [{"start": "09:00", "end": "12:00", "kind": "deep"}],
+            "time_slots": [{"start": "09:00", "end": "12:00", "kind": "focused_work"}],
         }
 
         response = client.post("/api/schedule/daily", json=request_data)
@@ -324,7 +322,7 @@ class TestSchedulerAPI:
         request_data = {
             "date": "2025-06-23",
             "goal_id": goal_id,
-            "time_slots": [{"start": "09:00", "end": "12:00", "kind": "light"}],
+            "time_slots": [{"start": "09:00", "end": "12:00", "kind": "light_work"}],
         }
 
         response = client.post("/api/schedule/daily", json=request_data)

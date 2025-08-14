@@ -61,35 +61,60 @@ async def ensure_user_exists(user_id: str, email: str) -> None:
     Create if not exists
     """
     try:
-        # Get database session
-        session_gen = db.get_session()
-        session = next(session_gen)
+        from sqlmodel import Session
 
-        try:
+        engine = db.get_engine()
+
+        with Session(engine) as session:
             # Check if user exists
-            existing_user = UserService.get_user(session, user_id)
+            try:
+                existing_user = UserService.get_user(session, user_id)
 
-            if not existing_user:
+                if existing_user:
+                    logger.debug(f"✅ User already exists in database: {user_id}")
+                    return
+
                 # Create user if not exists
                 user_data = UserCreate(email=email)
-                UserService.create_user(session, user_data, user_id)
-                logger.info(f"✅ Created user in public.users: {user_id}")
+                new_user = UserService.create_user(session, user_data, user_id)
+                session.commit()
+                logger.info(f"✅ Created new user in database: {user_id} ({email})")
 
-        finally:
-            # Properly close session and generator
-            try:
-                session_gen.close()  # Close generator properly
-            except Exception as close_error:
-                logger.debug(f"Session generator close warning: {close_error}")
+            except Exception as service_error:
+                # If UserService fails, try direct model creation
+                logger.warning(
+                    f"UserService failed, trying direct creation: {service_error}"
+                )
+                session.rollback()
 
-            try:
-                session.close()
-            except Exception as session_error:
-                logger.debug(f"Session close warning: {session_error}")
+                from taskagent_api.models import User
+                from sqlmodel import select
+                from uuid import UUID
+                from datetime import datetime, UTC
+
+                # Check if user exists directly
+                existing_user = session.get(User, UUID(user_id))
+                if existing_user:
+                    logger.debug(f"✅ User already exists (direct check): {user_id}")
+                    return
+
+                # Create user directly
+                new_user = User(
+                    id=UUID(user_id),
+                    email=email,
+                    created_at=datetime.now(UTC),
+                    updated_at=datetime.now(UTC),
+                )
+                session.add(new_user)
+                session.commit()
+                logger.info(f"✅ Created user via direct model: {user_id} ({email})")
 
     except Exception as e:
-        logger.error(f"❌ Failed to ensure user exists: {e}")
-        # Don't raise exception - user might already exist due to race condition
+        logger.error(f"❌ Failed to ensure user exists: {type(e).__name__}: {e}")
+        # Don't raise exception - user creation failure shouldn't block authentication
+        import traceback
+
+        logger.debug(f"Traceback: {traceback.format_exc()}")
 
 
 async def get_current_user(
@@ -129,8 +154,16 @@ async def get_current_user(
 
         user = user_response.user
 
-        # Skip user creation to avoid hanging issues
+        # Ensure user exists in our database
         logger.info(f"✅ User authenticated: {user.id}")
+
+        # Create user in database if not exists
+        try:
+            await ensure_user_exists(user.id, user.email or "unknown@example.com")
+            logger.info(f"✅ User ensured in database: {user.id}")
+        except Exception as user_creation_error:
+            logger.error(f"⚠️ Failed to ensure user exists: {user_creation_error}")
+            # Continue with authentication - user creation failure shouldn't block login
 
         return AuthUser(user_id=user.id, email=user.email or "unknown@example.com")
 

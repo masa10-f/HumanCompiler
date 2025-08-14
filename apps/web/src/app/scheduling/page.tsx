@@ -35,9 +35,9 @@ export default function SchedulingPage() {
   });
 
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([
-    { start: '09:00', end: '12:00', kind: 'deep' },
+    { start: '09:00', end: '12:00', kind: 'focused_work' },
     { start: '13:00', end: '17:00', kind: 'study' },
-    { start: '19:00', end: '21:00', kind: 'light' },
+    { start: '19:00', end: '21:00', kind: 'light_work' },
   ]);
 
   const [isOptimizing, setIsOptimizing] = useState(false);
@@ -56,7 +56,7 @@ export default function SchedulingPage() {
     setTimeSlots(prev => [...prev, {
       start: '09:00',
       end: '12:00',
-      kind: 'study'
+      kind: 'light_work'
     }]);
   };
 
@@ -139,16 +139,14 @@ export default function SchedulingPage() {
 
   const slotKindLabels = {
     study: '学習',
-    deep: '集中作業',
-    light: '軽作業',
-    meeting: '会議'
+    focused_work: '集中作業',
+    light_work: '軽作業',
   };
 
   const slotKindColors = {
     study: 'bg-blue-100 text-blue-800',
-    deep: 'bg-purple-100 text-purple-800',
-    light: 'bg-green-100 text-green-800',
-    meeting: 'bg-orange-100 text-orange-800'
+    focused_work: 'bg-purple-100 text-purple-800',
+    light_work: 'bg-green-100 text-green-800',
   };
 
   return (
@@ -246,9 +244,8 @@ export default function SchedulingPage() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="study">学習</SelectItem>
-                              <SelectItem value="deep">集中作業</SelectItem>
-                              <SelectItem value="light">軽作業</SelectItem>
-                              <SelectItem value="meeting">会議</SelectItem>
+                              <SelectItem value="focused_work">集中作業</SelectItem>
+                              <SelectItem value="light_work">軽作業</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -387,8 +384,8 @@ export default function SchedulingPage() {
                                 )}
                               </div>
                               <div className="flex items-center gap-2">
-                                <Badge className={slotKindColors[slotInfo?.kind || 'light']}>
-                                  {slotKindLabels[slotInfo?.kind || 'light']}
+                                <Badge className={slotKindColors[slotInfo?.kind || 'light_work']}>
+                                  {slotKindLabels[slotInfo?.kind || 'light_work']}
                                 </Badge>
                                 <span className="text-sm text-gray-500">
                                   {assignment.duration_hours.toFixed(1)}h

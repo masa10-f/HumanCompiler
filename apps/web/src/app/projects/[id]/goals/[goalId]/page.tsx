@@ -20,7 +20,7 @@ import { TaskEditDialog } from '@/components/tasks/task-edit-dialog';
 import { TaskDeleteDialog } from '@/components/tasks/task-delete-dialog';
 import { LogFormDialog } from '@/components/logs/log-form-dialog';
 import { ArrowLeft, Plus, Clock, Calendar, GitBranch } from 'lucide-react';
-import { taskStatusLabels, taskStatusColors } from '@/types/task';
+import { taskStatusLabels, taskStatusColors, workTypeLabels, workTypeColors } from '@/types/task';
 import type { TaskStatus, Task } from '@/types/task';
 import { log } from '@/lib/logger';
 
@@ -336,6 +336,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>タスク名</TableHead>
+                    <TableHead>作業種別</TableHead>
                     <TableHead>依存関係</TableHead>
                     <TableHead>ステータス</TableHead>
                     <TableHead>見積時間</TableHead>
@@ -357,6 +358,11 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
                             </div>
                           )}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={workTypeColors[task.work_type || 'light_work']}>
+                          {workTypeLabels[task.work_type || 'light_work']}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         {task.dependencies && task.dependencies.length > 0 ? (

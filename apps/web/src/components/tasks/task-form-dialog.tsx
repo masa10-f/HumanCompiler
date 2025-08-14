@@ -24,6 +24,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useCreateTask } from '@/hooks/use-tasks-query';
 import { toast } from '@/hooks/use-toast';
 
@@ -37,6 +44,7 @@ const taskFormSchema = z.object({
       message: '小数点以下は2桁以内で入力してください'
     }),
   due_date: z.string().optional(),
+  work_type: z.enum(['light_work', 'study', 'focused_work']).optional(),
 });
 
 type TaskFormData = z.infer<typeof taskFormSchema>;
@@ -57,6 +65,7 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
       description: '',
       estimate_hours: 1,
       due_date: '',
+      work_type: 'light_work',
     },
   });
 
@@ -67,6 +76,7 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
         description: data.description || undefined,
         estimate_hours: data.estimate_hours,
         due_date: data.due_date || undefined,
+        work_type: data.work_type || 'light_work',
         goal_id: goalId,
       };
 
@@ -180,6 +190,31 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
                       {...field}
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="work_type"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>作業種別</FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="作業種別を選択" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="light_work">軽作業</SelectItem>
+                      <SelectItem value="study">学習</SelectItem>
+                      <SelectItem value="focused_work">集中作業</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
