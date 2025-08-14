@@ -23,6 +23,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/components/ui/use-toast"
 import { getAuthHeaders } from "@/lib/auth"
+import { getSecureApiUrl } from "@/lib/api"
 
 interface WeeklyRecurringTask {
   id: string
@@ -113,7 +114,7 @@ export function WeeklyRecurringTaskDialog({
     setSaving(true)
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const apiUrl = getSecureApiUrl();
       if (!apiUrl) {
         throw new Error('API URL is not configured');
       }

@@ -37,7 +37,7 @@ import { AppHeader } from '@/components/layout/app-header';
 import { WeeklyRecurringTaskSelector } from '@/components/weekly-recurring-task-selector';
 import { WeeklyRecurringTaskDialog } from '@/components/weekly-recurring-task-dialog';
 import { toast } from '@/hooks/use-toast';
-import { aiPlanningApi, weeklyScheduleApi } from '@/lib/api';
+import { aiPlanningApi, weeklyScheduleApi, getSecureApiUrl } from '@/lib/api';
 import { log } from '@/lib/logger';
 import type { WeeklyPlanResponse, WorkloadAnalysis, PrioritySuggestions, SavedWeeklySchedule } from '@/types/ai-planning';
 import { getAuthHeaders } from '@/lib/auth';
@@ -305,7 +305,7 @@ export default function AIPlanningPage() {
     try {
       setLoadingWeeklyTasks(true);
       const headers = await getAuthHeaders();
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const apiUrl = getSecureApiUrl();
       if (!apiUrl) {
         throw new Error('API URL is not configured');
       }
@@ -348,7 +348,7 @@ export default function AIPlanningPage() {
 
     try {
       const headers = await getAuthHeaders();
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const apiUrl = getSecureApiUrl();
       if (!apiUrl) {
         throw new Error('API URL is not configured');
       }

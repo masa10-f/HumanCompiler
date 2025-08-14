@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Clock, Tag } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { getAuthHeaders } from "@/lib/auth"
+import { getSecureApiUrl } from "@/lib/api"
 
 interface WeeklyRecurringTask {
   id: string
@@ -41,7 +42,7 @@ export function WeeklyRecurringTaskSelector({
   const fetchTasks = async () => {
     try {
       const headers = await getAuthHeaders()
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const apiUrl = getSecureApiUrl();
       if (!apiUrl) {
         throw new Error('API URL is not configured');
       }

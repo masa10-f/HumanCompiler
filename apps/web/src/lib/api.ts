@@ -42,14 +42,25 @@ import type {
   TestSchedulerResponse
 } from '@/types/api-responses';
 
+// Helper function to ensure HTTPS protocol
+const ensureHttps = (url: string): string => {
+  if (!url) return url;
+  // Force HTTPS for production API endpoints
+  if (url.startsWith('http://') && (url.includes('taskagent-api-masa') || url.includes('.fly.dev'))) {
+    return url.replace('http://', 'https://');
+  }
+  return url;
+};
+
 // Determine API URL based on environment
 const getApiBaseUrl = () => {
   console.log(`🚀 getApiBaseUrl() called at ${new Date().toISOString()}`);
 
   // If explicitly set via environment variable, use it
   if (process.env.NEXT_PUBLIC_API_URL) {
-    console.log(`🔧 Using env var NEXT_PUBLIC_API_URL: ${process.env.NEXT_PUBLIC_API_URL}`);
-    return process.env.NEXT_PUBLIC_API_URL;
+    const secureUrl = ensureHttps(process.env.NEXT_PUBLIC_API_URL);
+    console.log(`🔧 Using env var NEXT_PUBLIC_API_URL: ${secureUrl}`);
+    return secureUrl;
   }
 
   // Server-side: use environment-based detection
@@ -523,4 +534,10 @@ export const weeklyScheduleApi = {
   getByWeek: (weekStartDate: string) => apiClient.getWeeklySchedule(weekStartDate),
   save: (weekStartDate: string, scheduleData: any) => apiClient.saveWeeklySchedule(weekStartDate, scheduleData),
   delete: (weekStartDate: string) => apiClient.deleteWeeklySchedule(weekStartDate),
+};
+
+// Export helper function for getting secure API URL
+export const getSecureApiUrl = (): string => {
+  const baseUrl = getApiBaseUrl();
+  return ensureHttps(baseUrl);
 };
