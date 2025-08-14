@@ -201,11 +201,7 @@ export default function DashboardPage() {
                       {todaySchedule.plan_json.total_scheduled_hours.toFixed(1)}時間
                     </span>
                   </div>
-                  {todaySchedule.plan_json.unscheduled_tasks?.length > 0 && (
-                    <div className="mt-2 text-sm text-orange-600">
-                      未スケジュール: {todaySchedule.plan_json.unscheduled_tasks.length}個のタスク
-                    </div>
-                  )}
+                  {/* Note: Unscheduled tasks are intentionally not displayed per issue #85 */}
                 </div>
               </CardContent>
             </Card>
