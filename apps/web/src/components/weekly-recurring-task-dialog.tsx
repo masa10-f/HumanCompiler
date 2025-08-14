@@ -23,7 +23,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/components/ui/use-toast"
 import { getAuthHeaders } from "@/lib/auth"
-import { getSecureApiUrl } from "@/lib/api"
+import { getSecureApiUrl, secureFetch } from "@/lib/api"
 
 interface WeeklyRecurringTask {
   id: string
@@ -127,7 +127,7 @@ export function WeeklyRecurringTaskDialog({
       const method = task ? "PUT" : "POST"
       const headers = await getAuthHeaders()
 
-      const response = await fetch(url, {
+      const response = await secureFetch(url, {
         method,
         headers,
         body: JSON.stringify(formData),

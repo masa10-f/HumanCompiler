@@ -37,7 +37,7 @@ import { AppHeader } from '@/components/layout/app-header';
 import { WeeklyRecurringTaskSelector } from '@/components/weekly-recurring-task-selector';
 import { WeeklyRecurringTaskDialog } from '@/components/weekly-recurring-task-dialog';
 import { toast } from '@/hooks/use-toast';
-import { aiPlanningApi, weeklyScheduleApi, getSecureApiUrl } from '@/lib/api';
+import { aiPlanningApi, weeklyScheduleApi, getSecureApiUrl, secureFetch } from '@/lib/api';
 import { log } from '@/lib/logger';
 import type { WeeklyPlanResponse, WorkloadAnalysis, PrioritySuggestions, SavedWeeklySchedule } from '@/types/ai-planning';
 import { getAuthHeaders } from '@/lib/auth';
@@ -310,7 +310,7 @@ export default function AIPlanningPage() {
         throw new Error('API URL is not configured');
       }
 
-      const response = await fetch(`${apiUrl}/api/weekly-recurring-tasks`, {
+      const response = await secureFetch(`${apiUrl}/api/weekly-recurring-tasks`, {
         headers,
       });
 
@@ -353,7 +353,7 @@ export default function AIPlanningPage() {
         throw new Error('API URL is not configured');
       }
 
-      const response = await fetch(`${apiUrl}/api/weekly-recurring-tasks/${taskId}`, {
+      const response = await secureFetch(`${apiUrl}/api/weekly-recurring-tasks/${taskId}`, {
         method: 'DELETE',
         headers,
       });

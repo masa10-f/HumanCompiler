@@ -553,3 +553,22 @@ export const getSecureApiUrl = (): string => {
   console.log(`🔗 getSecureApiUrl: ${baseUrl} -> ${secureUrl}`);
   return secureUrl;
 };
+
+// Secure fetch wrapper that enforces HTTPS
+export const secureFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
+  // Force HTTPS on the URL at fetch time
+  const secureUrl = ensureHttps(url);
+  console.log(`🛡️ secureFetch: ${url} -> ${secureUrl}`);
+
+  // Add additional security headers
+  const secureOptions: RequestInit = {
+    ...options,
+    // Force HTTPS in request
+    headers: {
+      ...options.headers,
+      'Upgrade-Insecure-Requests': '1',
+    },
+  };
+
+  return fetch(secureUrl, secureOptions);
+};

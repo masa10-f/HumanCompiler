@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Clock, Tag } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { getAuthHeaders } from "@/lib/auth"
-import { getSecureApiUrl } from "@/lib/api"
+import { getSecureApiUrl, secureFetch } from "@/lib/api"
 
 interface WeeklyRecurringTask {
   id: string
@@ -49,7 +49,7 @@ export function WeeklyRecurringTaskSelector({
       }
       const fullUrl = `${apiUrl}/api/weekly-recurring-tasks?is_active=true`;
       console.log(`📡 WeeklyRecurringTaskSelector: Fetching from: ${fullUrl}`);
-      const response = await fetch(fullUrl, {
+      const response = await secureFetch(fullUrl, {
         headers,
       })
 

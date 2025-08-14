@@ -8,7 +8,7 @@ import { Plus, Edit, Trash2, Clock, Tag } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { WeeklyRecurringTaskDialog } from "@/components/weekly-recurring-task-dialog"
 import { getAuthHeaders } from "@/lib/auth"
-import { getSecureApiUrl } from "@/lib/api"
+import { getSecureApiUrl, secureFetch } from "@/lib/api"
 
 interface WeeklyRecurringTask {
   id: string
@@ -34,7 +34,7 @@ export default function WeeklyTasksPage() {
       if (!apiUrl) {
         throw new Error('API URL is not configured');
       }
-      const response = await fetch(`${apiUrl}/api/weekly-recurring-tasks`, {
+      const response = await secureFetch(`${apiUrl}/api/weekly-recurring-tasks`, {
         headers,
       })
 
@@ -81,7 +81,7 @@ export default function WeeklyTasksPage() {
       if (!apiUrl) {
         throw new Error('API URL is not configured');
       }
-      const response = await fetch(`${apiUrl}/api/weekly-recurring-tasks/${taskId}`, {
+      const response = await secureFetch(`${apiUrl}/api/weekly-recurring-tasks/${taskId}`, {
         method: "DELETE",
         headers,
       })
