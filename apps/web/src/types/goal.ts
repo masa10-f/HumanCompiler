@@ -1,3 +1,6 @@
+// Goal status enum
+export type GoalStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
+
 // Goal dependency type definitions
 export interface GoalDependencyGoalInfo {
   id: string;
@@ -24,6 +27,7 @@ export interface Goal {
   title: string;
   description: string | null;
   estimate_hours: number;
+  status: GoalStatus;
   project_id: string;
   created_at: string;
   updated_at: string;
@@ -34,6 +38,7 @@ export interface GoalCreate {
   title: string;
   description?: string;
   estimate_hours: number;
+  status?: GoalStatus;
   project_id: string;
 }
 
@@ -41,6 +46,7 @@ export interface GoalUpdate {
   title?: string;
   description?: string;
   estimate_hours?: number;
+  status?: GoalStatus;
 }
 
 export interface GoalResponse {
@@ -48,6 +54,7 @@ export interface GoalResponse {
   title: string;
   description: string | null;
   estimate_hours: number;
+  status: GoalStatus;
   project_id: string;
   created_at: string;
   updated_at: string;

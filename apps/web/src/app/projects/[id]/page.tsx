@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { useProject } from '@/hooks/use-project-query';
 import { useGoalsByProject } from '@/hooks/use-goals-query';
 import { useQuery } from '@tanstack/react-query';
 import { progressApi, goalsApi } from '@/lib/api';
+import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,12 +15,104 @@ import { GoalFormDialog } from '@/components/goals/goal-form-dialog';
 import { GoalEditDialog } from '@/components/goals/goal-edit-dialog';
 import { GoalDeleteDialog } from '@/components/goals/goal-delete-dialog';
 import { ProjectProgressCard } from '@/components/progress/progress-card';
-import { ArrowLeft, Plus, GitBranch } from 'lucide-react';
+import { ArrowLeft, Plus, GitBranch, Clock, Play, CheckCircle, XCircle } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Goal, GoalStatus } from '@/types/goal';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 interface ProjectDetailPageProps {
   params: {
     id: string;
   };
+}
+
+// Component to display and manage goal status
+function GoalStatusDropdown({ goal }: { goal: Goal }) {
+  const queryClient = useQueryClient();
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const statusIcons: Record<GoalStatus, React.ReactNode> = {
+    pending: <Clock className="h-4 w-4 text-gray-500" />,
+    in_progress: <Play className="h-4 w-4 text-blue-500" />,
+    completed: <CheckCircle className="h-4 w-4 text-green-500" />,
+    cancelled: <XCircle className="h-4 w-4 text-red-500" />,
+  };
+
+  const statusLabels: Record<GoalStatus, string> = {
+    pending: '未着手',
+    in_progress: '進行中',
+    completed: '完了',
+    cancelled: 'キャンセル',
+  };
+
+  const updateStatusMutation = useMutation({
+    mutationFn: async (newStatus: GoalStatus) => {
+      return goalsApi.update(goal.id, { status: newStatus });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['goals', 'project', goal.project_id] });
+      queryClient.invalidateQueries({ queryKey: ['goal', goal.id] });
+      toast({
+        title: 'ステータスを更新しました',
+        description: `ゴールのステータスを「${statusLabels[goal.status || 'pending']}」に変更しました。`,
+      });
+      setIsUpdating(false);
+    },
+    onError: () => {
+      toast({
+        title: 'エラー',
+        description: 'ステータスの更新に失敗しました。',
+        variant: 'destructive',
+      });
+      setIsUpdating(false);
+    },
+  });
+
+  const handleStatusChange = (newStatus: GoalStatus) => {
+    if (newStatus !== goal.status && !isUpdating) {
+      setIsUpdating(true);
+      updateStatusMutation.mutate(newStatus);
+    }
+  };
+
+  const currentStatus = goal.status || 'pending';
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-100 transition-colors"
+          onClick={(e) => e.stopPropagation()}
+          disabled={isUpdating}
+        >
+          {statusIcons[currentStatus as GoalStatus]}
+          <span className="text-sm">{statusLabels[currentStatus as GoalStatus]}</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {(Object.keys(statusLabels) as GoalStatus[]).map((status) => (
+          <DropdownMenuItem
+            key={status}
+            onClick={(e: React.MouseEvent) => {
+              e.stopPropagation();
+              handleStatusChange(status);
+            }}
+            className={currentStatus === status ? 'bg-gray-100' : ''}
+          >
+            <div className="flex items-center gap-2">
+              {statusIcons[status]}
+              <span>{statusLabels[status]}</span>
+            </div>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 // Component to display goal dependencies
@@ -216,7 +309,10 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
                 onClick={() => router.push(`/projects/${params.id}/goals/${goal.id}`)}
               >
                 <CardHeader>
-                  <CardTitle className="line-clamp-1">{goal.title}</CardTitle>
+                  <div className="flex justify-between items-start mb-2">
+                    <CardTitle className="line-clamp-1 flex-1">{goal.title}</CardTitle>
+                    <GoalStatusDropdown goal={goal} />
+                  </div>
                   <CardDescription className="line-clamp-2">
                     {goal.description || 'ゴールの説明がありません'}
                   </CardDescription>

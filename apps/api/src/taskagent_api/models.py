@@ -20,6 +20,15 @@ class TaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class GoalStatus(str, Enum):
+    """Goal status enum"""
+
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
 class TaskCategory(str, Enum):
     """Weekly recurring task category enum"""
 
@@ -96,6 +105,7 @@ class GoalBase(SQLModel):
     title: str = SQLField(min_length=1, max_length=200)
     description: str | None = SQLField(default=None, max_length=1000)
     estimate_hours: Decimal = SQLField(gt=0, max_digits=5, decimal_places=2)
+    status: GoalStatus = SQLField(default=GoalStatus.PENDING)
 
 
 class Goal(GoalBase, table=True):  # type: ignore[call-arg]
@@ -461,6 +471,7 @@ class GoalUpdate(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = Field(None, max_length=1000)
     estimate_hours: Decimal | None = Field(None, gt=0)
+    status: GoalStatus | None = None
 
 
 class GoalResponse(GoalBase):
