@@ -15,12 +15,28 @@ Requirements:
 """
 
 import logging
+import os
 import sys
 from pathlib import Path
 
-from taskagent_api.database import db
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+
+    env_file = Path(__file__).parent.parent.parent / ".env"
+    if env_file.exists():
+        load_dotenv(env_file)
+        logging.info(f"✅ Loaded environment variables from {env_file}")
+    else:
+        logging.warning(f"⚠️ .env file not found at {env_file}")
+except ImportError:
+    logging.warning(
+        "⚠️ python-dotenv not installed, using system environment variables only"
+    )
+
 from taskagent_api.safe_migration import DataBackupManager
-from sqlmodel import Session, text
+from sqlmodel import Session, text, create_engine
+from taskagent_api.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +46,36 @@ class RLSMigrationManager:
 
     def __init__(self):
         self.backup_manager = DataBackupManager()
-        self.engine = db.get_engine()
+        # Create lightweight engine for migration without custom connection args
+        self.engine = self._create_migration_engine()
+
+    def _create_migration_engine(self):
+        """Create a lightweight SQLAlchemy engine for migration"""
+        database_url = settings.database_url
+
+        # Use minimal connection arguments for compatibility
+        connect_args = {}
+
+        # Add SSL settings if needed for Supabase
+        if "supabase.com" in database_url:
+            connect_args.update(
+                {
+                    "sslmode": "require",
+                    "connect_timeout": 30,
+                    "application_name": "TaskAgent-RLS-Migration",
+                }
+            )
+
+        engine = create_engine(
+            database_url,
+            echo=False,  # Disable SQL echo for cleaner output
+            pool_size=1,  # Minimal pool for migration
+            max_overflow=0,
+            connect_args=connect_args,
+        )
+
+        logger.info("✅ Migration engine created")
+        return engine
 
     def verify_prerequisites(self) -> bool:
         """Verify database connection and prerequisites"""
@@ -38,7 +83,9 @@ class RLSMigrationManager:
             with Session(self.engine) as session:
                 # Check database connection
                 result = session.exec(text("SELECT 1")).first()
-                if result != 1:
+                logger.debug(f"Database connection test result: {result}")
+                # Result is returned as a tuple, so we need to check the first element
+                if not result or result[0] != 1:
                     logger.error("Database connection test failed")
                     return False
 
@@ -60,6 +107,9 @@ class RLSMigrationManager:
 
         except Exception as e:
             logger.error(f"❌ Prerequisites check failed: {e}")
+            import traceback
+
+            logger.debug(f"Traceback: {traceback.format_exc()}")
             return False
 
     def check_current_rls_status(self) -> dict[str, bool]:
@@ -223,7 +273,7 @@ class RLSMigrationManager:
 def main():
     """Main entry point"""
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,  # Changed to DEBUG for more detailed error information
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 

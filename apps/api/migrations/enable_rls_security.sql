@@ -16,19 +16,7 @@ ALTER TABLE public.api_usage_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.goal_dependencies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.task_dependencies ENABLE ROW LEVEL SECURITY;
 
--- Drop existing policies if they exist (for idempotent script)
-DROP POLICY IF EXISTS "users_own_data" ON public.users;
-DROP POLICY IF EXISTS "projects_own_data" ON public.projects;
-DROP POLICY IF EXISTS "goals_via_projects" ON public.goals;
-DROP POLICY IF EXISTS "tasks_via_goals" ON public.tasks;
-DROP POLICY IF EXISTS "schedules_own_data" ON public.schedules;
-DROP POLICY IF EXISTS "weekly_schedules_own_data" ON public.weekly_schedules;
-DROP POLICY IF EXISTS "weekly_recurring_tasks_own_data" ON public.weekly_recurring_tasks;
-DROP POLICY IF EXISTS "logs_via_tasks" ON public.logs;
-DROP POLICY IF EXISTS "user_settings_own_data" ON public.user_settings;
-DROP POLICY IF EXISTS "api_usage_logs_own_data" ON public.api_usage_logs;
-DROP POLICY IF EXISTS "goal_dependencies_via_goals" ON public.goal_dependencies;
-DROP POLICY IF EXISTS "task_dependencies_via_tasks" ON public.task_dependencies;
+-- Note: No existing policies to drop - creating new RLS policies
 
 -- 1. Users table: Users can only access their own record
 CREATE POLICY "users_own_data" ON public.users
