@@ -29,6 +29,7 @@ from taskagent_api.routers import (
     progress,
     projects,
     scheduler,
+    simple_backup_api,
     task_dependencies,
     tasks,
     users,
@@ -55,19 +56,20 @@ async def lifespan(app: FastAPI):
         if await db.health_check():
             logger.info("✅ Database connection successful")
 
-            # Run database migrations
-            try:
-                from taskagent_api.migrations import run_migrations
-
-                await run_migrations()
-                logger.info("✅ Database migrations completed")
-            except Exception as migration_error:
-                logger.warning(f"⚠️ Migration warning: {migration_error}")
+            # Run database migrations (使用の際はmigration_manager.pyを利用してください)
+            logger.info(
+                "💡 マイグレーション実行時は 'python migrate.py apply' を使用してください"
+            )
 
             # Setup performance monitoring
             engine = db.get_engine()
             performance_monitor.setup_listeners(engine)
             logger.info("✅ Performance monitoring enabled")
+
+            # Simple backup system (ローカル定期バックアップはcronで実行)
+            logger.info(
+                "💡 バックアップ設定は local_backup_guide.md を参照してください"
+            )
         else:
             logger.warning("⚠️ Database connection failed, continuing in degraded mode")
     except Exception as e:
@@ -79,6 +81,9 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown
     logger.info("🔄 FastAPI server shutting down...")
+
+    # Simple backup system - no scheduler to stop
+    logger.info("✅ Server shutdown complete")
 
 
 # Initialize FastAPI app
@@ -224,6 +229,7 @@ app.include_router(weekly_recurring_tasks.router, prefix="/api")
 app.include_router(ai_planning.router, prefix="/api")
 app.include_router(user_settings.router)
 app.include_router(monitoring.router)
+app.include_router(simple_backup_api.router)
 
 
 # Health check endpoint
