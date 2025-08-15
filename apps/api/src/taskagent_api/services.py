@@ -437,6 +437,7 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             estimate_hours=data.estimate_hours,
             due_date=data.due_date,
             status=data.status,
+            work_type=data.work_type,
         )
 
     def _get_user_filter(self, user_id: str | UUID):
