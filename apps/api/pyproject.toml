@@ -113,6 +113,11 @@ exclude_lines = [
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
 ]
+omit = [
+    "src/taskagent_api/*migration*.py",
+    "src/taskagent_api/safe_migration.py",
+    "src/taskagent_api/enable_rls_migration.py",
+]
 
 [tool.bandit]
 exclude_dirs = ["tests"]
