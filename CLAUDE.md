@@ -239,6 +239,7 @@ fly secrets set SUPABASE_SERVICE_ROLE_KEY=eyJh...
 ## セキュリティ機能
 
 - ✅ **認証**: Supabase Auth統合
+- ✅ **Row Level Security (RLS)**: 全テーブルでユーザーレベルアクセス制御
 - ✅ **HTTPS**: 本番環境で強制
 - ✅ **CORS設定**: 適切なオリジン制限
 - ✅ **レート制限**: API呼び出し制限
@@ -377,6 +378,106 @@ backup_manager = DataBackupManager()
 atexit.register(lambda: backup_manager.create_backup("auto_shutdown_backup"))
 ```
 
+## Row Level Security (RLS) セキュリティ対策
+
+**⚠️ 重要**: TaskAgentではSupabaseデータベースのRow Level Security (RLS)を有効化し、ユーザーデータの安全性を確保しています。
+
+### RLSセキュリティルール
+
+#### 1. **新しいテーブル作成時の必須対応**
+新しいテーブルを作成する場合、以下の手順を**必ず**実行してください：
+
+```sql
+-- 1. テーブル作成後、直ちにRLSを有効化
+ALTER TABLE public.新しいテーブル名 ENABLE ROW LEVEL SECURITY;
+
+-- 2. 適切なアクセスポリシーを作成
+CREATE POLICY "テーブル名_user_access" ON public.新しいテーブル名
+    FOR ALL
+    TO authenticated
+    USING (auth.uid()::text = user_id::text)  -- ユーザー自身のデータのみアクセス可能
+    WITH CHECK (auth.uid()::text = user_id::text);
+
+-- 3. 必要な権限を付与
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.新しいテーブル名 TO authenticated;
+```
+
+#### 2. **RLSポリシー設計パターン**
+
+**ユーザー所有データ（直接所有）:**
+```sql
+-- users, schedules, user_settings, api_usage_logs等
+USING (auth.uid()::text = user_id::text)
+```
+
+**プロジェクト階層データ（間接所有）:**
+```sql
+-- goals, tasks, logs等
+USING (
+    EXISTS (
+        SELECT 1 FROM public.projects p
+        WHERE p.id = 関連プロジェクトID
+        AND auth.uid()::text = p.owner_id::text
+    )
+)
+```
+
+**依存関係データ（両方のデータが所有者のもの）:**
+```sql
+-- goal_dependencies, task_dependencies等
+USING (
+    EXISTS (SELECT 1 FROM public.goals g JOIN public.projects p ON p.id = g.project_id
+            WHERE g.id = goal_id AND auth.uid()::text = p.owner_id::text)
+    AND
+    EXISTS (SELECT 1 FROM public.goals g JOIN public.projects p ON p.id = g.project_id
+            WHERE g.id = depends_on_goal_id AND auth.uid()::text = p.owner_id::text)
+)
+```
+
+#### 3. **RLS実装チェックリスト**
+
+新しいテーブル作成時：
+- [ ] RLS有効化 (`ALTER TABLE ... ENABLE ROW LEVEL SECURITY`)
+- [ ] 適切なポリシー作成 (`CREATE POLICY`)
+- [ ] 権限付与 (`GRANT ... TO authenticated`)
+- [ ] ポリシーテスト実行（異なるユーザーでアクセステスト）
+- [ ] セキュリティ監査（外部からのアクセステスト）
+
+#### 4. **RLS検証コマンド**
+
+```bash
+# RLS有効状況確認
+SELECT schemaname, tablename, rowsecurity
+FROM pg_tables
+WHERE schemaname = 'public'
+ORDER BY tablename;
+
+# ポリシー一覧確認
+SELECT schemaname, tablename, policyname, permissive, roles, cmd
+FROM pg_policies
+WHERE schemaname = 'public'
+ORDER BY tablename, policyname;
+```
+
+#### 5. **セキュリティ违反の防止**
+
+以下の操作は**絶対に実行しないこと**：
+- RLSを無効化する操作 (`ALTER TABLE ... DISABLE ROW LEVEL SECURITY`)
+- 過度に広いアクセス権限の付与 (`TO public`)
+- ポリシーなしでのテーブル公開
+- セキュリティバイパス可能な条件の記述
+
+#### 6. **既存RLS実装状況（2025年8月対応済み）**
+
+全12テーブルでRLS有効化・ポリシー設定完了：
+- ✅ users, projects, goals, tasks
+- ✅ schedules, weekly_schedules, weekly_recurring_tasks
+- ✅ logs, user_settings, api_usage_logs
+- ✅ goal_dependencies, task_dependencies
+
+マイグレーションスクリプト: `apps/api/migrations/enable_rls_security.sql`
+実行スクリプト: `apps/api/src/taskagent_api/enable_rls_migration.py`
+
 ## 開発時の注意事項
 
 - プロンプトに対する返答は必ず日本語で行う
@@ -385,3 +486,4 @@ atexit.register(lambda: backup_manager.create_backup("auto_shutdown_backup"))
 - エラーハンドリング・ログ出力を適切に実装
 - テストケースの作成・実行を忘れずに行う
 - **データベース変更時は必ず上記のマイグレーション手順に従う**
+- **新しいテーブル作成時は必ず上記のRLSセキュリティ対策を実装する**
