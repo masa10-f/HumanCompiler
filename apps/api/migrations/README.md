@@ -2,11 +2,32 @@
 
 This directory contains SQL migration files for the TaskAgent database schema.
 
-## Migration Files
+## Migration Strategy
 
+### Production-Safe Migrations (RECOMMENDED)
+
+For production environments, use comprehensive migration scripts with safety features:
+- `add_goal_status_safe.py` - Goal status column with backup, rollback, and verification
+
+### SQL-Only Migrations (Development)
+
+For development/testing environments only:
 - `001_initial_schema.sql` - Initial database schema with all base tables
 - `002_add_user_settings_and_api_usage.sql` - Adds user settings and API usage tracking tables
 - `003_add_performance_indexes.sql` - Performance optimization indexes
+- `004_add_task_dependencies.sql` - Task dependency relationships
+- `005_add_weekly_schedules.sql` - Weekly scheduling functionality
+
+## Data Loss Prevention Policy
+
+After the 2025-08-14 data loss incident, all production migrations must:
+1. Create comprehensive backups before changes
+2. Use transaction-based rollback capabilities
+3. Include verification steps after completion
+4. Provide detailed logging of all operations
+5. Support resume functionality if interrupted
+
+**NEVER use simple SQL migrations in production without safety features.**
 
 ## Running Migrations
 

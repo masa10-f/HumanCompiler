@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState, memo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { useProject } from '@/hooks/use-project-query';
 import { useGoalsByProject } from '@/hooks/use-goals-query';
 import { useQuery } from '@tanstack/react-query';
 import { progressApi, goalsApi } from '@/lib/api';
+import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -15,12 +16,153 @@ import { GoalEditDialog } from '@/components/goals/goal-edit-dialog';
 import { GoalDeleteDialog } from '@/components/goals/goal-delete-dialog';
 import { ProjectProgressCard } from '@/components/progress/progress-card';
 import { ArrowLeft, Plus, GitBranch } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Goal, GoalStatus } from '@/types/goal';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  getGoalStatusIcon,
+  getGoalStatusLabel,
+  getAllGoalStatuses
+} from '@/constants/goal-status';
 
 interface ProjectDetailPageProps {
   params: {
     id: string;
   };
 }
+
+
+// Component to display and manage goal status
+const GoalStatusDropdown = memo(function GoalStatusDropdown({ goal }: { goal: Goal }) {
+  const queryClient = useQueryClient();
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const updateStatusMutation = useMutation({
+    mutationFn: async (newStatus: GoalStatus) => {
+      return goalsApi.update(goal.id, { status: newStatus });
+    },
+    onMutate: async (newStatus: GoalStatus) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['goals', 'project', goal.project_id] });
+      await queryClient.cancelQueries({ queryKey: ['goal', goal.id] });
+
+      // Snapshot the previous value for rollback
+      const previousGoals = queryClient.getQueryData(['goals', 'project', goal.project_id]);
+      const previousGoal = queryClient.getQueryData(['goal', goal.id]);
+
+      // Optimistically update to the new value
+      queryClient.setQueryData(['goals', 'project', goal.project_id], (old: any) => {
+        if (old) {
+          return old.map((g: Goal) =>
+            g.id === goal.id ? { ...g, status: newStatus } : g
+          );
+        }
+        return old;
+      });
+
+      queryClient.setQueryData(['goal', goal.id], (old: Goal | undefined) => {
+        if (old) {
+          return { ...old, status: newStatus };
+        }
+        return old;
+      });
+
+      // Return context for potential rollback
+      return { previousGoals, previousGoal };
+    },
+    onSuccess: (data, newStatus) => {
+      queryClient.invalidateQueries({ queryKey: ['goals', 'project', goal.project_id] });
+      queryClient.invalidateQueries({ queryKey: ['goal', goal.id] });
+      toast({
+        title: 'ステータスを更新しました',
+        description: `ゴールのステータスを「${getGoalStatusLabel(newStatus)}」に変更しました。`,
+      });
+      setIsUpdating(false);
+    },
+    onError: (error: any, newStatus: GoalStatus, context: any) => {
+      // Rollback optimistic updates
+      if (context?.previousGoals) {
+        queryClient.setQueryData(['goals', 'project', goal.project_id], context.previousGoals);
+      }
+      if (context?.previousGoal) {
+        queryClient.setQueryData(['goal', goal.id], context.previousGoal);
+      }
+
+      let errorMessage = 'ステータスの更新に失敗しました。';
+      let errorTitle = 'エラー';
+
+      if (error?.response?.status === 404) {
+        errorTitle = 'ゴールが見つかりません';
+        errorMessage = '更新対象のゴールが削除されている可能性があります。';
+      } else if (error?.response?.status === 403) {
+        errorTitle = '権限エラー';
+        errorMessage = 'このゴールを更新する権限がありません。';
+      } else if (error?.response?.status === 422) {
+        errorTitle = '入力エラー';
+        errorMessage = '無効なステータス値です。ページを再読み込みしてください。';
+      } else if (error?.response?.status >= 500) {
+        errorTitle = 'サーバーエラー';
+        errorMessage = 'サーバーで問題が発生しました。しばらく時間をおいてから再試行してください。';
+      } else if (!navigator.onLine) {
+        errorTitle = 'ネットワークエラー';
+        errorMessage = 'インターネット接続を確認してください。';
+      }
+
+      toast({
+        title: errorTitle,
+        description: errorMessage,
+        variant: 'destructive',
+      });
+      setIsUpdating(false);
+    },
+  });
+
+  const handleStatusChange = (newStatus: GoalStatus) => {
+    if (newStatus !== goal.status && !isUpdating) {
+      setIsUpdating(true);
+      updateStatusMutation.mutate(newStatus);
+    }
+  };
+
+  const currentStatus = goal.status || 'pending';
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-100 transition-colors"
+          onClick={(e) => e.stopPropagation()}
+          disabled={isUpdating}
+        >
+          {getGoalStatusIcon(currentStatus)}
+          <span className="text-sm">{getGoalStatusLabel(currentStatus)}</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {getAllGoalStatuses().map((status) => (
+          <DropdownMenuItem
+            key={status}
+            onClick={(e: React.MouseEvent) => {
+              e.stopPropagation();
+              handleStatusChange(status);
+            }}
+            className={currentStatus === status ? 'bg-gray-100' : ''}
+          >
+            <div className="flex items-center gap-2">
+              {getGoalStatusIcon(status)}
+              <span>{getGoalStatusLabel(status)}</span>
+            </div>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+});
 
 // Component to display goal dependencies
 function GoalDependencies({ goalId, projectId }: { goalId: string; projectId: string }) {
@@ -216,7 +358,10 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
                 onClick={() => router.push(`/projects/${params.id}/goals/${goal.id}`)}
               >
                 <CardHeader>
-                  <CardTitle className="line-clamp-1">{goal.title}</CardTitle>
+                  <div className="flex justify-between items-start mb-2">
+                    <CardTitle className="line-clamp-1 flex-1">{goal.title}</CardTitle>
+                    <GoalStatusDropdown goal={goal} />
+                  </div>
                   <CardDescription className="line-clamp-2">
                     {goal.description || 'ゴールの説明がありません'}
                   </CardDescription>
