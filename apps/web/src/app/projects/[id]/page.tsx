@@ -15,7 +15,7 @@ import { GoalFormDialog } from '@/components/goals/goal-form-dialog';
 import { GoalEditDialog } from '@/components/goals/goal-edit-dialog';
 import { GoalDeleteDialog } from '@/components/goals/goal-delete-dialog';
 import { ProjectProgressCard } from '@/components/progress/progress-card';
-import { ArrowLeft, Plus, GitBranch, Clock, Play, CheckCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, Plus, GitBranch } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,6 +24,13 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Goal, GoalStatus } from '@/types/goal';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  GOAL_STATUS_CONFIG,
+  getGoalStatusIcon,
+  getGoalStatusLabel,
+  isValidGoalStatus,
+  getAllGoalStatuses
+} from '@/constants/goal-status';
 
 interface ProjectDetailPageProps {
   params: {
@@ -31,53 +38,11 @@ interface ProjectDetailPageProps {
   };
 }
 
-// Type guard function to safely check GoalStatus
-function isValidGoalStatus(status: string): status is GoalStatus {
-  return ['pending', 'in_progress', 'completed', 'cancelled'].includes(status);
-}
-
-// Safe function to get status icon
-function getStatusIcon(status: string): React.ReactNode {
-  const statusIcons: Record<GoalStatus, React.ReactNode> = {
-    pending: <Clock className="h-4 w-4 text-gray-500" />,
-    in_progress: <Play className="h-4 w-4 text-blue-500" />,
-    completed: <CheckCircle className="h-4 w-4 text-green-500" />,
-    cancelled: <XCircle className="h-4 w-4 text-red-500" />,
-  };
-
-  return isValidGoalStatus(status) ? statusIcons[status] : statusIcons.pending;
-}
-
-// Safe function to get status label
-function getStatusLabel(status: string): string {
-  const statusLabels: Record<GoalStatus, string> = {
-    pending: '未着手',
-    in_progress: '進行中',
-    completed: '完了',
-    cancelled: 'キャンセル',
-  };
-
-  return isValidGoalStatus(status) ? statusLabels[status] : statusLabels.pending;
-}
 
 // Component to display and manage goal status
 const GoalStatusDropdown = memo(function GoalStatusDropdown({ goal }: { goal: Goal }) {
   const queryClient = useQueryClient();
   const [isUpdating, setIsUpdating] = useState(false);
-
-  const statusIcons: Record<GoalStatus, React.ReactNode> = {
-    pending: <Clock className="h-4 w-4 text-gray-500" />,
-    in_progress: <Play className="h-4 w-4 text-blue-500" />,
-    completed: <CheckCircle className="h-4 w-4 text-green-500" />,
-    cancelled: <XCircle className="h-4 w-4 text-red-500" />,
-  };
-
-  const statusLabels: Record<GoalStatus, string> = {
-    pending: '未着手',
-    in_progress: '進行中',
-    completed: '完了',
-    cancelled: 'キャンセル',
-  };
 
   const updateStatusMutation = useMutation({
     mutationFn: async (newStatus: GoalStatus) => {
@@ -117,7 +82,7 @@ const GoalStatusDropdown = memo(function GoalStatusDropdown({ goal }: { goal: Go
       queryClient.invalidateQueries({ queryKey: ['goal', goal.id] });
       toast({
         title: 'ステータスを更新しました',
-        description: `ゴールのステータスを「${getStatusLabel(newStatus)}」に変更しました。`,
+        description: `ゴールのステータスを「${getGoalStatusLabel(newStatus)}」に変更しました。`,
       });
       setIsUpdating(false);
     },
@@ -176,12 +141,12 @@ const GoalStatusDropdown = memo(function GoalStatusDropdown({ goal }: { goal: Go
           onClick={(e) => e.stopPropagation()}
           disabled={isUpdating}
         >
-          {getStatusIcon(currentStatus)}
-          <span className="text-sm">{getStatusLabel(currentStatus)}</span>
+          {getGoalStatusIcon(currentStatus)}
+          <span className="text-sm">{getGoalStatusLabel(currentStatus)}</span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
-        {(Object.keys(statusLabels) as GoalStatus[]).map((status) => (
+        {getAllGoalStatuses().map((status) => (
           <DropdownMenuItem
             key={status}
             onClick={(e: React.MouseEvent) => {
@@ -191,8 +156,8 @@ const GoalStatusDropdown = memo(function GoalStatusDropdown({ goal }: { goal: Go
             className={currentStatus === status ? 'bg-gray-100' : ''}
           >
             <div className="flex items-center gap-2">
-              {statusIcons[status]}
-              <span>{statusLabels[status]}</span>
+              {getGoalStatusIcon(status)}
+              <span>{getGoalStatusLabel(status)}</span>
             </div>
           </DropdownMenuItem>
         ))}

@@ -9,6 +9,7 @@ from taskagent_api.models import (
     ErrorResponse,
     GoalCreate,
     GoalResponse,
+    GoalStatus,
     GoalUpdate,
 )
 from taskagent_api.services import goal_service
@@ -92,6 +93,7 @@ async def get_goal(
     response_model=GoalResponse,
     responses={
         404: {"model": ErrorResponse, "description": "Goal not found"},
+        422: {"model": ErrorResponse, "description": "Invalid status transition"},
     },
 )
 async def update_goal(
@@ -101,8 +103,42 @@ async def update_goal(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> GoalResponse:
     """Update specific goal"""
-    goal = goal_service.update_goal(session, goal_id, current_user.user_id, goal_data)
-    return GoalResponse.model_validate(goal)
+
+    # Runtime validation for status values
+    if goal_data.status is not None:
+        try:
+            # Validate that the status is a valid enum value
+            GoalStatus(goal_data.status.value)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=ErrorResponse.create(
+                    code="INVALID_STATUS_VALUE",
+                    message=f"Invalid goal status: {goal_data.status.value}",
+                    details={
+                        "valid_statuses": [s.value for s in GoalStatus],
+                        "provided_status": goal_data.status.value,
+                    },
+                ).model_dump(),
+            )
+
+    try:
+        goal = goal_service.update_goal(
+            session, goal_id, current_user.user_id, goal_data
+        )
+        return GoalResponse.model_validate(goal)
+    except HTTPException as e:
+        # Re-raise HTTP exceptions from service layer (e.g., status transition validation)
+        if e.status_code == 422:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=ErrorResponse.create(
+                    code="INVALID_STATUS_TRANSITION",
+                    message=str(e.detail),
+                    details={"goal_id": goal_id},
+                ).model_dump(),
+            )
+        raise
 
 
 @router.delete(

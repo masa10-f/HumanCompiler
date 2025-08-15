@@ -13,6 +13,7 @@ from taskagent_api.models import (
     Goal,
     GoalCreate,
     GoalUpdate,
+    GoalStatus,
     GoalDependency,
     Log,
     LogCreate,
@@ -293,13 +294,47 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
         owner_id: str | UUID,
         goal_data: GoalUpdate,
     ) -> Goal:
-        """Update goal"""
+        """Update goal with status transition validation"""
+        # Get current goal to check status transition
+        current_goal = self.get_by_id(session, goal_id, owner_id)
+        if not current_goal:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found"
+            )
+
+        # Validate status transition if status is being updated
+        if goal_data.status is not None and goal_data.status != current_goal.status:
+            self._validate_status_transition(current_goal.status, goal_data.status)
+
         result = self.update(session, goal_id, goal_data, owner_id)
         # Invalidate caches that might contain this goal's data
         invalidate_cache("short", "goals_list")
         invalidate_cache("short", "goals_by_project")
         invalidate_cache("medium", "goal_detail")
         return result
+
+    def _validate_status_transition(
+        self, current_status: GoalStatus, new_status: GoalStatus
+    ) -> None:
+        """Validate goal status transitions according to business rules"""
+        valid_transitions = {
+            GoalStatus.PENDING: [GoalStatus.IN_PROGRESS, GoalStatus.CANCELLED],
+            GoalStatus.IN_PROGRESS: [GoalStatus.COMPLETED, GoalStatus.CANCELLED],
+            GoalStatus.COMPLETED: [
+                GoalStatus.IN_PROGRESS
+            ],  # Allow reopening completed goals
+            GoalStatus.CANCELLED: [
+                GoalStatus.PENDING,
+                GoalStatus.IN_PROGRESS,
+            ],  # Allow reactivating cancelled goals
+        }
+
+        allowed_transitions = valid_transitions.get(current_status, [])
+        if new_status not in allowed_transitions:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid status transition from '{current_status.value}' to '{new_status.value}'",
+            )
 
     def delete_goal(
         self, session: Session, goal_id: str | UUID, owner_id: str | UUID

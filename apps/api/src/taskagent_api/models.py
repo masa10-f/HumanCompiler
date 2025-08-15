@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, ConfigDict, field_serializer
+from pydantic import BaseModel, Field, ConfigDict, field_serializer, field_validator
 from sqlalchemy import JSON, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
 from sqlmodel import Column, Relationship, SQLModel
@@ -477,6 +477,30 @@ class GoalUpdate(BaseModel):
     description: str | None = Field(None, max_length=1000)
     estimate_hours: Decimal | None = Field(None, gt=0)
     status: GoalStatus | None = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_status_transition(cls, v: GoalStatus | None) -> GoalStatus | None:
+        """Validate goal status transitions according to business rules"""
+        if v is None:
+            return v
+
+        # Define valid status transitions
+        valid_transitions = {
+            GoalStatus.PENDING: [GoalStatus.IN_PROGRESS, GoalStatus.CANCELLED],
+            GoalStatus.IN_PROGRESS: [GoalStatus.COMPLETED, GoalStatus.CANCELLED],
+            GoalStatus.COMPLETED: [
+                GoalStatus.IN_PROGRESS
+            ],  # Allow reopening completed goals
+            GoalStatus.CANCELLED: [
+                GoalStatus.PENDING,
+                GoalStatus.IN_PROGRESS,
+            ],  # Allow reactivating cancelled goals
+        }
+
+        # For creation, any status is valid
+        # For updates, validation happens in the service layer with current status context
+        return v
 
 
 class GoalResponse(GoalBase):
