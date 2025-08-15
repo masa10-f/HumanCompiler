@@ -91,7 +91,47 @@ class TestGoalStatusTransitions:
         )
         assert updated_goal.status == GoalStatus.IN_PROGRESS
 
+        # Test IN_PROGRESS -> PENDING (resetting to pending)
+        updated_goal = goal_service.update_goal(
+            session,
+            goal.id,
+            user.id,
+            GoalUpdate(status=GoalStatus.PENDING),
+        )
+        assert updated_goal.status == GoalStatus.PENDING
+
+        # Test PENDING -> IN_PROGRESS -> COMPLETED -> PENDING (full cycle)
+        updated_goal = goal_service.update_goal(
+            session,
+            goal.id,
+            user.id,
+            GoalUpdate(status=GoalStatus.IN_PROGRESS),
+        )
+        assert updated_goal.status == GoalStatus.IN_PROGRESS
+
+        updated_goal = goal_service.update_goal(
+            session,
+            goal.id,
+            user.id,
+            GoalUpdate(status=GoalStatus.COMPLETED),
+        )
+        assert updated_goal.status == GoalStatus.COMPLETED
+
+        updated_goal = goal_service.update_goal(
+            session,
+            goal.id,
+            user.id,
+            GoalUpdate(status=GoalStatus.PENDING),
+        )
+        assert updated_goal.status == GoalStatus.PENDING
+
         # Test IN_PROGRESS -> CANCELLED
+        updated_goal = goal_service.update_goal(
+            session,
+            goal.id,
+            user.id,
+            GoalUpdate(status=GoalStatus.IN_PROGRESS),
+        )
         updated_goal = goal_service.update_goal(
             session,
             goal.id,
@@ -138,7 +178,8 @@ class TestGoalStatusTransitions:
         assert exc_info.value.status_code == 422
         assert "Invalid status transition" in str(exc_info.value.detail)
 
-        # Test PENDING -> CANCELLED is valid, set it first
+        # Test CANCELLED -> COMPLETED (invalid: cancelled goals can't be directly completed)
+        # First set to cancelled
         goal_service.update_goal(
             session,
             goal.id,
@@ -146,7 +187,6 @@ class TestGoalStatusTransitions:
             GoalUpdate(status=GoalStatus.CANCELLED),
         )
 
-        # Test CANCELLED -> COMPLETED (invalid)
         with pytest.raises(HTTPException) as exc_info:
             goal_service.update_goal(
                 session,

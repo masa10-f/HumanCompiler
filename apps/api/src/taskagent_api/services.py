@@ -319,10 +319,15 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
         """Validate goal status transitions according to business rules"""
         valid_transitions = {
             GoalStatus.PENDING: [GoalStatus.IN_PROGRESS, GoalStatus.CANCELLED],
-            GoalStatus.IN_PROGRESS: [GoalStatus.COMPLETED, GoalStatus.CANCELLED],
+            GoalStatus.IN_PROGRESS: [
+                GoalStatus.COMPLETED,
+                GoalStatus.CANCELLED,
+                GoalStatus.PENDING,
+            ],
             GoalStatus.COMPLETED: [
-                GoalStatus.IN_PROGRESS
-            ],  # Allow reopening completed goals
+                GoalStatus.IN_PROGRESS,
+                GoalStatus.PENDING,  # Allow resetting completed goals to pending
+            ],
             GoalStatus.CANCELLED: [
                 GoalStatus.PENDING,
                 GoalStatus.IN_PROGRESS,

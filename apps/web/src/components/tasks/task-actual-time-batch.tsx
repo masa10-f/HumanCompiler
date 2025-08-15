@@ -17,7 +17,7 @@ export function TaskActualTimeBatch({ taskIds }: TaskActualTimeBatchProps) {
     const logs = logsData?.[taskId] || [];
     const totalMinutes = logs.reduce((total, log) => total + log.actual_minutes, 0);
     const hours = Math.round((totalMinutes / 60) * 100) / 100;
-    
+
     return { taskId, hours };
   });
 
