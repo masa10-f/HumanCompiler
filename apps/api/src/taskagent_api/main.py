@@ -29,6 +29,7 @@ from taskagent_api.routers import (
     progress,
     projects,
     scheduler,
+    simple_backup_api,
     task_dependencies,
     tasks,
     users,
@@ -228,6 +229,7 @@ app.include_router(weekly_recurring_tasks.router, prefix="/api")
 app.include_router(ai_planning.router, prefix="/api")
 app.include_router(user_settings.router)
 app.include_router(monitoring.router)
+app.include_router(simple_backup_api.router)
 
 
 # Health check endpoint

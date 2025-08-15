@@ -16,6 +16,7 @@ import pytest
 from taskagent_api.simple_backup import (
     BackupConfig,
     BackupError,
+    BackupValidationError,
     DiskSpaceError,
     SimpleBackupScheduler,
     create_manual_backup,
@@ -36,6 +37,7 @@ class TestBackupConfig:
         assert config.min_disk_space_mb == 100
         assert config.file_permissions == 0o600
         assert config.enable_audit_log is True
+        assert config.max_worker_threads == 2
 
     def test_env_config(self):
         """Test configuration from environment variables"""
@@ -48,6 +50,7 @@ class TestBackupConfig:
                 "BACKUP_MIN_DISK_MB": "500",
                 "BACKUP_FILE_PERMISSIONS": "0o640",
                 "BACKUP_AUDIT_LOG": "false",
+                "BACKUP_MAX_WORKERS": "4",
             },
         ):
             config = BackupConfig()
@@ -58,6 +61,7 @@ class TestBackupConfig:
             assert config.min_disk_space_mb == 500
             assert config.file_permissions == 0o640
             assert config.enable_audit_log is False
+            assert config.max_worker_threads == 4
 
 
 class TestSimpleBackupScheduler:
@@ -139,9 +143,24 @@ class TestSimpleBackupScheduler:
         with patch.object(scheduler.backup_manager, "create_backup") as mock_create:
             mock_create.return_value = str(scheduler.backup_dir / "test_backup.json")
 
-            # Create mock backup file
+            # Create mock backup file with proper structure
             backup_file = scheduler.backup_dir / "test_backup.json"
-            backup_file.write_text('{"test": "data"}')
+            backup_data = {
+                "users": [],
+                "projects": [],
+                "goals": [],
+                "tasks": [],
+                "metadata": {
+                    "created_at": "2024-01-01T00:00:00Z",
+                    "total_records": {
+                        "users": 0,
+                        "projects": 0,
+                        "goals": 0,
+                        "tasks": 0,
+                    },
+                },
+            }
+            backup_file.write_text(json.dumps(backup_data))
 
             result = await scheduler.create_daily_backup()
 
@@ -174,9 +193,24 @@ class TestSimpleBackupScheduler:
         with patch.object(scheduler.backup_manager, "create_backup") as mock_create:
             mock_create.return_value = str(scheduler.backup_dir / "weekly_backup.json")
 
-            # Create mock backup file
+            # Create mock backup file with proper structure
             backup_file = scheduler.backup_dir / "weekly_backup.json"
-            backup_file.write_text('{"test": "data"}')
+            backup_data = {
+                "users": [],
+                "projects": [],
+                "goals": [],
+                "tasks": [],
+                "metadata": {
+                    "created_at": "2024-01-01T00:00:00Z",
+                    "total_records": {
+                        "users": 0,
+                        "projects": 0,
+                        "goals": 0,
+                        "tasks": 0,
+                    },
+                },
+            }
+            backup_file.write_text(json.dumps(backup_data))
 
             result = await scheduler.create_weekly_backup()
 
@@ -246,6 +280,101 @@ class TestSimpleBackupScheduler:
         with patch.object(scheduler, "create_weekly_backup", new=mock_backup):
             result = scheduler.create_weekly_backup_sync()
             assert result == "backup_path"
+
+    def test_backup_validation_success(self, scheduler, temp_backup_dir):
+        """Test successful backup validation"""
+        # Create valid backup file
+        backup_data = {
+            "users": [{"id": 1, "email": "test@test.com"}],
+            "projects": [],
+            "goals": [],
+            "tasks": [],
+            "metadata": {
+                "created_at": "2024-01-01T00:00:00Z",
+                "total_records": {"users": 1, "projects": 0, "goals": 0, "tasks": 0},
+            },
+        }
+
+        backup_file = Path(temp_backup_dir) / "test_backup.json"
+        with open(backup_file, "w", encoding="utf-8") as f:
+            json.dump(backup_data, f)
+
+        result = scheduler._validate_backup(str(backup_file))
+        assert result is True
+
+    def test_backup_validation_failure(self, scheduler, temp_backup_dir):
+        """Test backup validation failure"""
+        # Create invalid backup file
+        backup_data = {
+            "users": [{"id": 1, "email": "test@test.com"}],
+            "metadata": {
+                "created_at": "2024-01-01T00:00:00Z",
+                "total_records": {"users": 2, "projects": 0},  # Mismatch count
+            },
+        }
+
+        backup_file = Path(temp_backup_dir) / "invalid_backup.json"
+        with open(backup_file, "w", encoding="utf-8") as f:
+            json.dump(backup_data, f)
+
+        result = scheduler._validate_backup(str(backup_file))
+        assert result is False
+
+    def test_sanitize_audit_data(self, scheduler):
+        """Test audit data sanitization"""
+        # Test data with potential injection
+        test_data = {
+            "normal_string": "safe data",
+            "malicious_string": "data with \n newline and \x00 null",
+            "nested": {"key": "value with \r return"},
+            "list": ["item1", "item2\x1f with control char"],
+        }
+
+        sanitized = scheduler._sanitize_audit_data(test_data)
+
+        assert sanitized["normal_string"] == "safe data"
+        assert "\n" not in sanitized["malicious_string"]
+        assert "\x00" not in sanitized["malicious_string"]
+        assert "\r" not in sanitized["nested"]["key"]
+        assert "\x1f" not in sanitized["list"][1]
+
+    @pytest.mark.asyncio
+    async def test_backup_validation_error(self, scheduler, temp_backup_dir):
+        """Test backup validation error during creation"""
+        with patch.object(scheduler.backup_manager, "create_backup") as mock_create:
+            mock_create.return_value = str(scheduler.backup_dir / "invalid_backup.json")
+
+            # Create invalid backup file (missing required keys)
+            invalid_file = scheduler.backup_dir / "invalid_backup.json"
+            invalid_file.write_text('{"invalid": "data"}')
+
+            with pytest.raises(BackupValidationError):
+                await scheduler.create_daily_backup()
+
+    def test_get_backup_status(self, scheduler, temp_backup_dir):
+        """Test backup status retrieval"""
+        # Create test backup file
+        backup_file = Path(temp_backup_dir) / "test_backup.json"
+        backup_data = {
+            "users": [],
+            "projects": [],
+            "goals": [],
+            "tasks": [],
+            "metadata": {
+                "created_at": "2024-01-01T00:00:00Z",
+                "total_records": {"users": 0, "projects": 0, "goals": 0, "tasks": 0},
+            },
+        }
+        with open(backup_file, "w", encoding="utf-8") as f:
+            json.dump(backup_data, f)
+
+        status = scheduler.get_backup_status()
+
+        assert status["status"] == "healthy"
+        assert status["total_backups"] == 1
+        assert "disk_usage" in status
+        assert "latest_backup" in status
+        assert status["latest_backup"]["validated"] is True
 
 
 class TestGlobalFunctions:
