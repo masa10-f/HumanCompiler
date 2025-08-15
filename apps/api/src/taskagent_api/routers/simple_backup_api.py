@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from taskagent_api.auth import get_current_user
+from taskagent_api.models import User
 from taskagent_api.rate_limiter import limiter
 from taskagent_api.simple_backup import get_backup_scheduler
 
@@ -18,13 +19,13 @@ router = APIRouter()
 
 @router.get("/api/backup/status")
 @limiter.limit("10 per minute")
-async def get_backup_status(request: Request):
+async def get_backup_status(request: Request, current_user: User = get_current_user):
     """
-    バックアップシステムの状態を取得
-    手動バックアップやトリガーは含まない（セキュリティ考慮）
+    バックアップシステムの状態を取得（認証ユーザーのみアクセス可能）
+    機密情報（バックアップ数、サイズ、設定）を含むため認証が必要
     """
     try:
-        # 認証チェックは行わず、読み取り専用のヘルスチェック用途
+        # 認証ユーザーのみアクセス可能（セキュリティ強化）
         scheduler = get_backup_scheduler()
         status = scheduler.get_backup_status()
 
@@ -86,10 +87,10 @@ async def backup_health_check(request: Request):
 
 @router.get("/api/backup/info")
 @limiter.limit("5 per minute")
-async def get_backup_info(request: Request):
+async def get_backup_info(request: Request, current_user: User = get_current_user):
     """
-    バックアップシステムの設定情報（読み取り専用）
-    管理用途
+    バックアップシステムの設定情報（認証ユーザーのみアクセス可能）
+    システム管理用途
     """
     try:
         scheduler = get_backup_scheduler()

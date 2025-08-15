@@ -14,11 +14,14 @@ import shutil
 import threading
 from datetime import datetime, UTC
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from taskagent_api.safe_migration import DataBackupManager
 
 logger = logging.getLogger(__name__)
+
+# 定数定義
+MAX_AUDIT_STRING_LENGTH = 1000
 
 
 class BackupError(Exception):
@@ -107,7 +110,9 @@ class SimpleBackupScheduler:
         def sanitize_value(value):
             if isinstance(value, str):
                 # 制御文字と改行文字を除去
-                return re.sub(r"[\x00-\x1f\x7f-\x9f\n\r]", "", value)[:1000]
+                return re.sub(r"[\x00-\x1f\x7f-\x9f\n\r]", "", value)[
+                    :MAX_AUDIT_STRING_LENGTH
+                ]
             elif isinstance(value, dict):
                 return {k: sanitize_value(v) for k, v in value.items()}
             elif isinstance(value, list):
@@ -136,6 +141,12 @@ class SimpleBackupScheduler:
         try:
             with open(audit_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+
+            # audit.logファイルに制限的権限を設定（セキュリティ強化）
+            try:
+                audit_file.chmod(0o600)
+            except OSError as e:
+                logger.warning(f"audit.log権限設定失敗: {e}")
         except Exception as e:
             logger.warning(f"監査ログ記録失敗: {e}")
 
@@ -144,33 +155,35 @@ class SimpleBackupScheduler:
         try:
             with open(backup_path, encoding="utf-8") as f:
                 data = json.load(f)
-
-            # 必須キーの存在確認
-            required_keys = ["users", "projects", "goals", "tasks", "metadata"]
-            if not all(key in data for key in required_keys):
-                return False
-
-            # メタデータの確認
-            metadata = data.get("metadata", {})
-            if "created_at" not in metadata or "total_records" not in metadata:
-                return False
-
-            # レコード数の一致確認
-            total_records = metadata.get("total_records", {})
-            for table in ["users", "projects", "goals", "tasks"]:
-                actual_count = len(data.get(table, []))
-                expected_count = total_records.get(table, 0)
-                if actual_count != expected_count:
-                    logger.warning(
-                        f"Record count mismatch for {table}: {actual_count} != {expected_count}"
-                    )
-                    return False
-
-            return True
-
-        except Exception as e:
-            logger.error(f"Backup validation failed: {e}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON format in backup file {backup_path}: {e}")
             return False
+        except Exception as e:
+            logger.error(f"Failed to read backup file {backup_path}: {e}")
+            return False
+
+        # 必須キーの存在確認
+        required_keys = ["users", "projects", "goals", "tasks", "metadata"]
+        if not all(key in data for key in required_keys):
+            return False
+
+        # メタデータの確認
+        metadata = data.get("metadata", {})
+        if "created_at" not in metadata or "total_records" not in metadata:
+            return False
+
+        # レコード数の一致確認
+        total_records = metadata.get("total_records", {})
+        for table in ["users", "projects", "goals", "tasks"]:
+            actual_count = len(data.get(table, []))
+            expected_count = total_records.get(table, 0)
+            if actual_count != expected_count:
+                logger.warning(
+                    f"Record count mismatch for {table}: {actual_count} != {expected_count}"
+                )
+                return False
+
+        return True
 
     async def _remove_backup_file(self, file_path: Path) -> bool:
         """単一バックアップファイルの削除（抽出されたメソッド）"""
@@ -350,8 +363,10 @@ class SimpleBackupScheduler:
     def get_backup_status(self) -> dict:
         """バックアップシステムの状態取得"""
         try:
-            backup_files = list(self.backup_dir.glob("*.json"))
-            backup_files = [f for f in backup_files if f.name != "audit.log"]
+            # 効率化: 単一パスでaudit.logを除外してフィルタリング
+            backup_files = [
+                f for f in self.backup_dir.glob("*.json") if f.name != "audit.log"
+            ]
 
             total_size = sum(f.stat().st_size for f in backup_files)
 
