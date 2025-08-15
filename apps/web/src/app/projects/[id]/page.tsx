@@ -25,10 +25,8 @@ import {
 import { Goal, GoalStatus } from '@/types/goal';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  GOAL_STATUS_CONFIG,
   getGoalStatusIcon,
   getGoalStatusLabel,
-  isValidGoalStatus,
   getAllGoalStatuses
 } from '@/constants/goal-status';
 
