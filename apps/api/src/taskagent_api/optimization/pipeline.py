@@ -367,17 +367,24 @@ class HybridOptimizationPipeline:
             # If fallback is enabled, create empty response to continue pipeline
             if request.fallback_on_failure:
                 logger.info("Creating fallback task selection response")
+                # Create user-friendly Japanese insights
+                japanese_insights = self._create_japanese_error_insights(error_message)
+
                 fallback_response = TaskSolverResponse(
                     success=False,
                     week_start_date=request.week_start_date,
                     total_allocated_hours=0.0,
                     project_allocations=[],
                     selected_tasks=[],
-                    optimization_insights=[
-                        f"AI task selection unavailable: {error_message}"
-                    ],
-                    constraint_analysis={"error": error_message},
-                    solver_metrics={"fallback_mode": True},
+                    optimization_insights=japanese_insights,
+                    constraint_analysis={
+                        "error": error_message,
+                        "error_ja": japanese_insights[0],
+                    },
+                    solver_metrics={
+                        "fallback_mode": True,
+                        "error_type": "connection_error",
+                    },
                     generated_at=datetime.now(),
                 )
 
@@ -401,7 +408,11 @@ class HybridOptimizationPipeline:
         """Format task selection error for user-friendly display."""
         error_str = str(error)
 
-        if "connect_timeout" in error_str or "Connection" in error_str:
+        if (
+            "connect_timeout" in error_str
+            or "Connection" in error_str
+            or "unexpected keyword argument" in error_str
+        ):
             return "AI service connection failed. Please check your internet connection or try again later."
         elif "Authentication" in error_str or "API key" in error_str:
             return (
@@ -413,6 +424,48 @@ class HybridOptimizationPipeline:
             return "User authentication error. Please log out and log in again."
         else:
             return f"AI task selection temporarily unavailable: {error_str}"
+
+    def _create_japanese_error_insights(self, error_message: str) -> list[str]:
+        """Create user-friendly Japanese error insights."""
+        if "connection failed" in error_message.lower():
+            return [
+                "🔌 AI タスク選択サービスへの接続に失敗しました",
+                "💡 対処方法：",
+                "  • インターネット接続を確認してください",
+                "  • 少し時間をおいて再度お試しください",
+                "  • 問題が続く場合は、手動でタスクを選択していただけます",
+                "📊 現在はベーシックスケジューリング機能で継続しています",
+            ]
+        elif "api key" in error_message.lower():
+            return [
+                "🔑 AI サービスの認証設定に問題があります",
+                "💡 対処方法：",
+                "  • 設定画面からOpenAI APIキーを確認してください",
+                "  • APIキーが正しく入力されているか確認してください",
+                "  • APIキーの有効期限をご確認ください",
+            ]
+        elif "rate limit" in error_message.lower():
+            return [
+                "⏱️ API使用制限に達しました",
+                "💡 対処方法：",
+                "  • 数分お待ちいただいてから再度お試しください",
+                "  • 使用量制限の詳細はOpenAIダッシュボードでご確認いただけます",
+            ]
+        elif "authentication" in error_message.lower():
+            return [
+                "🚪 認証エラーが発生しました",
+                "💡 対処方法：",
+                "  • 一度ログアウトして再度ログインしてください",
+                "  • ブラウザのキャッシュをクリアしてお試しください",
+            ]
+        else:
+            return [
+                "🤖 AI タスク選択機能が一時的に利用できません",
+                f"📋 詳細: {error_message}",
+                "💡 対処方法：",
+                "  • 基本的なスケジューリング機能は継続して利用できます",
+                "  • しばらく時間をおいて再度お試しください",
+            ]
 
     async def _stage_time_optimization(
         self, user_id: str, request: OptimizationRequest, selection_result: StageResult
