@@ -32,8 +32,8 @@ interface AvailableModels {
   [key: string]: ModelInfo
 }
 
-// OpenAI API key validation regex
-const OPENAI_API_KEY_REGEX = /^sk-[a-zA-Z0-9]{48}$/
+// OpenAI API key validation regex - supports both old and new formats
+const OPENAI_API_KEY_REGEX = /^sk-[a-zA-Z0-9-_]{20,}$/
 
 // Default model from environment or fallback
 const DEFAULT_MODEL = process.env.NEXT_PUBLIC_DEFAULT_OPENAI_MODEL || "gpt-5"
