@@ -23,4 +23,5 @@ cryptography>=41.0.0
 slowapi>=0.1.9
 cachetools>=5.3.0
 types-cachetools>=6.1.0
+apscheduler>=3.10.0
 # OR-Tools already included above

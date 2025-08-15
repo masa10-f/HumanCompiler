@@ -36,6 +36,7 @@ from taskagent_api.routers import (
     weekly_schedule,
     weekly_recurring_tasks,
 )
+from taskagent_api.routes import backup
 
 
 @asynccontextmanager
@@ -68,6 +69,15 @@ async def lifespan(app: FastAPI):
             engine = db.get_engine()
             performance_monitor.setup_listeners(engine)
             logger.info("✅ Performance monitoring enabled")
+            
+            # Initialize backup scheduler
+            try:
+                from taskagent_api.backup_scheduler import init_backup_scheduler
+                backup_scheduler = init_backup_scheduler()
+                logger.info("✅ Backup scheduler initialized and started")
+            except Exception as backup_error:
+                logger.warning(f"⚠️ Backup scheduler initialization failed: {backup_error}")
+                logger.warning("Continuing without automatic backups")
         else:
             logger.warning("⚠️ Database connection failed, continuing in degraded mode")
     except Exception as e:
@@ -79,6 +89,16 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown
     logger.info("🔄 FastAPI server shutting down...")
+    
+    # Stop backup scheduler
+    try:
+        from taskagent_api.backup_scheduler import get_backup_scheduler
+        scheduler = get_backup_scheduler()
+        if scheduler.is_running:
+            scheduler.stop()
+            logger.info("✅ Backup scheduler stopped gracefully")
+    except Exception as e:
+        logger.warning(f"⚠️ Error stopping backup scheduler: {e}")
 
 
 # Initialize FastAPI app
@@ -224,6 +244,7 @@ app.include_router(weekly_recurring_tasks.router, prefix="/api")
 app.include_router(ai_planning.router, prefix="/api")
 app.include_router(user_settings.router)
 app.include_router(monitoring.router)
+app.include_router(backup.router)
 
 
 # Health check endpoint
