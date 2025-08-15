@@ -105,7 +105,12 @@ class GoalBase(SQLModel):
     title: str = SQLField(min_length=1, max_length=200)
     description: str | None = SQLField(default=None, max_length=1000)
     estimate_hours: Decimal = SQLField(gt=0, max_digits=5, decimal_places=2)
-    status: GoalStatus = SQLField(default=GoalStatus.PENDING)
+    status: GoalStatus = SQLField(
+        default=GoalStatus.PENDING,
+        sa_column=Column(
+            SQLEnum(GoalStatus, values_callable=lambda x: [e.value for e in x])
+        ),
+    )
 
 
 class Goal(GoalBase, table=True):  # type: ignore[call-arg]

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, memo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { useProject } from '@/hooks/use-project-query';
@@ -31,8 +31,37 @@ interface ProjectDetailPageProps {
   };
 }
 
+// Type guard function to safely check GoalStatus
+function isValidGoalStatus(status: string): status is GoalStatus {
+  return ['pending', 'in_progress', 'completed', 'cancelled'].includes(status);
+}
+
+// Safe function to get status icon
+function getStatusIcon(status: string): React.ReactNode {
+  const statusIcons: Record<GoalStatus, React.ReactNode> = {
+    pending: <Clock className="h-4 w-4 text-gray-500" />,
+    in_progress: <Play className="h-4 w-4 text-blue-500" />,
+    completed: <CheckCircle className="h-4 w-4 text-green-500" />,
+    cancelled: <XCircle className="h-4 w-4 text-red-500" />,
+  };
+
+  return isValidGoalStatus(status) ? statusIcons[status] : statusIcons.pending;
+}
+
+// Safe function to get status label
+function getStatusLabel(status: string): string {
+  const statusLabels: Record<GoalStatus, string> = {
+    pending: '未着手',
+    in_progress: '進行中',
+    completed: '完了',
+    cancelled: 'キャンセル',
+  };
+
+  return isValidGoalStatus(status) ? statusLabels[status] : statusLabels.pending;
+}
+
 // Component to display and manage goal status
-function GoalStatusDropdown({ goal }: { goal: Goal }) {
+const GoalStatusDropdown = memo(function GoalStatusDropdown({ goal }: { goal: Goal }) {
   const queryClient = useQueryClient();
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -54,19 +83,76 @@ function GoalStatusDropdown({ goal }: { goal: Goal }) {
     mutationFn: async (newStatus: GoalStatus) => {
       return goalsApi.update(goal.id, { status: newStatus });
     },
-    onSuccess: () => {
+    onMutate: async (newStatus: GoalStatus) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['goals', 'project', goal.project_id] });
+      await queryClient.cancelQueries({ queryKey: ['goal', goal.id] });
+
+      // Snapshot the previous value for rollback
+      const previousGoals = queryClient.getQueryData(['goals', 'project', goal.project_id]);
+      const previousGoal = queryClient.getQueryData(['goal', goal.id]);
+
+      // Optimistically update to the new value
+      queryClient.setQueryData(['goals', 'project', goal.project_id], (old: any) => {
+        if (old) {
+          return old.map((g: Goal) =>
+            g.id === goal.id ? { ...g, status: newStatus } : g
+          );
+        }
+        return old;
+      });
+
+      queryClient.setQueryData(['goal', goal.id], (old: Goal | undefined) => {
+        if (old) {
+          return { ...old, status: newStatus };
+        }
+        return old;
+      });
+
+      // Return context for potential rollback
+      return { previousGoals, previousGoal };
+    },
+    onSuccess: (data, newStatus) => {
       queryClient.invalidateQueries({ queryKey: ['goals', 'project', goal.project_id] });
       queryClient.invalidateQueries({ queryKey: ['goal', goal.id] });
       toast({
         title: 'ステータスを更新しました',
-        description: `ゴールのステータスを「${statusLabels[goal.status || 'pending']}」に変更しました。`,
+        description: `ゴールのステータスを「${getStatusLabel(newStatus)}」に変更しました。`,
       });
       setIsUpdating(false);
     },
-    onError: () => {
+    onError: (error: any, newStatus: GoalStatus, context: any) => {
+      // Rollback optimistic updates
+      if (context?.previousGoals) {
+        queryClient.setQueryData(['goals', 'project', goal.project_id], context.previousGoals);
+      }
+      if (context?.previousGoal) {
+        queryClient.setQueryData(['goal', goal.id], context.previousGoal);
+      }
+
+      let errorMessage = 'ステータスの更新に失敗しました。';
+      let errorTitle = 'エラー';
+
+      if (error?.response?.status === 404) {
+        errorTitle = 'ゴールが見つかりません';
+        errorMessage = '更新対象のゴールが削除されている可能性があります。';
+      } else if (error?.response?.status === 403) {
+        errorTitle = '権限エラー';
+        errorMessage = 'このゴールを更新する権限がありません。';
+      } else if (error?.response?.status === 422) {
+        errorTitle = '入力エラー';
+        errorMessage = '無効なステータス値です。ページを再読み込みしてください。';
+      } else if (error?.response?.status >= 500) {
+        errorTitle = 'サーバーエラー';
+        errorMessage = 'サーバーで問題が発生しました。しばらく時間をおいてから再試行してください。';
+      } else if (!navigator.onLine) {
+        errorTitle = 'ネットワークエラー';
+        errorMessage = 'インターネット接続を確認してください。';
+      }
+
       toast({
-        title: 'エラー',
-        description: 'ステータスの更新に失敗しました。',
+        title: errorTitle,
+        description: errorMessage,
         variant: 'destructive',
       });
       setIsUpdating(false);
@@ -90,8 +176,8 @@ function GoalStatusDropdown({ goal }: { goal: Goal }) {
           onClick={(e) => e.stopPropagation()}
           disabled={isUpdating}
         >
-          {statusIcons[currentStatus as GoalStatus]}
-          <span className="text-sm">{statusLabels[currentStatus as GoalStatus]}</span>
+          {getStatusIcon(currentStatus)}
+          <span className="text-sm">{getStatusLabel(currentStatus)}</span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
@@ -113,7 +199,7 @@ function GoalStatusDropdown({ goal }: { goal: Goal }) {
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
+});
 
 // Component to display goal dependencies
 function GoalDependencies({ goalId, projectId }: { goalId: string; projectId: string }) {
