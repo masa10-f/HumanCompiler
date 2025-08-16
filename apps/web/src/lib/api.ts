@@ -417,6 +417,10 @@ class ApiClient {
     return this.request<TestSchedulerResponse>('/api/schedule/test');
   }
 
+  async getWeeklyScheduleOptions(): Promise<import('@/types/ai-planning').WeeklyScheduleOption[]> {
+    return this.request<import('@/types/ai-planning').WeeklyScheduleOption[]>('/api/schedule/weekly-schedule-options');
+  }
+
   // Log API methods
   async getLogsByTask(taskId: string, skip: number = 0, limit: number = 20): Promise<Log[]> {
     return this.request<Log[]>(`/api/logs/task/${taskId}?skip=${skip}&limit=${limit}`);
@@ -567,6 +571,7 @@ export const schedulingApi = {
   getByDate: (date: string) => apiClient.getDailySchedule(date),
   list: (skip?: number, limit?: number) => apiClient.listDailySchedules(skip, limit),
   test: () => apiClient.testScheduler(),
+  getWeeklyScheduleOptions: () => apiClient.getWeeklyScheduleOptions(),
 };
 
 export const logsApi = {
