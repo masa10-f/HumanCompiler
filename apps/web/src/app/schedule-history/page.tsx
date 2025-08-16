@@ -20,6 +20,7 @@ import { AppHeader } from '@/components/layout/app-header';
 import { LogFormDialog } from '@/components/logs/log-form-dialog';
 import { toast } from '@/hooks/use-toast';
 import { schedulingApi } from '@/lib/api';
+import { getSlotKindLabel } from '@/constants/schedule';
 import type { DailySchedule } from '@/types/api-responses';
 
 export default function ScheduleHistoryPage() {
@@ -69,12 +70,6 @@ export default function ScheduleHistoryPage() {
     }
   }, [selectedDate, schedules]);
 
-  const slotKindLabels = {
-    study: '学習',
-    deep: '集中作業',
-    light: '軽作業',
-    meeting: '会議'
-  };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -234,7 +229,7 @@ export default function ScheduleHistoryPage() {
                                 {assignment.duration_hours.toFixed(1)}h
                                 <span className="text-gray-400">•</span>
                                 <Badge variant="outline" className="text-xs">
-                                  {slotKindLabels[assignment.slot_kind as keyof typeof slotKindLabels]}
+                                  {getSlotKindLabel(assignment.slot_kind)}
                                 </Badge>
                               </div>
                             </div>
