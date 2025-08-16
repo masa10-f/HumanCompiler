@@ -141,13 +141,15 @@ export default function SchedulingPage() {
     study: '学習',
     focused_work: '集中作業',
     light_work: '軽作業',
-  };
+    meeting: '会議', // Fallback for unexpected values
+  } as const;
 
   const slotKindColors = {
     study: 'bg-blue-100 text-blue-800',
     focused_work: 'bg-purple-100 text-purple-800',
     light_work: 'bg-green-100 text-green-800',
-  };
+    meeting: 'bg-orange-100 text-orange-800', // Fallback for unexpected values
+  } as const;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">

@@ -71,10 +71,10 @@ export default function ScheduleHistoryPage() {
 
   const slotKindLabels = {
     study: '学習',
-    deep: '集中作業',
-    light: '軽作業',
+    focused_work: '集中作業',
+    light_work: '軽作業',
     meeting: '会議'
-  };
+  } as const;
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);

@@ -874,12 +874,11 @@ async def list_daily_schedules(
 
         # Get schedules from database ordered by date (newest first)
         logger.info("Executing database query...")
-        from sqlalchemy import desc
 
         schedules = session.exec(
             select(Schedule)
             .where(Schedule.user_id == user_id)
-            .order_by(desc(Schedule.date))
+            .order_by(Schedule.date.desc())
             .offset(skip)
             .limit(limit)
         ).all()
