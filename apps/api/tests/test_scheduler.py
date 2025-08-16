@@ -339,55 +339,6 @@ class TestSchedulerAPI:
 
     @patch("taskagent_api.routers.scheduler.goal_service.get_goal")
     @patch("taskagent_api.routers.scheduler.db.get_session")
-    @patch("taskagent_api.routers.scheduler.task_service.get_tasks_by_goal")
-    def test_create_daily_schedule_with_task_source_goal(
-        self, mock_get_tasks, mock_session, mock_get_goal, mock_auth
-    ):
-        """Test daily schedule creation with new task_source field for goal."""
-        # Mock session as generator
-        mock_sess = MagicMock()
-
-        def session_generator():
-            yield mock_sess
-
-        mock_session.return_value = session_generator()
-
-        # Mock task data
-        goal_id = str(uuid4())
-        task_id = str(uuid4())
-        project_id = str(uuid4())
-
-        mock_task = MagicMock()
-        mock_task.id = task_id
-        mock_task.title = "Goal Task"
-        mock_task.estimate_hours = 2.0
-        mock_task.status = "pending"
-        mock_task.due_date = None
-        mock_task.goal_id = goal_id
-        mock_get_tasks.return_value = [mock_task]
-
-        # Mock goal data
-        mock_goal = MagicMock()
-        mock_goal.project_id = project_id
-        mock_get_goal.return_value = mock_goal
-
-        request_data = {
-            "date": "2025-06-23",
-            "task_source": {"type": "goal", "goal_id": goal_id},
-            "time_slots": [{"start": "09:00", "end": "12:00", "kind": "focused_work"}],
-        }
-
-        response = client.post("/api/schedule/daily", json=request_data)
-
-        assert response.status_code == 200
-        data = response.json()
-        assert "success" in data
-        assert "assignments" in data
-        assert "unscheduled_tasks" in data
-        assert data["date"] == "2025-06-23"
-
-    @patch("taskagent_api.routers.scheduler.goal_service.get_goal")
-    @patch("taskagent_api.routers.scheduler.db.get_session")
     @patch("taskagent_api.routers.scheduler.task_service.get_tasks_by_project")
     def test_create_daily_schedule_with_task_source_project(
         self, mock_get_tasks, mock_session, mock_get_goal, mock_auth
@@ -507,9 +458,6 @@ class TestSchedulerAPI:
         # Valid task sources
         valid_all_tasks = TaskSource(type="all_tasks")
         assert valid_all_tasks.type == "all_tasks"
-
-        valid_goal = TaskSource(type="goal", goal_id=str(uuid4()))
-        assert valid_goal.type == "goal"
 
         valid_project = TaskSource(type="project", project_id=str(uuid4()))
         assert valid_project.type == "project"

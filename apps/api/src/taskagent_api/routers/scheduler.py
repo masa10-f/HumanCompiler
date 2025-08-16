@@ -330,12 +330,11 @@ class TaskSource(BaseModel):
 
     type: str = Field(
         "all_tasks",
-        description="Task source type: 'all_tasks', 'project', 'goal', 'weekly_schedule'",
+        description="Task source type: 'all_tasks', 'project', 'weekly_schedule'",
     )
     project_id: str | None = Field(
         None, description="Project ID when type is 'project'"
     )
-    goal_id: str | None = Field(None, description="Goal ID when type is 'goal'")
     weekly_schedule_date: str | None = Field(
         None, description="Week start date (YYYY-MM-DD) when type is 'weekly_schedule'"
     )
@@ -343,7 +342,7 @@ class TaskSource(BaseModel):
     @field_validator("type")
     @classmethod
     def validate_task_source_type(cls, v):
-        valid_types = ["all_tasks", "project", "goal", "weekly_schedule"]
+        valid_types = ["all_tasks", "project", "weekly_schedule"]
         if v not in valid_types:
             raise ValueError(f"Task source type must be one of: {valid_types}")
         return v
@@ -355,16 +354,13 @@ class DailyScheduleRequest(BaseModel):
     date: str = Field(..., description="Target date in YYYY-MM-DD format")
     task_source: TaskSource = Field(
         default_factory=lambda: TaskSource(
-            type="all_tasks", project_id=None, goal_id=None, weekly_schedule_date=None
+            type="all_tasks", project_id=None, weekly_schedule_date=None
         ),
         description="Task source configuration",
     )
     # Legacy fields for backward compatibility
     project_id: str | None = Field(
         None, description="[DEPRECATED] Use task_source.project_id instead"
-    )
-    goal_id: str | None = Field(
-        None, description="[DEPRECATED] Use task_source.goal_id instead"
     )
     use_weekly_schedule: bool = Field(
         False, description="[DEPRECATED] Use task_source.type='weekly_schedule' instead"
@@ -499,7 +495,7 @@ async def create_daily_schedule(
     try:
         logger.info(f"Creating daily schedule for user {user_id} on {request.date}")
         logger.info(
-            f"Request params: project_id={request.project_id}, goal_id={request.goal_id}"
+            f"Request params: project_id={request.project_id}, task_source={request.task_source}"
         )
 
         # Determine task source based on new task_source field or legacy fields
@@ -509,9 +505,6 @@ async def create_daily_schedule(
         if request.use_weekly_schedule and task_source.type == "all_tasks":
             task_source.type = "weekly_schedule"
             task_source.weekly_schedule_date = request.date
-        elif request.goal_id and task_source.type == "all_tasks":
-            task_source.type = "goal"
-            task_source.goal_id = request.goal_id
         elif request.project_id and task_source.type == "all_tasks":
             task_source.type = "project"
             task_source.project_id = request.project_id
@@ -1044,12 +1037,6 @@ async def _get_tasks_by_source(
             # Use provided weekly_schedule_date or calculate from target_date
             lookup_date = task_source.weekly_schedule_date or target_date
             return await _get_tasks_from_weekly_schedule(session, user_id, lookup_date)
-        elif task_source.type == "goal":
-            if not task_source.goal_id:
-                logger.warning("Goal ID not provided for goal task source")
-                return []
-            logger.info(f"Fetching tasks for goal_id: {task_source.goal_id}")
-            return task_service.get_tasks_by_goal(session, task_source.goal_id, user_id)
         elif task_source.type == "project":
             if not task_source.project_id:
                 logger.warning("Project ID not provided for project task source")

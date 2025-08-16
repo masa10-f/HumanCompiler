@@ -71,9 +71,8 @@ export interface TimeSlot {
 }
 
 export interface TaskSource {
-  type: 'all_tasks' | 'project' | 'goal' | 'weekly_schedule';
+  type: 'all_tasks' | 'project' | 'weekly_schedule';
   project_id?: string;
-  goal_id?: string;
   weekly_schedule_date?: string;
 }
 
@@ -83,7 +82,6 @@ export interface ScheduleRequest {
   task_source?: TaskSource;
   // Legacy fields for backward compatibility
   project_id?: string;
-  goal_id?: string;
   use_weekly_schedule?: boolean;
   preferences?: Record<string, unknown>;
 }

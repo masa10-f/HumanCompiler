@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { AppHeader } from '@/components/layout/app-header';
 import { toast } from '@/hooks/use-toast';
-import { schedulingApi, projectsApi, goalsApi } from '@/lib/api';
+import { schedulingApi, projectsApi } from '@/lib/api';
 import { getSlotKindLabel, getSlotKindColor } from '@/constants/schedule';
 import type {
   ScheduleRequest,
@@ -33,7 +33,6 @@ import type {
   WeeklyScheduleOption
 } from '@/types/ai-planning';
 import type { Project } from '@/types/project';
-import type { Goal } from '@/types/goal';
 
 export default function SchedulingPage() {
   const { user, loading: authLoading } = useAuth();
@@ -56,7 +55,6 @@ export default function SchedulingPage() {
   // Task source configuration
   const [taskSource, setTaskSource] = useState<TaskSource>({ type: 'all_tasks' });
   const [projects, setProjects] = useState<Project[]>([]);
-  const [goals, setGoals] = useState<Goal[]>([]);
   const [weeklyScheduleOptions, setWeeklyScheduleOptions] = useState<WeeklyScheduleOption[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -92,23 +90,6 @@ export default function SchedulingPage() {
     loadInitialData();
   }, [user]);
 
-  // Load goals when project is selected
-  useEffect(() => {
-    const loadGoals = async () => {
-      if (taskSource.type === 'goal' && taskSource.project_id) {
-        try {
-          const goalsResult = await goalsApi.getByProject(taskSource.project_id);
-          setGoals(goalsResult);
-        } catch (error) {
-          console.error('Failed to load goals:', error);
-        }
-      } else {
-        setGoals([]);
-      }
-    };
-
-    loadGoals();
-  }, [taskSource.type, taskSource.project_id]);
 
   if (authLoading || !user) {
     return (
@@ -146,7 +127,6 @@ export default function SchedulingPage() {
         task_source: taskSource,
         // Legacy fields maintained for backward compatibility
         project_id: taskSource.type === 'project' ? taskSource.project_id : undefined,
-        goal_id: taskSource.type === 'goal' ? taskSource.goal_id : undefined,
         use_weekly_schedule: taskSource.type === 'weekly_schedule',
       };
 
@@ -265,7 +245,6 @@ export default function SchedulingPage() {
                       <SelectContent>
                         <SelectItem value="all_tasks">すべてのタスク</SelectItem>
                         <SelectItem value="project">プロジェクトから選択</SelectItem>
-                        <SelectItem value="goal">ゴールから選択</SelectItem>
                         <SelectItem value="weekly_schedule">週間スケジュールから選択</SelectItem>
                       </SelectContent>
                     </Select>
@@ -295,54 +274,6 @@ export default function SchedulingPage() {
                     </div>
                   )}
 
-                  {/* Goal selection - First select project, then goal */}
-                  {taskSource.type === 'goal' && (
-                    <>
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium">プロジェクト選択</Label>
-                        <Select
-                          value={taskSource.project_id || ''}
-                          onValueChange={(value) =>
-                            setTaskSource(prev => ({ ...prev, project_id: value, goal_id: undefined }))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="プロジェクトを選択..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {projects.map((project) => (
-                              <SelectItem key={project.id} value={project.id}>
-                                {project.title}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {taskSource.project_id && (
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium">ゴール選択</Label>
-                          <Select
-                            value={taskSource.goal_id || ''}
-                            onValueChange={(value) =>
-                              setTaskSource(prev => ({ ...prev, goal_id: value }))
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="ゴールを選択..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {goals.map((goal) => (
-                                <SelectItem key={goal.id} value={goal.id}>
-                                  {goal.title}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-                    </>
-                  )}
 
                   {/* Weekly schedule selection */}
                   {taskSource.type === 'weekly_schedule' && (
