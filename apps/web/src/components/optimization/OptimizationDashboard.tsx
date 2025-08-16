@@ -14,7 +14,7 @@ import type {
   WeeklyConstraints,
   TimeSlotConfig
 } from '@/types/optimization';
-import { RotateCcw, Activity, Clock, Target } from 'lucide-react';
+import { RotateCcw, Clock, Target } from 'lucide-react';
 import ExecutionPanel from './ExecutionPanel';
 import ConstraintsForm from './ConstraintsForm';
 import TimeSlotEditor from './TimeSlotEditor';
@@ -210,10 +210,6 @@ export default function OptimizationDashboard({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="bg-blue-50">
-            <Activity className="w-3 h-3 mr-1" />
-            Phase 3b
-          </Badge>
           <Badge variant="secondary">
             <Clock className="w-3 h-3 mr-1" />
             {currentWeekStart}
