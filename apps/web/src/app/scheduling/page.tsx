@@ -24,6 +24,7 @@ import {
 import { AppHeader } from '@/components/layout/app-header';
 import { toast } from '@/hooks/use-toast';
 import { schedulingApi } from '@/lib/api';
+import { getSlotKindLabel, getSlotKindColor } from '@/constants/schedule';
 import type { ScheduleRequest, ScheduleResult, TimeSlot } from '@/types/ai-planning';
 
 export default function SchedulingPage() {
@@ -137,19 +138,6 @@ export default function SchedulingPage() {
     }
   };
 
-  const slotKindLabels = {
-    study: '学習',
-    focused_work: '集中作業',
-    light_work: '軽作業',
-    meeting: '会議', // Fallback for unexpected values
-  } as const;
-
-  const slotKindColors = {
-    study: 'bg-blue-100 text-blue-800',
-    focused_work: 'bg-purple-100 text-purple-800',
-    light_work: 'bg-green-100 text-green-800',
-    meeting: 'bg-orange-100 text-orange-800', // Fallback for unexpected values
-  } as const;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -386,8 +374,8 @@ export default function SchedulingPage() {
                                 )}
                               </div>
                               <div className="flex items-center gap-2">
-                                <Badge className={slotKindColors[slotInfo?.kind || 'light_work']}>
-                                  {slotKindLabels[slotInfo?.kind || 'light_work']}
+                                <Badge className={getSlotKindColor(slotInfo?.kind || 'light_work')}>
+                                  {getSlotKindLabel(slotInfo?.kind || 'light_work')}
                                 </Badge>
                                 <span className="text-sm text-gray-500">
                                   {assignment.duration_hours.toFixed(1)}h
@@ -430,8 +418,8 @@ export default function SchedulingPage() {
                   return (
                     <div key={index} className="flex items-center justify-between p-2 border rounded">
                       <div className="flex items-center gap-2">
-                        <Badge className={slotKindColors[slot.kind]}>
-                          {slotKindLabels[slot.kind]}
+                        <Badge className={getSlotKindColor(slot.kind)}>
+                          {getSlotKindLabel(slot.kind)}
                         </Badge>
                         <span className="text-sm">
                           {slot.start} - {slot.end}
