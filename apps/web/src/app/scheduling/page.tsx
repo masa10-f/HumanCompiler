@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
@@ -23,9 +23,17 @@ import {
 } from 'lucide-react';
 import { AppHeader } from '@/components/layout/app-header';
 import { toast } from '@/hooks/use-toast';
-import { schedulingApi } from '@/lib/api';
+import { schedulingApi, projectsApi, goalsApi } from '@/lib/api';
 import { getSlotKindLabel, getSlotKindColor } from '@/constants/schedule';
-import type { ScheduleRequest, ScheduleResult, TimeSlot } from '@/types/ai-planning';
+import type {
+  ScheduleRequest,
+  ScheduleResult,
+  TimeSlot,
+  TaskSource,
+  WeeklyScheduleOption
+} from '@/types/ai-planning';
+import type { Project } from '@/types/project';
+import type { Goal } from '@/types/goal';
 
 export default function SchedulingPage() {
   const { user, loading: authLoading } = useAuth();
@@ -44,6 +52,63 @@ export default function SchedulingPage() {
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [scheduleResult, setScheduleResult] = useState<ScheduleResult | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Task source configuration
+  const [taskSource, setTaskSource] = useState<TaskSource>({ type: 'all_tasks' });
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [weeklyScheduleOptions, setWeeklyScheduleOptions] = useState<WeeklyScheduleOption[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Load initial data
+  useEffect(() => {
+    const loadInitialData = async () => {
+      if (!user) return;
+
+      try {
+        setLoading(true);
+
+        // Load projects, goals, and weekly schedule options in parallel
+        const [projectsResult, weeklyOptionsResult] = await Promise.all([
+          projectsApi.getAll(),
+          schedulingApi.getWeeklyScheduleOptions(),
+        ]);
+
+        setProjects(projectsResult);
+        setWeeklyScheduleOptions(weeklyOptionsResult);
+
+      } catch (error) {
+        console.error('Failed to load initial data:', error);
+        toast({
+          title: 'データ読み込みエラー',
+          description: '初期データの読み込みに失敗しました',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadInitialData();
+  }, [user]);
+
+  // Load goals when project is selected
+  useEffect(() => {
+    const loadGoals = async () => {
+      if (taskSource.type === 'goal' && taskSource.project_id) {
+        try {
+          const goalsResult = await goalsApi.getByProject(taskSource.project_id);
+          setGoals(goalsResult);
+        } catch (error) {
+          console.error('Failed to load goals:', error);
+        }
+      } else {
+        setGoals([]);
+      }
+    };
+
+    loadGoals();
+  }, [taskSource.type, taskSource.project_id]);
 
   if (authLoading || !user) {
     return (
@@ -78,9 +143,11 @@ export default function SchedulingPage() {
       const request: ScheduleRequest = {
         date: selectedDate as string,
         time_slots: timeSlots,
-        // TODO: プロジェクトIDまたはゴールIDを選択するUI要素を追加
-        project_id: undefined,
-        goal_id: undefined
+        task_source: taskSource,
+        // Legacy fields maintained for backward compatibility
+        project_id: taskSource.type === 'project' ? taskSource.project_id : undefined,
+        goal_id: taskSource.type === 'goal' ? taskSource.goal_id : undefined,
+        use_weekly_schedule: taskSource.type === 'weekly_schedule',
       };
 
       const result = await schedulingApi.optimizeDaily(request);
@@ -178,6 +245,134 @@ export default function SchedulingPage() {
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
                 />
+              </div>
+
+              <div className="space-y-4">
+                <Label>タスクソース</Label>
+                <div className="space-y-3">
+                  {/* Task source type selection */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">ソースタイプ</Label>
+                    <Select
+                      value={taskSource.type}
+                      onValueChange={(value: TaskSource['type']) =>
+                        setTaskSource({ type: value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all_tasks">すべてのタスク</SelectItem>
+                        <SelectItem value="project">プロジェクトから選択</SelectItem>
+                        <SelectItem value="goal">ゴールから選択</SelectItem>
+                        <SelectItem value="weekly_schedule">週間スケジュールから選択</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Project selection */}
+                  {taskSource.type === 'project' && (
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">プロジェクト選択</Label>
+                      <Select
+                        value={taskSource.project_id || ''}
+                        onValueChange={(value) =>
+                          setTaskSource(prev => ({ ...prev, project_id: value }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="プロジェクトを選択..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {projects.map((project) => (
+                            <SelectItem key={project.id} value={project.id}>
+                              {project.title}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* Goal selection - First select project, then goal */}
+                  {taskSource.type === 'goal' && (
+                    <>
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">プロジェクト選択</Label>
+                        <Select
+                          value={taskSource.project_id || ''}
+                          onValueChange={(value) =>
+                            setTaskSource(prev => ({ ...prev, project_id: value, goal_id: undefined }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="プロジェクトを選択..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {projects.map((project) => (
+                              <SelectItem key={project.id} value={project.id}>
+                                {project.title}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {taskSource.project_id && (
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">ゴール選択</Label>
+                          <Select
+                            value={taskSource.goal_id || ''}
+                            onValueChange={(value) =>
+                              setTaskSource(prev => ({ ...prev, goal_id: value }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="ゴールを選択..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {goals.map((goal) => (
+                                <SelectItem key={goal.id} value={goal.id}>
+                                  {goal.title}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Weekly schedule selection */}
+                  {taskSource.type === 'weekly_schedule' && (
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">週間スケジュール選択</Label>
+                      <Select
+                        value={taskSource.weekly_schedule_date || ''}
+                        onValueChange={(value) =>
+                          setTaskSource(prev => ({ ...prev, weekly_schedule_date: value }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="週間スケジュールを選択..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {weeklyScheduleOptions.map((option) => (
+                            <SelectItem key={option.week_start_date} value={option.week_start_date}>
+                              {option.title}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {weeklyScheduleOptions.length === 0 && !loading && (
+                        <p className="text-sm text-gray-500">
+                          利用可能な週間スケジュールがありません
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-4">

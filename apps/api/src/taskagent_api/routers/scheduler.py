@@ -325,14 +325,49 @@ class TimeSlotInput(BaseModel):
         return v.lower()
 
 
+class TaskSource(BaseModel):
+    """Task source configuration for daily scheduling."""
+
+    type: str = Field(
+        "all_tasks",
+        description="Task source type: 'all_tasks', 'project', 'goal', 'weekly_schedule'",
+    )
+    project_id: str | None = Field(
+        None, description="Project ID when type is 'project'"
+    )
+    goal_id: str | None = Field(None, description="Goal ID when type is 'goal'")
+    weekly_schedule_date: str | None = Field(
+        None, description="Week start date (YYYY-MM-DD) when type is 'weekly_schedule'"
+    )
+
+    @field_validator("type")
+    @classmethod
+    def validate_task_source_type(cls, v):
+        valid_types = ["all_tasks", "project", "goal", "weekly_schedule"]
+        if v not in valid_types:
+            raise ValueError(f"Task source type must be one of: {valid_types}")
+        return v
+
+
 class DailyScheduleRequest(BaseModel):
     """Request model for daily schedule optimization."""
 
     date: str = Field(..., description="Target date in YYYY-MM-DD format")
-    project_id: str | None = Field(None, description="Filter tasks by project ID")
-    goal_id: str | None = Field(None, description="Filter tasks by goal ID")
+    task_source: TaskSource = Field(
+        default_factory=lambda: TaskSource(
+            type="all_tasks", project_id=None, goal_id=None, weekly_schedule_date=None
+        ),
+        description="Task source configuration",
+    )
+    # Legacy fields for backward compatibility
+    project_id: str | None = Field(
+        None, description="[DEPRECATED] Use task_source.project_id instead"
+    )
+    goal_id: str | None = Field(
+        None, description="[DEPRECATED] Use task_source.goal_id instead"
+    )
     use_weekly_schedule: bool = Field(
-        False, description="Use tasks from weekly schedule if available"
+        False, description="[DEPRECATED] Use task_source.type='weekly_schedule' instead"
     )
     time_slots: list[TimeSlotInput] = Field(..., description="Available time slots")
     preferences: dict[str, Any] = Field(
@@ -467,42 +502,24 @@ async def create_daily_schedule(
             f"Request params: project_id={request.project_id}, goal_id={request.goal_id}"
         )
 
-        # Fetch tasks based on filters and weekly schedule preference
-        if request.use_weekly_schedule:
-            # Get tasks from weekly schedule if available
-            logger.info("Attempting to fetch tasks from weekly schedule")
-            db_tasks = await _get_tasks_from_weekly_schedule(
-                session, user_id, request.date
-            )
-            if not db_tasks:
-                logger.info(
-                    "No weekly schedule found, falling back to regular task fetching"
-                )
-                # Fall back to regular task fetching if no weekly schedule
-                if request.goal_id:
-                    db_tasks = task_service.get_tasks_by_goal(
-                        session, request.goal_id, user_id
-                    )
-                elif request.project_id:
-                    db_tasks = task_service.get_tasks_by_project(
-                        session, request.project_id, user_id
-                    )
-                else:
-                    db_tasks = task_service.get_all_user_tasks(session, user_id)
-        elif request.goal_id:
-            # Get tasks for specific goal
-            logger.info(f"Fetching tasks for goal_id: {request.goal_id}")
-            db_tasks = task_service.get_tasks_by_goal(session, request.goal_id, user_id)
-        elif request.project_id:
-            # Get tasks for specific project
-            logger.info(f"Fetching tasks for project_id: {request.project_id}")
-            db_tasks = task_service.get_tasks_by_project(
-                session, request.project_id, user_id
-            )
-        else:
-            # Get all tasks for user
-            logger.info("No project_id or goal_id specified, fetching all user tasks")
-            db_tasks = task_service.get_all_user_tasks(session, user_id)
+        # Determine task source based on new task_source field or legacy fields
+        task_source = request.task_source
+
+        # Handle legacy fields for backward compatibility
+        if request.use_weekly_schedule and task_source.type == "all_tasks":
+            task_source.type = "weekly_schedule"
+            task_source.weekly_schedule_date = request.date
+        elif request.goal_id and task_source.type == "all_tasks":
+            task_source.type = "goal"
+            task_source.goal_id = request.goal_id
+        elif request.project_id and task_source.type == "all_tasks":
+            task_source.type = "project"
+            task_source.project_id = request.project_id
+
+        # Fetch tasks based on task source configuration
+        db_tasks = await _get_tasks_by_source(
+            session, user_id, task_source, request.date
+        )
 
         logger.info(f"Fetched {len(db_tasks)} total tasks from database")
 
@@ -738,6 +755,87 @@ async def test_scheduler():
         }
 
 
+class WeeklyScheduleOption(BaseModel):
+    """Weekly schedule option for task source selection."""
+
+    week_start_date: str = Field(
+        ..., description="Week start date in YYYY-MM-DD format"
+    )
+    task_count: int = Field(..., description="Number of tasks in the weekly schedule")
+    title: str = Field(..., description="Descriptive title for the weekly schedule")
+
+
+@router.get("/weekly-schedule-options", response_model=list[WeeklyScheduleOption])
+async def get_weekly_schedule_options(
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(db.get_session),
+):
+    """
+    Get available weekly schedules that can be used as task sources for daily scheduling.
+
+    Returns a list of weekly schedule options with their dates and task counts.
+    """
+    try:
+        logger.info(f"Fetching weekly schedule options for user {user_id}")
+
+        # Convert user_id to UUID if it's a string
+        from uuid import UUID
+
+        user_uuid = UUID(user_id) if isinstance(user_id, str) else user_id
+
+        # Get all weekly schedules for the user
+        from sqlmodel import desc
+
+        weekly_schedules = session.exec(
+            select(WeeklySchedule)
+            .where(WeeklySchedule.user_id == user_uuid)
+            .order_by(desc(WeeklySchedule.week_start_date))
+        ).all()
+
+        logger.info(f"Found {len(weekly_schedules)} weekly schedules")
+
+        # Convert to options format
+        options = []
+        for schedule in weekly_schedules:
+            try:
+                # Extract task count from schedule data
+                task_count = 0
+                if (
+                    schedule.schedule_json
+                    and "selected_tasks" in schedule.schedule_json
+                ):
+                    task_count = len(schedule.schedule_json["selected_tasks"])
+
+                # Format date and create title
+                week_start_str = schedule.week_start_date.strftime("%Y-%m-%d")
+                week_end = schedule.week_start_date.date() + timedelta(days=6)
+                week_end_str = week_end.strftime("%Y-%m-%d")
+                title = f"Week {week_start_str} to {week_end_str} ({task_count} tasks)"
+
+                option = WeeklyScheduleOption(
+                    week_start_date=week_start_str, task_count=task_count, title=title
+                )
+                options.append(option)
+
+            except Exception as e:
+                logger.error(f"Error processing weekly schedule {schedule.id}: {e}")
+                continue
+
+        logger.info(f"Returning {len(options)} weekly schedule options")
+        return options
+
+    except Exception as e:
+        logger.error(f"Error fetching weekly schedule options: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse.create(
+                code="INTERNAL_SERVER_ERROR",
+                message="Failed to fetch weekly schedule options",
+                details={"error_type": type(e).__name__},
+            ).model_dump(),
+        )
+
+
 @router.post("/daily/save", response_model=ScheduleResponse)
 async def save_daily_schedule(
     schedule_data: DailyScheduleResponse,
@@ -875,10 +973,12 @@ async def list_daily_schedules(
         # Get schedules from database ordered by date (newest first)
         logger.info("Executing database query...")
 
+        from sqlmodel import desc
+
         schedules = session.exec(
             select(Schedule)
             .where(Schedule.user_id == user_id)
-            .order_by(Schedule.date.desc())
+            .order_by(desc(Schedule.date))
             .offset(skip)
             .limit(limit)
         ).all()
@@ -920,6 +1020,53 @@ async def list_daily_schedules(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch schedule list",
         )
+
+
+async def _get_tasks_by_source(
+    session: Session, user_id: str, task_source: TaskSource, target_date: str
+) -> list[Task]:
+    """
+    Get tasks based on the specified task source configuration.
+
+    Args:
+        session: Database session
+        user_id: User ID
+        task_source: Task source configuration
+        target_date: Target date for scheduling (used for weekly schedule lookups)
+
+    Returns:
+        List of tasks from the specified source
+    """
+    logger.info(f"Fetching tasks with source type: {task_source.type}")
+
+    try:
+        if task_source.type == "weekly_schedule":
+            # Use provided weekly_schedule_date or calculate from target_date
+            lookup_date = task_source.weekly_schedule_date or target_date
+            return await _get_tasks_from_weekly_schedule(session, user_id, lookup_date)
+        elif task_source.type == "goal":
+            if not task_source.goal_id:
+                logger.warning("Goal ID not provided for goal task source")
+                return []
+            logger.info(f"Fetching tasks for goal_id: {task_source.goal_id}")
+            return task_service.get_tasks_by_goal(session, task_source.goal_id, user_id)
+        elif task_source.type == "project":
+            if not task_source.project_id:
+                logger.warning("Project ID not provided for project task source")
+                return []
+            logger.info(f"Fetching tasks for project_id: {task_source.project_id}")
+            return task_service.get_tasks_by_project(
+                session, task_source.project_id, user_id
+            )
+        elif task_source.type == "all_tasks":
+            logger.info("Fetching all user tasks")
+            return task_service.get_all_user_tasks(session, user_id)
+        else:
+            logger.error(f"Unknown task source type: {task_source.type}")
+            return []
+    except Exception as e:
+        logger.error(f"Error fetching tasks by source: {e}")
+        return []
 
 
 async def _get_tasks_from_weekly_schedule(

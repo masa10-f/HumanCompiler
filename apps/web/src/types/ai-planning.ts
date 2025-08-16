@@ -70,11 +70,21 @@ export interface TimeSlot {
   capacity_hours?: number;
 }
 
+export interface TaskSource {
+  type: 'all_tasks' | 'project' | 'goal' | 'weekly_schedule';
+  project_id?: string;
+  goal_id?: string;
+  weekly_schedule_date?: string;
+}
+
 export interface ScheduleRequest {
   date: string;
   time_slots: TimeSlot[];
+  task_source?: TaskSource;
+  // Legacy fields for backward compatibility
   project_id?: string;
   goal_id?: string;
+  use_weekly_schedule?: boolean;
   preferences?: Record<string, unknown>;
 }
 
@@ -139,4 +149,10 @@ export interface SavedWeeklySchedule {
   schedule_json: WeeklyScheduleData;
   created_at: string;
   updated_at: string;
+}
+
+export interface WeeklyScheduleOption {
+  week_start_date: string;
+  task_count: number;
+  title: string;
 }
