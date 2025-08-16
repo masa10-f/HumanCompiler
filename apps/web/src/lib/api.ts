@@ -43,6 +43,13 @@ import type {
   DailySchedule,
   TestSchedulerResponse
 } from '@/types/api-responses';
+import type {
+  OptimizationRequest,
+  OptimizationResponse,
+  OptimizationStatus,
+  OptimizationCacheResponse,
+  OptimizationTestResponse
+} from '@/types/optimization';
 
 // Helper function to ensure HTTPS protocol
 const ensureHttps = (url: string): string => {
@@ -484,6 +491,28 @@ class ApiClient {
       method: 'DELETE',
     });
   }
+
+  // Optimization Pipeline API methods
+  async executeWeeklyOptimizationPipeline(request: OptimizationRequest): Promise<OptimizationResponse> {
+    return this.request<OptimizationResponse>('/api/optimization/weekly-pipeline', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async getOptimizationStatus(weekStartDate: string): Promise<OptimizationStatus> {
+    return this.request<OptimizationStatus>(`/api/optimization/pipeline/status/${weekStartDate}`);
+  }
+
+  async clearOptimizationCache(weekStartDate: string): Promise<OptimizationCacheResponse> {
+    return this.request<OptimizationCacheResponse>(`/api/optimization/pipeline/cache/${weekStartDate}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async testOptimizationPipeline(): Promise<OptimizationTestResponse> {
+    return this.request<OptimizationTestResponse>('/api/optimization/test');
+  }
 }
 
 export const apiClient = new ApiClient();
@@ -562,6 +591,13 @@ export const weeklyScheduleApi = {
   getByWeek: (weekStartDate: string) => apiClient.getWeeklySchedule(weekStartDate),
   save: (weekStartDate: string, scheduleData: any) => apiClient.saveWeeklySchedule(weekStartDate, scheduleData),
   delete: (weekStartDate: string) => apiClient.deleteWeeklySchedule(weekStartDate),
+};
+
+export const optimizationApi = {
+  executePipeline: (request: OptimizationRequest) => apiClient.executeWeeklyOptimizationPipeline(request),
+  getStatus: (weekStartDate: string) => apiClient.getOptimizationStatus(weekStartDate),
+  clearCache: (weekStartDate: string) => apiClient.clearOptimizationCache(weekStartDate),
+  test: () => apiClient.testOptimizationPipeline(),
 };
 
 // Export helper function for getting secure API URL

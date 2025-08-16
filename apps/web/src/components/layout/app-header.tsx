@@ -3,10 +3,10 @@
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
-import { Key } from 'lucide-react'
+import { Key, Zap } from 'lucide-react'
 
 interface AppHeaderProps {
-  currentPage?: 'dashboard' | 'projects' | 'ai-planning' | 'scheduling' | 'schedule-history' | 'settings'
+  currentPage?: 'dashboard' | 'projects' | 'ai-planning' | 'scheduling' | 'schedule-history' | 'optimization' | 'settings'
 }
 
 export function AppHeader({ currentPage }: AppHeaderProps) {
@@ -62,6 +62,14 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                 className={getPageClass('schedule-history')}
               >
                 スケジュール履歴
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => router.push('/optimization')}
+                className={getPageClass('optimization')}
+              >
+                <Zap className="h-4 w-4 mr-2" />
+                ハイブリッド最適化
               </Button>
               <Button
                 variant="ghost"

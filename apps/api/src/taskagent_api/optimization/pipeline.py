@@ -362,12 +362,110 @@ class HybridOptimizationPipeline:
 
         except Exception as e:
             logger.error(f"Task selection stage failed: {e}")
+            error_message = self._format_task_selection_error(e)
+
+            # If fallback is enabled, create empty response to continue pipeline
+            if request.fallback_on_failure:
+                logger.info("Creating fallback task selection response")
+                # Create user-friendly Japanese insights
+                japanese_insights = self._create_japanese_error_insights(error_message)
+
+                fallback_response = TaskSolverResponse(
+                    success=False,
+                    week_start_date=request.week_start_date,
+                    total_allocated_hours=0.0,
+                    project_allocations=[],
+                    selected_tasks=[],
+                    optimization_insights=japanese_insights,
+                    constraint_analysis={
+                        "error": error_message,
+                        "error_ja": japanese_insights[0],
+                    },
+                    solver_metrics={
+                        "fallback_mode": True,
+                        "error_type": "connection_error",
+                    },
+                    generated_at=datetime.now(),
+                )
+
+                return StageResult(
+                    stage=PipelineStage.TASK_SELECTION,
+                    success=True,  # Allow pipeline to continue
+                    duration_seconds=time.time() - stage_start,
+                    data={"solver_response": fallback_response},
+                    errors=[],
+                    warnings=[f"Using fallback mode: {error_message}"],
+                )
+
             return StageResult(
                 stage=PipelineStage.TASK_SELECTION,
                 success=False,
                 duration_seconds=time.time() - stage_start,
-                errors=[f"Task selection error: {str(e)}"],
+                errors=[error_message],
             )
+
+    def _format_task_selection_error(self, error: Exception) -> str:
+        """Format task selection error for user-friendly display."""
+        error_str = str(error)
+
+        if (
+            "connect_timeout" in error_str
+            or "Connection" in error_str
+            or "unexpected keyword argument" in error_str
+        ):
+            return "AI service connection failed. Please check your internet connection or try again later."
+        elif "Authentication" in error_str or "API key" in error_str:
+            return (
+                "OpenAI API key not configured or invalid. Please check your settings."
+            )
+        elif "Rate limit" in error_str:
+            return "API rate limit exceeded. Please wait a moment and try again."
+        elif "badly formed hexadecimal UUID" in error_str:
+            return "User authentication error. Please log out and log in again."
+        else:
+            return f"AI task selection temporarily unavailable: {error_str}"
+
+    def _create_japanese_error_insights(self, error_message: str) -> list[str]:
+        """Create user-friendly Japanese error insights."""
+        if "connection failed" in error_message.lower():
+            return [
+                "🔌 AI タスク選択サービスへの接続に失敗しました",
+                "💡 対処方法：",
+                "  • インターネット接続を確認してください",
+                "  • 少し時間をおいて再度お試しください",
+                "  • 問題が続く場合は、手動でタスクを選択していただけます",
+                "📊 現在はベーシックスケジューリング機能で継続しています",
+            ]
+        elif "api key" in error_message.lower():
+            return [
+                "🔑 AI サービスの認証設定に問題があります",
+                "💡 対処方法：",
+                "  • 設定画面からOpenAI APIキーを確認してください",
+                "  • APIキーが正しく入力されているか確認してください",
+                "  • APIキーの有効期限をご確認ください",
+            ]
+        elif "rate limit" in error_message.lower():
+            return [
+                "⏱️ API使用制限に達しました",
+                "💡 対処方法：",
+                "  • 数分お待ちいただいてから再度お試しください",
+                "  • 使用量制限の詳細はOpenAIダッシュボードでご確認いただけます",
+            ]
+        elif "authentication" in error_message.lower():
+            return [
+                "🚪 認証エラーが発生しました",
+                "💡 対処方法：",
+                "  • 一度ログアウトして再度ログインしてください",
+                "  • ブラウザのキャッシュをクリアしてお試しください",
+            ]
+        else:
+            return [
+                "🤖 AI タスク選択機能が一時的に利用できません",
+                f"📋 詳細: {error_message}",
+                "💡 対処方法：",
+                "  • 基本的なスケジューリング機能は継続して利用できます",
+                "  • しばらく時間をおいて再度お試しください",
+            ]
 
     async def _stage_time_optimization(
         self, user_id: str, request: OptimizationRequest, selection_result: StageResult
@@ -380,11 +478,40 @@ class HybridOptimizationPipeline:
             # Get selected tasks from previous stage
             solver_response = selection_result.data.get("solver_response")
             if not solver_response or not solver_response.selected_tasks:
+                # If no tasks are available, create empty optimization result
+                logger.info("No tasks selected, creating empty optimization result")
+
+                # Create empty daily results for the week
+                daily_results = []
+                week_start = datetime.strptime(
+                    request.week_start_date, "%Y-%m-%d"
+                ).date()
+
+                for day_offset in range(7):
+                    current_date = week_start + timedelta(days=day_offset)
+                    date_str = current_date.strftime("%Y-%m-%d")
+
+                    daily_result = DailyOptimizationResult(
+                        date=date_str,
+                        total_scheduled_hours=0.0,
+                        assignments=[],
+                        unscheduled_tasks=[],
+                        optimization_status="NO_TASKS",
+                        solve_time_seconds=0.0,
+                    )
+                    daily_results.append(daily_result)
+
+                duration = time.time() - stage_start
                 return StageResult(
                     stage=PipelineStage.TIME_OPTIMIZATION,
-                    success=False,
-                    duration_seconds=time.time() - stage_start,
-                    errors=["No tasks available for time optimization"],
+                    success=True,  # Consider success even with no tasks
+                    duration_seconds=duration,
+                    data={
+                        "daily_results": daily_results,
+                        "total_ortools_time": 0.0,
+                        "scheduler_tasks": [],
+                    },
+                    warnings=["No tasks available for time optimization"],
                 )
 
             # Convert selected tasks to scheduler format

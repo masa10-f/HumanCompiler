@@ -185,34 +185,27 @@ class TestHybridOptimizationPipeline:
     async def test_task_selection_stage_failure(
         self, mock_create_solver, mock_session, sample_request
     ):
-        """Test task selection stage failure."""
-        # Setup mocks to simulate failure
-        mock_solver = AsyncMock()
-        from datetime import date
-
-        current_date = date.today()
-        monday = current_date - timedelta(days=current_date.weekday())
-
-        failed_response = TaskSolverResponse(
-            success=False,
-            week_start_date=monday.strftime("%Y-%m-%d"),
-            total_allocated_hours=0.0,
-            project_allocations=[],
-            selected_tasks=[],
-            optimization_insights=["Task selection failed"],
-            constraint_analysis={},
-            solver_metrics={},
-            generated_at=datetime.now(),
+        """Test task selection stage failure with fallback mode."""
+        # Setup mocks to simulate failure that triggers fallback mode
+        mock_create_solver.side_effect = Exception(
+            "badly formed hexadecimal UUID string"
         )
-        mock_solver.solve_weekly_tasks.return_value = failed_response
-        mock_create_solver.return_value = mock_solver
 
         pipeline = HybridOptimizationPipeline(mock_session)
 
         result = await pipeline._stage_task_selection("user_123", sample_request)
 
-        assert result.success is False
+        # With fallback_on_failure=True, the stage should succeed but with warnings
+        assert result.success is True
         assert result.stage.value == "task_selection"
+        assert len(result.warnings) > 0
+        assert "Using fallback mode" in result.warnings[0]
+        assert "solver_response" in result.data
+
+        # The fallback response should indicate failure mode
+        fallback_response = result.data["solver_response"]
+        assert fallback_response.success is False
+        assert fallback_response.solver_metrics["fallback_mode"] is True
 
     @pytest.mark.asyncio
     @patch("taskagent_api.optimization.pipeline.optimize_schedule")
@@ -282,9 +275,13 @@ class TestHybridOptimizationPipeline:
             "user_123", sample_request, selection_result
         )
 
-        assert result.success is False
+        # With improved error handling, no tasks should result in success with warnings
+        assert result.success is True
         assert result.stage.value == "time_optimization"
-        assert len(result.errors) > 0
+        assert len(result.warnings) > 0
+        assert "No tasks available for time optimization" in result.warnings[0]
+        assert "daily_results" in result.data
+        assert len(result.data["daily_results"]) == 7  # 7 days with empty results
 
     @pytest.mark.asyncio
     async def test_result_integration_stage_success(

@@ -395,6 +395,196 @@ async def test_optimization_pipeline():
         }
 
 
+@router.post("/test-pipeline")
+async def test_pipeline_detailed():
+    """Test endpoint for detailed pipeline testing without authentication."""
+    try:
+        from taskagent_api.optimization.pipeline import (
+            HybridOptimizationPipeline,
+            OptimizationRequest,
+            WeeklyConstraints,
+            TimeSlotConfig,
+        )
+        from taskagent_api.database import get_session
+        from datetime import datetime
+
+        # Create test request
+        test_request = OptimizationRequest(
+            week_start_date="2025-08-18",
+            constraints=WeeklyConstraints(
+                total_capacity_hours=40,
+                daily_max_hours=8,
+                deep_work_blocks=2,
+                meeting_buffer_hours=4,
+            ),
+            selected_recurring_task_ids=[],
+            daily_time_slots=[
+                TimeSlotConfig(
+                    start="09:00", end="12:00", kind="focused_work", capacity_hours=3.0
+                ),
+                TimeSlotConfig(
+                    start="14:00", end="17:00", kind="light_work", capacity_hours=3.0
+                ),
+            ],
+        )
+
+        # Test each stage individually
+        session = next(get_session())
+        pipeline = HybridOptimizationPipeline(session)
+
+        # Use valid UUID for test user
+        import uuid
+
+        test_user_id = str(uuid.uuid4())
+
+        # Test Stage 1: Initialization
+        init_result = await pipeline._stage_initialization(test_user_id, test_request)
+
+        # Test Stage 2: Task Selection (with error handling)
+        try:
+            selection_result = await pipeline._stage_task_selection(
+                test_user_id, test_request
+            )
+            task_selection_status = "success" if selection_result.success else "failed"
+            task_selection_error = selection_result.errors
+        except Exception as e:
+            task_selection_status = "error"
+            task_selection_error = [f"Task selection error: {str(e)}"]
+
+            # For testing, we'll create a mock success result with no tasks
+            logger.info(f"Task selection failed in test mode: {e}")
+            selection_result = None
+
+        # Test Stage 3: Time Optimization (with mock data if task selection failed)
+        try:
+            # Create mock selection result if task selection failed
+            if task_selection_status != "success":
+                from taskagent_api.optimization.pipeline import (
+                    StageResult,
+                    PipelineStage,
+                )
+                from taskagent_api.ai.weekly_task_solver import TaskSolverResponse
+
+                # Create a simple mock solver response with empty tasks
+                mock_solver_response = TaskSolverResponse(
+                    success=True,
+                    week_start_date="2025-08-18",
+                    total_allocated_hours=0.0,
+                    project_allocations=[],
+                    selected_tasks=[],
+                    optimization_insights=["Test mode: No tasks selected"],
+                    constraint_analysis={},
+                    solver_metrics={},
+                    generated_at=datetime.now(),
+                )
+
+                mock_selection_result = StageResult(
+                    stage=PipelineStage.TASK_SELECTION,
+                    success=True,
+                    duration_seconds=0.1,
+                    data={"solver_response": mock_solver_response},
+                )
+            else:
+                mock_selection_result = selection_result
+
+            time_optimization_result = await pipeline._stage_time_optimization(
+                test_user_id, test_request, mock_selection_result
+            )
+            time_optimization_status = (
+                "success" if time_optimization_result.success else "failed"
+            )
+            time_optimization_error = time_optimization_result.errors
+        except Exception as e:
+            time_optimization_status = "error"
+            time_optimization_error = [str(e)]
+
+        return {
+            "status": "test_completed",
+            "message": "Detailed pipeline test completed",
+            "stages": {
+                "initialization": {
+                    "status": "success" if init_result.success else "failed",
+                    "duration": init_result.duration_seconds,
+                    "errors": init_result.errors,
+                },
+                "task_selection": {
+                    "status": task_selection_status,
+                    "errors": task_selection_error,
+                },
+                "time_optimization": {
+                    "status": time_optimization_status,
+                    "errors": time_optimization_error,
+                },
+            },
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Pipeline test failed: {str(e)}",
+            "error_type": type(e).__name__,
+            "traceback": str(e),
+        }
+
+
+@router.post("/test-pipeline-full")
+async def test_pipeline_full():
+    """Test endpoint for full pipeline execution without authentication."""
+    try:
+        from taskagent_api.optimization.pipeline import (
+            HybridOptimizationPipeline,
+            OptimizationRequest,
+            WeeklyConstraints,
+            TimeSlotConfig,
+        )
+        from taskagent_api.database import get_session
+        import uuid
+
+        # Create test request
+        test_request = OptimizationRequest(
+            week_start_date="2025-08-18",
+            constraints=WeeklyConstraints(
+                total_capacity_hours=40,
+                daily_max_hours=8,
+                deep_work_blocks=2,
+                meeting_buffer_hours=4,
+            ),
+            selected_recurring_task_ids=[],
+            daily_time_slots=[
+                TimeSlotConfig(
+                    start="09:00", end="12:00", kind="focused_work", capacity_hours=3.0
+                ),
+                TimeSlotConfig(
+                    start="14:00", end="17:00", kind="light_work", capacity_hours=3.0
+                ),
+            ],
+            enable_caching=True,
+            optimization_timeout_seconds=30,
+            fallback_on_failure=True,
+        )
+
+        # Execute full pipeline
+        session = next(get_session())
+        pipeline = HybridOptimizationPipeline(session)
+
+        # Use valid UUID for test user
+        test_user_id = str(uuid.uuid4())
+
+        # Execute the complete pipeline
+        response = await pipeline.execute_optimization(test_user_id, test_request)
+
+        return response.model_dump()
+
+    except Exception as e:
+        logger.error(f"Full pipeline test failed: {e}")
+        return {
+            "status": "error",
+            "message": f"Full pipeline test failed: {str(e)}",
+            "error_type": type(e).__name__,
+            "traceback": str(e),
+        }
+
+
 async def _save_weekly_schedule(
     session: Session,
     user_id: str,
