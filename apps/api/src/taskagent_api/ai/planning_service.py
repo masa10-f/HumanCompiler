@@ -41,6 +41,34 @@ class WeeklyPlanService:
             selected_recurring_task_ids=request.selected_recurring_task_ids,
         )
 
+        # Add project allocations to context if provided
+        if request.project_allocations:
+            # Convert dict to ProjectAllocation objects for consistency
+            from taskagent_api.ai.weekly_task_solver import ProjectAllocation
+
+            project_allocations = []
+            for project_id, percentage in request.project_allocations.items():
+                # Find project info from context
+                project = next(
+                    (p for p in context.projects if str(p.id) == project_id), None
+                )
+                if project:
+                    # Calculate target hours from percentage
+                    available_hours = request.capacity_hours - 5.0  # meeting buffer
+                    target_hours = (percentage / 100.0) * available_hours
+                    project_allocations.append(
+                        ProjectAllocation(
+                            project_id=project_id,
+                            project_title=project.title,
+                            target_hours=target_hours,
+                            max_hours=target_hours * 1.5,
+                            priority_weight=percentage / 100.0,
+                        )
+                    )
+
+            # Store allocations in context preferences for OpenAI client
+            context.preferences["project_allocations"] = project_allocations
+
         # Generate plan using OpenAI
         return await self.openai_client.generate_weekly_plan(context)
 

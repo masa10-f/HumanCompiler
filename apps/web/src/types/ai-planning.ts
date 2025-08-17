@@ -5,6 +5,7 @@ export interface WeeklyPlanRequest {
   capacity_hours: number;
   project_filter?: string[];
   selected_recurring_task_ids?: string[];
+  project_allocations?: Record<string, number>;
   preferences?: Record<string, unknown>;
 }
 
