@@ -327,6 +327,11 @@ class WeeklyScheduleBase(SQLModel):
         default_factory=list,
         description="IDs of selected weekly recurring tasks for this week",
     )
+    project_allocations: dict[str, float] = SQLField(
+        sa_column=Column(JSON),
+        default_factory=dict,
+        description="Project allocation percentages (project_id -> percentage)",
+    )
 
 
 class WeeklySchedule(WeeklyScheduleBase, table=True):  # type: ignore[call-arg]

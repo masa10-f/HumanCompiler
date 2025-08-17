@@ -36,6 +36,7 @@ import {
 import { AppHeader } from '@/components/layout/app-header';
 import { WeeklyRecurringTaskSelector } from '@/components/weekly-recurring-task-selector';
 import { WeeklyRecurringTaskDialog } from '@/components/weekly-recurring-task-dialog';
+import { ProjectAllocationSettings } from '@/components/scheduling/project-allocation-settings';
 import { toast } from '@/hooks/use-toast';
 import { aiPlanningApi, weeklyScheduleApi, getSecureApiUrl, secureFetch } from '@/lib/api';
 import { log } from '@/lib/logger';
@@ -60,6 +61,7 @@ export default function AIPlanningPage() {
 
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [selectedRecurringTaskIds, setSelectedRecurringTaskIds] = useState<string[]>([]);
+  const [projectAllocations, setProjectAllocations] = useState<Record<string, number>>({});
   const [weekStartDate, setWeekStartDate] = useState(() => {
     const today = new Date();
     const monday = new Date(today);
@@ -252,7 +254,7 @@ export default function AIPlanningPage() {
       const scheduleData = {
         selected_tasks: weeklyPlan.task_plans,
         total_allocated_hours: weeklyPlan.total_planned_hours,
-        project_allocations: weeklyPlan.project_allocations || [],
+        project_allocations: projectAllocations,
         optimization_insights: weeklyPlan.insights || [],
         recommendations: weeklyPlan.recommendations || [],
         capacity_hours: capacityHours,
@@ -502,6 +504,16 @@ export default function AIPlanningPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Project Allocation Settings */}
+              {selectedProjects.length > 0 && (
+                <ProjectAllocationSettings
+                  projects={projects.filter(p => selectedProjects.includes(p.id))}
+                  allocations={projectAllocations}
+                  onAllocationsChange={setProjectAllocations}
+                  disabled={isGenerating}
+                />
+              )}
 
               <WeeklyRecurringTaskSelector
                 selectedTaskIds={selectedRecurringTaskIds}
