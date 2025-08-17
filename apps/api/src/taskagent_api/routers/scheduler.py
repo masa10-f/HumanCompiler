@@ -1252,12 +1252,18 @@ async def _get_tasks_from_weekly_schedule(
             if task:
                 tasks.append(task)
 
-        # TODO: Apply project allocation filtering if configured
-        # Temporarily disabled until project_allocations field is added to database
-        # if weekly_schedule.project_allocations:
-        #     tasks = await _apply_project_allocation_filtering(
-        #         session, tasks, weekly_schedule.project_allocations, date_str
-        #     )
+        # Apply project allocation filtering if configured in schedule_json
+        if (
+            weekly_schedule.schedule_json
+            and "project_allocations" in weekly_schedule.schedule_json
+            and weekly_schedule.schedule_json["project_allocations"]
+        ):
+            tasks = await _apply_project_allocation_filtering(
+                session,
+                tasks,
+                weekly_schedule.schedule_json["project_allocations"],
+                date_str,
+            )
 
         logger.info(
             f"Retrieved {len(tasks)} tasks from database based on weekly schedule"
