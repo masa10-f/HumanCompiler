@@ -1035,7 +1035,6 @@ async def _apply_project_allocation_filtering(
     """
     try:
         from taskagent_api.models import Goal
-        import random
 
         # Group tasks by project
         tasks_by_project = {}
@@ -1066,9 +1065,10 @@ async def _apply_project_allocation_filtering(
                 total_hours_per_project.values()
             )
 
-            # Sort tasks by priority (higher priority first)
+            # Sort tasks by priority (higher priority first) with stable secondary sort
+            # Use task ID hash for deterministic secondary ordering instead of random
             sorted_tasks = sorted(
-                project_tasks, key=lambda t: (t.priority or 5, random.random())
+                project_tasks, key=lambda t: (t.priority or 5, str(t.id))
             )
 
             # Select tasks up to target hours
