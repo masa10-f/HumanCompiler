@@ -774,18 +774,70 @@ async def get_weekly_schedule_options(
         # Convert user_id to UUID if it's a string
         from uuid import UUID
 
-        user_uuid = UUID(user_id) if isinstance(user_id, str) else user_id
+        try:
+            user_uuid = UUID(user_id) if isinstance(user_id, str) else user_id
+            logger.debug(f"Converted user_id to UUID: {user_uuid}")
+        except ValueError as uuid_error:
+            logger.error(f"Invalid user_id format: {user_id}, error: {uuid_error}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ErrorResponse.create(
+                    code="INVALID_USER_ID",
+                    message="Invalid user ID format",
+                    details={"provided_user_id": user_id},
+                ).model_dump(),
+            )
 
-        # Get all weekly schedules for the user
+        # Get all weekly schedules for the user with enhanced error handling
         from sqlmodel import desc
 
-        weekly_schedules = session.exec(
-            select(WeeklySchedule)
-            .where(WeeklySchedule.user_id == user_uuid)
-            .order_by(desc(WeeklySchedule.week_start_date))
-        ).all()
+        try:
+            logger.debug(
+                f"Executing weekly schedule options query for user {user_uuid}"
+            )
 
-        logger.info(f"Found {len(weekly_schedules)} weekly schedules")
+            query = (
+                select(WeeklySchedule)
+                .where(WeeklySchedule.user_id == user_uuid)
+                .order_by(desc(WeeklySchedule.week_start_date))
+            )
+
+            logger.debug(f"SQL Query: {query}")
+            weekly_schedules = session.exec(query).all()
+
+            logger.info(f"Found {len(weekly_schedules)} weekly schedules")
+
+        except Exception as db_error:
+            logger.error(f"Database query error: {type(db_error).__name__}: {db_error}")
+            import traceback
+
+            logger.error(f"Database query traceback: {traceback.format_exc()}")
+
+            # Check if it's a database connection issue
+            if (
+                "connection" in str(db_error).lower()
+                or "timeout" in str(db_error).lower()
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=ErrorResponse.create(
+                        code="DATABASE_CONNECTION_ERROR",
+                        message="Database is temporarily unavailable",
+                        details={"error_type": type(db_error).__name__},
+                    ).model_dump(),
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=ErrorResponse.create(
+                        code="DATABASE_QUERY_ERROR",
+                        message="Failed to query weekly schedule options",
+                        details={
+                            "error_type": type(db_error).__name__,
+                            "error_message": str(db_error),
+                        },
+                    ).model_dump(),
+                )
 
         # Convert to options format
         options = []
@@ -812,13 +864,21 @@ async def get_weekly_schedule_options(
 
             except Exception as e:
                 logger.error(f"Error processing weekly schedule {schedule.id}: {e}")
+                import traceback
+
+                logger.error(f"Processing error traceback: {traceback.format_exc()}")
                 continue
 
         logger.info(f"Returning {len(options)} weekly schedule options")
         return options
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching weekly schedule options: {e}")
+        import traceback
+
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorResponse.create(
@@ -1192,10 +1252,17 @@ async def _get_tasks_from_weekly_schedule(
             if task:
                 tasks.append(task)
 
-        # Apply project allocation filtering if configured
-        if weekly_schedule.project_allocations:
+        # Apply project allocation filtering if configured in schedule_json
+        if (
+            weekly_schedule.schedule_json
+            and "project_allocations" in weekly_schedule.schedule_json
+            and weekly_schedule.schedule_json["project_allocations"]
+        ):
             tasks = await _apply_project_allocation_filtering(
-                session, tasks, weekly_schedule.project_allocations, date_str
+                session,
+                tasks,
+                weekly_schedule.schedule_json["project_allocations"],
+                date_str,
             )
 
         logger.info(
@@ -1235,29 +1302,83 @@ async def get_daily_schedule(
 
         logger.info(f"Fetching schedule for user {user_id} on {date}")
 
-        # Get schedule from database
-        schedule = session.exec(
-            select(Schedule).where(
+        # Enhanced error handling for database query
+        try:
+            logger.debug(
+                f"Executing daily schedule query for user {user_id}, date {date}"
+            )
+
+            # Get schedule from database
+            query = select(Schedule).where(
                 Schedule.user_id == user_id, Schedule.date == schedule_date
             )
-        ).first()
 
-        if not schedule:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=ErrorResponse.create(
-                    code="RESOURCE_NOT_FOUND",
-                    message="No schedule found for date",
-                    details={"date": date, "user_id": user_id},
-                ).model_dump(),
-            )
+            logger.debug(f"SQL Query: {query}")
+            schedule = session.exec(query).first()
 
-        return ScheduleResponse.model_validate(schedule)
+            if not schedule:
+                logger.info(f"No schedule found for user {user_id} on date {date}")
+
+                # Return a more informative response for missing schedules
+                # Instead of 404, we could return an empty schedule structure
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=ErrorResponse.create(
+                        code="RESOURCE_NOT_FOUND",
+                        message="No schedule found for date",
+                        details={
+                            "date": date,
+                            "user_id": user_id,
+                            "suggestion": "Create a schedule for this date using the scheduling endpoint",
+                        },
+                    ).model_dump(),
+                )
+
+            logger.debug(f"Found schedule {schedule.id} for date {date}")
+            return ScheduleResponse.model_validate(schedule)
+
+        except HTTPException:
+            raise
+        except Exception as db_error:
+            logger.error(f"Database query error: {type(db_error).__name__}: {db_error}")
+            import traceback
+
+            logger.error(f"Database query traceback: {traceback.format_exc()}")
+
+            # Check if it's a database connection issue
+            if (
+                "connection" in str(db_error).lower()
+                or "timeout" in str(db_error).lower()
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=ErrorResponse.create(
+                        code="DATABASE_CONNECTION_ERROR",
+                        message="Database is temporarily unavailable",
+                        details={"error_type": type(db_error).__name__},
+                    ).model_dump(),
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=ErrorResponse.create(
+                        code="DATABASE_QUERY_ERROR",
+                        message="Failed to query daily schedule",
+                        details={
+                            "error_type": type(db_error).__name__,
+                            "error_message": str(db_error),
+                            "date": date,
+                        },
+                    ).model_dump(),
+                )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error fetching schedule: {e}")
+        import traceback
+
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorResponse.create(

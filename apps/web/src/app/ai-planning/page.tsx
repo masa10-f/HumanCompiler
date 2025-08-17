@@ -167,6 +167,7 @@ export default function AIPlanningPage() {
         capacity_hours: capacityHours,
         project_filter: selectedProjects.length > 0 ? selectedProjects : undefined,
         selected_recurring_task_ids: selectedRecurringTaskIds,
+        project_allocations: Object.keys(projectAllocations).length > 0 ? projectAllocations : undefined,
         preferences: {}
       });
 

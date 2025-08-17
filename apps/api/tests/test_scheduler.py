@@ -442,8 +442,8 @@ class TestSchedulerAPI:
         response = client.get("/api/schedule/weekly-schedule-options")
 
         # The endpoint should return 200 with empty list if no weekly schedules exist
-        # or may return 403/500 if database is not available, which is fine for unit tests
-        assert response.status_code in [200, 403, 500]
+        # or may return 403/500/503 if database is not available, which is fine for unit tests
+        assert response.status_code in [200, 403, 500, 503]
 
         if response.status_code == 200:
             data = response.json()

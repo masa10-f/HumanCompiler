@@ -35,6 +35,9 @@ class WeeklyPlanRequest(BaseModel):
     selected_recurring_task_ids: list[str] = Field(
         default_factory=list, description="Selected weekly recurring task IDs"
     )
+    project_allocations: dict[str, float] | None = Field(
+        None, description="Project allocation percentages (project_id -> percentage)"
+    )
     preferences: dict[str, Any] = Field(
         default_factory=dict, description="User preferences"
     )
