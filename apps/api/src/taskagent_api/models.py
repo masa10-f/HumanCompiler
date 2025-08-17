@@ -322,16 +322,17 @@ class WeeklyScheduleBase(SQLModel):
         default_factory=dict,
         description="Weekly schedule data including selected tasks",
     )
-    selected_recurring_task_ids: list[UUID] = SQLField(
-        sa_column=Column(JSON),
-        default_factory=list,
-        description="IDs of selected weekly recurring tasks for this week",
-    )
-    project_allocations: dict[str, float] = SQLField(
-        sa_column=Column(JSON),
-        default_factory=dict,
-        description="Project allocation percentages (project_id -> percentage)",
-    )
+    # TODO: Add these fields with proper migration
+    # selected_recurring_task_ids: list[UUID] = SQLField(
+    #     sa_column=Column(JSON),
+    #     default_factory=list,
+    #     description="IDs of selected weekly recurring tasks for this week",
+    # )
+    # project_allocations: dict[str, float] = SQLField(
+    #     sa_column=Column(JSON),
+    #     default_factory=dict,
+    #     description="Project allocation percentages (project_id -> percentage)",
+    # )
 
 
 class WeeklySchedule(WeeklyScheduleBase, table=True):  # type: ignore[call-arg]

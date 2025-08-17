@@ -196,18 +196,69 @@ async def list_weekly_schedules(
             )
 
         # Convert user_id to UUID if it's a string
-        user_uuid = UUID(user_id) if isinstance(user_id, str) else user_id
+        try:
+            user_uuid = UUID(user_id) if isinstance(user_id, str) else user_id
+            logger.debug(f"Converted user_id to UUID: {user_uuid}")
+        except ValueError as uuid_error:
+            logger.error(f"Invalid user_id format: {user_id}, error: {uuid_error}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ErrorResponse.create(
+                    code="INVALID_USER_ID",
+                    message="Invalid user ID format",
+                    details={"provided_user_id": user_id},
+                ).model_dump(),
+            )
 
-        # Get schedules from database ordered by week start date (newest first)
-        schedules = session.exec(
-            select(WeeklySchedule)
-            .where(WeeklySchedule.user_id == user_uuid)
-            .order_by(WeeklySchedule.week_start_date.desc())
-            .offset(skip)
-            .limit(limit)
-        ).all()
+        # Enhanced error handling for database query
+        try:
+            logger.debug(f"Executing weekly schedules query for user {user_uuid}")
 
-        logger.info(f"Found {len(schedules)} weekly schedules for user {user_id}")
+            # Get schedules from database ordered by week start date (newest first)
+            query = (
+                select(WeeklySchedule)
+                .where(WeeklySchedule.user_id == user_uuid)
+                .order_by(WeeklySchedule.week_start_date.desc())
+                .offset(skip)
+                .limit(limit)
+            )
+
+            logger.debug(f"SQL Query: {query}")
+            schedules = session.exec(query).all()
+
+            logger.info(f"Found {len(schedules)} weekly schedules for user {user_id}")
+
+        except Exception as db_error:
+            logger.error(f"Database query error: {type(db_error).__name__}: {db_error}")
+            import traceback
+
+            logger.error(f"Database query traceback: {traceback.format_exc()}")
+
+            # Check if it's a database connection issue
+            if (
+                "connection" in str(db_error).lower()
+                or "timeout" in str(db_error).lower()
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=ErrorResponse.create(
+                        code="DATABASE_CONNECTION_ERROR",
+                        message="Database is temporarily unavailable",
+                        details={"error_type": type(db_error).__name__},
+                    ).model_dump(),
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=ErrorResponse.create(
+                        code="DATABASE_QUERY_ERROR",
+                        message="Failed to query weekly schedules",
+                        details={
+                            "error_type": type(db_error).__name__,
+                            "error_message": str(db_error),
+                        },
+                    ).model_dump(),
+                )
 
         # Convert to response models
         result = []
@@ -228,6 +279,9 @@ async def list_weekly_schedules(
         raise
     except Exception as e:
         logger.error(f"Unexpected error fetching weekly schedule list: {e}")
+        import traceback
+
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=ErrorResponse.create(
