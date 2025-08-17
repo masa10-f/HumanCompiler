@@ -1015,6 +1015,84 @@ async def list_daily_schedules(
         )
 
 
+async def _apply_project_allocation_filtering(
+    session: Session,
+    tasks: list[Task],
+    project_allocations: dict[str, float],
+    date_str: str,
+) -> list[Task]:
+    """
+    Apply project allocation filtering to tasks based on configured percentages.
+
+    Args:
+        session: Database session
+        tasks: List of tasks to filter
+        project_allocations: Dictionary of project_id -> allocation percentage
+        date_str: Target date for tracking daily allocations
+
+    Returns:
+        Filtered list of tasks based on project allocations
+    """
+    try:
+        from taskagent_api.models import Goal
+
+        # Group tasks by project
+        tasks_by_project = {}
+        for task in tasks:
+            # Get the goal to find the project
+            goal = session.get(Goal, task.goal_id)
+            if goal:
+                project_id = str(goal.project_id)
+                if project_id not in tasks_by_project:
+                    tasks_by_project[project_id] = []
+                tasks_by_project[project_id].append(task)
+
+        # Calculate total hours for proportional allocation
+        total_hours_per_project = {}
+        for project_id, project_tasks in tasks_by_project.items():
+            total_hours = sum(float(task.estimate_hours) for task in project_tasks)
+            total_hours_per_project[project_id] = total_hours
+
+        # Select tasks based on project allocations
+        selected_tasks = []
+
+        for project_id, allocation_percent in project_allocations.items():
+            if project_id not in tasks_by_project:
+                continue
+
+            project_tasks = tasks_by_project[project_id]
+            target_hours = (allocation_percent / 100.0) * sum(
+                total_hours_per_project.values()
+            )
+
+            # Sort tasks by priority (higher priority first) with stable secondary sort
+            # Use task ID hash for deterministic secondary ordering instead of random
+            sorted_tasks = sorted(
+                project_tasks, key=lambda t: (t.priority or 5, str(t.id))
+            )
+
+            # Select tasks up to target hours
+            current_hours = 0.0
+            for task in sorted_tasks:
+                if (
+                    current_hours + float(task.estimate_hours) <= target_hours * 1.2
+                ):  # Allow 20% overflow
+                    selected_tasks.append(task)
+                    current_hours += float(task.estimate_hours)
+
+            logger.info(
+                f"Project {project_id}: allocated {allocation_percent}%, "
+                f"selected {len([t for t in selected_tasks if str(session.get(Goal, t.goal_id).project_id) == project_id])} tasks, "
+                f"{current_hours:.1f} hours"
+            )
+
+        return selected_tasks
+
+    except Exception as e:
+        logger.error(f"Error applying project allocation filtering: {e}")
+        return tasks  # Return original tasks if filtering fails
+
+
 async def _get_tasks_by_source(
     session: Session, user_id: str, task_source: TaskSource, target_date: str
 ) -> list[Task]:
@@ -1063,7 +1141,7 @@ async def _get_tasks_from_weekly_schedule(
     Get tasks from weekly schedule for the given date.
 
     This function finds the appropriate weekly schedule for the given date
-    and returns the tasks selected for that week.
+    and returns the tasks selected for that week, considering project allocations.
     """
     try:
         # Parse the date and find the Monday of that week
@@ -1113,6 +1191,12 @@ async def _get_tasks_from_weekly_schedule(
             task = session.get(Task, task_uuid)
             if task:
                 tasks.append(task)
+
+        # Apply project allocation filtering if configured
+        if weekly_schedule.project_allocations:
+            tasks = await _apply_project_allocation_filtering(
+                session, tasks, weekly_schedule.project_allocations, date_str
+            )
 
         logger.info(
             f"Retrieved {len(tasks)} tasks from database based on weekly schedule"
