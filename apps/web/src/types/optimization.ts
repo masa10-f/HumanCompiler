@@ -24,6 +24,7 @@ export interface OptimizationRequest {
   optimization_timeout_seconds?: number;
   fallback_on_failure?: boolean;
   preferences?: Record<string, any>;
+  user_prompt?: string;
 }
 
 export interface SelectedTask {

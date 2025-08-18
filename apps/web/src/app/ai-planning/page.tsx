@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -71,6 +72,7 @@ export default function AIPlanningPage() {
     return monday.toISOString().split('T')[0];
   });
   const [capacityHours, setCapacityHours] = useState(40);
+  const [userPrompt, setUserPrompt] = useState('');
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -168,7 +170,8 @@ export default function AIPlanningPage() {
         project_filter: selectedProjects.length > 0 ? selectedProjects : undefined,
         selected_recurring_task_ids: selectedRecurringTaskIds,
         project_allocations: Object.keys(projectAllocations).length > 0 ? projectAllocations : undefined,
-        preferences: {}
+        preferences: {},
+        user_prompt: userPrompt.trim() || undefined
       });
 
       setWeeklyPlan(response);
@@ -522,6 +525,22 @@ export default function AIPlanningPage() {
                 disabled={isGenerating}
               />
 
+              <div className="space-y-2">
+                <Label htmlFor="user-prompt">優先度調整の指示 (任意)</Label>
+                <Textarea
+                  id="user-prompt"
+                  placeholder="この週は特定のタスクを優先したい場合は、ここに指示を入力してください。例: 「この週は特にリサーチタスクを優先して取り組みたい」"
+                  value={userPrompt}
+                  onChange={(e) => setUserPrompt(e.target.value)}
+                  disabled={isGenerating}
+                  rows={3}
+                  className="resize-none"
+                />
+                <div className="text-xs text-gray-500">
+                  ユーザープロンプトはAIがタスクの優先度を決定する際に考慮されます
+                </div>
+              </div>
+
               <Button
                 onClick={generateWeeklyPlan}
                 disabled={isGenerating || !hasApiKey}
@@ -600,6 +619,24 @@ export default function AIPlanningPage() {
                       </div>
                     </CardContent>
                   </Card>
+
+                  {weeklyPlan.solver_metrics && (
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="flex items-center gap-2">
+                          <Target className="h-4 w-4 text-orange-600" />
+                          <div>
+                            <div className="text-2xl font-bold">
+                              {weeklyPlan.solver_metrics.capacity_utilization
+                                ? (weeklyPlan.solver_metrics.capacity_utilization * 100).toFixed(1)
+                                : '0'}%
+                            </div>
+                            <div className="text-xs text-gray-500">OR-Tools最適化効率</div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
 
                 <Separator />
@@ -648,7 +685,7 @@ export default function AIPlanningPage() {
 
                 {weeklyPlan.insights.length > 0 && (
                   <div>
-                    <h4 className="text-lg font-semibold mb-3">洞察</h4>
+                    <h4 className="text-lg font-semibold mb-3">最適化の洞察</h4>
                     <ul className="space-y-1">
                       {weeklyPlan.insights.map((insight, index) => (
                         <li key={index} className="flex items-start gap-2 text-sm">
@@ -657,6 +694,103 @@ export default function AIPlanningPage() {
                         </li>
                       ))}
                     </ul>
+                  </div>
+                )}
+
+                {weeklyPlan.solver_metrics && (
+                  <div>
+                    <h4 className="text-lg font-semibold mb-3">OR-Tools最適化メトリクス</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <Card>
+                        <CardContent className="pt-4">
+                          <div className="text-sm font-medium text-gray-600">プロジェクトバランススコア</div>
+                          <div className="text-xl font-bold text-green-600">
+                            {weeklyPlan.solver_metrics.project_balance_score
+                              ? (weeklyPlan.solver_metrics.project_balance_score * 100).toFixed(1)
+                              : '0'}%
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardContent className="pt-4">
+                          <div className="text-sm font-medium text-gray-600">関与プロジェクト数</div>
+                          <div className="text-xl font-bold text-blue-600">
+                            {weeklyPlan.solver_metrics.projects_involved || 0}
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardContent className="pt-4">
+                          <div className="text-sm font-medium text-gray-600">平均タスク時間</div>
+                          <div className="text-xl font-bold text-purple-600">
+                            {weeklyPlan.solver_metrics.avg_task_hours
+                              ? weeklyPlan.solver_metrics.avg_task_hours.toFixed(1)
+                              : '0'}h
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardContent className="pt-4">
+                          <div className="text-sm font-medium text-gray-600">最適化タスク数</div>
+                          <div className="text-xl font-bold text-orange-600">
+                            {weeklyPlan.solver_metrics.task_count || 0}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {weeklyPlan.solver_metrics.project_distribution && (
+                      <div className="mt-4">
+                        <h5 className="text-md font-medium mb-2">プロジェクト別時間配分</h5>
+                        <div className="space-y-2">
+                          {Object.entries(weeklyPlan.solver_metrics.project_distribution).map(([project, hours]) => (
+                            <div key={project} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                              <span className="font-medium">{project}</span>
+                              <span className="text-sm text-gray-600">{Number(hours).toFixed(1)}時間</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {weeklyPlan.constraint_analysis && (
+                  <div>
+                    <h4 className="text-lg font-semibold mb-3">制約分析</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      <Card>
+                        <CardContent className="pt-4">
+                          <div className="text-sm font-medium text-gray-600">容量使用率</div>
+                          <div className="text-xl font-bold text-blue-600">
+                            {weeklyPlan.constraint_analysis.capacity_utilization
+                              ? (weeklyPlan.constraint_analysis.capacity_utilization * 100).toFixed(1)
+                              : '0'}%
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardContent className="pt-4">
+                          <div className="text-sm font-medium text-gray-600">緊急タスク</div>
+                          <div className="text-xl font-bold text-red-600">
+                            {weeklyPlan.constraint_analysis.urgent_task_count || 0}
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardContent className="pt-4">
+                          <div className="text-sm font-medium text-gray-600">オーバーロードリスク</div>
+                          <div className={`text-xl font-bold ${weeklyPlan.constraint_analysis.overload_risk ? 'text-red-600' : 'text-green-600'}`}>
+                            {weeklyPlan.constraint_analysis.overload_risk ? '高' : '低'}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
                   </div>
                 )}
               </CardContent>
