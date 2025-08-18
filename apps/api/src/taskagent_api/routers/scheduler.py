@@ -54,6 +54,7 @@ class SchedulerTask:
     due_date: datetime | None = None
     kind: TaskKind = TaskKind.LIGHT_WORK
     goal_id: str | None = None
+    is_weekly_recurring: bool = False  # Add flag to distinguish weekly recurring tasks
 
 
 @dataclass
@@ -534,8 +535,11 @@ async def create_daily_schedule(
         filtered_count = 0
 
         for db_task in db_tasks:
-            # Only schedule pending or in-progress tasks
-            if db_task.status in ["completed", "cancelled"]:
+            # Check if this is a weekly recurring task
+            is_weekly_recurring = getattr(db_task, 'is_weekly_recurring', False)
+            
+            # Only schedule pending or in-progress tasks (weekly recurring tasks are always schedulable)
+            if not is_weekly_recurring and db_task.status in ["completed", "cancelled"]:
                 filtered_count += 1
                 logger.debug(
                     f"Skipping task {db_task.id} with status: {db_task.status}"
@@ -548,12 +552,16 @@ async def create_daily_schedule(
             else:
                 task_kind = map_task_kind(db_task.title)
             logger.debug(
-                f"Including task {db_task.id}: {db_task.title}, status: {db_task.status}, kind: {task_kind}"
+                f"Including task {db_task.id}: {db_task.title}, status: {getattr(db_task, 'status', 'weekly_recurring')}, kind: {task_kind}"
             )
 
-            # Get goal to access project_id
-            goal = goal_service.get_goal(session, db_task.goal_id, user_id)
-            project_id = str(goal.project_id) if goal else None
+            # Get goal to access project_id (only for regular tasks)
+            project_id = None
+            goal_id_str = None
+            if not is_weekly_recurring and hasattr(db_task, 'goal_id') and db_task.goal_id:
+                goal = goal_service.get_goal(session, db_task.goal_id, user_id)
+                project_id = str(goal.project_id) if goal else None
+                goal_id_str = str(db_task.goal_id)
 
             scheduler_task = SchedulerTask(
                 id=str(db_task.id),  # Convert UUID to string
@@ -562,11 +570,10 @@ async def create_daily_schedule(
                     db_task.estimate_hours
                 ),  # Convert Decimal to float
                 priority=3,  # Default priority - could be enhanced
-                due_date=db_task.due_date,
+                due_date=getattr(db_task, 'due_date', None),
                 kind=task_kind,
-                goal_id=str(db_task.goal_id)
-                if db_task.goal_id
-                else None,  # Convert UUID to string
+                goal_id=goal_id_str,
+                is_weekly_recurring=is_weekly_recurring
             )
             scheduler_tasks.append(scheduler_task)
 
@@ -579,10 +586,8 @@ async def create_daily_schedule(
                 ),  # Convert Decimal to float
                 priority=3,
                 kind=task_kind.value,
-                due_date=db_task.due_date,
-                goal_id=str(db_task.goal_id)
-                if db_task.goal_id
-                else None,  # Convert UUID to string
+                due_date=getattr(db_task, 'due_date', None),
+                goal_id=goal_id_str,
                 project_id=project_id,
             )
 
@@ -1240,35 +1245,76 @@ async def _get_tasks_from_weekly_schedule(
             return []
 
         # Get the actual task objects from database
-        # Convert string UUIDs to UUID objects for query
+        # Handle both regular tasks and weekly recurring tasks
         from uuid import UUID
+        from taskagent_api.models import WeeklyRecurringTask
 
-        task_uuid_list = [UUID(task_id) for task_id in task_ids]
-
-        # Use SQLModel's built-in filtering
         tasks = []
-        for task_uuid in task_uuid_list:
-            task = session.get(Task, task_uuid)
-            if task:
-                tasks.append(task)
+        weekly_recurring_tasks = []
+
+        for task_id in task_ids:
+            try:
+                task_uuid = UUID(task_id)
+                
+                # First try to get as regular task
+                task = session.get(Task, task_uuid)
+                if task:
+                    tasks.append(task)
+                    continue
+                
+                # If not found as regular task, try as weekly recurring task
+                weekly_task = session.get(WeeklyRecurringTask, task_uuid)
+                if weekly_task:
+                    weekly_recurring_tasks.append(weekly_task)
+                    logger.info(f"Found weekly recurring task: {weekly_task.title}")
+                else:
+                    logger.warning(f"Task ID {task_id} not found in either tasks or weekly recurring tasks")
+            except ValueError:
+                logger.warning(f"Invalid UUID format for task ID: {task_id}")
+                continue
+
+        # Create pseudo-tasks for weekly recurring tasks
+        # Weekly recurring tasks need to be converted to Task-like objects for the scheduler
+        for weekly_task in weekly_recurring_tasks:
+            # Create a temporary task-like object with necessary fields
+            pseudo_task = type('PseudoTask', (), {
+                'id': weekly_task.id,
+                'title': f"[週課] {weekly_task.title}",
+                'estimate_hours': weekly_task.estimate_hours,
+                'status': 'pending',  # Weekly recurring tasks are always pending for scheduling
+                'due_date': None,  # Weekly recurring tasks don't have specific due dates
+                'work_type': 'light_work',  # Default work type for weekly recurring tasks
+                'goal_id': None,  # Weekly recurring tasks don't belong to specific goals
+                'is_weekly_recurring': True  # Mark as weekly recurring
+            })()
+            tasks.append(pseudo_task)
 
         # Apply project allocation filtering if configured in schedule_json
+        # Note: Weekly recurring tasks will not be affected by project allocation filtering
+        regular_tasks = [t for t in tasks if not getattr(t, 'is_weekly_recurring', False)]
+        weekly_tasks = [t for t in tasks if getattr(t, 'is_weekly_recurring', False)]
+        
         if (
             weekly_schedule.schedule_json
             and "project_allocations" in weekly_schedule.schedule_json
             and weekly_schedule.schedule_json["project_allocations"]
         ):
-            tasks = await _apply_project_allocation_filtering(
+            filtered_regular_tasks = await _apply_project_allocation_filtering(
                 session,
-                tasks,
+                regular_tasks,
                 weekly_schedule.schedule_json["project_allocations"],
                 date_str,
             )
+            # Combine filtered regular tasks with weekly recurring tasks
+            all_tasks = list(filtered_regular_tasks) + weekly_tasks
+        else:
+            all_tasks = tasks
 
         logger.info(
-            f"Retrieved {len(tasks)} tasks from database based on weekly schedule"
+            f"Retrieved {len(all_tasks)} tasks from database based on weekly schedule "
+            f"({len(regular_tasks)} regular tasks, {len(weekly_tasks)} weekly recurring tasks)"
         )
-        return list(tasks)
+        return all_tasks
 
     except Exception as e:
         logger.error(f"Error getting tasks from weekly schedule: {e}")

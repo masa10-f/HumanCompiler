@@ -352,9 +352,10 @@ class WeeklyTaskSolver:
         insights = ["Using heuristic task selection (AI unavailable)"]
 
         # Sort tasks by priority score
-        scored_tasks = []
+        scored_items = []
         week_end = context.week_start_date + timedelta(days=7)
 
+        # Process regular tasks
         for task in context.tasks:
             # Calculate priority score
             urgency_score = 0
@@ -384,26 +385,52 @@ class WeeklyTaskSolver:
                 urgency_score * constraints.deadline_weight
                 + effort_score * constraints.effort_efficiency_weight
             )
-            scored_tasks.append((task, total_score))
+            scored_items.append((task, total_score, "regular_task"))
+
+        # Process selected weekly recurring tasks
+        if context.selected_recurring_task_ids:
+            for weekly_task in context.weekly_recurring_tasks:
+                if str(weekly_task.id) in context.selected_recurring_task_ids:
+                    # Weekly recurring tasks get high priority to ensure they are included
+                    recurring_score = 8.0  # High priority for consistency
+                    effort_score = 10 - min(
+                        float(weekly_task.estimate_hours or 0), 10
+                    )
+                    total_score = (
+                        recurring_score * 0.7  # High weight for weekly consistency
+                        + effort_score * constraints.effort_efficiency_weight
+                    )
+                    scored_items.append((weekly_task, total_score, "weekly_recurring"))
 
         # Sort by score descending
-        scored_tasks.sort(key=lambda x: x[1], reverse=True)
+        scored_items.sort(key=lambda x: x[1], reverse=True)
 
-        # Select tasks within capacity
+        # Select items within capacity
         total_hours = 0.0
-        for task, score in scored_tasks:
-            task_hours = float(task.estimate_hours or 0)
-            if total_hours + task_hours <= constraints.total_capacity_hours:
-                selected_tasks.append(
-                    TaskPlan(
-                        task_id=task.id,
-                        task_title=task.title,
-                        estimated_hours=task_hours,
-                        priority=int(score),
-                        rationale=f"Selected based on heuristic score: {score:.1f}",
+        for item, score, item_type in scored_items:
+            item_hours = float(item.estimate_hours or 0)
+            if total_hours + item_hours <= constraints.total_capacity_hours:
+                if item_type == "regular_task":
+                    selected_tasks.append(
+                        TaskPlan(
+                            task_id=item.id,
+                            task_title=item.title,
+                            estimated_hours=item_hours,
+                            priority=int(score),
+                            rationale=f"Selected based on heuristic score: {score:.1f}",
+                        )
                     )
-                )
-                total_hours += task_hours
+                elif item_type == "weekly_recurring":
+                    selected_tasks.append(
+                        TaskPlan(
+                            task_id=item.id,
+                            task_title=f"[週課] {item.title}",
+                            estimated_hours=item_hours,
+                            priority=int(score),
+                            rationale=f"Weekly recurring task selected with score: {score:.1f}",
+                        )
+                    )
+                total_hours += item_hours
 
         return selected_tasks, insights
 
@@ -436,6 +463,24 @@ class WeeklyTaskSolver:
             for t in context.tasks
         ]
 
+        # Add selected weekly recurring tasks to the available tasks
+        selected_recurring_tasks_data = []
+        if context.selected_recurring_task_ids:
+            for rt in context.weekly_recurring_tasks:
+                if str(rt.id) in context.selected_recurring_task_ids:
+                    selected_recurring_tasks_data.append({
+                        "id": rt.id,
+                        "title": f"[週課] {rt.title}",
+                        "description": rt.description,
+                        "estimate_hours": rt.estimate_hours,
+                        "due_date": None,  # Weekly recurring tasks don't have specific due dates
+                        "status": "weekly_recurring",
+                        "category": rt.category,
+                    })
+
+        # Combine regular tasks and selected weekly recurring tasks
+        all_available_tasks = tasks_data + selected_recurring_tasks_data
+
         allocations_data = [
             {
                 "project_id": a.project_id,
@@ -460,8 +505,8 @@ class WeeklyTaskSolver:
 ## プロジェクト情報
 {json.dumps(projects_data, indent=2, ensure_ascii=False)}
 
-## 利用可能タスク
-{json.dumps(tasks_data, indent=2, ensure_ascii=False)}
+## 利用可能タスク（通常タスク + 選択された週課）
+{json.dumps(all_available_tasks, indent=2, ensure_ascii=False)}
 
 ## プロジェクト配分
 {json.dumps(allocations_data, indent=2, ensure_ascii=False)}
@@ -475,8 +520,10 @@ class WeeklyTaskSolver:
 - 工数効率重み: {constraints.effort_efficiency_weight}
 
 ## 重要な制約
-**必ず「利用可能タスク」セクションに記載されているタスクIDのみを選択してください。**
-上記のタスク一覧に存在しないIDは使用しないでください。
+**必ず「利用可能タスク」セクションに記載されているID（通常タスクIDまたは週課ID）のみを選択してください。**
+上記の一覧に存在しないIDは使用しないでください。
+
+注意: 週課（status="weekly_recurring"）は週間反復タスクです。これらも通常のタスクと同様に選択し、週間スケジュールに含めてください。
 
 ## 最適化要件
 以下の要素を考慮して最適なタスクを選択してください：
@@ -485,6 +532,7 @@ class WeeklyTaskSolver:
 2. タスク依存関係とブロック関係
 3. 認知負荷とコンテキストスイッチングコスト
 4. プロジェクトの戦略的重要度とリソース配分
+5. 週課（週間反復タスク）の確実な実行
 
 締切、プロジェクトバランス、容量制約を考慮して最適なタスクを選択し、作業負荷最適化とタスク優先順位について戦略的な洞察を提供してください。
 
