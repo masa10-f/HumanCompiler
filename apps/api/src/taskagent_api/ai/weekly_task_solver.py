@@ -526,7 +526,7 @@ class WeeklyTaskSolver:
             base_hours = float(available_hours) / project_count
             return [
                 ProjectAllocation(
-                    project_id=project.id,
+                    project_id=str(project.id),
                     project_title=project.title,
                     target_hours=base_hours,
                     max_hours=base_hours * 1.5,
@@ -543,7 +543,7 @@ class WeeklyTaskSolver:
 
             allocations.append(
                 ProjectAllocation(
-                    project_id=project.id,
+                    project_id=str(project.id),
                     project_title=project.title,
                     target_hours=target_hours,
                     max_hours=target_hours * 1.5,
