@@ -29,7 +29,7 @@ export default function ProjectTimelinePage() {
     }
   })
 
-  const { data: timelineData, isLoading: timelineLoading, refetch } = useProjectTimeline(projectId, filters)
+  const { data: timelineData, isLoading: timelineLoading, error: timelineError, refetch } = useProjectTimeline(projectId, filters)
 
   if (loading) {
     return (
@@ -92,6 +92,7 @@ export default function ProjectTimelinePage() {
           projectId={projectId}
           data={timelineData}
           isLoading={timelineLoading}
+          error={timelineError}
           onRefresh={handleRefresh}
           onTimeUnitChange={handleTimeUnitChange}
           onDateRangeChange={handleDateRangeChange}

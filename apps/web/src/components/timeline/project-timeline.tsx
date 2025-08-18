@@ -17,6 +17,7 @@ interface ProjectTimelineProps {
   projectId: string
   data: ProjectTimelineData | null
   isLoading: boolean
+  error?: string | null
   onRefresh: () => void
   onTimeUnitChange: (unit: string) => void
   onDateRangeChange: (_startDate: Date, _endDate: Date) => void
@@ -26,6 +27,7 @@ export function ProjectTimeline({
   projectId: _projectId,
   data,
   isLoading,
+  error,
   onRefresh: _onRefresh,
   onTimeUnitChange,
   onDateRangeChange: _onDateRangeChange
@@ -126,6 +128,25 @@ export function ProjectTimeline({
             <div className="h-4 bg-gray-200 rounded w-3/4"></div>
             <div className="h-4 bg-gray-200 rounded w-1/2"></div>
             <div className="h-32 bg-gray-200 rounded"></div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="w-5 h-5" />
+            プロジェクトタイムライン
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8">
+            <p className="text-red-500 mb-2">エラーが発生しました</p>
+            <p className="text-sm text-gray-600">{error}</p>
           </div>
         </CardContent>
       </Card>

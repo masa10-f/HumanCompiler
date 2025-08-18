@@ -1,5 +1,6 @@
 """Timeline visualization API endpoints for project progress tracking"""
 
+import logging
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -10,6 +11,8 @@ from sqlmodel import Session, select, and_, or_
 from ..auth import get_current_user
 from ..database import get_session
 from ..models import User, Project, Goal, Task, Log, TaskStatus, GoalStatus
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -134,83 +137,104 @@ async def get_timeline_overview(
 
     Returns summary timeline data for dashboard display
     """
-    # Set default date range if not provided
-    if not start_date:
-        # Default to last 3 months
-        start_date = (datetime.now() - timedelta(days=90)).replace(
-            hour=0, minute=0, second=0, microsecond=0
+    try:
+        logger.info(
+            f"Getting timeline overview for user {current_user.id} ({current_user.email})"
         )
-    if not end_date:
-        end_date = datetime.now().replace(
-            hour=23, minute=59, second=59, microsecond=999999
-        )
+        # Set default date range if not provided
+        if not start_date:
+            # Default to last 3 months
+            start_date = (datetime.now() - timedelta(days=90)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+        if not end_date:
+            end_date = datetime.now().replace(
+                hour=23, minute=59, second=59, microsecond=999999
+            )
 
-    # Get all projects for the user
-    projects_statement = select(Project).where(Project.owner_id == current_user.id)
-    projects = session.exec(projects_statement).all()
+        # Get all projects for the user
+        projects_statement = select(Project).where(Project.owner_id == current_user.id)
+        projects = session.exec(projects_statement).all()
 
-    overview_data = {
-        "timeline": {
-            "start_date": start_date.isoformat(),
-            "end_date": end_date.isoformat(),
-        },
-        "projects": [],
-    }
+        logger.info(f"Found {len(projects)} projects for user {current_user.id}")
 
-    for project in projects:
-        # Get project statistics
-        goals_statement = select(Goal).where(Goal.project_id == project.id)
-        goals = session.exec(goals_statement).all()
+        if len(projects) == 0:
+            logger.warning(f"No projects found for user {current_user.id}")
 
-        total_goals = len(goals)
-        completed_goals = len([g for g in goals if g.status == GoalStatus.COMPLETED])
-        in_progress_goals = len(
-            [g for g in goals if g.status == GoalStatus.IN_PROGRESS]
-        )
-
-        # Get all tasks for this project
-        all_tasks = []
-        for goal in goals:
-            tasks_statement = select(Task).where(Task.goal_id == goal.id)
-            tasks = session.exec(tasks_statement).all()
-            all_tasks.extend(tasks)
-
-        total_tasks = len(all_tasks)
-        completed_tasks = len(
-            [t for t in all_tasks if t.status == TaskStatus.COMPLETED]
-        )
-        in_progress_tasks = len(
-            [t for t in all_tasks if t.status == TaskStatus.IN_PROGRESS]
-        )
-
-        project_data = {
-            "id": str(project.id),
-            "title": project.title,
-            "description": project.description,
-            "created_at": project.created_at.isoformat(),
-            "updated_at": project.updated_at.isoformat(),
-            "statistics": {
-                "total_goals": total_goals,
-                "completed_goals": completed_goals,
-                "in_progress_goals": in_progress_goals,
-                "total_tasks": total_tasks,
-                "completed_tasks": completed_tasks,
-                "in_progress_tasks": in_progress_tasks,
-                "goals_completion_rate": round((completed_goals / total_goals) * 100, 1)
-                if total_goals > 0
-                else 0,
-                "tasks_completion_rate": round((completed_tasks / total_tasks) * 100, 1)
-                if total_tasks > 0
-                else 0,
+        overview_data = {
+            "timeline": {
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
             },
+            "projects": [],
         }
 
-        overview_data["projects"].append(project_data)
+        for project in projects:
+            # Get project statistics
+            goals_statement = select(Goal).where(Goal.project_id == project.id)
+            goals = session.exec(goals_statement).all()
 
-    # Sort projects by updated_at (most recent first)
-    overview_data["projects"].sort(key=lambda x: x["updated_at"], reverse=True)
+            total_goals = len(goals)
+            completed_goals = len(
+                [g for g in goals if g.status == GoalStatus.COMPLETED]
+            )
+            in_progress_goals = len(
+                [g for g in goals if g.status == GoalStatus.IN_PROGRESS]
+            )
 
-    return overview_data
+            # Get all tasks for this project
+            all_tasks = []
+            for goal in goals:
+                tasks_statement = select(Task).where(Task.goal_id == goal.id)
+                tasks = session.exec(tasks_statement).all()
+                all_tasks.extend(tasks)
+
+            total_tasks = len(all_tasks)
+            completed_tasks = len(
+                [t for t in all_tasks if t.status == TaskStatus.COMPLETED]
+            )
+            in_progress_tasks = len(
+                [t for t in all_tasks if t.status == TaskStatus.IN_PROGRESS]
+            )
+
+            project_data = {
+                "id": str(project.id),
+                "title": project.title,
+                "description": project.description,
+                "created_at": project.created_at.isoformat(),
+                "updated_at": project.updated_at.isoformat(),
+                "statistics": {
+                    "total_goals": total_goals,
+                    "completed_goals": completed_goals,
+                    "in_progress_goals": in_progress_goals,
+                    "total_tasks": total_tasks,
+                    "completed_tasks": completed_tasks,
+                    "in_progress_tasks": in_progress_tasks,
+                    "goals_completion_rate": round(
+                        (completed_goals / total_goals) * 100, 1
+                    )
+                    if total_goals > 0
+                    else 0,
+                    "tasks_completion_rate": round(
+                        (completed_tasks / total_tasks) * 100, 1
+                    )
+                    if total_tasks > 0
+                    else 0,
+                },
+            }
+
+            overview_data["projects"].append(project_data)
+
+        # Sort projects by updated_at (most recent first)
+        overview_data["projects"].sort(key=lambda x: x["updated_at"], reverse=True)
+
+        return overview_data
+
+    except Exception as e:
+        logger.error(f"Error getting timeline overview for user {current_user.id}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get timeline overview: {str(e)}"
+        )
 
 
 def _get_status_color(status: TaskStatus, progress_percentage: float) -> str:

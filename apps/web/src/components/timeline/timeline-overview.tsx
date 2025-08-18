@@ -13,10 +13,11 @@ import { ja } from 'date-fns/locale'
 interface TimelineOverviewProps {
   data: TimelineOverviewData | null
   isLoading: boolean
+  error?: string | null
   onProjectSelect: (projectId: string) => void
 }
 
-export function TimelineOverview({ data, isLoading, onProjectSelect }: TimelineOverviewProps) {
+export function TimelineOverview({ data, isLoading, error, onProjectSelect }: TimelineOverviewProps) {
   const formatDate = (dateString: string) => {
     return format(parseISO(dateString), 'MM/dd', { locale: ja })
   }
@@ -40,6 +41,25 @@ export function TimelineOverview({ data, isLoading, onProjectSelect }: TimelineO
           </Card>
         ))}
       </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="w-5 h-5" />
+            プロジェクトタイムライン概要
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8">
+            <p className="text-red-500 mb-2">エラーが発生しました</p>
+            <p className="text-sm text-gray-600">{error}</p>
+          </div>
+        </CardContent>
+      </Card>
     )
   }
 

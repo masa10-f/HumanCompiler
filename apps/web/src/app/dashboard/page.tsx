@@ -22,7 +22,7 @@ export default function DashboardPage() {
   const [scheduleLoading, setScheduleLoading] = useState(true)
 
   // Timeline data
-  const { data: timelineData, isLoading: timelineLoading } = useTimelineOverview()
+  const { data: timelineData, isLoading: timelineLoading, error: timelineError } = useTimelineOverview()
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -229,6 +229,7 @@ export default function DashboardPage() {
           <TimelineOverview
             data={timelineData}
             isLoading={timelineLoading}
+            error={timelineError}
             onProjectSelect={(projectId) => router.push(`/timeline/${projectId}`)}
           />
         </div>

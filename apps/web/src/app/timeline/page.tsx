@@ -45,7 +45,7 @@ export default function TimelinePage() {
     }
   }
 
-  const { data: timelineData, isLoading: timelineLoading } = useTimelineOverview(getDateRange(dateRange))
+  const { data: timelineData, isLoading: timelineLoading, error: timelineError } = useTimelineOverview(getDateRange(dateRange))
 
   if (loading) {
     return (
@@ -112,6 +112,7 @@ export default function TimelinePage() {
         <TimelineOverview
           data={timelineData}
           isLoading={timelineLoading}
+          error={timelineError}
           onProjectSelect={handleProjectSelect}
         />
 
