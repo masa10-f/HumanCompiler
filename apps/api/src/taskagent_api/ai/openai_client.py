@@ -192,7 +192,7 @@ class OpenAIClient:
         """Format context for Responses API input"""
         # Debug logging
         logger.info(
-            f"Formatting context: {len(context.projects)} projects, {len(context.goals)} goals, {len(context.tasks)} tasks"
+            f"Formatting context: {len(context.projects)} projects, {len(context.goals)} goals, {len(context.tasks)} tasks, {len(context.weekly_recurring_tasks)} weekly recurring tasks"
         )
 
         projects_section = "\n".join(
@@ -216,13 +216,40 @@ class OpenAIClient:
             ]
         )
 
+        # Add weekly recurring tasks section
+        recurring_tasks_section = ""
+        if context.weekly_recurring_tasks:
+            # Filter selected recurring tasks
+            selected_recurring_tasks = []
+            if context.selected_recurring_task_ids:
+                selected_recurring_tasks = [
+                    rt
+                    for rt in context.weekly_recurring_tasks
+                    if str(rt.id) in context.selected_recurring_task_ids
+                ]
+            else:
+                # If no specific selection, include all active recurring tasks
+                selected_recurring_tasks = context.weekly_recurring_tasks
+
+            if selected_recurring_tasks:
+                recurring_tasks_section = "\n".join(
+                    [
+                        f"### {rt.title}\n- ID: {rt.id}\n- カテゴリ: {rt.category}\n- 予想時間: {rt.estimate_hours}時間\n- 説明: {rt.description or '説明なし'}"
+                        for rt in selected_recurring_tasks
+                    ]
+                )
+
         # Log sample task IDs being sent to OpenAI
         if context.tasks:
             logger.info(
                 f"Sample task IDs being sent to OpenAI: {[str(t.id) for t in context.tasks[:3]]}..."
             )
+        if context.weekly_recurring_tasks:
+            logger.info(
+                f"Weekly recurring task IDs being sent to OpenAI: {[str(rt.id) for rt in context.weekly_recurring_tasks]}"
+            )
 
-        return f"""週間計画を作成してください。
+        base_context = f"""週間計画を作成してください。
 
 ## ユーザー情報
 - ユーザーID: {context.user_id}
@@ -236,18 +263,38 @@ class OpenAIClient:
 {goals_section}
 
 ## 保留中のタスク ({len(context.tasks)} 件)
-{tasks_section}
+{tasks_section}"""
+
+        # Add weekly recurring tasks section if available
+        if recurring_tasks_section:
+            base_context += f"""
+
+## 選択された週課 ({len([rt for rt in context.weekly_recurring_tasks if str(rt.id) in (context.selected_recurring_task_ids or [])])} 件)
+{recurring_tasks_section}
+
+## 重要な制約
+**必ず「保留中のタスク」および「選択された週課」セクションに記載されているID（タスクIDまたは週課ID）のみを選択してください。**
+上記の一覧に存在しないIDは使用しないでください。
+
+注意: 週課（週間反復タスク）も通常のタスクと同様に計画に含めて、週間スケジュールに組み込んでください。"""
+        else:
+            base_context += """
 
 ## 重要な制約
 **必ず「保留中のタスク」セクションに記載されているタスクIDのみを選択してください。**
-上記のタスク一覧に存在しないIDは使用しないでください。
+上記のタスク一覧に存在しないIDは使用しないでください。"""
+
+        base_context += """
 
 重点項目:
 1. 重要目標の前進につながるタスクを優先
 2. ディープワーク時間の最適配分
 3. 週全体の作業負荷バランス
 4. 期限と依存関係の考慮
-5. 具体的なスケジューリング提案"""
+5. 週課（反復タスク）の確実な実行
+6. 具体的なスケジューリング提案"""
+
+        return base_context
 
     def _get_planning_tools(self) -> list[dict]:
         """Get tools definition for weekly planning"""
