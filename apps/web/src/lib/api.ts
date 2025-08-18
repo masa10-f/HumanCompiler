@@ -29,6 +29,10 @@ import type {
   TaskProgress
 } from '@/types/progress';
 import type {
+  ProjectTimelineData,
+  TimelineOverviewData
+} from '@/types/timeline';
+import type {
   WeeklyPlanRequest,
   WeeklyPlanResponse,
   WorkloadAnalysis,
@@ -546,6 +550,24 @@ class ApiClient {
   async testOptimizationPipeline(): Promise<OptimizationTestResponse> {
     return this.request<OptimizationTestResponse>('/api/optimization/test');
   }
+
+  // Timeline API methods
+  async getProjectTimeline(projectId: string, startDate?: string, endDate?: string, timeUnit?: string): Promise<ProjectTimelineData> {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    if (timeUnit) params.append('time_unit', timeUnit);
+
+    return this.request<ProjectTimelineData>(`/api/timeline/projects/${projectId}?${params.toString()}`);
+  }
+
+  async getTimelineOverview(startDate?: string, endDate?: string): Promise<TimelineOverviewData> {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+
+    return this.request<TimelineOverviewData>(`/api/timeline/overview?${params.toString()}`);
+  }
 }
 
 export const apiClient = new ApiClient();
@@ -632,6 +654,13 @@ export const optimizationApi = {
   getStatus: (weekStartDate: string) => apiClient.getOptimizationStatus(weekStartDate),
   clearCache: (weekStartDate: string) => apiClient.clearOptimizationCache(weekStartDate),
   test: () => apiClient.testOptimizationPipeline(),
+};
+
+export const timelineApi = {
+  getProjectTimeline: (projectId: string, startDate?: string, endDate?: string, timeUnit?: string) =>
+    apiClient.getProjectTimeline(projectId, startDate, endDate, timeUnit),
+  getOverview: (startDate?: string, endDate?: string) =>
+    apiClient.getTimelineOverview(startDate, endDate),
 };
 
 // Export helper function for getting secure API URL
