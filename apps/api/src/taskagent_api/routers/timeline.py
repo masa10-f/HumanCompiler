@@ -7,6 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select, and_, or_
+from sqlalchemy.orm import selectinload
 
 from ..auth import get_current_user, AuthUser
 from ..database import get_session
@@ -79,8 +80,12 @@ async def get_project_timeline(
             hour=23, minute=59, second=59, microsecond=999999
         )
 
-    # Get all goals for the project
-    goals_statement = select(Goal).where(Goal.project_id == project_id)
+    # Get all goals for the project with tasks and logs in a single query (fix N+1 problem)
+    goals_statement = (
+        select(Goal)
+        .options(selectinload(Goal.tasks).selectinload(Task.logs))
+        .where(Goal.project_id == project_id)
+    )
     goals = session.exec(goals_statement).all()
 
     timeline_data = {
@@ -100,9 +105,8 @@ async def get_project_timeline(
     }
 
     for goal in goals:
-        # Get all tasks for this goal
-        tasks_statement = select(Task).where(Task.goal_id == goal.id)
-        tasks = session.exec(tasks_statement).all()
+        # Use preloaded tasks from the relationship (N+1 problem fixed)
+        tasks = goal.tasks
 
         goal_data = {
             "id": str(goal.id),
@@ -116,9 +120,8 @@ async def get_project_timeline(
         }
 
         for task in tasks:
-            # Get logs for progress calculation
-            logs_statement = select(Log).where(Log.task_id == task.id)
-            logs = session.exec(logs_statement).all()
+            # Use preloaded logs from the relationship (N+1 problem fixed)
+            logs = task.logs
 
             total_actual_minutes = sum(log.actual_minutes for log in logs)
             estimate_minutes = float(task.estimate_hours) * 60
@@ -185,9 +188,18 @@ async def get_timeline_overview(
                 hour=23, minute=59, second=59, microsecond=999999
             )
 
-        # Get all projects for the user
-        projects_statement = select(Project).where(
-            Project.owner_id == current_user.user_id
+        # Get all projects for the user with goals and tasks preloaded (fix N+1 problem)
+        # Convert user_id to UUID for proper comparison
+        user_id = current_user.user_id
+        if isinstance(user_id, str):
+            from uuid import UUID
+
+            user_id = UUID(user_id)
+
+        projects_statement = (
+            select(Project)
+            .options(selectinload(Project.goals).selectinload(Goal.tasks))
+            .where(Project.owner_id == user_id)
         )
         projects = session.exec(projects_statement).all()
 
@@ -205,9 +217,8 @@ async def get_timeline_overview(
         }
 
         for project in projects:
-            # Get project statistics
-            goals_statement = select(Goal).where(Goal.project_id == project.id)
-            goals = session.exec(goals_statement).all()
+            # Use preloaded goals from the relationship (N+1 problem fixed)
+            goals = project.goals
 
             total_goals = len(goals)
             completed_goals = len(
@@ -217,12 +228,10 @@ async def get_timeline_overview(
                 [g for g in goals if g.status == GoalStatus.IN_PROGRESS]
             )
 
-            # Get all tasks for this project
+            # Get all tasks for this project from preloaded relationships (N+1 problem fixed)
             all_tasks = []
             for goal in goals:
-                tasks_statement = select(Task).where(Task.goal_id == goal.id)
-                tasks = session.exec(tasks_statement).all()
-                all_tasks.extend(tasks)
+                all_tasks.extend(goal.tasks)
 
             total_tasks = len(all_tasks)
             completed_tasks = len(

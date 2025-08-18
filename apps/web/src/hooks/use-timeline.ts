@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useToast } from '@/hooks/use-toast'
 import type { ProjectTimelineData, TimelineOverviewData, TimelineFilters } from '@/types/timeline'
 import { timelineApi } from '@/lib/api'
@@ -11,7 +11,16 @@ export function useProjectTimeline(projectId: string | null, filters?: TimelineF
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
 
-  const fetchTimeline = async () => {
+  // Memoize filters to prevent unnecessary re-renders
+  const memoizedFilters = useMemo(() => {
+    return filters ? {
+      start_date: filters.start_date,
+      end_date: filters.end_date,
+      time_unit: filters.time_unit
+    } : undefined
+  }, [filters?.start_date, filters?.end_date, filters?.time_unit])
+
+  const fetchTimeline = useCallback(async () => {
     if (!projectId) {
       setData(null)
       return
@@ -23,11 +32,11 @@ export function useProjectTimeline(projectId: string | null, filters?: TimelineF
     try {
       const timelineData = await timelineApi.getProjectTimeline(
         projectId,
-        filters?.start_date,
-        filters?.end_date,
-        filters?.time_unit
+        memoizedFilters?.start_date,
+        memoizedFilters?.end_date,
+        memoizedFilters?.time_unit
       )
-      setData(timelineData as ProjectTimelineData)
+      setData(timelineData)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'タイムラインの取得に失敗しました'
       setError(errorMessage)
@@ -39,11 +48,11 @@ export function useProjectTimeline(projectId: string | null, filters?: TimelineF
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [projectId, memoizedFilters, toast])
 
   useEffect(() => {
     fetchTimeline()
-  }, [projectId, filters?.start_date, filters?.end_date, filters?.time_unit])
+  }, [fetchTimeline])
 
   return {
     data,
@@ -59,13 +68,21 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
 
-  const fetchOverview = async () => {
+  // Memoize filters to prevent unnecessary re-renders
+  const memoizedFilters = useMemo(() => {
+    return filters ? {
+      start_date: filters.start_date,
+      end_date: filters.end_date
+    } : undefined
+  }, [filters?.start_date, filters?.end_date])
+
+  const fetchOverview = useCallback(async () => {
     setIsLoading(true)
     setError(null)
 
     try {
-      const overviewData = await timelineApi.getOverview(filters?.start_date, filters?.end_date)
-      setData(overviewData as TimelineOverviewData)
+      const overviewData = await timelineApi.getOverview(memoizedFilters?.start_date, memoizedFilters?.end_date)
+      setData(overviewData)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'タイムライン概要の取得に失敗しました'
       setError(errorMessage)
@@ -77,11 +94,11 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [memoizedFilters, toast])
 
   useEffect(() => {
     fetchOverview()
-  }, [filters?.start_date, filters?.end_date])
+  }, [fetchOverview])
 
   return {
     data,

@@ -29,6 +29,10 @@ import type {
   TaskProgress
 } from '@/types/progress';
 import type {
+  ProjectTimelineData,
+  TimelineOverviewData
+} from '@/types/timeline';
+import type {
   WeeklyPlanRequest,
   WeeklyPlanResponse,
   WorkloadAnalysis,
@@ -548,21 +552,21 @@ class ApiClient {
   }
 
   // Timeline API methods
-  async getProjectTimeline(projectId: string, startDate?: string, endDate?: string, timeUnit?: string): Promise<any> {
+  async getProjectTimeline(projectId: string, startDate?: string, endDate?: string, timeUnit?: string): Promise<ProjectTimelineData> {
     const params = new URLSearchParams();
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
     if (timeUnit) params.append('time_unit', timeUnit);
 
-    return this.request<any>(`/api/timeline/projects/${projectId}?${params.toString()}`);
+    return this.request<ProjectTimelineData>(`/api/timeline/projects/${projectId}?${params.toString()}`);
   }
 
-  async getTimelineOverview(startDate?: string, endDate?: string): Promise<any> {
+  async getTimelineOverview(startDate?: string, endDate?: string): Promise<TimelineOverviewData> {
     const params = new URLSearchParams();
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
 
-    return this.request<any>(`/api/timeline/overview?${params.toString()}`);
+    return this.request<TimelineOverviewData>(`/api/timeline/overview?${params.toString()}`);
   }
 }
 

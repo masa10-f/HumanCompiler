@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useMemo, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -36,10 +36,10 @@ export function ProjectTimeline({
   const timelineRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
 
-  const handleTimeUnitChange = (unit: string) => {
+  const handleTimeUnitChange = useCallback((unit: string) => {
     setTimeUnit(unit)
     onTimeUnitChange(unit)
-  }
+  }, [onTimeUnitChange])
 
   const downloadTimeline = async () => {
     if (!timelineRef.current || !data) return
@@ -95,24 +95,40 @@ export function ProjectTimeline({
     return format(parseISO(dateString), 'yyyy年MM月dd日', { locale: ja })
   }
 
-  const calculateTaskWidth = (task: TimelineTask, startDate: Date, endDate: Date) => {
+  // Memoize expensive date calculations
+  const timelineCalculations = useMemo(() => {
+    if (!data) return null
+
+    const timelineStartDate = parseISO(data.timeline.start_date)
+    const timelineEndDate = parseISO(data.timeline.end_date)
+
+    return {
+      startDate: timelineStartDate,
+      endDate: timelineEndDate,
+      totalDays: differenceInDays(timelineEndDate, timelineStartDate)
+    }
+  }, [data?.timeline.start_date, data?.timeline.end_date])
+
+  const calculateTaskWidth = useCallback((task: TimelineTask) => {
+    if (!timelineCalculations) return 100
+
     const taskStart = parseISO(task.created_at)
     const taskEnd = task.due_date ? parseISO(task.due_date) : new Date()
-    const totalDays = differenceInDays(endDate, startDate)
     const taskDays = differenceInDays(taskEnd, taskStart)
 
-    if (totalDays <= 0) return 100
-    return Math.max((taskDays / totalDays) * 100, 10) // Minimum 10% width
-  }
+    if (timelineCalculations.totalDays <= 0) return 100
+    return Math.max((taskDays / timelineCalculations.totalDays) * 100, 10) // Minimum 10% width
+  }, [timelineCalculations])
 
-  const calculateTaskPosition = (task: TimelineTask, startDate: Date, endDate: Date) => {
+  const calculateTaskPosition = useCallback((task: TimelineTask) => {
+    if (!timelineCalculations) return 0
+
     const taskStart = parseISO(task.created_at)
-    const totalDays = differenceInDays(endDate, startDate)
-    const daysSinceStart = differenceInDays(taskStart, startDate)
+    const daysSinceStart = differenceInDays(taskStart, timelineCalculations.startDate)
 
-    if (totalDays <= 0) return 0
-    return Math.max((daysSinceStart / totalDays) * 100, 0)
-  }
+    if (timelineCalculations.totalDays <= 0) return 0
+    return Math.max((daysSinceStart / timelineCalculations.totalDays) * 100, 0)
+  }, [timelineCalculations])
 
   if (isLoading) {
     return (
@@ -169,8 +185,7 @@ export function ProjectTimeline({
     )
   }
 
-  const timelineStartDate = parseISO(data.timeline.start_date)
-  const timelineEndDate = parseISO(data.timeline.end_date)
+  // Use memoized timeline calculations
 
   return (
     <div className="space-y-6">
@@ -295,8 +310,8 @@ export function ProjectTimeline({
                               className="absolute h-full rounded-full transition-all"
                               style={{
                                 backgroundColor: task.status_color,
-                                left: `${calculateTaskPosition(task, timelineStartDate, timelineEndDate)}%`,
-                                width: `${calculateTaskWidth(task, timelineStartDate, timelineEndDate)}%`,
+                                left: `${calculateTaskPosition(task)}%`,
+                                width: `${calculateTaskWidth(task)}%`,
                                 opacity: 0.7
                               }}
                             />
