@@ -71,8 +71,8 @@ class Database:
             # Use the database URL as-is from environment
             database_url = settings.database_url
 
-            # Minimal connection args
-            connect_args = {"connect_timeout": 10, "application_name": "TaskAgent-API"}
+            # Minimal connection args for PostgreSQL
+            connect_args = {}
 
             # Configure pool settings with environment variable overrides
             import os
@@ -108,7 +108,12 @@ class Database:
                 # Enable query result caching for better performance
                 execution_options={
                     "compiled_cache": {},
-                    "isolation_level": "READ_COMMITTED",
+                    # Only set isolation_level for PostgreSQL, skip for SQLite
+                    **(
+                        {"isolation_level": "READ_COMMITTED"}
+                        if "postgresql" in database_url
+                        else {}
+                    ),
                 },
             )
 
