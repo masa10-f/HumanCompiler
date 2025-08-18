@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select, and_, or_
 
-from ..auth import get_current_user
+from ..auth import get_current_user, AuthUser
 from ..database import get_session
 from ..models import User, Project, Goal, Task, Log, TaskStatus, GoalStatus
 
@@ -23,7 +23,7 @@ async def get_project_timeline(
     start_date: datetime = Query(None, description="Timeline start date"),
     end_date: datetime = Query(None, description="Timeline end date"),
     time_unit: str = Query("day", description="Time unit: day, week, month"),
-    current_user: User = Depends(get_current_user),
+    current_user: AuthUser = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     """
@@ -31,10 +31,33 @@ async def get_project_timeline(
 
     Returns project timeline with goals and tasks arranged by time periods
     """
-    # Verify project ownership
-    project = session.get(Project, project_id)
-    if not project or project.owner_id != current_user.user_id:
-        raise HTTPException(status_code=404, detail="Project not found")
+    try:
+        logger.info(
+            f"Getting timeline for project {project_id}, user {current_user.user_id} ({current_user.email})"
+        )
+
+        # Verify project ownership
+        project = session.get(Project, project_id)
+        logger.info(f"Project lookup result: {project is not None}")
+
+        if not project:
+            logger.warning(f"Project {project_id} not found in database")
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        logger.info(f"Project found: {project.title}, owner: {project.owner_id}")
+
+        if project.owner_id != current_user.user_id:
+            logger.warning(
+                f"Project {project_id} ownership mismatch: owner={project.owner_id}, user={current_user.user_id}"
+            )
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        logger.info(f"Project ownership verified for {project_id}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error verifying project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to verify project")
 
     # Set default date range if not provided
     if not start_date:
@@ -129,7 +152,7 @@ async def get_project_timeline(
 async def get_timeline_overview(
     start_date: datetime = Query(None, description="Timeline start date"),
     end_date: datetime = Query(None, description="Timeline end date"),
-    current_user: User = Depends(get_current_user),
+    current_user: AuthUser = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     """
