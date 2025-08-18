@@ -40,10 +40,10 @@ class BaseService(ABC, Generic[T, CreateT, UpdateT]):
         self, session: Session, data: CreateT, user_id: str | UUID, **kwargs
     ) -> T:
         """Create a new entity"""
-        user_id = validate_uuid(user_id, "user_id")
+        user_id_validated = validate_uuid(user_id, "user_id")
 
         def create_operation():
-            instance = self._create_instance(data, user_id=user_id, **kwargs)
+            instance = self._create_instance(data, user_id=user_id_validated, **kwargs)
             instance.id = uuid4()
             session.add(instance)
             session.flush()  # Get ID without committing
@@ -56,10 +56,10 @@ class BaseService(ABC, Generic[T, CreateT, UpdateT]):
     ) -> T | None:
         """Get entity by ID for specific user"""
         entity_id = validate_uuid(entity_id, "entity_id")
-        user_id = validate_uuid(user_id, "user_id")
+        user_id_validated = validate_uuid(user_id, "user_id")
 
         statement = select(self.model).where(
-            self.model.id == entity_id, self._get_user_filter(user_id)
+            self.model.id == entity_id, self._get_user_filter(user_id_validated)
         )
 
         result = session.exec(statement).first()
@@ -77,7 +77,8 @@ class BaseService(ABC, Generic[T, CreateT, UpdateT]):
         **filters,
     ) -> list[T]:
         """Get all entities for specific user with optional filters"""
-        statement = select(self.model).where(self._get_user_filter(user_id))
+        user_id_validated = validate_uuid(user_id, "user_id")
+        statement = select(self.model).where(self._get_user_filter(user_id_validated))
 
         # Add additional filters
         for key, value in filters.items():
@@ -100,10 +101,10 @@ class BaseService(ABC, Generic[T, CreateT, UpdateT]):
     ) -> T:
         """Update entity"""
         entity_id = validate_uuid(entity_id, "entity_id")
-        user_id = validate_uuid(user_id, "user_id")
+        user_id_validated = validate_uuid(user_id, "user_id")
 
         # This will raise ResourceNotFoundError if not found
-        entity = self.get_by_id(session, entity_id, user_id)
+        entity = self.get_by_id(session, entity_id, user_id_validated)
 
         def update_operation():
             update_data = data.model_dump(exclude_unset=True)
@@ -125,10 +126,10 @@ class BaseService(ABC, Generic[T, CreateT, UpdateT]):
     ) -> bool:
         """Delete entity"""
         entity_id = validate_uuid(entity_id, "entity_id")
-        user_id = validate_uuid(user_id, "user_id")
+        user_id_validated = validate_uuid(user_id, "user_id")
 
         # This will raise ResourceNotFoundError if not found
-        entity = self.get_by_id(session, entity_id, user_id)
+        entity = self.get_by_id(session, entity_id, user_id_validated)
 
         def delete_operation():
             session.delete(entity)
