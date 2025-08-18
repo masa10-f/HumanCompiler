@@ -325,25 +325,41 @@ class WeeklyTaskSolver:
         cls, user_id: UUID, session: Session
     ) -> "WeeklyTaskSolver":
         """Create solver instance for specific user with their API key."""
-        # Get user settings
-        result = session.execute(
-            select(UserSettings).where(UserSettings.user_id == user_id)
-        )
-        user_settings = result.scalar_one_or_none()
-
-        openai_client = None
-        model = "gpt-5"  # Default to GPT-5
-
-        if user_settings and user_settings.openai_api_key_encrypted:
-            # Decrypt API key
-            api_key = get_crypto_service().decrypt(
-                user_settings.openai_api_key_encrypted
+        try:
+            # Get user settings
+            result = session.execute(
+                select(UserSettings).where(UserSettings.user_id == user_id)
             )
-            if api_key:
-                openai_client = OpenAI(api_key=api_key)
-                model = user_settings.openai_model or model
+            user_settings = result.scalar_one_or_none()
 
-        return cls(openai_client=openai_client, model=model)
+            openai_client = None
+            model = "gpt-5"  # Default to GPT-5
+
+            if user_settings and user_settings.openai_api_key_encrypted:
+                try:
+                    # Decrypt API key with error handling
+                    api_key = get_crypto_service().decrypt(
+                        user_settings.openai_api_key_encrypted
+                    )
+                    if api_key:
+                        openai_client = OpenAI(api_key=api_key)
+                        model = user_settings.openai_model or model
+                        logger.info(
+                            f"Using user-specific OpenAI API key for user {user_id}"
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to decrypt API key for user {user_id}: {e}")
+                    # Continue without user-specific API key
+
+            if not openai_client:
+                logger.info(f"Using system default OpenAI client for user {user_id}")
+
+            return cls(openai_client=openai_client, model=model)
+
+        except Exception as e:
+            logger.error(f"Failed to create WeeklyTaskSolver for user {user_id}: {e}")
+            # Return solver without OpenAI client as fallback
+            return cls(openai_client=None, model="gpt-5")
 
     async def solve_weekly_tasks(
         self, session: Session, user_id: str, request: TaskSolverRequest
