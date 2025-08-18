@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 from sqlmodel import Session, delete, select
 
 from taskagent_api.base_service import BaseService
+from taskagent_api.common.error_handlers import validate_uuid
 from taskagent_api.models import (
     Goal,
     GoalCreate,
@@ -875,8 +876,9 @@ class WeeklyRecurringTaskService(
         is_active: bool | None = None,
     ) -> list[WeeklyRecurringTask]:
         """Get weekly recurring tasks for specific user with optional filters"""
+        user_id_validated = validate_uuid(user_id, "user_id")
         statement = select(WeeklyRecurringTask).where(
-            WeeklyRecurringTask.user_id == user_id,
+            WeeklyRecurringTask.user_id == user_id_validated,
             WeeklyRecurringTask.deleted_at.is_(None),  # Exclude soft deleted tasks
         )
 

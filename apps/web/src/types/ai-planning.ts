@@ -7,6 +7,7 @@ export interface WeeklyPlanRequest {
   selected_recurring_task_ids?: string[];
   project_allocations?: Record<string, number>;
   preferences?: Record<string, unknown>;
+  user_prompt?: string;
 }
 
 export interface TaskPlan {
@@ -25,6 +26,8 @@ export interface WeeklyPlanResponse {
   recommendations: string[];
   insights: string[];
   project_allocations?: ProjectAllocation[];
+  constraint_analysis?: Record<string, any>;
+  solver_metrics?: Record<string, any>;
   generated_at: string;
 }
 

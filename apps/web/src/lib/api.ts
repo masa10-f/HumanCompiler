@@ -360,10 +360,39 @@ class ApiClient {
 
   // AI Planning API methods
   async generateWeeklyPlan(planRequest: WeeklyPlanRequest): Promise<WeeklyPlanResponse> {
-    return this.request<WeeklyPlanResponse>('/api/ai/weekly-plan', {
+    // Use the new OR-Tools weekly task solver instead of legacy weekly-plan
+    const solverRequest = {
+      week_start_date: planRequest.week_start_date,
+      constraints: {
+        total_capacity_hours: planRequest.capacity_hours,
+        deadline_weight: 0.4,
+        project_balance_weight: 0.3,
+        effort_efficiency_weight: 0.3,
+      },
+      project_filter: planRequest.project_filter,
+      selected_recurring_task_ids: planRequest.selected_recurring_task_ids || [],
+      preferences: planRequest.preferences || {},
+      user_prompt: planRequest.user_prompt,
+    };
+
+    const solverResponse = await this.request<any>('/api/ai/weekly-task-solver', {
       method: 'POST',
-      body: JSON.stringify(planRequest),
+      body: JSON.stringify(solverRequest),
     });
+
+    // Convert TaskSolverResponse to WeeklyPlanResponse format for compatibility
+    return {
+      success: solverResponse.success,
+      week_start_date: solverResponse.week_start_date,
+      total_planned_hours: solverResponse.total_allocated_hours,
+      task_plans: solverResponse.selected_tasks || [],
+      recommendations: [], // TaskSolver doesn't have recommendations
+      insights: solverResponse.optimization_insights || [],
+      project_allocations: solverResponse.project_allocations || [],
+      constraint_analysis: solverResponse.constraint_analysis,
+      solver_metrics: solverResponse.solver_metrics,
+      generated_at: solverResponse.generated_at,
+    };
   }
 
   async analyzeWorkload(projectIds?: string[]): Promise<WorkloadAnalysis> {

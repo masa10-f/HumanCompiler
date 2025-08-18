@@ -72,6 +72,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ENCRYPTION_SALT: ${{ secrets.ENCRYPTION_SALT }}
           PYTHONPATH: "src"
 
   deploy-preview:
@@ -103,6 +104,7 @@ jobs:
             SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
             SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
             SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            ENCRYPTION_SALT="${{ secrets.ENCRYPTION_SALT }}" \
             --app taskagent-api-masa-preview
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -166,6 +168,7 @@ jobs:
             SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
             SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
             SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            ENCRYPTION_SALT="${{ secrets.ENCRYPTION_SALT }}" \
             --app taskagent-api-masa
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

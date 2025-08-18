@@ -5,6 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { optimizationApi } from '@/lib/api';
 import type {
@@ -58,6 +60,8 @@ export default function OptimizationDashboard({
     error: null,
   });
 
+  const [userPrompt, setUserPrompt] = useState('');
+
   const [currentWeekStart, setCurrentWeekStart] = useState(getDefaultWeekStart());
   const [selectedPreset, setSelectedPreset] = useState(0);
 
@@ -89,6 +93,7 @@ export default function OptimizationDashboard({
         optimization_timeout_seconds: 30,
         fallback_on_failure: true,
         preferences: {},
+        user_prompt: userPrompt.trim() || undefined,
       };
 
       // Simulate progress updates during execution
@@ -147,7 +152,7 @@ export default function OptimizationDashboard({
         variant: 'destructive',
       });
     }
-  }, [currentWeekStart, uiState.constraints, uiState.timeSlots, toast, onOptimizationComplete]);
+  }, [currentWeekStart, uiState.constraints, uiState.timeSlots, userPrompt, toast, onOptimizationComplete]);
 
   const handleClearCache = useCallback(async () => {
     try {
@@ -258,7 +263,23 @@ export default function OptimizationDashboard({
                 制約条件と時間スロットを設定してください
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="user-prompt">優先度調整の指示 (任意)</Label>
+                <Textarea
+                  id="user-prompt"
+                  placeholder="この週は特定のタスクを優先したい場合は、ここに指示を入力してください。例: 「この週は特にリサーチタスクを優先して取り組みたい」"
+                  value={userPrompt}
+                  onChange={(e) => setUserPrompt(e.target.value)}
+                  disabled={uiState.isExecuting}
+                  rows={3}
+                  className="resize-none"
+                />
+                <div className="text-xs text-gray-500">
+                  ユーザープロンプトはAIがタスクの優先度を決定する際に考慮されます
+                </div>
+              </div>
+
               <Tabs defaultValue="presets" className="space-y-4">
                 <TabsList className="grid w-full grid-cols-3">
                   <TabsTrigger value="presets">プリセット</TabsTrigger>
