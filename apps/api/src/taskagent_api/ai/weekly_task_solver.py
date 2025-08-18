@@ -8,7 +8,7 @@ to provide intelligent task selection, project allocation, and constraint-based 
 import json
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Any
 from uuid import UUID
 
@@ -264,7 +264,6 @@ class TaskPriorityExtractor:
     ) -> dict[str, float]:
         """Fallback priority calculation when AI is unavailable."""
         priorities = {}
-        week_end = context.week_start_date + timedelta(days=7)
 
         for task in context.tasks:
             base_priority = 5.0  # Default medium priority
@@ -461,12 +460,21 @@ class WeeklyTaskSolver:
         )
 
         # Count urgent tasks (due within week)
-        week_end = context.week_start_date + timedelta(days=7)
-        urgent_tasks = [
-            task
-            for task in context.tasks
-            if task.due_date and task.due_date <= week_end
-        ]
+        week_start_dt = datetime.combine(context.week_start_date, datetime.min.time())
+        week_end_dt = week_start_dt + timedelta(days=7)
+        urgent_tasks = []
+        for task in context.tasks:
+            if task.due_date:
+                # Ensure we have a datetime object for comparison
+                if hasattr(task.due_date, "hour"):
+                    # It's a datetime object
+                    task_due_dt = task.due_date
+                else:
+                    # It's a date object, convert to datetime
+                    task_due_dt = datetime.combine(task.due_date, datetime.min.time())
+
+                if task_due_dt <= week_end_dt:
+                    urgent_tasks.append(task)
 
         return {
             "total_task_hours": total_task_hours,
@@ -508,12 +516,25 @@ class WeeklyTaskSolver:
                 )
             ]
 
-            urgent_count = sum(
-                1
-                for task in project_tasks
-                if task.due_date
-                and task.due_date <= context.week_start_date + timedelta(days=7)
+            week_start_dt = datetime.combine(
+                context.week_start_date, datetime.min.time()
             )
+            week_end_dt = week_start_dt + timedelta(days=7)
+            urgent_count = 0
+            for task in project_tasks:
+                if task.due_date:
+                    # Ensure we have a datetime object for comparison
+                    if hasattr(task.due_date, "hour"):
+                        # It's a datetime object
+                        task_due_dt = task.due_date
+                    else:
+                        # It's a date object, convert to datetime
+                        task_due_dt = datetime.combine(
+                            task.due_date, datetime.min.time()
+                        )
+
+                    if task_due_dt <= week_end_dt:
+                        urgent_count += 1
             total_hours = sum(float(task.estimate_hours or 0) for task in project_tasks)
 
             priority_score = urgent_count * 2.0 + total_hours * 0.1
@@ -603,7 +624,6 @@ class WeeklyTaskSolver:
 
         # Sort tasks by priority score
         scored_items = []
-        week_end = context.week_start_date + timedelta(days=7)
 
         # Process regular tasks
         for task in context.tasks:
