@@ -41,6 +41,9 @@ class WeeklyPlanRequest(BaseModel):
     preferences: dict[str, Any] = Field(
         default_factory=dict, description="User preferences"
     )
+    user_prompt: str | None = Field(
+        None, description="User instructions for weekly scheduling priorities"
+    )
 
 
 class TaskPlan(BaseModel):

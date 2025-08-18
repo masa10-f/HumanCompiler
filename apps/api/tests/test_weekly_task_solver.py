@@ -250,10 +250,11 @@ class TestWeeklyTaskSolver:
         assert response.week_start_date == "2025-08-12"
         assert response.total_allocated_hours == 0.0
         assert len(response.selected_tasks) == 0
-        assert (
-            "Using heuristic task selection (AI unavailable)"
-            in response.optimization_insights
-        )
+        # New implementation uses OR-Tools instead of heuristic fallback
+        assert response.success is True
+        assert len(response.optimization_insights) > 0
+        # Should contain OR-Tools optimization message
+        assert any("OR-Tools" in insight for insight in response.optimization_insights)
 
     def test_analyze_constraints_basic(self):
         """Test constraint analysis."""

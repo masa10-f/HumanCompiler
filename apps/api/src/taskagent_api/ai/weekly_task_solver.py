@@ -64,6 +64,9 @@ class TaskSolverRequest(BaseModel):
         default_factory=list, description="Selected weekly recurring task IDs"
     )
     preferences: dict[str, Any] = Field(default_factory=dict)
+    user_prompt: str | None = Field(
+        None, description="User instructions for weekly scheduling priorities"
+    )
 
 
 class TaskSolverResponse(BaseModel):
@@ -80,6 +83,233 @@ class TaskSolverResponse(BaseModel):
     generated_at: datetime
 
 
+class TaskPriorityExtractor:
+    """Extract task priorities using OpenAI API based on user requirements."""
+
+    def __init__(self, openai_client: OpenAI | None = None, model: str = "gpt-4"):
+        """Initialize priority extractor with OpenAI client."""
+        self.openai_client = openai_client
+        self.model = model
+
+    async def extract_priorities(
+        self,
+        context: WeeklyPlanContext,
+        user_prompt: str | None,
+        project_allocations: list[ProjectAllocation],
+    ) -> dict[str, float]:
+        """
+        Extract task priorities from user requirements and project context.
+
+        Args:
+            context: Weekly planning context with tasks and projects
+            user_prompt: User instructions for priority adjustment
+            project_allocations: Project resource allocation ratios
+
+        Returns:
+            Dictionary mapping task_id to priority score (0.0-10.0)
+        """
+        if not self.openai_client:
+            return self._fallback_priority_calculation(context, project_allocations)
+
+        try:
+            priority_context = self._create_priority_context(
+                context, user_prompt, project_allocations
+            )
+
+            response = self.openai_client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "あなたは週間タスク優先度の専門家です。与えられた情報を基に各タスクの優先度スコア（0-10）を算出してください。",
+                    },
+                    {"role": "user", "content": priority_context},
+                ],
+                tools=[self._get_priority_extraction_tool()],
+                tool_choice="auto",
+                temperature=0.3,
+            )
+
+            return self._parse_priority_response(response, context)
+
+        except Exception as e:
+            logger.error(f"Priority extraction failed: {e}")
+            return self._fallback_priority_calculation(context, project_allocations)
+
+    def _create_priority_context(
+        self,
+        context: WeeklyPlanContext,
+        user_prompt: str | None,
+        project_allocations: list[ProjectAllocation],
+    ) -> str:
+        """Create context for priority extraction."""
+        tasks_data = []
+        for task in context.tasks:
+            task_data = {
+                "id": task.id,
+                "title": task.title,
+                "description": task.description,
+                "estimate_hours": task.estimate_hours,
+                "due_date": task.due_date.isoformat() if task.due_date else None,
+                "goal_id": task.goal_id,
+            }
+            tasks_data.append(task_data)
+
+        projects_data = []
+        for project in context.projects:
+            allocation = next(
+                (a for a in project_allocations if a.project_id == project.id), None
+            )
+            project_data = {
+                "id": project.id,
+                "title": project.title,
+                "description": project.description,
+                "allocation_ratio": allocation.priority_weight if allocation else 0.0,
+            }
+            projects_data.append(project_data)
+
+        goals_data = []
+        for goal in context.goals:
+            goal_data = {
+                "id": goal.id,
+                "project_id": goal.project_id,
+                "title": goal.title,
+                "description": goal.description,
+            }
+            goals_data.append(goal_data)
+
+        prompt_section = ""
+        if user_prompt:
+            prompt_section = f"""
+
+## ユーザーからの特別な指示
+{user_prompt}
+
+上記の指示を優先度計算に反映してください。"""
+
+        return f"""週間タスクの優先度を算出してください。
+
+## プロジェクト情報とリソース配分
+{json.dumps(projects_data, indent=2, ensure_ascii=False)}
+
+## ゴール情報
+{json.dumps(goals_data, indent=2, ensure_ascii=False)}
+
+## タスクリスト
+{json.dumps(tasks_data, indent=2, ensure_ascii=False)}
+
+## 週開始日
+{context.week_start_date.strftime("%Y-%m-%d")}
+
+## 優先度算出の基準
+1. **締切の緊急度** - 週内および近い将来の締切
+2. **プロジェクトの戦略的重要度** - リソース配分比率を考慮
+3. **タスクの影響度** - プロジェクト目標への貢献度
+4. **依存関係** - 他のタスクをブロックする可能性
+5. **工数効率** - 投入時間に対する価値{prompt_section}
+
+各タスクに対して0.0-10.0の優先度スコアを算出し、extract_task_priorities関数で構造化して返してください。"""
+
+    def _get_priority_extraction_tool(self) -> dict[str, Any]:
+        """Get tool definition for priority extraction."""
+        return {
+            "type": "function",
+            "function": {
+                "name": "extract_task_priorities",
+                "description": "Extract priority scores for tasks",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_priorities": {
+                            "type": "object",
+                            "description": "Task ID to priority score mapping",
+                            "additionalProperties": {"type": "number"},
+                        },
+                        "priority_rationale": {
+                            "type": "object",
+                            "description": "Explanation for each task's priority",
+                            "additionalProperties": {"type": "string"},
+                        },
+                        "optimization_insights": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Strategic insights about priority decisions",
+                        },
+                    },
+                    "required": ["task_priorities"],
+                },
+            },
+        }
+
+    def _parse_priority_response(
+        self, response, context: WeeklyPlanContext
+    ) -> dict[str, float]:
+        """Parse priority extraction response."""
+        try:
+            message = response.choices[0].message
+            if message.tool_calls:
+                tool_call = message.tool_calls[0]
+                if tool_call.function.name == "extract_task_priorities":
+                    function_args = json.loads(tool_call.function.arguments)
+                    return function_args.get("task_priorities", {})
+
+            return self._fallback_priority_calculation(context, [])
+
+        except Exception as e:
+            logger.error(f"Failed to parse priority response: {e}")
+            return self._fallback_priority_calculation(context, [])
+
+    def _fallback_priority_calculation(
+        self, context: WeeklyPlanContext, project_allocations: list[ProjectAllocation]
+    ) -> dict[str, float]:
+        """Fallback priority calculation when AI is unavailable."""
+        priorities = {}
+        week_end = context.week_start_date + timedelta(days=7)
+
+        for task in context.tasks:
+            base_priority = 5.0  # Default medium priority
+
+            # Urgency based on due date
+            if task.due_date:
+                try:
+                    task_due_dt = datetime.combine(task.due_date, datetime.min.time())
+                    week_start_dt = datetime.combine(
+                        context.week_start_date, datetime.min.time()
+                    )
+                    days_until_due = (task_due_dt - week_start_dt).days
+
+                    if days_until_due <= 3:
+                        base_priority += 3.0  # Very urgent
+                    elif days_until_due <= 7:
+                        base_priority += 2.0  # Urgent
+                    elif days_until_due <= 14:
+                        base_priority += 1.0  # Moderately urgent
+                except (TypeError, ValueError):
+                    pass
+
+            # Project allocation weight
+            goal = next((g for g in context.goals if g.id == task.goal_id), None)
+            if goal:
+                allocation = next(
+                    (a for a in project_allocations if a.project_id == goal.project_id),
+                    None,
+                )
+                if allocation:
+                    base_priority += allocation.priority_weight * 2.0
+
+            # Task size consideration (prefer smaller tasks)
+            if task.estimate_hours:
+                if float(task.estimate_hours) <= 2.0:
+                    base_priority += 1.0  # Small task bonus
+                elif float(task.estimate_hours) >= 8.0:
+                    base_priority -= 0.5  # Large task penalty
+
+            # Cap priority at 10.0
+            priorities[str(task.id)] = min(10.0, max(0.0, base_priority))
+
+        return priorities
+
+
 class WeeklyTaskSolver:
     """Advanced AI-powered weekly task solver using GPT-5."""
 
@@ -88,6 +318,7 @@ class WeeklyTaskSolver:
         self.openai_client = openai_client
         self.model = model  # Use GPT-5 for advanced task optimization
         self.context_collector = ContextCollector()
+        self.priority_extractor = TaskPriorityExtractor(openai_client, "gpt-4")
 
     @classmethod
     async def create_for_user(
@@ -139,18 +370,21 @@ class WeeklyTaskSolver:
                 context, request.constraints
             )
 
-            # Generate AI-powered task selection using Responses API
-            if self.openai_client:
-                ai_response = await self._generate_ai_task_selection_responses(
-                    context, request.constraints, project_allocations
-                )
-                selected_tasks = ai_response.get("selected_tasks", [])
-                optimization_insights = ai_response.get("insights", [])
-            else:
-                # Fallback heuristic selection
-                selected_tasks, optimization_insights = self._heuristic_task_selection(
-                    context, request.constraints, project_allocations
-                )
+            # Stage 1: Extract task priorities using OpenAI API
+            logger.info("Stage 1: Extracting task priorities with OpenAI API")
+            task_priorities = await self.priority_extractor.extract_priorities(
+                context, request.user_prompt, project_allocations
+            )
+
+            # Stage 2: Apply OR-Tools optimization with extracted priorities
+            logger.info("Stage 2: Applying OR-Tools optimization with priorities")
+            selected_tasks, optimization_insights = await self._optimize_with_ortools(
+                context,
+                request.constraints,
+                project_allocations,
+                task_priorities,
+                request.user_prompt,
+            )
 
             # Calculate solver metrics
             solver_metrics = self._calculate_solver_metrics(
@@ -836,3 +1070,239 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                 "selected_tasks": [],
                 "insights": [f"ソルバー応答解析エラー: {str(e)}"],
             }
+
+    async def _optimize_with_ortools(
+        self,
+        context: WeeklyPlanContext,
+        constraints: WeeklyConstraints,
+        project_allocations: list[ProjectAllocation],
+        task_priorities: dict[str, float],
+        user_prompt: str | None,
+    ) -> tuple[list[TaskPlan], list[str]]:
+        """
+        Apply OR-Tools constraint optimization with extracted priorities.
+
+        This method implements the second stage of the two-stage optimization:
+        1. Uses task priorities from OpenAI API
+        2. Applies OR-Tools CP-SAT solver for resource allocation
+        """
+        try:
+            from ortools.sat.python import cp_model
+
+            # Create CP-SAT model
+            model = cp_model.CpModel()
+            solver = cp_model.CpSolver()
+
+            # Decision variables: whether to select each task
+            task_vars = {}
+            task_hours = {}
+            task_priority_scores = {}
+
+            for task in context.tasks:
+                task_id = str(task.id)
+                task_vars[task_id] = model.NewBoolVar(f"task_{task_id}")
+                task_hours[task_id] = float(task.estimate_hours or 0)
+                task_priority_scores[task_id] = task_priorities.get(task_id, 5.0)
+
+            # Add selected weekly recurring tasks
+            weekly_task_vars = {}
+            weekly_task_hours = {}
+            weekly_task_priorities = {}
+
+            if context.selected_recurring_task_ids:
+                for weekly_task in context.weekly_recurring_tasks:
+                    if str(weekly_task.id) in context.selected_recurring_task_ids:
+                        task_id = f"weekly_{weekly_task.id}"
+                        weekly_task_vars[task_id] = model.NewBoolVar(
+                            f"weekly_{task_id}"
+                        )
+                        weekly_task_hours[task_id] = float(
+                            weekly_task.estimate_hours or 0
+                        )
+                        weekly_task_priorities[task_id] = (
+                            8.0  # High priority for weekly tasks
+                        )
+
+            # Constraint 1: Total capacity constraint
+            total_hours_expr = []
+            for task_id, var in task_vars.items():
+                total_hours_expr.append(
+                    var * int(task_hours[task_id] * 10)
+                )  # Scale for integer
+            for task_id, var in weekly_task_vars.items():
+                total_hours_expr.append(var * int(weekly_task_hours[task_id] * 10))
+
+            model.Add(
+                sum(total_hours_expr) <= int(constraints.total_capacity_hours * 10)
+            )
+
+            # Constraint 2: Project allocation constraints
+            for allocation in project_allocations:
+                project_tasks = []
+                project_goal_ids = [
+                    goal.id
+                    for goal in context.goals
+                    if goal.project_id == allocation.project_id
+                ]
+
+                for task in context.tasks:
+                    if task.goal_id in project_goal_ids:
+                        task_id = str(task.id)
+                        if task_id in task_vars:
+                            project_tasks.append(
+                                task_vars[task_id] * int(task_hours[task_id] * 10)
+                            )
+
+                if project_tasks:
+                    # Minimum allocation constraint
+                    min_hours = int(
+                        allocation.target_hours * 0.7 * 10
+                    )  # Allow 30% flexibility
+                    max_hours = int(allocation.max_hours * 10)
+
+                    if len(project_tasks) > 0:
+                        model.Add(sum(project_tasks) >= min_hours)
+                        model.Add(sum(project_tasks) <= max_hours)
+
+            # Constraint 3: Prefer high-priority tasks
+            priority_expr = []
+            for task_id, var in task_vars.items():
+                priority_weight = int(
+                    task_priority_scores[task_id] * 100
+                )  # Scale for integer
+                priority_expr.append(var * priority_weight)
+            for task_id, var in weekly_task_vars.items():
+                priority_weight = int(weekly_task_priorities[task_id] * 100)
+                priority_expr.append(var * priority_weight)
+
+            # Objective: Maximize priority-weighted task selection
+            model.Maximize(sum(priority_expr))
+
+            # Solve the optimization problem
+            solver.parameters.max_time_in_seconds = 30.0  # Timeout after 30 seconds
+            status = solver.Solve(model)
+
+            # Process results
+            selected_tasks = []
+            insights = []
+
+            if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
+                # Extract selected regular tasks
+                for task in context.tasks:
+                    task_id = str(task.id)
+                    if task_id in task_vars and solver.Value(task_vars[task_id]) == 1:
+                        selected_tasks.append(
+                            TaskPlan(
+                                task_id=task_id,
+                                task_title=task.title,
+                                estimated_hours=task_hours[task_id],
+                                priority=int(task_priority_scores[task_id]),
+                                rationale=f"OR-Tools最適化で選択 (優先度: {task_priority_scores[task_id]:.1f})",
+                            )
+                        )
+
+                # Extract selected weekly recurring tasks
+                for weekly_task in context.weekly_recurring_tasks:
+                    task_id = f"weekly_{weekly_task.id}"
+                    if (
+                        task_id in weekly_task_vars
+                        and solver.Value(weekly_task_vars[task_id]) == 1
+                    ):
+                        selected_tasks.append(
+                            TaskPlan(
+                                task_id=str(weekly_task.id),
+                                task_title=f"[週課] {weekly_task.title}",
+                                estimated_hours=weekly_task_hours[task_id],
+                                priority=int(weekly_task_priorities[task_id]),
+                                rationale="週間反復タスクとしてOR-Tools最適化で選択",
+                            )
+                        )
+
+                # Generate insights
+                total_selected_hours = sum(
+                    task.estimated_hours for task in selected_tasks
+                )
+                capacity_utilization = (
+                    total_selected_hours / constraints.total_capacity_hours
+                )
+
+                insights = [
+                    "🔧 OR-Tools制約ソルバーによる最適化完了",
+                    f"📊 選択タスク数: {len(selected_tasks)}個",
+                    f"⏱️ 総工数: {total_selected_hours:.1f}時間 (容量利用率: {capacity_utilization:.1%})",
+                    f"🎯 最適化ステータス: {'最適解' if status == cp_model.OPTIMAL else '実行可能解'}",
+                ]
+
+                if user_prompt:
+                    insights.append(
+                        f"💬 ユーザー指示「{user_prompt}」を優先度計算に反映"
+                    )
+
+                # Analyze project distribution
+                project_distribution = {}
+                for task in selected_tasks:
+                    # Find project for this task
+                    db_task = next(
+                        (t for t in context.tasks if str(t.id) == task.task_id), None
+                    )
+                    if db_task:
+                        goal = next(
+                            (g for g in context.goals if g.id == db_task.goal_id), None
+                        )
+                        if goal:
+                            project = next(
+                                (
+                                    p
+                                    for p in context.projects
+                                    if p.id == goal.project_id
+                                ),
+                                None,
+                            )
+                            if project:
+                                project_title = project.title
+                                project_distribution[project_title] = (
+                                    project_distribution.get(project_title, 0)
+                                    + task.estimated_hours
+                                )
+
+                if project_distribution:
+                    insights.append("📈 プロジェクト別配分:")
+                    for project_title, hours in project_distribution.items():
+                        insights.append(f"  • {project_title}: {hours:.1f}時間")
+
+            else:
+                # Optimization failed - use fallback
+                insights = [
+                    "⚠️ OR-Tools最適化が制約を満たす解を見つけられませんでした",
+                    "🔄 ヒューリスティック手法にフォールバック中...",
+                ]
+                selected_tasks, fallback_insights = self._heuristic_task_selection(
+                    context, constraints, project_allocations
+                )
+                insights.extend(fallback_insights)
+
+            return selected_tasks, insights
+
+        except ImportError:
+            logger.warning(
+                "OR-Tools not available, falling back to heuristic selection"
+            )
+            insights = [
+                "⚠️ OR-Toolsライブラリが利用できません",
+                "🔄 ヒューリスティック手法を使用しています",
+            ]
+            selected_tasks, fallback_insights = self._heuristic_task_selection(
+                context, constraints, project_allocations
+            )
+            return selected_tasks, insights + fallback_insights
+
+        except Exception as e:
+            logger.error(f"OR-Tools optimization failed: {e}")
+            insights = [
+                f"❌ OR-Tools最適化エラー: {str(e)}",
+                "🔄 ヒューリスティック手法にフォールバック",
+            ]
+            selected_tasks, fallback_insights = self._heuristic_task_selection(
+                context, constraints, project_allocations
+            )
+            return selected_tasks, insights + fallback_insights

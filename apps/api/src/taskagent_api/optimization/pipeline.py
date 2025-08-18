@@ -144,6 +144,9 @@ class OptimizationRequest(BaseModel):
     )
 
     preferences: dict[str, Any] = Field(default_factory=dict)
+    user_prompt: str | None = Field(
+        None, description="User instructions for weekly scheduling priorities"
+    )
 
 
 class DailyOptimizationResult(BaseModel):
@@ -328,6 +331,7 @@ class HybridOptimizationPipeline:
                 project_filter=request.project_filter,
                 selected_recurring_task_ids=request.selected_recurring_task_ids,
                 preferences=request.preferences,
+                user_prompt=request.user_prompt,
             )
 
             # Create user-specific task solver
