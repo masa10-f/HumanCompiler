@@ -537,7 +537,6 @@ async def create_daily_schedule(
         for db_task in db_tasks:
             # Check if this is a weekly recurring task
             is_weekly_recurring = getattr(db_task, 'is_weekly_recurring', False)
-            
             # Only schedule pending or in-progress tasks (weekly recurring tasks are always schedulable)
             if not is_weekly_recurring and db_task.status in ["completed", "cancelled"]:
                 filtered_count += 1
@@ -1255,13 +1254,11 @@ async def _get_tasks_from_weekly_schedule(
         for task_id in task_ids:
             try:
                 task_uuid = UUID(task_id)
-                
                 # First try to get as regular task
                 task = session.get(Task, task_uuid)
                 if task:
                     tasks.append(task)
                     continue
-                
                 # If not found as regular task, try as weekly recurring task
                 weekly_task = session.get(WeeklyRecurringTask, task_uuid)
                 if weekly_task:
@@ -1293,7 +1290,6 @@ async def _get_tasks_from_weekly_schedule(
         # Note: Weekly recurring tasks will not be affected by project allocation filtering
         regular_tasks = [t for t in tasks if not getattr(t, 'is_weekly_recurring', False)]
         weekly_tasks = [t for t in tasks if getattr(t, 'is_weekly_recurring', False)]
-        
         if (
             weekly_schedule.schedule_json
             and "project_allocations" in weekly_schedule.schedule_json

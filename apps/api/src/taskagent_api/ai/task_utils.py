@@ -45,7 +45,6 @@ def filter_valid_tasks(
 
     for plan in plans:
         plan_id = str(plan["task_id"])
-        
         # First, try to find matching task in context.tasks
         task = next(
             (t for t in context.tasks if str(t.id) == plan_id),
