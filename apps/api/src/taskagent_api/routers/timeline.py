@@ -33,7 +33,7 @@ async def get_project_timeline(
     """
     # Verify project ownership
     project = session.get(Project, project_id)
-    if not project or project.owner_id != current_user.id:
+    if not project or project.owner_id != current_user.user_id:
         raise HTTPException(status_code=404, detail="Project not found")
 
     # Set default date range if not provided
@@ -139,7 +139,7 @@ async def get_timeline_overview(
     """
     try:
         logger.info(
-            f"Getting timeline overview for user {current_user.id} ({current_user.email})"
+            f"Getting timeline overview for user {current_user.user_id} ({current_user.email})"
         )
         # Set default date range if not provided
         if not start_date:
@@ -153,13 +153,15 @@ async def get_timeline_overview(
             )
 
         # Get all projects for the user
-        projects_statement = select(Project).where(Project.owner_id == current_user.id)
+        projects_statement = select(Project).where(
+            Project.owner_id == current_user.user_id
+        )
         projects = session.exec(projects_statement).all()
 
-        logger.info(f"Found {len(projects)} projects for user {current_user.id}")
+        logger.info(f"Found {len(projects)} projects for user {current_user.user_id}")
 
         if len(projects) == 0:
-            logger.warning(f"No projects found for user {current_user.id}")
+            logger.warning(f"No projects found for user {current_user.user_id}")
 
         overview_data = {
             "timeline": {
@@ -231,7 +233,9 @@ async def get_timeline_overview(
         return overview_data
 
     except Exception as e:
-        logger.error(f"Error getting timeline overview for user {current_user.id}: {e}")
+        logger.error(
+            f"Error getting timeline overview for user {current_user.user_id}: {e}"
+        )
         raise HTTPException(
             status_code=500, detail=f"Failed to get timeline overview: {str(e)}"
         )
