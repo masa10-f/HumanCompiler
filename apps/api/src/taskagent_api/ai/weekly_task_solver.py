@@ -393,9 +393,7 @@ class WeeklyTaskSolver:
                 if str(weekly_task.id) in context.selected_recurring_task_ids:
                     # Weekly recurring tasks get high priority to ensure they are included
                     recurring_score = 8.0  # High priority for consistency
-                    effort_score = 10 - min(
-                        float(weekly_task.estimate_hours or 0), 10
-                    )
+                    effort_score = 10 - min(float(weekly_task.estimate_hours or 0), 10)
                     total_score = (
                         recurring_score * 0.7  # High weight for weekly consistency
                         + effort_score * constraints.effort_efficiency_weight
@@ -468,15 +466,17 @@ class WeeklyTaskSolver:
         if context.selected_recurring_task_ids:
             for rt in context.weekly_recurring_tasks:
                 if str(rt.id) in context.selected_recurring_task_ids:
-                    selected_recurring_tasks_data.append({
-                        "id": rt.id,
-                        "title": f"[週課] {rt.title}",
-                        "description": rt.description,
-                        "estimate_hours": rt.estimate_hours,
-                        "due_date": None,  # Weekly recurring tasks don't have specific due dates
-                        "status": "weekly_recurring",
-                        "category": rt.category,
-                    })
+                    selected_recurring_tasks_data.append(
+                        {
+                            "id": rt.id,
+                            "title": f"[週課] {rt.title}",
+                            "description": rt.description,
+                            "estimate_hours": rt.estimate_hours,
+                            "due_date": None,  # Weekly recurring tasks don't have specific due dates
+                            "status": "weekly_recurring",
+                            "category": rt.category,
+                        }
+                    )
 
         # Combine regular tasks and selected weekly recurring tasks
         all_available_tasks = tasks_data + selected_recurring_tasks_data

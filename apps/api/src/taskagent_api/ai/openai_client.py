@@ -223,7 +223,8 @@ class OpenAIClient:
             selected_recurring_tasks = []
             if context.selected_recurring_task_ids:
                 selected_recurring_tasks = [
-                    rt for rt in context.weekly_recurring_tasks
+                    rt
+                    for rt in context.weekly_recurring_tasks
                     if str(rt.id) in context.selected_recurring_task_ids
                 ]
             else:

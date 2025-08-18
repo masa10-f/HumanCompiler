@@ -18,7 +18,7 @@ def filter_valid_tasks(
     """
     Filter task plans to include only valid tasks and weekly recurring tasks that exist in the database context.
 
-    This function validates task IDs against the available tasks and weekly recurring tasks in the 
+    This function validates task IDs against the available tasks and weekly recurring tasks in the
     weekly plan context and creates TaskPlan objects only for valid items. Unknown or invalid IDs are
     logged and excluded from the results.
 
