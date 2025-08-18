@@ -45,10 +45,20 @@ async def get_project_timeline(
             raise HTTPException(status_code=404, detail="Project not found")
 
         logger.info(f"Project found: {project.title}, owner: {project.owner_id}")
+        logger.info(
+            f"Type check - project.owner_id: {type(project.owner_id)}, current_user.user_id: {type(current_user.user_id)}"
+        )
+        logger.info(
+            f"Values - project.owner_id: '{project.owner_id}', current_user.user_id: '{current_user.user_id}'"
+        )
 
-        if project.owner_id != current_user.user_id:
+        # Convert both to strings for comparison to avoid UUID vs string issues
+        project_owner_str = str(project.owner_id)
+        user_id_str = str(current_user.user_id)
+
+        if project_owner_str != user_id_str:
             logger.warning(
-                f"Project {project_id} ownership mismatch: owner={project.owner_id}, user={current_user.user_id}"
+                f"Project {project_id} ownership mismatch: owner={project_owner_str}, user={user_id_str}"
             )
             raise HTTPException(status_code=404, detail="Project not found")
 
