@@ -89,7 +89,9 @@ class CryptoService:
             import logging
 
             logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to decrypt data: {type(e).__name__}")
+            logger.warning(
+                f"Failed to decrypt data: {type(e).__name__} - {str(e)[:100]}"
+            )
             # Return empty string if decryption fails
             return ""
 

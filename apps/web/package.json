@@ -35,6 +35,8 @@
     "autoprefixer": "^10.4.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
+    "date-fns": "^4.1.0",
+    "html2canvas": "^1.4.1",
     "lucide-react": "^0.394.0",
     "next": "^14.2.0",
     "next-themes": "^0.3.0",

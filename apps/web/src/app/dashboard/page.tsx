@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Calendar, Plus, Brain, Settings, Clock, ExternalLink, History } from 'lucide-react'
+import { Calendar, Plus, Brain, Settings, Clock, ExternalLink, History, TrendingUp } from 'lucide-react'
 import { AppHeader } from '@/components/layout/app-header'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -12,12 +12,17 @@ import { schedulingApi } from '@/lib/api'
 import { log } from '@/lib/logger'
 import Link from 'next/link'
 import type { DailySchedule } from '@/types/api-responses'
+import { TimelineOverview } from '@/components/timeline/timeline-overview'
+import { useTimelineOverview } from '@/hooks/use-timeline'
 
 export default function DashboardPage() {
   const { loading, isAuthenticated } = useAuth()
   const router = useRouter()
   const [todaySchedule, setTodaySchedule] = useState<DailySchedule | null>(null)
   const [scheduleLoading, setScheduleLoading] = useState(true)
+
+  // Timeline data
+  const { data: timelineData, isLoading: timelineLoading } = useTimelineOverview()
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -75,7 +80,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
           <Card
             className="cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => router.push('/projects')}
@@ -117,6 +122,17 @@ export default function DashboardPage() {
               <History className="h-8 w-8 text-orange-600 mx-auto mb-2" />
               <CardTitle className="text-lg">スケジュール履歴</CardTitle>
               <CardDescription>過去のスケジュールを確認</CardDescription>
+            </CardHeader>
+          </Card>
+
+          <Card
+            className="cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => router.push('/timeline')}
+          >
+            <CardHeader className="text-center pb-4">
+              <TrendingUp className="h-8 w-8 text-indigo-600 mx-auto mb-2" />
+              <CardTitle className="text-lg">タイムライン</CardTitle>
+              <CardDescription>プロジェクト進捗の可視化</CardDescription>
             </CardHeader>
           </Card>
         </div>
@@ -207,6 +223,15 @@ export default function DashboardPage() {
             </Card>
           </div>
         )}
+
+        {/* Timeline Overview */}
+        <div className="mb-8">
+          <TimelineOverview
+            data={timelineData}
+            isLoading={timelineLoading}
+            onProjectSelect={(projectId) => router.push(`/timeline/${projectId}`)}
+          />
+        </div>
 
         {/* Recent Projects */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
