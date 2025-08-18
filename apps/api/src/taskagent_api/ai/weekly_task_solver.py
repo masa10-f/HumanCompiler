@@ -116,6 +116,7 @@ class TaskPriorityExtractor:
                 context, user_prompt, project_allocations
             )
 
+            logger.info(f"Calling OpenAI API with model: {self.model}")
             response = self.openai_client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -344,7 +345,7 @@ class WeeklyTaskSolver:
                         openai_client = OpenAI(api_key=api_key)
                         model = user_settings.openai_model or model
                         logger.info(
-                            f"Using user-specific OpenAI API key for user {user_id}"
+                            f"Using user-specific OpenAI API key for user {user_id} with model {model}"
                         )
                 except Exception as e:
                     logger.warning(f"Failed to decrypt API key for user {user_id}: {e}")
