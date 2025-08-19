@@ -1,14 +1,9 @@
 "use client"
 
-import React, { useCallback } from 'react'
+import React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
-import { Button } from '@/components/ui/button'
-import { Calendar, Target, CheckCircle, TrendingUp, Eye } from 'lucide-react'
+import { Calendar } from 'lucide-react'
 import type { TimelineOverviewData } from '@/types/timeline'
-import { format, parseISO } from 'date-fns'
-import { ja } from 'date-fns/locale'
 
 interface TimelineOverviewProps {
   data: TimelineOverviewData | null

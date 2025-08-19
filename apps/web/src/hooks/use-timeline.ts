@@ -19,7 +19,9 @@ export function useProjectTimeline(projectId: string | null, filters?: TimelineF
       end_date: filters.end_date,
       time_unit: filters.time_unit
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters?.start_date, filters?.end_date, filters?.time_unit])
+  // Note: we specifically want to avoid including the full filters object to prevent unnecessary re-renders
 
   const fetchTimeline = useCallback(async () => {
     if (!projectId) {
@@ -51,6 +53,7 @@ export function useProjectTimeline(projectId: string | null, filters?: TimelineF
     } finally {
       setIsLoading(false)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, memoizedFilters, weeklyWorkHours])
   // Note: toast is intentionally excluded from dependencies to prevent infinite loops
 
@@ -81,7 +84,9 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
       start_date: filters.start_date,
       end_date: filters.end_date
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters?.start_date, filters?.end_date])
+  // Note: we specifically want to avoid including the full filters object to prevent unnecessary re-renders
 
   const fetchOverview = useCallback(async () => {
     console.log('🔍 [useTimelineOverview] Starting fetchOverview... Call #', Date.now())
@@ -113,6 +118,7 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
 
       if (mountedRef.current) {
         setError(errorMessage)
+        // Use toast directly without adding to dependencies to prevent loops
         toast({
           title: "エラー",
           description: errorMessage,
@@ -126,7 +132,9 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
         setIsLoading(false)
       }
     }
-  }, [memoizedFilters, toast])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memoizedFilters])
+  // Note: toast is intentionally excluded from dependencies to prevent infinite loops
 
   useEffect(() => {
     console.log('🔍 [useTimelineOverview] useEffect triggered, calling fetchOverview')

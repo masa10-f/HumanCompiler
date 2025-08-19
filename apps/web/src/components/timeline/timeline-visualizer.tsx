@@ -67,14 +67,6 @@ export function TimelineVisualizer({
         if (needsVirtualization) {
           console.warn('Virtualization recommended for optimal performance')
         }
-
-        if (process.env.NODE_ENV === 'development') {
-          toast({
-            title: "大規模データセットを検出",
-            description: `${goalCount}個のゴール、${taskCount}個のタスクがあります。${needsVirtualization ? '仮想化を使用します。' : 'パフォーマンスに影響する可能性があります。'}`,
-            variant: needsVirtualization ? "default" : "destructive",
-          })
-        }
       }
 
       const layoutOptions = {
@@ -88,17 +80,19 @@ export function TimelineVisualizer({
     } catch (error) {
       console.error('Layout computation failed:', error)
 
-      // Try simplified mode as fallback
+      // Try simplified mode as fallback - but prevent infinite loops
       if (!isSimplifiedMode) {
         console.log('Attempting fallback to simplified mode...')
-        setIsSimplifiedMode(true)
+        // Use setTimeout to prevent immediate re-computation and potential stack overflow
+        setTimeout(() => setIsSimplifiedMode(true), 0)
         return null // Will trigger re-computation with simplified mode
       }
 
-      // エラーハンドリングを別のuseEffectで処理するため、ここではthrowする
-      throw error
+      // If simplified mode also fails, return null instead of throwing
+      console.error('Simplified mode also failed, rendering fallback UI')
+      return null
     }
-  }, [data, isSimplifiedMode, toast])
+  }, [data, isSimplifiedMode])
 
 
   // Handle zoom controls
@@ -293,19 +287,32 @@ export function TimelineVisualizer({
     }
   }, [data])
 
+  // Reset simplified mode when new data comes in (separate effect to prevent loops)
+  useEffect(() => {
+    if (data && isSimplifiedMode) {
+      console.log('Resetting simplified mode for new data')
+      setIsSimplifiedMode(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]) // intentionally exclude isSimplifiedMode to prevent loops
+
   // Performance monitoring
   useEffect(() => {
     if (layoutModel) {
       const now = performance.now()
-      setLayoutComputeTimestamp(now)
 
       // Log performance metrics in development
       if (process.env.NODE_ENV === 'development') {
-        console.log(`Timeline layout computed in ${(now - layoutComputeTimestamp).toFixed(2)}ms`)
+        const computeTime = now - layoutComputeTimestamp
+        console.log(`Timeline layout computed in ${computeTime.toFixed(2)}ms`)
         console.log(`Goals: ${layoutModel.goals.length}, Tasks: ${layoutModel.goals.reduce((sum, g) => sum + g.segments.length, 0)}`)
       }
+
+      // Update timestamp after logging to avoid infinite loop
+      setLayoutComputeTimestamp(now)
     }
-  }, [layoutModel, layoutComputeTimestamp])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutModel]) // Remove layoutComputeTimestamp from dependencies to prevent loop
 
   if (isLoading) {
     return (
