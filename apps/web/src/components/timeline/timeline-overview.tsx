@@ -18,245 +18,71 @@ interface TimelineOverviewProps {
 }
 
 export function TimelineOverview({ data, isLoading, error, onProjectSelect }: TimelineOverviewProps) {
-  const formatDate = useCallback((dateString: string) => {
-    return format(parseISO(dateString), 'MM/dd', { locale: ja })
-  }, [])
-
-  const handleProjectClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
-    const projectId = event.currentTarget.getAttribute('data-project-id')
-    if (projectId) {
-      onProjectSelect(projectId)
-    }
-  }, [onProjectSelect])
+  // Debug: Add console logs to track re-renders
+  console.log('🔍 [TimelineOverview] Render count:', Date.now())
+  console.log('🔍 [TimelineOverview] Props:', { data, isLoading, error })
 
   if (isLoading) {
     return (
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {[1, 2, 3].map((i) => (
-          <Card key={i} className="animate-pulse">
-            <CardHeader>
-              <div className="h-5 bg-gray-200 rounded w-3/4"></div>
-              <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="h-4 bg-gray-200 rounded"></div>
-                <div className="h-4 bg-gray-200 rounded w-2/3"></div>
-                <div className="h-8 bg-gray-200 rounded"></div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <Card>
+        <CardContent className="py-8 text-center">
+          <p>タイムラインを読み込み中...</p>
+        </CardContent>
+      </Card>
     )
   }
 
   if (error) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="w-5 h-5" />
-            プロジェクトタイムライン概要
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8">
-            <p className="text-red-500 mb-2">エラーが発生しました</p>
-            <p className="text-sm text-gray-600">{error}</p>
-          </div>
+        <CardContent className="py-8 text-center">
+          <p className="text-red-500">エラー: {error}</p>
         </CardContent>
       </Card>
     )
   }
 
-  if (!data || data.projects.length === 0) {
+  if (!data || !data.projects) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="w-5 h-5" />
-            プロジェクトタイムライン概要
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-gray-500 text-center py-8">
-            プロジェクトが見つかりません。まずはプロジェクトを作成してください。
-          </p>
+        <CardContent className="py-8 text-center">
+          <p className="text-gray-500">プロジェクトが見つかりません</p>
         </CardContent>
       </Card>
     )
   }
 
+  // Temporary simplified rendering to test if the array map is the issue
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="w-5 h-5" />
-            プロジェクトタイムライン概要
-          </CardTitle>
-          <p className="text-sm text-gray-500">
-            期間: {format(parseISO(data.timeline.start_date), 'yyyy年MM月dd日', { locale: ja })} ～ {format(parseISO(data.timeline.end_date), 'yyyy年MM月dd日', { locale: ja })}
-          </p>
-        </CardHeader>
-      </Card>
-
-      {/* Projects Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {data.projects.map((project) => {
-          // Safe access to statistics with fallbacks
-          const stats = project.statistics || {
-            total_goals: 0,
-            completed_goals: 0,
-            in_progress_goals: 0,
-            total_tasks: 0,
-            completed_tasks: 0,
-            in_progress_tasks: 0,
-            goals_completion_rate: 0,
-            tasks_completion_rate: 0
-          };
-
-          return (
-            <Card key={project.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-lg line-clamp-2 mb-1">
-                      {project.title}
-                    </CardTitle>
-                    <p className="text-sm text-gray-500 line-clamp-2">
-                      {project.description || 'プロジェクトの説明がありません'}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 text-xs text-gray-400">
-                  <span>作成: {formatDate(project.created_at)}</span>
-                  <span>•</span>
-                  <span>更新: {formatDate(project.updated_at)}</span>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-4">
-                {/* Goal Statistics */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium flex items-center gap-1">
-                      <Target className="w-4 h-4" />
-                      ゴール進捗
-                    </span>
-                    <Badge variant="outline">
-                      {stats.completed_goals}/{stats.total_goals}
-                    </Badge>
-                  </div>
-                  <div className="space-y-1">
-                    <Progress
-                      value={Math.min(100, Math.max(0, stats.goals_completion_rate || 0))}
-                      className="h-2"
-                    />
-                    <div className="flex justify-between text-xs text-gray-500">
-                      <span>{Math.round(stats.goals_completion_rate || 0)}% 完了</span>
-                      <span>{stats.in_progress_goals} 進行中</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Task Statistics */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium flex items-center gap-1">
-                      <CheckCircle className="w-4 h-4" />
-                      タスク進捗
-                    </span>
-                    <Badge variant="outline">
-                      {stats.completed_tasks}/{stats.total_tasks}
-                    </Badge>
-                  </div>
-                  <div className="space-y-1">
-                    <Progress
-                      value={Math.min(100, Math.max(0, stats.tasks_completion_rate || 0))}
-                      className="h-2"
-                    />
-                    <div className="flex justify-between text-xs text-gray-500">
-                      <span>{Math.round(stats.tasks_completion_rate || 0)}% 完了</span>
-                      <span>{stats.in_progress_tasks} 進行中</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Quick Stats */}
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <div className="bg-blue-50 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-blue-600">
-                      {stats.total_goals}
-                    </div>
-                    <div className="text-xs text-blue-600">ゴール数</div>
-                  </div>
-                  <div className="bg-green-50 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-green-600">
-                      {stats.total_tasks}
-                    </div>
-                    <div className="text-xs text-green-600">タスク数</div>
-                  </div>
-                </div>
-
-                {/* Action Button */}
-                <Button
-                  onClick={handleProjectClick}
-                  data-project-id={project.id}
-                  className="w-full mt-4"
-                  variant="outline"
-                >
-                  <Eye className="w-4 h-4 mr-2" />
-                  タイムライン詳細
-                </Button>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* Summary Stats */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="w-5 h-5" />
-            全体統計
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-blue-600">
-                {data.projects.length}
-              </div>
-              <div className="text-sm text-gray-500">プロジェクト数</div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Calendar className="w-5 h-5" />
+          プロジェクトタイムライン概要 (簡易版)
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p>プロジェクト数: {data.projects.length}</p>
+        {/* Temporarily remove the problematic map to test */}
+        <div className="mt-4">
+          <h3>プロジェクト一覧:</h3>
+          {data.projects.slice(0, 3).map((project, index) => (
+            <div key={`${project.id}-${index}`} className="p-2 border rounded mt-2">
+              <p className="font-medium">{project.title}</p>
+              <p className="text-sm text-gray-600">{project.description || '説明なし'}</p>
+              <button
+                className="mt-2 px-3 py-1 bg-blue-500 text-white rounded text-sm"
+                onClick={() => {
+                  console.log('Button clicked for project:', project.id)
+                  onProjectSelect(project.id)
+                }}
+              >
+                詳細を見る
+              </button>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">
-                {data.projects.reduce((sum, p) => sum + (p.statistics?.total_goals || 0), 0)}
-              </div>
-              <div className="text-sm text-gray-500">総ゴール数</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-purple-600">
-                {data.projects.reduce((sum, p) => sum + (p.statistics?.total_tasks || 0), 0)}
-              </div>
-              <div className="text-sm text-gray-500">総タスク数</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-orange-600">
-                {data.projects.length > 0 ? Math.round(
-                  data.projects.reduce((sum, p) => sum + (p.statistics?.tasks_completion_rate || 0), 0) /
-                  data.projects.length
-                ) : 0}%
-              </div>
-              <div className="text-sm text-gray-500">平均完了率</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   )
 }

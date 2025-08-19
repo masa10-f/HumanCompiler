@@ -23,8 +23,11 @@ export default function DashboardPage() {
   const [todaySchedule, setTodaySchedule] = useState<DailySchedule | null>(null)
   const [scheduleLoading, setScheduleLoading] = useState(true)
 
-  // Timeline data
-  const { data: timelineData, isLoading: timelineLoading, error: timelineError } = useTimelineOverview()
+  // Timeline data - temporarily disabled for debugging
+  // const { data: timelineData, isLoading: timelineLoading, error: timelineError } = useTimelineOverview()
+  const timelineData = null
+  const timelineLoading = false
+  const timelineError = "タイムライン機能は一時的に無効化されています"
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
