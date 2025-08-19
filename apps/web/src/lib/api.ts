@@ -133,12 +133,22 @@ class ApiClient {
   }
 
   private async getAuthHeaders(): Promise<HeadersInit> {
+    console.log('🔍 [ApiClient] Getting Supabase session...');
     const { data: { session } } = await supabase.auth.getSession();
 
+    console.log('🔍 [ApiClient] Session data:', {
+      hasSession: !!session,
+      hasAccessToken: !!session?.access_token,
+      userId: session?.user?.id,
+      email: session?.user?.email
+    });
+
     if (!session?.access_token) {
+      console.error('❌ [ApiClient] No access token found');
       throw new Error('User not authenticated');
     }
 
+    console.log('✅ [ApiClient] Auth headers prepared');
     return {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${session.access_token}`,
@@ -155,15 +165,29 @@ class ApiClient {
       timestamp: new Date()
     };
 
-    try {
-      const headers = await this.getAuthHeaders();
+    console.log('🔍 [ApiClient] Starting request:', context);
 
-      const response = await fetch(`${this.getBaseURL()}${endpoint}`, {
+    try {
+      console.log('🔍 [ApiClient] Getting auth headers...');
+      const headers = await this.getAuthHeaders();
+      console.log('✅ [ApiClient] Auth headers obtained');
+
+      const baseUrl = this.getBaseURL();
+      const fullUrl = `${baseUrl}${endpoint}`;
+      console.log('🔍 [ApiClient] Making fetch request to:', fullUrl);
+
+      const response = await fetch(fullUrl, {
         ...options,
         headers: {
           ...headers,
           ...options.headers,
         },
+      });
+
+      console.log('🔍 [ApiClient] Response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
       });
 
       if (!response.ok) {
@@ -193,10 +217,14 @@ class ApiClient {
 
       // Handle 204 No Content responses
       if (response.status === 204) {
+        console.log('✅ [ApiClient] 204 No Content response');
         return {} as T;
       }
 
-      return response.json();
+      console.log('🔍 [ApiClient] Parsing JSON response...');
+      const responseData = await response.json();
+      console.log('✅ [ApiClient] JSON response parsed:', responseData);
+      return responseData;
     } catch (error) {
       // If it's already an ApiError, re-throw it
       if (error instanceof ApiError) {

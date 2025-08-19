@@ -78,14 +78,22 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
   }, [filters])
 
   const fetchOverview = useCallback(async () => {
+    console.log('🔍 [useTimelineOverview] Starting fetchOverview...')
+    console.log('🔍 [useTimelineOverview] Filters:', memoizedFilters)
+
     setIsLoading(true)
     setError(null)
 
     try {
+      console.log('🔍 [useTimelineOverview] Calling timelineApi.getOverview...')
       const overviewData = await timelineApi.getOverview(memoizedFilters?.start_date, memoizedFilters?.end_date)
+      console.log('✅ [useTimelineOverview] API response received:', overviewData)
       setData(overviewData)
+      console.log('✅ [useTimelineOverview] Data set successfully')
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'タイムライン概要の取得に失敗しました'
+      console.error('❌ [useTimelineOverview] API error:', err)
+      console.error('❌ [useTimelineOverview] Error message:', errorMessage)
       setError(errorMessage)
       toast({
         title: "エラー",
@@ -93,6 +101,7 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
         variant: "destructive",
       })
     } finally {
+      console.log('🔍 [useTimelineOverview] Setting isLoading to false')
       setIsLoading(false)
     }
   }, [memoizedFilters, toast])
