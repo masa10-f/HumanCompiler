@@ -18,7 +18,7 @@ export function useProjectTimeline(projectId: string | null, filters?: TimelineF
       end_date: filters.end_date,
       time_unit: filters.time_unit
     } : undefined
-  }, [filters?.start_date, filters?.end_date, filters?.time_unit])
+  }, [filters])
 
   const fetchTimeline = useCallback(async () => {
     if (!projectId) {
@@ -74,7 +74,7 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
       start_date: filters.start_date,
       end_date: filters.end_date
     } : undefined
-  }, [filters?.start_date, filters?.end_date])
+  }, [filters])
 
   const fetchOverview = useCallback(async () => {
     setIsLoading(true)
