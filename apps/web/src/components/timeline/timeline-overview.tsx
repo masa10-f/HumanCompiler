@@ -1,6 +1,6 @@
 "use client"
 
-import React from 'react'
+import React, { useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
@@ -18,9 +18,16 @@ interface TimelineOverviewProps {
 }
 
 export function TimelineOverview({ data, isLoading, error, onProjectSelect }: TimelineOverviewProps) {
-  const formatDate = (dateString: string) => {
+  const formatDate = useCallback((dateString: string) => {
     return format(parseISO(dateString), 'MM/dd', { locale: ja })
-  }
+  }, [])
+
+  const handleProjectClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    const projectId = event.currentTarget.getAttribute('data-project-id')
+    if (projectId) {
+      onProjectSelect(projectId)
+    }
+  }, [onProjectSelect])
 
   if (isLoading) {
     return (
@@ -196,7 +203,8 @@ export function TimelineOverview({ data, isLoading, error, onProjectSelect }: Ti
 
                 {/* Action Button */}
                 <Button
-                  onClick={() => onProjectSelect(project.id)}
+                  onClick={handleProjectClick}
+                  data-project-id={project.id}
                   className="w-full mt-4"
                   variant="outline"
                 >
