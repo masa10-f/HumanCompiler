@@ -47,13 +47,6 @@ import type {
   DailySchedule,
   TestSchedulerResponse
 } from '@/types/api-responses';
-import type {
-  OptimizationRequest,
-  OptimizationResponse,
-  OptimizationStatus,
-  OptimizationCacheResponse,
-  OptimizationTestResponse
-} from '@/types/optimization';
 
 // Helper function to ensure HTTPS protocol
 const ensureHttps = (url: string): string => {
@@ -529,27 +522,6 @@ class ApiClient {
     });
   }
 
-  // Optimization Pipeline API methods
-  async executeWeeklyOptimizationPipeline(request: OptimizationRequest): Promise<OptimizationResponse> {
-    return this.request<OptimizationResponse>('/api/optimization/weekly-pipeline', {
-      method: 'POST',
-      body: JSON.stringify(request),
-    });
-  }
-
-  async getOptimizationStatus(weekStartDate: string): Promise<OptimizationStatus> {
-    return this.request<OptimizationStatus>(`/api/optimization/pipeline/status/${weekStartDate}`);
-  }
-
-  async clearOptimizationCache(weekStartDate: string): Promise<OptimizationCacheResponse> {
-    return this.request<OptimizationCacheResponse>(`/api/optimization/pipeline/cache/${weekStartDate}`, {
-      method: 'DELETE',
-    });
-  }
-
-  async testOptimizationPipeline(): Promise<OptimizationTestResponse> {
-    return this.request<OptimizationTestResponse>('/api/optimization/test');
-  }
 
   // Timeline API methods
   async getProjectTimeline(projectId: string, startDate?: string, endDate?: string, timeUnit?: string): Promise<ProjectTimelineData> {
@@ -649,12 +621,6 @@ export const weeklyScheduleApi = {
   delete: (weekStartDate: string) => apiClient.deleteWeeklySchedule(weekStartDate),
 };
 
-export const optimizationApi = {
-  executePipeline: (request: OptimizationRequest) => apiClient.executeWeeklyOptimizationPipeline(request),
-  getStatus: (weekStartDate: string) => apiClient.getOptimizationStatus(weekStartDate),
-  clearCache: (weekStartDate: string) => apiClient.clearOptimizationCache(weekStartDate),
-  test: () => apiClient.testOptimizationPipeline(),
-};
 
 export const timelineApi = {
   getProjectTimeline: (projectId: string, startDate?: string, endDate?: string, timeUnit?: string) =>
