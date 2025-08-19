@@ -67,6 +67,7 @@ export interface LayoutTaskSegment {
   x0: number // Start X position within goal bar
   x1: number // End X position within goal bar
   progress: number // Task progress (0-1)
+  progress_percentage: number // Task progress (0-100)
   status_color: string
   originalTask: TimelineTask
 }

@@ -5,12 +5,14 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlmodel import Session, select, and_, or_
 from sqlalchemy.orm import selectinload
 
 from ..auth import get_current_user, AuthUser
 from ..database import get_session
+from ..rate_limiter import limiter
+from ..config import settings
 from ..models import (
     User,
     Project,
@@ -27,9 +29,23 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def conditional_rate_limit(rate: str):
+    """Apply rate limiting only in non-test environments"""
+
+    def decorator(func):
+        if settings.environment == "test":
+            return func
+        else:
+            return limiter.limit(rate)(func)
+
+    return decorator
+
+
 @router.get("/projects/{project_id}")
+@conditional_rate_limit("15/minute")
 async def get_project_timeline(
     project_id: UUID,
+    request: Request = None,
     start_date: datetime = Query(None, description="Timeline start date"),
     end_date: datetime = Query(None, description="Timeline end date"),
     time_unit: str = Query("day", description="Time unit: day, week, month"),
@@ -185,8 +201,10 @@ async def get_project_timeline(
 
 
 @router.get("/overview")
+@conditional_rate_limit("30/minute")
 async def get_timeline_overview(
     start_date: datetime = Query(None, description="Timeline start date"),
+    request: Request = None,
     end_date: datetime = Query(None, description="Timeline end date"),
     current_user: AuthUser = Depends(get_current_user),
     session: Session = Depends(get_session),

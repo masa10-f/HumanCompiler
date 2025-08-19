@@ -40,10 +40,15 @@ export function TimelineVisualizer({
   const [selectedGoal, setSelectedGoal] = useState<LayoutGoal | null>(null)
   const [selectedTask, setSelectedTask] = useState<LayoutTaskSegment | null>(null)
   const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null)
+  const [liveRegionMessage, setLiveRegionMessage] = useState('')
 
   // Performance optimization: debounce layout computations
   const [layoutComputeTimestamp, setLayoutComputeTimestamp] = useState(0)
   const layoutComputeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // State for fallback mode when layout computation fails
+  const [isSimplifiedMode, setIsSimplifiedMode] = useState(false)
+  const [shouldUseVirtualization, setShouldUseVirtualization] = useState(false)
 
   // Compute layout when data changes
   const layoutModel = useMemo<LayoutModel | null>(() => {
@@ -54,40 +59,69 @@ export function TimelineVisualizer({
       const goalCount = data.goals.length
       const taskCount = data.goals.reduce((sum, g) => sum + g.tasks.length, 0)
 
+      // Determine if virtualization is needed
+      const needsVirtualization = goalCount > 100 || taskCount > 500
+      setShouldUseVirtualization(needsVirtualization)
+
       if (goalCount > 50 || taskCount > 200) {
-        console.warn(`Large dataset detected: ${goalCount} goals, ${taskCount} tasks. Performance may be impacted.`)
+        console.warn(`Large dataset detected: ${goalCount} goals, ${taskCount} tasks`)
+
+        if (needsVirtualization) {
+          console.warn('Virtualization recommended for optimal performance')
+        }
 
         if (process.env.NODE_ENV === 'development') {
           toast({
             title: "大規模データセットを検出",
-            description: `${goalCount}個のゴール、${taskCount}個のタスクがあります。パフォーマンスに影響する可能性があります。`,
-            variant: "destructive",
+            description: `${goalCount}個のゴール、${taskCount}個のタスクがあります。${needsVirtualization ? '仮想化を使用します。' : 'パフォーマンスに影響する可能性があります。'}`,
+            variant: needsVirtualization ? "default" : "destructive",
           })
         }
       }
 
-      return computeTimelineLayout(data, {
-        canvas_width: Math.max(1400, goalCount * 100), // Scale canvas with data size
-        canvas_height: Math.max(600, goalCount * 80)
-      })
+      const layoutOptions = {
+        canvas_width: Math.max(1400, goalCount * 100),
+        canvas_height: Math.max(600, goalCount * 80),
+        enable_virtualization: needsVirtualization,
+        simplified_mode: isSimplifiedMode
+      }
+
+      return computeTimelineLayout(data, layoutOptions)
     } catch (error) {
       console.error('Layout computation failed:', error)
+
+      // Try simplified mode as fallback
+      if (!isSimplifiedMode) {
+        console.log('Attempting fallback to simplified mode...')
+        setIsSimplifiedMode(true)
+        return null // Will trigger re-computation with simplified mode
+      }
+
       handleError(error instanceof Error ? error : new Error('Layout computation failed'))
       return null
     }
-  }, [data, handleError, toast])
+  }, [data, handleError, toast, isSimplifiedMode])
 
   // Handle zoom controls
   const handleZoomIn = useCallback(() => {
-    setZoomLevel(prev => Math.min(prev * 1.2, 3))
+    setZoomLevel(prev => {
+      const newLevel = Math.min(prev * 1.2, 3)
+      setLiveRegionMessage(`ズームイン: ${Math.round(newLevel * 100)}%`)
+      return newLevel
+    })
   }, [])
 
   const handleZoomOut = useCallback(() => {
-    setZoomLevel(prev => Math.max(prev / 1.2, 0.5))
+    setZoomLevel(prev => {
+      const newLevel = Math.max(prev / 1.2, 0.5)
+      setLiveRegionMessage(`ズームアウト: ${Math.round(newLevel * 100)}%`)
+      return newLevel
+    })
   }, [])
 
   const handleZoomReset = useCallback(() => {
     setZoomLevel(1)
+    setLiveRegionMessage('ズームをリセットしました: 100%')
   }, [])
 
   // Handle filter changes
@@ -97,21 +131,38 @@ export function TimelineVisualizer({
 
   // Handle goal selection
   const handleGoalClick = useCallback((goal: LayoutGoal, event: React.MouseEvent) => {
+    event.stopPropagation()
     setSelectedGoal(goal)
     setSelectedTask(null)
     setTooltipPosition({ x: event.clientX, y: event.clientY })
+
+    // Announce to screen readers
+    setLiveRegionMessage(`ゴール「${goal.title}」を選択しました。ステータス: ${goal.status}`)
   }, [])
 
   // Handle task selection
   const handleTaskClick = useCallback((task: LayoutTaskSegment, event: React.MouseEvent) => {
+    event.stopPropagation()
     setSelectedTask(task)
     setSelectedGoal(null)
     setTooltipPosition({ x: event.clientX, y: event.clientY })
+
+    // Announce to screen readers
+    setLiveRegionMessage(`タスク「${task.title}」を選択しました。進捗: ${task.progress_percentage}%`)
   }, [])
 
   // Close tooltip when clicking outside
   const handleSvgClick = useCallback((event: React.MouseEvent) => {
     if (event.target === svgRef.current) {
+      setSelectedGoal(null)
+      setSelectedTask(null)
+      setTooltipPosition(null)
+    }
+  }, [])
+
+  // Handle outside clicks to close tooltip
+  const handleClickOutside = useCallback((event: MouseEvent) => {
+    if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
       setSelectedGoal(null)
       setSelectedTask(null)
       setTooltipPosition(null)
@@ -176,9 +227,14 @@ export function TimelineVisualizer({
         }
 
         if (newIndex >= 0 && newIndex < layoutModel.goals.length) {
-          setSelectedGoal(layoutModel.goals[newIndex] || null)
+          const newGoal = layoutModel.goals[newIndex]
+          setSelectedGoal(newGoal || null)
           setSelectedTask(null)
           setTooltipPosition(null)
+
+          if (newGoal) {
+            setLiveRegionMessage(`${newIndex + 1}番目のゴール「${newGoal.title}」を選択`)
+          }
         }
         break
 
@@ -210,14 +266,24 @@ export function TimelineVisualizer({
 
   // Memory management and cleanup
   useEffect(() => {
+    // Add event listener for clicks outside the timeline
+    document.addEventListener('mousedown', handleClickOutside)
+
     // Clear layout computation timeout on unmount
     return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+
       if (layoutComputeTimeoutRef.current) {
         clearTimeout(layoutComputeTimeoutRef.current)
         layoutComputeTimeoutRef.current = null
       }
+
+      // Clear any pending state updates
+      setSelectedGoal(null)
+      setSelectedTask(null)
+      setTooltipPosition(null)
     }
-  }, [])
+  }, [handleClickOutside])
 
   // Clean up selections when data changes to prevent memory leaks
   useEffect(() => {
@@ -285,7 +351,71 @@ export function TimelineVisualizer({
     )
   }
 
-  if (!data || !layoutModel) {
+  // Simplified timeline fallback when layout computation fails
+  const SimplifiedTimeline = ({ data }: { data: TimelineData }) => (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Calendar className="w-5 h-5" />
+          タイムライン・ビジュアライザー (簡易表示): {data.project.title}
+        </CardTitle>
+        <div className="text-sm text-amber-600 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4" />
+          レイアウト計算に問題があるため、簡易表示に切り替えました。
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          {data.goals.map((goal, index) => (
+            <div key={goal.id} className="border rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold text-lg">{goal.title}</h3>
+                <Badge variant={goal.status === 'completed' ? 'default' : 'secondary'}>
+                  {goal.status}
+                </Badge>
+              </div>
+              {goal.description && (
+                <p className="text-gray-600 text-sm mb-3">{goal.description}</p>
+              )}
+              <div className="space-y-2">
+                {goal.tasks.map((task) => (
+                  <div key={task.id} className="flex items-center gap-3 p-2 bg-gray-50 rounded">
+                    <div
+                      className={`w-3 h-3 rounded-full ${
+                        task.status === 'completed' ? 'bg-green-500' :
+                        task.status === 'in_progress' ? 'bg-blue-500' :
+                        task.status === 'cancelled' ? 'bg-red-500' : 'bg-gray-400'
+                      }`}
+                    />
+                    <span className="flex-1">{task.title}</span>
+                    <span className="text-xs text-gray-500">
+                      {task.estimate_hours}時間
+                    </span>
+                    {task.due_date && (
+                      <span className="text-xs text-gray-500">
+                        期限: {new Date(task.due_date).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-6 flex justify-center">
+          <Button
+            onClick={() => setIsSimplifiedMode(false)}
+            variant="outline"
+          >
+            <RotateCcw className="w-4 h-4 mr-2" />
+            詳細表示を再試行
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+
+  if (!data) {
     return (
       <Card>
         <CardHeader>
@@ -303,8 +433,23 @@ export function TimelineVisualizer({
     )
   }
 
+  if (!layoutModel) {
+    // Show simplified timeline as fallback
+    return <SimplifiedTimeline data={data} />
+  }
+
   return (
     <div className="space-y-6">
+      {/* ARIA Live Region for screen reader announcements */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {liveRegionMessage}
+      </div>
+
       {/* Header Controls */}
       <Card>
         <CardHeader>

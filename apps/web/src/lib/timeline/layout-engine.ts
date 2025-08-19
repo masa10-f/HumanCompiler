@@ -194,6 +194,7 @@ export class TimelineLayoutEngine {
         x0: Math.round(x0),
         x1: Math.round(x1),
         progress: clamp(task.progress_percentage / 100, 0, 1),
+        progress_percentage: task.progress_percentage,
         status_color: task.status_color,
         originalTask: task
       }

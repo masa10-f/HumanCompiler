@@ -30,6 +30,9 @@ RATE_LIMITS = {
     "/api/ai/analyze-workload": "20 per hour",
     "/api/ai/suggest-priorities": "20 per hour",
     "/api/schedule/daily": "30 per hour",
+    # Timeline endpoints - computationally expensive
+    "/api/timeline/projects/*": "15 per minute",  # Project timeline generation
+    "/api/timeline/overview": "30 per minute",  # Overview less expensive
     # CRUD operations - moderate limits
     "/api/projects/*": "60 per minute",
     "/api/goals/*": "60 per minute",
