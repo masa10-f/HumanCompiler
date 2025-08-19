@@ -1,5 +1,5 @@
 import { TimelineLayoutEngine } from '../layout-engine'
-import type { TimelineData, TimelineGoal } from '../types'
+import type { TimelineData } from '../types'
 
 // Mock data helper functions
 const createMockTimelineData = (): TimelineData => ({
