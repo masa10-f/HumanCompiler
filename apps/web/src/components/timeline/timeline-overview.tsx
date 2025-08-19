@@ -13,9 +13,6 @@ interface TimelineOverviewProps {
 }
 
 export function TimelineOverview({ data, isLoading, error, onProjectSelect }: TimelineOverviewProps) {
-  // Debug: Add console logs to track re-renders
-  console.log('🔍 [TimelineOverview] Render count:', Date.now())
-  console.log('🔍 [TimelineOverview] Props:', { data, isLoading, error })
 
   if (isLoading) {
     return (
@@ -47,35 +44,36 @@ export function TimelineOverview({ data, isLoading, error, onProjectSelect }: Ti
     )
   }
 
-  // Temporary simplified rendering to test if the array map is the issue
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Calendar className="w-5 h-5" />
-          プロジェクトタイムライン概要 (簡易版)
+          プロジェクトタイムライン概要
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <p>プロジェクト数: {data.projects.length}</p>
-        {/* Temporarily remove the problematic map to test */}
+        <p className="text-sm text-gray-600 mb-4">プロジェクト数: {data.projects.length}個</p>
         <div className="mt-4">
-          <h3>プロジェクト一覧:</h3>
-          {data.projects.slice(0, 3).map((project, index) => (
-            <div key={`${project.id}-${index}`} className="p-2 border rounded mt-2">
-              <p className="font-medium">{project.title}</p>
-              <p className="text-sm text-gray-600">{project.description || '説明なし'}</p>
-              <button
-                className="mt-2 px-3 py-1 bg-blue-500 text-white rounded text-sm"
-                onClick={() => {
-                  console.log('Button clicked for project:', project.id)
-                  onProjectSelect(project.id)
-                }}
-              >
-                詳細を見る
-              </button>
-            </div>
-          ))}
+          <h3 className="font-semibold mb-3">プロジェクト一覧:</h3>
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {data.projects.map((project, index) => (
+              <div key={`${project.id}-${index}`} className="p-3 border rounded-lg hover:bg-gray-50 transition-colors">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-900">{project.title}</p>
+                    <p className="text-sm text-gray-600 mt-1">{project.description || '説明なし'}</p>
+                  </div>
+                  <button
+                    className="ml-3 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-sm transition-colors"
+                    onClick={() => onProjectSelect(project.id)}
+                  >
+                    詳細を見る
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </CardContent>
     </Card>
