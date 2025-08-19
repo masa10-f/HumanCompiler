@@ -5,7 +5,7 @@ import { useToast } from '@/hooks/use-toast'
 import type { ProjectTimelineData, TimelineOverviewData, TimelineFilters } from '@/types/timeline'
 import { timelineApi } from '@/lib/api'
 
-export function useProjectTimeline(projectId: string | null, filters?: TimelineFilters) {
+export function useProjectTimeline(projectId: string | null, filters?: TimelineFilters, weeklyWorkHours?: number) {
   const [data, setData] = useState<ProjectTimelineData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -34,7 +34,8 @@ export function useProjectTimeline(projectId: string | null, filters?: TimelineF
         projectId,
         memoizedFilters?.start_date,
         memoizedFilters?.end_date,
-        memoizedFilters?.time_unit
+        memoizedFilters?.time_unit,
+        weeklyWorkHours || 40
       )
       setData(timelineData)
     } catch (err) {
@@ -48,7 +49,7 @@ export function useProjectTimeline(projectId: string | null, filters?: TimelineF
     } finally {
       setIsLoading(false)
     }
-  }, [projectId, memoizedFilters, toast])
+  }, [projectId, memoizedFilters, weeklyWorkHours, toast])
 
   useEffect(() => {
     fetchTimeline()

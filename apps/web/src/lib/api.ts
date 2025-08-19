@@ -524,11 +524,12 @@ class ApiClient {
 
 
   // Timeline API methods
-  async getProjectTimeline(projectId: string, startDate?: string, endDate?: string, timeUnit?: string): Promise<ProjectTimelineData> {
+  async getProjectTimeline(projectId: string, startDate?: string, endDate?: string, timeUnit?: string, weeklyWorkHours?: number): Promise<ProjectTimelineData> {
     const params = new URLSearchParams();
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
     if (timeUnit) params.append('time_unit', timeUnit);
+    if (weeklyWorkHours !== undefined) params.append('weekly_work_hours', weeklyWorkHours.toString());
 
     return this.request<ProjectTimelineData>(`/api/timeline/projects/${projectId}?${params.toString()}`);
   }
@@ -623,8 +624,8 @@ export const weeklyScheduleApi = {
 
 
 export const timelineApi = {
-  getProjectTimeline: (projectId: string, startDate?: string, endDate?: string, timeUnit?: string) =>
-    apiClient.getProjectTimeline(projectId, startDate, endDate, timeUnit),
+  getProjectTimeline: (projectId: string, startDate?: string, endDate?: string, timeUnit?: string, weeklyWorkHours?: number) =>
+    apiClient.getProjectTimeline(projectId, startDate, endDate, timeUnit, weeklyWorkHours),
   getOverview: (startDate?: string, endDate?: string) =>
     apiClient.getTimelineOverview(startDate, endDate),
 };

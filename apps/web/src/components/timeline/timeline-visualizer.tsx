@@ -86,7 +86,7 @@ export function TimelineVisualizer({
     setZoomLevel(prev => Math.max(prev / 1.2, 0.5))
   }, [])
 
-  const handleResetView = useCallback(() => {
+  const handleZoomReset = useCallback(() => {
     setZoomLevel(1)
   }, [])
 
@@ -176,7 +176,7 @@ export function TimelineVisualizer({
         }
 
         if (newIndex >= 0 && newIndex < layoutModel.goals.length) {
-          setSelectedGoal(layoutModel.goals[newIndex])
+          setSelectedGoal(layoutModel.goals[newIndex] || null)
           setSelectedTask(null)
           setTooltipPosition(null)
         }
@@ -186,7 +186,7 @@ export function TimelineVisualizer({
       case ' ':
         if (selectedGoal && selectedGoal.segments.length > 0) {
           event.preventDefault()
-          setSelectedTask(selectedGoal.segments[0])
+          setSelectedTask(selectedGoal.segments[0] || null)
         }
         break
 
@@ -330,7 +330,7 @@ export function TimelineVisualizer({
               <Button onClick={handleZoomIn} size="sm" variant="outline">
                 <ZoomIn className="w-4 h-4" />
               </Button>
-              <Button onClick={handleResetView} size="sm" variant="outline">
+              <Button onClick={handleZoomReset} size="sm" variant="outline">
                 <RotateCcw className="w-4 h-4" />
               </Button>
               <Button onClick={downloadSVG} size="sm" variant="outline">

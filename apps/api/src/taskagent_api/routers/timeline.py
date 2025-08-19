@@ -33,6 +33,9 @@ async def get_project_timeline(
     start_date: datetime = Query(None, description="Timeline start date"),
     end_date: datetime = Query(None, description="Timeline end date"),
     time_unit: str = Query("day", description="Time unit: day, week, month"),
+    weekly_work_hours: float = Query(
+        40.0, description="Weekly work hours for timeline calculation"
+    ),
     current_user: AuthUser = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
@@ -106,7 +109,7 @@ async def get_project_timeline(
             "id": str(project.id),
             "title": project.title,
             "description": project.description,
-            "weekly_work_hours": float(project.weekly_work_hours),
+            "weekly_work_hours": weekly_work_hours,
             "created_at": project.created_at.isoformat(),
             "updated_at": project.updated_at.isoformat(),
         },

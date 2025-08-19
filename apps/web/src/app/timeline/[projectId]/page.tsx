@@ -9,6 +9,8 @@ import { TimelineVisualizer } from '@/components/timeline/timeline-visualizer'
 import { TimelineErrorBoundary } from '@/components/timeline/timeline-error-boundary'
 import { useProjectTimeline } from '@/hooks/use-timeline'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { ArrowLeft } from 'lucide-react'
 import { subMonths, startOfMonth, endOfMonth } from 'date-fns'
 import type { TimelineFilters } from '@/types/timeline'
@@ -34,8 +36,9 @@ export default function ProjectTimelinePage() {
   })
 
   const [useNewVisualizer, setUseNewVisualizer] = useState(true)
+  const [weeklyWorkHours, setWeeklyWorkHours] = useState(40)
 
-  const { data: timelineData, isLoading: timelineLoading, error: timelineError, refetch } = useProjectTimeline(projectId, filters)
+  const { data: timelineData, isLoading: timelineLoading, error: timelineError, refetch } = useProjectTimeline(projectId, filters, weeklyWorkHours)
 
   if (loading) {
     return (
@@ -96,21 +99,38 @@ export default function ProjectTimelinePage() {
             タイムライン一覧に戻る
           </Button>
 
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={() => setUseNewVisualizer(false)}
-              variant={!useNewVisualizer ? "default" : "outline"}
-              size="sm"
-            >
-              レガシー表示
-            </Button>
-            <Button
-              onClick={() => setUseNewVisualizer(true)}
-              variant={useNewVisualizer ? "default" : "outline"}
-              size="sm"
-            >
-              新ビジュアライザー
-            </Button>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="weekly-work-hours" className="text-sm font-medium">
+                週間作業時間:
+              </Label>
+              <Input
+                id="weekly-work-hours"
+                type="number"
+                min="1"
+                max="168"
+                value={weeklyWorkHours}
+                onChange={(e) => setWeeklyWorkHours(Number(e.target.value))}
+                className="w-20"
+              />
+              <span className="text-sm text-gray-500">時間</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => setUseNewVisualizer(false)}
+                variant={!useNewVisualizer ? "default" : "outline"}
+                size="sm"
+              >
+                レガシー表示
+              </Button>
+              <Button
+                onClick={() => setUseNewVisualizer(true)}
+                variant={useNewVisualizer ? "default" : "outline"}
+                size="sm"
+              >
+                新ビジュアライザー
+              </Button>
+            </div>
           </div>
         </div>
 
