@@ -98,101 +98,115 @@ export function TimelineOverview({ data, isLoading, error, onProjectSelect }: Ti
 
       {/* Projects Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {data.projects.map((project) => (
-          <Card key={project.id} className="hover:shadow-lg transition-shadow">
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <CardTitle className="text-lg line-clamp-2 mb-1">
-                    {project.title}
-                  </CardTitle>
-                  <p className="text-sm text-gray-500 line-clamp-2">
-                    {project.description || 'プロジェクトの説明がありません'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-gray-400">
-                <span>作成: {formatDate(project.created_at)}</span>
-                <span>•</span>
-                <span>更新: {formatDate(project.updated_at)}</span>
-              </div>
-            </CardHeader>
+        {data.projects.map((project) => {
+          // Safe access to statistics with fallbacks
+          const stats = project.statistics || {
+            total_goals: 0,
+            completed_goals: 0,
+            in_progress_goals: 0,
+            total_tasks: 0,
+            completed_tasks: 0,
+            in_progress_tasks: 0,
+            goals_completion_rate: 0,
+            tasks_completion_rate: 0
+          };
 
-            <CardContent className="space-y-4">
-              {/* Goal Statistics */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium flex items-center gap-1">
-                    <Target className="w-4 h-4" />
-                    ゴール進捗
-                  </span>
-                  <Badge variant="outline">
-                    {project.statistics.completed_goals}/{project.statistics.total_goals}
-                  </Badge>
-                </div>
-                <div className="space-y-1">
-                  <Progress
-                    value={project.statistics.goals_completion_rate}
-                    className="h-2"
-                  />
-                  <div className="flex justify-between text-xs text-gray-500">
-                    <span>{project.statistics.goals_completion_rate}% 完了</span>
-                    <span>{project.statistics.in_progress_goals} 進行中</span>
+          return (
+            <Card key={project.id} className="hover:shadow-lg transition-shadow">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <CardTitle className="text-lg line-clamp-2 mb-1">
+                      {project.title}
+                    </CardTitle>
+                    <p className="text-sm text-gray-500 line-clamp-2">
+                      {project.description || 'プロジェクトの説明がありません'}
+                    </p>
                   </div>
                 </div>
-              </div>
-
-              {/* Task Statistics */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium flex items-center gap-1">
-                    <CheckCircle className="w-4 h-4" />
-                    タスク進捗
-                  </span>
-                  <Badge variant="outline">
-                    {project.statistics.completed_tasks}/{project.statistics.total_tasks}
-                  </Badge>
+                <div className="flex items-center gap-2 text-xs text-gray-400">
+                  <span>作成: {formatDate(project.created_at)}</span>
+                  <span>•</span>
+                  <span>更新: {formatDate(project.updated_at)}</span>
                 </div>
-                <div className="space-y-1">
-                  <Progress
-                    value={project.statistics.tasks_completion_rate}
-                    className="h-2"
-                  />
-                  <div className="flex justify-between text-xs text-gray-500">
-                    <span>{project.statistics.tasks_completion_rate}% 完了</span>
-                    <span>{project.statistics.in_progress_tasks} 進行中</span>
+              </CardHeader>
+
+              <CardContent className="space-y-4">
+                {/* Goal Statistics */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium flex items-center gap-1">
+                      <Target className="w-4 h-4" />
+                      ゴール進捗
+                    </span>
+                    <Badge variant="outline">
+                      {stats.completed_goals}/{stats.total_goals}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <Progress
+                      value={Math.min(100, Math.max(0, stats.goals_completion_rate || 0))}
+                      className="h-2"
+                    />
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>{Math.round(stats.goals_completion_rate || 0)}% 完了</span>
+                      <span>{stats.in_progress_goals} 進行中</span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Quick Stats */}
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <div className="bg-blue-50 rounded-lg p-3 text-center">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {project.statistics.total_goals}
+                {/* Task Statistics */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium flex items-center gap-1">
+                      <CheckCircle className="w-4 h-4" />
+                      タスク進捗
+                    </span>
+                    <Badge variant="outline">
+                      {stats.completed_tasks}/{stats.total_tasks}
+                    </Badge>
                   </div>
-                  <div className="text-xs text-blue-600">ゴール数</div>
-                </div>
-                <div className="bg-green-50 rounded-lg p-3 text-center">
-                  <div className="text-2xl font-bold text-green-600">
-                    {project.statistics.total_tasks}
+                  <div className="space-y-1">
+                    <Progress
+                      value={Math.min(100, Math.max(0, stats.tasks_completion_rate || 0))}
+                      className="h-2"
+                    />
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>{Math.round(stats.tasks_completion_rate || 0)}% 完了</span>
+                      <span>{stats.in_progress_tasks} 進行中</span>
+                    </div>
                   </div>
-                  <div className="text-xs text-green-600">タスク数</div>
                 </div>
-              </div>
 
-              {/* Action Button */}
-              <Button
-                onClick={() => onProjectSelect(project.id)}
-                className="w-full mt-4"
-                variant="outline"
-              >
-                <Eye className="w-4 h-4 mr-2" />
-                タイムライン詳細
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
+                {/* Quick Stats */}
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div className="bg-blue-50 rounded-lg p-3 text-center">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {stats.total_goals}
+                    </div>
+                    <div className="text-xs text-blue-600">ゴール数</div>
+                  </div>
+                  <div className="bg-green-50 rounded-lg p-3 text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {stats.total_tasks}
+                    </div>
+                    <div className="text-xs text-green-600">タスク数</div>
+                  </div>
+                </div>
+
+                {/* Action Button */}
+                <Button
+                  onClick={() => onProjectSelect(project.id)}
+                  className="w-full mt-4"
+                  variant="outline"
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  タイムライン詳細
+                </Button>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       {/* Summary Stats */}
@@ -213,22 +227,22 @@ export function TimelineOverview({ data, isLoading, error, onProjectSelect }: Ti
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-green-600">
-                {data.projects.reduce((sum, p) => sum + p.statistics.total_goals, 0)}
+                {data.projects.reduce((sum, p) => sum + (p.statistics?.total_goals || 0), 0)}
               </div>
               <div className="text-sm text-gray-500">総ゴール数</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-purple-600">
-                {data.projects.reduce((sum, p) => sum + p.statistics.total_tasks, 0)}
+                {data.projects.reduce((sum, p) => sum + (p.statistics?.total_tasks || 0), 0)}
               </div>
               <div className="text-sm text-gray-500">総タスク数</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-orange-600">
-                {Math.round(
-                  data.projects.reduce((sum, p) => sum + p.statistics.tasks_completion_rate, 0) /
+                {data.projects.length > 0 ? Math.round(
+                  data.projects.reduce((sum, p) => sum + (p.statistics?.tasks_completion_rate || 0), 0) /
                   data.projects.length
-                )}%
+                ) : 0}%
               </div>
               <div className="text-sm text-gray-500">平均完了率</div>
             </div>
