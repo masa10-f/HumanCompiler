@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useRouter, useParams } from 'next/navigation'
 import { AppHeader } from '@/components/layout/app-header'
 import { ProjectTimeline } from '@/components/timeline/project-timeline'
+import { TimelineVisualizer } from '@/components/timeline/timeline-visualizer'
 import { useProjectTimeline } from '@/hooks/use-timeline'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
@@ -25,9 +26,13 @@ export default function ProjectTimelinePage() {
     return {
       start_date: startDate.toISOString(),
       end_date: endDate.toISOString(),
-      time_unit: 'day'
+      time_unit: 'day',
+      show_dependencies: true,
+      show_task_segments: true
     }
   })
+
+  const [useNewVisualizer, setUseNewVisualizer] = useState(true)
 
   const { data: timelineData, isLoading: timelineLoading, error: timelineError, refetch } = useProjectTimeline(projectId, filters)
 
@@ -45,6 +50,10 @@ export default function ProjectTimelinePage() {
   if (!isAuthenticated) {
     router.push('/login')
     return null
+  }
+
+  const handleFiltersChange = (newFilters: TimelineFilters) => {
+    setFilters(newFilters)
   }
 
   const handleTimeUnitChange = (unit: string) => {
@@ -76,7 +85,7 @@ export default function ProjectTimelinePage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Navigation */}
-        <div className="mb-6">
+        <div className="mb-6 flex items-center justify-between">
           <Button
             onClick={handleBack}
             variant="outline"
@@ -85,18 +94,46 @@ export default function ProjectTimelinePage() {
             <ArrowLeft className="h-4 w-4" />
             タイムライン一覧に戻る
           </Button>
+
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setUseNewVisualizer(false)}
+              variant={!useNewVisualizer ? "default" : "outline"}
+              size="sm"
+            >
+              レガシー表示
+            </Button>
+            <Button
+              onClick={() => setUseNewVisualizer(true)}
+              variant={useNewVisualizer ? "default" : "outline"}
+              size="sm"
+            >
+              新ビジュアライザー
+            </Button>
+          </div>
         </div>
 
         {/* Project Timeline */}
-        <ProjectTimeline
-          projectId={projectId}
-          data={timelineData}
-          isLoading={timelineLoading}
-          error={timelineError}
-          onRefresh={handleRefresh}
-          onTimeUnitChange={handleTimeUnitChange}
-          onDateRangeChange={handleDateRangeChange}
-        />
+        {useNewVisualizer ? (
+          <TimelineVisualizer
+            data={timelineData}
+            isLoading={timelineLoading}
+            error={timelineError}
+            filters={filters}
+            onFiltersChange={handleFiltersChange}
+            onRefresh={handleRefresh}
+          />
+        ) : (
+          <ProjectTimeline
+            projectId={projectId}
+            data={timelineData}
+            isLoading={timelineLoading}
+            error={timelineError}
+            onRefresh={handleRefresh}
+            onTimeUnitChange={handleTimeUnitChange}
+            onDateRangeChange={handleDateRangeChange}
+          />
+        )}
       </main>
     </div>
   )

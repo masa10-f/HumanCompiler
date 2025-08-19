@@ -1,5 +1,6 @@
 export interface TimelineTask {
   id: string
+  goal_id: string
   title: string
   description: string | null
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
@@ -19,6 +20,9 @@ export interface TimelineGoal {
   description: string | null
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
   estimate_hours: number
+  start_date: string | null
+  end_date: string | null
+  dependencies: string[]
   created_at: string
   updated_at: string
   tasks: TimelineTask[]
@@ -29,6 +33,7 @@ export interface ProjectTimelineData {
     id: string
     title: string
     description: string | null
+    weekly_work_hours: number
     created_at: string
     updated_at: string
   }
@@ -72,4 +77,6 @@ export interface TimelineFilters {
   start_date?: string
   end_date?: string
   time_unit: 'day' | 'week' | 'month'
+  show_dependencies?: boolean
+  show_task_segments?: boolean
 }

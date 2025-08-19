@@ -82,6 +82,13 @@ class ProjectBase(SQLModel):
 
     title: str = SQLField(min_length=1, max_length=200)
     description: str | None = SQLField(default=None, max_length=1000)
+    weekly_work_hours: Decimal = SQLField(
+        default=Decimal("40"),
+        gt=0,
+        max_digits=5,
+        decimal_places=2,
+        description="Weekly work hours allocated to this project for timeline calculation",
+    )
 
 
 class Project(ProjectBase, table=True):  # type: ignore[call-arg]
@@ -105,6 +112,12 @@ class GoalBase(SQLModel):
     title: str = SQLField(min_length=1, max_length=200)
     description: str | None = SQLField(default=None, max_length=1000)
     estimate_hours: Decimal = SQLField(gt=0, max_digits=5, decimal_places=2)
+    start_date: datetime | None = SQLField(
+        default=None, description="Goal start date for timeline visualization"
+    )
+    end_date: datetime | None = SQLField(
+        default=None, description="Goal end date for timeline visualization"
+    )
     status: GoalStatus = SQLField(
         default=GoalStatus.PENDING,
         sa_column=Column(

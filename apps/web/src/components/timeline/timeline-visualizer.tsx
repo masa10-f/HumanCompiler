@@ -1,0 +1,384 @@
+"use client"
+
+import React, { useMemo, useRef, useState, useCallback } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
+import { Download, Calendar, ZoomIn, ZoomOut, RotateCcw, AlertTriangle } from 'lucide-react'
+import { useToast } from '@/hooks/use-toast'
+import { computeTimelineLayout } from '@/lib/timeline/layout-engine'
+import { TimelineGoalBar } from './timeline-goal-bar'
+import { TimelineDependencyArrow } from './timeline-dependency-arrow'
+import { TimelineTooltip } from './timeline-tooltip'
+import type { TimelineData, LayoutModel, LayoutGoal, LayoutTaskSegment, TimelineFilters } from '@/lib/timeline/types'
+
+interface TimelineVisualizerProps {
+  data: TimelineData | null
+  isLoading: boolean
+  error?: string | null
+  filters: TimelineFilters
+  onFiltersChange: (filters: TimelineFilters) => void
+  onRefresh: () => void
+}
+
+export function TimelineVisualizer({
+  data,
+  isLoading,
+  error,
+  filters,
+  onFiltersChange,
+  onRefresh
+}: TimelineVisualizerProps) {
+  const svgRef = useRef<SVGSVGElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const { toast } = useToast()
+
+  const [zoomLevel, setZoomLevel] = useState(1)
+  const [selectedGoal, setSelectedGoal] = useState<LayoutGoal | null>(null)
+  const [selectedTask, setSelectedTask] = useState<LayoutTaskSegment | null>(null)
+  const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null)
+
+  // Compute layout when data changes
+  const layoutModel = useMemo<LayoutModel | null>(() => {
+    if (!data) return null
+
+    try {
+      return computeTimelineLayout(data, {
+        canvas_width: 1400,
+        canvas_height: 600
+      })
+    } catch (error) {
+      console.error('Layout computation failed:', error)
+      return null
+    }
+  }, [data])
+
+  // Handle zoom controls
+  const handleZoomIn = useCallback(() => {
+    setZoomLevel(prev => Math.min(prev * 1.2, 3))
+  }, [])
+
+  const handleZoomOut = useCallback(() => {
+    setZoomLevel(prev => Math.max(prev / 1.2, 0.5))
+  }, [])
+
+  const handleResetView = useCallback(() => {
+    setZoomLevel(1)
+  }, [])
+
+  // Handle filter changes
+  const handleTimeUnitChange = useCallback((unit: string) => {
+    onFiltersChange({ ...filters, time_unit: unit as 'day' | 'week' | 'month' })
+  }, [filters, onFiltersChange])
+
+  // Handle goal selection
+  const handleGoalClick = useCallback((goal: LayoutGoal, event: React.MouseEvent) => {
+    setSelectedGoal(goal)
+    setSelectedTask(null)
+    setTooltipPosition({ x: event.clientX, y: event.clientY })
+  }, [])
+
+  // Handle task selection
+  const handleTaskClick = useCallback((task: LayoutTaskSegment, event: React.MouseEvent) => {
+    setSelectedTask(task)
+    setSelectedGoal(null)
+    setTooltipPosition({ x: event.clientX, y: event.clientY })
+  }, [])
+
+  // Close tooltip when clicking outside
+  const handleSvgClick = useCallback((event: React.MouseEvent) => {
+    if (event.target === svgRef.current) {
+      setSelectedGoal(null)
+      setSelectedTask(null)
+      setTooltipPosition(null)
+    }
+  }, [])
+
+  // Download timeline as SVG
+  const downloadSVG = useCallback(async () => {
+    if (!svgRef.current || !data) return
+
+    try {
+      const svgElement = svgRef.current
+      const svgData = new XMLSerializer().serializeToString(svgElement)
+      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+      const svgUrl = URL.createObjectURL(svgBlob)
+
+      const link = document.createElement('a')
+      link.href = svgUrl
+      link.download = `${data.project.title}_timeline.svg`
+      link.click()
+
+      URL.revokeObjectURL(svgUrl)
+
+      toast({
+        title: "タイムラインをダウンロードしました",
+        description: "SVG形式でタイムラインが保存されました。",
+      })
+    } catch (error) {
+      console.error('Download failed:', error)
+      toast({
+        title: "ダウンロードに失敗しました",
+        description: "ファイルの生成中にエラーが発生しました。",
+        variant: "destructive",
+      })
+    }
+  }, [data, toast])
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="w-5 h-5" />
+            タイムライン・ビジュアライザー
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="animate-pulse space-y-4">
+            <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+            <div className="h-64 bg-gray-200 rounded"></div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="w-5 h-5" />
+            タイムライン・ビジュアライザー
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8">
+            <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <p className="text-red-500 mb-2">エラーが発生しました</p>
+            <p className="text-sm text-gray-600 mb-4">{error}</p>
+            <Button onClick={onRefresh} variant="outline">
+              再試行
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (!data || !layoutModel) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="w-5 h-5" />
+            タイムライン・ビジュアライザー
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-gray-500 text-center py-8">
+            タイムラインデータが見つかりません。
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header Controls */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Calendar className="w-5 h-5" />
+              タイムライン・ビジュアライザー: {data.project.title}
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Select value={filters.time_unit} onValueChange={handleTimeUnitChange}>
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="day">日単位</SelectItem>
+                  <SelectItem value="week">週単位</SelectItem>
+                  <SelectItem value="month">月単位</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button onClick={handleZoomOut} size="sm" variant="outline">
+                <ZoomOut className="w-4 h-4" />
+              </Button>
+              <Button onClick={handleZoomIn} size="sm" variant="outline">
+                <ZoomIn className="w-4 h-4" />
+              </Button>
+              <Button onClick={handleResetView} size="sm" variant="outline">
+                <RotateCcw className="w-4 h-4" />
+              </Button>
+              <Button onClick={downloadSVG} size="sm" variant="outline">
+                <Download className="w-4 h-4" />
+                SVG
+              </Button>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 text-sm text-gray-500">
+            <span>期間: {new Date(layoutModel.timeline.start_date).toLocaleDateString()} ～ {new Date(layoutModel.timeline.end_date).toLocaleDateString()}</span>
+            <span>•</span>
+            <span>{layoutModel.timeline.total_days}日間</span>
+            <span>•</span>
+            <span>週間作業時間: {data.project.weekly_work_hours}時間</span>
+            <Badge variant="outline">
+              ズーム: {Math.round(zoomLevel * 100)}%
+            </Badge>
+          </div>
+        </CardHeader>
+      </Card>
+
+      {/* Timeline Visualization */}
+      <Card>
+        <CardContent className="p-0">
+          <div
+            ref={containerRef}
+            className="overflow-auto"
+            style={{
+              height: Math.min(layoutModel.dimensions.height * zoomLevel + 100, 600),
+              background: '#ffffff'
+            }}
+          >
+            <svg
+              ref={svgRef}
+              width={layoutModel.dimensions.width * zoomLevel}
+              height={layoutModel.dimensions.height * zoomLevel}
+              viewBox={`0 0 ${layoutModel.dimensions.width} ${layoutModel.dimensions.height}`}
+              onClick={handleSvgClick}
+              className="border border-gray-200"
+            >
+              {/* Background Grid */}
+              <defs>
+                <pattern
+                  id="timeline-grid"
+                  width="50"
+                  height={layoutModel.dimensions.row_height}
+                  patternUnits="userSpaceOnUse"
+                >
+                  <rect width="50" height={layoutModel.dimensions.row_height} fill="none" stroke="#f1f5f9" strokeWidth="0.5" />
+                </pattern>
+
+                {/* Arrow marker */}
+                <marker
+                  id="arrowhead"
+                  markerWidth="10"
+                  markerHeight="7"
+                  refX="9"
+                  refY="3.5"
+                  orient="auto"
+                >
+                  <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280" />
+                </marker>
+
+                <marker
+                  id="arrowhead-invalid"
+                  markerWidth="10"
+                  markerHeight="7"
+                  refX="9"
+                  refY="3.5"
+                  orient="auto"
+                >
+                  <polygon points="0 0, 10 3.5, 0 7" fill="#ef4444" />
+                </marker>
+              </defs>
+
+              {/* Grid Background */}
+              <rect
+                width={layoutModel.dimensions.width}
+                height={layoutModel.dimensions.height}
+                fill="url(#timeline-grid)"
+              />
+
+              {/* Goal Bars */}
+              {layoutModel.goals.map(goal => (
+                <TimelineGoalBar
+                  key={goal.id}
+                  goal={goal}
+                  dimensions={layoutModel.dimensions}
+                  isSelected={selectedGoal?.id === goal.id}
+                  onGoalClick={handleGoalClick}
+                  onTaskClick={handleTaskClick}
+                  showTaskSegments={filters.show_task_segments !== false}
+                />
+              ))}
+
+              {/* Dependency Arrows */}
+              {filters.show_dependencies !== false && layoutModel.arrows.map(arrow => (
+                <TimelineDependencyArrow
+                  key={arrow.id}
+                  arrow={arrow}
+                  isHighlighted={
+                    selectedGoal?.id === arrow.from_goal_id ||
+                    selectedGoal?.id === arrow.to_goal_id
+                  }
+                />
+              ))}
+
+              {/* Time Axis Labels */}
+              <g className="time-axis">
+                {/* Add time axis implementation here */}
+              </g>
+            </svg>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Tooltip */}
+      {(selectedGoal || selectedTask) && tooltipPosition && (
+        <TimelineTooltip
+          goal={selectedGoal}
+          task={selectedTask}
+          position={tooltipPosition}
+          onClose={() => {
+            setSelectedGoal(null)
+            setSelectedTask(null)
+            setTooltipPosition(null)
+          }}
+        />
+      )}
+
+      {/* Legend */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-center gap-6 text-sm">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded bg-green-500"></div>
+              <span>完了</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded bg-blue-500"></div>
+              <span>進行中</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded bg-gray-400"></div>
+              <span>未着手</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded bg-red-500"></div>
+              <span>中止</span>
+            </div>
+            {filters.show_dependencies !== false && (
+              <>
+                <div className="border-l border-gray-300 h-4 mx-2"></div>
+                <div className="flex items-center gap-2">
+                  <svg width="20" height="8">
+                    <line x1="0" y1="4" x2="16" y2="4" stroke="#6b7280" strokeWidth="2" markerEnd="url(#arrowhead)" />
+                  </svg>
+                  <span>依存関係</span>
+                </div>
+              </>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

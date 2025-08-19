@@ -11,7 +11,16 @@ from sqlalchemy.orm import selectinload
 
 from ..auth import get_current_user, AuthUser
 from ..database import get_session
-from ..models import User, Project, Goal, Task, Log, TaskStatus, GoalStatus
+from ..models import (
+    User,
+    Project,
+    Goal,
+    Task,
+    Log,
+    TaskStatus,
+    GoalStatus,
+    GoalDependency,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,10 +89,14 @@ async def get_project_timeline(
             hour=23, minute=59, second=59, microsecond=999999
         )
 
-    # Get all goals for the project with tasks and logs in a single query (fix N+1 problem)
+    # Get all goals for the project with tasks, logs, and dependencies in a single query (fix N+1 problem)
     goals_statement = (
         select(Goal)
-        .options(selectinload(Goal.tasks).selectinload(Task.logs))
+        .options(
+            selectinload(Goal.tasks).selectinload(Task.logs),
+            selectinload(Goal.dependencies),
+            selectinload(Goal.dependent_goals),
+        )
         .where(Goal.project_id == project_id)
     )
     goals = session.exec(goals_statement).all()
@@ -93,6 +106,7 @@ async def get_project_timeline(
             "id": str(project.id),
             "title": project.title,
             "description": project.description,
+            "weekly_work_hours": float(project.weekly_work_hours),
             "created_at": project.created_at.isoformat(),
             "updated_at": project.updated_at.isoformat(),
         },
@@ -108,12 +122,18 @@ async def get_project_timeline(
         # Use preloaded tasks from the relationship (N+1 problem fixed)
         tasks = goal.tasks
 
+        # Get dependency goal IDs
+        dependency_ids = [str(dep.depends_on_goal_id) for dep in goal.dependencies]
+
         goal_data = {
             "id": str(goal.id),
             "title": goal.title,
             "description": goal.description,
             "status": goal.status,
             "estimate_hours": float(goal.estimate_hours),
+            "start_date": goal.start_date.isoformat() if goal.start_date else None,
+            "end_date": goal.end_date.isoformat() if goal.end_date else None,
+            "dependencies": dependency_ids,
             "created_at": goal.created_at.isoformat(),
             "updated_at": goal.updated_at.isoformat(),
             "tasks": [],
