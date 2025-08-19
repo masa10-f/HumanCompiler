@@ -48,7 +48,6 @@ export function TimelineVisualizer({
 
   // State for fallback mode when layout computation fails
   const [isSimplifiedMode, setIsSimplifiedMode] = useState(false)
-  const [shouldUseVirtualization, setShouldUseVirtualization] = useState(false)
 
   // Compute layout when data changes
   const layoutModel = useMemo<LayoutModel | null>(() => {
@@ -61,7 +60,6 @@ export function TimelineVisualizer({
 
       // Determine if virtualization is needed
       const needsVirtualization = goalCount > 100 || taskCount > 500
-      setShouldUseVirtualization(needsVirtualization)
 
       if (goalCount > 50 || taskCount > 200) {
         console.warn(`Large dataset detected: ${goalCount} goals, ${taskCount} tasks`)
@@ -100,7 +98,7 @@ export function TimelineVisualizer({
       // エラーハンドリングを別のuseEffectで処理するため、ここではthrowする
       throw error
     }
-  }, [data, isSimplifiedMode])
+  }, [data, isSimplifiedMode, toast])
 
 
   // Handle zoom controls
@@ -367,7 +365,7 @@ export function TimelineVisualizer({
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {data.goals.map((goal, index) => (
+          {data.goals.map((goal, _index) => (
             <div key={goal.id} className="border rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-semibold text-lg">{goal.title}</h3>
