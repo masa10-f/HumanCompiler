@@ -49,7 +49,7 @@ export function useProjectTimeline(projectId: string | null, filters?: TimelineF
     } finally {
       setIsLoading(false)
     }
-  }, [projectId, memoizedFilters, weeklyWorkHours, toast])
+  }, [projectId, memoizedFilters, weeklyWorkHours])
 
   useEffect(() => {
     fetchTimeline()
@@ -104,7 +104,7 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
       console.log('🔍 [useTimelineOverview] Setting isLoading to false')
       setIsLoading(false)
     }
-  }, [memoizedFilters, toast])
+  }, [memoizedFilters])
 
   useEffect(() => {
     fetchOverview()
