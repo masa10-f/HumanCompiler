@@ -476,7 +476,9 @@ export default function SchedulingPage() {
                   <div>
                     <h4 className="text-lg font-semibold mb-3">タスク割り当て</h4>
                     <div className="space-y-2">
-                      {scheduleResult.assignments.map((assignment, index) => {
+                      {scheduleResult.assignments
+                        .sort((a, b) => a.start_time.localeCompare(b.start_time))
+                        .map((assignment, index) => {
                         const slotInfo = timeSlots[assignment.slot_index];
                         const taskLink = assignment.project_id && assignment.goal_id
                           ? `/projects/${assignment.project_id}/goals/${assignment.goal_id}`

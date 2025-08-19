@@ -216,7 +216,10 @@ export default function ScheduleHistoryPage() {
                   <div>
                     <h4 className="font-semibold mb-2">スケジュール済みタスク</h4>
                     <div className="space-y-2">
-                      {schedule.plan_json.assignments.slice(0, 3).map((assignment, index) => (
+                      {schedule.plan_json.assignments
+                        .sort((a, b) => a.start_time.localeCompare(b.start_time))
+                        .slice(0, 3)
+                        .map((assignment, index) => (
                         <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                           <div className="flex items-center gap-3">
                             <div className="text-sm font-semibold text-gray-600">
