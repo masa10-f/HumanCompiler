@@ -11,14 +11,14 @@ export function useProjectTimeline(projectId: string | null, filters?: TimelineF
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
 
-  // Memoize filters to prevent unnecessary re-renders
+  // Memoize filters to prevent unnecessary re-renders with stable reference
   const memoizedFilters = useMemo(() => {
     return filters ? {
       start_date: filters.start_date,
       end_date: filters.end_date,
       time_unit: filters.time_unit
     } : undefined
-  }, [filters])
+  }, [filters?.start_date, filters?.end_date, filters?.time_unit])
 
   const fetchTimeline = useCallback(async () => {
     if (!projectId) {
@@ -69,13 +69,13 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
 
-  // Memoize filters to prevent unnecessary re-renders
+  // Memoize filters to prevent unnecessary re-renders with stable reference
   const memoizedFilters = useMemo(() => {
     return filters ? {
       start_date: filters.start_date,
       end_date: filters.end_date
     } : undefined
-  }, [filters])
+  }, [filters?.start_date, filters?.end_date])
 
   const fetchOverview = useCallback(async () => {
     console.log('🔍 [useTimelineOverview] Starting fetchOverview...')

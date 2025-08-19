@@ -97,10 +97,11 @@ export function TimelineVisualizer({
         return null // Will trigger re-computation with simplified mode
       }
 
-      handleError(error instanceof Error ? error : new Error('Layout computation failed'))
-      return null
+      // エラーハンドリングを別のuseEffectで処理するため、ここではthrowする
+      throw error
     }
-  }, [data, handleError, toast, isSimplifiedMode])
+  }, [data, isSimplifiedMode])
+
 
   // Handle zoom controls
   const handleZoomIn = useCallback(() => {
