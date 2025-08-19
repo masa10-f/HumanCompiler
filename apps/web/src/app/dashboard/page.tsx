@@ -180,7 +180,9 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {todaySchedule.plan_json.assignments.map((assignment, index: number) => (
+                  {todaySchedule.plan_json.assignments
+                    .sort((a, b) => a.start_time.localeCompare(b.start_time))
+                    .map((assignment, index: number) => (
                     <div key={index} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                       <div className="flex items-center gap-3">
                         <div className="text-lg font-semibold text-gray-600">
