@@ -6,6 +6,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { AppHeader } from '@/components/layout/app-header'
 import { ProjectTimeline } from '@/components/timeline/project-timeline'
 import { TimelineVisualizer } from '@/components/timeline/timeline-visualizer'
+import { TimelineErrorBoundary } from '@/components/timeline/timeline-error-boundary'
 import { useProjectTimeline } from '@/hooks/use-timeline'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
@@ -115,14 +116,16 @@ export default function ProjectTimelinePage() {
 
         {/* Project Timeline */}
         {useNewVisualizer ? (
-          <TimelineVisualizer
-            data={timelineData}
-            isLoading={timelineLoading}
-            error={timelineError}
-            filters={filters}
-            onFiltersChange={handleFiltersChange}
-            onRefresh={handleRefresh}
-          />
+          <TimelineErrorBoundary>
+            <TimelineVisualizer
+              data={timelineData}
+              isLoading={timelineLoading}
+              error={timelineError}
+              filters={filters}
+              onFiltersChange={handleFiltersChange}
+              onRefresh={handleRefresh}
+            />
+          </TimelineErrorBoundary>
         ) : (
           <ProjectTimeline
             projectId={projectId}

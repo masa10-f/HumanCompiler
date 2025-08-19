@@ -76,6 +76,9 @@ export function TimelineGoalBar({
           isSelected ? 'stroke-blue-500 stroke-2' : 'hover:stroke-gray-400'
         }`}
         onClick={(event) => onGoalClick(goal, event)}
+        role="button"
+        aria-label={`ゴール: ${goal.title} - 進捗率 ${Math.round(goal.progress * 100)}% (${goal.originalGoal.status})`}
+        tabIndex={0}
       />
 
       {/* Overall Progress Fill */}
@@ -110,6 +113,9 @@ export function TimelineGoalBar({
               event.stopPropagation()
               onTaskClick(segment, event)
             }}
+            role="button"
+            aria-label={`タスク: ${segment.title} - 進捗率 ${Math.round(segment.progress * 100)}% (${segment.originalTask.status})`}
+            tabIndex={0}
           />
 
           {/* Task Progress Fill */}

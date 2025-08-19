@@ -23,7 +23,7 @@ export function TimelineDependencyArrow({
   const opacity = isHighlighted ? 1 : 0.7
 
   return (
-    <g className="dependency-arrow">
+    <g className="dependency-arrow" role="group" aria-label={`${arrow.from_goal_id}から${arrow.to_goal_id}への依存関係${arrow.is_valid ? '' : '（循環依存の警告）'}`}>
       {/* Arrow Path */}
       <path
         d={pathString}
@@ -34,6 +34,7 @@ export function TimelineDependencyArrow({
         markerEnd={`url(#${markerId})`}
         opacity={opacity}
         className="transition-all hover:opacity-100"
+        aria-hidden="true"
       />
 
       {/* Invisible thicker path for easier hovering */}

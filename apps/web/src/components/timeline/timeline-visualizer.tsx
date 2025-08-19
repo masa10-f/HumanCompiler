@@ -1,6 +1,7 @@
 "use client"
 
-import React, { useMemo, useRef, useState, useCallback } from 'react'
+import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react'
+import { TimelineErrorBoundary, useErrorHandler } from './timeline-error-boundary'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -33,26 +34,48 @@ export function TimelineVisualizer({
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
+  const { handleError } = useErrorHandler()
 
   const [zoomLevel, setZoomLevel] = useState(1)
   const [selectedGoal, setSelectedGoal] = useState<LayoutGoal | null>(null)
   const [selectedTask, setSelectedTask] = useState<LayoutTaskSegment | null>(null)
   const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null)
 
+  // Performance optimization: debounce layout computations
+  const [layoutComputeTimestamp, setLayoutComputeTimestamp] = useState(0)
+  const layoutComputeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
   // Compute layout when data changes
   const layoutModel = useMemo<LayoutModel | null>(() => {
     if (!data) return null
 
     try {
+      // Check for large datasets and show warning
+      const goalCount = data.goals.length
+      const taskCount = data.goals.reduce((sum, g) => sum + g.tasks.length, 0)
+
+      if (goalCount > 50 || taskCount > 200) {
+        console.warn(`Large dataset detected: ${goalCount} goals, ${taskCount} tasks. Performance may be impacted.`)
+
+        if (process.env.NODE_ENV === 'development') {
+          toast({
+            title: "大規模データセットを検出",
+            description: `${goalCount}個のゴール、${taskCount}個のタスクがあります。パフォーマンスに影響する可能性があります。`,
+            variant: "destructive",
+          })
+        }
+      }
+
       return computeTimelineLayout(data, {
-        canvas_width: 1400,
-        canvas_height: 600
+        canvas_width: Math.max(1400, goalCount * 100), // Scale canvas with data size
+        canvas_height: Math.max(600, goalCount * 80)
       })
     } catch (error) {
       console.error('Layout computation failed:', error)
+      handleError(error instanceof Error ? error : new Error('Layout computation failed'))
       return null
     }
-  }, [data])
+  }, [data, handleError, toast])
 
   // Handle zoom controls
   const handleZoomIn = useCallback(() => {
@@ -118,13 +141,106 @@ export function TimelineVisualizer({
       })
     } catch (error) {
       console.error('Download failed:', error)
+      handleError(error instanceof Error ? error : new Error('SVG download failed'))
       toast({
         title: "ダウンロードに失敗しました",
         description: "ファイルの生成中にエラーが発生しました。",
         variant: "destructive",
       })
     }
-  }, [data, toast])
+  }, [data, toast, handleError])
+
+  // Keyboard navigation
+  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (!layoutModel) return
+
+    switch (event.key) {
+      case 'Escape':
+        setSelectedGoal(null)
+        setSelectedTask(null)
+        setTooltipPosition(null)
+        break
+
+      case 'ArrowUp':
+      case 'ArrowDown':
+        event.preventDefault()
+        const currentGoalIndex = selectedGoal
+          ? layoutModel.goals.findIndex(g => g.id === selectedGoal.id)
+          : -1
+
+        let newIndex: number
+        if (event.key === 'ArrowUp') {
+          newIndex = currentGoalIndex <= 0 ? layoutModel.goals.length - 1 : currentGoalIndex - 1
+        } else {
+          newIndex = currentGoalIndex >= layoutModel.goals.length - 1 ? 0 : currentGoalIndex + 1
+        }
+
+        if (newIndex >= 0 && newIndex < layoutModel.goals.length) {
+          setSelectedGoal(layoutModel.goals[newIndex])
+          setSelectedTask(null)
+          setTooltipPosition(null)
+        }
+        break
+
+      case 'Enter':
+      case ' ':
+        if (selectedGoal && selectedGoal.segments.length > 0) {
+          event.preventDefault()
+          setSelectedTask(selectedGoal.segments[0])
+        }
+        break
+
+      case '+':
+      case '=':
+        event.preventDefault()
+        handleZoomIn()
+        break
+
+      case '-':
+        event.preventDefault()
+        handleZoomOut()
+        break
+
+      case '0':
+        event.preventDefault()
+        handleZoomReset()
+        break
+    }
+  }, [layoutModel, selectedGoal, handleZoomIn, handleZoomOut, handleZoomReset])
+
+  // Memory management and cleanup
+  useEffect(() => {
+    // Clear layout computation timeout on unmount
+    return () => {
+      if (layoutComputeTimeoutRef.current) {
+        clearTimeout(layoutComputeTimeoutRef.current)
+        layoutComputeTimeoutRef.current = null
+      }
+    }
+  }, [])
+
+  // Clean up selections when data changes to prevent memory leaks
+  useEffect(() => {
+    if (data) {
+      setSelectedGoal(null)
+      setSelectedTask(null)
+      setTooltipPosition(null)
+    }
+  }, [data])
+
+  // Performance monitoring
+  useEffect(() => {
+    if (layoutModel) {
+      const now = performance.now()
+      setLayoutComputeTimestamp(now)
+
+      // Log performance metrics in development
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`Timeline layout computed in ${(now - layoutComputeTimestamp).toFixed(2)}ms`)
+        console.log(`Goals: ${layoutModel.goals.length}, Tasks: ${layoutModel.goals.reduce((sum, g) => sum + g.segments.length, 0)}`)
+      }
+    }
+  }, [layoutModel, layoutComputeTimestamp])
 
   if (isLoading) {
     return (
@@ -241,20 +357,37 @@ export function TimelineVisualizer({
         <CardContent className="p-0">
           <div
             ref={containerRef}
-            className="overflow-auto"
+            className="overflow-auto focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
             style={{
               height: Math.min(layoutModel.dimensions.height * zoomLevel + 100, 600),
               background: '#ffffff'
             }}
+            tabIndex={0}
+            role="application"
+            aria-label="インタラクティブタイムライン表示"
+            onKeyDown={handleKeyDown}
           >
             <svg
               ref={svgRef}
               width={layoutModel.dimensions.width * zoomLevel}
               height={layoutModel.dimensions.height * zoomLevel}
               viewBox={`0 0 ${layoutModel.dimensions.width} ${layoutModel.dimensions.height}`}
+              role="img"
+              aria-labelledby="timeline-title"
+              aria-describedby="timeline-description"
               onClick={handleSvgClick}
               className="border border-gray-200"
             >
+              {/* Accessibility Title and Description */}
+              <title id="timeline-title">
+                {data.project.title}のタイムライン - {layoutModel.goals.length}個のゴールと{layoutModel.goals.reduce((sum, g) => sum + g.segments.length, 0)}個のタスク
+              </title>
+              <desc id="timeline-description">
+                プロジェクト開始: {new Date(layoutModel.timeline.start_date).toLocaleDateString('ja-JP')}
+                終了予定: {new Date(layoutModel.timeline.end_date).toLocaleDateString('ja-JP')}
+                週間作業時間: {data.project.weekly_work_hours}時間
+              </desc>
+
               {/* Background Grid */}
               <defs>
                 <pattern
@@ -348,6 +481,22 @@ export function TimelineVisualizer({
       {/* Legend */}
       <Card>
         <CardContent className="pt-6">
+          {/* Keyboard Navigation Help */}
+          <div className="mb-4 text-center">
+            <details className="inline-block text-xs text-gray-500">
+              <summary className="cursor-pointer hover:text-gray-700 select-none">
+                🎮 キーボード操作ガイド
+              </summary>
+              <div className="mt-2 p-3 bg-gray-50 rounded-lg text-left space-y-1">
+                <p><kbd className="px-1 bg-white border rounded">↑</kbd> / <kbd className="px-1 bg-white border rounded">↓</kbd> ゴール選択</p>
+                <p><kbd className="px-1 bg-white border rounded">Enter</kbd> / <kbd className="px-1 bg-white border rounded">Space</kbd> タスク詳細表示</p>
+                <p><kbd className="px-1 bg-white border rounded">Esc</kbd> 選択解除</p>
+                <p><kbd className="px-1 bg-white border rounded">+</kbd> / <kbd className="px-1 bg-white border rounded">-</kbd> ズーム調整</p>
+                <p><kbd className="px-1 bg-white border rounded">0</kbd> ズームリセット</p>
+              </div>
+            </details>
+          </div>
+
           <div className="flex items-center justify-center gap-6 text-sm">
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded bg-green-500"></div>
