@@ -139,14 +139,17 @@ export function withTimelineErrorBoundary<T extends object>(
 // Hook for programmatic error handling
 export function useErrorHandler() {
   const [error, setError] = React.useState<Error | null>(null)
+  const [hasThrown, setHasThrown] = React.useState(false)
 
   const resetError = React.useCallback(() => {
     setError(null)
+    setHasThrown(false)
   }, [])
 
   const handleError = React.useCallback((error: Error) => {
     console.error('Timeline Error:', error)
     setError(error)
+    setHasThrown(false) // Reset thrown state for new error
 
     // Log to external service if available
     if (typeof window !== 'undefined' && (window as any).gtag) {
@@ -156,13 +159,12 @@ export function useErrorHandler() {
       })
     }
   }, [])
-
-  // Throw error to be caught by error boundary
   React.useEffect(() => {
-    if (error) {
+    if (error && !hasThrown) {
+      setHasThrown(true)
       throw error
     }
-  }, [error])
+  }, [error, hasThrown])
 
   return { handleError, resetError }
 }
