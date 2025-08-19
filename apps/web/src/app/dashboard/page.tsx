@@ -14,6 +14,7 @@ import Link from 'next/link'
 import type { DailySchedule } from '@/types/api-responses'
 import { TimelineOverview } from '@/components/timeline/timeline-overview'
 import { useTimelineOverview } from '@/hooks/use-timeline'
+import { getSlotKindLabel } from '@/constants/schedule'
 
 export default function DashboardPage() {
   const { loading, isAuthenticated } = useAuth()
@@ -192,9 +193,7 @@ export default function DashboardPage() {
                             {assignment.duration_hours.toFixed(1)}時間
                             <span className="text-gray-400">•</span>
                             <Badge variant="outline" className="text-xs">
-                              {assignment.slot_kind === 'deep' ? '集中作業' :
-                               assignment.slot_kind === 'light' ? '軽作業' :
-                               assignment.slot_kind === 'study' ? '学習' : '会議'}
+                              {getSlotKindLabel(assignment.slot_kind)}
                             </Badge>
                           </div>
                         </div>
