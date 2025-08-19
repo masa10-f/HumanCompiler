@@ -13,6 +13,7 @@ import { log } from '@/lib/logger'
 import Link from 'next/link'
 import type { DailySchedule } from '@/types/api-responses'
 import { TimelineOverview } from '@/components/timeline/timeline-overview'
+import { TimelineErrorBoundary } from '@/components/timeline/timeline-error-boundary'
 import { useTimelineOverview } from '@/hooks/use-timeline'
 import { getSlotKindLabel } from '@/constants/schedule'
 
@@ -22,7 +23,7 @@ export default function DashboardPage() {
   const [todaySchedule, setTodaySchedule] = useState<DailySchedule | null>(null)
   const [scheduleLoading, setScheduleLoading] = useState(true)
 
-  // Timeline data
+  // Timeline data - re-enabled after fixing infinite loops
   const { data: timelineData, isLoading: timelineLoading, error: timelineError } = useTimelineOverview()
 
   useEffect(() => {
@@ -227,12 +228,14 @@ export default function DashboardPage() {
 
         {/* Timeline Overview */}
         <div className="mb-8">
-          <TimelineOverview
-            data={timelineData}
-            isLoading={timelineLoading}
-            error={timelineError}
-            onProjectSelect={(projectId) => router.push(`/timeline/${projectId}`)}
-          />
+          <TimelineErrorBoundary>
+            <TimelineOverview
+              data={timelineData}
+              isLoading={timelineLoading}
+              error={timelineError}
+              onProjectSelect={(projectId) => router.push(`/timeline/${projectId}`)}
+            />
+          </TimelineErrorBoundary>
         </div>
 
         {/* Recent Projects */}

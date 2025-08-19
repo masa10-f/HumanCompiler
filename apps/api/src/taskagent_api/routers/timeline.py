@@ -5,17 +5,46 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlmodel import Session, select, and_, or_
 from sqlalchemy.orm import selectinload
 
 from ..auth import get_current_user, AuthUser
 from ..database import get_session
-from ..models import User, Project, Goal, Task, Log, TaskStatus, GoalStatus
+from ..rate_limiter import limiter
+from ..config import settings
+from ..models import (
+    User,
+    Project,
+    Goal,
+    Task,
+    Log,
+    TaskStatus,
+    GoalStatus,
+    GoalDependency,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def conditional_rate_limit(rate: str):
+    """Apply rate limiting only in non-test environments"""
+
+    def decorator(func):
+        if settings.environment == "test":
+            return func
+        else:
+            # Ensure proper async handling and response wrapping
+            async def wrapper(*args, **kwargs):
+                # Apply rate limiting
+                limited_func = limiter.limit(rate)(func)
+                return await limited_func(*args, **kwargs)
+
+            return wrapper
+
+    return decorator
 
 
 @router.get("/projects/{project_id}")
@@ -24,6 +53,9 @@ async def get_project_timeline(
     start_date: datetime = Query(None, description="Timeline start date"),
     end_date: datetime = Query(None, description="Timeline end date"),
     time_unit: str = Query("day", description="Time unit: day, week, month"),
+    weekly_work_hours: float = Query(
+        40.0, description="Weekly work hours for timeline calculation"
+    ),
     current_user: AuthUser = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
@@ -67,98 +99,128 @@ async def get_project_timeline(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error verifying project {project_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to verify project")
+        logger.error(f"Error verifying project {project_id}: {e}", exc_info=True)
+        # Don't expose internal errors to client in production
+        if settings.environment == "development":
+            detail = f"Failed to verify project: {str(e)}"
+        else:
+            detail = "Internal server error occurred while verifying project"
+        raise HTTPException(status_code=500, detail=detail)
 
-    # Set default date range if not provided
-    if not start_date:
-        start_date = project.created_at.replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-    if not end_date:
-        end_date = datetime.now().replace(
-            hour=23, minute=59, second=59, microsecond=999999
-        )
-
-    # Get all goals for the project with tasks and logs in a single query (fix N+1 problem)
-    goals_statement = (
-        select(Goal)
-        .options(selectinload(Goal.tasks).selectinload(Task.logs))
-        .where(Goal.project_id == project_id)
-    )
-    goals = session.exec(goals_statement).all()
-
-    timeline_data = {
-        "project": {
-            "id": str(project.id),
-            "title": project.title,
-            "description": project.description,
-            "created_at": project.created_at.isoformat(),
-            "updated_at": project.updated_at.isoformat(),
-        },
-        "timeline": {
-            "start_date": start_date.isoformat(),
-            "end_date": end_date.isoformat(),
-            "time_unit": time_unit,
-        },
-        "goals": [],
-    }
-
-    for goal in goals:
-        # Use preloaded tasks from the relationship (N+1 problem fixed)
-        tasks = goal.tasks
-
-        goal_data = {
-            "id": str(goal.id),
-            "title": goal.title,
-            "description": goal.description,
-            "status": goal.status,
-            "estimate_hours": float(goal.estimate_hours),
-            "created_at": goal.created_at.isoformat(),
-            "updated_at": goal.updated_at.isoformat(),
-            "tasks": [],
-        }
-
-        for task in tasks:
-            # Use preloaded logs from the relationship (N+1 problem fixed)
-            logs = task.logs
-
-            total_actual_minutes = sum(log.actual_minutes for log in logs)
-            estimate_minutes = float(task.estimate_hours) * 60
-            progress_percentage = (
-                min((total_actual_minutes / estimate_minutes) * 100, 100)
-                if estimate_minutes > 0
-                else 0
+    try:
+        # Set default date range if not provided
+        if not start_date:
+            start_date = project.created_at.replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+        if not end_date:
+            end_date = datetime.now().replace(
+                hour=23, minute=59, second=59, microsecond=999999
             )
 
-            # Determine task status color
-            status_color = _get_status_color(task.status, progress_percentage)
+        # Get all goals for the project with tasks, logs, and dependencies in a single query (fix N+1 problem)
+        goals_statement = (
+            select(Goal)
+            .options(
+                selectinload(Goal.tasks).selectinload(Task.logs),
+                selectinload(Goal.dependencies),
+                selectinload(Goal.dependent_goals),
+            )
+            .where(Goal.project_id == project_id)
+        )
+        goals = session.exec(goals_statement).all()
 
-            task_data = {
-                "id": str(task.id),
-                "title": task.title,
-                "description": task.description,
-                "status": task.status,
-                "estimate_hours": float(task.estimate_hours),
-                "due_date": task.due_date.isoformat() if task.due_date else None,
-                "created_at": task.created_at.isoformat(),
-                "updated_at": task.updated_at.isoformat(),
-                "progress_percentage": round(progress_percentage, 1),
-                "status_color": status_color,
-                "actual_hours": round(total_actual_minutes / 60, 2),
-                "logs_count": len(logs),
+        timeline_data = {
+            "project": {
+                "id": str(project.id),
+                "title": project.title,
+                "description": project.description,
+                "weekly_work_hours": weekly_work_hours,
+                "created_at": project.created_at.isoformat(),
+                "updated_at": project.updated_at.isoformat(),
+            },
+            "timeline": {
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "time_unit": time_unit,
+            },
+            "goals": [],
+        }
+
+        for goal in goals:
+            # Use preloaded tasks from the relationship (N+1 problem fixed)
+            tasks = goal.tasks
+
+            # Get dependency goal IDs
+            dependency_ids = [str(dep.depends_on_goal_id) for dep in goal.dependencies]
+
+            goal_data = {
+                "id": str(goal.id),
+                "title": goal.title,
+                "description": goal.description,
+                "status": goal.status,
+                "estimate_hours": float(goal.estimate_hours),
+                "start_date": None,
+                "end_date": None,
+                "dependencies": dependency_ids,
+                "created_at": goal.created_at.isoformat(),
+                "updated_at": goal.updated_at.isoformat(),
+                "tasks": [],
             }
 
-            goal_data["tasks"].append(task_data)
+            for task in tasks:
+                # Use preloaded logs from the relationship (N+1 problem fixed)
+                logs = task.logs
 
-        # Sort tasks by created_at for timeline display
-        goal_data["tasks"].sort(key=lambda x: x["created_at"])
-        timeline_data["goals"].append(goal_data)
+                total_actual_minutes = sum(log.actual_minutes for log in logs)
+                estimate_minutes = float(task.estimate_hours) * 60
+                progress_percentage = (
+                    min((total_actual_minutes / estimate_minutes) * 100, 100)
+                    if estimate_minutes > 0
+                    else 0
+                )
 
-    # Sort goals by created_at for timeline display
-    timeline_data["goals"].sort(key=lambda x: x["created_at"])
+                # Determine task status color
+                status_color = _get_status_color(task.status, progress_percentage)
 
-    return timeline_data
+                task_data = {
+                    "id": str(task.id),
+                    "title": task.title,
+                    "description": task.description,
+                    "status": task.status,
+                    "estimate_hours": float(task.estimate_hours),
+                    "due_date": task.due_date.isoformat() if task.due_date else None,
+                    "created_at": task.created_at.isoformat(),
+                    "updated_at": task.updated_at.isoformat(),
+                    "progress_percentage": round(progress_percentage, 1),
+                    "status_color": status_color,
+                    "actual_hours": round(total_actual_minutes / 60, 2),
+                    "logs_count": len(logs),
+                }
+
+                goal_data["tasks"].append(task_data)
+
+            # Sort tasks by created_at for timeline display
+            goal_data["tasks"].sort(key=lambda x: x["created_at"])
+            timeline_data["goals"].append(goal_data)
+
+        # Sort goals by created_at for timeline display
+        timeline_data["goals"].sort(key=lambda x: x["created_at"])
+
+        return timeline_data
+
+    except Exception as e:
+        logger.error(
+            f"Error getting project timeline for project {project_id}: {e}",
+            exc_info=True,
+        )
+        # Don't expose internal errors to client in production
+        if settings.environment == "development":
+            detail = f"Failed to get project timeline: {str(e)}"
+        else:
+            detail = "Internal server error occurred while retrieving project timeline"
+
+        raise HTTPException(status_code=500, detail=detail)
 
 
 @router.get("/overview")
@@ -276,11 +338,16 @@ async def get_timeline_overview(
 
     except Exception as e:
         logger.error(
-            f"Error getting timeline overview for user {current_user.user_id}: {e}"
+            f"Error getting timeline overview for user {current_user.user_id}: {e}",
+            exc_info=True,  # Include full stack trace
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get timeline overview: {str(e)}"
-        )
+        # Don't expose internal errors to client in production
+        if settings.environment == "development":
+            detail = f"Failed to get timeline overview: {str(e)}"
+        else:
+            detail = "Internal server error occurred while retrieving timeline overview"
+
+        raise HTTPException(status_code=500, detail=detail)
 
 
 def _get_status_color(status: TaskStatus, progress_percentage: float) -> str:

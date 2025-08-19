@@ -45,7 +45,7 @@ export function useTasks(goalId: string): UseTasksReturn {
       setError(err instanceof Error ? err.message : 'Failed to create task');
       throw err;
     }
-  }, []);
+  }, [goalId]);
 
   const updateTask = useCallback(async (id: string, data: TaskUpdate) => {
     try {

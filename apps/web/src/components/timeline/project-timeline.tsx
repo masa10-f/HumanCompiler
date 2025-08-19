@@ -107,7 +107,7 @@ export function ProjectTimeline({
       endDate: timelineEndDate,
       totalDays: differenceInDays(timelineEndDate, timelineStartDate)
     }
-  }, [data?.timeline.start_date, data?.timeline.end_date])
+  }, [data])
 
   const calculateTaskWidth = useCallback((task: TimelineTask) => {
     if (!timelineCalculations) return 100

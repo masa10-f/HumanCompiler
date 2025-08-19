@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import { useRouter } from 'next/navigation'
 import { AppHeader } from '@/components/layout/app-header'
@@ -45,7 +45,10 @@ export default function TimelinePage() {
     }
   }
 
-  const { data: timelineData, isLoading: timelineLoading, error: timelineError } = useTimelineOverview(getDateRange(dateRange))
+  // Memoize the date range to prevent infinite re-renders
+  const memoizedDateRange = useMemo(() => getDateRange(dateRange), [dateRange])
+
+  const { data: timelineData, isLoading: timelineLoading, error: timelineError } = useTimelineOverview(memoizedDateRange)
 
   if (loading) {
     return (

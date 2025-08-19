@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
@@ -35,11 +35,7 @@ export function WeeklyRecurringTaskSelector({
   const [loading, setLoading] = useState(true)
   const { toast } = useToast()
 
-  useEffect(() => {
-    fetchTasks()
-  }, [])
-
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     try {
       const headers = await getAuthHeaders()
       const apiUrl = getSecureApiUrl();
@@ -69,7 +65,11 @@ export function WeeklyRecurringTaskSelector({
     } finally {
       setLoading(false)
     }
-  }
+  }, [toast])
+
+  useEffect(() => {
+    fetchTasks()
+  }, [fetchTasks])
 
   const handleTaskToggle = (taskId: string, checked: boolean) => {
     if (checked) {

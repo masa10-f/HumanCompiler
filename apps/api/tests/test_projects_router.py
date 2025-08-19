@@ -57,11 +57,13 @@ def project_update_data():
 def mock_project():
     """Mock project object"""
     from datetime import datetime
+    from decimal import Decimal
 
     project = Mock()
     project.id = UUID("12345678-1234-5678-1234-567812345678")
     project.title = "Test Project"
     project.description = "Test description"
+    project.weekly_work_hours = Decimal("40")
     project.owner_id = UUID("87654321-4321-8765-4321-876543218765")
     project.created_at = datetime.now()
     project.updated_at = datetime.now()
@@ -103,11 +105,13 @@ async def test_create_project_success(
 async def test_get_projects_success(mock_session, auth_user):
     """Test successful projects retrieval"""
     from datetime import datetime
+    from decimal import Decimal
 
     mock_project = Mock()
     mock_project.id = UUID("12345678-1234-5678-1234-567812345678")
     mock_project.title = "Project 1"
     mock_project.description = "Test description"
+    mock_project.weekly_work_hours = Decimal("40")
     mock_project.owner_id = UUID("87654321-4321-8765-4321-876543218765")
     mock_project.created_at = datetime.now()
     mock_project.updated_at = datetime.now()
@@ -141,11 +145,13 @@ async def test_get_projects_with_pagination(mock_session, auth_user):
 async def test_get_projects_with_timing_logs(mock_session, auth_user):
     """Test projects retrieval includes timing logs"""
     from datetime import datetime
+    from decimal import Decimal
 
     mock_project = Mock()
     mock_project.id = UUID("12345678-1234-5678-1234-567812345678")
     mock_project.title = "Project 1"
     mock_project.description = "Test description"
+    mock_project.weekly_work_hours = Decimal("40")
     mock_project.owner_id = UUID("87654321-4321-8765-4321-876543218765")
     mock_project.created_at = datetime.now()
     mock_project.updated_at = datetime.now()
