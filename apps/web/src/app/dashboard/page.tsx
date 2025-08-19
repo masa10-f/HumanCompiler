@@ -13,6 +13,7 @@ import { log } from '@/lib/logger'
 import Link from 'next/link'
 import type { DailySchedule } from '@/types/api-responses'
 import { TimelineOverview } from '@/components/timeline/timeline-overview'
+import { TimelineErrorBoundary } from '@/components/timeline/timeline-error-boundary'
 import { useTimelineOverview } from '@/hooks/use-timeline'
 import { getSlotKindLabel } from '@/constants/schedule'
 
@@ -227,12 +228,14 @@ export default function DashboardPage() {
 
         {/* Timeline Overview */}
         <div className="mb-8">
-          <TimelineOverview
-            data={timelineData}
-            isLoading={timelineLoading}
-            error={timelineError}
-            onProjectSelect={(projectId) => router.push(`/timeline/${projectId}`)}
-          />
+          <TimelineErrorBoundary>
+            <TimelineOverview
+              data={timelineData}
+              isLoading={timelineLoading}
+              error={timelineError}
+              onProjectSelect={(projectId) => router.push(`/timeline/${projectId}`)}
+            />
+          </TimelineErrorBoundary>
         </div>
 
         {/* Recent Projects */}

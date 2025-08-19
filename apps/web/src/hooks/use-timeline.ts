@@ -11,14 +11,15 @@ export function useProjectTimeline(projectId: string | null, filters?: TimelineF
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
 
-  // Memoize filters to prevent unnecessary re-renders with stable reference
+  // Memoize filters with stable reference - only create new object when filters actually change
   const memoizedFilters = useMemo(() => {
-    return filters ? {
+    if (!filters) return null
+    return {
       start_date: filters.start_date,
       end_date: filters.end_date,
       time_unit: filters.time_unit
-    } : undefined
-  }, [filters])
+    }
+  }, [filters?.start_date, filters?.end_date, filters?.time_unit])
 
   const fetchTimeline = useCallback(async () => {
     if (!projectId) {
@@ -41,6 +42,7 @@ export function useProjectTimeline(projectId: string | null, filters?: TimelineF
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'タイムラインの取得に失敗しました'
       setError(errorMessage)
+      // Use toast directly without adding to dependencies
       toast({
         title: "エラー",
         description: errorMessage,
@@ -49,7 +51,8 @@ export function useProjectTimeline(projectId: string | null, filters?: TimelineF
     } finally {
       setIsLoading(false)
     }
-  }, [projectId, memoizedFilters, weeklyWorkHours, toast])
+  }, [projectId, memoizedFilters, weeklyWorkHours])
+  // Note: toast is intentionally excluded from dependencies to prevent infinite loops
 
   useEffect(() => {
     fetchTimeline()
@@ -69,13 +72,14 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
 
-  // Memoize filters to prevent unnecessary re-renders with stable reference
+  // Memoize filters with stable reference - only create new object when filters actually change
   const memoizedFilters = useMemo(() => {
-    return filters ? {
+    if (!filters) return null
+    return {
       start_date: filters.start_date,
       end_date: filters.end_date
-    } : undefined
-  }, [filters])
+    }
+  }, [filters?.start_date, filters?.end_date])
 
   const fetchOverview = useCallback(async () => {
     console.log('🔍 [useTimelineOverview] Starting fetchOverview...')
@@ -95,6 +99,7 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
       console.error('❌ [useTimelineOverview] API error:', err)
       console.error('❌ [useTimelineOverview] Error message:', errorMessage)
       setError(errorMessage)
+      // Use toast directly without adding to dependencies
       toast({
         title: "エラー",
         description: errorMessage,
@@ -104,7 +109,8 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
       console.log('🔍 [useTimelineOverview] Setting isLoading to false')
       setIsLoading(false)
     }
-  }, [memoizedFilters, toast])
+  }, [memoizedFilters])
+  // Note: toast is intentionally excluded from dependencies to prevent infinite loops
 
   useEffect(() => {
     fetchOverview()
