@@ -1,5 +1,14 @@
-import { parseISO, differenceInDays, addWeeks, format } from 'date-fns'
+import { parseISO, differenceInDays, format } from 'date-fns'
 import type { TimelineGoal, DependencyGraph } from './types'
+
+/**
+ * Safe debug logging utility for timeline operations
+ */
+function debugLog(message: string): void {
+  if (process.env.NODE_ENV === 'development' && process.env.DEBUG_TIMELINE) {
+    console.debug(`[Timeline] ${message}`)
+  }
+}
 
 /**
  * Calculate project duration in weeks based on estimate hours and weekly work hours
@@ -9,7 +18,7 @@ export function calculateProjectDurationWeeks(
   weeklyWorkHours: number
 ): number {
   if (weeklyWorkHours <= 0) return 1
-  return Math.ceil(estimateHours / weeklyWorkHours)
+  return estimateHours / weeklyWorkHours
 }
 
 /**
@@ -21,7 +30,10 @@ export function calculateGoalEndDate(
   weeklyWorkHours: number
 ): Date {
   const durationWeeks = calculateProjectDurationWeeks(estimateHours, weeklyWorkHours)
-  return addWeeks(startDate, durationWeeks)
+  const daysOffset = durationWeeks * 7
+  const endDate = new Date(startDate)
+  endDate.setTime(endDate.getTime() + daysOffset * 24 * 60 * 60 * 1000)
+  return endDate
 }
 
 /**
@@ -30,7 +42,12 @@ export function calculateGoalEndDate(
 export function parseOptionalDate(dateString: string | null): Date | null {
   if (!dateString) return null
   try {
-    return parseISO(dateString)
+    const date = parseISO(dateString)
+    // Check if the parsed date is valid
+    if (isNaN(date.getTime())) {
+      return null
+    }
+    return date
   } catch {
     return null
   }
@@ -252,4 +269,77 @@ export function isBetween(value: number, min: number, max: number): boolean {
  */
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
+}
+
+/**
+ * Calculate goal start times considering dependencies
+ * Returns a map of goal ID to start time offset (in hours from project start)
+ */
+export function calculateDependencyBasedStartTimes(
+  goals: TimelineGoal[],
+  dependencyGraph: DependencyGraph
+): Map<string, number> {
+  const startTimes = new Map<string, number>()
+  const goalMap = new Map(goals.map(g => [g.id, g]))
+
+  // Process goals in topological order to ensure dependencies are calculated first
+  for (const goalId of dependencyGraph.topological_order) {
+    const goal = goalMap.get(goalId)
+    if (!goal) {
+      // This indicates a data integrity issue that should be reported
+      throw new Error(`Critical error: Goal ${goalId} referenced in topological order but not found in goals data`)
+    }
+
+    // Find the maximum end time of all dependencies
+    let maxDependencyEndTime = 0
+
+    // Get all goals that this goal depends on
+    const dependencies = goal.dependencies || []
+    for (const depId of dependencies) {
+      const depStartTime = startTimes.get(depId)
+      const depGoal = goalMap.get(depId)
+
+      if (!depGoal) {
+        throw new Error(`Critical error: Dependency goal ${depId} not found for goal "${goal.title}" (${goalId})`)
+      }
+
+      if (depStartTime === undefined) {
+        // This can happen with circular dependencies - handle gracefully
+        console.warn(`[Timeline] Start time not calculated for dependency goal ${depId} before processing goal "${goal.title}" (${goalId}) - possible circular dependency`)
+        continue
+      }
+
+      const depEndTime = depStartTime + depGoal.estimate_hours
+      maxDependencyEndTime = Math.max(maxDependencyEndTime, depEndTime)
+    }
+
+    // This goal starts after all its dependencies are complete
+    startTimes.set(goalId, maxDependencyEndTime)
+
+    // Debug logging
+    const endTime = maxDependencyEndTime + goal.estimate_hours
+    debugLog(`Goal "${goal.title}" (${goalId}): start at ${maxDependencyEndTime}h, end at ${endTime}h, duration ${goal.estimate_hours}h, dependencies: [${dependencies.join(', ')}]`)
+  }
+
+  // Handle any goals not in the topological order (shouldn't happen but defensive programming)
+  for (const goal of goals) {
+    if (!startTimes.has(goal.id)) {
+      startTimes.set(goal.id, 0)
+    }
+  }
+
+  return startTimes
+}
+
+/**
+ * Convert hours offset to Date object based on weekly work hours
+ */
+export function hoursOffsetToDate(baseDate: Date, hoursOffset: number, weeklyWorkHours: number = 40): Date {
+  const result = new Date(baseDate)
+  // Calculate duration in weeks based on weekly work hours
+  const weeksOffset = hoursOffset / weeklyWorkHours
+  // Convert weeks to days (7 days per week)
+  const daysOffset = weeksOffset * 7
+  result.setTime(result.getTime() + daysOffset * 24 * 60 * 60 * 1000)
+  return result
 }
