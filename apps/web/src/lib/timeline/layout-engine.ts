@@ -22,6 +22,13 @@ import {
 
 export class TimelineLayoutEngine {
   private config: TimelineConfig
+  // Cache for expensive date calculations
+  private readonly dateCache = new Map<string, Date>()
+  // Cache for dependency validation results
+  private readonly validationCache = new Map<string, boolean>()
+  // Object pool for temporary arrays to reduce GC pressure
+  private readonly arrayPool: Array<unknown[]> = []
+  private readonly mapPool: Array<Map<string, unknown>> = []
 
   constructor(config: Partial<TimelineConfig> = {}) {
     this.config = {
@@ -51,6 +58,116 @@ export class TimelineLayoutEngine {
       },
       ...config
     }
+  }
+
+  /**
+   * Cached date calculation for expensive hoursOffsetToDate operations
+   */
+  private getCachedDate(baseDate: Date, hoursOffset: number, weeklyWorkHours: number): Date {
+    const key = `${baseDate.getTime()}-${hoursOffset}-${weeklyWorkHours}`
+    if (!this.dateCache.has(key)) {
+      this.dateCache.set(key, hoursOffsetToDate(baseDate, hoursOffset, weeklyWorkHours))
+    }
+    return this.dateCache.get(key)!
+  }
+
+  /**
+   * Validate scheduling constraints and detect conflicts
+   */
+  private validateSchedulingConstraints(
+    goals: TimelineGoal[],
+    projectStart: Date,
+    startTimes: Map<string, number>,
+    weeklyWorkHours: number
+  ): void {
+    const cacheKey = `${goals.length}-${projectStart.getTime()}-${weeklyWorkHours}`
+    if (this.validationCache.has(cacheKey)) {
+      return
+    }
+
+    for (const goal of goals) {
+      const startTime = startTimes.get(goal.id) || 0
+      const endTime = startTime + goal.estimate_hours
+
+      // Check if any explicit deadlines are violated
+      const explicitEndDate = parseOptionalDate(goal.end_date)
+      if (explicitEndDate) {
+        const calculatedEndDate = this.getCachedDate(projectStart, endTime, weeklyWorkHours)
+        if (calculatedEndDate > explicitEndDate) {
+          console.warn(
+            `[Timeline] Goal "${goal.title}" scheduling conflict: ` +
+            `calculated end ${calculatedEndDate.toISOString()} exceeds deadline ${explicitEndDate.toISOString()}`
+          )
+        }
+      }
+
+      // Check for impossible scheduling scenarios
+      const explicitStartDate = parseOptionalDate(goal.start_date)
+      if (explicitStartDate) {
+        const calculatedStartDate = this.getCachedDate(projectStart, startTime, weeklyWorkHours)
+        if (calculatedStartDate < explicitStartDate) {
+          console.warn(
+            `[Timeline] Goal "${goal.title}" dependency conflict: ` +
+            `dependency-based start ${calculatedStartDate.toISOString()} is before explicit start ${explicitStartDate.toISOString()}`
+          )
+        }
+      }
+
+      // Validate estimate hours are reasonable
+      if (goal.estimate_hours <= 0) {
+        console.warn(`[Timeline] Goal "${goal.title}" has invalid estimate hours: ${goal.estimate_hours}`)
+      }
+    }
+
+    this.validationCache.set(cacheKey, true)
+  }
+
+  /**
+   * Get a temporary array from the pool or create a new one
+   */
+  private getTempArray<T>(): T[] {
+    const array = this.arrayPool.pop() as T[] || []
+    array.length = 0
+    return array
+  }
+
+  /**
+   * Return a temporary array to the pool
+   */
+  private returnTempArray<T>(array: T[]): void {
+    if (array.length < 1000) { // Avoid keeping very large arrays
+      array.length = 0
+      this.arrayPool.push(array)
+    }
+  }
+
+  /**
+   * Get a temporary map from the pool or create a new one
+   */
+  private getTempMap<K, V>(): Map<K, V> {
+    const map = this.mapPool.pop() as Map<K, V> || new Map<K, V>()
+    map.clear()
+    return map
+  }
+
+  /**
+   * Return a temporary map to the pool
+   */
+  private returnTempMap<K, V>(map: Map<K, V>): void {
+    if (map.size < 1000) { // Avoid keeping very large maps
+      map.clear()
+      this.mapPool.push(map as Map<string, unknown>)
+    }
+  }
+
+  /**
+   * Clear caches and pools to free memory
+   */
+  public clearCaches(): void {
+    this.dateCache.clear()
+    this.validationCache.clear()
+    this.arrayPool.length = 0
+    this.mapPool.length = 0
   }
 
   /**
@@ -146,7 +263,7 @@ export class TimelineLayoutEngine {
     goals.forEach(goal => {
       // Calculate actual start date considering dependencies
       const dependencyStartTimeHours = dependencyStartTimes.get(goal.id) || 0
-      const dependencyBasedStart = hoursOffsetToDate(projectStart, dependencyStartTimeHours, weeklyWorkHours)
+      const dependencyBasedStart = this.getCachedDate(projectStart, dependencyStartTimeHours, weeklyWorkHours)
 
       const actualStartDate = parseOptionalDate(goal.start_date) || dependencyBasedStart
       const explicitEndDate = parseOptionalDate(goal.end_date)
@@ -166,6 +283,9 @@ export class TimelineLayoutEngine {
       }
     })
 
+    // Validate scheduling constraints after calculation
+    this.validateSchedulingConstraints(goals, projectStart, dependencyStartTimes, weeklyWorkHours)
+
     return {
       bounds: { start_date: minStart, end_date: maxEnd },
       dependencyStartTimes
@@ -174,17 +294,30 @@ export class TimelineLayoutEngine {
 
   /**
    * Sort goals by topological order to respect dependencies
+   * Optimized to reduce intermediate array creation
    */
   private sortGoalsByTopology(goals: TimelineGoal[], graph: DependencyGraph): TimelineGoal[] {
     const goalMap = new Map(goals.map(g => [g.id, g]))
+    const sortedGoals: TimelineGoal[] = []
+    const processedIds = new Set<string>()
 
-    return graph.topological_order
-      .map(id => goalMap.get(id))
-      .filter((goal): goal is TimelineGoal => goal !== undefined)
-      .concat(
-        // Add any goals not in the dependency graph
-        goals.filter(g => !graph.topological_order.includes(g.id))
-      )
+    // Add goals in topological order
+    for (const id of graph.topological_order) {
+      const goal = goalMap.get(id)
+      if (goal) {
+        sortedGoals.push(goal)
+        processedIds.add(id)
+      }
+    }
+
+    // Add any remaining goals not in the dependency graph
+    for (const goal of goals) {
+      if (!processedIds.has(goal.id)) {
+        sortedGoals.push(goal)
+      }
+    }
+
+    return sortedGoals
   }
 
   /**
@@ -202,7 +335,7 @@ export class TimelineLayoutEngine {
     return goals.map((goal, index) => {
       // Calculate dependency-based start time relative to timeline start
       const dependencyStartTimeHours = dependencyStartTimes.get(goal.id) || 0
-      const dependencyBasedStart = hoursOffsetToDate(bounds.start_date, dependencyStartTimeHours, weeklyWorkHours)
+      const dependencyBasedStart = this.getCachedDate(bounds.start_date, dependencyStartTimeHours, weeklyWorkHours)
 
       // Use explicit start date if available, otherwise use dependency-based calculation
       const goalStart = parseOptionalDate(goal.start_date) || dependencyBasedStart
@@ -271,14 +404,24 @@ export class TimelineLayoutEngine {
     layoutGoals: LayoutGoal[],
     dependencyGraph: DependencyGraph
   ): LayoutArrow[] {
-    const goalPositions = new Map(layoutGoals.map(g => [g.id, g]))
+    const goalPositions = this.getTempMap<string, LayoutGoal>()
+    layoutGoals.forEach(g => goalPositions.set(g.id, g))
+
     const arrows: LayoutArrow[] = []
 
     dependencyGraph.edges.forEach((edge, index) => {
       const fromGoal = goalPositions.get(edge.from)
       const toGoal = goalPositions.get(edge.to)
 
-      if (!fromGoal || !toGoal) return
+      if (!fromGoal) {
+        console.error(`[Timeline] Source goal not found for arrow: ${edge.from} -> ${edge.to}`)
+        return
+      }
+
+      if (!toGoal) {
+        console.error(`[Timeline] Target goal not found for arrow: ${edge.from} -> ${edge.to}`)
+        return
+      }
 
       // Calculate arrow positions
       const fromY = this.config.padding.top + fromGoal.row * this.config.row_height + this.config.goal_bar_height / 2
@@ -303,6 +446,9 @@ export class TimelineLayoutEngine {
         is_valid: !dependencyGraph.has_cycle
       })
     })
+
+    // Return temporary map to pool
+    this.returnTempMap(goalPositions)
 
     return arrows
   }

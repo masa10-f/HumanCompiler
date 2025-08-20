@@ -42,7 +42,12 @@ export function calculateGoalEndDate(
 export function parseOptionalDate(dateString: string | null): Date | null {
   if (!dateString) return null
   try {
-    return parseISO(dateString)
+    const date = parseISO(dateString)
+    // Check if the parsed date is valid
+    if (isNaN(date.getTime())) {
+      return null
+    }
+    return date
   } catch {
     return null
   }
@@ -281,8 +286,8 @@ export function calculateDependencyBasedStartTimes(
   for (const goalId of dependencyGraph.topological_order) {
     const goal = goalMap.get(goalId)
     if (!goal) {
-      console.warn(`[Timeline] Goal not found in topological order: ${goalId}`)
-      continue
+      // This indicates a data integrity issue that should be reported
+      throw new Error(`Critical error: Goal ${goalId} referenced in topological order but not found in goals data`)
     }
 
     // Find the maximum end time of all dependencies
@@ -291,12 +296,19 @@ export function calculateDependencyBasedStartTimes(
     // Get all goals that this goal depends on
     const dependencies = goal.dependencies || []
     for (const depId of dependencies) {
-      const depStartTime = startTimes.get(depId) || 0
+      const depStartTime = startTimes.get(depId)
       const depGoal = goalMap.get(depId)
+
       if (!depGoal) {
-        console.warn(`[Timeline] Dependency goal not found: ${depId} for goal "${goal.title}" (${goalId})`)
+        throw new Error(`Critical error: Dependency goal ${depId} not found for goal "${goal.title}" (${goalId})`)
+      }
+
+      if (depStartTime === undefined) {
+        // This can happen with circular dependencies - handle gracefully
+        console.warn(`[Timeline] Start time not calculated for dependency goal ${depId} before processing goal "${goal.title}" (${goalId}) - possible circular dependency`)
         continue
       }
+
       const depEndTime = depStartTime + depGoal.estimate_hours
       maxDependencyEndTime = Math.max(maxDependencyEndTime, depEndTime)
     }
