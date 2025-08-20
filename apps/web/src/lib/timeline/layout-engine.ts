@@ -64,7 +64,7 @@ export class TimelineLayoutEngine {
     const fallbackStart = parseOptionalDate(data.timeline.start_date) || undefined
     const fallbackEnd = parseOptionalDate(data.timeline.end_date) || undefined
 
-    const bounds = this.calculateTimelineBoundsWithDependencies(
+    const boundsResult = this.calculateTimelineBoundsWithDependencies(
       data.goals,
       data.project.weekly_work_hours,
       dependencyGraph,
@@ -72,7 +72,7 @@ export class TimelineLayoutEngine {
       fallbackEnd
     )
 
-    const totalDays = Math.max(1, differenceInDays(bounds.end_date, bounds.start_date))
+    const totalDays = Math.max(1, differenceInDays(boundsResult.bounds.end_date, boundsResult.bounds.start_date))
     const pixelsPerDay = (this.config.canvas_width - this.config.padding.left - this.config.padding.right) / totalDays
 
     // Sort goals by topological order for proper dependency display
@@ -81,10 +81,11 @@ export class TimelineLayoutEngine {
     // Calculate goal layout positions with dependency-based scheduling
     const layoutGoals = this.calculateGoalPositions(
       sortedGoals,
-      bounds,
+      boundsResult.bounds,
       totalDays,
       data.project.weekly_work_hours,
-      dependencyGraph
+      dependencyGraph,
+      boundsResult.dependencyStartTimes
     )
 
     // Calculate dependency arrows
@@ -103,8 +104,8 @@ export class TimelineLayoutEngine {
       goals: layoutGoals,
       arrows: layoutArrows,
       timeline: {
-        start_date: bounds.start_date.toISOString(),
-        end_date: bounds.end_date.toISOString(),
+        start_date: boundsResult.bounds.start_date.toISOString(),
+        end_date: boundsResult.bounds.end_date.toISOString(),
         total_days: totalDays,
         pixels_per_day: pixelsPerDay
       },
@@ -127,7 +128,7 @@ export class TimelineLayoutEngine {
     dependencyGraph: DependencyGraph,
     fallbackStartDate?: Date,
     fallbackEndDate?: Date
-  ): { start_date: Date; end_date: Date } {
+  ): { bounds: { start_date: Date; end_date: Date }; dependencyStartTimes: Map<string, number> } {
     // Calculate dependency-based start times first
     const dependencyStartTimes = calculateDependencyBasedStartTimes(goals, dependencyGraph)
 
@@ -165,7 +166,10 @@ export class TimelineLayoutEngine {
       }
     })
 
-    return { start_date: minStart, end_date: maxEnd }
+    return {
+      bounds: { start_date: minStart, end_date: maxEnd },
+      dependencyStartTimes
+    }
   }
 
   /**
@@ -191,10 +195,9 @@ export class TimelineLayoutEngine {
     bounds: { start_date: Date; end_date: Date },
     totalDays: number,
     weeklyWorkHours: number,
-    dependencyGraph: DependencyGraph
+    dependencyGraph: DependencyGraph,
+    dependencyStartTimes: Map<string, number>
   ): LayoutGoal[] {
-    // Calculate dependency-based start times
-    const dependencyStartTimes = calculateDependencyBasedStartTimes(goals, dependencyGraph)
 
     return goals.map((goal, index) => {
       // Calculate dependency-based start time relative to timeline start

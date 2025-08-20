@@ -2,6 +2,15 @@ import { parseISO, differenceInDays, format } from 'date-fns'
 import type { TimelineGoal, DependencyGraph } from './types'
 
 /**
+ * Safe debug logging utility for timeline operations
+ */
+function debugLog(message: string): void {
+  if (process.env.NODE_ENV === 'development' && process.env.DEBUG_TIMELINE) {
+    console.debug(`[Timeline] ${message}`)
+  }
+}
+
+/**
  * Calculate project duration in weeks based on estimate hours and weekly work hours
  */
 export function calculateProjectDurationWeeks(
@@ -271,7 +280,10 @@ export function calculateDependencyBasedStartTimes(
   // Process goals in topological order to ensure dependencies are calculated first
   for (const goalId of dependencyGraph.topological_order) {
     const goal = goalMap.get(goalId)
-    if (!goal) continue
+    if (!goal) {
+      console.warn(`[Timeline] Goal not found in topological order: ${goalId}`)
+      continue
+    }
 
     // Find the maximum end time of all dependencies
     let maxDependencyEndTime = 0
@@ -281,20 +293,20 @@ export function calculateDependencyBasedStartTimes(
     for (const depId of dependencies) {
       const depStartTime = startTimes.get(depId) || 0
       const depGoal = goalMap.get(depId)
-      if (depGoal) {
-        const depEndTime = depStartTime + depGoal.estimate_hours
-        maxDependencyEndTime = Math.max(maxDependencyEndTime, depEndTime)
+      if (!depGoal) {
+        console.warn(`[Timeline] Dependency goal not found: ${depId} for goal "${goal.title}" (${goalId})`)
+        continue
       }
+      const depEndTime = depStartTime + depGoal.estimate_hours
+      maxDependencyEndTime = Math.max(maxDependencyEndTime, depEndTime)
     }
 
     // This goal starts after all its dependencies are complete
     startTimes.set(goalId, maxDependencyEndTime)
 
     // Debug logging
-    if (process.env.NODE_ENV === 'development') {
-      const endTime = maxDependencyEndTime + goal.estimate_hours
-      console.log(`Goal "${goal.title}" (${goalId}): start at ${maxDependencyEndTime}h, end at ${endTime}h, duration ${goal.estimate_hours}h, dependencies: [${dependencies.join(', ')}]`)
-    }
+    const endTime = maxDependencyEndTime + goal.estimate_hours
+    debugLog(`Goal "${goal.title}" (${goalId}): start at ${maxDependencyEndTime}h, end at ${endTime}h, duration ${goal.estimate_hours}h, dependencies: [${dependencies.join(', ')}]`)
   }
 
   // Handle any goals not in the topological order (shouldn't happen but defensive programming)
