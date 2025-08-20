@@ -308,9 +308,10 @@ export class TimelineLayoutEngine {
    * Calculate goal end date based on estimate and weekly work hours
    */
   private calculateGoalEndDate(startDate: Date, estimateHours: number, weeklyWorkHours: number): Date {
-    const durationWeeks = Math.ceil(estimateHours / weeklyWorkHours)
+    const durationWeeks = estimateHours / weeklyWorkHours
+    const daysOffset = durationWeeks * 7
     const endDate = new Date(startDate)
-    endDate.setDate(endDate.getDate() + durationWeeks * 7)
+    endDate.setTime(endDate.getTime() + daysOffset * 24 * 60 * 60 * 1000)
     return endDate
   }
 

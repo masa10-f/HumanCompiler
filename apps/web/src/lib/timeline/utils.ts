@@ -1,4 +1,4 @@
-import { parseISO, differenceInDays, addWeeks, format } from 'date-fns'
+import { parseISO, differenceInDays, format } from 'date-fns'
 import type { TimelineGoal, DependencyGraph } from './types'
 
 /**
@@ -9,7 +9,7 @@ export function calculateProjectDurationWeeks(
   weeklyWorkHours: number
 ): number {
   if (weeklyWorkHours <= 0) return 1
-  return Math.ceil(estimateHours / weeklyWorkHours)
+  return estimateHours / weeklyWorkHours
 }
 
 /**
@@ -21,7 +21,10 @@ export function calculateGoalEndDate(
   weeklyWorkHours: number
 ): Date {
   const durationWeeks = calculateProjectDurationWeeks(estimateHours, weeklyWorkHours)
-  return addWeeks(startDate, durationWeeks)
+  const daysOffset = durationWeeks * 7
+  const endDate = new Date(startDate)
+  endDate.setTime(endDate.getTime() + daysOffset * 24 * 60 * 60 * 1000)
+  return endDate
 }
 
 /**
@@ -289,7 +292,8 @@ export function calculateDependencyBasedStartTimes(
 
     // Debug logging
     if (process.env.NODE_ENV === 'development') {
-      console.log(`Goal "${goal.title}" (${goalId}): start at ${maxDependencyEndTime}h, duration ${goal.estimate_hours}h, dependencies: [${dependencies.join(', ')}]`)
+      const endTime = maxDependencyEndTime + goal.estimate_hours
+      console.log(`Goal "${goal.title}" (${goalId}): start at ${maxDependencyEndTime}h, end at ${endTime}h, duration ${goal.estimate_hours}h, dependencies: [${dependencies.join(', ')}]`)
     }
   }
 
