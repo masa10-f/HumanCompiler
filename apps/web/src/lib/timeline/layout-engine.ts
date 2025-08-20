@@ -12,11 +12,12 @@ import type {
 import {
   analyzeDependencies,
   calculateGoalProgress,
-  calculateTimelineBounds,
   parseOptionalDate,
   dateToPixels,
   generateArrowPath,
-  clamp
+  clamp,
+  calculateDependencyBasedStartTimes,
+  hoursOffsetToDate
 } from './utils'
 
 export class TimelineLayoutEngine {
@@ -59,13 +60,14 @@ export class TimelineLayoutEngine {
     // Analyze dependencies and get topological order
     const dependencyGraph = analyzeDependencies(data.goals)
 
-    // Calculate timeline bounds
+    // Calculate timeline bounds considering dependencies
     const fallbackStart = parseOptionalDate(data.timeline.start_date) || undefined
     const fallbackEnd = parseOptionalDate(data.timeline.end_date) || undefined
 
-    const bounds = calculateTimelineBounds(
+    const bounds = this.calculateTimelineBoundsWithDependencies(
       data.goals,
       data.project.weekly_work_hours,
+      dependencyGraph,
       fallbackStart,
       fallbackEnd
     )
@@ -76,12 +78,13 @@ export class TimelineLayoutEngine {
     // Sort goals by topological order for proper dependency display
     const sortedGoals = this.sortGoalsByTopology(data.goals, dependencyGraph)
 
-    // Calculate goal layout positions
+    // Calculate goal layout positions with dependency-based scheduling
     const layoutGoals = this.calculateGoalPositions(
       sortedGoals,
       bounds,
       totalDays,
-      data.project.weekly_work_hours
+      data.project.weekly_work_hours,
+      dependencyGraph
     )
 
     // Calculate dependency arrows
@@ -116,6 +119,56 @@ export class TimelineLayoutEngine {
   }
 
   /**
+   * Calculate timeline bounds considering dependency-based scheduling
+   */
+  private calculateTimelineBoundsWithDependencies(
+    goals: TimelineGoal[],
+    weeklyWorkHours: number,
+    dependencyGraph: DependencyGraph,
+    fallbackStartDate?: Date,
+    fallbackEndDate?: Date
+  ): { start_date: Date; end_date: Date } {
+    const now = new Date()
+    let minStart = fallbackStartDate || now
+    let maxEnd = fallbackEndDate || now
+
+    // Calculate dependency-based start times
+    const dependencyStartTimes = calculateDependencyBasedStartTimes(goals, dependencyGraph)
+
+    goals.forEach(goal => {
+      // Use dependency-based start time
+      const dependencyStartTimeHours = dependencyStartTimes.get(goal.id) || 0
+      const dependencyBasedStart = hoursOffsetToDate(minStart, dependencyStartTimeHours)
+
+      const startDate = parseOptionalDate(goal.start_date) || dependencyBasedStart
+      const endDate = parseOptionalDate(goal.end_date)
+
+      if (startDate) {
+        if (startDate < minStart) minStart = startDate
+
+        if (endDate && endDate > maxEnd) {
+          maxEnd = endDate
+        } else {
+          // Calculate end date based on dependency-scheduled start time and estimate
+          const calculatedEnd = this.calculateGoalEndDate(startDate, goal.estimate_hours, weeklyWorkHours)
+          if (calculatedEnd > maxEnd) maxEnd = calculatedEnd
+        }
+      } else if (endDate) {
+        if (endDate > maxEnd) maxEnd = endDate
+      } else {
+        // Use created_at as fallback for start
+        const createdDate = parseOptionalDate(goal.created_at)
+        if (createdDate) {
+          const calculatedEnd = this.calculateGoalEndDate(dependencyBasedStart, goal.estimate_hours, weeklyWorkHours)
+          if (calculatedEnd > maxEnd) maxEnd = calculatedEnd
+        }
+      }
+    })
+
+    return { start_date: minStart, end_date: maxEnd }
+  }
+
+  /**
    * Sort goals by topological order to respect dependencies
    */
   private sortGoalsByTopology(goals: TimelineGoal[], graph: DependencyGraph): TimelineGoal[] {
@@ -131,16 +184,25 @@ export class TimelineLayoutEngine {
   }
 
   /**
-   * Calculate layout positions for goals
+   * Calculate layout positions for goals with dependency-based scheduling
    */
   private calculateGoalPositions(
     goals: TimelineGoal[],
     bounds: { start_date: Date; end_date: Date },
     totalDays: number,
-    weeklyWorkHours: number
+    weeklyWorkHours: number,
+    dependencyGraph: DependencyGraph
   ): LayoutGoal[] {
+    // Calculate dependency-based start times
+    const dependencyStartTimes = calculateDependencyBasedStartTimes(goals, dependencyGraph)
+
     return goals.map((goal, index) => {
+      // Use dependency-based start time if available, otherwise fall back to original logic
+      const dependencyStartTimeHours = dependencyStartTimes.get(goal.id) || 0
+      const dependencyBasedStart = hoursOffsetToDate(bounds.start_date, dependencyStartTimeHours)
+
       const goalStart = parseOptionalDate(goal.start_date) ||
+                       dependencyBasedStart ||
                        parseOptionalDate(goal.created_at) ||
                        bounds.start_date
 

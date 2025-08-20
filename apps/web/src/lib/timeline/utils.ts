@@ -253,3 +253,58 @@ export function isBetween(value: number, min: number, max: number): boolean {
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
+
+/**
+ * Calculate goal start times considering dependencies
+ * Returns a map of goal ID to start time offset (in hours from project start)
+ */
+export function calculateDependencyBasedStartTimes(
+  goals: TimelineGoal[],
+  dependencyGraph: DependencyGraph
+): Map<string, number> {
+  const startTimes = new Map<string, number>()
+  const goalMap = new Map(goals.map(g => [g.id, g]))
+
+  // Process goals in topological order to ensure dependencies are calculated first
+  for (const goalId of dependencyGraph.topological_order) {
+    const goal = goalMap.get(goalId)
+    if (!goal) continue
+
+    // Find the maximum end time of all dependencies
+    let maxDependencyEndTime = 0
+
+    // Get all goals that this goal depends on
+    const dependencies = goal.dependencies || []
+    for (const depId of dependencies) {
+      const depStartTime = startTimes.get(depId) || 0
+      const depGoal = goalMap.get(depId)
+      if (depGoal) {
+        const depEndTime = depStartTime + depGoal.estimate_hours
+        maxDependencyEndTime = Math.max(maxDependencyEndTime, depEndTime)
+      }
+    }
+
+    // This goal starts after all its dependencies are complete
+    startTimes.set(goalId, maxDependencyEndTime)
+  }
+
+  // Handle any goals not in the topological order (shouldn't happen but defensive programming)
+  for (const goal of goals) {
+    if (!startTimes.has(goal.id)) {
+      startTimes.set(goal.id, 0)
+    }
+  }
+
+  return startTimes
+}
+
+/**
+ * Convert hours offset to Date object
+ */
+export function hoursOffsetToDate(baseDate: Date, hoursOffset: number): Date {
+  const result = new Date(baseDate)
+  // Assuming 8 hours per work day, 5 days per week (40 hours per week)
+  const daysOffset = hoursOffset / 8
+  result.setTime(result.getTime() + daysOffset * 24 * 60 * 60 * 1000)
+  return result
+}
