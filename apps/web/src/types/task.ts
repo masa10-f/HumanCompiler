@@ -24,6 +24,7 @@ export interface Task {
   due_date: string | null;
   status: TaskStatus;
   work_type?: WorkType;
+  priority: number;
   goal_id: string;
   created_at: string;
   updated_at: string;
@@ -36,6 +37,7 @@ export interface TaskCreate {
   estimate_hours: number;
   due_date?: string;
   work_type?: WorkType;
+  priority?: number;
   goal_id: string;
 }
 
@@ -46,6 +48,7 @@ export interface TaskUpdate {
   due_date?: string;
   status?: TaskStatus;
   work_type?: WorkType;
+  priority?: number;
 }
 
 export interface TaskResponse {
@@ -98,4 +101,21 @@ export const workTypeColors: Record<WorkType, string> = {
   light_work: 'bg-yellow-100 text-yellow-800',
   study: 'bg-purple-100 text-purple-800',
   focused_work: 'bg-orange-100 text-orange-800',
+};
+
+// Priority display helpers
+export const taskPriorityLabels: Record<number, string> = {
+  1: '最高',
+  2: '高',
+  3: '中',
+  4: '低',
+  5: '最低',
+};
+
+export const taskPriorityColors: Record<number, string> = {
+  1: 'bg-red-100 text-red-800',
+  2: 'bg-orange-100 text-orange-800',
+  3: 'bg-yellow-100 text-yellow-800',
+  4: 'bg-blue-100 text-blue-800',
+  5: 'bg-gray-100 text-gray-800',
 };
