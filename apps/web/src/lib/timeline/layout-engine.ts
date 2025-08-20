@@ -128,40 +128,40 @@ export class TimelineLayoutEngine {
     fallbackStartDate?: Date,
     fallbackEndDate?: Date
   ): { start_date: Date; end_date: Date } {
-    const now = new Date()
-    let minStart = fallbackStartDate || now
-    let maxEnd = fallbackEndDate || now
-
-    // Calculate dependency-based start times
+    // Calculate dependency-based start times first
     const dependencyStartTimes = calculateDependencyBasedStartTimes(goals, dependencyGraph)
 
+    // Find the earliest created date as the project start
+    const createdDates = goals
+      .map(g => parseOptionalDate(g.created_at))
+      .filter((date): date is Date => date !== null)
+
+    const projectStart = fallbackStartDate ||
+                        (createdDates.length > 0 ? new Date(Math.min(...createdDates.map(d => d.getTime()))) : new Date())
+
+    let minStart = projectStart
+    let maxEnd = fallbackEndDate || projectStart
+
     goals.forEach(goal => {
-      // Use dependency-based start time
+      // Calculate actual start date considering dependencies
       const dependencyStartTimeHours = dependencyStartTimes.get(goal.id) || 0
-      const dependencyBasedStart = hoursOffsetToDate(minStart, dependencyStartTimeHours)
+      const dependencyBasedStart = hoursOffsetToDate(projectStart, dependencyStartTimeHours, weeklyWorkHours)
 
-      const startDate = parseOptionalDate(goal.start_date) || dependencyBasedStart
-      const endDate = parseOptionalDate(goal.end_date)
+      const actualStartDate = parseOptionalDate(goal.start_date) || dependencyBasedStart
+      const explicitEndDate = parseOptionalDate(goal.end_date)
 
-      if (startDate) {
-        if (startDate < minStart) minStart = startDate
+      // Update min start time
+      if (actualStartDate < minStart) {
+        minStart = actualStartDate
+      }
 
-        if (endDate && endDate > maxEnd) {
-          maxEnd = endDate
-        } else {
-          // Calculate end date based on dependency-scheduled start time and estimate
-          const calculatedEnd = this.calculateGoalEndDate(startDate, goal.estimate_hours, weeklyWorkHours)
-          if (calculatedEnd > maxEnd) maxEnd = calculatedEnd
-        }
-      } else if (endDate) {
-        if (endDate > maxEnd) maxEnd = endDate
-      } else {
-        // Use created_at as fallback for start
-        const createdDate = parseOptionalDate(goal.created_at)
-        if (createdDate) {
-          const calculatedEnd = this.calculateGoalEndDate(dependencyBasedStart, goal.estimate_hours, weeklyWorkHours)
-          if (calculatedEnd > maxEnd) maxEnd = calculatedEnd
-        }
+      // Calculate or use explicit end date
+      const actualEndDate = explicitEndDate ||
+                           this.calculateGoalEndDate(actualStartDate, goal.estimate_hours, weeklyWorkHours)
+
+      // Update max end time
+      if (actualEndDate > maxEnd) {
+        maxEnd = actualEndDate
       }
     })
 
@@ -197,14 +197,12 @@ export class TimelineLayoutEngine {
     const dependencyStartTimes = calculateDependencyBasedStartTimes(goals, dependencyGraph)
 
     return goals.map((goal, index) => {
-      // Use dependency-based start time if available, otherwise fall back to original logic
+      // Calculate dependency-based start time relative to timeline start
       const dependencyStartTimeHours = dependencyStartTimes.get(goal.id) || 0
-      const dependencyBasedStart = hoursOffsetToDate(bounds.start_date, dependencyStartTimeHours)
+      const dependencyBasedStart = hoursOffsetToDate(bounds.start_date, dependencyStartTimeHours, weeklyWorkHours)
 
-      const goalStart = parseOptionalDate(goal.start_date) ||
-                       dependencyBasedStart ||
-                       parseOptionalDate(goal.created_at) ||
-                       bounds.start_date
+      // Use explicit start date if available, otherwise use dependency-based calculation
+      const goalStart = parseOptionalDate(goal.start_date) || dependencyBasedStart
 
       const goalEnd = parseOptionalDate(goal.end_date) ||
                      this.calculateGoalEndDate(goalStart, goal.estimate_hours, weeklyWorkHours)

@@ -286,6 +286,11 @@ export function calculateDependencyBasedStartTimes(
 
     // This goal starts after all its dependencies are complete
     startTimes.set(goalId, maxDependencyEndTime)
+
+    // Debug logging
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`Goal "${goal.title}" (${goalId}): start at ${maxDependencyEndTime}h, duration ${goal.estimate_hours}h, dependencies: [${dependencies.join(', ')}]`)
+    }
   }
 
   // Handle any goals not in the topological order (shouldn't happen but defensive programming)
@@ -299,12 +304,14 @@ export function calculateDependencyBasedStartTimes(
 }
 
 /**
- * Convert hours offset to Date object
+ * Convert hours offset to Date object based on weekly work hours
  */
-export function hoursOffsetToDate(baseDate: Date, hoursOffset: number): Date {
+export function hoursOffsetToDate(baseDate: Date, hoursOffset: number, weeklyWorkHours: number = 40): Date {
   const result = new Date(baseDate)
-  // Assuming 8 hours per work day, 5 days per week (40 hours per week)
-  const daysOffset = hoursOffset / 8
+  // Calculate duration in weeks based on weekly work hours
+  const weeksOffset = hoursOffset / weeklyWorkHours
+  // Convert weeks to days (7 days per week)
+  const daysOffset = weeksOffset * 7
   result.setTime(result.getTime() + daysOffset * 24 * 60 * 60 * 1000)
   return result
 }
