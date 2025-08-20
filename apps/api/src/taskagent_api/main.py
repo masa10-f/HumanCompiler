@@ -47,6 +47,20 @@ async def lifespan(app: FastAPI):
     logger = logging.getLogger(__name__)
     logger.info("🚀 FastAPI server starting up...")
 
+    # Run production database migration on startup (for staging and production)
+    if settings.environment in ["production", "staging"]:
+        logger.info("🔧 Running production database migration...")
+        try:
+            from taskagent_api.production_migration import migrate_add_priority_column
+
+            migration_success = migrate_add_priority_column()
+            if migration_success:
+                logger.info("✅ Database migration completed successfully")
+            else:
+                logger.error("❌ Database migration failed")
+        except Exception as e:
+            logger.error(f"💥 Database migration error: {e}")
+
     # Log configuration info
     logger.info(f"Environment: {settings.environment}")
     logger.info(f"Host: {settings.host}, Port: {settings.port}")

@@ -51,6 +51,7 @@ const taskFormSchema = z.object({
   due_date: z.string().optional(),
   status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']),
   work_type: z.enum(['light_work', 'study', 'focused_work']).optional(),
+  priority: z.number().int().min(1, '1以上で入力してください').max(5, '5以下で入力してください').optional(),
 });
 
 type TaskFormData = z.infer<typeof taskFormSchema>;
@@ -74,6 +75,7 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
       due_date: task.due_date?.split('T')[0] || '',
       status: task.status,
       work_type: task.work_type || 'light_work',
+      priority: task.priority || 3,
     },
   });
 
@@ -86,6 +88,7 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
       due_date: task.due_date?.split('T')[0] || '',
       status: task.status,
       work_type: task.work_type || 'light_work',
+      priority: task.priority || 3,
     });
   }, [task, form]);
 
@@ -100,6 +103,7 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
           due_date: data.due_date || undefined,
           status: data.status,
           work_type: data.work_type || 'light_work',
+          priority: data.priority || 3,
         }
       });
 
@@ -258,6 +262,33 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
                       <SelectItem value="light_work">軽作業</SelectItem>
                       <SelectItem value="study">学習</SelectItem>
                       <SelectItem value="focused_work">集中作業</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="priority"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>優先度</FormLabel>
+                  <Select
+                    onValueChange={(value) => field.onChange(parseInt(value))}
+                    value={field.value?.toString()}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="優先度を選択" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="1">最高</SelectItem>
+                      <SelectItem value="2">高</SelectItem>
+                      <SelectItem value="3">中</SelectItem>
+                      <SelectItem value="4">低</SelectItem>
+                      <SelectItem value="5">最低</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />

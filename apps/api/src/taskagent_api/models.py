@@ -156,6 +156,12 @@ class TaskBase(SQLModel):
         ),
         description="Work type classification for scheduling optimization",
     )
+    priority: int = SQLField(
+        default=3,
+        ge=1,
+        le=5,
+        description="Task priority level (1=highest, 5=lowest)",
+    )
 
 
 class Task(TaskBase, table=True):  # type: ignore[call-arg]
@@ -530,6 +536,7 @@ class TaskUpdate(BaseModel):
     due_date: datetime | None = None
     status: TaskStatus | None = None
     work_type: WorkType | None = None
+    priority: int | None = Field(None, ge=1, le=5)
 
 
 class TaskResponse(TaskBase):

@@ -39,6 +39,7 @@ class TestTwoStageOptimization:
         task1.description = "Important task"
         task1.estimate_hours = 3.0
         task1.due_date = date.today() + timedelta(days=2)
+        task1.priority = 1
         task1.goal_id = "goal-1"
 
         task2 = Mock(spec=Task)
@@ -47,6 +48,7 @@ class TestTwoStageOptimization:
         task2.description = "Less important task"
         task2.estimate_hours = 5.0
         task2.due_date = date.today() + timedelta(days=10)
+        task2.priority = 4
         task2.goal_id = "goal-1"
 
         context = WeeklyPlanContext(

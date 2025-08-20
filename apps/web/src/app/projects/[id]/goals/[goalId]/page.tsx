@@ -20,7 +20,7 @@ import { TaskEditDialog } from '@/components/tasks/task-edit-dialog';
 import { TaskDeleteDialog } from '@/components/tasks/task-delete-dialog';
 import { LogFormDialog } from '@/components/logs/log-form-dialog';
 import { ArrowLeft, Plus, Clock, Calendar, GitBranch } from 'lucide-react';
-import { taskStatusLabels, taskStatusColors, workTypeLabels, workTypeColors } from '@/types/task';
+import { taskStatusLabels, taskStatusColors, workTypeLabels, workTypeColors, taskPriorityLabels, taskPriorityColors } from '@/types/task';
 import type { TaskStatus, Task } from '@/types/task';
 import { log } from '@/lib/logger';
 
@@ -337,6 +337,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
                   <TableRow>
                     <TableHead>タスク名</TableHead>
                     <TableHead>作業種別</TableHead>
+                    <TableHead>優先度</TableHead>
                     <TableHead>依存関係</TableHead>
                     <TableHead>ステータス</TableHead>
                     <TableHead>見積時間</TableHead>
@@ -362,6 +363,11 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
                       <TableCell>
                         <Badge className={workTypeColors[task.work_type || 'light_work']}>
                           {workTypeLabels[task.work_type || 'light_work']}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={taskPriorityColors[task.priority || 3]}>
+                          {taskPriorityLabels[task.priority || 3]}
                         </Badge>
                       </TableCell>
                       <TableCell>

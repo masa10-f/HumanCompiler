@@ -152,6 +152,7 @@ class TaskPriorityExtractor:
                 "description": task.description,
                 "estimate_hours": task.estimate_hours,
                 "due_date": task.due_date.isoformat() if task.due_date else None,
+                "priority": getattr(task, "priority", 3),
                 "goal_id": task.goal_id,
             }
             tasks_data.append(task_data)
@@ -203,11 +204,15 @@ class TaskPriorityExtractor:
 {context.week_start_date.strftime("%Y-%m-%d")}
 
 ## 優先度算出の基準
-1. **締切の緊急度** - 週内および近い将来の締切
-2. **プロジェクトの戦略的重要度** - リソース配分比率を考慮
-3. **タスクの影響度** - プロジェクト目標への貢献度
-4. **依存関係** - 他のタスクをブロックする可能性
-5. **工数効率** - 投入時間に対する価値{prompt_section}
+1. **ユーザー設定の優先度** - ユーザーが設定した優先度レベル（1=最高、5=最低）を基礎スコアとして使用
+2. **締切の緊急度** - 週内および近い将来の締切
+3. **プロジェクトの戦略的重要度** - リソース配分比率を考慮
+4. **タスクの影響度** - プロジェクト目標への貢献度
+5. **依存関係** - 他のタスクをブロックする可能性
+6. **工数効率** - 投入時間に対する価値{prompt_section}
+
+**重要**: ユーザーが設定したpriorityフィールド（1-5）を基礎として、他の要因で微調整してください。
+priority=1のタスクは高スコア、priority=5のタスクは低スコアとなるように算出してください。
 
 各タスクに対して0.0-10.0の優先度スコアを算出し、extract_task_priorities関数で構造化して返してください。"""
 
@@ -267,7 +272,10 @@ class TaskPriorityExtractor:
         priorities = {}
 
         for task in context.tasks:
-            base_priority = 5.0  # Default medium priority
+            # Start with user-defined priority (convert 1-5 scale to 0-10 scale)
+            user_priority = getattr(task, "priority", 3)
+            # Convert user priority: 1 (highest) -> 8.0, 3 (medium) -> 5.0, 5 (lowest) -> 2.0
+            base_priority = 10.0 - (user_priority - 1) * 2.0
 
             # Urgency based on due date
             if task.due_date:
