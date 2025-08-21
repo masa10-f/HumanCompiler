@@ -129,7 +129,7 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>タスク編集</DialogTitle>
           <DialogDescription>

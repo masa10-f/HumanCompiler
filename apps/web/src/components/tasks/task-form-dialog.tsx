@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/select';
 import { useCreateTask } from '@/hooks/use-tasks-query';
 import { toast } from '@/hooks/use-toast';
+import { roundToDecimals, parseFloatSafe } from '@/lib/number-utils';
 
 const taskFormSchema = z.object({
   title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
@@ -110,7 +111,7 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>新規タスク作成</DialogTitle>
           <DialogDescription>
@@ -167,13 +168,9 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
                       placeholder="1.00"
                       {...field}
                       onChange={(e) => {
-                        const value = parseFloat(e.target.value);
-                        if (!isNaN(value)) {
-                          // Round to 2 decimal places to prevent precision issues
-                          field.onChange(Math.round(value * 100) / 100);
-                        } else {
-                          field.onChange(0);
-                        }
+                        const value = parseFloatSafe(e.target.value, 0);
+                        // Use proper rounding utility to avoid floating point issues
+                        field.onChange(roundToDecimals(value, 2));
                       }}
                     />
                   </FormControl>
