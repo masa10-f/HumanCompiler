@@ -21,6 +21,8 @@ from taskagent_api.routers.scheduler import (
     _get_goal_dependencies,
     _check_task_dependencies_satisfied,
     _check_goal_dependencies_satisfied,
+    _batch_check_task_completion_status,
+    _batch_check_goal_completion_status,
 )
 from taskagent_api.models import TaskStatus, GoalStatus
 
@@ -427,3 +429,168 @@ class TestSchedulerDependencies:
             assert (
                 result.optimization_status == "NO_SCHEDULABLE_TASKS_DUE_TO_DEPENDENCIES"
             )
+
+    @patch("taskagent_api.routers.scheduler.select")
+    def test_batch_check_task_completion_status(self, mock_select):
+        """Test batch checking of task completion status."""
+        task1_id = str(uuid4())
+        task2_id = str(uuid4())
+        task3_id = str(uuid4())
+
+        # Mock completed task UUIDs
+        completed_task_uuid = uuid4()
+
+        mock_session = MagicMock()
+        mock_session.exec.return_value.all.return_value = [completed_task_uuid]
+
+        task_dependencies = {
+            task1_id: [task2_id, task3_id],  # task1 depends on task2 and task3
+        }
+
+        # Set up the mock so task2_id maps to completed_task_uuid
+        with patch("taskagent_api.routers.scheduler.UUID") as mock_uuid:
+            # Configure UUID calls to return specific values
+            mock_uuid.side_effect = (
+                lambda x: completed_task_uuid if x == task2_id else uuid4()
+            )
+
+            result = _batch_check_task_completion_status(
+                mock_session, task_dependencies
+            )
+
+            # Should have entries for both dependency tasks
+            assert task2_id in result
+            assert task3_id in result
+            # task2 should be completed, task3 should not be
+            assert result[task2_id] is True
+            assert result[task3_id] is False
+
+    @patch("taskagent_api.routers.scheduler.select")
+    def test_batch_check_goal_completion_status(self, mock_select):
+        """Test batch checking of goal completion status."""
+        goal1_id = str(uuid4())
+        goal2_id = str(uuid4())
+
+        # Mock completed goal UUIDs
+        completed_goal_uuid = uuid4()
+
+        mock_session = MagicMock()
+        mock_session.exec.return_value.all.return_value = [completed_goal_uuid]
+
+        goal_dependencies = {
+            goal1_id: [goal2_id],  # goal1 depends on goal2
+        }
+
+        # Set up the mock so goal2_id maps to completed_goal_uuid
+        with patch("taskagent_api.routers.scheduler.UUID") as mock_uuid:
+            mock_uuid.side_effect = (
+                lambda x: completed_goal_uuid if x == goal2_id else uuid4()
+            )
+
+            result = _batch_check_goal_completion_status(
+                mock_session, goal_dependencies
+            )
+
+            # Should have entry for the dependency goal
+            assert goal2_id in result
+            # goal2 should be completed
+            assert result[goal2_id] is True
+
+    def test_check_dependencies_with_cache(self):
+        """Test dependency checking with completion status cache."""
+        mock_session = MagicMock()
+
+        task_id = str(uuid4())
+        dependency_id = str(uuid4())
+
+        task = SchedulerTask(
+            id=task_id,
+            title="Test Task",
+            estimate_hours=1.0,
+            kind=TaskKind.LIGHT_WORK,
+        )
+
+        task_dependencies = {task_id: [dependency_id]}
+
+        # Test with cache showing dependency is completed
+        completion_cache = {dependency_id: True}
+        result = _check_task_dependencies_satisfied(
+            mock_session, task, task_dependencies, completion_cache
+        )
+        assert result is True
+
+        # Test with cache showing dependency is not completed
+        completion_cache = {dependency_id: False}
+        result = _check_task_dependencies_satisfied(
+            mock_session, task, task_dependencies, completion_cache
+        )
+        assert result is False
+
+    def test_optimize_schedule_uses_batch_processing(self):
+        """Test that optimize_schedule uses batch processing for better performance."""
+        mock_session = MagicMock()
+
+        with (
+            patch(
+                "taskagent_api.routers.scheduler._get_task_dependencies"
+            ) as mock_get_task_deps,
+            patch(
+                "taskagent_api.routers.scheduler._get_goal_dependencies"
+            ) as mock_get_goal_deps,
+            patch(
+                "taskagent_api.routers.scheduler._batch_check_task_completion_status"
+            ) as mock_batch_task,
+            patch(
+                "taskagent_api.routers.scheduler._batch_check_goal_completion_status"
+            ) as mock_batch_goal,
+            patch(
+                "taskagent_api.routers.scheduler._check_task_dependencies_satisfied"
+            ) as mock_check_task,
+            patch(
+                "taskagent_api.routers.scheduler._check_goal_dependencies_satisfied"
+            ) as mock_check_goal,
+        ):
+            # Setup mocks
+            mock_get_task_deps.return_value = {}
+            mock_get_goal_deps.return_value = {}
+            mock_batch_task.return_value = {}
+            mock_batch_goal.return_value = {}
+            mock_check_task.return_value = True
+            mock_check_goal.return_value = True
+
+            tasks = [
+                SchedulerTask(
+                    id="task1",
+                    title="Test Task",
+                    estimate_hours=1.0,
+                    kind=TaskKind.LIGHT_WORK,
+                    is_weekly_recurring=False,
+                )
+            ]
+
+            time_slots = [
+                TimeSlot(
+                    start=time(9, 0),
+                    end=time(10, 0),
+                    kind=SlotKind.LIGHT_WORK,
+                    capacity_hours=1.0,
+                )
+            ]
+
+            result = optimize_schedule(tasks, time_slots, session=mock_session)
+
+            # Verify batch processing functions were called
+            mock_batch_task.assert_called_once()
+            mock_batch_goal.assert_called_once()
+
+            # Verify dependency check functions were called with cache parameters
+            assert mock_check_task.call_count == 1
+            assert mock_check_goal.call_count == 1
+
+            # Check that cache was passed to dependency check functions
+            task_call_args = mock_check_task.call_args[0]
+            goal_call_args = mock_check_goal.call_args[0]
+
+            # The calls should include the cache as the 4th argument (index 3)
+            assert len(task_call_args) >= 3  # session, task, dependencies
+            assert len(goal_call_args) >= 3  # session, task, dependencies

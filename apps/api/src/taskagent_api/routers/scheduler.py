@@ -33,6 +33,7 @@ from taskagent_api.models import (
 )
 from taskagent_api.services import goal_service, task_service
 from uuid import UUID
+from sqlalchemy.exc import SQLAlchemyError, DatabaseError
 
 # OR-Tools CP-SAT scheduler implementation
 logger = logging.getLogger(__name__)
@@ -107,7 +108,19 @@ def _get_task_dependencies(
 
     try:
         # Convert string IDs to UUIDs
-        task_uuids = [UUID(task_id) for task_id in task_ids]
+        task_uuids = []
+        for task_id in task_ids:
+            try:
+                task_uuids.append(UUID(task_id))
+            except ValueError as uuid_error:
+                logger.warning(
+                    f"Invalid UUID format for task ID {task_id}: {uuid_error}"
+                )
+                continue  # Skip invalid UUIDs but continue processing others
+
+        if not task_uuids:
+            logger.warning("No valid task UUIDs found after validation")
+            return {}
 
         # Query task dependencies
         dependencies = session.exec(
@@ -123,11 +136,17 @@ def _get_task_dependencies(
                 dependency_map[task_id] = []
             dependency_map[task_id].append(depends_on_id)
 
-        logger.debug(f"Found {len(dependencies)} task dependencies")
+        logger.debug(
+            f"Found {len(dependencies)} task dependencies for {len(task_uuids)} valid tasks"
+        )
         return dependency_map
 
+    except (SQLAlchemyError, DatabaseError) as db_error:
+        logger.error(f"Database error getting task dependencies: {db_error}")
+        # Return empty dict to avoid breaking scheduler, but log the issue
+        return {}
     except Exception as e:
-        logger.error(f"Error getting task dependencies: {e}")
+        logger.error(f"Unexpected error getting task dependencies: {e}")
         return {}
 
 
@@ -153,7 +172,19 @@ def _get_goal_dependencies(
 
     try:
         # Convert string IDs to UUIDs
-        goal_uuids = [UUID(goal_id) for goal_id in goal_ids]
+        goal_uuids = []
+        for goal_id in goal_ids:
+            try:
+                goal_uuids.append(UUID(goal_id))
+            except ValueError as uuid_error:
+                logger.warning(
+                    f"Invalid UUID format for goal ID {goal_id}: {uuid_error}"
+                )
+                continue  # Skip invalid UUIDs but continue processing others
+
+        if not goal_uuids:
+            logger.warning("No valid goal UUIDs found after validation")
+            return {}
 
         # Query goal dependencies
         dependencies = session.exec(
@@ -169,16 +200,91 @@ def _get_goal_dependencies(
                 dependency_map[goal_id] = []
             dependency_map[goal_id].append(depends_on_id)
 
-        logger.debug(f"Found {len(dependencies)} goal dependencies")
+        filtered_count = len(goal_ids) - len(goal_uuids)
+        if filtered_count > 0:
+            logger.info(f"Filtered out {filtered_count} tasks with invalid goal IDs")
+
+        logger.debug(
+            f"Found {len(dependencies)} goal dependencies for {len(goal_uuids)} valid goals"
+        )
         return dependency_map
 
+    except (SQLAlchemyError, DatabaseError) as db_error:
+        logger.error(f"Database error getting goal dependencies: {db_error}")
+        # Return empty dict to avoid breaking scheduler, but log the issue
+        return {}
     except Exception as e:
-        logger.error(f"Error getting goal dependencies: {e}")
+        logger.error(f"Unexpected error getting goal dependencies: {e}")
+        return {}
+
+
+def _batch_check_task_completion_status(
+    session: Session, task_dependencies: dict[str, list[str]]
+) -> dict[str, bool]:
+    """
+    Batch check completion status for all tasks to avoid N+1 query pattern.
+
+    Args:
+        session: Database session
+        task_dependencies: Task dependency mapping
+
+    Returns:
+        Dict mapping task_id to completion status (True if completed)
+    """
+    # Collect all unique task IDs that need status checking
+    all_dependency_ids = set()
+    for dependent_list in task_dependencies.values():
+        all_dependency_ids.update(dependent_list)
+
+    if not all_dependency_ids:
+        return {}
+
+    try:
+        # Convert to UUIDs
+        dependency_uuids = []
+        for task_id in all_dependency_ids:
+            try:
+                dependency_uuids.append(UUID(task_id))
+            except ValueError as uuid_error:
+                logger.warning(
+                    f"Invalid UUID format for dependency task ID {task_id}: {uuid_error}"
+                )
+                continue
+
+        # Batch query for all completion statuses
+        completed_tasks = session.exec(
+            select(Task.id)
+            .where(Task.id.in_(dependency_uuids))
+            .where(Task.status == TaskStatus.COMPLETED)
+        ).all()
+
+        # Create lookup map
+        completion_status = {}
+        for task_id in all_dependency_ids:
+            try:
+                task_uuid = UUID(task_id)
+                completion_status[task_id] = task_uuid in completed_tasks
+            except ValueError:
+                completion_status[task_id] = False  # Invalid UUID = not completed
+
+        logger.debug(
+            f"Batch checked completion status for {len(all_dependency_ids)} dependency tasks"
+        )
+        return completion_status
+
+    except (SQLAlchemyError, DatabaseError) as db_error:
+        logger.error(f"Database error checking task completion status: {db_error}")
+        return {}
+    except Exception as e:
+        logger.error(f"Unexpected error checking task completion status: {e}")
         return {}
 
 
 def _check_task_dependencies_satisfied(
-    session: Session, task: SchedulerTask, task_dependencies: dict[str, list[str]]
+    session: Session,
+    task: SchedulerTask,
+    task_dependencies: dict[str, list[str]],
+    completion_status_cache: dict[str, bool] = None,
 ) -> bool:
     """
     Check if all dependencies for a task are satisfied (completed).
@@ -187,6 +293,7 @@ def _check_task_dependencies_satisfied(
         session: Database session
         task: The task to check
         task_dependencies: Task dependency mapping
+        completion_status_cache: Optional cache of task completion statuses
 
     Returns:
         True if all dependencies are satisfied, False otherwise
@@ -194,33 +301,128 @@ def _check_task_dependencies_satisfied(
     if task.id not in task_dependencies:
         return True  # No dependencies = satisfied
 
-    try:
-        dependent_task_ids = task_dependencies[task.id]
-        dependent_uuids = [UUID(task_id) for task_id in dependent_task_ids]
+    dependent_task_ids = task_dependencies[task.id]
 
-        # Check if all dependent tasks are completed
-        completed_tasks = session.exec(
-            select(Task)
-            .where(Task.id.in_(dependent_uuids))
-            .where(Task.status == TaskStatus.COMPLETED)
-        ).all()
-
-        is_satisfied = len(completed_tasks) == len(dependent_task_ids)
+    # Use cache if provided (for batch processing), otherwise fall back to individual query
+    if completion_status_cache is not None:
+        completed_count = sum(
+            completion_status_cache.get(task_id, False)
+            for task_id in dependent_task_ids
+        )
+        is_satisfied = completed_count == len(dependent_task_ids)
 
         if not is_satisfied:
             logger.debug(
-                f"Task {task.id} dependencies not satisfied: {len(completed_tasks)}/{len(dependent_task_ids)} completed"
+                f"Task {task.id} dependencies not satisfied: {completed_count}/{len(dependent_task_ids)} completed"
             )
 
         return is_satisfied
 
+    # Fallback to individual query (for backward compatibility)
+    try:
+        dependent_uuids = []
+        for task_id in dependent_task_ids:
+            try:
+                dependent_uuids.append(UUID(task_id))
+            except ValueError as uuid_error:
+                logger.warning(
+                    f"Invalid UUID format for dependency task ID {task_id}: {uuid_error}"
+                )
+                continue
+
+        # Check if all dependent tasks are completed
+        completed_tasks = session.exec(
+            select(Task.id)
+            .where(Task.id.in_(dependent_uuids))
+            .where(Task.status == TaskStatus.COMPLETED)
+        ).all()
+
+        is_satisfied = len(completed_tasks) == len(dependent_uuids)
+
+        if not is_satisfied:
+            logger.debug(
+                f"Task {task.id} dependencies not satisfied: {len(completed_tasks)}/{len(dependent_uuids)} completed"
+            )
+
+        return is_satisfied
+
+    except (SQLAlchemyError, DatabaseError) as db_error:
+        logger.error(
+            f"Database error checking task dependencies for {task.id}: {db_error}"
+        )
+        return False  # Assume not satisfied on error
     except Exception as e:
-        logger.error(f"Error checking task dependencies for {task.id}: {e}")
+        logger.error(f"Unexpected error checking task dependencies for {task.id}: {e}")
         return False  # Assume not satisfied on error
 
 
+def _batch_check_goal_completion_status(
+    session: Session, goal_dependencies: dict[str, list[str]]
+) -> dict[str, bool]:
+    """
+    Batch check completion status for all goals to avoid N+1 query pattern.
+
+    Args:
+        session: Database session
+        goal_dependencies: Goal dependency mapping
+
+    Returns:
+        Dict mapping goal_id to completion status (True if completed)
+    """
+    # Collect all unique goal IDs that need status checking
+    all_dependency_ids = set()
+    for dependent_list in goal_dependencies.values():
+        all_dependency_ids.update(dependent_list)
+
+    if not all_dependency_ids:
+        return {}
+
+    try:
+        # Convert to UUIDs
+        dependency_uuids = []
+        for goal_id in all_dependency_ids:
+            try:
+                dependency_uuids.append(UUID(goal_id))
+            except ValueError as uuid_error:
+                logger.warning(
+                    f"Invalid UUID format for dependency goal ID {goal_id}: {uuid_error}"
+                )
+                continue
+
+        # Batch query for all completion statuses
+        completed_goals = session.exec(
+            select(Goal.id)
+            .where(Goal.id.in_(dependency_uuids))
+            .where(Goal.status == GoalStatus.COMPLETED)
+        ).all()
+
+        # Create lookup map
+        completion_status = {}
+        for goal_id in all_dependency_ids:
+            try:
+                goal_uuid = UUID(goal_id)
+                completion_status[goal_id] = goal_uuid in completed_goals
+            except ValueError:
+                completion_status[goal_id] = False  # Invalid UUID = not completed
+
+        logger.debug(
+            f"Batch checked completion status for {len(all_dependency_ids)} dependency goals"
+        )
+        return completion_status
+
+    except (SQLAlchemyError, DatabaseError) as db_error:
+        logger.error(f"Database error checking goal completion status: {db_error}")
+        return {}
+    except Exception as e:
+        logger.error(f"Unexpected error checking goal completion status: {e}")
+        return {}
+
+
 def _check_goal_dependencies_satisfied(
-    session: Session, task: SchedulerTask, goal_dependencies: dict[str, list[str]]
+    session: Session,
+    task: SchedulerTask,
+    goal_dependencies: dict[str, list[str]],
+    goal_completion_cache: dict[str, bool] = None,
 ) -> bool:
     """
     Check if all goal dependencies for a task are satisfied (completed).
@@ -229,6 +431,7 @@ def _check_goal_dependencies_satisfied(
         session: Database session
         task: The task to check
         goal_dependencies: Goal dependency mapping
+        goal_completion_cache: Optional cache of goal completion statuses
 
     Returns:
         True if all goal dependencies are satisfied, False otherwise
@@ -236,28 +439,59 @@ def _check_goal_dependencies_satisfied(
     if not task.goal_id or task.goal_id not in goal_dependencies:
         return True  # No goal dependencies = satisfied
 
-    try:
-        dependent_goal_ids = goal_dependencies[task.goal_id]
-        dependent_uuids = [UUID(goal_id) for goal_id in dependent_goal_ids]
+    dependent_goal_ids = goal_dependencies[task.goal_id]
 
-        # Check if all dependent goals are completed
-        completed_goals = session.exec(
-            select(Goal)
-            .where(Goal.id.in_(dependent_uuids))
-            .where(Goal.status == GoalStatus.COMPLETED)
-        ).all()
-
-        is_satisfied = len(completed_goals) == len(dependent_goal_ids)
+    # Use cache if provided (for batch processing), otherwise fall back to individual query
+    if goal_completion_cache is not None:
+        completed_count = sum(
+            goal_completion_cache.get(goal_id, False) for goal_id in dependent_goal_ids
+        )
+        is_satisfied = completed_count == len(dependent_goal_ids)
 
         if not is_satisfied:
             logger.debug(
-                f"Task {task.id} goal dependencies not satisfied: {len(completed_goals)}/{len(dependent_goal_ids)} completed"
+                f"Task {task.id} goal dependencies not satisfied: {completed_count}/{len(dependent_goal_ids)} completed"
             )
 
         return is_satisfied
 
+    # Fallback to individual query (for backward compatibility)
+    try:
+        dependent_uuids = []
+        for goal_id in dependent_goal_ids:
+            try:
+                dependent_uuids.append(UUID(goal_id))
+            except ValueError as uuid_error:
+                logger.warning(
+                    f"Invalid UUID format for dependency goal ID {goal_id}: {uuid_error}"
+                )
+                continue
+
+        # Check if all dependent goals are completed
+        completed_goals = session.exec(
+            select(Goal.id)
+            .where(Goal.id.in_(dependent_uuids))
+            .where(Goal.status == GoalStatus.COMPLETED)
+        ).all()
+
+        is_satisfied = len(completed_goals) == len(dependent_uuids)
+
+        if not is_satisfied:
+            logger.debug(
+                f"Task {task.id} goal dependencies not satisfied: {len(completed_goals)}/{len(dependent_uuids)} completed"
+            )
+
+        return is_satisfied
+
+    except (SQLAlchemyError, DatabaseError) as db_error:
+        logger.error(
+            f"Database error checking goal dependencies for task {task.id}: {db_error}"
+        )
+        return False  # Assume not satisfied on error
     except Exception as e:
-        logger.error(f"Error checking goal dependencies for task {task.id}: {e}")
+        logger.error(
+            f"Unexpected error checking goal dependencies for task {task.id}: {e}"
+        )
         return False  # Assume not satisfied on error
 
 
@@ -299,33 +533,60 @@ def optimize_schedule(tasks, time_slots, date=None, session=None):
 
         logger.debug(f"Checking dependencies for {len(tasks)} tasks")
 
+        # Batch check completion statuses to optimize database queries
+        task_completion_cache = _batch_check_task_completion_status(
+            session, task_dependencies
+        )
+        goal_completion_cache = _batch_check_goal_completion_status(
+            session, goal_dependencies
+        )
+
+        # Track filtering reasons for better logging
+        weekly_recurring_count = 0
+        task_dependency_blocked = 0
+        goal_dependency_blocked = 0
+
         # Filter tasks that can be scheduled (dependencies satisfied)
         for task in tasks:
             # Weekly recurring tasks are always schedulable (they don't have dependencies)
             if task.is_weekly_recurring:
                 schedulable_tasks.append(task)
+                weekly_recurring_count += 1
                 continue
 
             # Check task dependencies
             task_deps_satisfied = _check_task_dependencies_satisfied(
-                session, task, task_dependencies
+                session, task, task_dependencies, task_completion_cache
             )
 
             # Check goal dependencies
             goal_deps_satisfied = _check_goal_dependencies_satisfied(
-                session, task, goal_dependencies
+                session, task, goal_dependencies, goal_completion_cache
             )
 
             if task_deps_satisfied and goal_deps_satisfied:
                 schedulable_tasks.append(task)
             else:
                 unscheduled_due_to_dependencies.append(task.id)
-                logger.debug(
-                    f"Task {task.id} filtered out due to unsatisfied dependencies"
-                )
 
+                # Log specific blocking reasons
+                if not task_deps_satisfied:
+                    task_dependency_blocked += 1
+                    logger.info(
+                        f"Task {task.id} '{task.title}' blocked by incomplete task dependencies"
+                    )
+                if not goal_deps_satisfied:
+                    goal_dependency_blocked += 1
+                    logger.info(
+                        f"Task {task.id} '{task.title}' blocked by incomplete goal dependencies"
+                    )
+
+        # Summary logging with detailed breakdown
         logger.info(
-            f"Dependency filtering: {len(schedulable_tasks)} schedulable, {len(unscheduled_due_to_dependencies)} blocked by dependencies"
+            f"Dependency filtering summary: {len(schedulable_tasks)} schedulable tasks "
+            f"({weekly_recurring_count} weekly recurring), "
+            f"{len(unscheduled_due_to_dependencies)} blocked "
+            f"({task_dependency_blocked} by task deps, {goal_dependency_blocked} by goal deps)"
         )
     else:
         # No session provided, schedule all tasks (backward compatibility)
