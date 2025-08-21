@@ -24,9 +24,15 @@ from taskagent_api.models import (
     ErrorResponse,
     WeeklySchedule,
     Task,
+    Goal,
+    TaskDependency,
+    GoalDependency,
+    TaskStatus,
+    GoalStatus,
     WorkType,
 )
 from taskagent_api.services import goal_service, task_service
+from uuid import UUID
 
 # OR-Tools CP-SAT scheduler implementation
 logger = logging.getLogger(__name__)
@@ -86,7 +92,176 @@ class ScheduleResult:
     objective_value: float = 0.0
 
 
-def optimize_schedule(tasks, time_slots, date=None):
+def _get_task_dependencies(
+    session: Session, tasks: list[SchedulerTask]
+) -> dict[str, list[str]]:
+    """
+    Get task dependencies for a list of scheduler tasks.
+
+    Returns:
+        Dict mapping task_id to list of task_ids it depends on
+    """
+    task_ids = [task.id for task in tasks]
+    if not task_ids:
+        return {}
+
+    try:
+        # Convert string IDs to UUIDs
+        task_uuids = [UUID(task_id) for task_id in task_ids]
+
+        # Query task dependencies
+        dependencies = session.exec(
+            select(TaskDependency).where(TaskDependency.task_id.in_(task_uuids))
+        ).all()
+
+        dependency_map = {}
+        for dep in dependencies:
+            task_id = str(dep.task_id)
+            depends_on_id = str(dep.depends_on_task_id)
+
+            if task_id not in dependency_map:
+                dependency_map[task_id] = []
+            dependency_map[task_id].append(depends_on_id)
+
+        logger.debug(f"Found {len(dependencies)} task dependencies")
+        return dependency_map
+
+    except Exception as e:
+        logger.error(f"Error getting task dependencies: {e}")
+        return {}
+
+
+def _get_goal_dependencies(
+    session: Session, tasks: list[SchedulerTask]
+) -> dict[str, list[str]]:
+    """
+    Get goal dependencies that affect the given tasks.
+
+    Returns:
+        Dict mapping goal_id to list of goal_ids it depends on
+    """
+    # Get unique goal IDs from tasks (excluding weekly recurring tasks)
+    goal_ids = list(
+        {
+            task.goal_id
+            for task in tasks
+            if task.goal_id and not task.is_weekly_recurring
+        }
+    )
+    if not goal_ids:
+        return {}
+
+    try:
+        # Convert string IDs to UUIDs
+        goal_uuids = [UUID(goal_id) for goal_id in goal_ids]
+
+        # Query goal dependencies
+        dependencies = session.exec(
+            select(GoalDependency).where(GoalDependency.goal_id.in_(goal_uuids))
+        ).all()
+
+        dependency_map = {}
+        for dep in dependencies:
+            goal_id = str(dep.goal_id)
+            depends_on_id = str(dep.depends_on_goal_id)
+
+            if goal_id not in dependency_map:
+                dependency_map[goal_id] = []
+            dependency_map[goal_id].append(depends_on_id)
+
+        logger.debug(f"Found {len(dependencies)} goal dependencies")
+        return dependency_map
+
+    except Exception as e:
+        logger.error(f"Error getting goal dependencies: {e}")
+        return {}
+
+
+def _check_task_dependencies_satisfied(
+    session: Session, task: SchedulerTask, task_dependencies: dict[str, list[str]]
+) -> bool:
+    """
+    Check if all dependencies for a task are satisfied (completed).
+
+    Args:
+        session: Database session
+        task: The task to check
+        task_dependencies: Task dependency mapping
+
+    Returns:
+        True if all dependencies are satisfied, False otherwise
+    """
+    if task.id not in task_dependencies:
+        return True  # No dependencies = satisfied
+
+    try:
+        dependent_task_ids = task_dependencies[task.id]
+        dependent_uuids = [UUID(task_id) for task_id in dependent_task_ids]
+
+        # Check if all dependent tasks are completed
+        completed_tasks = session.exec(
+            select(Task)
+            .where(Task.id.in_(dependent_uuids))
+            .where(Task.status == TaskStatus.COMPLETED)
+        ).all()
+
+        is_satisfied = len(completed_tasks) == len(dependent_task_ids)
+
+        if not is_satisfied:
+            logger.debug(
+                f"Task {task.id} dependencies not satisfied: {len(completed_tasks)}/{len(dependent_task_ids)} completed"
+            )
+
+        return is_satisfied
+
+    except Exception as e:
+        logger.error(f"Error checking task dependencies for {task.id}: {e}")
+        return False  # Assume not satisfied on error
+
+
+def _check_goal_dependencies_satisfied(
+    session: Session, task: SchedulerTask, goal_dependencies: dict[str, list[str]]
+) -> bool:
+    """
+    Check if all goal dependencies for a task are satisfied (completed).
+
+    Args:
+        session: Database session
+        task: The task to check
+        goal_dependencies: Goal dependency mapping
+
+    Returns:
+        True if all goal dependencies are satisfied, False otherwise
+    """
+    if not task.goal_id or task.goal_id not in goal_dependencies:
+        return True  # No goal dependencies = satisfied
+
+    try:
+        dependent_goal_ids = goal_dependencies[task.goal_id]
+        dependent_uuids = [UUID(goal_id) for goal_id in dependent_goal_ids]
+
+        # Check if all dependent goals are completed
+        completed_goals = session.exec(
+            select(Goal)
+            .where(Goal.id.in_(dependent_uuids))
+            .where(Goal.status == GoalStatus.COMPLETED)
+        ).all()
+
+        is_satisfied = len(completed_goals) == len(dependent_goal_ids)
+
+        if not is_satisfied:
+            logger.debug(
+                f"Task {task.id} goal dependencies not satisfied: {len(completed_goals)}/{len(dependent_goal_ids)} completed"
+            )
+
+        return is_satisfied
+
+    except Exception as e:
+        logger.error(f"Error checking goal dependencies for task {task.id}: {e}")
+        return False  # Assume not satisfied on error
+
+
+def optimize_schedule(tasks, time_slots, date=None, session=None):
     """
     OR-Tools CP-SAT constraint solver implementation for task scheduling optimization.
 
@@ -110,6 +285,63 @@ def optimize_schedule(tasks, time_slots, date=None):
             unscheduled_tasks=[task.id for task in tasks] if tasks else [],
             total_scheduled_hours=0.0,
             optimization_status="NO_TASKS_OR_SLOTS",
+            solve_time_seconds=time_module.time() - start_time,
+        )
+
+    # Filter tasks based on dependency constraints
+    schedulable_tasks = []
+    unscheduled_due_to_dependencies = []
+
+    if session:
+        # Get dependency data
+        task_dependencies = _get_task_dependencies(session, tasks)
+        goal_dependencies = _get_goal_dependencies(session, tasks)
+
+        logger.debug(f"Checking dependencies for {len(tasks)} tasks")
+
+        # Filter tasks that can be scheduled (dependencies satisfied)
+        for task in tasks:
+            # Weekly recurring tasks are always schedulable (they don't have dependencies)
+            if task.is_weekly_recurring:
+                schedulable_tasks.append(task)
+                continue
+
+            # Check task dependencies
+            task_deps_satisfied = _check_task_dependencies_satisfied(
+                session, task, task_dependencies
+            )
+
+            # Check goal dependencies
+            goal_deps_satisfied = _check_goal_dependencies_satisfied(
+                session, task, goal_dependencies
+            )
+
+            if task_deps_satisfied and goal_deps_satisfied:
+                schedulable_tasks.append(task)
+            else:
+                unscheduled_due_to_dependencies.append(task.id)
+                logger.debug(
+                    f"Task {task.id} filtered out due to unsatisfied dependencies"
+                )
+
+        logger.info(
+            f"Dependency filtering: {len(schedulable_tasks)} schedulable, {len(unscheduled_due_to_dependencies)} blocked by dependencies"
+        )
+    else:
+        # No session provided, schedule all tasks (backward compatibility)
+        schedulable_tasks = tasks
+        logger.warning("No database session provided, skipping dependency checks")
+
+    # Use filtered tasks for optimization
+    tasks = schedulable_tasks
+
+    if not tasks:
+        return ScheduleResult(
+            success=True,
+            assignments=[],
+            unscheduled_tasks=unscheduled_due_to_dependencies,
+            total_scheduled_hours=0.0,
+            optimization_status="NO_SCHEDULABLE_TASKS_DUE_TO_DEPENDENCIES",
             solve_time_seconds=time_module.time() - start_time,
         )
 
@@ -270,6 +502,10 @@ def optimize_schedule(tasks, time_slots, date=None):
         )
         success = False
         objective_value = None
+
+    # Add tasks that were unscheduled due to dependencies
+    if session and unscheduled_due_to_dependencies:
+        unscheduled_tasks.extend(unscheduled_due_to_dependencies)
 
     total_scheduled_hours = total_scheduled_minutes / 60.0
 
@@ -622,7 +858,7 @@ async def create_daily_schedule(
             f"Running optimization with {len(scheduler_tasks)} tasks and {len(scheduler_slots)} slots"
         )
         optimization_result = optimize_schedule(
-            scheduler_tasks, scheduler_slots, request.date
+            scheduler_tasks, scheduler_slots, request.date, session
         )
 
         # Process results
