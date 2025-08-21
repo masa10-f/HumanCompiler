@@ -62,6 +62,13 @@ class SchedulerTask:
     kind: TaskKind = TaskKind.LIGHT_WORK
     goal_id: str | None = None
     is_weekly_recurring: bool = False  # Add flag to distinguish weekly recurring tasks
+    actual_hours: float = 0.0  # Total actual hours logged for this task
+
+    @property
+    def remaining_hours(self) -> float:
+        """Calculate remaining hours (estimate - actual)."""
+        remaining = self.estimate_hours - self.actual_hours
+        return max(0.0, remaining)  # Never return negative remaining hours
 
 
 @dataclass
@@ -91,6 +98,63 @@ class ScheduleResult:
     optimization_status: str = "MOCKED"
     solve_time_seconds: float = 0.0
     objective_value: float = 0.0
+
+
+def _get_task_actual_hours(session: Session, task_ids: list[str]) -> dict[str, float]:
+    """
+    Get actual hours logged for each task from the logs table.
+
+    Args:
+        session: Database session
+        task_ids: List of task IDs to get actual hours for
+
+    Returns:
+        Dict mapping task_id to total actual hours
+    """
+    if not task_ids:
+        return {}
+
+    try:
+        from taskagent_api.models import Log
+        from sqlmodel import func
+        from uuid import UUID
+
+        # Convert string IDs to UUIDs
+        task_uuids = []
+        for task_id in task_ids:
+            try:
+                task_uuids.append(UUID(task_id))
+            except ValueError as uuid_error:
+                logger.warning(
+                    f"Invalid UUID format for task ID {task_id}: {uuid_error}"
+                )
+                continue
+
+        if not task_uuids:
+            return {}
+
+        # Query sum of actual_minutes for each task and convert to hours
+        query = (
+            select(Log.task_id, func.sum(Log.actual_minutes).label("total_minutes"))
+            .where(Log.task_id.in_(task_uuids))
+            .group_by(Log.task_id)
+        )
+
+        results = session.exec(query).all()
+
+        # Convert results to dict with task_id as string and minutes as hours
+        actual_hours_map = {}
+        for task_uuid, total_minutes in results:
+            task_id = str(task_uuid)
+            actual_hours = float(total_minutes or 0) / 60.0  # Convert minutes to hours
+            actual_hours_map[task_id] = actual_hours
+
+        logger.debug(f"Retrieved actual hours for {len(actual_hours_map)} tasks")
+        return actual_hours_map
+
+    except Exception as e:
+        logger.error(f"Error getting task actual hours: {e}")
+        return {}
 
 
 def _get_task_dependencies(
@@ -623,8 +687,8 @@ def optimize_schedule(tasks, time_slots, date=None, session=None):
         )
         slot_capacities.append(min(capacity, slot_duration))
 
-    # Convert task estimates to minutes
-    task_durations = [math.ceil(task.estimate_hours * 60) for task in tasks]
+    # Convert task remaining hours to minutes for optimization
+    task_durations = [math.ceil(task.remaining_hours * 60) for task in tasks]
 
     # Decision variables: x[i][j] = 1 if task i is assigned to slot j
     x = {}
@@ -1026,6 +1090,11 @@ async def create_daily_schedule(
                 generated_at=datetime.now(),
             )
 
+        # Get actual hours for all tasks to calculate remaining hours
+        all_task_ids = [str(db_task.id) for db_task in db_tasks]
+        actual_hours_map = _get_task_actual_hours(session, all_task_ids)
+        logger.info(f"Retrieved actual hours for {len(actual_hours_map)} tasks")
+
         # Convert database tasks to scheduler tasks
         scheduler_tasks = []
         task_info_map = {}
@@ -1063,18 +1132,35 @@ async def create_daily_schedule(
                 project_id = str(goal.project_id) if goal else None
                 goal_id_str = str(db_task.goal_id)
 
+            # Get actual hours for this task
+            task_id_str = str(db_task.id)
+            actual_hours = actual_hours_map.get(task_id_str, 0.0)
+            estimate_hours = float(db_task.estimate_hours)
+
             scheduler_task = SchedulerTask(
-                id=str(db_task.id),  # Convert UUID to string
+                id=task_id_str,
                 title=db_task.title,
-                estimate_hours=float(
-                    db_task.estimate_hours
-                ),  # Convert Decimal to float
+                estimate_hours=estimate_hours,
                 priority=3,  # Default priority - could be enhanced
                 due_date=getattr(db_task, "due_date", None),
                 kind=task_kind,
                 goal_id=goal_id_str,
                 is_weekly_recurring=is_weekly_recurring,
+                actual_hours=actual_hours,  # Set actual hours from logs
             )
+
+            # Log task scheduling information including remaining hours
+            remaining_hours = scheduler_task.remaining_hours
+            if remaining_hours <= 0 and not is_weekly_recurring:
+                logger.info(
+                    f"Task {task_id_str} '{db_task.title}' has no remaining hours "
+                    f"(estimate: {estimate_hours}h, actual: {actual_hours}h)"
+                )
+            else:
+                logger.debug(
+                    f"Task {task_id_str} '{db_task.title}' - "
+                    f"estimate: {estimate_hours}h, actual: {actual_hours}h, remaining: {remaining_hours}h"
+                )
             scheduler_tasks.append(scheduler_task)
 
             # Store task info for response
