@@ -19,7 +19,20 @@ from sqlalchemy import inspect, MetaData
 from sqlalchemy.exc import SQLAlchemyError
 
 from taskagent_api.database import db
-from taskagent_api.models import User, Project, Goal, Task
+from taskagent_api.models import (
+    User,
+    Project,
+    Goal,
+    Task,
+    Schedule,
+    WeeklySchedule,
+    WeeklyRecurringTask,
+    Log,
+    UserSettings,
+    ApiUsageLog,
+    GoalDependency,
+    TaskDependency,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,15 +79,69 @@ class DataBackupManager:
                 tasks = session.exec(select(Task)).all()
                 backup_data["tasks"] = [task.model_dump() for task in tasks]
 
+                # Backup schedules
+                schedules = session.exec(select(Schedule)).all()
+                backup_data["schedules"] = [
+                    schedule.model_dump() for schedule in schedules
+                ]
+
+                # Backup weekly schedules
+                weekly_schedules = session.exec(select(WeeklySchedule)).all()
+                backup_data["weekly_schedules"] = [
+                    ws.model_dump() for ws in weekly_schedules
+                ]
+
+                # Backup weekly recurring tasks
+                weekly_recurring_tasks = session.exec(select(WeeklyRecurringTask)).all()
+                backup_data["weekly_recurring_tasks"] = [
+                    wrt.model_dump() for wrt in weekly_recurring_tasks
+                ]
+
+                # Backup logs
+                logs = session.exec(select(Log)).all()
+                backup_data["logs"] = [log.model_dump() for log in logs]
+
+                # Backup user settings
+                user_settings = session.exec(select(UserSettings)).all()
+                backup_data["user_settings"] = [us.model_dump() for us in user_settings]
+
+                # Backup API usage logs
+                api_usage_logs = session.exec(select(ApiUsageLog)).all()
+                backup_data["api_usage_logs"] = [
+                    aul.model_dump() for aul in api_usage_logs
+                ]
+
+                # Backup goal dependencies
+                goal_dependencies = session.exec(select(GoalDependency)).all()
+                backup_data["goal_dependencies"] = [
+                    gd.model_dump() for gd in goal_dependencies
+                ]
+
+                # Backup task dependencies
+                task_dependencies = session.exec(select(TaskDependency)).all()
+                backup_data["task_dependencies"] = [
+                    td.model_dump() for td in task_dependencies
+                ]
+
                 # Add metadata
                 backup_data["metadata"] = {
                     "created_at": datetime.now(UTC).isoformat(),
-                    "version": "1.0",
+                    "version": "2.0",
                     "total_records": {
                         "users": len(backup_data["users"]),
                         "projects": len(backup_data["projects"]),
                         "goals": len(backup_data["goals"]),
                         "tasks": len(backup_data["tasks"]),
+                        "schedules": len(backup_data["schedules"]),
+                        "weekly_schedules": len(backup_data["weekly_schedules"]),
+                        "weekly_recurring_tasks": len(
+                            backup_data["weekly_recurring_tasks"]
+                        ),
+                        "logs": len(backup_data["logs"]),
+                        "user_settings": len(backup_data["user_settings"]),
+                        "api_usage_logs": len(backup_data["api_usage_logs"]),
+                        "goal_dependencies": len(backup_data["goal_dependencies"]),
+                        "task_dependencies": len(backup_data["task_dependencies"]),
                     },
                 }
 
@@ -87,6 +154,16 @@ class DataBackupManager:
             logger.info(f"   Projects: {len(backup_data['projects'])}")
             logger.info(f"   Goals: {len(backup_data['goals'])}")
             logger.info(f"   Tasks: {len(backup_data['tasks'])}")
+            logger.info(f"   Schedules: {len(backup_data['schedules'])}")
+            logger.info(f"   WeeklySchedules: {len(backup_data['weekly_schedules'])}")
+            logger.info(
+                f"   WeeklyRecurringTasks: {len(backup_data['weekly_recurring_tasks'])}"
+            )
+            logger.info(f"   Logs: {len(backup_data['logs'])}")
+            logger.info(f"   UserSettings: {len(backup_data['user_settings'])}")
+            logger.info(f"   ApiUsageLogs: {len(backup_data['api_usage_logs'])}")
+            logger.info(f"   GoalDependencies: {len(backup_data['goal_dependencies'])}")
+            logger.info(f"   TaskDependencies: {len(backup_data['task_dependencies'])}")
 
             return str(backup_path)
 
@@ -141,6 +218,322 @@ class DataBackupManager:
         except Exception as e:
             logger.error(f"❌ Failed to restore backup: {e}")
             raise SafeMigrationError(f"Backup restoration failed: {e}")
+
+    def create_user_backup(self, user_id: str, backup_name: str | None = None) -> str:
+        """Create a backup of all data for a specific user"""
+        if not backup_name:
+            timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+            backup_name = f"user_{user_id}_backup_{timestamp}"
+
+        backup_path = self.backup_dir / f"{backup_name}.json"
+
+        try:
+            engine = db.get_engine()
+            backup_data = {}
+
+            with Session(engine) as session:
+                # Backup user data
+                user = session.exec(select(User).where(User.id == user_id)).first()
+                if not user:
+                    raise SafeMigrationError(f"User not found: {user_id}")
+                backup_data["users"] = [user.model_dump()]
+
+                # Backup user's projects
+                projects = session.exec(
+                    select(Project).where(Project.owner_id == user_id)
+                ).all()
+                backup_data["projects"] = [project.model_dump() for project in projects]
+
+                # Get project IDs for related data
+                project_ids = [p.id for p in projects]
+
+                # Backup goals related to user's projects
+                goals = []
+                if project_ids:
+                    goals = session.exec(
+                        select(Goal).where(Goal.project_id.in_(project_ids))
+                    ).all()
+                backup_data["goals"] = [goal.model_dump() for goal in goals]
+
+                # Get goal IDs for related data
+                goal_ids = [g.id for g in goals]
+
+                # Backup tasks related to user's goals
+                tasks = []
+                if goal_ids:
+                    tasks = session.exec(
+                        select(Task).where(Task.goal_id.in_(goal_ids))
+                    ).all()
+                backup_data["tasks"] = [task.model_dump() for task in tasks]
+
+                # Get task IDs for related data
+                task_ids = [t.id for t in tasks]
+
+                # Backup user's schedules
+                schedules = session.exec(
+                    select(Schedule).where(Schedule.user_id == user_id)
+                ).all()
+                backup_data["schedules"] = [
+                    schedule.model_dump() for schedule in schedules
+                ]
+
+                # Backup user's weekly schedules
+                weekly_schedules = session.exec(
+                    select(WeeklySchedule).where(WeeklySchedule.user_id == user_id)
+                ).all()
+                backup_data["weekly_schedules"] = [
+                    ws.model_dump() for ws in weekly_schedules
+                ]
+
+                # Backup user's weekly recurring tasks
+                weekly_recurring_tasks = session.exec(
+                    select(WeeklyRecurringTask).where(
+                        WeeklyRecurringTask.user_id == user_id
+                    )
+                ).all()
+                backup_data["weekly_recurring_tasks"] = [
+                    wrt.model_dump() for wrt in weekly_recurring_tasks
+                ]
+
+                # Backup logs for user's tasks
+                logs = []
+                if task_ids:
+                    logs = session.exec(
+                        select(Log).where(Log.task_id.in_(task_ids))
+                    ).all()
+                backup_data["logs"] = [log.model_dump() for log in logs]
+
+                # Backup user settings
+                user_settings = session.exec(
+                    select(UserSettings).where(UserSettings.user_id == user_id)
+                ).all()
+                backup_data["user_settings"] = [us.model_dump() for us in user_settings]
+
+                # Backup user's API usage logs
+                api_usage_logs = session.exec(
+                    select(ApiUsageLog).where(ApiUsageLog.user_id == user_id)
+                ).all()
+                backup_data["api_usage_logs"] = [
+                    aul.model_dump() for aul in api_usage_logs
+                ]
+
+                # Backup goal dependencies for user's goals
+                goal_dependencies = []
+                if goal_ids:
+                    goal_dependencies = session.exec(
+                        select(GoalDependency).where(
+                            (GoalDependency.goal_id.in_(goal_ids))
+                            | (GoalDependency.depends_on_goal_id.in_(goal_ids))
+                        )
+                    ).all()
+                backup_data["goal_dependencies"] = [
+                    gd.model_dump() for gd in goal_dependencies
+                ]
+
+                # Backup task dependencies for user's tasks
+                task_dependencies = []
+                if task_ids:
+                    task_dependencies = session.exec(
+                        select(TaskDependency).where(
+                            (TaskDependency.task_id.in_(task_ids))
+                            | (TaskDependency.depends_on_task_id.in_(task_ids))
+                        )
+                    ).all()
+                backup_data["task_dependencies"] = [
+                    td.model_dump() for td in task_dependencies
+                ]
+
+                # Add metadata
+                backup_data["metadata"] = {
+                    "created_at": datetime.now(UTC).isoformat(),
+                    "version": "2.0",
+                    "backup_type": "user_specific",
+                    "user_id": user_id,
+                    "total_records": {
+                        "users": len(backup_data["users"]),
+                        "projects": len(backup_data["projects"]),
+                        "goals": len(backup_data["goals"]),
+                        "tasks": len(backup_data["tasks"]),
+                        "schedules": len(backup_data["schedules"]),
+                        "weekly_schedules": len(backup_data["weekly_schedules"]),
+                        "weekly_recurring_tasks": len(
+                            backup_data["weekly_recurring_tasks"]
+                        ),
+                        "logs": len(backup_data["logs"]),
+                        "user_settings": len(backup_data["user_settings"]),
+                        "api_usage_logs": len(backup_data["api_usage_logs"]),
+                        "goal_dependencies": len(backup_data["goal_dependencies"]),
+                        "task_dependencies": len(backup_data["task_dependencies"]),
+                    },
+                }
+
+            # Write backup file
+            with open(backup_path, "w", encoding="utf-8") as f:
+                json.dump(backup_data, f, indent=2, default=str, ensure_ascii=False)
+
+            logger.info(f"✅ User backup created: {backup_path}")
+            logger.info(f"   User ID: {user_id}")
+            logger.info(f"   Projects: {len(backup_data['projects'])}")
+            logger.info(f"   Goals: {len(backup_data['goals'])}")
+            logger.info(f"   Tasks: {len(backup_data['tasks'])}")
+
+            return str(backup_path)
+
+        except Exception as e:
+            logger.error(f"❌ Failed to create user backup: {e}")
+            raise SafeMigrationError(f"User backup creation failed: {e}")
+
+    def restore_user_data(self, backup_path: str, target_user_id: str) -> None:
+        """Restore user data from a backup file, merging with existing data"""
+        backup_file = Path(backup_path)
+        if not backup_file.exists():
+            raise SafeMigrationError(f"Backup file not found: {backup_path}")
+
+        try:
+            import uuid
+
+            with open(backup_file, encoding="utf-8") as f:
+                backup_data = json.load(f)
+
+            # Validate backup data structure
+            metadata = backup_data.get("metadata", {})
+            if metadata.get("backup_type") != "user_specific":
+                raise SafeMigrationError(
+                    "This backup file is not a user-specific backup"
+                )
+
+            engine = db.get_engine()
+
+            with Session(engine) as session:
+                # Maps to track ID conversions
+                project_id_map = {}
+                goal_id_map = {}
+                task_id_map = {}
+
+                # Import projects with new IDs
+                for project_data in backup_data.get("projects", []):
+                    old_project_id = project_data["id"]
+                    new_project_id = str(uuid.uuid4())
+                    project_id_map[old_project_id] = new_project_id
+
+                    project_data["id"] = new_project_id
+                    project_data["owner_id"] = target_user_id
+
+                    project = Project(**project_data)
+                    session.add(project)
+
+                # Import goals with new IDs and updated project references
+                for goal_data in backup_data.get("goals", []):
+                    old_goal_id = goal_data["id"]
+                    new_goal_id = str(uuid.uuid4())
+                    goal_id_map[old_goal_id] = new_goal_id
+
+                    goal_data["id"] = new_goal_id
+                    goal_data["project_id"] = project_id_map.get(
+                        goal_data["project_id"]
+                    )
+
+                    if goal_data["project_id"]:  # Only add if project exists
+                        goal = Goal(**goal_data)
+                        session.add(goal)
+
+                # Import tasks with new IDs and updated goal references
+                for task_data in backup_data.get("tasks", []):
+                    old_task_id = task_data["id"]
+                    new_task_id = str(uuid.uuid4())
+                    task_id_map[old_task_id] = new_task_id
+
+                    task_data["id"] = new_task_id
+                    task_data["goal_id"] = goal_id_map.get(task_data["goal_id"])
+
+                    if task_data["goal_id"]:  # Only add if goal exists
+                        task = Task(**task_data)
+                        session.add(task)
+
+                # Import schedules with new IDs and updated user reference
+                for schedule_data in backup_data.get("schedules", []):
+                    schedule_data["id"] = str(uuid.uuid4())
+                    schedule_data["user_id"] = target_user_id
+
+                    schedule = Schedule(**schedule_data)
+                    session.add(schedule)
+
+                # Import weekly schedules with new IDs and updated user reference
+                for ws_data in backup_data.get("weekly_schedules", []):
+                    ws_data["id"] = str(uuid.uuid4())
+                    ws_data["user_id"] = target_user_id
+
+                    weekly_schedule = WeeklySchedule(**ws_data)
+                    session.add(weekly_schedule)
+
+                # Import weekly recurring tasks with new IDs and updated user reference
+                for wrt_data in backup_data.get("weekly_recurring_tasks", []):
+                    wrt_data["id"] = str(uuid.uuid4())
+                    wrt_data["user_id"] = target_user_id
+
+                    weekly_recurring_task = WeeklyRecurringTask(**wrt_data)
+                    session.add(weekly_recurring_task)
+
+                # Import logs with new IDs and updated task references
+                for log_data in backup_data.get("logs", []):
+                    log_data["id"] = str(uuid.uuid4())
+                    log_data["task_id"] = task_id_map.get(log_data["task_id"])
+
+                    if log_data["task_id"]:  # Only add if task exists
+                        log = Log(**log_data)
+                        session.add(log)
+
+                # Import user settings (skip if already exists)
+                for us_data in backup_data.get("user_settings", []):
+                    us_data["id"] = str(uuid.uuid4())
+                    us_data["user_id"] = target_user_id
+
+                    # Check if user settings already exist
+                    existing_us = session.exec(
+                        select(UserSettings).where(
+                            UserSettings.user_id == target_user_id
+                        )
+                    ).first()
+
+                    if not existing_us:
+                        user_settings = UserSettings(**us_data)
+                        session.add(user_settings)
+
+                # Import goal dependencies with updated references
+                for gd_data in backup_data.get("goal_dependencies", []):
+                    gd_data["id"] = str(uuid.uuid4())
+                    gd_data["goal_id"] = goal_id_map.get(gd_data["goal_id"])
+                    gd_data["depends_on_goal_id"] = goal_id_map.get(
+                        gd_data["depends_on_goal_id"]
+                    )
+
+                    if gd_data["goal_id"] and gd_data["depends_on_goal_id"]:
+                        goal_dependency = GoalDependency(**gd_data)
+                        session.add(goal_dependency)
+
+                # Import task dependencies with updated references
+                for td_data in backup_data.get("task_dependencies", []):
+                    td_data["id"] = str(uuid.uuid4())
+                    td_data["task_id"] = task_id_map.get(td_data["task_id"])
+                    td_data["depends_on_task_id"] = task_id_map.get(
+                        td_data["depends_on_task_id"]
+                    )
+
+                    if td_data["task_id"] and td_data["depends_on_task_id"]:
+                        task_dependency = TaskDependency(**td_data)
+                        session.add(task_dependency)
+
+                session.commit()
+
+            logger.info(f"✅ User data restored from: {backup_path}")
+            logger.info(f"   Target user: {target_user_id}")
+            logger.info(f"   Projects imported: {len(project_id_map)}")
+            logger.info(f"   Goals imported: {len(goal_id_map)}")
+            logger.info(f"   Tasks imported: {len(task_id_map)}")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to restore user data: {e}")
+            raise SafeMigrationError(f"User data restoration failed: {e}")
 
 
 class SchemaValidator:
