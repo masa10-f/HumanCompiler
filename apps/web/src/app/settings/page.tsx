@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Eye, EyeOff, Key, AlertCircle, CheckCircle, TrendingUp, Hash, DollarSign, RefreshCw } from "lucide-react"
+import { Eye, EyeOff, Key, AlertCircle, CheckCircle, TrendingUp, Hash, DollarSign, RefreshCw, Download, Upload, Database } from "lucide-react"
 import { AppHeader } from "@/components/layout/app-header"
 import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { supabase } from "@/lib/supabase"
@@ -55,6 +55,18 @@ export default function SettingsPage() {
   const [loadingUsage, setLoadingUsage] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [availableModels, setAvailableModels] = useState<AvailableModels | null>(null)
+  const [exportLoading, setExportLoading] = useState(false)
+  const [importLoading, setImportLoading] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [exportInfo, setExportInfo] = useState<{
+    current_data_summary: {
+      projects: number
+      goals: number
+      tasks: number
+      schedules: number
+      weekly_schedules: number
+    }
+  } | null>(null)
 
   useEffect(() => {
     // Create AbortController for cleanup
@@ -62,6 +74,7 @@ export default function SettingsPage() {
 
     fetchUserSettings()
     fetchAvailableModels()
+    fetchExportInfo()
 
     // Cleanup function
     return () => {
@@ -337,6 +350,142 @@ export default function SettingsPage() {
     }
   }
 
+  const fetchExportInfo = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (!user || !session?.access_token) {
+        return
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/export/info`, {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        signal: abortControllerRef.current?.signal
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setExportInfo(data)
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return
+      }
+      log.error('Failed to fetch export info', err as Error, { component: 'Settings' })
+    }
+  }
+
+  const handleExportData = async () => {
+    setExportLoading(true)
+    setError("")
+    setSuccess("")
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (!user || !session?.access_token) {
+        router.push("/login")
+        return
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/export/user-data`, {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      })
+
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `taskagent_data_export_${new Date().toISOString().split('T')[0]}.json`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+        setSuccess("データのエクスポートが完了しました")
+      } else {
+        const data = await response.json()
+        setError(data.detail || "データのエクスポートに失敗しました")
+      }
+    } catch {
+      setError("エクスポート中にエラーが発生しました")
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  const handleImportData = async () => {
+    if (!importFile) {
+      setError("インポートするファイルを選択してください")
+      return
+    }
+
+    setImportLoading(true)
+    setError("")
+    setSuccess("")
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (!user || !session?.access_token) {
+        router.push("/login")
+        return
+      }
+
+      const formData = new FormData()
+      formData.append('file', importFile)
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/import/user-data`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: formData,
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setSuccess(`データのインポートが完了しました。${data.imported_records.projects}個のプロジェクト、${data.imported_records.goals}個のゴール、${data.imported_records.tasks}個のタスクがインポートされました。`)
+        setImportFile(null)
+        // Reset file input
+        const fileInput = document.getElementById('import-file') as HTMLInputElement
+        if (fileInput) fileInput.value = ''
+        // Refresh export info to show updated data counts
+        fetchExportInfo()
+      } else {
+        const data = await response.json()
+        setError(data.detail || "データのインポートに失敗しました")
+      }
+    } catch {
+      setError("インポート中にエラーが発生しました")
+    } finally {
+      setImportLoading(false)
+    }
+  }
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      if (!file.name.endsWith('.json')) {
+        setError("JSONファイルを選択してください")
+        return
+      }
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit
+        setError("ファイルサイズが10MBを超えています")
+        return
+      }
+      setImportFile(file)
+      setError("")
+    }
+  }
+
   if (loadingSettings) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -576,6 +725,132 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       )}
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-5 w-5" />
+            データバックアップ・復元
+          </CardTitle>
+          <CardDescription>
+            TaskAgentのプロジェクトデータをJSONファイルとしてエクスポート・インポート
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {exportInfo && (
+            <div className="p-4 bg-muted rounded-lg">
+              <h4 className="font-semibold mb-2">現在のデータ</h4>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                <div>
+                  <div className="font-medium">{exportInfo.current_data_summary.projects}</div>
+                  <div className="text-muted-foreground">プロジェクト</div>
+                </div>
+                <div>
+                  <div className="font-medium">{exportInfo.current_data_summary.goals}</div>
+                  <div className="text-muted-foreground">ゴール</div>
+                </div>
+                <div>
+                  <div className="font-medium">{exportInfo.current_data_summary.tasks}</div>
+                  <div className="text-muted-foreground">タスク</div>
+                </div>
+                <div>
+                  <div className="font-medium">{exportInfo.current_data_summary.schedules}</div>
+                  <div className="text-muted-foreground">スケジュール</div>
+                </div>
+                <div>
+                  <div className="font-medium">{exportInfo.current_data_summary.weekly_schedules}</div>
+                  <div className="text-muted-foreground">週次スケジュール</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <div>
+              <h4 className="font-semibold mb-2 flex items-center gap-2">
+                <Download className="h-4 w-4" />
+                データエクスポート
+              </h4>
+              <p className="text-sm text-muted-foreground mb-3">
+                すべてのプロジェクトデータ（プロジェクト、ゴール、タスク、スケジュール、ログなど）をJSONファイルとしてダウンロードします。
+              </p>
+              <Button
+                onClick={handleExportData}
+                disabled={exportLoading}
+                className="w-full sm:w-auto"
+              >
+                {exportLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                    エクスポート中...
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4 mr-2" />
+                    データをエクスポート
+                  </>
+                )}
+              </Button>
+            </div>
+
+            <div className="border-t pt-4">
+              <h4 className="font-semibold mb-2 flex items-center gap-2">
+                <Upload className="h-4 w-4" />
+                データインポート
+              </h4>
+              <p className="text-sm text-muted-foreground mb-3">
+                TaskAgentからエクスポートしたJSONファイルをアップロードして、データを復元・追加します。
+                既存のデータは保持され、新しいUUIDが生成されて追加されます。
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <Input
+                    id="import-file"
+                    type="file"
+                    accept=".json"
+                    onChange={handleFileChange}
+                    className="w-full"
+                  />
+                  {importFile && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      選択ファイル: {importFile.name} ({(importFile.size / 1024 / 1024).toFixed(2)} MB)
+                    </p>
+                  )}
+                </div>
+                <Button
+                  onClick={handleImportData}
+                  disabled={importLoading || !importFile}
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                >
+                  {importLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900 mr-2" />
+                      インポート中...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      データをインポート
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t">
+            <h4 className="font-semibold mb-2">注意事項</h4>
+            <ul className="text-sm text-muted-foreground space-y-1">
+              <li>• エクスポートされるデータは認証ユーザーのもののみです</li>
+              <li>• インポート時は新しいUUIDが生成されるため、既存データとの重複は発生しません</li>
+              <li>• インポート可能なファイルサイズは最大10MBです</li>
+              <li>• エクスポートは5回/分、インポートは3回/分の制限があります</li>
+              <li>• ファイルはJSONフォーマットのみサポートしています</li>
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
 
       <ConfirmationModal
         isOpen={isDeleteModalOpen}

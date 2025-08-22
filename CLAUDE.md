@@ -478,6 +478,86 @@ ORDER BY tablename, policyname;
 マイグレーションスクリプト: `apps/api/migrations/enable_rls_security.sql`
 実行スクリプト: `apps/api/src/taskagent_api/enable_rls_migration.py`
 
+## データエクスポート・インポート機能のメンテナンス
+
+**⚠️ 重要**: データベーススキーマ変更時は、エクスポート・インポート機能の更新が必要な場合があります。
+
+### 自動対応される変更
+
+以下の変更は既存機能で自動的に対応されます：
+- **既存テーブルへの新しいフィールド追加**: `model_dump()`と`**data`展開により自動対応
+- **既存フィールドのデータ型変更**: 基本的には自動対応（互換性がある場合）
+
+### 手動対応が必要な変更
+
+以下の変更時は`safe_migration.py`の**手動更新が必須**です：
+
+#### 1. **新しいテーブルの追加**
+```python
+# apps/api/src/taskagent_api/safe_migration.py の以下のメソッドを更新:
+
+# DataBackupManager.create_backup() - 全体バックアップ用
+def create_backup(self, backup_name: str | None = None) -> str:
+    # 新しいテーブルのバックアップ処理を追加
+    new_table_data = session.exec(select(NewTable)).all()
+    backup_data["new_table"] = [item.model_dump() for item in new_table_data]
+
+# DataBackupManager.create_user_backup() - ユーザー専用バックアップ用
+def create_user_backup(self, user_id: str, backup_name: str | None = None) -> str:
+    # ユーザー関連の新しいテーブルの処理を追加
+    if new_table_relates_to_user:
+        new_data = session.exec(select(NewTable).where(NewTable.user_id == user_id)).all()
+        backup_data["new_table"] = [item.model_dump() for item in new_data]
+
+# DataBackupManager.restore_user_data() - インポート処理用
+def restore_user_data(self, backup_path: str, target_user_id: str) -> None:
+    # 新しいテーブルの復元処理を追加
+    for item_data in backup_data.get("new_table", []):
+        item_data["id"] = str(uuid.uuid4())
+        item_data["user_id"] = target_user_id  # 必要に応じて
+        new_item = NewTable(**item_data)
+        session.add(new_item)
+```
+
+#### 2. **外部キー関係の変更**
+```python
+# restore_user_data() のID remapping処理を更新
+# 新しい依存関係に応じてマッピング辞書を更新
+
+new_table_id_map = {}  # 新しいマッピング辞書を追加
+
+# 外部キー参照の更新
+item_data["foreign_key_id"] = other_id_map.get(item_data["foreign_key_id"])
+```
+
+#### 3. **必須フィールドの追加**
+```python
+# バリデーション処理の更新
+required_sections = ["users", "projects", "goals", "tasks", "new_table", "metadata"]
+
+# メタデータの total_records にも追加
+backup_data["metadata"]["total_records"]["new_table"] = len(backup_data["new_table"])
+```
+
+### メンテナンス確認チェックリスト
+
+新しいテーブル追加時：
+- [ ] `create_backup()` にテーブル追加
+- [ ] `create_user_backup()` にユーザー関連データ追加（該当する場合）
+- [ ] `restore_user_data()` に復元処理追加
+- [ ] 外部キー関係がある場合、ID remapping処理追加
+- [ ] `required_sections` にテーブル名追加
+- [ ] `total_records` メタデータにカウント追加
+- [ ] RLSポリシーの設定（上記セクション参照）
+- [ ] テストケースの追加・更新
+
+### 関連ファイル
+
+- **バックエンド**: `apps/api/src/taskagent_api/safe_migration.py`
+- **API**: `apps/api/src/taskagent_api/routers/data_export.py`
+- **フロントエンド**: `apps/web/src/app/settings/page.tsx`
+- **テスト**: `apps/api/tests/test_data_export.py`
+
 ## 開発時の注意事項
 
 - プロンプトに対する返答は必ず日本語で行う
@@ -487,3 +567,4 @@ ORDER BY tablename, policyname;
 - テストケースの作成・実行を忘れずに行う
 - **データベース変更時は必ず上記のマイグレーション手順に従う**
 - **新しいテーブル作成時は必ず上記のRLSセキュリティ対策を実装する**
+- **テーブル追加時は必ず上記のエクスポート・インポート機能の更新を行う**
