@@ -22,6 +22,7 @@ from taskagent_api.exceptions import (
 )
 from taskagent_api.routers import (
     ai_planning,
+    data_export,
     goal_dependencies,
     goals,
     logs,
@@ -246,6 +247,7 @@ app.include_router(ai_planning.router, prefix="/api")
 app.include_router(user_settings.router)
 app.include_router(monitoring.router)
 app.include_router(simple_backup_api.router)
+app.include_router(data_export.router, tags=["data-export"])
 
 
 # Health check endpoint
