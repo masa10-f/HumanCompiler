@@ -13,11 +13,10 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, Depends, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse
-from sqlmodel import Session
+from sqlmodel import Session, col
 
-from taskagent_api.auth import get_current_user
+from taskagent_api.auth import get_current_user, AuthUser
 from taskagent_api.database import db
-from taskagent_api.models import User
 from taskagent_api.rate_limiter import limiter
 from taskagent_api.safe_migration import DataBackupManager, SafeMigrationError
 
@@ -30,7 +29,7 @@ router = APIRouter()
 @limiter.limit("5 per minute")
 async def export_user_data(
     request: Request,
-    current_user: User = Depends(get_current_user),
+    current_user: AuthUser = Depends(get_current_user),
     db_session: Session = Depends(db.get_session),
 ) -> FileResponse:
     """
@@ -38,14 +37,15 @@ async def export_user_data(
     認証ユーザーの全データをJSONファイルとしてエクスポート
     """
     try:
-        logger.info(f"Starting data export for user: {current_user.id}")
+        logger.info(f"Starting data export for user: {current_user.user_id}")
 
         # Create backup manager
         backup_manager = DataBackupManager()
 
         # Create user-specific backup
         backup_path = backup_manager.create_user_backup(
-            user_id=current_user.id, backup_name=f"user_export_{current_user.id}"
+            user_id=current_user.user_id,
+            backup_name=f"user_export_{current_user.user_id}",
         )
 
         # Prepare file for download
@@ -54,9 +54,9 @@ async def export_user_data(
             raise HTTPException(status_code=500, detail="Failed to create export file")
 
         # Generate download filename
-        download_filename = f"taskagent_data_export_{current_user.id}.json"
+        download_filename = f"taskagent_data_export_{current_user.user_id}.json"
 
-        logger.info(f"Export successful for user {current_user.id}: {backup_path}")
+        logger.info(f"Export successful for user {current_user.user_id}: {backup_path}")
 
         # Return file as download
         return FileResponse(
@@ -73,11 +73,13 @@ async def export_user_data(
 
     except SafeMigrationError as e:
         logger.error(
-            f"Safe migration error during export for user {current_user.id}: {e}"
+            f"Safe migration error during export for user {current_user.user_id}: {e}"
         )
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
     except Exception as e:
-        logger.error(f"Unexpected error during export for user {current_user.id}: {e}")
+        logger.error(
+            f"Unexpected error during export for user {current_user.user_id}: {e}"
+        )
         raise HTTPException(
             status_code=500, detail="An unexpected error occurred during export"
         )
@@ -88,7 +90,7 @@ async def export_user_data(
 async def import_user_data(
     request: Request,
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
+    current_user: AuthUser = Depends(get_current_user),
     db_session: Session = Depends(db.get_session),
 ) -> JSONResponse:
     """
@@ -96,7 +98,7 @@ async def import_user_data(
     JSONバックアップファイルからユーザーデータをインポート
     """
     try:
-        logger.info(f"Starting data import for user: {current_user.id}")
+        logger.info(f"Starting data import for user: {current_user.user_id}")
 
         # Validate file type
         if not file.filename or not file.filename.endswith(".json"):
@@ -157,7 +159,7 @@ async def import_user_data(
             # Create backup manager and restore data
             backup_manager = DataBackupManager()
             backup_manager.restore_user_data(
-                backup_path=temp_file_path, target_user_id=current_user.id
+                backup_path=temp_file_path, target_user_id=current_user.user_id
             )
 
             # Count imported records
@@ -177,7 +179,7 @@ async def import_user_data(
                 "task_dependencies": total_records.get("task_dependencies", 0),
             }
 
-            logger.info(f"Import successful for user {current_user.id}")
+            logger.info(f"Import successful for user {current_user.user_id}")
             logger.info(f"Imported records: {imported_counts}")
 
             return JSONResponse(
@@ -199,14 +201,16 @@ async def import_user_data(
 
     except SafeMigrationError as e:
         logger.error(
-            f"Safe migration error during import for user {current_user.id}: {e}"
+            f"Safe migration error during import for user {current_user.user_id}: {e}"
         )
         raise HTTPException(status_code=400, detail=f"Import failed: {str(e)}")
     except HTTPException:
         # Re-raise HTTP exceptions as-is
         raise
     except Exception as e:
-        logger.error(f"Unexpected error during import for user {current_user.id}: {e}")
+        logger.error(
+            f"Unexpected error during import for user {current_user.user_id}: {e}"
+        )
         raise HTTPException(
             status_code=500, detail="An unexpected error occurred during import"
         )
@@ -216,7 +220,7 @@ async def import_user_data(
 @limiter.limit("10 per minute")
 async def get_export_info(
     request: Request,
-    current_user: User = Depends(get_current_user),
+    current_user: AuthUser = Depends(get_current_user),
     db_session: Session = Depends(db.get_session),
 ) -> JSONResponse:
     """
@@ -239,7 +243,7 @@ async def get_export_info(
             # Count projects
             projects_count = len(
                 db_session.exec(
-                    select(Project).where(Project.owner_id == current_user.id)
+                    select(Project).where(Project.owner_id == current_user.user_id)
                 ).all()
             )
 
@@ -248,49 +252,46 @@ async def get_export_info(
                 project_ids = [
                     p.id
                     for p in db_session.exec(
-                        select(Project).where(Project.owner_id == current_user.id)
+                        select(Project).where(Project.owner_id == current_user.user_id)
                     ).all()
                 ]
-                goals_count = (
-                    len(
+                if project_ids:
+                    goals_count = len(
                         db_session.exec(
-                            select(Goal).where(Goal.project_id.in_(project_ids))
+                            select(Goal).where(col(Goal.project_id).in_(project_ids))
                         ).all()
                     )
-                    if project_ids
-                    else 0
-                )
+                else:
+                    goals_count = 0
             else:
                 goals_count = 0
 
             # Count tasks
             if goals_count > 0:
-                goal_ids = (
-                    [
+                if projects_count > 0 and project_ids:
+                    goal_ids = [
                         g.id
                         for g in db_session.exec(
-                            select(Goal).where(Goal.project_id.in_(project_ids))
+                            select(Goal).where(col(Goal.project_id).in_(project_ids))
                         ).all()
                     ]
-                    if projects_count > 0
-                    else []
-                )
-                tasks_count = (
-                    len(
+                else:
+                    goal_ids = []
+                if goal_ids:
+                    tasks_count = len(
                         db_session.exec(
-                            select(Task).where(Task.goal_id.in_(goal_ids))
+                            select(Task).where(col(Task.goal_id).in_(goal_ids))
                         ).all()
                     )
-                    if goal_ids
-                    else 0
-                )
+                else:
+                    tasks_count = 0
             else:
                 tasks_count = 0
 
             # Count schedules
             schedules_count = len(
                 db_session.exec(
-                    select(Schedule).where(Schedule.user_id == current_user.id)
+                    select(Schedule).where(Schedule.user_id == current_user.user_id)
                 ).all()
             )
 
@@ -298,7 +299,7 @@ async def get_export_info(
             weekly_schedules_count = len(
                 db_session.exec(
                     select(WeeklySchedule).where(
-                        WeeklySchedule.user_id == current_user.id
+                        WeeklySchedule.user_id == current_user.user_id
                     )
                 ).all()
             )
@@ -345,7 +346,7 @@ async def get_export_info(
         return JSONResponse(content=info)
 
     except Exception as e:
-        logger.error(f"Error getting export info for user {current_user.id}: {e}")
+        logger.error(f"Error getting export info for user {current_user.user_id}: {e}")
         raise HTTPException(
             status_code=500, detail="Failed to retrieve export information"
         )
