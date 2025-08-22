@@ -478,6 +478,7 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             estimate_hours=data.estimate_hours,
             due_date=data.due_date,
             status=data.status,
+            priority=data.priority,
             work_type=data.work_type,
         )
 
