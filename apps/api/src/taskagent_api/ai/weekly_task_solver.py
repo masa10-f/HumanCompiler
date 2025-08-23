@@ -21,6 +21,7 @@ from taskagent_api.ai.models import WeeklyPlanContext, TaskPlan
 from taskagent_api.ai.task_utils import filter_valid_tasks
 from taskagent_api.models import Project, Goal, Task, UserSettings
 from taskagent_api.crypto import get_crypto_service
+# Import moved inside function to avoid circular import
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +152,9 @@ class TaskPriorityExtractor:
                 "title": task.title,
                 "description": task.description,
                 "estimate_hours": task.estimate_hours,
+                "remaining_hours": getattr(
+                    task, "remaining_hours", task.estimate_hours or 0
+                ),
                 "due_date": task.due_date.isoformat() if task.due_date else None,
                 "priority": getattr(task, "priority", 3),
                 "goal_id": task.goal_id,
@@ -305,11 +309,12 @@ priority=1のタスクは高スコア、priority=5のタスクは低スコアと
                 if allocation:
                     base_priority += allocation.priority_weight * 2.0
 
-            # Task size consideration (prefer smaller tasks)
-            if task.estimate_hours:
-                if float(task.estimate_hours) <= 2.0:
+            # Task size consideration (prefer smaller tasks based on remaining hours)
+            remaining_hours = getattr(task, "remaining_hours", task.estimate_hours or 0)
+            if remaining_hours:
+                if float(remaining_hours) <= 2.0:
                     base_priority += 1.0  # Small task bonus
-                elif float(task.estimate_hours) >= 8.0:
+                elif float(remaining_hours) >= 8.0:
                     base_priority -= 0.5  # Large task penalty
 
             # Cap priority at 10.0
@@ -447,7 +452,7 @@ class WeeklyTaskSolver:
         self, session: Session, user_id: str, week_start, request: TaskSolverRequest
     ) -> WeeklyPlanContext:
         """Collect comprehensive context for task solving."""
-        return await self.context_collector.collect_weekly_plan_context(
+        context = await self.context_collector.collect_weekly_plan_context(
             session=session,
             user_id=user_id,
             week_start_date=week_start,
@@ -457,12 +462,58 @@ class WeeklyTaskSolver:
             preferences=request.preferences,
         )
 
+        # Get actual hours for all tasks and calculate remaining hours
+        from taskagent_api.routers.scheduler import _get_task_actual_hours
+
+        task_ids = [str(task.id) for task in context.tasks]
+        actual_hours_map = _get_task_actual_hours(session, task_ids)
+
+        # Add remaining hours to each task and filter out tasks with no remaining hours
+        filtered_tasks = []
+        excluded_count = 0
+
+        for task in context.tasks:
+            task_id_str = str(task.id)
+            actual_hours = actual_hours_map.get(task_id_str, 0.0)
+            estimate_hours = float(task.estimate_hours or 0)
+            # Calculate remaining hours (minimum 0)
+            remaining_hours = max(0.0, estimate_hours - actual_hours)
+            # Store remaining hours in task object (add as dynamic attribute using __dict__)
+            task.__dict__["remaining_hours"] = remaining_hours
+            task.__dict__["actual_hours"] = actual_hours
+
+            logger.debug(
+                f"Task {task_id_str} '{task.title}' - "
+                f"estimate: {estimate_hours}h, actual: {actual_hours}h, remaining: {remaining_hours}h"
+            )
+
+            # Only include tasks with remaining hours > 0
+            if remaining_hours > 0:
+                filtered_tasks.append(task)
+            else:
+                excluded_count += 1
+                logger.info(
+                    f"Excluding task {task_id_str} '{task.title}' from weekly planning "
+                    f"(no remaining hours: {remaining_hours}h)"
+                )
+
+        # Update context with filtered tasks
+        context.tasks = filtered_tasks
+
+        if excluded_count > 0:
+            logger.info(
+                f"Excluded {excluded_count} completed/no-remaining-hours tasks from weekly planning"
+            )
+
+        return context
+
     def _analyze_constraints(
         self, context: WeeklyPlanContext, constraints: WeeklyConstraints
     ) -> dict[str, Any]:
         """Analyze current constraints and workload."""
         total_task_hours = sum(
-            float(task.estimate_hours or 0) for task in context.tasks
+            getattr(task, "remaining_hours", float(task.estimate_hours or 0))
+            for task in context.tasks
         )
         available_hours = (
             constraints.total_capacity_hours - constraints.meeting_buffer_hours
@@ -544,7 +595,10 @@ class WeeklyTaskSolver:
 
                     if task_due_dt <= week_end_dt:
                         urgent_count += 1
-            total_hours = sum(float(task.estimate_hours or 0) for task in project_tasks)
+            total_hours = sum(
+                getattr(task, "remaining_hours", float(task.estimate_hours or 0))
+                for task in project_tasks
+            )
 
             priority_score = urgent_count * 2.0 + total_hours * 0.1
             project_priorities[project.id] = priority_score
@@ -657,8 +711,8 @@ class WeeklyTaskSolver:
                     urgency_score = 0
 
             effort_score = 10 - min(
-                float(task.estimate_hours or 0), 10
-            )  # Prefer smaller tasks
+                getattr(task, "remaining_hours", float(task.estimate_hours or 0)), 10
+            )  # Prefer smaller tasks based on remaining hours
 
             total_score = (
                 urgency_score * constraints.deadline_weight
@@ -672,7 +726,9 @@ class WeeklyTaskSolver:
                 if str(weekly_task.id) in context.selected_recurring_task_ids:
                     # Weekly recurring tasks get high priority to ensure they are included
                     recurring_score = 8.0  # High priority for consistency
-                    effort_score = 10 - min(float(weekly_task.estimate_hours or 0), 10)
+                    effort_score = 10 - min(
+                        float(weekly_task.estimate_hours or 0), 10
+                    )  # Weekly tasks use estimate_hours
                     total_score = (
                         recurring_score * 0.7  # High weight for weekly consistency
                         + effort_score * constraints.effort_efficiency_weight
@@ -685,12 +741,17 @@ class WeeklyTaskSolver:
         # Select items within capacity
         total_hours = 0.0
         for item, score, item_type in scored_items:
-            item_hours = float(item.estimate_hours or 0)
+            if item_type == "regular_task":
+                item_hours = getattr(
+                    item, "remaining_hours", float(item.estimate_hours or 0)
+                )
+            else:  # weekly_recurring_task
+                item_hours = float(item.estimate_hours or 0)
             if total_hours + item_hours <= constraints.total_capacity_hours:
                 if item_type == "regular_task":
                     selected_tasks.append(
                         TaskPlan(
-                            task_id=item.id,
+                            task_id=str(item.id),
                             task_title=item.title,
                             estimated_hours=item_hours,
                             priority=int(score),
@@ -700,7 +761,7 @@ class WeeklyTaskSolver:
                 elif item_type == "weekly_recurring":
                     selected_tasks.append(
                         TaskPlan(
-                            task_id=item.id,
+                            task_id=str(item.id),
                             task_title=f"[週課] {item.title}",
                             estimated_hours=item_hours,
                             priority=int(score),
@@ -1146,7 +1207,9 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
             for task in context.tasks:
                 task_id = str(task.id)
                 task_vars[task_id] = model.NewBoolVar(f"task_{task_id}")
-                task_hours[task_id] = float(task.estimate_hours or 0)
+                task_hours[task_id] = getattr(
+                    task, "remaining_hours", float(task.estimate_hours or 0)
+                )
                 task_priority_scores[task_id] = task_priorities.get(task_id, 5.0)
 
             # Add selected weekly recurring tasks
@@ -1284,11 +1347,12 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                     )
 
                 # Analyze project distribution
-                project_distribution = {}
-                for task in selected_tasks:
+                project_distribution: dict[str, float] = {}
+                for task_plan in selected_tasks:
                     # Find project for this task
                     db_task = next(
-                        (t for t in context.tasks if str(t.id) == task.task_id), None
+                        (t for t in context.tasks if str(t.id) == task_plan.task_id),
+                        None,
                     )
                     if db_task:
                         goal = next(
@@ -1307,7 +1371,7 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                                 project_title = project.title
                                 project_distribution[project_title] = (
                                     project_distribution.get(project_title, 0)
-                                    + task.estimated_hours
+                                    + task_plan.estimated_hours
                                 )
 
                 if project_distribution:
