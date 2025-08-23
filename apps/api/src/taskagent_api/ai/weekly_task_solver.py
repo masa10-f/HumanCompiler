@@ -1305,23 +1305,64 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                             )
 
                 if project_tasks:
-                    # Minimum allocation constraint
-                    min_hours = int(
-                        allocation.target_hours * 0.7 * 10
-                    )  # Allow 30% flexibility
-                    max_hours = int(allocation.max_hours * 10)
+                    # Calculate available task hours for this project
+                    available_task_hours = sum(
+                        task_hours[str(task.id)]
+                        for task in context.tasks
+                        if task.goal_id in project_goal_ids
+                        and str(task.id) in task_hours
+                    )
 
-                    if len(project_tasks) > 0:
-                        model.Add(sum(project_tasks) >= min_hours)
+                    # Use flexible constraints to ensure feasibility
+                    # Hard minimum: at least 20% of target or available hours, whichever is less
+                    hard_min_hours = int(
+                        min(
+                            allocation.target_hours * 0.2 * 10,
+                            available_task_hours * 10,
+                        )
+                    )
+                    max_hours = int(
+                        min(allocation.max_hours, available_task_hours) * 10
+                    )
+
+                    if len(project_tasks) > 0 and max_hours > 0:
+                        model.Add(sum(project_tasks) >= hard_min_hours)
                         model.Add(sum(project_tasks) <= max_hours)
 
             # Constraint 3: Prefer high-priority tasks
             priority_expr = []
+
+            # Add task priority weights
             for task_id, var in task_vars.items():
-                priority_weight = int(
-                    task_priority_scores[task_id] * 100
-                )  # Scale for integer
-                priority_expr.append(var * priority_weight)
+                base_priority = int(task_priority_scores[task_id] * 100)
+
+                # Boost priority for tasks that align with project allocation preferences
+                project_allocation_bonus = 0
+                task = next((t for t in context.tasks if str(t.id) == task_id), None)
+                if task:
+                    goal = next(
+                        (g for g in context.goals if g.id == task.goal_id), None
+                    )
+                    if goal:
+                        # Find matching project allocation
+                        allocation = next(
+                            (
+                                a
+                                for a in project_allocations
+                                if a.project_id == goal.project_id
+                            ),
+                            None,
+                        )
+                        if allocation:
+                            # Boost based on project priority weight (0-100 scale)
+                            project_allocation_bonus = int(
+                                allocation.priority_weight * 50
+                            )
+
+                total_priority = base_priority + project_allocation_bonus
+                priority_expr.append(var * total_priority)
+
+            # Add weekly task priorities (no project allocation bonus)
             for task_id, var in weekly_task_vars.items():
                 priority_weight = int(weekly_task_priorities[task_id] * 100)
                 priority_expr.append(var * priority_weight)
@@ -1331,6 +1372,7 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
 
             # Solve the optimization problem
             solver.parameters.max_time_in_seconds = 30.0  # Timeout after 30 seconds
+
             status = solver.Solve(model)
 
             # Process results
@@ -1424,6 +1466,8 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
 
             else:
                 # Optimization failed - use fallback
+                logger.warning("OR-Tools optimization failed, using fallback heuristic")
+
                 insights = [
                     "⚠️ OR-Tools最適化が制約を満たす解を見つけられませんでした",
                     "🔄 ヒューリスティック手法にフォールバック中...",

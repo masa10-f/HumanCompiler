@@ -56,12 +56,14 @@ class WeeklyPlanService:
                     # Calculate target hours from percentage
                     available_hours = request.capacity_hours - 5.0  # meeting buffer
                     target_hours = (percentage / 100.0) * available_hours
+                    max_hours = target_hours * 1.5
+
                     project_allocations.append(
                         ProjectAllocation(
                             project_id=project_id,
                             project_title=project.title,
                             target_hours=target_hours,
-                            max_hours=target_hours * 1.5,
+                            max_hours=max_hours,
                             priority_weight=percentage / 100.0,
                         )
                     )

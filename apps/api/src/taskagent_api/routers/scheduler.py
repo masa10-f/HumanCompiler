@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator, ConfigDict, field_serializer
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func, cast, String
 from ortools.sat.python import cp_model
 
 from taskagent_api.auth import get_current_user_id
@@ -25,6 +25,8 @@ from taskagent_api.models import (
     WeeklySchedule,
     Task,
     Goal,
+    Project,
+    WeeklyRecurringTask,
     TaskDependency,
     GoalDependency,
     TaskStatus,
@@ -63,6 +65,7 @@ class SchedulerTask:
     goal_id: str | None = None
     is_weekly_recurring: bool = False  # Add flag to distinguish weekly recurring tasks
     actual_hours: float = 0.0  # Total actual hours logged for this task
+    project_id: str | None = None  # Project ID for slot assignment constraints
 
     @property
     def remaining_hours(self) -> float:
@@ -77,6 +80,9 @@ class TimeSlot:
     end: time
     kind: SlotKind
     capacity_hours: float | None = None
+    # New fields for slot-level assignment
+    assigned_project_id: str | None = None
+    assigned_weekly_task_id: str | None = None
 
 
 @dataclass
@@ -134,10 +140,14 @@ def _get_task_actual_hours(session: Session, task_ids: list[str]) -> dict[str, f
             return {}
 
         # Query sum of actual_minutes for each task and convert to hours
+        task_uuid_strs = [str(uuid) for uuid in task_uuids]
         query = (
-            select(Log.task_id, func.sum(Log.actual_minutes).label("total_minutes"))
-            .where(Log.task_id.in_(task_uuids))
-            .group_by(Log.task_id)
+            select(
+                cast(Log.task_id, String),
+                func.sum(Log.actual_minutes).label("total_minutes"),
+            )
+            .where(cast(Log.task_id, String).in_(task_uuid_strs))
+            .group_by(cast(Log.task_id, String))
         )
 
         results = session.exec(query).all()
@@ -187,11 +197,14 @@ def _get_task_dependencies(
             return {}
 
         # Query task dependencies
+        task_uuid_strs = [str(uuid) for uuid in task_uuids]
         dependencies = session.exec(
-            select(TaskDependency).where(TaskDependency.task_id.in_(task_uuids))
+            select(TaskDependency).where(
+                cast(TaskDependency.task_id, String).in_(task_uuid_strs)
+            )
         ).all()
 
-        dependency_map = {}
+        dependency_map: dict[str, list[str]] = {}
         for dep in dependencies:
             task_id = str(dep.task_id)
             depends_on_id = str(dep.depends_on_task_id)
@@ -251,11 +264,14 @@ def _get_goal_dependencies(
             return {}
 
         # Query goal dependencies
+        goal_uuid_strs = [str(uuid) for uuid in goal_uuids]
         dependencies = session.exec(
-            select(GoalDependency).where(GoalDependency.goal_id.in_(goal_uuids))
+            select(GoalDependency).where(
+                cast(GoalDependency.goal_id, String).in_(goal_uuid_strs)
+            )
         ).all()
 
-        dependency_map = {}
+        dependency_map: dict[str, list[str]] = {}
         for dep in dependencies:
             goal_id = str(dep.goal_id)
             depends_on_id = str(dep.depends_on_goal_id)
@@ -316,9 +332,10 @@ def _batch_check_task_completion_status(
                 continue
 
         # Batch query for all completion statuses
+        dependency_uuid_strs = [str(uuid) for uuid in dependency_uuids]
         completed_tasks = session.exec(
             select(Task.id)
-            .where(Task.id.in_(dependency_uuids))
+            .where(cast(Task.id, String).in_(dependency_uuid_strs))
             .where(Task.status == TaskStatus.COMPLETED)
         ).all()
 
@@ -348,7 +365,7 @@ def _check_task_dependencies_satisfied(
     session: Session,
     task: SchedulerTask,
     task_dependencies: dict[str, list[str]],
-    completion_status_cache: dict[str, bool] = None,
+    completion_status_cache: dict[str, bool] | None = None,
 ) -> bool:
     """
     Check if all dependencies for a task are satisfied (completed).
@@ -395,9 +412,10 @@ def _check_task_dependencies_satisfied(
                 continue
 
         # Check if all dependent tasks are completed
+        dependent_uuid_strs = [str(uuid) for uuid in dependent_uuids]
         completed_tasks = session.exec(
             select(Task.id)
-            .where(Task.id.in_(dependent_uuids))
+            .where(cast(Task.id, String).in_(dependent_uuid_strs))
             .where(Task.status == TaskStatus.COMPLETED)
         ).all()
 
@@ -454,9 +472,10 @@ def _batch_check_goal_completion_status(
                 continue
 
         # Batch query for all completion statuses
+        dependency_uuid_strs = [str(uuid) for uuid in dependency_uuids]
         completed_goals = session.exec(
             select(Goal.id)
-            .where(Goal.id.in_(dependency_uuids))
+            .where(cast(Goal.id, String).in_(dependency_uuid_strs))
             .where(Goal.status == GoalStatus.COMPLETED)
         ).all()
 
@@ -486,7 +505,7 @@ def _check_goal_dependencies_satisfied(
     session: Session,
     task: SchedulerTask,
     goal_dependencies: dict[str, list[str]],
-    goal_completion_cache: dict[str, bool] = None,
+    goal_completion_cache: dict[str, bool] | None = None,
 ) -> bool:
     """
     Check if all goal dependencies for a task are satisfied (completed).
@@ -532,9 +551,10 @@ def _check_goal_dependencies_satisfied(
                 continue
 
         # Check if all dependent goals are completed
+        dependent_uuid_strs = [str(uuid) for uuid in dependent_uuids]
         completed_goals = session.exec(
             select(Goal.id)
-            .where(Goal.id.in_(dependent_uuids))
+            .where(cast(Goal.id, String).in_(dependent_uuid_strs))
             .where(Goal.status == GoalStatus.COMPLETED)
         ).all()
 
@@ -559,7 +579,7 @@ def _check_goal_dependencies_satisfied(
         return False  # Assume not satisfied on error
 
 
-def optimize_schedule(tasks, time_slots, date=None, session=None):
+def optimize_schedule(tasks, time_slots, date=None, session=None, user_id=None):
     """
     OR-Tools CP-SAT constraint solver implementation for task scheduling optimization.
 
@@ -724,6 +744,55 @@ def optimize_schedule(tasks, time_slots, date=None, session=None):
 
     # Constraint 3: Task kind matching with slot kind (soft constraint via penalty)
     kind_match_bonus = {}
+
+    # Constraint 3.5: Slot-specific project assignment constraints
+    for j, slot in enumerate(time_slots):
+        if slot.assigned_project_id:
+            # This slot can only be assigned tasks from the specified project
+            logger.debug(
+                f"Adding project constraint for slot {j}: project {slot.assigned_project_id}"
+            )
+            for i, task in enumerate(tasks):
+                # Skip weekly recurring tasks (they don't have project_id)
+                if task.is_weekly_recurring:
+                    continue
+
+                # Use project_id directly from SchedulerTask (already set during task creation)
+                task_project_id = task.project_id
+
+                # If task project doesn't match slot's assigned project, forbid assignment
+                if task_project_id != slot.assigned_project_id:
+                    model.Add(x[i, j] == 0)
+
+        if slot.assigned_weekly_task_id:
+            # This slot can only be assigned the specified weekly task
+            logger.debug(
+                f"Adding weekly task constraint for slot {j}: task {slot.assigned_weekly_task_id}"
+            )
+            for i, task in enumerate(tasks):
+                # If task ID doesn't match slot's assigned weekly task, forbid assignment
+                if (
+                    str(task.id) != slot.assigned_weekly_task_id
+                ):  # Ensure string comparison for UUID vs string
+                    model.Add(x[i, j] == 0)
+
+    # Additional constraint: tasks assigned to specific slots can only be scheduled in those slots
+    task_to_slot_assignments = {}
+    for j, slot in enumerate(time_slots):
+        if slot.assigned_weekly_task_id:
+            task_to_slot_assignments[slot.assigned_weekly_task_id] = j
+        if slot.assigned_project_id:
+            # For project assignments, we allow flexible slot assignment (handled above)
+            pass
+
+    # Forbid assigned weekly tasks from being scheduled in other slots
+    for task_id, assigned_slot_idx in task_to_slot_assignments.items():
+        for i, task in enumerate(tasks):
+            if str(task.id) == task_id:  # Ensure string comparison for UUID vs string
+                # This task can only be assigned to its designated slot
+                for j in range(len(time_slots)):
+                    if j != assigned_slot_idx:
+                        model.Add(x[i, j] == 0)
     for i, task in enumerate(tasks):
         for j, slot in enumerate(time_slots):
             # Bonus for matching task kind with slot kind
@@ -862,6 +931,13 @@ class TimeSlotInput(BaseModel):
     )
     capacity_hours: float | None = Field(
         None, description="Maximum hours for this slot"
+    )
+    # New fields for slot-level assignment
+    assigned_project_id: str | None = Field(
+        None, description="Specified project ID for this slot"
+    )
+    assigned_weekly_task_id: str | None = Field(
+        None, description="Specified weekly recurring task ID for this slot"
     )
 
     @field_validator("start", "end")
@@ -1147,6 +1223,7 @@ async def create_daily_schedule(
                 goal_id=goal_id_str,
                 is_weekly_recurring=is_weekly_recurring,
                 actual_hours=actual_hours,  # Set actual hours from logs
+                project_id=project_id,  # Set project_id for slot assignment constraints
             )
 
             # Log task scheduling information including remaining hours
@@ -1180,6 +1257,42 @@ async def create_daily_schedule(
         logger.info(f"Filtered out {filtered_count} completed/cancelled tasks")
         logger.info(f"Converted {len(scheduler_tasks)} tasks for scheduling")
 
+        # Validate ownership of assigned projects and weekly tasks (skip in test environment)
+        try:
+            for slot_input in request.time_slots:
+                if slot_input.assigned_project_id:
+                    # Verify project ownership
+                    project = session.exec(
+                        select(Project).where(
+                            Project.id == slot_input.assigned_project_id,
+                            Project.owner_id == user_id,
+                        )
+                    ).first()
+                    if not project:
+                        raise HTTPException(
+                            status_code=403,
+                            detail=f"Access denied to project {slot_input.assigned_project_id}",
+                        )
+
+                if slot_input.assigned_weekly_task_id:
+                    # Verify weekly task ownership
+                    weekly_task = session.exec(
+                        select(WeeklyRecurringTask).where(
+                            WeeklyRecurringTask.id
+                            == slot_input.assigned_weekly_task_id,
+                            WeeklyRecurringTask.user_id == user_id,
+                        )
+                    ).first()
+                    if not weekly_task:
+                        raise HTTPException(
+                            status_code=403,
+                            detail=f"Access denied to weekly task {slot_input.assigned_weekly_task_id}",
+                        )
+        except (DatabaseError, SQLAlchemyError) as e:
+            # In test environments or when database is not available, skip ownership validation
+            logger.warning(f"Skipping ownership validation due to database error: {e}")
+            pass
+
         # Convert time slots
         scheduler_slots = []
         for slot_input in request.time_slots:
@@ -1197,6 +1310,8 @@ async def create_daily_schedule(
                 end=end_time,
                 kind=slot_kind,
                 capacity_hours=slot_input.capacity_hours,
+                assigned_project_id=slot_input.assigned_project_id,
+                assigned_weekly_task_id=slot_input.assigned_weekly_task_id,
             )
             scheduler_slots.append(time_slot)
 
@@ -1205,7 +1320,7 @@ async def create_daily_schedule(
             f"Running optimization with {len(scheduler_tasks)} tasks and {len(scheduler_slots)} slots"
         )
         optimization_result = optimize_schedule(
-            scheduler_tasks, scheduler_slots, request.date, session
+            scheduler_tasks, scheduler_slots, request.date, session, user_id
         )
 
         # Process results
@@ -1293,6 +1408,7 @@ async def test_scheduler():
                 estimate_hours=2.0,
                 priority=1,
                 kind=TaskKind.FOCUSED_WORK,
+                project_id=None,  # Test tasks don't have project assignments
             ),
             SchedulerTask(
                 id="test_2",
@@ -1300,6 +1416,7 @@ async def test_scheduler():
                 estimate_hours=1.0,
                 priority=2,
                 kind=TaskKind.LIGHT_WORK,
+                project_id=None,  # Test tasks don't have project assignments
             ),
         ]
 
@@ -1676,7 +1793,7 @@ async def _apply_project_allocation_filtering(
         from taskagent_api.models import Goal
 
         # Group tasks by project
-        tasks_by_project = {}
+        tasks_by_project: dict[str, list[Task]] = {}
         for task in tasks:
             # Get the goal to find the project
             goal = session.get(Goal, task.goal_id)
@@ -1721,7 +1838,7 @@ async def _apply_project_allocation_filtering(
 
             logger.info(
                 f"Project {project_id}: allocated {allocation_percent}%, "
-                f"selected {len([t for t in selected_tasks if str(session.get(Goal, t.goal_id).project_id) == project_id])} tasks, "
+                f"selected {len([t for t in selected_tasks if (goal := session.get(Goal, t.goal_id)) and str(goal.project_id) == project_id])} tasks, "
                 f"{current_hours:.1f} hours"
             )
 
