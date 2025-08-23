@@ -186,7 +186,7 @@ class TestWeeklyReportGenerator:
         )
 
         result = report_generator._generate_markdown_report_with_ai(
-            "test-api-key", "2023-12-18", work_summary, []
+            "test-api-key", "2023-12-18", work_summary, [], "gpt-4o-mini"
         )
 
         assert result == "# Weekly Report\n\nTest content"
@@ -213,7 +213,7 @@ class TestWeeklyReportGenerator:
         )
 
         result = report_generator._generate_markdown_report_with_ai(
-            "test-api-key", "2023-12-18", work_summary, []
+            "test-api-key", "2023-12-18", work_summary, [], "gpt-4o-mini"
         )
 
         # Should fallback to basic markdown
@@ -250,7 +250,7 @@ class TestWeeklyReportGenerator:
         request = WeeklyReportRequest(week_start_date="2023-12-18", project_ids=None)
 
         result = report_generator.generate_weekly_report(
-            mock_session, request, "user-123", "test-api-key"
+            mock_session, request, "user-123", "test-api-key", "gpt-4o-mini"
         )
 
         assert isinstance(result, WeeklyReportResponse)
@@ -287,7 +287,7 @@ class TestWeeklyReportGenerator:
         )
 
         result = report_generator.generate_weekly_report(
-            mock_session, request, str(sample_user.id), "test-api-key"
+            mock_session, request, str(sample_user.id), "test-api-key", "gpt-4o-mini"
         )
 
         assert isinstance(result, WeeklyReportResponse)
@@ -367,7 +367,7 @@ class TestWeeklyReportErrorCases:
 
         with patch.object(report_generator, "logger") as mock_logger:
             result = report_generator._generate_markdown_report_with_ai(
-                "invalid-key", "2023-12-18", work_summary, []
+                "invalid-key", "2023-12-18", work_summary, [], "gpt-4o-mini"
             )
 
             # Should log the error and fallback to basic report
@@ -395,12 +395,43 @@ class TestWeeklyReportErrorCases:
 
         with patch.object(report_generator, "logger") as mock_logger:
             result = report_generator._generate_markdown_report_with_ai(
-                "test-key", "2023-12-18", work_summary, []
+                "test-key", "2023-12-18", work_summary, [], "gpt-4o-mini"
             )
 
             # Should log rate limit warning
             mock_logger.warning.assert_called()
             assert "週間作業報告書" in result
+
+    @patch("taskagent_api.ai.report_generator.OpenAI")
+    def test_custom_model_usage(self, mock_openai_class, report_generator):
+        """Test that custom OpenAI model is used correctly."""
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = "# Custom Model Report"
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_openai_class.return_value = mock_client
+
+        work_summary = WeeklyWorkSummary(
+            total_actual_minutes=0,
+            total_estimated_hours=0,
+            total_tasks_worked=0,
+            total_completed_tasks=0,
+            overall_completion_percentage=0.0,
+            daily_breakdown={},
+            project_breakdown={},
+        )
+
+        # Test with custom model
+        result = report_generator._generate_markdown_report_with_ai(
+            "test-key", "2023-12-18", work_summary, [], "gpt-4"
+        )
+
+        # Verify the custom model was used
+        mock_client.chat.completions.create.assert_called_once()
+        call_args = mock_client.chat.completions.create.call_args
+        assert call_args.kwargs["model"] == "gpt-4"
+        assert result == "# Custom Model Report"
 
     def test_invalid_week_start_date_format(self, report_generator):
         """Test handling of invalid date format."""
@@ -428,7 +459,7 @@ class TestWeeklyReportErrorCases:
 
             with patch.object(report_generator, "logger") as mock_logger:
                 result = report_generator._generate_markdown_report_with_ai(
-                    "test-key", "2023-12-18", work_summary, []
+                    "test-key", "2023-12-18", work_summary, [], "gpt-4o-mini"
                 )
 
                 # Should log warning and use fallback

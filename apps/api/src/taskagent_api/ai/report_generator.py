@@ -204,6 +204,7 @@ class WeeklyReportGenerator:
         week_start_date: str,
         work_summary: WeeklyWorkSummary,
         project_summaries: list[ProjectProgressSummary],
+        model: str = "gpt-4o-mini",
     ) -> str:
         """Generate markdown report using OpenAI API"""
         client = self._get_openai_client(api_key)
@@ -284,7 +285,7 @@ class WeeklyReportGenerator:
 
         try:
             response = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=model,
                 messages=[
                     {
                         "role": "system",
@@ -399,6 +400,7 @@ class WeeklyReportGenerator:
         request: WeeklyReportRequest,
         user_id: str,
         openai_api_key: str,
+        openai_model: str = "gpt-4o-mini",
     ) -> WeeklyReportResponse:
         """Generate weekly work report"""
         start_date, end_date = self._get_week_dates(request.week_start_date)
@@ -475,7 +477,11 @@ class WeeklyReportGenerator:
 
         # Generate markdown report with AI
         markdown_report = self._generate_markdown_report_with_ai(
-            openai_api_key, request.week_start_date, work_summary, project_summaries
+            openai_api_key,
+            request.week_start_date,
+            work_summary,
+            project_summaries,
+            openai_model,
         )
 
         return WeeklyReportResponse(
