@@ -1288,9 +1288,6 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
             )
 
             # Constraint 2: Project allocation constraints
-            logger.info(
-                f"Applying project allocation constraints for {len(project_allocations)} projects"
-            )
             for allocation in project_allocations:
                 project_tasks = []
                 project_goal_ids = [
@@ -1316,9 +1313,7 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                         and str(task.id) in task_hours
                     )
 
-                    # Use more flexible constraints to ensure feasibility
-                    # Soft minimum: prefer at least 60% of target, but allow less if insufficient tasks
-                    soft_min_hours = int(allocation.target_hours * 0.6 * 10)
+                    # Use flexible constraints to ensure feasibility
                     # Hard minimum: at least 20% of target or available hours, whichever is less
                     hard_min_hours = int(
                         min(
@@ -1330,23 +1325,9 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                         min(allocation.max_hours, available_task_hours) * 10
                     )
 
-                    logger.info(
-                        f"Project {allocation.project_title}: "
-                        f"target_hours={allocation.target_hours:.1f}, "
-                        f"available_hours={available_task_hours:.1f}, "
-                        f"soft_min={soft_min_hours / 10:.1f}, "
-                        f"hard_min={hard_min_hours / 10:.1f}, "
-                        f"max_constraint={max_hours / 10:.1f}, "
-                        f"tasks_count={len(project_tasks)}"
-                    )
-
                     if len(project_tasks) > 0 and max_hours > 0:
-                        # Only apply hard minimum constraint (feasible constraint)
                         model.Add(sum(project_tasks) >= hard_min_hours)
                         model.Add(sum(project_tasks) <= max_hours)
-
-                        # Add soft preference for target allocation in objective function
-                        # This will be handled by priority weighting rather than hard constraints
 
             # Constraint 3: Prefer high-priority tasks
             priority_expr = []
@@ -1381,11 +1362,6 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                 total_priority = base_priority + project_allocation_bonus
                 priority_expr.append(var * total_priority)
 
-                if project_allocation_bonus > 0:
-                    logger.debug(
-                        f"Task {task_id}: base={base_priority}, project_bonus={project_allocation_bonus}, total={total_priority}"
-                    )
-
             # Add weekly task priorities (no project allocation bonus)
             for task_id, var in weekly_task_vars.items():
                 priority_weight = int(weekly_task_priorities[task_id] * 100)
@@ -1397,19 +1373,7 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
             # Solve the optimization problem
             solver.parameters.max_time_in_seconds = 30.0  # Timeout after 30 seconds
 
-            logger.info("Starting OR-Tools constraint optimization...")
-            logger.info(f"Total variables: {len(task_vars) + len(weekly_task_vars)}")
-            logger.info(f"Project allocation constraints: {len(project_allocations)}")
-
             status = solver.Solve(model)
-
-            logger.info(f"OR-Tools solver status: {status}")
-            if status == cp_model.OPTIMAL:
-                logger.info("✓ Found optimal solution")
-            elif status == cp_model.FEASIBLE:
-                logger.info("✓ Found feasible solution")
-            else:
-                logger.warning(f"⚠️ Solver failed with status: {status}")
 
             # Process results
             selected_tasks = []
@@ -1500,85 +1464,12 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                     for project_title, hours in project_distribution.items():
                         insights.append(f"  • {project_title}: {hours:.1f}時間")
 
-                    # Log comparison between expected and actual allocations
-                    logger.info("=== Project Allocation Analysis ===")
-                    for allocation in project_allocations:
-                        expected_hours = allocation.target_hours
-                        actual_hours = project_distribution.get(
-                            allocation.project_title, 0.0
-                        )
-                        diff_hours = actual_hours - expected_hours
-                        diff_percent = (
-                            (diff_hours / expected_hours * 100)
-                            if expected_hours > 0
-                            else 0
-                        )
-
-                        logger.info(
-                            f"Project '{allocation.project_title}': "
-                            f"Expected={expected_hours:.1f}h, "
-                            f"Actual={actual_hours:.1f}h, "
-                            f"Diff={diff_hours:+.1f}h ({diff_percent:+.1f}%)"
-                        )
-
             else:
                 # Optimization failed - use fallback
-                logger.warning(
-                    "OR-Tools optimization failed - analyzing potential causes..."
-                )
-
-                # Check if project allocation constraints are too restrictive
-                total_hard_min_hours = 0
-                total_available_by_project = 0
-
-                for allocation in project_allocations:
-                    project_goal_ids = [
-                        goal.id
-                        for goal in context.goals
-                        if goal.project_id == allocation.project_id
-                    ]
-                    available_for_project = sum(
-                        task_hours[str(task.id)]
-                        for task in context.tasks
-                        if task.goal_id in project_goal_ids
-                        and str(task.id) in task_hours
-                    )
-                    hard_min_for_project = min(
-                        allocation.target_hours * 0.2, available_for_project
-                    )
-
-                    total_hard_min_hours += hard_min_for_project
-                    total_available_by_project += available_for_project
-
-                    logger.warning(
-                        f"Project '{allocation.project_title}': "
-                        f"target={allocation.target_hours:.1f}h, "
-                        f"available={available_for_project:.1f}h, "
-                        f"hard_min={hard_min_for_project:.1f}h"
-                    )
-
-                total_available_tasks_hours = sum(task_hours.values()) + sum(
-                    weekly_task_hours.values()
-                )
-
-                logger.warning(
-                    f"Total hard minimum required hours: {total_hard_min_hours:.1f}"
-                )
-                logger.warning(
-                    f"Total available task hours: {total_available_tasks_hours:.1f}"
-                )
-                logger.warning(
-                    f"Total available by projects: {total_available_by_project:.1f}"
-                )
-
-                if total_hard_min_hours > constraints.total_capacity_hours:
-                    logger.warning(
-                        "⚠️ Even hard minimum project allocation constraints exceed total capacity!"
-                    )
+                logger.warning("OR-Tools optimization failed, using fallback heuristic")
 
                 insights = [
                     "⚠️ OR-Tools最適化が制約を満たす解を見つけられませんでした",
-                    f"💡 制約分析: 最小必要={total_hard_min_hours:.1f}h, 利用可能={total_available_tasks_hours:.1f}h, 容量={constraints.total_capacity_hours:.1f}h",
                     "🔄 ヒューリスティック手法にフォールバック中...",
                 ]
                 selected_tasks, fallback_insights = self._heuristic_task_selection(
