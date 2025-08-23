@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { AppHeader } from '@/components/layout/app-header';
 import { toast } from '@/hooks/use-toast';
-import { schedulingApi, projectsApi } from '@/lib/api';
+import { schedulingApi, projectsApi, weeklyRecurringTasksApi } from '@/lib/api';
 import { getSlotKindLabel, getSlotKindColor } from '@/constants/schedule';
 import type {
   ScheduleRequest,
@@ -33,6 +33,7 @@ import type {
   WeeklyScheduleOption
 } from '@/types/ai-planning';
 import type { Project } from '@/types/project';
+import type { WeeklyRecurringTask } from '@/types/weekly-recurring-task';
 
 export default function SchedulingPage() {
   const { user, loading: authLoading } = useAuth();
@@ -56,6 +57,7 @@ export default function SchedulingPage() {
   const [taskSource, setTaskSource] = useState<TaskSource>({ type: 'all_tasks' });
   const [projects, setProjects] = useState<Project[]>([]);
   const [weeklyScheduleOptions, setWeeklyScheduleOptions] = useState<WeeklyScheduleOption[]>([]);
+  const [weeklyRecurringTasks, setWeeklyRecurringTasks] = useState<WeeklyRecurringTask[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Load initial data
@@ -66,14 +68,16 @@ export default function SchedulingPage() {
       try {
         setLoading(true);
 
-        // Load projects, goals, and weekly schedule options in parallel
-        const [projectsResult, weeklyOptionsResult] = await Promise.all([
+        // Load projects, goals, weekly schedule options, and weekly recurring tasks in parallel
+        const [projectsResult, weeklyOptionsResult, weeklyTasksResult] = await Promise.all([
           projectsApi.getAll(),
           schedulingApi.getWeeklyScheduleOptions(),
+          weeklyRecurringTasksApi.getAll(0, 100, undefined, true), // Get all active weekly tasks
         ]);
 
         setProjects(projectsResult);
         setWeeklyScheduleOptions(weeklyOptionsResult);
+        setWeeklyRecurringTasks(weeklyTasksResult as WeeklyRecurringTask[]);
 
       } catch (error) {
         console.error('Failed to load initial data:', error);
@@ -107,7 +111,7 @@ export default function SchedulingPage() {
     }]);
   };
 
-  const updateTimeSlot = (index: number, field: keyof TimeSlot, value: string) => {
+  const updateTimeSlot = (index: number, field: keyof TimeSlot, value: string | number | undefined) => {
     setTimeSlots(prev => prev.map((slot, i) =>
       i === index ? { ...slot, [field]: value } : slot
     ));
@@ -362,6 +366,53 @@ export default function SchedulingPage() {
                               <SelectItem value="study">学習</SelectItem>
                               <SelectItem value="focused_work">集中作業</SelectItem>
                               <SelectItem value="light_work">軽作業</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {/* Slot-level assignment fields */}
+                      <div className="grid grid-cols-2 gap-2 pt-3 border-t">
+                        <div className="space-y-1">
+                          <Label className="text-xs">指定プロジェクト</Label>
+                          <Select
+                            value={slot.assigned_project_id || ''}
+                            onValueChange={(value) =>
+                              updateTimeSlot(index, 'assigned_project_id', value || undefined)
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="未指定" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="">未指定</SelectItem>
+                              {projects.map((project) => (
+                                <SelectItem key={project.id} value={project.id}>
+                                  {project.title}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs">指定週次タスク</Label>
+                          <Select
+                            value={slot.assigned_weekly_task_id || ''}
+                            onValueChange={(value) =>
+                              updateTimeSlot(index, 'assigned_weekly_task_id', value || undefined)
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="未指定" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="">未指定</SelectItem>
+                              {weeklyRecurringTasks.map((task) => (
+                                <SelectItem key={task.id} value={task.id}>
+                                  {task.title} ({task.estimate_hours}h)
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                         </div>

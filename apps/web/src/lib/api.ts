@@ -47,6 +47,11 @@ import type {
   DailySchedule,
   TestSchedulerResponse
 } from '@/types/api-responses';
+import type {
+  WeeklyRecurringTask,
+  WeeklyRecurringTaskCreate,
+  WeeklyRecurringTaskUpdate
+} from '@/types/weekly-recurring-task';
 
 // Helper function to ensure HTTPS protocol
 const ensureHttps = (url: string): string => {
@@ -569,6 +574,49 @@ class ApiClient {
 
     return this.request<TimelineOverviewData>(`/api/timeline/overview?${params.toString()}`);
   }
+
+  // Weekly Recurring Tasks
+  async getWeeklyRecurringTasks(
+    skip: number = 0,
+    limit: number = 20,
+    category?: string,
+    isActive?: boolean
+  ): Promise<WeeklyRecurringTask[]> {
+    const params = new URLSearchParams();
+    if (skip) params.append('skip', skip.toString());
+    if (limit) params.append('limit', limit.toString());
+    if (category) params.append('category', category);
+    if (isActive !== undefined) params.append('is_active', isActive.toString());
+
+    return this.request<WeeklyRecurringTask[]>(`/api/weekly-recurring-tasks?${params.toString()}`);
+  }
+
+  async getWeeklyRecurringTask(taskId: string): Promise<WeeklyRecurringTask> {
+    return this.request<WeeklyRecurringTask>(`/api/weekly-recurring-tasks/${taskId}`);
+  }
+
+  async createWeeklyRecurringTask(taskData: WeeklyRecurringTaskCreate): Promise<WeeklyRecurringTask> {
+    return this.request<WeeklyRecurringTask>('/api/weekly-recurring-tasks', {
+      method: 'POST',
+      body: JSON.stringify(taskData),
+    });
+  }
+
+  async updateWeeklyRecurringTask(
+    taskId: string,
+    taskData: WeeklyRecurringTaskUpdate
+  ): Promise<WeeklyRecurringTask> {
+    return this.request<WeeklyRecurringTask>(`/api/weekly-recurring-tasks/${taskId}`, {
+      method: 'PUT',
+      body: JSON.stringify(taskData),
+    });
+  }
+
+  async deleteWeeklyRecurringTask(taskId: string): Promise<void> {
+    return this.request<void>(`/api/weekly-recurring-tasks/${taskId}`, {
+      method: 'DELETE',
+    });
+  }
 }
 
 export const apiClient = new ApiClient();
@@ -648,6 +696,15 @@ export const weeklyScheduleApi = {
   getByWeek: (weekStartDate: string) => apiClient.getWeeklySchedule(weekStartDate),
   save: (weekStartDate: string, scheduleData: any) => apiClient.saveWeeklySchedule(weekStartDate, scheduleData),
   delete: (weekStartDate: string) => apiClient.deleteWeeklySchedule(weekStartDate),
+};
+
+export const weeklyRecurringTasksApi = {
+  getAll: (skip?: number, limit?: number, category?: string, isActive?: boolean) =>
+    apiClient.getWeeklyRecurringTasks(skip, limit, category, isActive),
+  getById: (taskId: string) => apiClient.getWeeklyRecurringTask(taskId),
+  create: (taskData: WeeklyRecurringTaskCreate) => apiClient.createWeeklyRecurringTask(taskData),
+  update: (taskId: string, taskData: WeeklyRecurringTaskUpdate) => apiClient.updateWeeklyRecurringTask(taskId, taskData),
+  delete: (taskId: string) => apiClient.deleteWeeklyRecurringTask(taskId),
 };
 
 

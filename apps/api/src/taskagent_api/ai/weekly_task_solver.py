@@ -1307,8 +1307,8 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                 if project_tasks:
                     # Minimum allocation constraint
                     min_hours = int(
-                        allocation.target_hours * 0.7 * 10
-                    )  # Allow 30% flexibility
+                        allocation.target_hours * 0.9 * 10
+                    )  # Allow 10% flexibility (stricter constraint)
                     max_hours = int(allocation.max_hours * 10)
 
                     if len(project_tasks) > 0:

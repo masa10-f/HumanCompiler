@@ -63,6 +63,7 @@ class SchedulerTask:
     goal_id: str | None = None
     is_weekly_recurring: bool = False  # Add flag to distinguish weekly recurring tasks
     actual_hours: float = 0.0  # Total actual hours logged for this task
+    project_id: str | None = None  # Project ID for slot assignment constraints
 
     @property
     def remaining_hours(self) -> float:
@@ -77,6 +78,9 @@ class TimeSlot:
     end: time
     kind: SlotKind
     capacity_hours: float | None = None
+    # New fields for slot-level assignment
+    assigned_project_id: str | None = None
+    assigned_weekly_task_id: str | None = None
 
 
 @dataclass
@@ -559,7 +563,7 @@ def _check_goal_dependencies_satisfied(
         return False  # Assume not satisfied on error
 
 
-def optimize_schedule(tasks, time_slots, date=None, session=None):
+def optimize_schedule(tasks, time_slots, date=None, session=None, user_id=None):
     """
     OR-Tools CP-SAT constraint solver implementation for task scheduling optimization.
 
@@ -724,6 +728,53 @@ def optimize_schedule(tasks, time_slots, date=None, session=None):
 
     # Constraint 3: Task kind matching with slot kind (soft constraint via penalty)
     kind_match_bonus = {}
+
+    # Constraint 3.5: Slot-specific project assignment constraints
+    for j, slot in enumerate(time_slots):
+        if slot.assigned_project_id:
+            # This slot can only be assigned tasks from the specified project
+            logger.debug(
+                f"Adding project constraint for slot {j}: project {slot.assigned_project_id}"
+            )
+            for i, task in enumerate(tasks):
+                # Skip weekly recurring tasks (they don't have project_id)
+                if task.is_weekly_recurring:
+                    continue
+
+                # Use project_id directly from SchedulerTask (already set during task creation)
+                task_project_id = task.project_id
+
+                # If task project doesn't match slot's assigned project, forbid assignment
+                if task_project_id != slot.assigned_project_id:
+                    model.Add(x[i, j] == 0)
+
+        if slot.assigned_weekly_task_id:
+            # This slot can only be assigned the specified weekly task
+            logger.debug(
+                f"Adding weekly task constraint for slot {j}: task {slot.assigned_weekly_task_id}"
+            )
+            for i, task in enumerate(tasks):
+                # If task ID doesn't match slot's assigned weekly task, forbid assignment
+                if task.id != slot.assigned_weekly_task_id:
+                    model.Add(x[i, j] == 0)
+
+    # Additional constraint: tasks assigned to specific slots can only be scheduled in those slots
+    task_to_slot_assignments = {}
+    for j, slot in enumerate(time_slots):
+        if slot.assigned_weekly_task_id:
+            task_to_slot_assignments[slot.assigned_weekly_task_id] = j
+        if slot.assigned_project_id:
+            # For project assignments, we allow flexible slot assignment (handled above)
+            pass
+
+    # Forbid assigned weekly tasks from being scheduled in other slots
+    for task_id, assigned_slot_idx in task_to_slot_assignments.items():
+        for i, task in enumerate(tasks):
+            if task.id == task_id:
+                # This task can only be assigned to its designated slot
+                for j in range(len(time_slots)):
+                    if j != assigned_slot_idx:
+                        model.Add(x[i, j] == 0)
     for i, task in enumerate(tasks):
         for j, slot in enumerate(time_slots):
             # Bonus for matching task kind with slot kind
@@ -862,6 +913,13 @@ class TimeSlotInput(BaseModel):
     )
     capacity_hours: float | None = Field(
         None, description="Maximum hours for this slot"
+    )
+    # New fields for slot-level assignment
+    assigned_project_id: str | None = Field(
+        None, description="Specified project ID for this slot"
+    )
+    assigned_weekly_task_id: str | None = Field(
+        None, description="Specified weekly recurring task ID for this slot"
     )
 
     @field_validator("start", "end")
@@ -1147,6 +1205,7 @@ async def create_daily_schedule(
                 goal_id=goal_id_str,
                 is_weekly_recurring=is_weekly_recurring,
                 actual_hours=actual_hours,  # Set actual hours from logs
+                project_id=project_id,  # Set project_id for slot assignment constraints
             )
 
             # Log task scheduling information including remaining hours
@@ -1197,6 +1256,8 @@ async def create_daily_schedule(
                 end=end_time,
                 kind=slot_kind,
                 capacity_hours=slot_input.capacity_hours,
+                assigned_project_id=slot_input.assigned_project_id,
+                assigned_weekly_task_id=slot_input.assigned_weekly_task_id,
             )
             scheduler_slots.append(time_slot)
 
@@ -1205,7 +1266,7 @@ async def create_daily_schedule(
             f"Running optimization with {len(scheduler_tasks)} tasks and {len(scheduler_slots)} slots"
         )
         optimization_result = optimize_schedule(
-            scheduler_tasks, scheduler_slots, request.date, session
+            scheduler_tasks, scheduler_slots, request.date, session, user_id
         )
 
         # Process results
@@ -1293,6 +1354,7 @@ async def test_scheduler():
                 estimate_hours=2.0,
                 priority=1,
                 kind=TaskKind.FOCUSED_WORK,
+                project_id=None,  # Test tasks don't have project assignments
             ),
             SchedulerTask(
                 id="test_2",
@@ -1300,6 +1362,7 @@ async def test_scheduler():
                 estimate_hours=1.0,
                 priority=2,
                 kind=TaskKind.LIGHT_WORK,
+                project_id=None,  # Test tasks don't have project assignments
             ),
         ]
 
