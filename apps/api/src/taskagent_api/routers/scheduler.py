@@ -438,6 +438,150 @@ def _check_task_dependencies_satisfied(
         return False  # Assume not satisfied on error
 
 
+def _check_task_dependencies_satisfied_relaxed(
+    session: Session,
+    task: SchedulerTask,
+    task_dependencies: dict[str, list[str]],
+    completion_status_cache: dict[str, bool] | None = None,
+    available_task_ids: set[str] | None = None,
+) -> bool:
+    """
+    Check if all dependencies for a task are satisfied with relaxed constraints.
+
+    A task dependency is considered satisfied if the dependent task is either:
+    1. Completed, or
+    2. Available for scheduling in the same schedule (relaxed constraint)
+
+    Args:
+        session: Database session
+        task: The task to check
+        task_dependencies: Task dependency mapping
+        completion_status_cache: Optional cache of task completion statuses
+        available_task_ids: Set of task IDs available in the current schedule
+
+    Returns:
+        True if all dependencies are satisfied or schedulable, False otherwise
+    """
+    if task.id not in task_dependencies:
+        return True  # No dependencies = satisfied
+
+    dependent_task_ids = task_dependencies[task.id]
+    available_task_ids = available_task_ids or set()
+
+    satisfied_deps = 0
+    for dep_task_id in dependent_task_ids:
+        # Check if dependency is completed
+        is_completed = False
+        if completion_status_cache is not None:
+            is_completed = completion_status_cache.get(dep_task_id, False)
+        else:
+            # Fallback to individual query
+            try:
+                dep_task = session.get(Task, UUID(dep_task_id))
+                if dep_task:
+                    is_completed = dep_task.status in ["completed", "done", "finished"]
+            except Exception as e:
+                logger.warning(f"Could not check dependency task {dep_task_id}: {e}")
+                continue
+
+        # Check if dependency is available for scheduling (relaxed constraint)
+        is_available_for_scheduling = dep_task_id in available_task_ids
+
+        if is_completed or is_available_for_scheduling:
+            satisfied_deps += 1
+        else:
+            logger.debug(
+                f"Task {task.id} dependency {dep_task_id} is neither completed nor available for scheduling"
+            )
+
+    is_satisfied = satisfied_deps == len(dependent_task_ids)
+
+    if not is_satisfied:
+        logger.debug(
+            f"Task {task.id} dependencies not satisfied: {satisfied_deps}/{len(dependent_task_ids)} satisfied or schedulable"
+        )
+
+    return is_satisfied
+
+
+def _check_goal_dependencies_satisfied_relaxed(
+    session: Session,
+    task: SchedulerTask,
+    goal_dependencies: dict[str, list[str]],
+    completion_status_cache: dict[str, bool] | None = None,
+    available_task_ids: set[str] | None = None,
+) -> bool:
+    """
+    Check if all goal dependencies for a task are satisfied with relaxed constraints.
+
+    A goal dependency is considered satisfied if the dependent goal is either:
+    1. Completed, or
+    2. Has tasks available for scheduling in the same schedule (relaxed constraint)
+
+    Args:
+        session: Database session
+        task: The task to check
+        goal_dependencies: Goal dependency mapping
+        completion_status_cache: Optional cache of goal completion statuses
+        available_task_ids: Set of task IDs available in the current schedule
+
+    Returns:
+        True if all goal dependencies are satisfied or have schedulable tasks, False otherwise
+    """
+    if not task.goal_id or task.goal_id not in goal_dependencies:
+        return True  # No goal dependencies = satisfied
+
+    dependent_goal_ids = goal_dependencies[task.goal_id]
+    available_task_ids = available_task_ids or set()
+
+    satisfied_deps = 0
+    for dep_goal_id in dependent_goal_ids:
+        # Check if goal is completed
+        is_completed = False
+        if completion_status_cache is not None:
+            is_completed = completion_status_cache.get(dep_goal_id, False)
+        else:
+            # Fallback to individual query
+            try:
+                dep_goal = session.get(Goal, UUID(dep_goal_id))
+                if dep_goal:
+                    is_completed = dep_goal.status in ["completed", "done", "finished"]
+            except Exception as e:
+                logger.warning(f"Could not check dependency goal {dep_goal_id}: {e}")
+                continue
+
+        # Check if goal has tasks available for scheduling (relaxed constraint)
+        has_schedulable_tasks = False
+        if not is_completed:
+            try:
+                goal_tasks = session.exec(
+                    select(Task).where(Task.goal_id == UUID(dep_goal_id))
+                ).all()
+                has_schedulable_tasks = any(
+                    str(goal_task.id) in available_task_ids for goal_task in goal_tasks
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Could not check schedulable tasks for goal {dep_goal_id}: {e}"
+                )
+
+        if is_completed or has_schedulable_tasks:
+            satisfied_deps += 1
+        else:
+            logger.debug(
+                f"Task {task.id} goal dependency {dep_goal_id} is neither completed nor has schedulable tasks"
+            )
+
+    is_satisfied = satisfied_deps == len(dependent_goal_ids)
+
+    if not is_satisfied:
+        logger.debug(
+            f"Task {task.id} goal dependencies not satisfied: {satisfied_deps}/{len(dependent_goal_ids)} satisfied or have schedulable tasks"
+        )
+
+    return is_satisfied
+
+
 def _batch_check_goal_completion_status(
     session: Session, goal_dependencies: dict[str, list[str]]
 ) -> dict[str, bool]:
@@ -630,7 +774,10 @@ def optimize_schedule(tasks, time_slots, date=None, session=None, user_id=None):
         task_dependency_blocked = 0
         goal_dependency_blocked = 0
 
-        # Filter tasks that can be scheduled (dependencies satisfied)
+        # Filter tasks with relaxed dependency constraints
+        # Allow tasks if their dependencies are either completed or available in the same schedule
+        available_task_ids = {task.id for task in tasks}
+
         for task in tasks:
             # Weekly recurring tasks are always schedulable (they don't have dependencies)
             if task.is_weekly_recurring:
@@ -638,14 +785,22 @@ def optimize_schedule(tasks, time_slots, date=None, session=None, user_id=None):
                 weekly_recurring_count += 1
                 continue
 
-            # Check task dependencies
-            task_deps_satisfied = _check_task_dependencies_satisfied(
-                session, task, task_dependencies, task_completion_cache
+            # Check task dependencies with relaxed constraints
+            task_deps_satisfied = _check_task_dependencies_satisfied_relaxed(
+                session,
+                task,
+                task_dependencies,
+                task_completion_cache,
+                available_task_ids,
             )
 
-            # Check goal dependencies
-            goal_deps_satisfied = _check_goal_dependencies_satisfied(
-                session, task, goal_dependencies, goal_completion_cache
+            # Check goal dependencies with relaxed constraints
+            goal_deps_satisfied = _check_goal_dependencies_satisfied_relaxed(
+                session,
+                task,
+                goal_dependencies,
+                goal_completion_cache,
+                available_task_ids,
             )
 
             if task_deps_satisfied and goal_deps_satisfied:
@@ -657,12 +812,12 @@ def optimize_schedule(tasks, time_slots, date=None, session=None, user_id=None):
                 if not task_deps_satisfied:
                     task_dependency_blocked += 1
                     logger.info(
-                        f"Task {task.id} '{task.title}' blocked by incomplete task dependencies"
+                        f"Task {task.id} '{task.title}' blocked by unsatisfiable task dependencies"
                     )
                 if not goal_deps_satisfied:
                     goal_dependency_blocked += 1
                     logger.info(
-                        f"Task {task.id} '{task.title}' blocked by incomplete goal dependencies"
+                        f"Task {task.id} '{task.title}' blocked by unsatisfiable goal dependencies"
                     )
 
         # Summary logging with detailed breakdown
@@ -742,10 +897,41 @@ def optimize_schedule(tasks, time_slots, date=None, session=None, user_id=None):
             <= int(slot_capacities[j])
         )
 
-    # Constraint 3: Task kind matching with slot kind (soft constraint via penalty)
+    # Constraint 3: Task dependency ordering constraints
+    # If session is available, add ordering constraints for task dependencies
+    if session:
+        task_dependencies_in_schedule = _get_task_dependencies(session, tasks)
+        task_id_to_index = {task.id: i for i, task in enumerate(tasks)}
+
+        for task_id, dependent_task_ids in task_dependencies_in_schedule.items():
+            if task_id in task_id_to_index:
+                task_idx = task_id_to_index[task_id]
+
+                for dep_task_id in dependent_task_ids:
+                    if dep_task_id in task_id_to_index:
+                        dep_task_idx = task_id_to_index[dep_task_id]
+
+                        # Add temporal ordering constraint:
+                        # If both tasks are assigned, dependency task must be in an earlier or same slot
+                        for i in range(len(tasks)):
+                            for j in range(len(time_slots)):
+                                for k in range(j + 1, len(time_slots)):
+                                    # If task is in slot k and dependency is in slot j (j < k), that's ok
+                                    # If task is in slot j and dependency is in slot k (j < k), that's not allowed
+                                    if i == task_idx:
+                                        # Task cannot be scheduled before its dependency
+                                        model.Add(
+                                            x[task_idx, j] + x[dep_task_idx, k] <= 1
+                                        )
+
+                        logger.debug(
+                            f"Added temporal ordering constraint: task {task_id} after {dep_task_id}"
+                        )
+
+    # Constraint 4: Task kind matching with slot kind (soft constraint via penalty)
     kind_match_bonus = {}
 
-    # Constraint 3.5: Slot-specific project assignment constraints
+    # Constraint 4.5: Slot-specific project assignment constraints
     for j, slot in enumerate(time_slots):
         if slot.assigned_project_id:
             # This slot can only be assigned tasks from the specified project
