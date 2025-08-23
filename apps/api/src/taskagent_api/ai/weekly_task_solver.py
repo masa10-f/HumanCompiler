@@ -1377,11 +1377,12 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                     )
 
                 # Analyze project distribution
-                project_distribution = {}
-                for task in selected_tasks:
+                project_distribution: dict[str, float] = {}
+                for task_plan in selected_tasks:
                     # Find project for this task
                     db_task = next(
-                        (t for t in context.tasks if str(t.id) == task.task_id), None
+                        (t for t in context.tasks if str(t.id) == task_plan.task_id),
+                        None,
                     )
                     if db_task:
                         goal = next(
@@ -1400,7 +1401,7 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                                 project_title = project.title
                                 project_distribution[project_title] = (
                                     project_distribution.get(project_title, 0)
-                                    + task.estimated_hours
+                                    + task_plan.estimated_hours
                                 )
 
                 if project_distribution:
