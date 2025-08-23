@@ -578,6 +578,24 @@ class TestSchedulerAPI:
         project_id = uuid4()
         goal_id = uuid4()
 
+        # Mock project ownership check
+        from taskagent_api.models import Project
+
+        mock_project = MagicMock(spec=Project)
+        mock_project.id = project_id
+        mock_project.owner_id = mock_auth
+
+        # Configure session.exec to return appropriate results for ownership validation
+        def mock_exec(query):
+            mock_result = MagicMock()
+            if "projects" in str(query).lower():
+                mock_result.first.return_value = mock_project
+            else:
+                mock_result.first.return_value = None
+            return mock_result
+
+        mock_sess.exec = mock_exec
+
         mock_task = MagicMock(spec=Task)
         mock_task.id = task_id
         mock_task.title = "Test Task"
@@ -685,6 +703,24 @@ class TestSchedulerAPI:
 
         # Create mock weekly recurring task
         weekly_task_id = uuid4()
+
+        # Mock weekly task ownership check
+        from taskagent_api.models import WeeklyRecurringTask
+
+        mock_weekly_recurring_task = MagicMock(spec=WeeklyRecurringTask)
+        mock_weekly_recurring_task.id = weekly_task_id
+        mock_weekly_recurring_task.user_id = mock_auth
+
+        # Configure session.exec to return appropriate results for ownership validation
+        def mock_exec(query):
+            mock_result = MagicMock()
+            if "weekly_recurring_tasks" in str(query).lower():
+                mock_result.first.return_value = mock_weekly_recurring_task
+            else:
+                mock_result.first.return_value = None
+            return mock_result
+
+        mock_sess.exec = mock_exec
 
         # Create pseudo weekly task (simulating WeeklyRecurringTask conversion)
         mock_weekly_task = type(

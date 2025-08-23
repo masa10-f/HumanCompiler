@@ -376,16 +376,16 @@ export default function SchedulingPage() {
                         <div className="space-y-1">
                           <Label className="text-xs">指定プロジェクト</Label>
                           <Select
-                            value={slot.assigned_project_id || ''}
+                            value={slot.assigned_project_id || 'none'}
                             onValueChange={(value) =>
-                              updateTimeSlot(index, 'assigned_project_id', value || undefined)
+                              updateTimeSlot(index, 'assigned_project_id', value === 'none' ? undefined : value)
                             }
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="未指定" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">未指定</SelectItem>
+                              <SelectItem value="none">未指定</SelectItem>
                               {projects.map((project) => (
                                 <SelectItem key={project.id} value={project.id}>
                                   {project.title}
@@ -398,16 +398,16 @@ export default function SchedulingPage() {
                         <div className="space-y-1">
                           <Label className="text-xs">指定週次タスク</Label>
                           <Select
-                            value={slot.assigned_weekly_task_id || ''}
+                            value={slot.assigned_weekly_task_id || 'none'}
                             onValueChange={(value) =>
-                              updateTimeSlot(index, 'assigned_weekly_task_id', value || undefined)
+                              updateTimeSlot(index, 'assigned_weekly_task_id', value === 'none' ? undefined : value)
                             }
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="未指定" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">未指定</SelectItem>
+                              <SelectItem value="none">未指定</SelectItem>
                               {weeklyRecurringTasks.map((task) => (
                                 <SelectItem key={task.id} value={task.id}>
                                   {task.title} ({task.estimate_hours}h)

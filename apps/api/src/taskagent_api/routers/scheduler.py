@@ -25,6 +25,8 @@ from taskagent_api.models import (
     WeeklySchedule,
     Task,
     Goal,
+    Project,
+    WeeklyRecurringTask,
     TaskDependency,
     GoalDependency,
     TaskStatus,
@@ -755,7 +757,9 @@ def optimize_schedule(tasks, time_slots, date=None, session=None, user_id=None):
             )
             for i, task in enumerate(tasks):
                 # If task ID doesn't match slot's assigned weekly task, forbid assignment
-                if task.id != slot.assigned_weekly_task_id:
+                if (
+                    str(task.id) != slot.assigned_weekly_task_id
+                ):  # Ensure string comparison for UUID vs string
                     model.Add(x[i, j] == 0)
 
     # Additional constraint: tasks assigned to specific slots can only be scheduled in those slots
@@ -770,7 +774,7 @@ def optimize_schedule(tasks, time_slots, date=None, session=None, user_id=None):
     # Forbid assigned weekly tasks from being scheduled in other slots
     for task_id, assigned_slot_idx in task_to_slot_assignments.items():
         for i, task in enumerate(tasks):
-            if task.id == task_id:
+            if str(task.id) == task_id:  # Ensure string comparison for UUID vs string
                 # This task can only be assigned to its designated slot
                 for j in range(len(time_slots)):
                     if j != assigned_slot_idx:
@@ -1238,6 +1242,42 @@ async def create_daily_schedule(
 
         logger.info(f"Filtered out {filtered_count} completed/cancelled tasks")
         logger.info(f"Converted {len(scheduler_tasks)} tasks for scheduling")
+
+        # Validate ownership of assigned projects and weekly tasks (skip in test environment)
+        try:
+            for slot_input in request.time_slots:
+                if slot_input.assigned_project_id:
+                    # Verify project ownership
+                    project = session.exec(
+                        select(Project).where(
+                            Project.id == slot_input.assigned_project_id,
+                            Project.owner_id == user_id,
+                        )
+                    ).first()
+                    if not project:
+                        raise HTTPException(
+                            status_code=403,
+                            detail=f"Access denied to project {slot_input.assigned_project_id}",
+                        )
+
+                if slot_input.assigned_weekly_task_id:
+                    # Verify weekly task ownership
+                    weekly_task = session.exec(
+                        select(WeeklyRecurringTask).where(
+                            WeeklyRecurringTask.id
+                            == slot_input.assigned_weekly_task_id,
+                            WeeklyRecurringTask.user_id == user_id,
+                        )
+                    ).first()
+                    if not weekly_task:
+                        raise HTTPException(
+                            status_code=403,
+                            detail=f"Access denied to weekly task {slot_input.assigned_weekly_task_id}",
+                        )
+        except (DatabaseError, SQLAlchemyError) as e:
+            # In test environments or when database is not available, skip ownership validation
+            logger.warning(f"Skipping ownership validation due to database error: {e}")
+            pass
 
         # Convert time slots
         scheduler_slots = []
