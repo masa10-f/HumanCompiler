@@ -29,6 +29,7 @@ from taskagent_api.routers import (
     monitoring,
     progress,
     projects,
+    reports,
     scheduler,
     simple_backup_api,
     task_dependencies,
@@ -244,6 +245,7 @@ app.include_router(timeline.router, prefix="/api/timeline", tags=["timeline"])
 app.include_router(weekly_schedule.router, prefix="/api")
 app.include_router(weekly_recurring_tasks.router, prefix="/api")
 app.include_router(ai_planning.router, prefix="/api")
+app.include_router(reports.router, prefix="/api")
 app.include_router(user_settings.router)
 app.include_router(monitoring.router)
 app.include_router(simple_backup_api.router)

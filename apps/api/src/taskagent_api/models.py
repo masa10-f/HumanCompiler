@@ -795,3 +795,83 @@ class ValidationErrorResponse(BaseModel):
                 details={"validation_errors": validation_errors},
             )
         )
+
+
+# Weekly Report Models
+class WeeklyReportRequest(BaseModel):
+    """Request model for weekly work report generation"""
+
+    week_start_date: str = Field(
+        ..., description="Start date of the week (YYYY-MM-DD format, should be Monday)"
+    )
+    project_ids: list[str] | None = Field(
+        default=None, description="Optional list of project IDs to filter the report"
+    )
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        json_schema_extra={
+            "example": {
+                "week_start_date": "2023-12-18",
+                "project_ids": ["uuid1", "uuid2"],
+            }
+        },
+    )
+
+
+class TaskProgressSummary(BaseModel):
+    """Task progress summary for weekly report"""
+
+    task_id: str
+    task_title: str
+    project_title: str
+    goal_title: str
+    estimated_hours: float
+    actual_minutes: int
+    completion_percentage: float
+    status: TaskStatus
+    work_logs: list[str]  # Comments from work logs
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProjectProgressSummary(BaseModel):
+    """Project progress summary for weekly report"""
+
+    project_id: str
+    project_title: str
+    total_estimated_hours: float
+    total_actual_minutes: int
+    total_tasks: int
+    completed_tasks: int
+    completion_percentage: float
+    tasks: list[TaskProgressSummary]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WeeklyWorkSummary(BaseModel):
+    """Weekly work time summary"""
+
+    total_actual_minutes: int
+    total_estimated_hours: float
+    total_tasks_worked: int
+    total_completed_tasks: int
+    overall_completion_percentage: float
+    daily_breakdown: dict[str, int]  # Date -> minutes worked
+    project_breakdown: dict[str, int]  # Project title -> minutes worked
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WeeklyReportResponse(BaseModel):
+    """Response model for weekly work report"""
+
+    week_start_date: str
+    week_end_date: str
+    work_summary: WeeklyWorkSummary
+    project_summaries: list[ProjectProgressSummary]
+    markdown_report: str
+    generated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

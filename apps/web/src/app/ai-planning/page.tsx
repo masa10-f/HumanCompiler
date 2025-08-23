@@ -19,7 +19,6 @@ import {
   Calendar,
   Clock,
   TrendingUp,
-  AlertTriangle,
   CheckCircle,
   Loader2,
   BarChart3,
@@ -41,7 +40,8 @@ import { ProjectAllocationSettings } from '@/components/scheduling/project-alloc
 import { toast } from '@/hooks/use-toast';
 import { aiPlanningApi, weeklyScheduleApi, getSecureApiUrl, secureFetch } from '@/lib/api';
 import { log } from '@/lib/logger';
-import type { WeeklyPlanResponse, WorkloadAnalysis, PrioritySuggestions, SavedWeeklySchedule } from '@/types/ai-planning';
+import type { WeeklyPlanResponse, SavedWeeklySchedule } from '@/types/ai-planning';
+import type { WeeklyReportResponse } from '@/types/reports';
 import { getAuthHeaders } from '@/lib/auth';
 
 interface WeeklyRecurringTask {
@@ -63,23 +63,25 @@ export default function AIPlanningPage() {
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [selectedRecurringTaskIds, setSelectedRecurringTaskIds] = useState<string[]>([]);
   const [projectAllocations, setProjectAllocations] = useState<Record<string, number>>({});
-  const [weekStartDate, setWeekStartDate] = useState(() => {
+  const [weekStartDate, setWeekStartDate] = useState<string>(() => {
     const today = new Date();
     const monday = new Date(today);
     const dayOfWeek = today.getDay();
     const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
     monday.setDate(today.getDate() + daysToMonday);
-    return monday.toISOString().split('T')[0];
+    const isoString = monday.toISOString();
+    const datePart = isoString.split('T')[0];
+    return datePart || isoString.substring(0, 10); // Fallback to first 10 chars if split fails
   });
   const [capacityHours, setCapacityHours] = useState(40);
   const [userPrompt, setUserPrompt] = useState('');
 
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [weeklyPlan, setWeeklyPlan] = useState<WeeklyPlanResponse | null>(null);
-  const [workloadAnalysis, setWorkloadAnalysis] = useState<WorkloadAnalysis | null>(null);
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [checkingApiKey, setCheckingApiKey] = useState(true);
+  const [weeklyReport, setWeeklyReport] = useState<WeeklyReportResponse | null>(null);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   const checkUserSettings = useCallback(async () => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
@@ -132,7 +134,6 @@ export default function AIPlanningPage() {
     }
   }, [session, authLoading, checkUserSettings]);
 
-  const [prioritySuggestions, setPrioritySuggestions] = useState<PrioritySuggestions | null>(null);
   const [savedSchedules, setSavedSchedules] = useState<SavedWeeklySchedule[]>([]);
   const [loadingSchedules, setLoadingSchedules] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<SavedWeeklySchedule | null>(null);
@@ -190,36 +191,109 @@ export default function AIPlanningPage() {
     }
   };
 
-  const analyzeWorkload = async () => {
+  // Helper function to validate that the date is a Monday
+  const validateWeekStartDate = (dateString: string): boolean => {
+    const date = new Date(dateString);
+    // getDay() returns 0 for Sunday, 1 for Monday, etc.
+    return date.getDay() === 1;
+  };
+
+  // Helper function to get the Monday of the current week
+  const getMondayOfCurrentWeek = (): string => {
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Handle Sunday (0) case
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + mondayOffset);
+    const isoString = monday.toISOString();
+    const datePart = isoString.split('T')[0];
+    return datePart || isoString; // Fallback to full ISO string if split fails
+  };
+
+  const generateWeeklyReport = async () => {
     try {
-      setIsAnalyzing(true);
+      setIsGeneratingReport(true);
 
-      const response = await aiPlanningApi.analyzeWorkload(
-        selectedProjects.length > 0 ? selectedProjects : undefined
-      );
+      // Validate that the week start date is a Monday
+      if (!validateWeekStartDate(weekStartDate)) {
+        toast({
+          title: '日付エラー',
+          description: '週開始日は月曜日である必要があります。正しい月曜日の日付を選択してください。',
+          variant: 'destructive',
+        });
+        return;
+      }
 
-      setWorkloadAnalysis(response);
+      // Validate date format
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(weekStartDate)) {
+        toast({
+          title: '日付フォーマットエラー',
+          description: '日付は YYYY-MM-DD の形式で入力してください。',
+          variant: 'destructive',
+        });
+        return;
+      }
 
-      // Also get priority suggestions
-      const priorityResponse = await aiPlanningApi.suggestPriorities(
-        selectedProjects.length > 0 ? selectedProjects[0] : undefined
-      );
-      setPrioritySuggestions(priorityResponse);
+      const apiUrl = getSecureApiUrl();
+      if (!apiUrl) {
+        throw new Error('API URL is not configured');
+      }
+
+      const headers = await getAuthHeaders();
+      const response = await secureFetch(`${apiUrl}/api/reports/weekly`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          week_start_date: weekStartDate,
+          project_ids: selectedProjects.length > 0 ? selectedProjects : undefined
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Failed to generate weekly report');
+      }
+
+      const reportData = await response.json();
+      setWeeklyReport(reportData);
 
       toast({
-        title: 'ワークロード分析が完了しました',
-        description: `${response.analysis.total_tasks}個のタスクを分析しました`,
+        title: '週間作業報告を生成しました',
+        description: `${reportData.work_summary.total_tasks_worked}個のタスクの報告書が生成されました`,
       });
     } catch (error) {
       toast({
-        title: '分析に失敗しました',
+        title: '報告書生成に失敗しました',
         description: error instanceof Error ? error.message : '不明なエラーが発生しました',
         variant: 'destructive',
       });
     } finally {
-      setIsAnalyzing(false);
+      setIsGeneratingReport(false);
     }
   };
+
+  const downloadReportAsMarkdown = () => {
+    if (!weeklyReport) return;
+
+    const filename = `weekly-report-${weeklyReport.week_start_date}.md`;
+    const blob = new Blob([weeklyReport.markdown_report], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: 'ダウンロードが開始されました',
+      description: `${filename}がダウンロードされました`,
+    });
+  };
+
 
   const loadSavedSchedules = async () => {
     try {
@@ -445,12 +519,11 @@ export default function AIPlanningPage() {
 
       {hasApiKey && (
         <Tabs defaultValue="planning" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="planning">週間計画生成</TabsTrigger>
           <TabsTrigger value="weekly-tasks">週課管理</TabsTrigger>
           <TabsTrigger value="saved">保存済みスケジュール</TabsTrigger>
-          <TabsTrigger value="analysis">ワークロード分析</TabsTrigger>
-          <TabsTrigger value="priorities">優先度提案</TabsTrigger>
+          <TabsTrigger value="report">週間作業報告</TabsTrigger>
         </TabsList>
 
         <TabsContent value="planning" className="space-y-6">
@@ -1099,159 +1172,169 @@ export default function AIPlanningPage() {
           )}
         </TabsContent>
 
-        <TabsContent value="analysis" className="space-y-6">
+        <TabsContent value="report" className="space-y-6">
+          {/* Weekly Work Report */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 className="h-5 w-5" />
-                ワークロード分析
+                週間作業報告
               </CardTitle>
               <CardDescription>
-                現在のタスク量と工数を分析します。
+                指定した週の作業実績を分析し、報告書を自動生成します。
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="report-week-start">報告対象週（月曜日）</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="report-week-start"
+                      type="date"
+                      value={weekStartDate}
+                      onChange={(e) => setWeekStartDate(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setWeekStartDate(getMondayOfCurrentWeek())}
+                      className="whitespace-nowrap"
+                    >
+                      今週
+                    </Button>
+                  </div>
+                  {weekStartDate && !validateWeekStartDate(weekStartDate) && (
+                    <p className="text-sm text-destructive">
+                      ⚠️ 選択された日付は月曜日ではありません
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>対象プロジェクト (任意)</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+                  {projects.map((project) => (
+                    <div key={project.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`report-${project.id}`}
+                        checked={selectedProjects.includes(project.id)}
+                        onCheckedChange={(checked) =>
+                          handleProjectSelection(project.id, checked as boolean)
+                        }
+                      />
+                      <Label htmlFor={`report-${project.id}`} className="text-sm">
+                        {project.title}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <Button
-                onClick={analyzeWorkload}
-                disabled={isAnalyzing}
+                onClick={generateWeeklyReport}
+                disabled={isGeneratingReport || !hasApiKey}
                 className="w-full"
               >
-                {isAnalyzing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                ワークロードを分析
+                {isGeneratingReport && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                週間作業報告を生成
               </Button>
             </CardContent>
           </Card>
 
-          {workloadAnalysis && (
+          {/* Weekly Report Results */}
+          {weeklyReport && (
             <Card>
               <CardHeader>
-                <CardTitle>分析結果</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="text-2xl font-bold">
-                        {workloadAnalysis.analysis.total_estimated_hours}h
-                      </div>
-                      <div className="text-xs text-gray-500">総見積時間</div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="text-2xl font-bold">
-                        {workloadAnalysis.analysis.total_tasks}
-                      </div>
-                      <div className="text-xs text-gray-500">総タスク数</div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="text-2xl font-bold text-red-600">
-                        {workloadAnalysis.analysis.overdue_tasks}
-                      </div>
-                      <div className="text-xs text-gray-500">遅延タスク</div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="text-2xl font-bold text-yellow-600">
-                        {workloadAnalysis.analysis.urgent_tasks}
-                      </div>
-                      <div className="text-xs text-gray-500">緊急タスク</div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <div>
-                  <h4 className="text-lg font-semibold mb-3">プロジェクト別工数配分</h4>
-                  <div className="space-y-2">
-                    {Object.entries(workloadAnalysis.analysis.project_distribution).map(([project, hours]) => (
-                      <div key={project} className="flex items-center justify-between p-2 border rounded">
-                        <span className="font-medium">{project}</span>
-                        <span className="text-sm text-gray-600">{hours}時間</span>
-                      </div>
-                    ))}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                      週間作業報告結果
+                    </CardTitle>
+                    <CardDescription>
+                      {weeklyReport.week_start_date}週（{weeklyReport.week_start_date} ～ {weeklyReport.week_end_date}）の報告書
+                    </CardDescription>
                   </div>
+                  <Button
+                    onClick={downloadReportAsMarkdown}
+                    className="flex items-center gap-2"
+                  >
+                    <Save className="h-4 w-4" />
+                    マークダウンをダウンロード
+                  </Button>
                 </div>
-
-                <div>
-                  <h4 className="text-lg font-semibold mb-3">推奨事項</h4>
-                  <ul className="space-y-1">
-                    {workloadAnalysis.recommendations.map((rec, index) => (
-                      <li key={index} className="flex items-start gap-2 text-sm">
-                        <AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
-                        {rec}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="priorities" className="space-y-6">
-          {prioritySuggestions && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5" />
-                  タスク優先度提案
-                </CardTitle>
-                <CardDescription>
-                  AIが分析したタスクの優先度提案です。
-                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="text-sm text-gray-600 mb-4">
-                  分析対象: {prioritySuggestions.total_tasks_analyzed}個のタスク
-                </div>
-
-                <div className="space-y-2">
-                  {prioritySuggestions.priority_suggestions.map((suggestion, index) => (
-                    <div key={index} className="p-3 border rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="font-medium">{suggestion.task_title}</div>
-                        <div className="flex items-center gap-2">
-                          <Badge
-                            className={
-                              suggestion.suggested_priority <= 2 ? 'bg-red-100 text-red-800' :
-                              suggestion.suggested_priority <= 3 ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-green-100 text-green-800'
-                            }
-                          >
-                            優先度{suggestion.suggested_priority}
-                          </Badge>
-                          <span className="text-sm text-gray-500">
-                            {suggestion.current_estimate_hours}h
-                          </span>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-blue-600" />
+                        <div>
+                          <div className="text-2xl font-bold">
+                            {Math.round(weeklyReport.work_summary.total_actual_minutes / 60 * 10) / 10}h
+                          </div>
+                          <div className="text-xs text-gray-500">総作業時間</div>
                         </div>
                       </div>
-                      <div className="text-sm text-gray-600">
-                        理由: {suggestion.reasoning.join(', ')}
-                      </div>
-                      {suggestion.due_date && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          締切: {new Date(suggestion.due_date).toLocaleDateString('ja-JP')}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center gap-2">
+                        <Target className="h-4 w-4 text-purple-600" />
+                        <div>
+                          <div className="text-2xl font-bold">
+                            {weeklyReport.work_summary.total_tasks_worked}
+                          </div>
+                          <div className="text-xs text-gray-500">作業タスク数</div>
                         </div>
-                      )}
-                    </div>
-                  ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        <div>
+                          <div className="text-2xl font-bold">
+                            {weeklyReport.work_summary.total_completed_tasks}
+                          </div>
+                          <div className="text-xs text-gray-500">完了タスク数</div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="flex items-center gap-2">
+                        <TrendingUp className="h-4 w-4 text-orange-600" />
+                        <div>
+                          <div className="text-2xl font-bold">
+                            {Math.round(weeklyReport.work_summary.overall_completion_percentage * 10) / 10}%
+                          </div>
+                          <div className="text-xs text-gray-500">完了率</div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
 
-                <div className="mt-6">
-                  <h4 className="text-lg font-semibold mb-3">分析手法</h4>
-                  <div className="text-sm text-gray-600 space-y-1">
-                    {prioritySuggestions.methodology.factors.map((factor, index) => (
-                      <div key={index}>• {factor}</div>
-                    ))}
-                    <div className="mt-2">
-                      <strong>優先度スケール:</strong> {prioritySuggestions.methodology.priority_scale}
-                    </div>
+                <Separator />
+
+                <div>
+                  <h4 className="text-lg font-semibold mb-3">生成された報告書プレビュー</h4>
+                  <div className="bg-gray-50 p-4 rounded-lg max-h-96 overflow-y-auto">
+                    <pre className="whitespace-pre-wrap text-sm">
+                      {weeklyReport.markdown_report}
+                    </pre>
                   </div>
                 </div>
               </CardContent>
