@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator, ConfigDict, field_serializer
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func, cast, String
 from ortools.sat.python import cp_model
 
 from taskagent_api.auth import get_current_user_id
@@ -140,10 +140,14 @@ def _get_task_actual_hours(session: Session, task_ids: list[str]) -> dict[str, f
             return {}
 
         # Query sum of actual_minutes for each task and convert to hours
+        task_uuid_strs = [str(uuid) for uuid in task_uuids]
         query = (
-            select(Log.task_id, func.sum(Log.actual_minutes).label("total_minutes"))
-            .where(Log.task_id.in_(task_uuids))
-            .group_by(Log.task_id)
+            select(
+                cast(Log.task_id, String),
+                func.sum(Log.actual_minutes).label("total_minutes"),
+            )
+            .where(cast(Log.task_id, String).in_(task_uuid_strs))
+            .group_by(cast(Log.task_id, String))
         )
 
         results = session.exec(query).all()
@@ -193,11 +197,14 @@ def _get_task_dependencies(
             return {}
 
         # Query task dependencies
+        task_uuid_strs = [str(uuid) for uuid in task_uuids]
         dependencies = session.exec(
-            select(TaskDependency).where(TaskDependency.task_id.in_(task_uuids))
+            select(TaskDependency).where(
+                cast(TaskDependency.task_id, String).in_(task_uuid_strs)
+            )
         ).all()
 
-        dependency_map = {}
+        dependency_map: dict[str, list[str]] = {}
         for dep in dependencies:
             task_id = str(dep.task_id)
             depends_on_id = str(dep.depends_on_task_id)
@@ -257,11 +264,14 @@ def _get_goal_dependencies(
             return {}
 
         # Query goal dependencies
+        goal_uuid_strs = [str(uuid) for uuid in goal_uuids]
         dependencies = session.exec(
-            select(GoalDependency).where(GoalDependency.goal_id.in_(goal_uuids))
+            select(GoalDependency).where(
+                cast(GoalDependency.goal_id, String).in_(goal_uuid_strs)
+            )
         ).all()
 
-        dependency_map = {}
+        dependency_map: dict[str, list[str]] = {}
         for dep in dependencies:
             goal_id = str(dep.goal_id)
             depends_on_id = str(dep.depends_on_goal_id)
@@ -322,9 +332,10 @@ def _batch_check_task_completion_status(
                 continue
 
         # Batch query for all completion statuses
+        dependency_uuid_strs = [str(uuid) for uuid in dependency_uuids]
         completed_tasks = session.exec(
             select(Task.id)
-            .where(Task.id.in_(dependency_uuids))
+            .where(cast(Task.id, String).in_(dependency_uuid_strs))
             .where(Task.status == TaskStatus.COMPLETED)
         ).all()
 
@@ -354,7 +365,7 @@ def _check_task_dependencies_satisfied(
     session: Session,
     task: SchedulerTask,
     task_dependencies: dict[str, list[str]],
-    completion_status_cache: dict[str, bool] = None,
+    completion_status_cache: dict[str, bool] | None = None,
 ) -> bool:
     """
     Check if all dependencies for a task are satisfied (completed).
@@ -401,9 +412,10 @@ def _check_task_dependencies_satisfied(
                 continue
 
         # Check if all dependent tasks are completed
+        dependent_uuid_strs = [str(uuid) for uuid in dependent_uuids]
         completed_tasks = session.exec(
             select(Task.id)
-            .where(Task.id.in_(dependent_uuids))
+            .where(cast(Task.id, String).in_(dependent_uuid_strs))
             .where(Task.status == TaskStatus.COMPLETED)
         ).all()
 
@@ -460,9 +472,10 @@ def _batch_check_goal_completion_status(
                 continue
 
         # Batch query for all completion statuses
+        dependency_uuid_strs = [str(uuid) for uuid in dependency_uuids]
         completed_goals = session.exec(
             select(Goal.id)
-            .where(Goal.id.in_(dependency_uuids))
+            .where(cast(Goal.id, String).in_(dependency_uuid_strs))
             .where(Goal.status == GoalStatus.COMPLETED)
         ).all()
 
@@ -492,7 +505,7 @@ def _check_goal_dependencies_satisfied(
     session: Session,
     task: SchedulerTask,
     goal_dependencies: dict[str, list[str]],
-    goal_completion_cache: dict[str, bool] = None,
+    goal_completion_cache: dict[str, bool] | None = None,
 ) -> bool:
     """
     Check if all goal dependencies for a task are satisfied (completed).
@@ -538,9 +551,10 @@ def _check_goal_dependencies_satisfied(
                 continue
 
         # Check if all dependent goals are completed
+        dependent_uuid_strs = [str(uuid) for uuid in dependent_uuids]
         completed_goals = session.exec(
             select(Goal.id)
-            .where(Goal.id.in_(dependent_uuids))
+            .where(cast(Goal.id, String).in_(dependent_uuid_strs))
             .where(Goal.status == GoalStatus.COMPLETED)
         ).all()
 
@@ -1779,7 +1793,7 @@ async def _apply_project_allocation_filtering(
         from taskagent_api.models import Goal
 
         # Group tasks by project
-        tasks_by_project = {}
+        tasks_by_project: dict[str, list[Task]] = {}
         for task in tasks:
             # Get the goal to find the project
             goal = session.get(Goal, task.goal_id)
@@ -1824,7 +1838,7 @@ async def _apply_project_allocation_filtering(
 
             logger.info(
                 f"Project {project_id}: allocated {allocation_percent}%, "
-                f"selected {len([t for t in selected_tasks if str(session.get(Goal, t.goal_id).project_id) == project_id])} tasks, "
+                f"selected {len([t for t in selected_tasks if (goal := session.get(Goal, t.goal_id)) and str(goal.project_id) == project_id])} tasks, "
                 f"{current_hours:.1f} hours"
             )
 
