@@ -19,7 +19,6 @@ import {
   Calendar,
   Clock,
   TrendingUp,
-  AlertTriangle,
   CheckCircle,
   Loader2,
   BarChart3,
@@ -41,7 +40,7 @@ import { ProjectAllocationSettings } from '@/components/scheduling/project-alloc
 import { toast } from '@/hooks/use-toast';
 import { aiPlanningApi, weeklyScheduleApi, getSecureApiUrl, secureFetch } from '@/lib/api';
 import { log } from '@/lib/logger';
-import type { WeeklyPlanResponse, WorkloadAnalysis, PrioritySuggestions, SavedWeeklySchedule } from '@/types/ai-planning';
+import type { WeeklyPlanResponse, SavedWeeklySchedule } from '@/types/ai-planning';
 import { getAuthHeaders } from '@/lib/auth';
 
 interface WeeklyRecurringTask {
