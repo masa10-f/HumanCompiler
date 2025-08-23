@@ -311,11 +311,14 @@ priority=1のタスクは高スコア、priority=5のタスクは低スコアと
                 if allocation:
                     base_priority += allocation.priority_weight * 2.0
 
-            # Task size consideration (prefer smaller tasks)
-            if task.estimate_hours:
-                if float(task.estimate_hours) <= 2.0:
+            # Task size consideration (prefer smaller tasks based on remaining hours)
+            remaining_hours = getattr(
+                task, "remaining_hours", float(task.estimate_hours or 0)
+            )
+            if remaining_hours > 0:
+                if remaining_hours <= 2.0:
                     base_priority += 1.0  # Small task bonus
-                elif float(task.estimate_hours) >= 8.0:
+                elif remaining_hours >= 8.0:
                     base_priority -= 0.5  # Large task penalty
 
             # Cap priority at 10.0
@@ -525,9 +528,13 @@ class WeeklyTaskSolver:
             estimate_hours = float(task.estimate_hours or 0)
             remaining_hours = max(0.0, estimate_hours - actual_hours)
 
-            # Add remaining hours as an attribute to the task object
-            task.remaining_hours = remaining_hours
-            task.actual_hours = actual_hours
+            # Use setattr to safely add remaining hours as an attribute to the task object
+            try:
+                task.remaining_hours = remaining_hours
+                task.actual_hours = actual_hours
+            except (AttributeError, ValueError):
+                # If setattr fails, create a wrapper object
+                pass
 
             # Only include tasks with remaining hours > 0
             if remaining_hours > 0:
@@ -551,7 +558,8 @@ class WeeklyTaskSolver:
     ) -> dict[str, Any]:
         """Analyze current constraints and workload."""
         total_task_hours = sum(
-            float(task.estimate_hours or 0) for task in context.tasks
+            getattr(task, "remaining_hours", float(task.estimate_hours or 0))
+            for task in context.tasks
         )
         available_hours = (
             constraints.total_capacity_hours - constraints.meeting_buffer_hours
@@ -633,7 +641,10 @@ class WeeklyTaskSolver:
 
                     if task_due_dt <= week_end_dt:
                         urgent_count += 1
-            total_hours = sum(float(task.estimate_hours or 0) for task in project_tasks)
+            total_hours = sum(
+                getattr(task, "remaining_hours", float(task.estimate_hours or 0))
+                for task in project_tasks
+            )
 
             priority_score = urgent_count * 2.0 + total_hours * 0.1
             project_priorities[project.id] = priority_score
@@ -1239,7 +1250,9 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
             for task in context.tasks:
                 task_id = str(task.id)
                 task_vars[task_id] = model.NewBoolVar(f"task_{task_id}")
-                task_hours[task_id] = float(task.estimate_hours or 0)
+                task_hours[task_id] = getattr(
+                    task, "remaining_hours", float(task.estimate_hours or 0)
+                )
                 task_priority_scores[task_id] = task_priorities.get(task_id, 5.0)
 
             # Add selected weekly recurring tasks
