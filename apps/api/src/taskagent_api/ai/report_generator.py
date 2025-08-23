@@ -47,7 +47,7 @@ class WeeklyReportGenerator:
         user_id: str,
         start_date: datetime,
         end_date: datetime,
-        project_ids: list[str] = None,
+        project_ids: list[str] | None = None,
     ) -> list[Log]:
         """Get all work logs for the specified week and optional project filter with eager loading"""
         query = (
