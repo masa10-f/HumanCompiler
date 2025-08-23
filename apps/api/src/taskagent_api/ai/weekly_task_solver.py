@@ -1440,24 +1440,38 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                                 f"Applied 0% allocation constraint for project {allocation.project_id}"
                             )
                     else:
-                        # Use flexible constraints to ensure feasibility for non-zero allocations
-                        # Hard minimum: at least 20% of target or available hours, whichever is less
-                        hard_min_hours = int(
-                            min(
-                                allocation.target_hours * 0.2 * 10,
-                                available_task_hours * 10,
+                        # Strict allocation constraints: 0.9-1.1x target hours range
+                        # But ensure feasibility when available task hours are limited
+
+                        # Ideal range: 90%-110% of target hours
+                        ideal_min_hours = int(allocation.target_hours * 0.9 * 10)
+                        ideal_max_hours = int(allocation.target_hours * 1.1 * 10)
+
+                        # Adjust constraints based on available task hours
+                        if available_task_hours * 10 < ideal_min_hours:
+                            # Not enough tasks available - use all available hours
+                            hard_min_hours = int(available_task_hours * 10)
+                            max_hours = int(available_task_hours * 10)
+                        else:
+                            # Sufficient tasks available - enforce strict 0.9-1.1x range
+                            hard_min_hours = ideal_min_hours
+                            max_hours = min(
+                                ideal_max_hours, int(available_task_hours * 10)
                             )
-                        )
-                        max_hours = int(
-                            min(allocation.max_hours, available_task_hours) * 10
-                        )
 
                         if len(project_tasks) > 0 and max_hours > 0:
                             model.Add(sum(project_tasks) >= hard_min_hours)
                             model.Add(sum(project_tasks) <= max_hours)
+                            # Determine constraint type for logging
+                            constraint_type = (
+                                "strict 0.9-1.1x"
+                                if available_task_hours * 10 >= ideal_min_hours
+                                else "limited by available tasks"
+                            )
                             logger.debug(
-                                f"Applied allocation constraint for project {allocation.project_id}: "
-                                f"{hard_min_hours / 10:.1f}h - {max_hours / 10:.1f}h"
+                                f"Applied {constraint_type} allocation constraint for project {allocation.project_id}: "
+                                f"{hard_min_hours / 10:.1f}h - {max_hours / 10:.1f}h "
+                                f"(target: {allocation.target_hours:.1f}h, available: {available_task_hours:.1f}h)"
                             )
 
             # Constraint 3: Task dependency ordering constraints
