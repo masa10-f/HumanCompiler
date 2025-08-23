@@ -19,9 +19,9 @@ from sqlmodel import Session, select
 from taskagent_api.ai.context_collector import ContextCollector
 from taskagent_api.ai.models import WeeklyPlanContext, TaskPlan
 from taskagent_api.ai.task_utils import filter_valid_tasks
-from taskagent_api.models import Project, Goal, Task, UserSettings, Log
+from taskagent_api.models import Project, Goal, Task, UserSettings, Log, TaskDependency
 from taskagent_api.crypto import get_crypto_service
-from sqlmodel import func
+from sqlmodel import func, select
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -544,14 +544,130 @@ class WeeklyTaskSolver:
                     f"Excluding completed task {task_id} '{task.title}' - no remaining hours"
                 )
 
-        # Update context with filtered tasks
-        context.tasks = filtered_tasks
+        # Collect task dependencies
+        task_dependencies = self._collect_task_dependencies(session, filtered_tasks)
+
+        # Apply relaxed dependency constraints - allow tasks if their dependencies
+        # are either completed or can be scheduled in the same week
+        schedulable_tasks, blocked_tasks = self._check_dependencies_schedulable_in_week(
+            task_dependencies, filtered_tasks, session
+        )
+
+        # Update context with schedulable tasks
+        context.tasks = schedulable_tasks
 
         logger.info(
-            f"Context filtering: {len(context.tasks)} tasks with remaining hours out of {len(task_ids)} total tasks"
+            f"Context filtering: {len(schedulable_tasks)} schedulable tasks, {len(blocked_tasks)} blocked by dependencies, out of {len(task_ids)} total tasks"
         )
 
         return context
+
+    def _collect_task_dependencies(
+        self, session: Session, tasks: list[Task]
+    ) -> dict[str, list[str]]:
+        """Collect task dependency information for the given tasks."""
+        task_ids = [task.id for task in tasks]
+        if not task_ids:
+            return {}
+
+        try:
+            # Get all dependencies for these tasks
+            dependencies = session.exec(
+                select(TaskDependency).where(TaskDependency.task_id.in_(task_ids))
+            ).all()
+
+            # Build dependency mapping
+            dependency_map = {}
+            for dep in dependencies:
+                task_id = str(dep.task_id)
+                depends_on_task_id = str(dep.depends_on_task_id)
+                if task_id not in dependency_map:
+                    dependency_map[task_id] = []
+                dependency_map[task_id].append(depends_on_task_id)
+
+            logger.info(f"Collected dependencies for {len(dependency_map)} tasks")
+            return dependency_map
+
+        except Exception as e:
+            logger.error(f"Error collecting task dependencies: {e}")
+            return {}
+
+    def _check_dependencies_schedulable_in_week(
+        self,
+        task_dependencies: dict[str, list[str]],
+        available_tasks: list[Task],
+        session: Session,
+    ) -> tuple[list[Task], list[Task]]:
+        """Check which tasks with dependencies can be scheduled in the same week.
+
+        This implements the relaxed dependency constraint where a task can be scheduled
+        if its dependencies are either:
+        1. Already completed, or
+        2. Available for scheduling in the same week
+
+        Returns:
+            tuple: (schedulable_tasks, blocked_tasks)
+        """
+        available_task_ids = {str(task.id) for task in available_tasks}
+        schedulable_tasks = []
+        blocked_tasks = []
+
+        for task in available_tasks:
+            task_id = str(task.id)
+
+            if task_id not in task_dependencies:
+                # No dependencies, always schedulable
+                schedulable_tasks.append(task)
+                continue
+
+            dependencies = task_dependencies[task_id]
+
+            # Check if all dependencies are either completed or available for scheduling
+            all_deps_satisfiable = True
+            unsatisfied_deps = []
+
+            for dep_task_id in dependencies:
+                if dep_task_id in available_task_ids:
+                    # Dependency task is available for scheduling in the same week - this is fine
+                    continue
+                else:
+                    # Dependency task is not available, check if it's completed
+                    try:
+                        dep_task = session.get(Task, UUID(dep_task_id))
+                        if dep_task and dep_task.status in [
+                            "completed",
+                            "done",
+                            "finished",
+                        ]:
+                            # Dependency is completed, this is fine
+                            continue
+                        else:
+                            # Dependency is not completed and not available for scheduling
+                            all_deps_satisfiable = False
+                            unsatisfied_deps.append(dep_task_id)
+                    except Exception as e:
+                        # If we can't check the dependency task, assume it's not satisfiable
+                        logger.warning(
+                            f"Could not check dependency task {dep_task_id}: {e}"
+                        )
+                        all_deps_satisfiable = False
+                        unsatisfied_deps.append(dep_task_id)
+
+            if all_deps_satisfiable:
+                schedulable_tasks.append(task)
+                logger.debug(
+                    f"Task {task_id} '{task.title}' is schedulable (dependencies satisfiable)"
+                )
+            else:
+                blocked_tasks.append(task)
+                logger.info(
+                    f"Task {task_id} '{task.title}' blocked by unsatisfied dependencies: {unsatisfied_deps}"
+                )
+
+        logger.info(
+            f"Relaxed dependency analysis: {len(schedulable_tasks)} schedulable, {len(blocked_tasks)} blocked"
+        )
+        return schedulable_tasks, blocked_tasks
 
     def _analyze_constraints(
         self, context: WeeklyPlanContext, constraints: WeeklyConstraints
@@ -1305,23 +1421,68 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                             )
 
                 if project_tasks:
-                    # Minimum allocation constraint
-                    min_hours = int(
-                        allocation.target_hours * 0.7 * 10
-                    )  # Allow 30% flexibility
-                    max_hours = int(allocation.max_hours * 10)
+                    # Calculate available task hours for this project
+                    available_task_hours = sum(
+                        task_hours[str(task.id)]
+                        for task in context.tasks
+                        if task.goal_id in project_goal_ids
+                        and str(task.id) in task_hours
+                    )
 
-                    if len(project_tasks) > 0:
-                        model.Add(sum(project_tasks) >= min_hours)
+                    # Use flexible constraints to ensure feasibility
+                    # Hard minimum: at least 20% of target or available hours, whichever is less
+                    hard_min_hours = int(
+                        min(
+                            allocation.target_hours * 0.2 * 10,
+                            available_task_hours * 10,
+                        )
+                    )
+                    max_hours = int(
+                        min(allocation.max_hours, available_task_hours) * 10
+                    )
+
+                    if len(project_tasks) > 0 and max_hours > 0:
+                        model.Add(sum(project_tasks) >= hard_min_hours)
                         model.Add(sum(project_tasks) <= max_hours)
 
-            # Constraint 3: Prefer high-priority tasks
+            # Constraint 3: Task dependency ordering constraints
+            # Note: Dependency constraints are applied during task filtering in _collect_solver_context
+            # The tasks passed to this optimization function are already filtered to satisfy dependencies
+
+            # Constraint 4: Prefer high-priority tasks
             priority_expr = []
+
+            # Add task priority weights
             for task_id, var in task_vars.items():
-                priority_weight = int(
-                    task_priority_scores[task_id] * 100
-                )  # Scale for integer
-                priority_expr.append(var * priority_weight)
+                base_priority = int(task_priority_scores[task_id] * 100)
+
+                # Boost priority for tasks that align with project allocation preferences
+                project_allocation_bonus = 0
+                task = next((t for t in context.tasks if str(t.id) == task_id), None)
+                if task:
+                    goal = next(
+                        (g for g in context.goals if g.id == task.goal_id), None
+                    )
+                    if goal:
+                        # Find matching project allocation
+                        allocation = next(
+                            (
+                                a
+                                for a in project_allocations
+                                if a.project_id == goal.project_id
+                            ),
+                            None,
+                        )
+                        if allocation:
+                            # Boost based on project priority weight (0-100 scale)
+                            project_allocation_bonus = int(
+                                allocation.priority_weight * 50
+                            )
+
+                total_priority = base_priority + project_allocation_bonus
+                priority_expr.append(var * total_priority)
+
+            # Add weekly task priorities (no project allocation bonus)
             for task_id, var in weekly_task_vars.items():
                 priority_weight = int(weekly_task_priorities[task_id] * 100)
                 priority_expr.append(var * priority_weight)
@@ -1331,6 +1492,7 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
 
             # Solve the optimization problem
             solver.parameters.max_time_in_seconds = 30.0  # Timeout after 30 seconds
+
             status = solver.Solve(model)
 
             # Process results
@@ -1424,6 +1586,8 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
 
             else:
                 # Optimization failed - use fallback
+                logger.warning("OR-Tools optimization failed, using fallback heuristic")
+
                 insights = [
                     "⚠️ OR-Tools最適化が制約を満たす解を見つけられませんでした",
                     "🔄 ヒューリスティック手法にフォールバック中...",

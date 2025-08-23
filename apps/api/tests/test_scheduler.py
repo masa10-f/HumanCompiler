@@ -557,3 +557,249 @@ class TestSchedulerAPI:
             # Clean up the dependency override
             if db.get_session in app.dependency_overrides:
                 del app.dependency_overrides[db.get_session]
+
+    @patch("taskagent_api.routers.scheduler.goal_service.get_goal")
+    @patch("taskagent_api.routers.scheduler.db.get_session")
+    @patch("taskagent_api.routers.scheduler.task_service.get_all_user_tasks")
+    def test_create_daily_schedule_with_slot_assignment(
+        self, mock_get_tasks, mock_session, mock_get_goal, mock_auth
+    ):
+        """Test daily schedule creation with slot-level project assignment."""
+        from taskagent_api.models import Task, Goal
+        from decimal import Decimal
+        from uuid import uuid4
+
+        # Mock session
+        mock_sess = MagicMock()
+        mock_session.return_value.__enter__.return_value = mock_sess
+
+        # Create mock task
+        task_id = uuid4()
+        project_id = uuid4()
+        goal_id = uuid4()
+
+        # Mock project ownership check
+        from taskagent_api.models import Project
+
+        mock_project = MagicMock(spec=Project)
+        mock_project.id = project_id
+        mock_project.owner_id = mock_auth
+
+        # Configure session.exec to return appropriate results for ownership validation
+        def mock_exec(query):
+            mock_result = MagicMock()
+            if "projects" in str(query).lower():
+                mock_result.first.return_value = mock_project
+            else:
+                mock_result.first.return_value = None
+            return mock_result
+
+        mock_sess.exec = mock_exec
+
+        mock_task = MagicMock(spec=Task)
+        mock_task.id = task_id
+        mock_task.title = "Test Task"
+        mock_task.estimate_hours = Decimal("2.0")
+        mock_task.status = "pending"
+        mock_task.goal_id = goal_id
+        mock_task.work_type = "focused_work"
+        mock_task.due_date = None
+        # Mock the hasattr/getattr calls properly
+        mock_task.__dict__ = {
+            "id": task_id,
+            "title": "Test Task",
+            "estimate_hours": Decimal("2.0"),
+            "status": "pending",
+            "goal_id": goal_id,
+            "work_type": "focused_work",
+            "due_date": None,
+            "is_weekly_recurring": False,
+        }
+
+        mock_get_tasks.return_value = [mock_task]
+
+        # Mock goal
+        mock_goal = MagicMock(spec=Goal)
+        mock_goal.id = goal_id
+        mock_goal.project_id = project_id
+        mock_get_goal.return_value = mock_goal
+
+        # Mock _get_task_actual_hours to return empty dict
+        with patch(
+            "taskagent_api.routers.scheduler._get_task_actual_hours", return_value={}
+        ):
+            # Mock dependency functions to return empty dicts
+            with patch(
+                "taskagent_api.routers.scheduler._get_task_dependencies",
+                return_value={},
+            ):
+                with patch(
+                    "taskagent_api.routers.scheduler._get_goal_dependencies",
+                    return_value={},
+                ):
+                    with patch(
+                        "taskagent_api.routers.scheduler._batch_check_task_completion_status",
+                        return_value={},
+                    ):
+                        with patch(
+                            "taskagent_api.routers.scheduler._batch_check_goal_completion_status",
+                            return_value={},
+                        ):
+                            # Test request with slot assignment
+                            request_data = {
+                                "date": "2024-08-23",
+                                "task_source": {"type": "all_tasks"},
+                                "time_slots": [
+                                    {
+                                        "start": "09:00",
+                                        "end": "11:00",
+                                        "kind": "focused_work",
+                                        "capacity_hours": 2.0,
+                                        "assigned_project_id": str(
+                                            project_id
+                                        ),  # Assign this slot to specific project
+                                    },
+                                    {
+                                        "start": "14:00",
+                                        "end": "16:00",
+                                        "kind": "light_work",
+                                        "capacity_hours": 2.0,
+                                        # No assignment - should use auto-optimization
+                                    },
+                                ],
+                            }
+
+                            response = client.post(
+                                "/api/schedule/daily", json=request_data
+                            )
+
+                            assert response.status_code == 200
+                            data = response.json()
+                            assert data["success"] is True
+                            assert len(data["assignments"]) >= 0
+
+                            # If task is assigned, it should be in the first slot (matching project)
+                            if data["assignments"]:
+                                assignment = data["assignments"][0]
+                                assert (
+                                    assignment["slot_index"] == 0
+                                )  # First slot with project constraint
+                                assert assignment["project_id"] == str(project_id)
+
+    @patch("taskagent_api.routers.scheduler.goal_service.get_goal")
+    @patch("taskagent_api.routers.scheduler.db.get_session")
+    @patch("taskagent_api.routers.scheduler.task_service.get_all_user_tasks")
+    def test_create_daily_schedule_with_weekly_task_assignment(
+        self, mock_get_tasks, mock_session, mock_get_goal, mock_auth
+    ):
+        """Test daily schedule creation with slot-level weekly task assignment."""
+        from taskagent_api.models import Task
+        from decimal import Decimal
+        from uuid import uuid4
+
+        # Mock session
+        mock_sess = MagicMock()
+        mock_session.return_value.__enter__.return_value = mock_sess
+
+        # Create mock weekly recurring task
+        weekly_task_id = uuid4()
+
+        # Mock weekly task ownership check
+        from taskagent_api.models import WeeklyRecurringTask
+
+        mock_weekly_recurring_task = MagicMock(spec=WeeklyRecurringTask)
+        mock_weekly_recurring_task.id = weekly_task_id
+        mock_weekly_recurring_task.user_id = mock_auth
+
+        # Configure session.exec to return appropriate results for ownership validation
+        def mock_exec(query):
+            mock_result = MagicMock()
+            if "weekly_recurring_tasks" in str(query).lower():
+                mock_result.first.return_value = mock_weekly_recurring_task
+            else:
+                mock_result.first.return_value = None
+            return mock_result
+
+        mock_sess.exec = mock_exec
+
+        # Create pseudo weekly task (simulating WeeklyRecurringTask conversion)
+        mock_weekly_task = type(
+            "PseudoTask",
+            (),
+            {
+                "id": weekly_task_id,
+                "title": "[週課] Weekly Report",
+                "estimate_hours": 1.0,
+                "status": "pending",
+                "due_date": None,
+                "work_type": "light_work",
+                "goal_id": None,
+                "is_weekly_recurring": True,
+            },
+        )()
+
+        mock_get_tasks.return_value = [mock_weekly_task]
+
+        # Mock _get_task_actual_hours to return empty dict
+        with patch(
+            "taskagent_api.routers.scheduler._get_task_actual_hours", return_value={}
+        ):
+            # Mock dependency functions to return empty dicts
+            with patch(
+                "taskagent_api.routers.scheduler._get_task_dependencies",
+                return_value={},
+            ):
+                with patch(
+                    "taskagent_api.routers.scheduler._get_goal_dependencies",
+                    return_value={},
+                ):
+                    with patch(
+                        "taskagent_api.routers.scheduler._batch_check_task_completion_status",
+                        return_value={},
+                    ):
+                        with patch(
+                            "taskagent_api.routers.scheduler._batch_check_goal_completion_status",
+                            return_value={},
+                        ):
+                            # Test request with weekly task assignment
+                            request_data = {
+                                "date": "2024-08-23",
+                                "task_source": {"type": "all_tasks"},
+                                "time_slots": [
+                                    {
+                                        "start": "09:00",
+                                        "end": "10:00",
+                                        "kind": "light_work",
+                                        "capacity_hours": 1.0,
+                                        "assigned_weekly_task_id": str(
+                                            weekly_task_id
+                                        ),  # Assign specific weekly task
+                                    },
+                                    {
+                                        "start": "14:00",
+                                        "end": "16:00",
+                                        "kind": "light_work",
+                                        "capacity_hours": 2.0,
+                                        # No assignment
+                                    },
+                                ],
+                            }
+
+                            response = client.post(
+                                "/api/schedule/daily", json=request_data
+                            )
+
+                            assert response.status_code == 200
+                            data = response.json()
+                            assert data["success"] is True
+
+                            # Weekly task should be assigned to the first slot only
+                            if data["assignments"]:
+                                assignment = data["assignments"][0]
+                                assert (
+                                    assignment["slot_index"] == 0
+                                )  # First slot with weekly task constraint
+                                assert assignment["task_id"] == str(weekly_task_id)
+                                assert (
+                                    "週課" in assignment["task_title"]
+                                )  # Should contain weekly task marker

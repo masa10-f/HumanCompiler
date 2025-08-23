@@ -21,6 +21,8 @@ from taskagent_api.routers.scheduler import (
     _get_goal_dependencies,
     _check_task_dependencies_satisfied,
     _check_goal_dependencies_satisfied,
+    _check_task_dependencies_satisfied_relaxed,
+    _check_goal_dependencies_satisfied_relaxed,
     _batch_check_task_completion_status,
     _batch_check_goal_completion_status,
 )
@@ -324,8 +326,8 @@ class TestSchedulerDependencies:
 
     @patch("taskagent_api.routers.scheduler._get_task_dependencies")
     @patch("taskagent_api.routers.scheduler._get_goal_dependencies")
-    @patch("taskagent_api.routers.scheduler._check_task_dependencies_satisfied")
-    @patch("taskagent_api.routers.scheduler._check_goal_dependencies_satisfied")
+    @patch("taskagent_api.routers.scheduler._check_task_dependencies_satisfied_relaxed")
+    @patch("taskagent_api.routers.scheduler._check_goal_dependencies_satisfied_relaxed")
     def test_optimize_schedule_filters_dependent_tasks(
         self,
         mock_check_goal_deps,
@@ -391,10 +393,10 @@ class TestSchedulerDependencies:
                 "taskagent_api.routers.scheduler._get_goal_dependencies"
             ) as mock_get_goal_deps,
             patch(
-                "taskagent_api.routers.scheduler._check_task_dependencies_satisfied"
+                "taskagent_api.routers.scheduler._check_task_dependencies_satisfied_relaxed"
             ) as mock_check_task_deps,
             patch(
-                "taskagent_api.routers.scheduler._check_goal_dependencies_satisfied"
+                "taskagent_api.routers.scheduler._check_goal_dependencies_satisfied_relaxed"
             ) as mock_check_goal_deps,
         ):
             mock_get_task_deps.return_value = {}
@@ -464,6 +466,188 @@ class TestSchedulerDependencies:
             # task2 should be completed, task3 should not be
             assert result[task2_id] is True
             assert result[task3_id] is False
+
+    def test_check_task_dependencies_satisfied_relaxed_no_dependencies(self):
+        """Test relaxed dependency check when task has no dependencies."""
+        mock_session = MagicMock()
+
+        task = SchedulerTask(
+            id=str(uuid4()),
+            title="Independent Task",
+            estimate_hours=1.0,
+            kind=TaskKind.LIGHT_WORK,
+        )
+
+        task_dependencies = {}
+        available_task_ids = set()
+
+        result = _check_task_dependencies_satisfied_relaxed(
+            mock_session, task, task_dependencies, None, available_task_ids
+        )
+        assert result is True
+
+    def test_check_task_dependencies_satisfied_relaxed_dependency_completed(self):
+        """Test relaxed dependency check when dependency is completed."""
+        task_id = str(uuid4())
+        dep_task_id = str(uuid4())
+
+        # Mock completed dependency task
+        mock_dep_task = MagicMock()
+        mock_dep_task.status = "completed"
+
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_dep_task
+
+        task = SchedulerTask(
+            id=task_id,
+            title="Dependent Task",
+            estimate_hours=1.0,
+            kind=TaskKind.LIGHT_WORK,
+        )
+
+        task_dependencies = {task_id: [dep_task_id]}
+        available_task_ids = set()  # Dependency not available for scheduling
+
+        result = _check_task_dependencies_satisfied_relaxed(
+            mock_session, task, task_dependencies, None, available_task_ids
+        )
+        assert result is True
+
+    def test_check_task_dependencies_satisfied_relaxed_dependency_available_for_scheduling(
+        self,
+    ):
+        """Test relaxed dependency check when dependency is available for scheduling."""
+        task_id = str(uuid4())
+        dep_task_id = str(uuid4())
+
+        # Mock incomplete dependency task
+        mock_dep_task = MagicMock()
+        mock_dep_task.status = "pending"
+
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_dep_task
+
+        task = SchedulerTask(
+            id=task_id,
+            title="Dependent Task",
+            estimate_hours=1.0,
+            kind=TaskKind.LIGHT_WORK,
+        )
+
+        task_dependencies = {task_id: [dep_task_id]}
+        available_task_ids = {dep_task_id}  # Dependency available for scheduling
+
+        result = _check_task_dependencies_satisfied_relaxed(
+            mock_session, task, task_dependencies, None, available_task_ids
+        )
+        assert result is True
+
+    def test_check_task_dependencies_satisfied_relaxed_dependency_not_satisfiable(self):
+        """Test relaxed dependency check when dependency is neither completed nor available."""
+        task_id = str(uuid4())
+        dep_task_id = str(uuid4())
+
+        # Mock incomplete dependency task
+        mock_dep_task = MagicMock()
+        mock_dep_task.status = "pending"
+
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_dep_task
+
+        task = SchedulerTask(
+            id=task_id,
+            title="Dependent Task",
+            estimate_hours=1.0,
+            kind=TaskKind.LIGHT_WORK,
+        )
+
+        task_dependencies = {task_id: [dep_task_id]}
+        available_task_ids = set()  # Dependency not available for scheduling
+
+        result = _check_task_dependencies_satisfied_relaxed(
+            mock_session, task, task_dependencies, None, available_task_ids
+        )
+        assert result is False
+
+    def test_optimize_schedule_with_relaxed_dependencies(self):
+        """Test that optimize_schedule uses relaxed dependency constraints."""
+        mock_session = MagicMock()
+
+        # Create two tasks where task1 depends on task2
+        task1_id = str(uuid4())
+        task2_id = str(uuid4())
+
+        tasks = [
+            SchedulerTask(
+                id=task1_id,
+                title="Dependent Task",
+                estimate_hours=1.0,
+                kind=TaskKind.LIGHT_WORK,
+                is_weekly_recurring=False,
+            ),
+            SchedulerTask(
+                id=task2_id,
+                title="Dependency Task",
+                estimate_hours=1.0,
+                kind=TaskKind.LIGHT_WORK,
+                is_weekly_recurring=False,
+            ),
+        ]
+
+        time_slots = [
+            TimeSlot(
+                start=time(9, 0),
+                end=time(10, 0),
+                kind=SlotKind.LIGHT_WORK,
+                capacity_hours=1.0,
+            ),
+            TimeSlot(
+                start=time(10, 0),
+                end=time(11, 0),
+                kind=SlotKind.LIGHT_WORK,
+                capacity_hours=1.0,
+            ),
+        ]
+
+        # Mock task dependencies: task1 depends on task2
+        with (
+            patch(
+                "taskagent_api.routers.scheduler._get_task_dependencies"
+            ) as mock_get_task_deps,
+            patch(
+                "taskagent_api.routers.scheduler._get_goal_dependencies"
+            ) as mock_get_goal_deps,
+            patch(
+                "taskagent_api.routers.scheduler._check_task_dependencies_satisfied_relaxed"
+            ) as mock_check_task_deps,
+            patch(
+                "taskagent_api.routers.scheduler._check_goal_dependencies_satisfied_relaxed"
+            ) as mock_check_goal_deps,
+        ):
+            mock_get_task_deps.return_value = {task1_id: [task2_id]}
+            mock_get_goal_deps.return_value = {}
+            mock_check_task_deps.return_value = (
+                True  # Both tasks can be scheduled due to relaxed constraints
+            )
+            mock_check_goal_deps.return_value = True
+
+            result = optimize_schedule(tasks, time_slots, session=mock_session)
+
+            # Both tasks should be scheduled despite the dependency
+            assert result.success
+            assert len(result.assignments) == 2
+            assert len(result.unscheduled_tasks) == 0
+
+            # Verify dependency ordering: task2 should be in an earlier slot than task1
+            task1_assignment = next(
+                a for a in result.assignments if a.task_id == task1_id
+            )
+            task2_assignment = next(
+                a for a in result.assignments if a.task_id == task2_id
+            )
+
+            # Task2 (dependency) should be scheduled in slot 0, task1 in slot 1
+            assert task2_assignment.slot_index < task1_assignment.slot_index
 
     @patch("taskagent_api.routers.scheduler.select")
     def test_batch_check_goal_completion_status(self, mock_select):
@@ -544,10 +728,10 @@ class TestSchedulerDependencies:
                 "taskagent_api.routers.scheduler._batch_check_goal_completion_status"
             ) as mock_batch_goal,
             patch(
-                "taskagent_api.routers.scheduler._check_task_dependencies_satisfied"
+                "taskagent_api.routers.scheduler._check_task_dependencies_satisfied_relaxed"
             ) as mock_check_task,
             patch(
-                "taskagent_api.routers.scheduler._check_goal_dependencies_satisfied"
+                "taskagent_api.routers.scheduler._check_goal_dependencies_satisfied_relaxed"
             ) as mock_check_goal,
         ):
             # Setup mocks

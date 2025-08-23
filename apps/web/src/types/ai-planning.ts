@@ -72,6 +72,9 @@ export interface TimeSlot {
   end: string;
   kind: 'study' | 'focused_work' | 'light_work';
   capacity_hours?: number;
+  // New fields for slot-level assignment
+  assigned_project_id?: string;
+  assigned_weekly_task_id?: string;
 }
 
 export interface TaskSource {
