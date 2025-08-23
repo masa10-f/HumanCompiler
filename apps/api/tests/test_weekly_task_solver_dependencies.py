@@ -230,9 +230,11 @@ class TestWeeklyTaskSolverDependencies:
         """Test that _collect_solver_context applies dependency filtering."""
         task1, task2, task3 = sample_tasks
 
-        # Mock context collector
+        # Mock context collector with proper context structure
         mock_context = MagicMock()
         mock_context.tasks = sample_tasks
+        mock_context.goals = []  # No goals needed for this test
+        mock_context.projects = []  # No projects needed for this test
         mock_solver.context_collector = MagicMock()
         # Make the async method return a coroutine
         mock_solver.context_collector.collect_weekly_plan_context = AsyncMock(
@@ -245,9 +247,13 @@ class TestWeeklyTaskSolverDependencies:
         # Mock dependency filtering - task1 blocked, others schedulable
         mock_check_deps.return_value = ([task2, task3], [task1])
 
-        # Mock actual hours retrieval
-        with patch.object(mock_solver, "_get_task_actual_hours") as mock_get_actual:
+        # Mock actual hours retrieval and project allocations
+        with (
+            patch.object(mock_solver, "_get_task_actual_hours") as mock_get_actual,
+            patch.object(mock_solver, "_optimize_project_allocations") as mock_optimize,
+        ):
             mock_get_actual.return_value = {}
+            mock_optimize.return_value = []  # No project allocations
 
             # Mock tasks to have remaining_hours attribute
             for task in sample_tasks:
@@ -262,7 +268,7 @@ class TestWeeklyTaskSolverDependencies:
             )
 
             result = await mock_solver._collect_solver_context(
-                mock_session, "user123", date(2024, 1, 1), request
+                mock_session, "user123", date(2024, 1, 1), request, None
             )
 
             # Should have applied dependency filtering

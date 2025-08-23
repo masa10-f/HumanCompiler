@@ -389,17 +389,29 @@ class WeeklyTaskSolver:
             week_start = datetime.strptime(request.week_start_date, "%Y-%m-%d").date()
 
             # Collect comprehensive context
-            context = await self._collect_solver_context(
-                session, user_id, week_start, request
-            )
-
-            # Analyze current workload and constraints
-            constraint_analysis = self._analyze_constraints(
-                context, request.constraints
+            # First, get project allocations to filter tasks properly
+            initial_context = await self.context_collector.collect_weekly_plan_context(
+                session=session,
+                user_id=user_id,
+                week_start_date=week_start,
+                project_filter=request.project_filter,
+                selected_recurring_task_ids=request.selected_recurring_task_ids,
+                capacity_hours=request.constraints.total_capacity_hours,
+                preferences=request.preferences,
             )
 
             # Optimize project allocations
             project_allocations = self._optimize_project_allocations(
+                initial_context, request.constraints
+            )
+
+            # Collect context with 0% allocation filtering
+            context = await self._collect_solver_context(
+                session, user_id, week_start, request, project_allocations
+            )
+
+            # Analyze current workload and constraints
+            constraint_analysis = self._analyze_constraints(
                 context, request.constraints
             )
 
@@ -503,7 +515,12 @@ class WeeklyTaskSolver:
             return {}
 
     async def _collect_solver_context(
-        self, session: Session, user_id: str, week_start, request: TaskSolverRequest
+        self,
+        session: Session,
+        user_id: str,
+        week_start,
+        request: TaskSolverRequest,
+        project_allocations: list[ProjectAllocation] | None = None,
     ) -> WeeklyPlanContext:
         """Collect comprehensive context for task solving."""
         context = await self.context_collector.collect_weekly_plan_context(
@@ -553,12 +570,57 @@ class WeeklyTaskSolver:
             task_dependencies, filtered_tasks, session
         )
 
-        # Update context with schedulable tasks
-        context.tasks = schedulable_tasks
+        # Use provided project allocations or calculate them if not provided
+        if project_allocations is None:
+            project_allocations = self._optimize_project_allocations(
+                context, request.constraints
+            )
+
+        # Filter out tasks from projects with 0% allocation
+        final_tasks = []
+        zero_allocation_projects = set()
+
+        for task in schedulable_tasks:
+            # Find the project for this task
+            goal = next((g for g in context.goals if g.id == task.goal_id), None)
+            if not goal:
+                # If no goal found, include the task (no project allocation to check)
+                final_tasks.append(task)
+                continue
+
+            # Find the allocation for this project (convert both to string for comparison)
+            allocation = next(
+                (
+                    a
+                    for a in project_allocations
+                    if str(a.project_id) == str(goal.project_id)
+                ),
+                None,
+            )
+
+            if allocation and allocation.target_hours <= 0.001:
+                # This project has 0% allocation - exclude all its tasks
+                zero_allocation_projects.add(goal.project_id)
+                logger.info(
+                    f"Excluding task {task.id} '{task.title}' - project {goal.project_id} has 0% allocation"
+                )
+            else:
+                final_tasks.append(task)
+
+        # Update context with filtered tasks
+        context.tasks = final_tasks
 
         logger.info(
-            f"Context filtering: {len(schedulable_tasks)} schedulable tasks, {len(blocked_tasks)} blocked by dependencies, out of {len(task_ids)} total tasks"
+            f"Context filtering: {len(final_tasks)} final tasks, "
+            f"{len(schedulable_tasks) - len(final_tasks)} excluded from 0% allocation projects, "
+            f"{len(blocked_tasks)} blocked by dependencies, "
+            f"out of {len(task_ids)} total tasks"
         )
+
+        if zero_allocation_projects:
+            logger.info(
+                f"Excluded {len(zero_allocation_projects)} projects with 0% allocation: {zero_allocation_projects}"
+            )
 
         return context
 
