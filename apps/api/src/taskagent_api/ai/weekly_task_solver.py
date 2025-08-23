@@ -19,8 +19,10 @@ from sqlmodel import Session, select
 from taskagent_api.ai.context_collector import ContextCollector
 from taskagent_api.ai.models import WeeklyPlanContext, TaskPlan
 from taskagent_api.ai.task_utils import filter_valid_tasks
-from taskagent_api.models import Project, Goal, Task, UserSettings
+from taskagent_api.models import Project, Goal, Task, UserSettings, Log
 from taskagent_api.crypto import get_crypto_service
+from sqlmodel import func
+from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
@@ -146,11 +148,15 @@ class TaskPriorityExtractor:
         """Create context for priority extraction."""
         tasks_data = []
         for task in context.tasks:
+            # Use remaining_hours for task context
+            remaining_hours = getattr(
+                task, "remaining_hours", float(task.estimate_hours or 0)
+            )
             task_data = {
                 "id": task.id,
                 "title": task.title,
                 "description": task.description,
-                "estimate_hours": task.estimate_hours,
+                "estimate_hours": remaining_hours,  # Using remaining hours for AI context
                 "due_date": task.due_date.isoformat() if task.due_date else None,
                 "priority": getattr(task, "priority", 3),
                 "goal_id": task.goal_id,
@@ -443,11 +449,61 @@ class WeeklyTaskSolver:
                 generated_at=datetime.now(),
             )
 
+    def _get_task_actual_hours(
+        self, session: Session, task_ids: list[str]
+    ) -> dict[str, float]:
+        """
+        Get actual hours logged for each task from the logs table.
+
+        Args:
+            session: Database session
+            task_ids: List of task IDs to get actual hours for
+
+        Returns:
+            Dict mapping task_id to total actual hours
+        """
+        if not task_ids:
+            return {}
+
+        try:
+            # Convert string IDs to UUIDs
+            task_uuids = []
+            for task_id in task_ids:
+                try:
+                    task_uuids.append(UUID(task_id))
+                except ValueError as uuid_error:
+                    logger.warning(
+                        f"Invalid UUID format for task ID {task_id}: {uuid_error}"
+                    )
+                    continue
+
+            if not task_uuids:
+                return {}
+
+            # Query logs table to get actual hours per task
+            results = session.exec(
+                select(Log.task_id, func.sum(Log.actual_minutes).label("total_minutes"))
+                .where(Log.task_id.in_(task_uuids))
+                .group_by(Log.task_id)
+            ).all()
+
+            # Convert minutes to hours and map by task ID string
+            actual_hours_map = {}
+            for task_id, total_minutes in results:
+                hours = float(total_minutes or 0) / 60.0
+                actual_hours_map[str(task_id)] = hours
+
+            return actual_hours_map
+
+        except Exception as e:
+            logger.error(f"Error getting actual hours for tasks: {e}")
+            return {}
+
     async def _collect_solver_context(
         self, session: Session, user_id: str, week_start, request: TaskSolverRequest
     ) -> WeeklyPlanContext:
         """Collect comprehensive context for task solving."""
-        return await self.context_collector.collect_weekly_plan_context(
+        context = await self.context_collector.collect_weekly_plan_context(
             session=session,
             user_id=user_id,
             week_start_date=week_start,
@@ -456,6 +512,39 @@ class WeeklyTaskSolver:
             capacity_hours=request.constraints.total_capacity_hours,
             preferences=request.preferences,
         )
+
+        # Get actual hours for all tasks to calculate remaining hours
+        task_ids = [str(task.id) for task in context.tasks]
+        actual_hours_map = self._get_task_actual_hours(session, task_ids)
+
+        # Calculate remaining hours for each task and filter out completed tasks
+        filtered_tasks = []
+        for task in context.tasks:
+            task_id = str(task.id)
+            actual_hours = actual_hours_map.get(task_id, 0.0)
+            estimate_hours = float(task.estimate_hours or 0)
+            remaining_hours = max(0.0, estimate_hours - actual_hours)
+
+            # Add remaining hours as an attribute to the task object
+            task.remaining_hours = remaining_hours
+            task.actual_hours = actual_hours
+
+            # Only include tasks with remaining hours > 0
+            if remaining_hours > 0:
+                filtered_tasks.append(task)
+            else:
+                logger.info(
+                    f"Excluding completed task {task_id} '{task.title}' - no remaining hours"
+                )
+
+        # Update context with filtered tasks
+        context.tasks = filtered_tasks
+
+        logger.info(
+            f"Context filtering: {len(context.tasks)} tasks with remaining hours out of {len(task_ids)} total tasks"
+        )
+
+        return context
 
     def _analyze_constraints(
         self, context: WeeklyPlanContext, constraints: WeeklyConstraints
@@ -685,12 +774,14 @@ class WeeklyTaskSolver:
         # Select items within capacity
         total_hours = 0.0
         for item, score, item_type in scored_items:
-            item_hours = float(item.estimate_hours or 0)
+            item_hours = getattr(
+                item, "remaining_hours", float(item.estimate_hours or 0)
+            )
             if total_hours + item_hours <= constraints.total_capacity_hours:
                 if item_type == "regular_task":
                     selected_tasks.append(
                         TaskPlan(
-                            task_id=item.id,
+                            task_id=str(item.id),
                             task_title=item.title,
                             estimated_hours=item_hours,
                             priority=int(score),
@@ -700,7 +791,7 @@ class WeeklyTaskSolver:
                 elif item_type == "weekly_recurring":
                     selected_tasks.append(
                         TaskPlan(
-                            task_id=item.id,
+                            task_id=str(item.id),
                             task_title=f"[週課] {item.title}",
                             estimated_hours=item_hours,
                             priority=int(score),
@@ -732,7 +823,9 @@ class WeeklyTaskSolver:
                 "id": t.id,
                 "title": t.title,
                 "description": t.description,
-                "estimate_hours": t.estimate_hours,
+                "estimate_hours": getattr(
+                    t, "remaining_hours", float(t.estimate_hours or 0)
+                ),
                 "due_date": t.due_date.isoformat() if t.due_date else None,
                 "status": t.status,
                 "goal_id": t.goal_id,
