@@ -1503,6 +1503,7 @@ async def save_daily_schedule(
         ).first()
 
         # Prepare schedule data for storage
+        # Note: unscheduled_tasks are intentionally not stored in database (Issue #141)
         plan_data = {
             "success": schedule_data.success,
             "assignments": [
@@ -1519,19 +1520,6 @@ async def save_daily_schedule(
                     "slot_kind": a.slot_kind,
                 }
                 for a in schedule_data.assignments
-            ],
-            "unscheduled_tasks": [
-                {
-                    "id": t.id,
-                    "title": t.title,
-                    "estimate_hours": t.estimate_hours,
-                    "priority": t.priority,
-                    "kind": t.kind,
-                    "due_date": t.due_date.isoformat() if t.due_date else None,
-                    "goal_id": t.goal_id,
-                    "project_id": t.project_id,
-                }
-                for t in schedule_data.unscheduled_tasks
             ],
             "total_scheduled_hours": schedule_data.total_scheduled_hours,
             "optimization_status": schedule_data.optimization_status,

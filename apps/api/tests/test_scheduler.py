@@ -470,3 +470,90 @@ class TestSchedulerAPI:
         # Invalid task source type
         with pytest.raises(ValueError):
             TaskSource(type="invalid_type")
+
+    def test_save_daily_schedule_unscheduled_tasks_not_stored(self, mock_auth):
+        """Test that unscheduled_tasks are not stored in database (Issue #141)."""
+        from taskagent_api.routers.scheduler import DailyScheduleResponse, TaskInfo
+        from taskagent_api.models import ScheduleResponse
+        from taskagent_api.database import db
+
+        # Mock session and database operations
+        mock_sess = MagicMock()
+
+        # Mock no existing schedule
+        mock_sess.exec.return_value.first.return_value = None
+
+        # Make sure session.add doesn't fail and session.refresh works
+        mock_sess.add.return_value = None
+        mock_sess.commit.return_value = None
+        mock_sess.refresh.return_value = None
+
+        # Override the database dependency
+        def mock_get_session():
+            return mock_sess
+
+        app.dependency_overrides[db.get_session] = mock_get_session
+
+        try:
+            # Mock the ScheduleResponse.model_validate
+            with patch(
+                "taskagent_api.routers.scheduler.ScheduleResponse.model_validate"
+            ) as mock_validate:
+                mock_validate.return_value = ScheduleResponse(
+                    id=str(uuid4()),
+                    user_id=mock_auth,
+                    date=datetime.strptime("2025-06-23", "%Y-%m-%d"),
+                    plan_json={},
+                    created_at=datetime.now(),
+                    updated_at=datetime.now(),
+                )
+
+                # Create test data with unscheduled tasks
+                schedule_data = DailyScheduleResponse(
+                    success=True,
+                    date="2025-06-23",
+                    assignments=[],
+                    unscheduled_tasks=[
+                        TaskInfo(
+                            id=str(uuid4()),
+                            title="Unscheduled Task 1",
+                            estimate_hours=2.0,
+                            priority=1,
+                            kind="focused_work",
+                        ),
+                        TaskInfo(
+                            id=str(uuid4()),
+                            title="Unscheduled Task 2",
+                            estimate_hours=1.5,
+                            priority=2,
+                            kind="light_work",
+                        ),
+                    ],
+                    total_scheduled_hours=0.0,
+                    optimization_status="OPTIMAL",
+                    solve_time_seconds=0.1,
+                    generated_at=datetime.now(),
+                )
+
+                response = client.post(
+                    "/api/schedule/daily/save", json=schedule_data.model_dump()
+                )
+
+                assert response.status_code == 200
+
+                # Verify that the Schedule model was created without unscheduled_tasks
+                mock_sess.add.assert_called_once()
+                saved_schedule = mock_sess.add.call_args[0][0]
+
+                # Check that plan_json does not contain unscheduled_tasks
+                assert "unscheduled_tasks" not in saved_schedule.plan_json
+                # But should contain other expected fields
+                assert "success" in saved_schedule.plan_json
+                assert "assignments" in saved_schedule.plan_json
+                assert "total_scheduled_hours" in saved_schedule.plan_json
+                assert "optimization_status" in saved_schedule.plan_json
+
+        finally:
+            # Clean up the dependency override
+            if db.get_session in app.dependency_overrides:
+                del app.dependency_overrides[db.get_session]
