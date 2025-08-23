@@ -41,6 +41,7 @@ import { toast } from '@/hooks/use-toast';
 import { aiPlanningApi, weeklyScheduleApi, getSecureApiUrl, secureFetch } from '@/lib/api';
 import { log } from '@/lib/logger';
 import type { WeeklyPlanResponse, SavedWeeklySchedule } from '@/types/ai-planning';
+import type { WeeklyReportResponse } from '@/types/reports';
 import { getAuthHeaders } from '@/lib/auth';
 
 interface WeeklyRecurringTask {
@@ -77,7 +78,7 @@ export default function AIPlanningPage() {
   const [weeklyPlan, setWeeklyPlan] = useState<WeeklyPlanResponse | null>(null);
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [checkingApiKey, setCheckingApiKey] = useState(true);
-  const [weeklyReport, setWeeklyReport] = useState<any | null>(null);
+  const [weeklyReport, setWeeklyReport] = useState<WeeklyReportResponse | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   const checkUserSettings = useCallback(async () => {
@@ -188,9 +189,47 @@ export default function AIPlanningPage() {
     }
   };
 
+  // Helper function to validate that the date is a Monday
+  const validateWeekStartDate = (dateString: string): boolean => {
+    const date = new Date(dateString);
+    // getDay() returns 0 for Sunday, 1 for Monday, etc.
+    return date.getDay() === 1;
+  };
+
+  // Helper function to get the Monday of the current week
+  const getMondayOfCurrentWeek = (): string => {
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Handle Sunday (0) case
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + mondayOffset);
+    return monday.toISOString().split('T')[0];
+  };
+
   const generateWeeklyReport = async () => {
     try {
       setIsGeneratingReport(true);
+
+      // Validate that the week start date is a Monday
+      if (!validateWeekStartDate(weekStartDate)) {
+        toast({
+          title: '日付エラー',
+          description: '週開始日は月曜日である必要があります。正しい月曜日の日付を選択してください。',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Validate date format
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(weekStartDate)) {
+        toast({
+          title: '日付フォーマットエラー',
+          description: '日付は YYYY-MM-DD の形式で入力してください。',
+          variant: 'destructive',
+        });
+        return;
+      }
 
       const apiUrl = getSecureApiUrl();
       if (!apiUrl) {
@@ -1145,12 +1184,29 @@ export default function AIPlanningPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="report-week-start">報告対象週（月曜日）</Label>
-                  <Input
-                    id="report-week-start"
-                    type="date"
-                    value={weekStartDate}
-                    onChange={(e) => setWeekStartDate(e.target.value)}
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      id="report-week-start"
+                      type="date"
+                      value={weekStartDate}
+                      onChange={(e) => setWeekStartDate(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setWeekStartDate(getMondayOfCurrentWeek())}
+                      className="whitespace-nowrap"
+                    >
+                      今週
+                    </Button>
+                  </div>
+                  {weekStartDate && !validateWeekStartDate(weekStartDate) && (
+                    <p className="text-sm text-destructive">
+                      ⚠️ 選択された日付は月曜日ではありません
+                    </p>
+                  )}
                 </div>
               </div>
 

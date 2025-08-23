@@ -1,10 +1,11 @@
 """Weekly work report generator using OpenAI API"""
 
-import os
+import logging
 from datetime import datetime, timedelta
 
 from openai import OpenAI
 from sqlmodel import Session, select, and_, func
+from sqlalchemy.orm import selectinload
 
 from taskagent_api.models import (
     Log,
@@ -26,6 +27,7 @@ class WeeklyReportGenerator:
     def __init__(self):
         """Initialize the report generator"""
         self.openai_client = None
+        self.logger = logging.getLogger(__name__)
 
     def _get_openai_client(self, api_key: str) -> OpenAI:
         """Get or create OpenAI client with provided API key"""
@@ -47,9 +49,14 @@ class WeeklyReportGenerator:
         end_date: datetime,
         project_ids: list[str] = None,
     ) -> list[Log]:
-        """Get all work logs for the specified week and optional project filter"""
+        """Get all work logs for the specified week and optional project filter with eager loading"""
         query = (
             select(Log)
+            .options(
+                selectinload(Log.task)
+                .selectinload(Task.goal)
+                .selectinload(Goal.project)
+            )
             .join(Task, Log.task_id == Task.id)
             .join(Goal, Task.goal_id == Goal.id)
             .join(Project, Goal.project_id == Project.id)
@@ -289,10 +296,36 @@ class WeeklyReportGenerator:
                 max_tokens=2000,
             )
 
-            return response.choices[0].message.content.strip()
+            if response.choices and response.choices[0].message.content:
+                return response.choices[0].message.content.strip()
+            else:
+                self.logger.warning("OpenAI response has no content, using fallback")
+                return self._generate_basic_markdown_report(
+                    week_start_date, work_summary, project_summaries
+                )
 
         except Exception as e:
-            # Fallback to basic markdown if OpenAI fails
+            # Log specific error type and details
+            error_type = type(e).__name__
+            self.logger.error(f"OpenAI API error ({error_type}): {str(e)}")
+
+            # Check for specific OpenAI errors
+            if hasattr(e, "response"):
+                self.logger.error(f"OpenAI error response: {e.response}")
+
+            error_message = str(e).lower()
+            if "rate" in error_message and "limit" in error_message:
+                self.logger.warning(
+                    "OpenAI rate limit exceeded, using fallback report generation"
+                )
+            elif "api_key" in error_message or "authentication" in error_message:
+                self.logger.error("OpenAI API key authentication failed")
+            elif "quota" in error_message:
+                self.logger.error("OpenAI quota exceeded")
+            else:
+                self.logger.error(f"Unexpected OpenAI error: {str(e)}")
+
+            # Always fallback to basic markdown report
             return self._generate_basic_markdown_report(
                 week_start_date, work_summary, project_summaries
             )
@@ -412,36 +445,26 @@ class WeeklyReportGenerator:
                 generated_at=datetime.now(),
             )
 
-        # Get all tasks that had work done
+        # Get all tasks that had work done with eager loading
         task_ids = list({log.task_id for log in work_logs})
 
         tasks_query = (
             select(Task)
+            .options(selectinload(Task.goal).selectinload(Goal.project))
             .join(Goal, Task.goal_id == Goal.id)
             .join(Project, Goal.project_id == Project.id)
             .where(and_(Task.id.in_(task_ids), Project.owner_id == user_id))
         )
         tasks = session.exec(tasks_query).all()
 
-        # Load relationships for logs
-        for log in work_logs:
-            log.task = session.get(Task, log.task_id)
-            if log.task:
-                log.task.goal = session.get(Goal, log.task.goal_id)
-                if log.task.goal:
-                    log.task.goal.project = session.get(
-                        Project, log.task.goal.project_id
-                    )
+        # Relationships are already loaded via eager loading, no need for manual loading
 
-        # Get unique projects
-        project_ids = list(
-            {task.goal.project.id for task in tasks if task.goal and task.goal.project}
-        )
-        projects = [
-            session.get(Project, pid)
-            for pid in project_ids
-            if session.get(Project, pid)
-        ]
+        # Get unique projects from already loaded task relationships
+        project_dict = {}
+        for task in tasks:
+            if task.goal and task.goal.project:
+                project_dict[task.goal.project.id] = task.goal.project
+        projects = list(project_dict.values())
 
         # Calculate summaries
         work_summary = self._calculate_weekly_summary(work_logs, tasks, start_date)
