@@ -63,13 +63,15 @@ export default function AIPlanningPage() {
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [selectedRecurringTaskIds, setSelectedRecurringTaskIds] = useState<string[]>([]);
   const [projectAllocations, setProjectAllocations] = useState<Record<string, number>>({});
-  const [weekStartDate, setWeekStartDate] = useState(() => {
+  const [weekStartDate, setWeekStartDate] = useState<string>(() => {
     const today = new Date();
     const monday = new Date(today);
     const dayOfWeek = today.getDay();
     const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
     monday.setDate(today.getDate() + daysToMonday);
-    return monday.toISOString().split('T')[0];
+    const isoString = monday.toISOString();
+    const datePart = isoString.split('T')[0];
+    return datePart || isoString.substring(0, 10); // Fallback to first 10 chars if split fails
   });
   const [capacityHours, setCapacityHours] = useState(40);
   const [userPrompt, setUserPrompt] = useState('');
@@ -203,7 +205,9 @@ export default function AIPlanningPage() {
     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Handle Sunday (0) case
     const monday = new Date(today);
     monday.setDate(today.getDate() + mondayOffset);
-    return monday.toISOString().split('T')[0];
+    const isoString = monday.toISOString();
+    const datePart = isoString.split('T')[0];
+    return datePart || isoString; // Fallback to full ISO string if split fails
   };
 
   const generateWeeklyReport = async () => {
