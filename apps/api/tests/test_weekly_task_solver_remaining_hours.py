@@ -173,25 +173,24 @@ class TestWeeklyTaskSolverRemainingHours:
         self, sample_context, constraints
     ):
         """Test that _analyze_constraints uses remaining hours for total calculation."""
-        # Add remaining hours to tasks
+        # Add remaining hours to all tasks
         sample_context.tasks[0].__dict__["remaining_hours"] = 3.0  # task1
-        sample_context.tasks[1].__dict__["remaining_hours"] = (
-            2.5  # task3 (task2 filtered out)
-        )
+        sample_context.tasks[1].__dict__["remaining_hours"] = 2.5  # task2
+        sample_context.tasks[2].__dict__["remaining_hours"] = 4.0  # task3
 
         solver = WeeklyTaskSolver()
 
         # Call analyze constraints
         analysis = solver._analyze_constraints(sample_context, constraints)
 
-        # Should sum remaining hours: 3.0 + 2.5 + 4.0 (third task without remaining_hours set) = 9.5
+        # Should sum remaining hours: 3.0 + 2.5 + 4.0 = 9.5
         assert analysis["total_task_hours"] == 9.5
 
         # Available hours = 40.0 - 5.0 = 35.0
         assert analysis["available_hours"] == 35.0
 
-        # Capacity utilization = 5.5 / 35.0
-        expected_utilization = 5.5 / 35.0
+        # Capacity utilization = 9.5 / 35.0
+        expected_utilization = 9.5 / 35.0
         assert abs(analysis["capacity_utilization"] - expected_utilization) < 0.001
 
     @patch("taskagent_api.routers.scheduler._get_task_actual_hours")
