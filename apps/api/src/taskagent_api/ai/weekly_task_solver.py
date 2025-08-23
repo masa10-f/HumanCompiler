@@ -1288,6 +1288,9 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
             )
 
             # Constraint 2: Project allocation constraints
+            logger.info(
+                f"Applying project allocation constraints for {len(project_allocations)} projects"
+            )
             for allocation in project_allocations:
                 project_tasks = []
                 project_goal_ids = [
@@ -1311,6 +1314,15 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                     )  # Allow 10% flexibility (stricter constraint)
                     max_hours = int(allocation.max_hours * 10)
 
+                    logger.info(
+                        f"Project {allocation.project_title}: "
+                        f"target_hours={allocation.target_hours:.1f}, "
+                        f"max_hours={allocation.max_hours:.1f}, "
+                        f"min_constraint={min_hours / 10:.1f}, "
+                        f"max_constraint={max_hours / 10:.1f}, "
+                        f"tasks_count={len(project_tasks)}"
+                    )
+
                     if len(project_tasks) > 0:
                         model.Add(sum(project_tasks) >= min_hours)
                         model.Add(sum(project_tasks) <= max_hours)
@@ -1331,7 +1343,20 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
 
             # Solve the optimization problem
             solver.parameters.max_time_in_seconds = 30.0  # Timeout after 30 seconds
+
+            logger.info("Starting OR-Tools constraint optimization...")
+            logger.info(f"Total variables: {len(task_vars) + len(weekly_task_vars)}")
+            logger.info(f"Project allocation constraints: {len(project_allocations)}")
+
             status = solver.Solve(model)
+
+            logger.info(f"OR-Tools solver status: {status}")
+            if status == cp_model.OPTIMAL:
+                logger.info("✓ Found optimal solution")
+            elif status == cp_model.FEASIBLE:
+                logger.info("✓ Found feasible solution")
+            else:
+                logger.warning(f"⚠️ Solver failed with status: {status}")
 
             # Process results
             selected_tasks = []
@@ -1422,10 +1447,56 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                     for project_title, hours in project_distribution.items():
                         insights.append(f"  • {project_title}: {hours:.1f}時間")
 
+                    # Log comparison between expected and actual allocations
+                    logger.info("=== Project Allocation Analysis ===")
+                    for allocation in project_allocations:
+                        expected_hours = allocation.target_hours
+                        actual_hours = project_distribution.get(
+                            allocation.project_title, 0.0
+                        )
+                        diff_hours = actual_hours - expected_hours
+                        diff_percent = (
+                            (diff_hours / expected_hours * 100)
+                            if expected_hours > 0
+                            else 0
+                        )
+
+                        logger.info(
+                            f"Project '{allocation.project_title}': "
+                            f"Expected={expected_hours:.1f}h, "
+                            f"Actual={actual_hours:.1f}h, "
+                            f"Diff={diff_hours:+.1f}h ({diff_percent:+.1f}%)"
+                        )
+
             else:
                 # Optimization failed - use fallback
+                logger.warning(
+                    "OR-Tools optimization failed - analyzing potential causes..."
+                )
+
+                # Check if project allocation constraints are too restrictive
+                total_target_hours = sum(
+                    alloc.target_hours * 0.9 for alloc in project_allocations
+                )
+                total_available_tasks_hours = sum(task_hours.values()) + sum(
+                    weekly_task_hours.values()
+                )
+
+                logger.warning(
+                    f"Total minimum required hours: {total_target_hours:.1f}"
+                )
+                logger.warning(
+                    f"Total available task hours: {total_available_tasks_hours:.1f}"
+                )
+
+                if total_target_hours > constraints.total_capacity_hours:
+                    logger.warning(
+                        "⚠️ Project allocation constraints exceed total capacity!"
+                    )
+
                 insights = [
                     "⚠️ OR-Tools最適化が制約を満たす解を見つけられませんでした",
+                    f"💡 最小必要工数: {total_target_hours:.1f}h, 利用可能工数: {total_available_tasks_hours:.1f}h",
                     "🔄 ヒューリスティック手法にフォールバック中...",
                 ]
                 selected_tasks, fallback_insights = self._heuristic_task_selection(

@@ -45,8 +45,18 @@ class WeeklyPlanService:
         if request.project_allocations:
             # Convert dict to ProjectAllocation objects for consistency
             from taskagent_api.ai.weekly_task_solver import ProjectAllocation
+            import logging
+
+            logger = logging.getLogger(__name__)
 
             project_allocations = []
+            logger.info(
+                f"Converting project allocations: {request.project_allocations}"
+            )
+            logger.info(
+                f"Available capacity: {request.capacity_hours}h, meeting buffer: 5.0h"
+            )
+
             for project_id, percentage in request.project_allocations.items():
                 # Find project info from context
                 project = next(
@@ -56,12 +66,20 @@ class WeeklyPlanService:
                     # Calculate target hours from percentage
                     available_hours = request.capacity_hours - 5.0  # meeting buffer
                     target_hours = (percentage / 100.0) * available_hours
+                    max_hours = target_hours * 1.5
+
+                    logger.info(
+                        f"Project '{project.title}' ({project_id}): "
+                        f"{percentage}% = {target_hours:.1f}h target, "
+                        f"{max_hours:.1f}h max"
+                    )
+
                     project_allocations.append(
                         ProjectAllocation(
                             project_id=project_id,
                             project_title=project.title,
                             target_hours=target_hours,
-                            max_hours=target_hours * 1.5,
+                            max_hours=max_hours,
                             priority_weight=percentage / 100.0,
                         )
                     )
