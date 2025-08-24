@@ -955,9 +955,13 @@ class WeeklyTaskSolver:
                     )
                     urgency_score = 0
 
+            # Calculate remaining hours for effort scoring
+            remaining_hours = getattr(
+                task, "remaining_hours", float(task.estimate_hours or 0)
+            )
             effort_score = 10 - min(
-                float(task.estimate_hours or 0), 10
-            )  # Prefer smaller tasks
+                remaining_hours, 10
+            )  # Prefer smaller remaining tasks
 
             total_score = (
                 urgency_score * constraints.deadline_weight
@@ -971,7 +975,9 @@ class WeeklyTaskSolver:
                 if str(weekly_task.id) in context.selected_recurring_task_ids:
                     # Weekly recurring tasks get high priority to ensure they are included
                     recurring_score = 8.0  # High priority for consistency
-                    effort_score = 10 - min(float(weekly_task.estimate_hours or 0), 10)
+                    # Weekly tasks have no previous progress, so use full estimate
+                    weekly_hours = float(weekly_task.estimate_hours or 0)
+                    effort_score = 10 - min(weekly_hours, 10)
                     total_score = (
                         recurring_score * 0.7  # High weight for weekly consistency
                         + effort_score * constraints.effort_efficiency_weight
