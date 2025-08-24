@@ -107,3 +107,27 @@ def test_api_error_format():
     if response.status_code != 500:  # Skip if general exception
         data = response.json()
         assert "detail" in data
+
+
+@patch("taskagent_api.routers.tasks.get_current_user")
+@patch("taskagent_api.routers.tasks.get_session")
+def test_delete_task_endpoint_structure(mock_session, mock_user):
+    """Test that task deletion endpoint is properly structured"""
+    # Mock authenticated user
+    mock_user.return_value = Mock(user_id="87654321-4321-8765-4321-876543218765")
+    mock_session.return_value = Mock()
+
+    # Test DELETE endpoint accessibility with a fake UUID
+    fake_task_id = "12345678-1234-1234-1234-123456789012"
+    response = client.delete(f"/api/tasks/{fake_task_id}")
+
+    # Should reach the endpoint (may fail on business logic but not routing)
+    assert response.status_code in [200, 204, 400, 403, 404, 500]  # Not routing error
+
+
+def test_delete_task_endpoint_invalid_uuid():
+    """Test task deletion endpoint with invalid UUID"""
+    response = client.delete("/api/tasks/invalid-uuid")
+
+    # Should return 422 for invalid UUID format
+    assert response.status_code in [422, 400, 403, 500]

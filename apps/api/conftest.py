@@ -37,8 +37,8 @@ os.environ.update(
 # These imports must happen after environment variables are set
 # ruff: noqa: E402
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
+from sqlmodel import Session, SQLModel
 
 # Create a test database URL (SQLite for testing)
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -50,23 +50,18 @@ engine = create_engine(
     poolclass=StaticPool,
 )
 
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# No need for sessionmaker with SQLModel
 
 
 @pytest.fixture(scope="function")
 def db():
     """Create a fresh database for each test"""
-    from sqlmodel import SQLModel
-
     SQLModel.metadata.create_all(bind=engine)
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        SQLModel.metadata.drop_all(bind=engine)
-        # Ensure all connections are properly closed
-        engine.dispose()
+    with Session(engine) as session:
+        yield session
+    SQLModel.metadata.drop_all(bind=engine)
+    # Ensure all connections are properly closed
+    engine.dispose()
 
 
 @pytest.fixture(scope="function")
@@ -144,3 +139,49 @@ def override_settings():
     # Restore original values
     settings.database_url = original_db_url
     settings.environment = original_env
+
+
+@pytest.fixture
+def test_user_id():
+    """Provide a test user ID"""
+    from uuid import UUID
+
+    return UUID("12345678-1234-1234-1234-123456789012")
+
+
+@pytest.fixture
+def session(db):
+    """Alias for db fixture"""
+    return db
+
+
+# Test helper functions
+def create_test_data(session: Session, user_id: str):
+    """Create basic test data (project, goal) for testing"""
+    from taskagent_api.models import ProjectCreate, GoalCreate, UserCreate
+    from taskagent_api.services import ProjectService, GoalService, UserService
+
+    # Create user first
+    user_service = UserService()
+    user_data = UserCreate(email="test@example.com")
+    user_service.create_user(session, user_data, user_id)
+
+    project_service = ProjectService()
+    goal_service = GoalService()
+
+    # Create project
+    project_data = ProjectCreate(
+        title="Test Project", description="Test project for testing"
+    )
+    project = project_service.create_project(session, project_data, user_id)
+
+    # Create goal
+    goal_data = GoalCreate(
+        project_id=project.id,
+        title="Test Goal",
+        description="Test goal for testing",
+        estimate_hours=10.0,
+    )
+    goal = goal_service.create_goal(session, goal_data, user_id)
+
+    return {"project": project, "goal": goal}

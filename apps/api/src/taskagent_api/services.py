@@ -580,14 +580,57 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
     def delete_task(
         self, session: Session, task_id: str | UUID, owner_id: str | UUID
     ) -> bool:
-        """Delete task"""
-        result = self.delete(session, task_id, owner_id)
-        # Invalidate caches that might contain this task's data
-        invalidate_cache("short", "tasks_list")
-        invalidate_cache("short", "tasks_by_goal")
-        invalidate_cache("short", "tasks_by_project")
-        invalidate_cache("medium", "task_detail")
-        return result
+        """Delete task with proper dependency cleanup"""
+        # Verify task ownership first
+        task = self.get_task(session, task_id, owner_id)
+        if not task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+            )
+
+        try:
+            # Delete all dependencies where this task is a dependency (depends_on_task)
+            dependencies_as_dependency = session.exec(
+                select(TaskDependency).where(
+                    TaskDependency.depends_on_task_id == task_id
+                )
+            ).all()
+
+            for dep in dependencies_as_dependency:
+                session.delete(dep)
+
+            # Delete all dependencies where this task has dependencies (task_id)
+            dependencies_as_task = session.exec(
+                select(TaskDependency).where(TaskDependency.task_id == task_id)
+            ).all()
+
+            for dep in dependencies_as_task:
+                session.delete(dep)
+
+            # Delete all logs associated with this task
+            logs = session.exec(select(Log).where(Log.task_id == task_id)).all()
+
+            for log in logs:
+                session.delete(log)
+
+            # Finally delete the task itself
+            session.delete(task)
+            session.commit()
+
+            # Invalidate caches that might contain this task's data
+            invalidate_cache("short", "tasks_list")
+            invalidate_cache("short", "tasks_by_goal")
+            invalidate_cache("short", "tasks_by_project")
+            invalidate_cache("medium", "task_detail")
+
+            return True
+
+        except Exception as e:
+            session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to delete task: {str(e)}",
+            )
 
     def add_task_dependency(
         self,
@@ -632,8 +675,10 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             )
 
         # Create dependency
+        from uuid import uuid4
+
         dependency = TaskDependency(
-            task_id=task_id, depends_on_task_id=depends_on_task_id
+            id=uuid4(), task_id=task_id, depends_on_task_id=depends_on_task_id
         )
         session.add(dependency)
         session.commit()
