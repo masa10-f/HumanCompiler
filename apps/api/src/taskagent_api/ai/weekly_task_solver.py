@@ -48,11 +48,15 @@ class WeeklyConstraints(BaseModel):
     )
     project_allocations: list[ProjectAllocation] = Field(default_factory=list)
 
-    # Constraint priorities
-    deadline_weight: float = Field(0.4, description="Weight for deadline urgency")
-    project_balance_weight: float = Field(0.3, description="Weight for project balance")
+    # Constraint priorities - Project allocation is now the highest priority
+    project_balance_weight: float = Field(
+        0.7, description="Weight for project allocation balance (HIGHEST PRIORITY)"
+    )
+    deadline_weight: float = Field(
+        0.2, description="Weight for deadline urgency (secondary)"
+    )
     effort_efficiency_weight: float = Field(
-        0.3, description="Weight for effort efficiency"
+        0.1, description="Weight for effort efficiency (tertiary)"
     )
 
 
@@ -212,16 +216,18 @@ class TaskPriorityExtractor:
 ## 週開始日
 {context.week_start_date.strftime("%Y-%m-%d")}
 
-## 優先度算出の基準
-1. **ユーザー設定の優先度** - ユーザーが設定した優先度レベル（1=最高、5=最低）を基礎スコアとして使用
-2. **締切の緊急度** - 週内および近い将来の締切
-3. **プロジェクトの戦略的重要度** - リソース配分比率を考慮
+## 優先度算出の基準（重要度順）
+1. **プロジェクト配分比率（最重要）** - ユーザー指定のプロジェクト配分%に従い、高い配分%のプロジェクトのタスクを最優先
+2. **ユーザー設定の優先度** - ユーザーが設定した優先度レベル（1=最高、5=最低）を副次的スコアとして使用
+3. **締切の緊急度** - 週内および近い将来の締切（プロジェクト配分の次に考慮）
 4. **タスクの影響度** - プロジェクト目標への貢献度
 5. **依存関係** - 他のタスクをブロックする可能性
 6. **工数効率** - 投入時間に対する価値{prompt_section}
 
-**重要**: ユーザーが設定したpriorityフィールド（1-5）を基礎として、他の要因で微調整してください。
-priority=1のタスクは高スコア、priority=5のタスクは低スコアとなるように算出してください。
+**最重要事項**: プロジェクト配分比率（allocation_ratio）が最優先です。
+- 配分%が高いプロジェクトのタスクに対して大幅な優先度ボーナスを付与してください
+- 配分%が0%のプロジェクトのタスクの優先度は大幅に下げてください
+- ユーザー設定のpriorityフィールド（1-5）は副次的要因として使用してください
 
 各タスクに対して0.0-10.0の優先度スコアを算出し、extract_task_priorities関数で構造化して返してください。"""
 
@@ -312,7 +318,11 @@ priority=1のタスクは高スコア、priority=5のタスクは低スコアと
                     None,
                 )
                 if allocation:
-                    base_priority += allocation.priority_weight * 2.0
+                    # Massively boost priority based on project allocation percentage
+                    # This makes project allocation the HIGHEST priority factor
+                    base_priority += (
+                        allocation.priority_weight * 10.0
+                    )  # Increased from 2.0 to 10.0
 
             # Task size consideration (prefer smaller tasks based on remaining hours)
             remaining_hours = getattr(
@@ -1513,12 +1523,12 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                                 f"Applied 0% allocation constraint for project {allocation.project_id}"
                             )
                     else:
-                        # Strict allocation constraints: 0.9-1.1x target hours range
-                        # But ensure feasibility when available task hours are limited
+                        # Very strict allocation constraints: 0.95-1.05x target hours range
+                        # Project allocation is the HIGHEST priority constraint
 
-                        # Ideal range: 90%-110% of target hours
-                        ideal_min_hours = int(allocation.target_hours * 0.9 * 10)
-                        ideal_max_hours = int(allocation.target_hours * 1.1 * 10)
+                        # Ideal range: 95%-105% of target hours (much stricter)
+                        ideal_min_hours = int(allocation.target_hours * 0.95 * 10)
+                        ideal_max_hours = int(allocation.target_hours * 1.05 * 10)
 
                         # Adjust constraints based on available task hours
                         if available_task_hours * 10 < ideal_min_hours:
@@ -1537,7 +1547,7 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                             model.Add(sum(project_tasks) <= max_hours)
                             # Determine constraint type for logging
                             constraint_type = (
-                                "strict 0.9-1.1x"
+                                "very strict 0.95-1.05x (PROJECT ALLOCATION PRIORITY)"
                                 if available_task_hours * 10 >= ideal_min_hours
                                 else "limited by available tasks"
                             )
@@ -1576,9 +1586,11 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                             None,
                         )
                         if allocation:
-                            # Boost based on project priority weight (0-100 scale)
+                            # Massively boost priority based on project allocation percentage
+                            # This makes project allocation the HIGHEST priority factor
                             project_allocation_bonus = int(
-                                allocation.priority_weight * 50
+                                allocation.priority_weight
+                                * 1000  # Increased from 50 to 1000
                             )
 
                 total_priority = base_priority + project_allocation_bonus
