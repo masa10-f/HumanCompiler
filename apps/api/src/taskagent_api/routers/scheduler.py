@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator, ConfigDict, field_serializer
-from sqlmodel import Session, select, func, cast, String
+from sqlmodel import Session, select, cast, String
 from ortools.sat.python import cp_model
 
 from taskagent_api.auth import get_current_user_id
@@ -1427,12 +1427,16 @@ async def create_daily_schedule(
             scheduler_tasks.append(scheduler_task)
 
             # Store task info for response
+            # Calculate remaining hours for this task
+            task_id_str = str(db_task.id)
+            actual_hours = actual_hours_map.get(task_id_str, 0.0)
+            estimate_hours = float(db_task.estimate_hours)
+            remaining_hours = max(0.0, estimate_hours - actual_hours)
+
             task_info_map[str(db_task.id)] = TaskInfo(
                 id=str(db_task.id),  # Convert UUID to string
                 title=db_task.title,
-                estimate_hours=float(
-                    db_task.estimate_hours
-                ),  # Convert Decimal to float
+                estimate_hours=remaining_hours,  # Now shows remaining hours instead of estimate
                 priority=3,
                 kind=task_kind.value,
                 due_date=getattr(db_task, "due_date", None),
@@ -1989,10 +1993,10 @@ async def _apply_project_allocation_filtering(
                     tasks_by_project[project_id] = []
                 tasks_by_project[project_id].append(task)
 
-        # Calculate total hours for proportional allocation
+        # Calculate total remaining hours for proportional allocation
         total_hours_per_project = {}
         for project_id, project_tasks in tasks_by_project.items():
-            total_hours = sum(float(task.estimate_hours) for task in project_tasks)
+            total_hours = sum(task.remaining_hours for task in project_tasks)
             total_hours_per_project[project_id] = total_hours
 
         # Select tasks based on project allocations
@@ -2017,10 +2021,10 @@ async def _apply_project_allocation_filtering(
             current_hours = 0.0
             for task in sorted_tasks:
                 if (
-                    current_hours + float(task.estimate_hours) <= target_hours * 1.2
+                    current_hours + task.remaining_hours <= target_hours * 1.2
                 ):  # Allow 20% overflow
                     selected_tasks.append(task)
-                    current_hours += float(task.estimate_hours)
+                    current_hours += task.remaining_hours
 
             logger.info(
                 f"Project {project_id}: allocated {allocation_percent}%, "

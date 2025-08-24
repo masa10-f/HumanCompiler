@@ -999,7 +999,7 @@ class WeeklyTaskSolver:
                         TaskPlan(
                             task_id=str(item.id),
                             task_title=item.title,
-                            estimated_hours=item_hours,
+                            estimated_hours=item_hours,  # item_hours = remaining_hours (estimate - actual)
                             priority=int(score),
                             rationale=f"Selected based on heuristic score: {score:.1f}",
                         )
@@ -1009,7 +1009,7 @@ class WeeklyTaskSolver:
                         TaskPlan(
                             task_id=str(item.id),
                             task_title=f"[週課] {item.title}",
-                            estimated_hours=item_hours,
+                            estimated_hours=item_hours,  # Full estimate_hours for weekly recurring tasks (no prior progress)
                             priority=int(score),
                             rationale=f"Weekly recurring task selected with score: {score:.1f}",
                         )
@@ -1628,7 +1628,9 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                             TaskPlan(
                                 task_id=task_id,
                                 task_title=task.title,
-                                estimated_hours=task_hours[task_id],
+                                estimated_hours=task_hours[
+                                    task_id
+                                ],  # task_hours = remaining_hours (estimate - actual)
                                 priority=int(task_priority_scores[task_id]),
                                 rationale=f"OR-Tools最適化で選択 (優先度: {task_priority_scores[task_id]:.1f})",
                             )
@@ -1645,7 +1647,9 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                             TaskPlan(
                                 task_id=str(weekly_task.id),
                                 task_title=f"[週課] {weekly_task.title}",
-                                estimated_hours=weekly_task_hours[task_id],
+                                estimated_hours=weekly_task_hours[
+                                    task_id
+                                ],  # Full estimate_hours for weekly recurring tasks
                                 priority=int(weekly_task_priorities[task_id]),
                                 rationale="週間反復タスクとしてOR-Tools最適化で選択",
                             )
