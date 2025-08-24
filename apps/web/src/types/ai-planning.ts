@@ -8,12 +8,13 @@ export interface WeeklyPlanRequest {
   project_allocations?: Record<string, number>;
   preferences?: Record<string, unknown>;
   user_prompt?: string;
+  use_ai_priority?: boolean;
 }
 
 export interface TaskPlan {
   task_id: string;
   task_title: string;
-  estimated_hours: number;
+  estimated_hours: number;  // NOTE: This represents remaining hours (estimate - actual)
   priority: number;
   rationale: string;
 }
@@ -109,7 +110,7 @@ export interface TaskAssignment {
 export interface TaskInfo {
   id: string;
   title: string;
-  estimate_hours: number;
+  estimate_hours: number;  // NOTE: This actually represents remaining hours (estimate - actual)
   priority: number;
   kind: string;
   due_date?: string;

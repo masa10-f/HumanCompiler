@@ -403,6 +403,7 @@ class ApiClient {
       selected_recurring_task_ids: planRequest.selected_recurring_task_ids || [],
       preferences: planRequest.preferences || {},
       user_prompt: planRequest.user_prompt,
+      use_ai_priority: planRequest.use_ai_priority || false,
     };
 
     const solverResponse = await this.request<any>('/api/ai/weekly-task-solver', {

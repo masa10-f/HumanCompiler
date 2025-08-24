@@ -27,9 +27,10 @@ class TestWeeklyTaskSolver:
         assert constraints.daily_max_hours == 8.0
         assert constraints.deep_work_blocks == 2
         assert constraints.meeting_buffer_hours == 5.0
-        assert constraints.deadline_weight == 0.4
-        assert constraints.project_balance_weight == 0.3
-        assert constraints.effort_efficiency_weight == 0.3
+        # Updated priorities: Project allocation is now highest priority
+        assert constraints.project_balance_weight == 0.7
+        assert constraints.deadline_weight == 0.2
+        assert constraints.effort_efficiency_weight == 0.1
 
     def test_task_solver_request_validation(self):
         """Test TaskSolverRequest validation."""

@@ -48,11 +48,15 @@ class WeeklyConstraints(BaseModel):
     )
     project_allocations: list[ProjectAllocation] = Field(default_factory=list)
 
-    # Constraint priorities
-    deadline_weight: float = Field(0.4, description="Weight for deadline urgency")
-    project_balance_weight: float = Field(0.3, description="Weight for project balance")
+    # Constraint priorities - Project allocation is now the highest priority
+    project_balance_weight: float = Field(
+        0.7, description="Weight for project allocation balance (HIGHEST PRIORITY)"
+    )
+    deadline_weight: float = Field(
+        0.2, description="Weight for deadline urgency (secondary)"
+    )
     effort_efficiency_weight: float = Field(
-        0.3, description="Weight for effort efficiency"
+        0.1, description="Weight for effort efficiency (tertiary)"
     )
 
 
@@ -68,6 +72,9 @@ class TaskSolverRequest(BaseModel):
     preferences: dict[str, Any] = Field(default_factory=dict)
     user_prompt: str | None = Field(
         None, description="User instructions for weekly scheduling priorities"
+    )
+    use_ai_priority: bool = Field(
+        default=False, description="Use OpenAI for priority evaluation"
     )
 
 
@@ -146,11 +153,15 @@ class TaskPriorityExtractor:
         project_allocations: list[ProjectAllocation],
     ) -> str:
         """Create context for priority extraction."""
+        # Get remaining hours map from context
+        remaining_hours_map = getattr(context, "remaining_hours_map", {})
+
         tasks_data = []
         for task in context.tasks:
             # Use remaining_hours for task context
-            remaining_hours = getattr(
-                task, "remaining_hours", float(task.estimate_hours or 0)
+            task_id = str(task.id)
+            remaining_hours = remaining_hours_map.get(
+                task_id, float(task.estimate_hours or 0)
             )
             task_data = {
                 "id": task.id,
@@ -209,16 +220,18 @@ class TaskPriorityExtractor:
 ## 週開始日
 {context.week_start_date.strftime("%Y-%m-%d")}
 
-## 優先度算出の基準
-1. **ユーザー設定の優先度** - ユーザーが設定した優先度レベル（1=最高、5=最低）を基礎スコアとして使用
-2. **締切の緊急度** - 週内および近い将来の締切
-3. **プロジェクトの戦略的重要度** - リソース配分比率を考慮
+## 優先度算出の基準（重要度順）
+1. **プロジェクト配分比率（最重要）** - ユーザー指定のプロジェクト配分%に従い、高い配分%のプロジェクトのタスクを最優先
+2. **ユーザー設定の優先度** - ユーザーが設定した優先度レベル（1=最高、5=最低）を副次的スコアとして使用
+3. **締切の緊急度** - 週内および近い将来の締切（プロジェクト配分の次に考慮）
 4. **タスクの影響度** - プロジェクト目標への貢献度
 5. **依存関係** - 他のタスクをブロックする可能性
 6. **工数効率** - 投入時間に対する価値{prompt_section}
 
-**重要**: ユーザーが設定したpriorityフィールド（1-5）を基礎として、他の要因で微調整してください。
-priority=1のタスクは高スコア、priority=5のタスクは低スコアとなるように算出してください。
+**最重要事項**: プロジェクト配分比率（allocation_ratio）が最優先です。
+- 配分%が高いプロジェクトのタスクに対して大幅な優先度ボーナスを付与してください
+- 配分%が0%のプロジェクトのタスクの優先度は大幅に下げてください
+- ユーザー設定のpriorityフィールド（1-5）は副次的要因として使用してください
 
 各タスクに対して0.0-10.0の優先度スコアを算出し、extract_task_priorities関数で構造化して返してください。"""
 
@@ -277,6 +290,9 @@ priority=1のタスクは高スコア、priority=5のタスクは低スコアと
         """Fallback priority calculation when AI is unavailable."""
         priorities = {}
 
+        # Get remaining hours map from context
+        remaining_hours_map = getattr(context, "remaining_hours_map", {})
+
         for task in context.tasks:
             # Start with user-defined priority (convert 1-5 scale to 0-10 scale)
             user_priority = getattr(task, "priority", 3)
@@ -309,11 +325,16 @@ priority=1のタスクは高スコア、priority=5のタスクは低スコアと
                     None,
                 )
                 if allocation:
-                    base_priority += allocation.priority_weight * 2.0
+                    # Massively boost priority based on project allocation percentage
+                    # This makes project allocation the HIGHEST priority factor
+                    base_priority += (
+                        allocation.priority_weight * 10.0
+                    )  # Increased from 2.0 to 10.0
 
             # Task size consideration (prefer smaller tasks based on remaining hours)
-            remaining_hours = getattr(
-                task, "remaining_hours", float(task.estimate_hours or 0)
+            task_id = str(task.id)
+            remaining_hours = remaining_hours_map.get(
+                task_id, float(task.estimate_hours or 0)
             )
             if remaining_hours > 0:
                 if remaining_hours <= 2.0:
@@ -415,11 +436,19 @@ class WeeklyTaskSolver:
                 context, request.constraints
             )
 
-            # Stage 1: Extract task priorities using OpenAI API
-            logger.info("Stage 1: Extracting task priorities with OpenAI API")
-            task_priorities = await self.priority_extractor.extract_priorities(
-                context, request.user_prompt, project_allocations
-            )
+            # Stage 1: Extract task priorities
+            if request.use_ai_priority:
+                logger.info("Stage 1: Extracting task priorities with OpenAI API")
+                task_priorities = await self.priority_extractor.extract_priorities(
+                    context, request.user_prompt, project_allocations
+                )
+            else:
+                logger.info("Stage 1: Using database priorities (OpenAI disabled)")
+                task_priorities = (
+                    self.priority_extractor._fallback_priority_calculation(
+                        context, project_allocations
+                    )
+                )
 
             # Stage 2: Apply OR-Tools optimization with extracted priorities
             logger.info("Stage 2: Applying OR-Tools optimization with priorities")
@@ -429,6 +458,7 @@ class WeeklyTaskSolver:
                 project_allocations,
                 task_priorities,
                 request.user_prompt,
+                remaining_hours_map=getattr(context, "remaining_hours_map", {}),
             )
 
             # Calculate solver metrics
@@ -514,6 +544,27 @@ class WeeklyTaskSolver:
             logger.error(f"Error getting actual hours for tasks: {e}")
             return {}
 
+    def _calculate_remaining_hours_map(
+        self, tasks: list[Task], actual_hours_map: dict[str, float]
+    ) -> dict[str, float]:
+        """Calculate remaining hours for tasks and return as a mapping dictionary."""
+        remaining_hours_map = {}
+        for task in tasks:
+            task_id = str(task.id)
+            actual_hours = actual_hours_map.get(task_id, 0.0)
+            estimate_hours = float(task.estimate_hours or 0)
+            remaining_hours = max(0.0, estimate_hours - actual_hours)
+
+            remaining_hours_map[task_id] = remaining_hours
+
+            logger.debug(
+                f"Task {task_id} '{task.title}': "
+                f"estimate={estimate_hours}h, actual={actual_hours}h, remaining={remaining_hours}h"
+            )
+
+        logger.info(f"Calculated remaining hours for {len(remaining_hours_map)} tasks")
+        return remaining_hours_map
+
     async def _collect_solver_context(
         self,
         session: Session,
@@ -537,23 +588,21 @@ class WeeklyTaskSolver:
         task_ids = [str(task.id) for task in context.tasks]
         actual_hours_map = self._get_task_actual_hours(session, task_ids)
 
-        # Calculate remaining hours for each task and filter out completed tasks
+        logger.info(f"Retrieved actual hours for {len(actual_hours_map)} tasks")
+
+        # Calculate remaining hours mapping
+        remaining_hours_map = self._calculate_remaining_hours_map(
+            context.tasks, actual_hours_map
+        )
+
+        # Store mapping in context for later use
+        context.remaining_hours_map = remaining_hours_map
+
+        # Filter out completed tasks (those with remaining hours <= 0)
         filtered_tasks = []
         for task in context.tasks:
             task_id = str(task.id)
-            actual_hours = actual_hours_map.get(task_id, 0.0)
-            estimate_hours = float(task.estimate_hours or 0)
-            remaining_hours = max(0.0, estimate_hours - actual_hours)
-
-            # Use setattr to safely add remaining hours as an attribute to the task object
-            try:
-                task.remaining_hours = remaining_hours
-                task.actual_hours = actual_hours
-            except (AttributeError, ValueError):
-                # If setattr fails, create a wrapper object
-                pass
-
-            # Only include tasks with remaining hours > 0
+            remaining_hours = remaining_hours_map.get(task_id, 0.0)
             if remaining_hours > 0:
                 filtered_tasks.append(task)
             else:
@@ -620,6 +669,16 @@ class WeeklyTaskSolver:
         if zero_allocation_projects:
             logger.info(
                 f"Excluded {len(zero_allocation_projects)} projects with 0% allocation: {zero_allocation_projects}"
+            )
+
+        # Debug: Log remaining hours for final tasks
+        for task in context.tasks:
+            task_id = str(task.id)
+            remaining_hours = remaining_hours_map.get(task_id)
+            actual_hours = actual_hours_map.get(task_id)
+            logger.debug(
+                f"Final task {task_id} '{task.title}': "
+                f"estimate={task.estimate_hours}h, actual={actual_hours}h, remaining={remaining_hours}h"
             )
 
         return context
@@ -904,10 +963,15 @@ class WeeklyTaskSolver:
         context: WeeklyPlanContext,
         constraints: WeeklyConstraints,
         project_allocations: list[ProjectAllocation],
+        remaining_hours_map: dict[str, float] | None = None,
     ) -> tuple[list[TaskPlan], list[str]]:
         """Fallback heuristic task selection when AI is unavailable."""
         selected_tasks = []
         insights = ["Using heuristic task selection (AI unavailable)"]
+
+        # Use remaining hours map from context if not provided
+        if remaining_hours_map is None:
+            remaining_hours_map = getattr(context, "remaining_hours_map", {})
 
         # Sort tasks by priority score
         scored_items = []
@@ -934,9 +998,14 @@ class WeeklyTaskSolver:
                     )
                     urgency_score = 0
 
+            # Calculate remaining hours for effort scoring
+            task_id = str(task.id)
+            remaining_hours = remaining_hours_map.get(
+                task_id, float(task.estimate_hours or 0)
+            )
             effort_score = 10 - min(
-                float(task.estimate_hours or 0), 10
-            )  # Prefer smaller tasks
+                remaining_hours, 10
+            )  # Prefer smaller remaining tasks
 
             total_score = (
                 urgency_score * constraints.deadline_weight
@@ -950,7 +1019,9 @@ class WeeklyTaskSolver:
                 if str(weekly_task.id) in context.selected_recurring_task_ids:
                     # Weekly recurring tasks get high priority to ensure they are included
                     recurring_score = 8.0  # High priority for consistency
-                    effort_score = 10 - min(float(weekly_task.estimate_hours or 0), 10)
+                    # Weekly tasks have no previous progress, so use full estimate
+                    weekly_hours = float(weekly_task.estimate_hours or 0)
+                    effort_score = 10 - min(weekly_hours, 10)
                     total_score = (
                         recurring_score * 0.7  # High weight for weekly consistency
                         + effort_score * constraints.effort_efficiency_weight
@@ -963,16 +1034,23 @@ class WeeklyTaskSolver:
         # Select items within capacity
         total_hours = 0.0
         for item, score, item_type in scored_items:
-            item_hours = getattr(
-                item, "remaining_hours", float(item.estimate_hours or 0)
-            )
+            if item_type == "regular_task":
+                # Use remaining hours for regular tasks
+                item_id = str(item.id)
+                item_hours = remaining_hours_map.get(
+                    item_id, float(item.estimate_hours or 0)
+                )
+            else:
+                # Weekly recurring tasks use full estimate (no previous progress)
+                item_hours = float(item.estimate_hours or 0)
+
             if total_hours + item_hours <= constraints.total_capacity_hours:
                 if item_type == "regular_task":
                     selected_tasks.append(
                         TaskPlan(
                             task_id=str(item.id),
                             task_title=item.title,
-                            estimated_hours=item_hours,
+                            estimated_hours=item_hours,  # item_hours = remaining_hours (estimate - actual)
                             priority=int(score),
                             rationale=f"Selected based on heuristic score: {score:.1f}",
                         )
@@ -982,7 +1060,7 @@ class WeeklyTaskSolver:
                         TaskPlan(
                             task_id=str(item.id),
                             task_title=f"[週課] {item.title}",
-                            estimated_hours=item_hours,
+                            estimated_hours=item_hours,  # Full estimate_hours for weekly recurring tasks (no prior progress)
                             priority=int(score),
                             rationale=f"Weekly recurring task selected with score: {score:.1f}",
                         )
@@ -1405,6 +1483,7 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
         project_allocations: list[ProjectAllocation],
         task_priorities: dict[str, float],
         user_prompt: str | None,
+        remaining_hours_map: dict[str, float] | None = None,
     ) -> tuple[list[TaskPlan], list[str]]:
         """
         Apply OR-Tools constraint optimization with extracted priorities.
@@ -1420,6 +1499,10 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
             model = cp_model.CpModel()
             solver = cp_model.CpSolver()
 
+            # Use remaining hours map from context if not provided
+            if remaining_hours_map is None:
+                remaining_hours_map = getattr(context, "remaining_hours_map", {})
+
             # Decision variables: whether to select each task
             task_vars = {}
             task_hours = {}
@@ -1428,8 +1511,9 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
             for task in context.tasks:
                 task_id = str(task.id)
                 task_vars[task_id] = model.NewBoolVar(f"task_{task_id}")
-                task_hours[task_id] = getattr(
-                    task, "remaining_hours", float(task.estimate_hours or 0)
+                # Use remaining hours from map, fallback to estimate if not available
+                task_hours[task_id] = remaining_hours_map.get(
+                    task_id, float(task.estimate_hours or 0)
                 )
                 task_priority_scores[task_id] = task_priorities.get(task_id, 5.0)
 
@@ -1502,12 +1586,12 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                                 f"Applied 0% allocation constraint for project {allocation.project_id}"
                             )
                     else:
-                        # Strict allocation constraints: 0.9-1.1x target hours range
-                        # But ensure feasibility when available task hours are limited
+                        # Very strict allocation constraints: 0.95-1.05x target hours range
+                        # Project allocation is the HIGHEST priority constraint
 
-                        # Ideal range: 90%-110% of target hours
-                        ideal_min_hours = int(allocation.target_hours * 0.9 * 10)
-                        ideal_max_hours = int(allocation.target_hours * 1.1 * 10)
+                        # Ideal range: 95%-105% of target hours (much stricter)
+                        ideal_min_hours = int(allocation.target_hours * 0.95 * 10)
+                        ideal_max_hours = int(allocation.target_hours * 1.05 * 10)
 
                         # Adjust constraints based on available task hours
                         if available_task_hours * 10 < ideal_min_hours:
@@ -1526,7 +1610,7 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                             model.Add(sum(project_tasks) <= max_hours)
                             # Determine constraint type for logging
                             constraint_type = (
-                                "strict 0.9-1.1x"
+                                "very strict 0.95-1.05x (PROJECT ALLOCATION PRIORITY)"
                                 if available_task_hours * 10 >= ideal_min_hours
                                 else "limited by available tasks"
                             )
@@ -1565,9 +1649,11 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                             None,
                         )
                         if allocation:
-                            # Boost based on project priority weight (0-100 scale)
+                            # Massively boost priority based on project allocation percentage
+                            # This makes project allocation the HIGHEST priority factor
                             project_allocation_bonus = int(
-                                allocation.priority_weight * 50
+                                allocation.priority_weight
+                                * 1000  # Increased from 50 to 1000
                             )
 
                 total_priority = base_priority + project_allocation_bonus
@@ -1599,7 +1685,9 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                             TaskPlan(
                                 task_id=task_id,
                                 task_title=task.title,
-                                estimated_hours=task_hours[task_id],
+                                estimated_hours=task_hours[
+                                    task_id
+                                ],  # task_hours = remaining_hours (estimate - actual)
                                 priority=int(task_priority_scores[task_id]),
                                 rationale=f"OR-Tools最適化で選択 (優先度: {task_priority_scores[task_id]:.1f})",
                             )
@@ -1616,7 +1704,9 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                             TaskPlan(
                                 task_id=str(weekly_task.id),
                                 task_title=f"[週課] {weekly_task.title}",
-                                estimated_hours=weekly_task_hours[task_id],
+                                estimated_hours=weekly_task_hours[
+                                    task_id
+                                ],  # Full estimate_hours for weekly recurring tasks
                                 priority=int(weekly_task_priorities[task_id]),
                                 rationale="週間反復タスクとしてOR-Tools最適化で選択",
                             )
@@ -1684,7 +1774,10 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                     "🔄 ヒューリスティック手法にフォールバック中...",
                 ]
                 selected_tasks, fallback_insights = self._heuristic_task_selection(
-                    context, constraints, project_allocations
+                    context,
+                    constraints,
+                    project_allocations,
+                    remaining_hours_map=getattr(context, "remaining_hours_map", {}),
                 )
                 insights.extend(fallback_insights)
 
@@ -1699,7 +1792,10 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                 "🔄 ヒューリスティック手法を使用しています",
             ]
             selected_tasks, fallback_insights = self._heuristic_task_selection(
-                context, constraints, project_allocations
+                context,
+                constraints,
+                project_allocations,
+                remaining_hours_map=getattr(context, "remaining_hours_map", {}),
             )
             return selected_tasks, insights + fallback_insights
 
@@ -1710,6 +1806,9 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                 "🔄 ヒューリスティック手法にフォールバック",
             ]
             selected_tasks, fallback_insights = self._heuristic_task_selection(
-                context, constraints, project_allocations
+                context,
+                constraints,
+                project_allocations,
+                remaining_hours_map=getattr(context, "remaining_hours_map", {}),
             )
             return selected_tasks, insights + fallback_insights
