@@ -8,6 +8,7 @@ export interface WeeklyPlanRequest {
   project_allocations?: Record<string, number>;
   preferences?: Record<string, unknown>;
   user_prompt?: string;
+  use_ai_priority?: boolean;
 }
 
 export interface TaskPlan {

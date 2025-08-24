@@ -75,6 +75,7 @@ export default function AIPlanningPage() {
   });
   const [capacityHours, setCapacityHours] = useState(40);
   const [userPrompt, setUserPrompt] = useState('');
+  const [useAiPriority, setUseAiPriority] = useState(false);
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [weeklyPlan, setWeeklyPlan] = useState<WeeklyPlanResponse | null>(null);
@@ -172,7 +173,8 @@ export default function AIPlanningPage() {
         selected_recurring_task_ids: selectedRecurringTaskIds,
         // Note: project_allocations format conversion is handled in API client
         preferences: {},
-        user_prompt: userPrompt.trim() || undefined
+        user_prompt: useAiPriority ? userPrompt.trim() || undefined : undefined,
+        use_ai_priority: useAiPriority
       });
 
       setWeeklyPlan(response);
@@ -598,14 +600,30 @@ export default function AIPlanningPage() {
                 disabled={isGenerating}
               />
 
+              {/* AI Priority Evaluation Option */}
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="use-ai-priority"
+                  checked={useAiPriority}
+                  onCheckedChange={(checked) => setUseAiPriority(checked === true)}
+                  disabled={isGenerating}
+                />
+                <Label htmlFor="use-ai-priority">
+                  OpenAI による優先度評価を使用する
+                </Label>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="user-prompt">優先度調整の指示 (任意)</Label>
                 <Textarea
                   id="user-prompt"
-                  placeholder="この週は特定のタスクを優先したい場合は、ここに指示を入力してください。例: 「この週は特にリサーチタスクを優先して取り組みたい」"
+                  placeholder={useAiPriority
+                    ? "この週は特定のタスクを優先したい場合は、ここに指示を入力してください。例: 「この週は特にリサーチタスクを優先して取り組みたい」"
+                    : "OpenAI による優先度評価が無効になっています。データベースに登録されているタスクの優先度が使用されます。"
+                  }
                   value={userPrompt}
                   onChange={(e) => setUserPrompt(e.target.value)}
-                  disabled={isGenerating}
+                  disabled={!useAiPriority || isGenerating}
                   rows={3}
                   className="resize-none"
                 />

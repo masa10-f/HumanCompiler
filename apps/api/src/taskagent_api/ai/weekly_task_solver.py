@@ -69,6 +69,9 @@ class TaskSolverRequest(BaseModel):
     user_prompt: str | None = Field(
         None, description="User instructions for weekly scheduling priorities"
     )
+    use_ai_priority: bool = Field(
+        default=False, description="Use OpenAI for priority evaluation"
+    )
 
 
 class TaskSolverResponse(BaseModel):
@@ -415,11 +418,19 @@ class WeeklyTaskSolver:
                 context, request.constraints
             )
 
-            # Stage 1: Extract task priorities using OpenAI API
-            logger.info("Stage 1: Extracting task priorities with OpenAI API")
-            task_priorities = await self.priority_extractor.extract_priorities(
-                context, request.user_prompt, project_allocations
-            )
+            # Stage 1: Extract task priorities
+            if request.use_ai_priority:
+                logger.info("Stage 1: Extracting task priorities with OpenAI API")
+                task_priorities = await self.priority_extractor.extract_priorities(
+                    context, request.user_prompt, project_allocations
+                )
+            else:
+                logger.info("Stage 1: Using database priorities (OpenAI disabled)")
+                task_priorities = (
+                    self.priority_extractor._fallback_priority_calculation(
+                        context, project_allocations
+                    )
+                )
 
             # Stage 2: Apply OR-Tools optimization with extracted priorities
             logger.info("Stage 2: Applying OR-Tools optimization with priorities")
