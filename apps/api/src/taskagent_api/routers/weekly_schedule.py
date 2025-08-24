@@ -2,6 +2,7 @@
 Weekly schedule API endpoints for storing and retrieving weekly task selections.
 """
 
+import json
 import logging
 from datetime import datetime, date
 from uuid import UUID, uuid4
@@ -104,6 +105,11 @@ async def save_weekly_schedule(
     try:
         logger.info(
             f"Saving weekly schedule for user {user_id} for week {request.week_start_date}"
+        )
+        logger.debug(f"Request data: {request}")
+        logger.debug(f"Schedule data type: {type(request.schedule_data)}")
+        logger.debug(
+            f"Schedule data content: {json.dumps(request.schedule_data, default=str, indent=2)}"
         )
 
         # Parse and validate week start date
