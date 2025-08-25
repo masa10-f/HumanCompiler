@@ -76,8 +76,20 @@ const ensureHttps = (url: string): string => {
 const getApiBaseUrl = () => {
   console.log(`🚀 getApiBaseUrl() called at ${new Date().toISOString()}`);
 
-  // If explicitly set via environment variable, use it
-  if (process.env.NEXT_PUBLIC_API_URL) {
+  // Client-side hostname detection takes priority over env var for production
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    console.log(`🌐 Current hostname: ${hostname}`);
+
+    // HumanCompiler Production - use relative URL to leverage Vercel rewrites
+    if (hostname === 'human-compiler.vercel.app') {
+      console.log(`🏭 Using HumanCompiler Production API via Vercel Rewrite`);
+      return '';  // Use relative URL to leverage Vercel rewrites
+    }
+  }
+
+  // If explicitly set via environment variable, use it (but only if not production)
+  if (process.env.NEXT_PUBLIC_API_URL && process.env.NODE_ENV !== 'production') {
     const originalUrl = process.env.NEXT_PUBLIC_API_URL;
     const secureUrl = ensureHttps(originalUrl);
     console.log(`🔧 Using env var NEXT_PUBLIC_API_URL: ${originalUrl} -> ${secureUrl}`);
@@ -92,23 +104,17 @@ const getApiBaseUrl = () => {
       : 'http://localhost:8000';
   }
 
-  // Client-side: use hostname detection
+  // Client-side: use hostname detection (already handled above, this is fallback)
   const hostname = window.location.hostname;
 
   // Debug logging
-  console.log(`🌐 Current hostname: ${hostname}`);
+  console.log(`🌐 Fallback hostname check: ${hostname}`);
 
   // Add to window object for debugging
   (window as any).taskAgentDebug = {
     hostname,
     timestamp: new Date().toISOString()
   };
-
-  // HumanCompiler Production Vercel deployment (exact match)
-  if (hostname === 'human-compiler.vercel.app') {
-    console.log(`🏭 Using HumanCompiler Production API via Vercel Rewrite`);
-    return '';  // Use relative URL to leverage Vercel rewrites
-  }
 
   // TaskAgent Production Vercel deployment (exact match)
   if (hostname === 'taskagent.vercel.app') {
