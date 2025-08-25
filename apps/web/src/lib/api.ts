@@ -88,12 +88,17 @@ const getApiBaseUrl = () => {
     }
   }
 
-  // If explicitly set via environment variable, use it (but only if not production)
-  if (process.env.NEXT_PUBLIC_API_URL && process.env.NODE_ENV !== 'production') {
-    const originalUrl = process.env.NEXT_PUBLIC_API_URL;
-    const secureUrl = ensureHttps(originalUrl);
-    console.log(`🔧 Using env var NEXT_PUBLIC_API_URL: ${originalUrl} -> ${secureUrl}`);
-    return secureUrl;
+  // If explicitly set via environment variable, use it (but NEVER for HumanCompiler production)
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    // Additional safety check for HumanCompiler production
+    if (typeof window !== 'undefined' && window.location.hostname === 'human-compiler.vercel.app') {
+      console.log(`🚫 BLOCKED: Ignoring NEXT_PUBLIC_API_URL for HumanCompiler production`);
+    } else if (process.env.NODE_ENV !== 'production') {
+      const originalUrl = process.env.NEXT_PUBLIC_API_URL;
+      const secureUrl = ensureHttps(originalUrl);
+      console.log(`🔧 Using env var NEXT_PUBLIC_API_URL: ${originalUrl} -> ${secureUrl}`);
+      return secureUrl;
+    }
   }
 
   // Server-side: use environment-based detection
@@ -110,11 +115,17 @@ const getApiBaseUrl = () => {
   // Debug logging
   console.log(`🌐 Fallback hostname check: ${hostname}`);
 
-  // Add to window object for debugging
+  // Add to window object for debugging and cache busting
   (window as any).taskAgentDebug = {
     hostname,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    version: '2025-08-25-v2'  // Update this to force cache refresh
   };
+
+  // Force cache clear for HumanCompiler production if needed
+  if (hostname === 'human-compiler.vercel.app') {
+    console.log(`🧹 Cache info for HumanCompiler production debugging`);
+  }
 
   // TaskAgent Production Vercel deployment (exact match)
   if (hostname === 'taskagent.vercel.app') {
@@ -161,6 +172,16 @@ class ApiClient {
   private getBaseURL(): string {
     const url = getApiBaseUrl();
     console.log(`🔗 ApiClient.getBaseURL() called, returning: ${url}`);
+
+    // CRITICAL: Force relative URL for HumanCompiler production to prevent direct Fly.io access
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      if (hostname === 'human-compiler.vercel.app') {
+        console.log(`🔒 FORCED: Using relative URL for HumanCompiler production`);
+        return '';  // Always return empty string for production
+      }
+    }
+
     return url;
   }
 
