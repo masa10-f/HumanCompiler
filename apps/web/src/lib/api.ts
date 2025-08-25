@@ -270,6 +270,7 @@ class ApiClient {
           ...headers,
           ...options.headers,
         },
+        redirect: 'follow', // Allow automatic redirects but preserve headers
       });
 
       console.log('🔍 [ApiClient] Response received:', {
@@ -348,7 +349,7 @@ class ApiClient {
   }
 
   async getProject(projectId: string): Promise<Project> {
-    return this.request<Project>(`/api/projects/${projectId}`);
+    return this.request<Project>(`/api/projects/${projectId}/`);
   }
 
   async createProject(projectData: ProjectCreate): Promise<Project> {
@@ -359,14 +360,14 @@ class ApiClient {
   }
 
   async updateProject(projectId: string, projectData: ProjectUpdate): Promise<Project> {
-    return this.request<Project>(`/api/projects/${projectId}`, {
+    return this.request<Project>(`/api/projects/${projectId}/`, {
       method: 'PUT',
       body: JSON.stringify(projectData),
     });
   }
 
   async deleteProject(projectId: string): Promise<void> {
-    return this.request<void>(`/api/projects/${projectId}`, {
+    return this.request<void>(`/api/projects/${projectId}/`, {
       method: 'DELETE',
     });
   }
@@ -377,7 +378,7 @@ class ApiClient {
   }
 
   async getGoal(goalId: string): Promise<Goal> {
-    return this.request<Goal>(`/api/goals/${goalId}`);
+    return this.request<Goal>(`/api/goals/${goalId}/`);
   }
 
   async createGoal(goalData: GoalCreate): Promise<Goal> {
@@ -388,14 +389,14 @@ class ApiClient {
   }
 
   async updateGoal(goalId: string, goalData: GoalUpdate): Promise<Goal> {
-    return this.request<Goal>(`/api/goals/${goalId}`, {
+    return this.request<Goal>(`/api/goals/${goalId}/`, {
       method: 'PUT',
       body: JSON.stringify(goalData),
     });
   }
 
   async deleteGoal(goalId: string): Promise<void> {
-    return this.request<void>(`/api/goals/${goalId}`, {
+    return this.request<void>(`/api/goals/${goalId}/`, {
       method: 'DELETE',
     });
   }
@@ -409,11 +410,11 @@ class ApiClient {
   }
 
   async getGoalDependencies(goalId: string): Promise<GoalDependency[]> {
-    return this.request<GoalDependency[]>(`/api/goal-dependencies/goal/${goalId}`);
+    return this.request<GoalDependency[]>(`/api/goal-dependencies/goal/${goalId}/`);
   }
 
   async deleteGoalDependency(dependencyId: string): Promise<void> {
-    return this.request<void>(`/api/goal-dependencies/${dependencyId}`, {
+    return this.request<void>(`/api/goal-dependencies/${dependencyId}/`, {
       method: 'DELETE',
     });
   }
@@ -428,7 +429,7 @@ class ApiClient {
   }
 
   async getTask(taskId: string): Promise<Task> {
-    return this.request<Task>(`/api/tasks/${taskId}`);
+    return this.request<Task>(`/api/tasks/${taskId}/`);
   }
 
   async createTask(taskData: TaskCreate): Promise<Task> {
@@ -439,21 +440,21 @@ class ApiClient {
   }
 
   async updateTask(taskId: string, taskData: TaskUpdate): Promise<Task> {
-    return this.request<Task>(`/api/tasks/${taskId}`, {
+    return this.request<Task>(`/api/tasks/${taskId}/`, {
       method: 'PUT',
       body: JSON.stringify(taskData),
     });
   }
 
   async deleteTask(taskId: string): Promise<void> {
-    return this.request<void>(`/api/tasks/${taskId}`, {
+    return this.request<void>(`/api/tasks/${taskId}/`, {
       method: 'DELETE',
     });
   }
 
   // Task dependency methods
   async addTaskDependency(taskId: string, dependsOnTaskId: string): Promise<TaskDependency> {
-    return this.request<TaskDependency>(`/api/tasks/${taskId}/dependencies`, {
+    return this.request<TaskDependency>(`/api/tasks/${taskId}/dependencies/`, {
       method: 'POST',
       body: JSON.stringify({
         depends_on_task_id: dependsOnTaskId,
@@ -462,11 +463,11 @@ class ApiClient {
   }
 
   async getTaskDependencies(taskId: string): Promise<TaskDependency[]> {
-    return this.request<TaskDependency[]>(`/api/tasks/${taskId}/dependencies`);
+    return this.request<TaskDependency[]>(`/api/tasks/${taskId}/dependencies/`);
   }
 
   async deleteTaskDependency(taskId: string, dependencyId: string): Promise<void> {
-    return this.request<void>(`/api/tasks/${taskId}/dependencies/${dependencyId}`, {
+    return this.request<void>(`/api/tasks/${taskId}/dependencies/${dependencyId}/`, {
       method: 'DELETE',
     });
   }
@@ -545,7 +546,7 @@ class ApiClient {
   }
 
   async getDailySchedule(date: string): Promise<DailySchedule> {
-    return this.request<DailySchedule>(`/api/schedule/daily/${date}`);
+    return this.request<DailySchedule>(`/api/schedule/daily/${date}/`);
   }
 
   async listDailySchedules(skip?: number, limit?: number): Promise<DailySchedule[]> {
@@ -578,7 +579,7 @@ class ApiClient {
   }
 
   async getLog(logId: string): Promise<Log> {
-    return this.request<Log>(`/api/logs/${logId}`);
+    return this.request<Log>(`/api/logs/${logId}/`);
   }
 
   async createLog(logData: LogCreate): Promise<Log> {
@@ -589,29 +590,29 @@ class ApiClient {
   }
 
   async updateLog(logId: string, logData: LogUpdate): Promise<Log> {
-    return this.request<Log>(`/api/logs/${logId}`, {
+    return this.request<Log>(`/api/logs/${logId}/`, {
       method: 'PUT',
       body: JSON.stringify(logData),
     });
   }
 
   async deleteLog(logId: string): Promise<void> {
-    return this.request<void>(`/api/logs/${logId}`, {
+    return this.request<void>(`/api/logs/${logId}/`, {
       method: 'DELETE',
     });
   }
 
   // Progress API methods
   async getProjectProgress(projectId: string): Promise<ProjectProgress> {
-    return this.request<ProjectProgress>(`/api/progress/project/${projectId}`);
+    return this.request<ProjectProgress>(`/api/progress/project/${projectId}/`);
   }
 
   async getGoalProgress(goalId: string): Promise<GoalProgress> {
-    return this.request<GoalProgress>(`/api/progress/goal/${goalId}`);
+    return this.request<GoalProgress>(`/api/progress/goal/${goalId}/`);
   }
 
   async getTaskProgress(taskId: string): Promise<TaskProgress> {
-    return this.request<TaskProgress>(`/api/progress/task/${taskId}`);
+    return this.request<TaskProgress>(`/api/progress/task/${taskId}/`);
   }
 
   // Weekly Schedule API methods
@@ -620,7 +621,7 @@ class ApiClient {
   }
 
   async getWeeklySchedule(weekStartDate: string): Promise<SavedWeeklySchedule> {
-    return this.request<SavedWeeklySchedule>(`/api/weekly-schedule/${weekStartDate}`);
+    return this.request<SavedWeeklySchedule>(`/api/weekly-schedule/${weekStartDate}/`);
   }
 
   async saveWeeklySchedule(weekStartDate: string, scheduleData: any): Promise<SavedWeeklySchedule> {
@@ -634,7 +635,7 @@ class ApiClient {
   }
 
   async deleteWeeklySchedule(weekStartDate: string): Promise<{ message: string }> {
-    return this.request<{ message: string }>(`/api/weekly-schedule/${weekStartDate}`, {
+    return this.request<{ message: string }>(`/api/weekly-schedule/${weekStartDate}/`, {
       method: 'DELETE',
     });
   }
@@ -648,7 +649,7 @@ class ApiClient {
     if (timeUnit) params.append('time_unit', timeUnit);
     if (weeklyWorkHours !== undefined) params.append('weekly_work_hours', weeklyWorkHours.toString());
 
-    return this.request<ProjectTimelineData>(`/api/timeline/projects/${projectId}?${params.toString()}`);
+    return this.request<ProjectTimelineData>(`/api/timeline/projects/${projectId}/?${params.toString()}`);
   }
 
   async getTimelineOverview(startDate?: string, endDate?: string): Promise<TimelineOverviewData> {
@@ -676,7 +677,7 @@ class ApiClient {
   }
 
   async getWeeklyRecurringTask(taskId: string): Promise<WeeklyRecurringTask> {
-    return this.request<WeeklyRecurringTask>(`/api/weekly-recurring-tasks/${taskId}`);
+    return this.request<WeeklyRecurringTask>(`/api/weekly-recurring-tasks/${taskId}/`);
   }
 
   async createWeeklyRecurringTask(taskData: WeeklyRecurringTaskCreate): Promise<WeeklyRecurringTask> {
@@ -690,14 +691,14 @@ class ApiClient {
     taskId: string,
     taskData: WeeklyRecurringTaskUpdate
   ): Promise<WeeklyRecurringTask> {
-    return this.request<WeeklyRecurringTask>(`/api/weekly-recurring-tasks/${taskId}`, {
+    return this.request<WeeklyRecurringTask>(`/api/weekly-recurring-tasks/${taskId}/`, {
       method: 'PUT',
       body: JSON.stringify(taskData),
     });
   }
 
   async deleteWeeklyRecurringTask(taskId: string): Promise<void> {
-    return this.request<void>(`/api/weekly-recurring-tasks/${taskId}`, {
+    return this.request<void>(`/api/weekly-recurring-tasks/${taskId}/`, {
       method: 'DELETE',
     });
   }
