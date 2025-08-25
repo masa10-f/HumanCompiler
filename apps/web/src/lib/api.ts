@@ -798,6 +798,7 @@ export const weeklyScheduleApi = {
 export const weeklyRecurringTasksApi = {
   getAll: (skip?: number, limit?: number, category?: string, isActive?: boolean) =>
     apiClient.getWeeklyRecurringTasks(skip, limit, category, isActive),
+  getActive: () => apiClient.getWeeklyRecurringTasks(undefined, undefined, undefined, true),
   getById: (taskId: string) => apiClient.getWeeklyRecurringTask(taskId),
   create: (taskData: WeeklyRecurringTaskCreate) => apiClient.createWeeklyRecurringTask(taskData),
   update: (taskId: string, taskData: WeeklyRecurringTaskUpdate) => apiClient.updateWeeklyRecurringTask(taskId, taskData),

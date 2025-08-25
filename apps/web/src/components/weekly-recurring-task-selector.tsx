@@ -6,19 +6,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Clock, Tag } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
-import { getAuthHeaders } from "@/lib/auth"
-import { getSecureApiUrl, secureFetch } from "@/lib/api"
-
-interface WeeklyRecurringTask {
-  id: string
-  title: string
-  description?: string
-  estimate_hours: number
-  category: string
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
+import { weeklyRecurringTasksApi } from "@/lib/api"
+import type { WeeklyRecurringTask } from "@/types/weekly-recurring-task"
 
 interface WeeklyRecurringTaskSelectorProps {
   selectedTaskIds: string[]
@@ -37,23 +26,8 @@ export function WeeklyRecurringTaskSelector({
 
   const fetchTasks = useCallback(async () => {
     try {
-      const headers = await getAuthHeaders()
-      const apiUrl = getSecureApiUrl();
-      console.log(`🔄 WeeklyRecurringTaskSelector: Using API URL: ${apiUrl}`);
-      if (!apiUrl) {
-        throw new Error('API URL is not configured');
-      }
-      const fullUrl = `${apiUrl}/api/weekly-recurring-tasks?is_active=true`;
-      console.log(`📡 WeeklyRecurringTaskSelector: Fetching from: ${fullUrl}`);
-      const response = await secureFetch(fullUrl, {
-        headers,
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch weekly tasks")
-      }
-
-      const data = await response.json()
+      console.log('📡 WeeklyRecurringTaskSelector: Fetching active weekly tasks');
+      const data = await weeklyRecurringTasksApi.getActive()
       setTasks(data)
     } catch (error) {
       console.error("Error fetching weekly tasks:", error)
@@ -87,27 +61,22 @@ export function WeeklyRecurringTaskSelector({
 
   const getCategoryColor = (category: string) => {
     const colors: Record<string, string> = {
-      meeting: "bg-blue-100 text-blue-800",
-      study: "bg-green-100 text-green-800",
-      exercise: "bg-orange-100 text-orange-800",
-      hobby: "bg-purple-100 text-purple-800",
-      admin: "bg-gray-100 text-gray-800",
-      maintenance: "bg-cyan-100 text-cyan-800",
-      review: "bg-yellow-100 text-yellow-800",
+      WORK: "bg-blue-100 text-blue-800",
+      STUDY: "bg-green-100 text-green-800",
+      PERSONAL: "bg-purple-100 text-purple-800",
+      HEALTH: "bg-orange-100 text-orange-800",
+      OTHER: "bg-gray-100 text-gray-800",
     }
     return colors[category] || "bg-gray-100 text-gray-800"
   }
 
   const getCategoryLabel = (category: string) => {
     const labels: Record<string, string> = {
-      meeting: "ミーティング",
-      study: "勉強・学習",
-      exercise: "運動・健康",
-      hobby: "趣味・娯楽",
-      admin: "事務・管理",
-      maintenance: "メンテナンス",
-      review: "振り返り・レビュー",
-      other: "その他",
+      WORK: "仕事",
+      STUDY: "勉強・学習",
+      PERSONAL: "プライベート",
+      HEALTH: "健康・運動",
+      OTHER: "その他",
     }
     return labels[category] || category
   }
