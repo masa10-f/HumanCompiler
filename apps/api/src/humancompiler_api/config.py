@@ -162,7 +162,8 @@ class Settings(BaseSettings):
 
         # Allow humancompiler-related domains only
         allowed_patterns = [
-            "humancompiler",  # Main production domain
+            "humancompiler",  # Main production domain (no hyphen)
+            "human-compiler",  # Main production domain (with hyphen)
             "humancompiler-",  # For dynamic deployments (humancompiler-*)
             "humancompiler-git-",  # For feature branch deployments (humancompiler-git-*)
         ]
