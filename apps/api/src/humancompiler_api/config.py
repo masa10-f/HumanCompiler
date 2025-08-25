@@ -129,9 +129,9 @@ class Settings(BaseSettings):
                 # Add common Vercel domain patterns (production safe)
                 expanded_origins.extend(
                     [
-                        "https://taskagent.vercel.app",
-                        "https://taskagent-five.vercel.app",
-                        # Allow taskagent prefixed domains only for security
+                        "https://humancompiler.vercel.app",
+                        "https://humancompiler-five.vercel.app",
+                        # Allow humancompiler prefixed domains only for security
                     ]
                 )
             else:
@@ -160,35 +160,35 @@ class Settings(BaseSettings):
 
         logger.info(f"CORS: Vercel domain check - subdomain: '{subdomain}'")
 
-        # Allow taskagent-related domains only
+        # Allow humancompiler-related domains only
         allowed_patterns = [
-            "taskagent",  # Main production domain
-            "taskagent-",  # For dynamic deployments (taskagent-*)
-            "taskagent-git-",  # For feature branch deployments (taskagent-git-*)
+            "humancompiler",  # Main production domain
+            "humancompiler-",  # For dynamic deployments (humancompiler-*)
+            "humancompiler-git-",  # For feature branch deployments (humancompiler-git-*)
         ]
 
         # Allow all Vercel preview domains for masato-fukushimas-projects account
         # This covers all possible patterns:
-        # - taskagent-[hash]-masato-fukushimas-projects
-        # - taskagent-[hash] (from masato-fukushimas-projects account)
+        # - humancompiler-[hash]-masato-fukushimas-projects
+        # - humancompiler-[hash] (from masato-fukushimas-projects account)
         # - Any domain containing masato-fukushimas-projects
         if "masato-fukushimas-projects" in subdomain:
             logger.info(f"CORS: Allowed masato-fukushimas-projects domain: {subdomain}")
             return True
 
-        # Check for taskagent preview domains (with hash)
+        # Check for humancompiler preview domains (with hash)
         # Patterns:
-        # - taskagent-[9char_hash] (e.g., taskagent-9qbeqspf7)
-        # - taskagent-[hash]-masato-fukushimas-projects (full pattern)
-        if subdomain.startswith("taskagent-") and len(subdomain) > 10:
+        # - humancompiler-[9char_hash] (e.g., humancompiler-9qbeqspf7)
+        # - humancompiler-[hash]-masato-fukushimas-projects (full pattern)
+        if subdomain.startswith("humancompiler-") and len(subdomain) > 15:
             # Likely a Vercel preview domain with hash
-            logger.info(f"CORS: Allowed taskagent preview domain: {subdomain}")
+            logger.info(f"CORS: Allowed humancompiler preview domain: {subdomain}")
             return True
 
         # Also check for git feature branch domains
-        # Patterns: taskagent-git-feature-*, etc.
-        if subdomain.startswith("taskagent-git-"):
-            logger.info(f"CORS: Allowed taskagent git feature domain: {subdomain}")
+        # Patterns: humancompiler-git-feature-*, etc.
+        if subdomain.startswith("humancompiler-git-"):
+            logger.info(f"CORS: Allowed humancompiler git feature domain: {subdomain}")
             return True
 
         for pattern in allowed_patterns:
@@ -211,8 +211,8 @@ class Settings(BaseSettings):
 
         # Allow our Fly.io API domains
         allowed_fly_domains = [
-            "taskagent-api-masa",  # Production API
-            "taskagent-api-masa-preview",  # Preview API
+            "humancompiler-api-masa",  # Production API
+            "humancompiler-api-masa-preview",  # Preview API
         ]
 
         return subdomain in allowed_fly_domains

@@ -12,7 +12,7 @@ def test_root_endpoint():
     data = response.json()
     assert "message" in data
     assert "status" in data
-    assert data["message"] == "TaskAgent API"
+    assert data["message"] == "HumanCompiler API"
     assert data["status"] == "active"
 
 

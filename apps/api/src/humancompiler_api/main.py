@@ -277,7 +277,7 @@ async def health_check(request: Request):
 async def root(request: Request):
     """Root endpoint with API information"""
     # Minimal information exposure for security
-    return JSONResponse({"message": "TaskAgent API", "status": "active"})
+    return JSONResponse({"message": "HumanCompiler API", "status": "active"})
 
 
 if __name__ == "__main__":
