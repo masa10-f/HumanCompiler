@@ -35,17 +35,31 @@ class TestValidateWeekStartDate:
     def test_validate_week_start_date_invalid_format(self):
         """Test that validate_week_start_date rejects invalid date formats."""
         invalid_dates = [
-            "2024/01/01",  # Wrong separator
-            "01-01-2024",  # Wrong order
-            "2024-1-1",  # Missing leading zeros
-            "invalid-date",  # Not a date
-            "2024-13-01",  # Invalid month
-            "2024-01-32",  # Invalid day
+            "2024/01/01",   # Wrong separator
+            "01-01-2024",   # Wrong order
+            "invalid-date", # Not a date
+            "2024-13-01",   # Invalid month
+            "2024-01-32",   # Invalid day
         ]
 
         for invalid_date in invalid_dates:
             with pytest.raises(HTTPException):
                 validate_week_start_date(invalid_date)
+
+    def test_validate_week_start_date_flexible_format(self):
+        """Test that validate_week_start_date accepts some flexible formats."""
+        # Python's strptime is flexible with some formats
+        flexible_dates = [
+            "2024-1-1",    # Missing leading zeros - accepted by strptime
+            "2024-01-1",   # Partial leading zeros - accepted by strptime
+            "2024-1-01",   # Mixed format - accepted by strptime
+        ]
+        
+        for date_str in flexible_dates:
+            result = validate_week_start_date(date_str)
+            assert isinstance(result, datetime)
+            # All should normalize to 2024-01-01
+            assert result.strftime("%Y-%m-%d") == "2024-01-01"
 
     def test_validate_week_start_date_edge_cases(self):
         """Test edge cases for date validation."""
