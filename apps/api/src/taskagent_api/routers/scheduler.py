@@ -901,8 +901,10 @@ def optimize_schedule(tasks, time_slots, date=None, session=None, user_id=None):
     # If session is available, add ordering constraints for task dependencies
     if session:
         task_dependencies_in_schedule = _get_task_dependencies(session, tasks)
+        goal_dependencies_in_schedule = _get_goal_dependencies(session, tasks)
         task_id_to_index = {task.id: i for i, task in enumerate(tasks)}
 
+        # Add task dependency constraints
         for task_id, dependent_task_ids in task_dependencies_in_schedule.items():
             if task_id in task_id_to_index:
                 task_idx = task_id_to_index[task_id]
@@ -912,20 +914,50 @@ def optimize_schedule(tasks, time_slots, date=None, session=None, user_id=None):
                         dep_task_idx = task_id_to_index[dep_task_id]
 
                         # Add temporal ordering constraint:
-                        # If both tasks are assigned, dependency task must be in an earlier or same slot
-                        for i in range(len(tasks)):
-                            for j in range(len(time_slots)):
-                                for k in range(j + 1, len(time_slots)):
-                                    # If task is in slot k and dependency is in slot j (j < k), that's ok
-                                    # If task is in slot j and dependency is in slot k (j < k), that's not allowed
-                                    if i == task_idx:
-                                        # Task cannot be scheduled before its dependency
+                        # If dependent task is assigned to slot j, prerequisite task cannot be assigned to any later slot k (k > j)
+                        for j in range(len(time_slots)):
+                            for k in range(j + 1, len(time_slots)):
+                                # If dependent task is in earlier slot j, prerequisite task cannot be in later slot k
+                                # This ensures prerequisite is scheduled before or at the same time as dependent task
+                                model.Add(x[task_idx, j] + x[dep_task_idx, k] <= 1)
+
+                        logger.debug(
+                            f"Added task dependency constraint: task {task_id} depends on {dep_task_id}"
+                        )
+
+        # Add goal dependency constraints
+        # Goal A depends on Goal B means all tasks in Goal A must be scheduled after all tasks in Goal B
+        goal_to_task_indices = {}
+        for i, task in enumerate(tasks):
+            if task.goal_id and not task.is_weekly_recurring:
+                if task.goal_id not in goal_to_task_indices:
+                    goal_to_task_indices[task.goal_id] = []
+                goal_to_task_indices[task.goal_id].append(i)
+
+        for goal_id, dependent_goal_ids in goal_dependencies_in_schedule.items():
+            if goal_id in goal_to_task_indices:
+                dependent_goal_task_indices = goal_to_task_indices[goal_id]
+
+                for dep_goal_id in dependent_goal_ids:
+                    if dep_goal_id in goal_to_task_indices:
+                        prerequisite_goal_task_indices = goal_to_task_indices[
+                            dep_goal_id
+                        ]
+
+                        # Add constraint: all tasks in dependent goal must be scheduled after all tasks in prerequisite goal
+                        for dependent_task_idx in dependent_goal_task_indices:
+                            for prerequisite_task_idx in prerequisite_goal_task_indices:
+                                for j in range(len(time_slots)):
+                                    for k in range(j + 1, len(time_slots)):
+                                        # If dependent goal task is in earlier slot j, prerequisite goal task cannot be in later slot k
                                         model.Add(
-                                            x[task_idx, j] + x[dep_task_idx, k] <= 1
+                                            x[dependent_task_idx, j]
+                                            + x[prerequisite_task_idx, k]
+                                            <= 1
                                         )
 
                         logger.debug(
-                            f"Added temporal ordering constraint: task {task_id} after {dep_task_id}"
+                            f"Added goal dependency constraint: goal {goal_id} depends on {dep_goal_id}"
                         )
 
     # Constraint 4: Task kind matching with slot kind (soft constraint via penalty)
