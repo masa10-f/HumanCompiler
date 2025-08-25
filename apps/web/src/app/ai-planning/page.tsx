@@ -38,22 +38,11 @@ import { WeeklyRecurringTaskSelector } from '@/components/weekly-recurring-task-
 import { WeeklyRecurringTaskDialog } from '@/components/weekly-recurring-task-dialog';
 import { ProjectAllocationSettings } from '@/components/scheduling/project-allocation-settings';
 import { toast } from '@/hooks/use-toast';
-import { aiPlanningApi, weeklyScheduleApi, getSecureApiUrl, secureFetch } from '@/lib/api';
+import { aiPlanningApi, weeklyScheduleApi, weeklyRecurringTasksApi, reportsApi } from '@/lib/api';
 import { log } from '@/lib/logger';
 import type { WeeklyPlanResponse, SavedWeeklySchedule } from '@/types/ai-planning';
 import type { WeeklyReportResponse } from '@/types/reports';
-import { getAuthHeaders } from '@/lib/auth';
-
-interface WeeklyRecurringTask {
-  id: string;
-  title: string;
-  description?: string;
-  estimate_hours: number;
-  category: string;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
+import type { WeeklyRecurringTask } from '@/types/weekly-recurring-task';
 
 export default function AIPlanningPage() {
   const { user, session, loading: authLoading } = useAuth();
@@ -230,27 +219,10 @@ export default function AIPlanningPage() {
         return;
       }
 
-      const apiUrl = getSecureApiUrl();
-      if (!apiUrl) {
-        throw new Error('API URL is not configured');
-      }
-
-      const headers = await getAuthHeaders();
-      const response = await secureFetch(`${apiUrl}/api/reports/weekly`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          week_start_date: weekStartDate,
-          project_ids: selectedProjects.length > 0 ? selectedProjects : undefined
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || 'Failed to generate weekly report');
-      }
-
-      const reportData = await response.json();
+      const reportData = await reportsApi.generateWeeklyReport(
+        weekStartDate,
+        selectedProjects.length > 0 ? selectedProjects : undefined
+      );
       setWeeklyReport(reportData);
 
       toast({
@@ -379,22 +351,8 @@ export default function AIPlanningPage() {
   const fetchWeeklyTasks = async () => {
     try {
       setLoadingWeeklyTasks(true);
-      const headers = await getAuthHeaders();
-      const apiUrl = getSecureApiUrl();
-      if (!apiUrl) {
-        throw new Error('API URL is not configured');
-      }
-
-      const response = await secureFetch(`${apiUrl}/api/weekly-recurring-tasks`, {
-        headers,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch weekly tasks');
-      }
-
-      const data = await response.json();
-      setWeeklyTasks(data);
+      const tasks = await weeklyRecurringTasksApi.getAll();
+      setWeeklyTasks(tasks);
     } catch (error) {
       toast({
         title: 'エラー',
@@ -422,20 +380,7 @@ export default function AIPlanningPage() {
     }
 
     try {
-      const headers = await getAuthHeaders();
-      const apiUrl = getSecureApiUrl();
-      if (!apiUrl) {
-        throw new Error('API URL is not configured');
-      }
-
-      const response = await secureFetch(`${apiUrl}/api/weekly-recurring-tasks/${taskId}`, {
-        method: 'DELETE',
-        headers,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete task');
-      }
+      await weeklyRecurringTasksApi.delete(taskId);
 
       toast({
         title: '成功',

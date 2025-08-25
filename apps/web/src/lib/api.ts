@@ -660,6 +660,18 @@ class ApiClient {
     return this.request<TimelineOverviewData>(`/api/timeline/overview?${params.toString()}`);
   }
 
+  // Reports API methods
+  async generateWeeklyReport(weekStartDate: string, projectIds?: string[]): Promise<import('@/types/reports').WeeklyReportResponse> {
+    const body: any = { week_start_date: weekStartDate };
+    if (projectIds && projectIds.length > 0) {
+      body.project_ids = projectIds;
+    }
+    return this.request<import('@/types/reports').WeeklyReportResponse>('/api/reports/weekly', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
   // Weekly Recurring Tasks
   async getWeeklyRecurringTasks(
     skip: number = 0,
@@ -798,6 +810,11 @@ export const timelineApi = {
     apiClient.getProjectTimeline(projectId, startDate, endDate, timeUnit, weeklyWorkHours),
   getOverview: (startDate?: string, endDate?: string) =>
     apiClient.getTimelineOverview(startDate, endDate),
+};
+
+export const reportsApi = {
+  generateWeeklyReport: (weekStartDate: string, projectIds?: string[]) =>
+    apiClient.generateWeeklyReport(weekStartDate, projectIds),
 };
 
 // Export helper function for getting secure API URL
