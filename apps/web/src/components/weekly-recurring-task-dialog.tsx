@@ -23,7 +23,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/components/ui/use-toast"
 import { weeklyRecurringTasksApi } from "@/lib/api"
-import type { WeeklyRecurringTask, WeeklyRecurringTaskCreate, WeeklyRecurringTaskUpdate } from "@/types/weekly-recurring-task"
+import type { WeeklyRecurringTask, WeeklyRecurringTaskCreate, WeeklyRecurringTaskUpdate, TaskCategory } from "@/types/weekly-recurring-task"
 
 interface WeeklyRecurringTaskDialogProps {
   open: boolean
@@ -32,15 +32,12 @@ interface WeeklyRecurringTaskDialogProps {
   onSaved: () => void
 }
 
-const CATEGORIES = [
-  { value: "meeting", label: "ミーティング" },
-  { value: "study", label: "勉強・学習" },
-  { value: "exercise", label: "運動・健康" },
-  { value: "hobby", label: "趣味・娯楽" },
-  { value: "admin", label: "事務・管理" },
-  { value: "maintenance", label: "メンテナンス" },
-  { value: "review", label: "振り返り・レビュー" },
-  { value: "other", label: "その他" },
+const CATEGORIES: { value: TaskCategory; label: string }[] = [
+  { value: "WORK", label: "仕事" },
+  { value: "STUDY", label: "勉強・学習" },
+  { value: "PERSONAL", label: "プライベート" },
+  { value: "HEALTH", label: "健康・運動" },
+  { value: "OTHER", label: "その他" },
 ]
 
 export function WeeklyRecurringTaskDialog({
@@ -53,7 +50,7 @@ export function WeeklyRecurringTaskDialog({
     title: "",
     description: "",
     estimate_hours: 1,
-    category: "other",
+    category: "OTHER" as TaskCategory,
     is_active: true,
   })
   const [saving, setSaving] = useState(false)
@@ -73,7 +70,7 @@ export function WeeklyRecurringTaskDialog({
         title: "",
         description: "",
         estimate_hours: 1,
-        category: "other",
+        category: "OTHER" as TaskCategory,
         is_active: true,
       })
     }
@@ -194,7 +191,7 @@ export function WeeklyRecurringTaskDialog({
               <Label htmlFor="category">カテゴリ *</Label>
               <Select
                 value={formData.category}
-                onValueChange={(value) =>
+                onValueChange={(value: TaskCategory) =>
                   setFormData({ ...formData, category: value })
                 }
               >
