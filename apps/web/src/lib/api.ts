@@ -254,10 +254,14 @@ class ApiClient {
       const baseUrl = this.getBaseURL();
       const fullUrl = `${baseUrl}${endpoint}`;
       console.log('🔍 [ApiClient] Making fetch request to:', fullUrl);
+      // Safe header logging
+      const headerObj = { ...headers, ...options.headers };
+      const authHeader = typeof headerObj === 'object' && headerObj && 'Authorization' in headerObj
+        ? String(headerObj.Authorization) : undefined;
+
       console.log('🔍 [ApiClient] Request headers:', {
-        ...headers,
-        ...options.headers,
-        Authorization: headers.Authorization ? `${headers.Authorization.substring(0, 20)}...` : 'None'
+        ...headerObj,
+        Authorization: authHeader ? `${authHeader.substring(0, 20)}...` : 'None'
       });
 
       const response = await fetch(fullUrl, {
