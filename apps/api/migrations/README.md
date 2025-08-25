@@ -1,6 +1,6 @@
 # Database Migrations
 
-This directory contains SQL migration files for the TaskAgent database schema.
+This directory contains SQL migration files for the HumanCompiler database schema.
 
 ## Migration Strategy
 
@@ -37,7 +37,7 @@ The project includes a migration manager that tracks applied migrations and ensu
 
 ```bash
 # From the api directory
-cd TaskAgent/apps/api
+cd HumanCompiler/apps/api
 
 # Check migration status
 python migrate.py status
@@ -101,7 +101,7 @@ You can also apply migrations manually through:
 ### 1. Supabase プロジェクト作成
 1. [Supabase Dashboard](https://supabase.com/dashboard) でプロジェクト作成
 2. 地域: `Northeast Asia (Tokyo)` を選択
-3. プロジェクト名: `taskagent-production`
+3. プロジェクト名: `humancompiler-production`
 
 ### 2. データベーススキーマの適用
 

@@ -124,7 +124,7 @@ def mock_supabase():
 @pytest.fixture(autouse=True)
 def override_settings():
     """Override settings for all tests"""
-    from taskagent_api.config import settings
+    from humancompiler_api.config import settings
 
     # Temporarily store original values
     original_db_url = settings.database_url
@@ -158,8 +158,8 @@ def session(db):
 # Test helper functions
 def create_test_data(session: Session, user_id: str):
     """Create basic test data (project, goal) for testing"""
-    from taskagent_api.models import ProjectCreate, GoalCreate, UserCreate
-    from taskagent_api.services import ProjectService, GoalService, UserService
+    from humancompiler_api.models import ProjectCreate, GoalCreate, UserCreate
+    from humancompiler_api.services import ProjectService, GoalService, UserService
 
     # Create user first
     user_service = UserService()

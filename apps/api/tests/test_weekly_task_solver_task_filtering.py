@@ -9,14 +9,14 @@ from uuid import uuid4
 import pytest
 from sqlmodel import Session
 
-from taskagent_api.ai.weekly_task_solver import (
+from humancompiler_api.ai.weekly_task_solver import (
     WeeklyTaskSolver,
     TaskSolverRequest,
     WeeklyConstraints,
     ProjectAllocation,
     WeeklyPlanContext,
 )
-from taskagent_api.models import Task, Goal, Project, TaskStatus
+from humancompiler_api.models import Task, Goal, Project, TaskStatus
 
 
 class TestWeeklyTaskSolverTaskFiltering:

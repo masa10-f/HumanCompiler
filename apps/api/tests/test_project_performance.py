@@ -14,8 +14,8 @@ from sqlmodel import Session, SQLModel, create_engine
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from taskagent_api.models import Goal, Log, Project, Task, TaskStatus, User
-from taskagent_api.services import ProjectService
+from humancompiler_api.models import Goal, Log, Project, Task, TaskStatus, User
+from humancompiler_api.services import ProjectService
 
 
 @pytest.fixture

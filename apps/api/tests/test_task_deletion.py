@@ -6,9 +6,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
-from taskagent_api.database import db
-from taskagent_api.models import Task, TaskDependency, Log, Project, Goal
-from taskagent_api.services import TaskService, ProjectService, GoalService
+from humancompiler_api.database import db
+from humancompiler_api.models import Task, TaskDependency, Log, Project, Goal
+from humancompiler_api.services import TaskService, ProjectService, GoalService
 from conftest import create_test_data
 
 
@@ -24,14 +24,14 @@ class TestTaskDeletion:
         task_service = TaskService()
 
         # Create project
-        from taskagent_api.models import (
+        from humancompiler_api.models import (
             ProjectCreate,
             GoalCreate,
             TaskCreate,
             LogCreate,
             UserCreate,
         )
-        from taskagent_api.services import UserService
+        from humancompiler_api.services import UserService
 
         # Create user first
         user_service = UserService()
@@ -79,7 +79,7 @@ class TestTaskDeletion:
         )
 
         # Create logs for task1
-        from taskagent_api.services import LogService
+        from humancompiler_api.services import LogService
 
         log_service = LogService()
         log_data = LogCreate(
@@ -104,7 +104,7 @@ class TestTaskDeletion:
 
         # Create a simple task without dependencies
         test_data = create_test_data(session, test_user_id)
-        from taskagent_api.models import TaskCreate
+        from humancompiler_api.models import TaskCreate
 
         task_data = TaskCreate(
             goal_id=test_data["goal"].id,
@@ -186,8 +186,8 @@ class TestTaskDeletion:
         test_data = setup_test_data
 
         # Add more logs to task1
-        from taskagent_api.services import LogService
-        from taskagent_api.models import LogCreate
+        from humancompiler_api.services import LogService
+        from humancompiler_api.models import LogCreate
 
         log_service = LogService()
 
@@ -226,7 +226,7 @@ class TestTaskDeletion:
 
         # Create a task
         test_data = create_test_data(session, test_user_id)
-        from taskagent_api.models import TaskCreate
+        from humancompiler_api.models import TaskCreate
 
         task_data = TaskCreate(
             goal_id=test_data["goal"].id,

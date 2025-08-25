@@ -9,13 +9,13 @@ from uuid import UUID
 import pytest
 from fastapi import HTTPException, status
 
-from taskagent_api.routers.ai_planning import (
+from humancompiler_api.routers.ai_planning import (
     generate_weekly_plan,
     test_ai_integration,
     analyze_workload,
     suggest_task_priorities,
 )
-from taskagent_api.ai_service import WeeklyPlanRequest, WeeklyPlanResponse
+from humancompiler_api.ai_service import WeeklyPlanRequest, WeeklyPlanResponse
 import datetime as dt
 
 
@@ -71,7 +71,7 @@ async def test_analyze_workload_success(mock_session):
     }
 
     with patch(
-        "taskagent_api.ai.analysis_cache.analyze_workload_cached",
+        "humancompiler_api.ai.analysis_cache.analyze_workload_cached",
         return_value=expected_result,
     ):
         result = await analyze_workload(
@@ -102,7 +102,7 @@ async def test_analyze_workload_with_project_filter(mock_session):
     }
 
     with patch(
-        "taskagent_api.ai.analysis_cache.analyze_workload_cached",
+        "humancompiler_api.ai.analysis_cache.analyze_workload_cached",
         return_value=expected_result,
     ):
         result = await analyze_workload(
@@ -133,7 +133,7 @@ async def test_analyze_workload_overload_recommendations(mock_session):
     }
 
     with patch(
-        "taskagent_api.ai.analysis_cache.analyze_workload_cached",
+        "humancompiler_api.ai.analysis_cache.analyze_workload_cached",
         return_value=expected_result,
     ):
         result = await analyze_workload(
@@ -166,7 +166,7 @@ async def test_analyze_workload_with_overdue_tasks(mock_session):
     }
 
     with patch(
-        "taskagent_api.ai.analysis_cache.analyze_workload_cached",
+        "humancompiler_api.ai.analysis_cache.analyze_workload_cached",
         return_value=expected_result,
     ):
         result = await analyze_workload(
@@ -217,7 +217,7 @@ async def test_suggest_task_priorities_success(mock_session):
     }
 
     with patch(
-        "taskagent_api.ai.analysis_cache.suggest_priorities_cached",
+        "humancompiler_api.ai.analysis_cache.suggest_priorities_cached",
         return_value=expected_result,
     ):
         result = await suggest_task_priorities(
@@ -257,7 +257,7 @@ async def test_suggest_task_priorities_specific_project(mock_session):
     }
 
     with patch(
-        "taskagent_api.ai.analysis_cache.suggest_priorities_cached",
+        "humancompiler_api.ai.analysis_cache.suggest_priorities_cached",
         return_value=expected_result,
     ):
         result = await suggest_task_priorities(
@@ -274,7 +274,7 @@ async def test_suggest_task_priorities_project_not_found(mock_session):
     expected_result = {"success": False, "error": "Project not found"}
 
     with patch(
-        "taskagent_api.ai.analysis_cache.suggest_priorities_cached",
+        "humancompiler_api.ai.analysis_cache.suggest_priorities_cached",
         return_value=expected_result,
     ):
         with pytest.raises(HTTPException) as exc_info:
@@ -329,7 +329,7 @@ async def test_suggest_task_priorities_scoring_algorithm(mock_session):
     }
 
     with patch(
-        "taskagent_api.ai.analysis_cache.suggest_priorities_cached",
+        "humancompiler_api.ai.analysis_cache.suggest_priorities_cached",
         return_value=expected_result,
     ):
         result = await suggest_task_priorities(
@@ -350,7 +350,9 @@ async def test_generate_weekly_plan_success(
     weekly_plan_request, mock_plan_response, mock_session
 ):
     """Test successful weekly plan generation"""
-    with patch("taskagent_api.routers.ai_planning.WeeklyPlanService") as MockService:
+    with patch(
+        "humancompiler_api.routers.ai_planning.WeeklyPlanService"
+    ) as MockService:
         # Mock the service instance
         mock_service_instance = Mock()
         mock_service_instance.generate_weekly_plan = AsyncMock(
@@ -359,7 +361,7 @@ async def test_generate_weekly_plan_success(
         MockService.return_value = mock_service_instance
 
         # Mock OpenAIService
-        with patch("taskagent_api.routers.ai_planning.OpenAIService"):
+        with patch("humancompiler_api.routers.ai_planning.OpenAIService"):
             result = await generate_weekly_plan(
                 weekly_plan_request,
                 "87654321-4321-8765-4321-876543218765",
@@ -407,9 +409,9 @@ async def test_generate_weekly_plan_past_date():
 @pytest.mark.asyncio
 async def test_test_ai_integration_success():
     """Test AI integration test endpoint success"""
-    with patch("taskagent_api.ai.openai_client.OpenAIClient") as MockOpenAIClient:
+    with patch("humancompiler_api.ai.openai_client.OpenAIClient") as MockOpenAIClient:
         with patch(
-            "taskagent_api.ai.prompts.get_function_definitions"
+            "humancompiler_api.ai.prompts.get_function_definitions"
         ) as MockFunctions:
             mock_client = Mock()
             mock_client.model = "gpt-4-1106-preview"
@@ -429,7 +431,7 @@ async def test_test_ai_integration_success():
 async def test_test_ai_integration_error():
     """Test AI integration test endpoint error"""
     with patch(
-        "taskagent_api.ai.openai_client.OpenAIClient",
+        "humancompiler_api.ai.openai_client.OpenAIClient",
         side_effect=Exception("Test error"),
     ):
         result = await test_ai_integration()

@@ -50,7 +50,7 @@ export default function LoginPage() {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">ログイン</CardTitle>
           <CardDescription>
-            TaskAgentアカウントにログインしてください
+            HumanCompilerアカウントにログインしてください
           </CardDescription>
         </CardHeader>
         <CardContent>

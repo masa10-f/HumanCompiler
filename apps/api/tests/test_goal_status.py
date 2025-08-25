@@ -7,8 +7,8 @@ from uuid import uuid4
 from fastapi import HTTPException
 from sqlmodel import Session, SQLModel, create_engine
 
-from taskagent_api.models import Goal, GoalStatus, GoalUpdate, User, Project
-from taskagent_api.services import GoalService
+from humancompiler_api.models import Goal, GoalStatus, GoalUpdate, User, Project
+from humancompiler_api.services import GoalService
 
 
 @pytest.fixture
@@ -450,7 +450,7 @@ class TestGoalStatusAPI:
 
     def test_goal_status_serialization(self):
         """Test that goal status serializes correctly to JSON"""
-        from taskagent_api.models import GoalResponse
+        from humancompiler_api.models import GoalResponse
 
         # Create a mock goal response
         goal_response = GoalResponse(

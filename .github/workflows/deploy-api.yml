@@ -105,7 +105,7 @@ jobs:
             SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
             SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             ENCRYPTION_SALT="${{ secrets.ENCRYPTION_SALT }}" \
-            --app taskagent-api-masa-preview
+            --app humancompiler-api-masa-preview
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
@@ -127,24 +127,24 @@ jobs:
                 repo: context.repo.repo,
                 body: `🚀 **Preview Environment Deployed!**
 
-                📡 API: https://taskagent-api-masa-preview.fly.dev
-                📊 Docs: https://taskagent-api-masa-preview.fly.dev/docs
-                🏥 Health: https://taskagent-api-masa-preview.fly.dev/health
+                📡 API: https://humancompiler-api-masa-preview.fly.dev
+                📊 Docs: https://humancompiler-api-masa-preview.fly.dev/docs
+                🏥 Health: https://humancompiler-api-masa-preview.fly.dev/health
 
                 This preview will auto-scale to zero after 5 minutes of inactivity to save costs.`
               })
               console.log('✅ Successfully commented preview URL on PR')
             } catch (error) {
               console.log('⚠️ Failed to comment on PR:', error.message)
-              console.log('📡 Preview deployed at: https://taskagent-api-masa-preview.fly.dev')
+              console.log('📡 Preview deployed at: https://humancompiler-api-masa-preview.fly.dev')
             }
 
       - name: ✅ Preview deployment success
         if: success()
         run: |
           echo "🎉 Preview API successfully deployed!"
-          echo "📡 Preview URL: https://taskagent-api-masa-preview.fly.dev"
-          echo "📊 Docs: https://taskagent-api-masa-preview.fly.dev/docs"
+          echo "📡 Preview URL: https://humancompiler-api-masa-preview.fly.dev"
+          echo "📊 Docs: https://humancompiler-api-masa-preview.fly.dev/docs"
 
   deploy-production:
     name: 🚀 Deploy to Production (Fly.io)
@@ -169,7 +169,7 @@ jobs:
             SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
             SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             ENCRYPTION_SALT="${{ secrets.ENCRYPTION_SALT }}" \
-            --app taskagent-api-masa
+            --app humancompiler-api-masa
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
@@ -182,8 +182,8 @@ jobs:
       - name: ✅ Deployment notification
         if: success()
         run: |
-          echo "🎉 API successfully deployed to: https://taskagent-api-masa.fly.dev"
-          echo "📊 API Documentation: https://taskagent-api-masa.fly.dev/docs"
+          echo "🎉 API successfully deployed to: https://humancompiler-api-masa.fly.dev"
+          echo "📊 API Documentation: https://humancompiler-api-masa.fly.dev/docs"
 
       - name: ❌ Deployment failure notification
         if: failure()
@@ -203,7 +203,7 @@ jobs:
 
       - name: 🏥 Check API health
         run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" https://taskagent-api-masa.fly.dev/health)
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://humancompiler-api-masa.fly.dev/health)
           if [ $response -eq 200 ]; then
             echo "✅ Health check passed (HTTP $response)"
           else
@@ -213,7 +213,7 @@ jobs:
 
       - name: 📝 Verify API documentation
         run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" https://taskagent-api-masa.fly.dev/docs)
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://humancompiler-api-masa.fly.dev/docs)
           if [ $response -eq 200 ]; then
             echo "✅ API documentation accessible (HTTP $response)"
           else

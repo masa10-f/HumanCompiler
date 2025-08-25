@@ -2,13 +2,13 @@ from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 
-from taskagent_api.main import app
+from humancompiler_api.main import app
 
 client = TestClient(app)
 
 
-@patch("taskagent_api.routers.projects.get_current_user")
-@patch("taskagent_api.routers.projects.get_session")
+@patch("humancompiler_api.routers.projects.get_current_user")
+@patch("humancompiler_api.routers.projects.get_session")
 def test_create_project_unauthenticated(mock_session, mock_user):
     """Test project creation without authentication"""
     mock_user.side_effect = Exception("Unauthorized")
@@ -74,8 +74,8 @@ def test_validation_error():
     assert response.status_code in [403, 422, 500]  # Could be auth or validation error
 
 
-@patch("taskagent_api.routers.projects.get_current_user")
-@patch("taskagent_api.routers.projects.get_session")
+@patch("humancompiler_api.routers.projects.get_current_user")
+@patch("humancompiler_api.routers.projects.get_session")
 def test_project_endpoints_structure(mock_session, mock_user):
     """Test that project endpoints are properly structured"""
     # Mock authenticated user
@@ -109,8 +109,8 @@ def test_api_error_format():
         assert "detail" in data
 
 
-@patch("taskagent_api.routers.tasks.get_current_user")
-@patch("taskagent_api.routers.tasks.get_session")
+@patch("humancompiler_api.routers.tasks.get_current_user")
+@patch("humancompiler_api.routers.tasks.get_session")
 def test_delete_task_endpoint_structure(mock_session, mock_user):
     """Test that task deletion endpoint is properly structured"""
     # Mock authenticated user

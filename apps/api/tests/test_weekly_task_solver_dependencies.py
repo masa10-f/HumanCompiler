@@ -9,12 +9,12 @@ from uuid import uuid4, UUID
 import pytest
 from sqlmodel import Session
 
-from taskagent_api.ai.weekly_task_solver import (
+from humancompiler_api.ai.weekly_task_solver import (
     WeeklyTaskSolver,
     TaskSolverRequest,
     WeeklyConstraints,
 )
-from taskagent_api.models import Task, TaskStatus
+from humancompiler_api.models import Task, TaskStatus
 
 
 class TestWeeklyTaskSolverDependencies:
@@ -214,10 +214,10 @@ class TestWeeklyTaskSolverDependencies:
         assert len(blocked) == 0
 
     @patch(
-        "taskagent_api.ai.weekly_task_solver.WeeklyTaskSolver._collect_task_dependencies"
+        "humancompiler_api.ai.weekly_task_solver.WeeklyTaskSolver._collect_task_dependencies"
     )
     @patch(
-        "taskagent_api.ai.weekly_task_solver.WeeklyTaskSolver._check_dependencies_schedulable_in_week"
+        "humancompiler_api.ai.weekly_task_solver.WeeklyTaskSolver._check_dependencies_schedulable_in_week"
     )
     async def test_collect_solver_context_applies_dependency_filtering(
         self,

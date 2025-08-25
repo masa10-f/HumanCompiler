@@ -9,7 +9,7 @@ from uuid import UUID
 
 import pytest
 
-from taskagent_api.ai_service import (
+from humancompiler_api.ai_service import (
     OpenAIService,
     WeeklyPlanService,
     WeeklyPlanContext,
@@ -17,7 +17,7 @@ from taskagent_api.ai_service import (
     WeeklyPlanResponse,
     TaskPlan,
 )
-from taskagent_api.models import Goal, Project, Task, TaskStatus, UserSettings
+from humancompiler_api.models import Goal, Project, Task, TaskStatus, UserSettings
 
 
 @pytest.fixture
@@ -84,7 +84,7 @@ def mock_context(mock_projects, mock_goals, mock_tasks):
 
 def test_openai_service_initialization_no_api_key():
     """Test OpenAI service initialization without API key"""
-    with patch("taskagent_api.ai_service.settings.openai_api_key", None):
+    with patch("humancompiler_api.ai_service.settings.openai_api_key", None):
         service = OpenAIService()
         assert service.client is None
         assert service.model == "gpt-5"
@@ -92,8 +92,8 @@ def test_openai_service_initialization_no_api_key():
 
 def test_openai_service_initialization_with_api_key():
     """Test OpenAI service initialization with API key"""
-    with patch("taskagent_api.ai_service.settings.openai_api_key", "sk-test-key"):
-        with patch("taskagent_api.ai_service.OpenAI") as mock_openai:
+    with patch("humancompiler_api.ai_service.settings.openai_api_key", "sk-test-key"):
+        with patch("humancompiler_api.ai_service.OpenAI") as mock_openai:
             service = OpenAIService()
             assert service.client is not None
             mock_openai.assert_called_once_with(api_key="sk-test-key")
@@ -101,7 +101,7 @@ def test_openai_service_initialization_with_api_key():
 
 def test_openai_service_initialization_with_user_api_key():
     """Test OpenAI service initialization with user-provided API key"""
-    with patch("taskagent_api.ai_service.OpenAI") as mock_openai:
+    with patch("humancompiler_api.ai_service.OpenAI") as mock_openai:
         service = OpenAIService(api_key="user-key", model="gpt-3.5-turbo")
         assert service.model == "gpt-3.5-turbo"
         mock_openai.assert_called_once_with(api_key="user-key")
@@ -121,9 +121,9 @@ async def test_create_for_user_with_encrypted_key():
     mock_result.scalar_one_or_none.return_value = mock_user_settings
     mock_session.execute.return_value = mock_result
 
-    with patch("taskagent_api.ai_service.get_crypto_service") as mock_crypto:
+    with patch("humancompiler_api.ai_service.get_crypto_service") as mock_crypto:
         mock_crypto.return_value.decrypt.return_value = "decrypted-key"
-        with patch("taskagent_api.ai_service.OpenAI") as mock_openai:
+        with patch("humancompiler_api.ai_service.OpenAI") as mock_openai:
             service = await OpenAIService.create_for_user(user_id, mock_session)
             mock_openai.assert_called_once_with(api_key="decrypted-key")
 
@@ -138,8 +138,8 @@ async def test_create_for_user_no_settings():
     mock_result.scalar_one_or_none.return_value = None
     mock_session.execute.return_value = mock_result
 
-    with patch("taskagent_api.ai_service.settings.openai_api_key", "system-key"):
-        with patch("taskagent_api.ai_service.OpenAI") as mock_openai:
+    with patch("humancompiler_api.ai_service.settings.openai_api_key", "system-key"):
+        with patch("humancompiler_api.ai_service.OpenAI") as mock_openai:
             service = await OpenAIService.create_for_user(user_id, mock_session)
             mock_openai.assert_called_once_with(api_key="system-key")
 
@@ -155,9 +155,9 @@ def test_create_for_user_sync():
     mock_session = Mock()
     mock_session.exec.return_value.one_or_none.return_value = mock_user_settings
 
-    with patch("taskagent_api.ai_service.get_crypto_service") as mock_crypto:
+    with patch("humancompiler_api.ai_service.get_crypto_service") as mock_crypto:
         mock_crypto.return_value.decrypt.return_value = "decrypted-key"
-        with patch("taskagent_api.ai_service.OpenAI") as mock_openai:
+        with patch("humancompiler_api.ai_service.OpenAI") as mock_openai:
             service = OpenAIService.create_for_user_sync(user_id, mock_session)
             mock_openai.assert_called_once_with(api_key="decrypted-key")
 
@@ -281,7 +281,7 @@ async def test_log_api_usage():
     mock_session = Mock()
     mock_db_gen = iter([mock_session, StopIteration])
 
-    with patch("taskagent_api.ai_service.get_db", return_value=mock_db_gen):
+    with patch("humancompiler_api.ai_service.get_db", return_value=mock_db_gen):
         await service._log_api_usage(
             "12345678-1234-5678-1234-567812345678", "weekly-plan", 100, "success"
         )
@@ -296,14 +296,14 @@ async def test_weekly_plan_service_collect_context():
     mock_session = Mock()
 
     with patch(
-        "taskagent_api.ai_service.project_service.get_projects", return_value=[]
+        "humancompiler_api.ai_service.project_service.get_projects", return_value=[]
     ):
         with patch(
-            "taskagent_api.ai_service.goal_service.get_goals_by_project",
+            "humancompiler_api.ai_service.goal_service.get_goals_by_project",
             return_value=[],
         ):
             with patch(
-                "taskagent_api.ai_service.task_service.get_tasks_by_goal",
+                "humancompiler_api.ai_service.task_service.get_tasks_by_goal",
                 return_value=[],
             ):
                 service = WeeklyPlanService()
@@ -353,7 +353,7 @@ async def test_weekly_plan_service_generate_plan():
 
     with patch.object(service, "collect_context", return_value=mock_context):
         with patch(
-            "taskagent_api.ai_service.OpenAIService.create_for_user"
+            "humancompiler_api.ai_service.OpenAIService.create_for_user"
         ) as mock_create:
             mock_openai_service = AsyncMock()
             mock_openai_service.generate_weekly_plan.return_value = mock_response

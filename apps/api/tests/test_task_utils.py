@@ -7,8 +7,8 @@ from datetime import date, timedelta
 
 import pytest
 
-from taskagent_api.ai.models import WeeklyPlanContext
-from taskagent_api.ai.task_utils import filter_valid_tasks
+from humancompiler_api.ai.models import WeeklyPlanContext
+from humancompiler_api.ai.task_utils import filter_valid_tasks
 
 
 class MockTask:

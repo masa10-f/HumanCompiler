@@ -8,7 +8,7 @@ import os
 
 sys.path.insert(0, "/app/src")
 
-from taskagent_api.database import db
+from humancompiler_api.database import db
 from sqlmodel import Session, text
 
 

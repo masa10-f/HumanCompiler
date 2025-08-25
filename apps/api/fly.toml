@@ -1,5 +1,5 @@
-# Fly.io configuration for TaskAgent API
-app = "taskagent-api-masa"
+# Fly.io configuration for HumanCompiler API
+app = "humancompiler-api-masa"
 primary_region = "nrt"  # Tokyo region for lower latency
 
 [build]
@@ -31,7 +31,7 @@ primary_region = "nrt"  # Tokyo region for lower latency
 
 [machines]
   [[machines.mounts]]
-    source = "taskagent_data"
+    source = "humancompiler_data"
     destination = "/app/data"
 
 [vm]
@@ -40,7 +40,7 @@ primary_region = "nrt"  # Tokyo region for lower latency
   memory_mb = 1024
 
 [deploy]
-  release_command = "python -c 'print(\"Starting TaskAgent API...\")'"
+  release_command = "python -c 'print(\"Starting HumanCompiler API...\")'"
 
 # Database and secrets configuration
 # Set these with: fly secrets set KEY=VALUE

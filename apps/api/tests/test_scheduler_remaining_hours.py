@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import MagicMock
 from decimal import Decimal
 
-from taskagent_api.routers.scheduler import (
+from humancompiler_api.routers.scheduler import (
     SchedulerTask,
     TaskKind,
     _get_task_actual_hours,

@@ -6,14 +6,14 @@ import pytest
 from datetime import date, datetime, timedelta
 from unittest.mock import Mock, AsyncMock, patch
 
-from taskagent_api.ai.weekly_task_solver import (
+from humancompiler_api.ai.weekly_task_solver import (
     WeeklyTaskSolver,
     TaskSolverRequest,
     WeeklyConstraints,
     TaskPriorityExtractor,
 )
-from taskagent_api.ai.models import WeeklyPlanContext
-from taskagent_api.models import Project, Goal, Task
+from humancompiler_api.ai.models import WeeklyPlanContext
+from humancompiler_api.models import Project, Goal, Task
 
 
 class TestTwoStageOptimization:

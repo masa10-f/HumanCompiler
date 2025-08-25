@@ -13,7 +13,7 @@ import shutil
 
 import pytest
 
-from taskagent_api.simple_backup import (
+from humancompiler_api.simple_backup import (
     BackupConfig,
     BackupError,
     BackupValidationError,
@@ -406,7 +406,7 @@ class TestGlobalFunctions:
 
     def test_create_manual_backup(self):
         """Test manual backup creation"""
-        with patch("taskagent_api.simple_backup.get_backup_scheduler") as mock_get:
+        with patch("humancompiler_api.simple_backup.get_backup_scheduler") as mock_get:
             mock_scheduler = MagicMock()
             mock_scheduler.create_daily_backup_sync.return_value = "backup_path"
             mock_get.return_value = mock_scheduler

@@ -9,13 +9,13 @@ from uuid import uuid4
 import pytest
 from sqlmodel import Session
 
-from taskagent_api.ai.weekly_task_solver import (
+from humancompiler_api.ai.weekly_task_solver import (
     WeeklyTaskSolver,
     TaskSolverRequest,
     WeeklyConstraints,
     ProjectAllocation,
 )
-from taskagent_api.models import Task, Goal, Project, TaskStatus
+from humancompiler_api.models import Task, Goal, Project, TaskStatus
 
 
 class TestWeeklyTaskSolverZeroAllocation:
@@ -151,7 +151,7 @@ class TestWeeklyTaskSolverZeroAllocation:
         assert not (normal_allocation.target_hours <= 0.001)
 
     @patch(
-        "taskagent_api.ai.weekly_task_solver.WeeklyTaskSolver._optimize_project_allocations"
+        "humancompiler_api.ai.weekly_task_solver.WeeklyTaskSolver._optimize_project_allocations"
     )
     async def test_small_epsilon_allocation_still_blocks(
         self,
@@ -241,7 +241,7 @@ class TestWeeklyTaskSolverZeroAllocation:
         )
 
         # Test OR-Tools constraint application directly
-        with patch("taskagent_api.ai.weekly_task_solver.logger") as mock_logger:
+        with patch("humancompiler_api.ai.weekly_task_solver.logger") as mock_logger:
             # This would normally be called within _optimize_with_ortools
             # We're testing the constraint logic directly
 

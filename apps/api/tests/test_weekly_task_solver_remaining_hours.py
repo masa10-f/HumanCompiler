@@ -6,8 +6,8 @@ import pytest
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-from taskagent_api.ai.weekly_task_solver import WeeklyTaskSolver
-from taskagent_api.ai.models import TaskPlan
+from humancompiler_api.ai.weekly_task_solver import WeeklyTaskSolver
+from humancompiler_api.ai.models import TaskPlan
 
 
 class TestWeeklyTaskSolverRemainingHours:

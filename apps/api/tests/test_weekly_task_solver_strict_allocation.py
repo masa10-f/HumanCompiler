@@ -2,7 +2,7 @@
 Tests for weekly task solver strict allocation constraints (0.9-1.1x range).
 """
 
-from taskagent_api.ai.weekly_task_solver import ProjectAllocation
+from humancompiler_api.ai.weekly_task_solver import ProjectAllocation
 
 
 class TestWeeklyTaskSolverStrictAllocation:
