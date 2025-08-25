@@ -187,18 +187,44 @@ class ApiClient {
 
   private async getAuthHeaders(): Promise<HeadersInit> {
     console.log('🔍 [ApiClient] Getting Supabase session...');
-    const { data: { session } } = await supabase.auth.getSession();
+
+    // Try to refresh the session first
+    const { data: { session }, error } = await supabase.auth.getSession();
 
     console.log('🔍 [ApiClient] Session data:', {
       hasSession: !!session,
       hasAccessToken: !!session?.access_token,
       userId: session?.user?.id,
-      email: session?.user?.email
+      email: session?.user?.email,
+      expiresAt: session?.expires_at ? new Date(session.expires_at * 1000).toISOString() : 'N/A',
+      isExpired: session?.expires_at ? Date.now() / 1000 > session.expires_at : 'Unknown'
     });
+
+    if (error) {
+      console.error('❌ [ApiClient] Supabase auth error:', error);
+      throw new Error('Authentication error');
+    }
 
     if (!session?.access_token) {
       console.error('❌ [ApiClient] No access token found');
       throw new Error('User not authenticated');
+    }
+
+    // Check if token is expired and refresh if needed
+    if (session.expires_at && Date.now() / 1000 > session.expires_at - 60) {
+      console.log('🔄 [ApiClient] Token expiring soon, refreshing...');
+      const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
+
+      if (refreshError || !refreshedSession.session) {
+        console.error('❌ [ApiClient] Failed to refresh token:', refreshError);
+        throw new Error('Failed to refresh authentication');
+      }
+
+      console.log('✅ [ApiClient] Token refreshed successfully');
+      return {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${refreshedSession.session.access_token}`,
+      };
     }
 
     console.log('✅ [ApiClient] Auth headers prepared');
@@ -228,6 +254,11 @@ class ApiClient {
       const baseUrl = this.getBaseURL();
       const fullUrl = `${baseUrl}${endpoint}`;
       console.log('🔍 [ApiClient] Making fetch request to:', fullUrl);
+      console.log('🔍 [ApiClient] Request headers:', {
+        ...headers,
+        ...options.headers,
+        Authorization: headers.Authorization ? `${headers.Authorization.substring(0, 20)}...` : 'None'
+      });
 
       const response = await fetch(fullUrl, {
         ...options,
