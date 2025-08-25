@@ -30,7 +30,7 @@ class WeeklyScheduleSaveRequest(BaseModel):
     """Request to save weekly schedule data."""
 
     week_start_date: str = Field(
-        ..., description="Week start date in YYYY-MM-DD format (must be a Monday)"
+        ..., description="Week start date in YYYY-MM-DD format"
     )
     schedule_data: dict = Field(
         ..., description="Weekly schedule data including selected tasks"
@@ -48,7 +48,7 @@ def validate_week_start_date(date_str: str) -> datetime:
         Parsed datetime object
 
     Raises:
-        HTTPException: If date format is invalid or not a Monday
+        HTTPException: If date format is invalid
     """
     try:
         parsed_date = datetime.strptime(date_str, "%Y-%m-%d")
@@ -62,30 +62,10 @@ def validate_week_start_date(date_str: str) -> datetime:
             ).model_dump(),
         )
 
-    # Check if the date is a Monday (weekday() returns 0 for Monday)
-    if parsed_date.weekday() != 0:
-        day_names = [
-            "Monday",
-            "Tuesday",
-            "Wednesday",
-            "Thursday",
-            "Friday",
-            "Saturday",
-            "Sunday",
-        ]
-        actual_day = day_names[parsed_date.weekday()]
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=ErrorResponse.create(
-                code="INVALID_WEEK_START_DATE",
-                message="Week start date must be a Monday",
-                details={
-                    "provided_date": date_str,
-                    "actual_day": actual_day,
-                    "expected_day": "Monday",
-                },
-            ).model_dump(),
-        )
+    # Accept any day of the week as week start date
+    logger.info(
+        f"Week start date validated: {date_str} (weekday: {parsed_date.weekday()})"
+    )
 
     return parsed_date
 
@@ -307,10 +287,10 @@ async def get_weekly_schedule(
     """
     Get saved weekly schedule for specific week.
 
-    Week start date should be in YYYY-MM-DD format (must be a Monday).
+    Week start date should be in YYYY-MM-DD format.
     """
     try:
-        # Validate date format and ensure it's a Monday
+        # Validate date format
         week_start = validate_week_start_date(week_start_date)
 
         logger.info(
@@ -368,10 +348,10 @@ async def delete_weekly_schedule(
     """
     Delete saved weekly schedule for specific week.
 
-    Week start date should be in YYYY-MM-DD format (must be a Monday).
+    Week start date should be in YYYY-MM-DD format.
     """
     try:
-        # Validate date format and ensure it's a Monday
+        # Validate date format
         week_start = validate_week_start_date(week_start_date)
 
         logger.info(

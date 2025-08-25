@@ -64,12 +64,9 @@ export default function AIPlanningPage() {
   const [selectedRecurringTaskIds, setSelectedRecurringTaskIds] = useState<string[]>([]);
   const [projectAllocations, setProjectAllocations] = useState<Record<string, number>>({});
   const [weekStartDate, setWeekStartDate] = useState<string>(() => {
+    // Default to today's date instead of forcing Monday
     const today = new Date();
-    const monday = new Date(today);
-    const dayOfWeek = today.getDay();
-    const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    monday.setDate(today.getDate() + daysToMonday);
-    const isoString = monday.toISOString();
+    const isoString = today.toISOString();
     const datePart = isoString.split('T')[0];
     return datePart || isoString.substring(0, 10); // Fallback to first 10 chars if split fails
   });
@@ -193,34 +190,30 @@ export default function AIPlanningPage() {
     }
   };
 
-  // Helper function to validate that the date is a Monday
+  // Helper function to validate date format
   const validateWeekStartDate = (dateString: string): boolean => {
+    // Accept any valid date, not just Monday
     const date = new Date(dateString);
-    // getDay() returns 0 for Sunday, 1 for Monday, etc.
-    return date.getDay() === 1;
+    return !isNaN(date.getTime()) && /^\d{4}-\d{2}-\d{2}$/.test(dateString);
   };
 
-  // Helper function to get the Monday of the current week
-  const getMondayOfCurrentWeek = (): string => {
+  // Helper function to get today's date
+  const getTodaysDate = (): string => {
     const today = new Date();
-    const dayOfWeek = today.getDay();
-    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Handle Sunday (0) case
-    const monday = new Date(today);
-    monday.setDate(today.getDate() + mondayOffset);
-    const isoString = monday.toISOString();
+    const isoString = today.toISOString();
     const datePart = isoString.split('T')[0];
-    return datePart || isoString; // Fallback to full ISO string if split fails
+    return datePart || isoString.substring(0, 10); // Fallback to first 10 chars if split fails
   };
 
   const generateWeeklyReport = async () => {
     try {
       setIsGeneratingReport(true);
 
-      // Validate that the week start date is a Monday
+      // Validate that the date format is correct
       if (!validateWeekStartDate(weekStartDate)) {
         toast({
           title: '日付エラー',
-          description: '週開始日は月曜日である必要があります。正しい月曜日の日付を選択してください。',
+          description: '正しい日付形式（YYYY-MM-DD）で入力してください。',
           variant: 'destructive',
         });
         return;
@@ -543,7 +536,7 @@ export default function AIPlanningPage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="week-start">週開始日</Label>
+                  <Label htmlFor="week-start">週開始日（任意の曜日）</Label>
                   <Input
                     id="week-start"
                     type="date"
@@ -1205,7 +1198,7 @@ export default function AIPlanningPage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="report-week-start">報告対象週（月曜日）</Label>
+                  <Label htmlFor="report-week-start">報告対象週開始日</Label>
                   <div className="flex gap-2">
                     <Input
                       id="report-week-start"
@@ -1218,15 +1211,15 @@ export default function AIPlanningPage() {
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => setWeekStartDate(getMondayOfCurrentWeek())}
+                      onClick={() => setWeekStartDate(getTodaysDate())}
                       className="whitespace-nowrap"
                     >
-                      今週
+                      今日
                     </Button>
                   </div>
                   {weekStartDate && !validateWeekStartDate(weekStartDate) && (
                     <p className="text-sm text-destructive">
-                      ⚠️ 選択された日付は月曜日ではありません
+                      ⚠️ 正しい日付形式で入力してください（YYYY-MM-DD）
                     </p>
                   )}
                 </div>
