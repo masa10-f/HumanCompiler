@@ -68,11 +68,17 @@ async def get_projects(
     logger.info(f"📋 Getting projects for user {current_user.user_id}")
 
     try:
+        logger.info(
+            f"🔍 [PROJECTS] About to call project_service.get_projects with user_id: {current_user.user_id}"
+        )
         db_start = time.time()
         projects = project_service.get_projects(
             session, current_user.user_id, skip, limit
         )
         db_time = time.time() - db_start
+        logger.info(
+            f"✅ [PROJECTS] Successfully retrieved {len(projects)} projects in {db_time:.3f}s"
+        )
 
         response_start = time.time()
         result = [ProjectResponse.model_validate(project) for project in projects]
@@ -85,7 +91,12 @@ async def get_projects(
 
         return result
     except Exception as e:
-        logger.error(f"❌ Error getting projects: {e}")
+        logger.error(f"❌ [PROJECTS] Error getting projects: {type(e).__name__}: {e}")
+        logger.error(f"❌ [PROJECTS] User ID was: {current_user.user_id}")
+        logger.error(f"❌ [PROJECTS] Parameters: skip={skip}, limit={limit}")
+        import traceback
+
+        logger.error(f"❌ [PROJECTS] Traceback: {traceback.format_exc()}")
         raise
 
 
