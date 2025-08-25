@@ -22,19 +22,8 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/components/ui/use-toast"
-import { getAuthHeaders } from "@/lib/auth"
-import { getSecureApiUrl, secureFetch } from "@/lib/api"
-
-interface WeeklyRecurringTask {
-  id: string
-  title: string
-  description?: string
-  estimate_hours: number
-  category: string
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
+import { weeklyRecurringTasksApi } from "@/lib/api"
+import type { WeeklyRecurringTask, WeeklyRecurringTaskCreate, WeeklyRecurringTaskUpdate } from "@/types/weekly-recurring-task"
 
 interface WeeklyRecurringTaskDialogProps {
   open: boolean
@@ -114,27 +103,14 @@ export function WeeklyRecurringTaskDialog({
     setSaving(true)
 
     try {
-      const apiUrl = getSecureApiUrl();
-      console.log(`🔄 WeeklyRecurringTaskDialog: Using API URL: ${apiUrl}`);
-      if (!apiUrl) {
-        throw new Error('API URL is not configured');
-      }
-      const url = task
-        ? `${apiUrl}/api/weekly-recurring-tasks/${task.id}`
-        : `${apiUrl}/api/weekly-recurring-tasks`
-      console.log(`📡 WeeklyRecurringTaskDialog: ${task ? 'Updating' : 'Creating'} at: ${url}`);
-
-      const method = task ? "PUT" : "POST"
-      const headers = await getAuthHeaders()
-
-      const response = await secureFetch(url, {
-        method,
-        headers,
-        body: JSON.stringify(formData),
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to save task")
+      if (task) {
+        // Update existing task
+        const updateData: WeeklyRecurringTaskUpdate = formData
+        await weeklyRecurringTasksApi.update(task.id, updateData)
+      } else {
+        // Create new task
+        const createData: WeeklyRecurringTaskCreate = formData
+        await weeklyRecurringTasksApi.create(createData)
       }
 
       toast({

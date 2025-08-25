@@ -7,19 +7,8 @@ import { Badge } from "@/components/ui/badge"
 import { Plus, Edit, Trash2, Clock, Tag } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { WeeklyRecurringTaskDialog } from "@/components/weekly-recurring-task-dialog"
-import { getAuthHeaders } from "@/lib/auth"
-import { getSecureApiUrl, secureFetch } from "@/lib/api"
-
-interface WeeklyRecurringTask {
-  id: string
-  title: string
-  description?: string
-  estimate_hours: number
-  category: string
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
+import { weeklyRecurringTasksApi } from "@/lib/api"
+import type { WeeklyRecurringTask } from "@/types/weekly-recurring-task"
 
 export default function WeeklyTasksPage() {
   const [tasks, setTasks] = useState<WeeklyRecurringTask[]>([])
@@ -29,21 +18,8 @@ export default function WeeklyTasksPage() {
 
   const fetchTasks = async () => {
     try {
-      const headers = await getAuthHeaders()
-      const apiUrl = getSecureApiUrl();
-      if (!apiUrl) {
-        throw new Error('API URL is not configured');
-      }
-      const response = await secureFetch(`${apiUrl}/api/weekly-recurring-tasks`, {
-        headers,
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch weekly tasks")
-      }
-
-      const data = await response.json()
-      setTasks(data)
+      const tasks = await weeklyRecurringTasksApi.getAll()
+      setTasks(tasks)
     } catch (error) {
       console.error("Error fetching weekly tasks:", error)
       toast({
@@ -76,19 +52,7 @@ export default function WeeklyTasksPage() {
     }
 
     try {
-      const headers = await getAuthHeaders()
-      const apiUrl = getSecureApiUrl();
-      if (!apiUrl) {
-        throw new Error('API URL is not configured');
-      }
-      const response = await secureFetch(`${apiUrl}/api/weekly-recurring-tasks/${taskId}`, {
-        method: "DELETE",
-        headers,
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to delete task")
-      }
+      await weeklyRecurringTasksApi.delete(taskId)
 
       toast({
         title: "成功",
