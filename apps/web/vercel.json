@@ -5,11 +5,11 @@
   "rewrites": [
     {
       "source": "/api/health",
-      "destination": "https://taskagent-api-masa.fly.dev/health"
+      "destination": "https://human-compiler-api-masa.fly.dev/health"
     },
     {
       "source": "/api/(.*)",
-      "destination": "https://taskagent-api-masa.fly.dev/api/$1"
+      "destination": "https://human-compiler-api-masa.fly.dev/api/$1"
     }
   ],
   "headers": [
@@ -38,7 +38,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://vercel.live; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://taskagent-api-masa.fly.dev https://taskagent-api-masa-preview.fly.dev https://*.supabase.co https://vercel.live; font-src 'self' data:; frame-src https://vercel.live;"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://vercel.live; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://human-compiler-api-masa.fly.dev https://human-compiler-api-masa-preview.fly.dev https://*.supabase.co https://vercel.live; font-src 'self' data:; frame-src https://vercel.live;"
         }
       ]
     },
@@ -80,5 +80,7 @@
       ]
     }
   ],
-  "regions": ["hnd1"]
+  "regions": [
+    "hnd1"
+  ]
 }
