@@ -86,9 +86,9 @@ const getApiBaseUrl = () => {
 
   // Server-side: use environment-based detection
   if (typeof window === 'undefined') {
-    // During SSR, default to production API, will be corrected on client-side
+    // During SSR, use relative URL for production (Vercel rewrites handle routing)
     return process.env.NODE_ENV === 'production'
-      ? 'https://taskagent-api-masa.fly.dev'
+      ? ''  // Use relative URL for production SSR
       : 'http://localhost:8000';
   }
 
@@ -104,15 +104,27 @@ const getApiBaseUrl = () => {
     timestamp: new Date().toISOString()
   };
 
-  // Production Vercel deployment (exact match)
+  // HumanCompiler Production Vercel deployment (exact match)
+  if (hostname === 'human-compiler.vercel.app') {
+    console.log(`🏭 Using HumanCompiler Production API via Vercel Rewrite`);
+    return '';  // Use relative URL to leverage Vercel rewrites
+  }
+
+  // TaskAgent Production Vercel deployment (exact match)
   if (hostname === 'taskagent.vercel.app') {
-    console.log(`🏭 Using Production API`);
+    console.log(`🏭 Using TaskAgent Production API`);
     return 'https://taskagent-api-masa.fly.dev';
   }
 
-  // Vercel preview deployments (any other vercel.app domain)
+  // HumanCompiler Vercel preview deployments
+  if (hostname.includes('humancompiler') || hostname.includes('human-compiler')) {
+    console.log(`🔬 Using HumanCompiler Preview API`);
+    return 'https://humancompiler-api-masa-preview.fly.dev';
+  }
+
+  // TaskAgent Vercel preview deployments (any other vercel.app domain)
   if (hostname.endsWith('.vercel.app')) {
-    console.log(`🔬 Using Preview API`);
+    console.log(`🔬 Using TaskAgent Preview API`);
     return 'https://taskagent-api-masa-preview.fly.dev';
   }
 
@@ -122,8 +134,17 @@ const getApiBaseUrl = () => {
     return 'http://localhost:8000';
   }
 
-  // Default fallback
+  // Default fallback - check for HumanCompiler domains first
   console.log(`🔄 Using Default API (NODE_ENV: ${process.env.NODE_ENV})`);
+
+  // If hostname contains humancompiler, use humancompiler API
+  if (hostname.includes('humancompiler') || hostname.includes('human-compiler')) {
+    return process.env.NODE_ENV === 'production'
+      ? 'https://humancompiler-api-masa.fly.dev'
+      : 'http://localhost:8000';
+  }
+
+  // Otherwise use TaskAgent API
   return process.env.NODE_ENV === 'production'
     ? 'https://taskagent-api-masa.fly.dev'
     : 'http://localhost:8000';
