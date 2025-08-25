@@ -1,4 +1,4 @@
-# Supabase Settings for TaskAgent
+# Supabase Settings for HumanCompiler
 
 This document outlines the required Supabase configuration for proper user authentication and email verification.
 
@@ -11,12 +11,12 @@ This document outlines the required Supabase configuration for proper user authe
 #### Site URL Configuration
 Set the Site URL to your application's URL:
 - **Development**: `http://localhost:3000`
-- **Production**: `https://taskagent-web.vercel.app` (or your actual domain)
+- **Production**: `https://humancompiler-web.vercel.app` (or your actual domain)
 
 #### Redirect URLs
 Add the following URLs to the **Redirect URLs** list:
 - **Development**: `http://localhost:3000/auth/callback`
-- **Production**: `https://taskagent-web.vercel.app/auth/callback`
+- **Production**: `https://humancompiler-web.vercel.app/auth/callback`
 
 ### 2. Email Template Configuration
 
@@ -89,5 +89,5 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
-NEXT_PUBLIC_APP_URL=https://taskagent-web.vercel.app
+NEXT_PUBLIC_APP_URL=https://humancompiler-web.vercel.app
 ```

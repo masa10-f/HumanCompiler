@@ -1,5 +1,5 @@
-# Fly.io configuration for TaskAgent API Preview Environment
-app = "taskagent-api-masa-preview"
+# Fly.io configuration for HumanCompiler API Preview Environment
+app = "humancompiler-api-masa-preview"
 primary_region = "nrt"  # Tokyo region for lower latency
 
 [build]
@@ -27,7 +27,7 @@ primary_region = "nrt"  # Tokyo region for lower latency
   memory_mb = 512  # Smaller instance for preview (vs 1024 for production)
 
 [deploy]
-  release_command = "python -c 'print(\"Starting TaskAgent API Preview...\")'"
+  release_command = "python -c 'print(\"Starting HumanCompiler API Preview...\")'"
 
 # Preview environment uses same database but different secrets for isolation
 # Required secrets (will be set via GitHub Actions):

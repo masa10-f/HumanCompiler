@@ -1,4 +1,4 @@
-# TaskAgent API
+# HumanCompiler API
 
 AI-powered task management API built with FastAPI.
 
@@ -19,10 +19,10 @@ pip install -e ".[dev]"
 python run.py
 
 # Or using uvicorn directly
-uvicorn taskagent_api.main:app --reload
+uvicorn humancompiler_api.main:app --reload
 
 # Or as a module
-python -m taskagent_api.main
+python -m humancompiler_api.main
 ```
 
 ## Project Structure
@@ -30,7 +30,7 @@ python -m taskagent_api.main
 ```
 apps/api/
 ├── src/
-│   └── taskagent_api/          # Main package
+│   └── humancompiler_api/          # Main package
 │       ├── __init__.py
 │       ├── main.py             # FastAPI application
 │       ├── config.py           # Configuration
@@ -49,13 +49,13 @@ apps/api/
 ## Deployment Environments
 
 ### Production
-- **URL**: https://taskagent-api-masa.fly.dev
+- **URL**: https://humancompiler-api-masa.fly.dev
 - **Trigger**: Push to `main` branch
 - **Instance**: 1GB RAM, always running
 - **Database**: Production Supabase instance
 
 ### Preview (Staging)
-- **URL**: https://taskagent-api-masa-preview.fly.dev
+- **URL**: https://humancompiler-api-masa-preview.fly.dev
 - **Trigger**: Pull Request creation/update
 - **Instance**: 512MB RAM, auto-scales to zero
 - **Database**: Same as production (default) or separate preview DB

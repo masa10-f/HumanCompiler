@@ -1,5 +1,5 @@
 {
-  "name": "@task-agent/web",
+  "name": "@human-compiler/web",
   "version": "0.1.0",
   "private": true,
   "scripts": {

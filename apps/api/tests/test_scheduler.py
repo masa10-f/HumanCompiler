@@ -9,8 +9,8 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from taskagent_api.auth import get_current_user_id
-from taskagent_api.main import app
+from humancompiler_api.auth import get_current_user_id
+from humancompiler_api.main import app
 
 client = TestClient(app)
 
@@ -40,9 +40,9 @@ class TestSchedulerAPI:
         assert data["status"] == "success"
         assert "OR-Tools CP-SAT scheduler working correctly" in data["message"]
 
-    @patch("taskagent_api.routers.scheduler.goal_service.get_goal")
-    @patch("taskagent_api.routers.scheduler.db.get_session")
-    @patch("taskagent_api.routers.scheduler.task_service.get_tasks_by_goal")
+    @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
+    @patch("humancompiler_api.routers.scheduler.db.get_session")
+    @patch("humancompiler_api.routers.scheduler.task_service.get_tasks_by_goal")
     def test_create_daily_schedule_success(
         self, mock_get_tasks, mock_session, mock_get_goal, mock_auth
     ):
@@ -90,9 +90,9 @@ class TestSchedulerAPI:
         assert "unscheduled_tasks" in data
         assert data["date"] == "2025-06-23"
 
-    @patch("taskagent_api.routers.scheduler.goal_service.get_goal")
-    @patch("taskagent_api.routers.scheduler.db.get_session")
-    @patch("taskagent_api.routers.scheduler.task_service.get_tasks_by_project")
+    @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
+    @patch("humancompiler_api.routers.scheduler.db.get_session")
+    @patch("humancompiler_api.routers.scheduler.task_service.get_tasks_by_project")
     def test_create_daily_schedule_by_project(
         self, mock_get_tasks, mock_session, mock_get_goal, mock_auth
     ):
@@ -138,8 +138,8 @@ class TestSchedulerAPI:
         assert isinstance(data["assignments"], list)
         assert isinstance(data["unscheduled_tasks"], list)
 
-    @patch("taskagent_api.routers.scheduler.db.get_session")
-    @patch("taskagent_api.routers.scheduler.task_service.get_all_user_tasks")
+    @patch("humancompiler_api.routers.scheduler.db.get_session")
+    @patch("humancompiler_api.routers.scheduler.task_service.get_all_user_tasks")
     def test_create_daily_schedule_no_filter(
         self, mock_get_all_tasks, mock_session, mock_auth
     ):
@@ -206,7 +206,7 @@ class TestSchedulerAPI:
 
     def test_time_slot_validation(self):
         """Test TimeSlotInput validation."""
-        from taskagent_api.routers.scheduler import TimeSlotInput
+        from humancompiler_api.routers.scheduler import TimeSlotInput
 
         # Valid time slot
         valid_slot = TimeSlotInput(start="09:00", end="12:00", kind="focused_work")
@@ -227,7 +227,7 @@ class TestSchedulerAPI:
 
     def test_task_kind_mapping(self):
         """Test task kind mapping function."""
-        from taskagent_api.routers.scheduler import TaskKind, map_task_kind
+        from humancompiler_api.routers.scheduler import TaskKind, map_task_kind
 
         # Test mapping
         assert map_task_kind("Research Project") == TaskKind.FOCUSED_WORK
@@ -238,7 +238,7 @@ class TestSchedulerAPI:
 
     def test_slot_kind_mapping(self):
         """Test slot kind mapping function."""
-        from taskagent_api.routers.scheduler import SlotKind, map_slot_kind
+        from humancompiler_api.routers.scheduler import SlotKind, map_slot_kind
 
         # Test mapping
         assert map_slot_kind("focused_work") == SlotKind.FOCUSED_WORK
@@ -246,9 +246,9 @@ class TestSchedulerAPI:
         assert map_slot_kind("study") == SlotKind.STUDY
         assert map_slot_kind("unknown") == SlotKind.LIGHT_WORK  # Default
 
-    @patch("taskagent_api.routers.scheduler.goal_service.get_goal")
-    @patch("taskagent_api.routers.scheduler.db.get_session")
-    @patch("taskagent_api.routers.scheduler.task_service.get_tasks_by_goal")
+    @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
+    @patch("humancompiler_api.routers.scheduler.db.get_session")
+    @patch("humancompiler_api.routers.scheduler.task_service.get_tasks_by_goal")
     def test_create_daily_schedule_no_tasks(
         self, mock_get_tasks, mock_session, mock_get_goal, mock_auth
     ):
@@ -277,9 +277,9 @@ class TestSchedulerAPI:
         assert len(data["unscheduled_tasks"]) == 0
         assert data["optimization_status"] == "NO_TASKS"
 
-    @patch("taskagent_api.routers.scheduler.goal_service.get_goal")
-    @patch("taskagent_api.routers.scheduler.db.get_session")
-    @patch("taskagent_api.routers.scheduler.task_service.get_tasks_by_goal")
+    @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
+    @patch("humancompiler_api.routers.scheduler.db.get_session")
+    @patch("humancompiler_api.routers.scheduler.task_service.get_tasks_by_goal")
     def test_create_daily_schedule_completed_tasks_filtered(
         self, mock_get_tasks, mock_session, mock_get_goal, mock_auth
     ):
@@ -337,9 +337,9 @@ class TestSchedulerAPI:
             assert mock_task_pending.id in task_ids
             assert mock_task_completed.id not in task_ids
 
-    @patch("taskagent_api.routers.scheduler.goal_service.get_goal")
-    @patch("taskagent_api.routers.scheduler.db.get_session")
-    @patch("taskagent_api.routers.scheduler.task_service.get_tasks_by_project")
+    @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
+    @patch("humancompiler_api.routers.scheduler.db.get_session")
+    @patch("humancompiler_api.routers.scheduler.task_service.get_tasks_by_project")
     def test_create_daily_schedule_with_task_source_project(
         self, mock_get_tasks, mock_session, mock_get_goal, mock_auth
     ):
@@ -385,9 +385,9 @@ class TestSchedulerAPI:
         assert isinstance(data["assignments"], list)
         assert isinstance(data["unscheduled_tasks"], list)
 
-    @patch("taskagent_api.routers.scheduler._get_tasks_from_weekly_schedule")
-    @patch("taskagent_api.routers.scheduler.goal_service.get_goal")
-    @patch("taskagent_api.routers.scheduler.db.get_session")
+    @patch("humancompiler_api.routers.scheduler._get_tasks_from_weekly_schedule")
+    @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
+    @patch("humancompiler_api.routers.scheduler.db.get_session")
     def test_create_daily_schedule_with_task_source_weekly_schedule(
         self, mock_session, mock_get_goal, mock_get_weekly_tasks, mock_auth
     ):
@@ -453,7 +453,7 @@ class TestSchedulerAPI:
 
     def test_task_source_validation(self):
         """Test TaskSource model validation."""
-        from taskagent_api.routers.scheduler import TaskSource
+        from humancompiler_api.routers.scheduler import TaskSource
 
         # Valid task sources
         valid_all_tasks = TaskSource(type="all_tasks")
@@ -473,9 +473,9 @@ class TestSchedulerAPI:
 
     def test_save_daily_schedule_unscheduled_tasks_not_stored(self, mock_auth):
         """Test that unscheduled_tasks are not stored in database (Issue #141)."""
-        from taskagent_api.routers.scheduler import DailyScheduleResponse, TaskInfo
-        from taskagent_api.models import ScheduleResponse
-        from taskagent_api.database import db
+        from humancompiler_api.routers.scheduler import DailyScheduleResponse, TaskInfo
+        from humancompiler_api.models import ScheduleResponse
+        from humancompiler_api.database import db
 
         # Mock session and database operations
         mock_sess = MagicMock()
@@ -497,7 +497,7 @@ class TestSchedulerAPI:
         try:
             # Mock the ScheduleResponse.model_validate
             with patch(
-                "taskagent_api.routers.scheduler.ScheduleResponse.model_validate"
+                "humancompiler_api.routers.scheduler.ScheduleResponse.model_validate"
             ) as mock_validate:
                 mock_validate.return_value = ScheduleResponse(
                     id=str(uuid4()),
@@ -558,14 +558,14 @@ class TestSchedulerAPI:
             if db.get_session in app.dependency_overrides:
                 del app.dependency_overrides[db.get_session]
 
-    @patch("taskagent_api.routers.scheduler.goal_service.get_goal")
-    @patch("taskagent_api.routers.scheduler.db.get_session")
-    @patch("taskagent_api.routers.scheduler.task_service.get_all_user_tasks")
+    @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
+    @patch("humancompiler_api.routers.scheduler.db.get_session")
+    @patch("humancompiler_api.routers.scheduler.task_service.get_all_user_tasks")
     def test_create_daily_schedule_with_slot_assignment(
         self, mock_get_tasks, mock_session, mock_get_goal, mock_auth
     ):
         """Test daily schedule creation with slot-level project assignment."""
-        from taskagent_api.models import Task, Goal
+        from humancompiler_api.models import Task, Goal
         from decimal import Decimal
         from uuid import uuid4
 
@@ -579,7 +579,7 @@ class TestSchedulerAPI:
         goal_id = uuid4()
 
         # Mock project ownership check
-        from taskagent_api.models import Project
+        from humancompiler_api.models import Project
 
         mock_project = MagicMock(spec=Project)
         mock_project.id = project_id
@@ -626,23 +626,24 @@ class TestSchedulerAPI:
 
         # Mock _get_task_actual_hours to return empty dict
         with patch(
-            "taskagent_api.routers.scheduler._get_task_actual_hours", return_value={}
+            "humancompiler_api.routers.scheduler._get_task_actual_hours",
+            return_value={},
         ):
             # Mock dependency functions to return empty dicts
             with patch(
-                "taskagent_api.routers.scheduler._get_task_dependencies",
+                "humancompiler_api.routers.scheduler._get_task_dependencies",
                 return_value={},
             ):
                 with patch(
-                    "taskagent_api.routers.scheduler._get_goal_dependencies",
+                    "humancompiler_api.routers.scheduler._get_goal_dependencies",
                     return_value={},
                 ):
                     with patch(
-                        "taskagent_api.routers.scheduler._batch_check_task_completion_status",
+                        "humancompiler_api.routers.scheduler._batch_check_task_completion_status",
                         return_value={},
                     ):
                         with patch(
-                            "taskagent_api.routers.scheduler._batch_check_goal_completion_status",
+                            "humancompiler_api.routers.scheduler._batch_check_goal_completion_status",
                             return_value={},
                         ):
                             # Test request with slot assignment
@@ -686,14 +687,14 @@ class TestSchedulerAPI:
                                 )  # First slot with project constraint
                                 assert assignment["project_id"] == str(project_id)
 
-    @patch("taskagent_api.routers.scheduler.goal_service.get_goal")
-    @patch("taskagent_api.routers.scheduler.db.get_session")
-    @patch("taskagent_api.routers.scheduler.task_service.get_all_user_tasks")
+    @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
+    @patch("humancompiler_api.routers.scheduler.db.get_session")
+    @patch("humancompiler_api.routers.scheduler.task_service.get_all_user_tasks")
     def test_create_daily_schedule_with_weekly_task_assignment(
         self, mock_get_tasks, mock_session, mock_get_goal, mock_auth
     ):
         """Test daily schedule creation with slot-level weekly task assignment."""
-        from taskagent_api.models import Task
+        from humancompiler_api.models import Task
         from decimal import Decimal
         from uuid import uuid4
 
@@ -705,7 +706,7 @@ class TestSchedulerAPI:
         weekly_task_id = uuid4()
 
         # Mock weekly task ownership check
-        from taskagent_api.models import WeeklyRecurringTask
+        from humancompiler_api.models import WeeklyRecurringTask
 
         mock_weekly_recurring_task = MagicMock(spec=WeeklyRecurringTask)
         mock_weekly_recurring_task.id = weekly_task_id
@@ -742,23 +743,24 @@ class TestSchedulerAPI:
 
         # Mock _get_task_actual_hours to return empty dict
         with patch(
-            "taskagent_api.routers.scheduler._get_task_actual_hours", return_value={}
+            "humancompiler_api.routers.scheduler._get_task_actual_hours",
+            return_value={},
         ):
             # Mock dependency functions to return empty dicts
             with patch(
-                "taskagent_api.routers.scheduler._get_task_dependencies",
+                "humancompiler_api.routers.scheduler._get_task_dependencies",
                 return_value={},
             ):
                 with patch(
-                    "taskagent_api.routers.scheduler._get_goal_dependencies",
+                    "humancompiler_api.routers.scheduler._get_goal_dependencies",
                     return_value={},
                 ):
                     with patch(
-                        "taskagent_api.routers.scheduler._batch_check_task_completion_status",
+                        "humancompiler_api.routers.scheduler._batch_check_task_completion_status",
                         return_value={},
                     ):
                         with patch(
-                            "taskagent_api.routers.scheduler._batch_check_goal_completion_status",
+                            "humancompiler_api.routers.scheduler._batch_check_goal_completion_status",
                             return_value={},
                         ):
                             # Test request with weekly task assignment

@@ -9,14 +9,14 @@ import pytest
 from fastapi import HTTPException, status
 from sqlmodel import Session
 
-from taskagent_api.auth import AuthUser
-from taskagent_api.models import (
+from humancompiler_api.auth import AuthUser
+from humancompiler_api.models import (
     ProjectCreate,
     ProjectUpdate,
     ProjectResponse,
     ErrorResponse,
 )
-from taskagent_api.routers.projects import (
+from humancompiler_api.routers.projects import (
     router,
     get_session,
     create_project,
@@ -78,7 +78,7 @@ def test_router_initialization():
 
 def test_get_session():
     """Test database session dependency"""
-    with patch("taskagent_api.routers.projects.db.get_engine") as mock_get_engine:
+    with patch("humancompiler_api.routers.projects.db.get_engine") as mock_get_engine:
         mock_engine = Mock()
         mock_get_engine.return_value = mock_engine
 
@@ -93,7 +93,7 @@ async def test_create_project_success(
 ):
     """Test successful project creation"""
     with patch(
-        "taskagent_api.routers.projects.project_service.create_project",
+        "humancompiler_api.routers.projects.project_service.create_project",
         return_value=mock_project,
     ):
         result = await create_project(project_create_data, mock_session, auth_user)
@@ -118,7 +118,7 @@ async def test_get_projects_success(mock_session, auth_user):
     mock_projects = [mock_project]
 
     with patch(
-        "taskagent_api.routers.projects.project_service.get_projects",
+        "humancompiler_api.routers.projects.project_service.get_projects",
         return_value=mock_projects,
     ):
         result = await get_projects(mock_session, auth_user)
@@ -133,7 +133,7 @@ async def test_get_projects_with_pagination(mock_session, auth_user):
     mock_projects = []
 
     with patch(
-        "taskagent_api.routers.projects.project_service.get_projects",
+        "humancompiler_api.routers.projects.project_service.get_projects",
         return_value=mock_projects,
     ):
         result = await get_projects(mock_session, auth_user, skip=10, limit=5)
@@ -158,7 +158,7 @@ async def test_get_projects_with_timing_logs(mock_session, auth_user):
     mock_projects = [mock_project]
 
     with patch(
-        "taskagent_api.routers.projects.project_service.get_projects",
+        "humancompiler_api.routers.projects.project_service.get_projects",
         return_value=mock_projects,
     ):
         with patch("logging.getLogger") as mock_logger:
@@ -178,7 +178,7 @@ async def test_get_projects_with_timing_logs(mock_session, auth_user):
 async def test_get_projects_error_handling(mock_session, auth_user):
     """Test projects retrieval error handling"""
     with patch(
-        "taskagent_api.routers.projects.project_service.get_projects",
+        "humancompiler_api.routers.projects.project_service.get_projects",
         side_effect=Exception("Database error"),
     ):
         with patch("logging.getLogger") as mock_logger:
@@ -198,7 +198,7 @@ async def test_get_project_success(mock_session, auth_user, mock_project):
     project_id = UUID("12345678-1234-5678-1234-567812345678")
 
     with patch(
-        "taskagent_api.routers.projects.project_service.get_project",
+        "humancompiler_api.routers.projects.project_service.get_project",
         return_value=mock_project,
     ):
         result = await get_project(project_id, mock_session, auth_user)
@@ -212,7 +212,8 @@ async def test_get_project_not_found(mock_session, auth_user):
     project_id = UUID("12345678-1234-5678-1234-567812345678")
 
     with patch(
-        "taskagent_api.routers.projects.project_service.get_project", return_value=None
+        "humancompiler_api.routers.projects.project_service.get_project",
+        return_value=None,
     ):
         with pytest.raises(HTTPException) as exc_info:
             await get_project(project_id, mock_session, auth_user)
@@ -228,7 +229,7 @@ async def test_update_project_success(
     project_id = UUID("12345678-1234-5678-1234-567812345678")
 
     with patch(
-        "taskagent_api.routers.projects.project_service.update_project",
+        "humancompiler_api.routers.projects.project_service.update_project",
         return_value=mock_project,
     ):
         result = await update_project(
@@ -243,7 +244,7 @@ async def test_delete_project_success(mock_session, auth_user):
     """Test successful project deletion"""
     project_id = UUID("12345678-1234-5678-1234-567812345678")
 
-    with patch("taskagent_api.routers.projects.project_service.delete_project"):
+    with patch("humancompiler_api.routers.projects.project_service.delete_project"):
         result = await delete_project(project_id, mock_session, auth_user)
 
         assert result is None  # Delete endpoint returns None
@@ -255,7 +256,7 @@ async def test_delete_project_error(mock_session, auth_user):
     project_id = UUID("12345678-1234-5678-1234-567812345678")
 
     with patch(
-        "taskagent_api.routers.projects.project_service.delete_project",
+        "humancompiler_api.routers.projects.project_service.delete_project",
         side_effect=Exception("Delete error"),
     ):
         with patch("logging.getLogger") as mock_logger:
@@ -276,7 +277,7 @@ async def test_create_project_service_call(
 ):
     """Test that create_project calls service with correct parameters"""
     with patch(
-        "taskagent_api.routers.projects.project_service.create_project",
+        "humancompiler_api.routers.projects.project_service.create_project",
         return_value=mock_project,
     ) as mock_create:
         await create_project(project_create_data, mock_session, auth_user)
@@ -290,7 +291,8 @@ async def test_create_project_service_call(
 async def test_get_projects_service_call(mock_session, auth_user):
     """Test that get_projects calls service with correct parameters"""
     with patch(
-        "taskagent_api.routers.projects.project_service.get_projects", return_value=[]
+        "humancompiler_api.routers.projects.project_service.get_projects",
+        return_value=[],
     ) as mock_get:
         await get_projects(mock_session, auth_user, skip=5, limit=10)
 
@@ -303,7 +305,7 @@ async def test_get_project_service_call(mock_session, auth_user, mock_project):
     project_id = UUID("12345678-1234-5678-1234-567812345678")
 
     with patch(
-        "taskagent_api.routers.projects.project_service.get_project",
+        "humancompiler_api.routers.projects.project_service.get_project",
         return_value=mock_project,
     ) as mock_get:
         await get_project(project_id, mock_session, auth_user)
@@ -319,7 +321,7 @@ async def test_update_project_service_call(
     project_id = UUID("12345678-1234-5678-1234-567812345678")
 
     with patch(
-        "taskagent_api.routers.projects.project_service.update_project",
+        "humancompiler_api.routers.projects.project_service.update_project",
         return_value=mock_project,
     ) as mock_update:
         await update_project(project_id, project_update_data, mock_session, auth_user)
@@ -335,7 +337,7 @@ async def test_delete_project_service_call(mock_session, auth_user):
     project_id = UUID("12345678-1234-5678-1234-567812345678")
 
     with patch(
-        "taskagent_api.routers.projects.project_service.delete_project"
+        "humancompiler_api.routers.projects.project_service.delete_project"
     ) as mock_delete:
         await delete_project(project_id, mock_session, auth_user)
 

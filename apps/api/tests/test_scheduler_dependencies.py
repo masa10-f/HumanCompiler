@@ -9,9 +9,9 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from taskagent_api.auth import get_current_user_id
-from taskagent_api.main import app
-from taskagent_api.routers.scheduler import (
+from humancompiler_api.auth import get_current_user_id
+from humancompiler_api.main import app
+from humancompiler_api.routers.scheduler import (
     SchedulerTask,
     TaskKind,
     TimeSlot,
@@ -26,7 +26,7 @@ from taskagent_api.routers.scheduler import (
     _batch_check_task_completion_status,
     _batch_check_goal_completion_status,
 )
-from taskagent_api.models import TaskStatus, GoalStatus
+from humancompiler_api.models import TaskStatus, GoalStatus
 
 client = TestClient(app)
 
@@ -78,7 +78,7 @@ class TestSchedulerDependencies:
         assert result.success
         assert len(result.assignments) == 1
 
-    @patch("taskagent_api.routers.scheduler.select")
+    @patch("humancompiler_api.routers.scheduler.select")
     def test_get_task_dependencies_empty(self, mock_select):
         """Test getting task dependencies when there are none."""
         mock_session = MagicMock()
@@ -96,7 +96,7 @@ class TestSchedulerDependencies:
         result = _get_task_dependencies(mock_session, tasks)
         assert result == {}
 
-    @patch("taskagent_api.routers.scheduler.select")
+    @patch("humancompiler_api.routers.scheduler.select")
     def test_get_task_dependencies_with_dependencies(self, mock_select):
         """Test getting task dependencies when they exist."""
         task1_id = uuid4()
@@ -129,7 +129,7 @@ class TestSchedulerDependencies:
         expected = {str(task1_id): [str(task2_id)]}
         assert result == expected
 
-    @patch("taskagent_api.routers.scheduler.select")
+    @patch("humancompiler_api.routers.scheduler.select")
     def test_get_goal_dependencies(self, mock_select):
         """Test getting goal dependencies."""
         goal1_id = uuid4()
@@ -157,7 +157,7 @@ class TestSchedulerDependencies:
         expected = {str(goal1_id): [str(goal2_id)]}
         assert result == expected
 
-    @patch("taskagent_api.routers.scheduler.select")
+    @patch("humancompiler_api.routers.scheduler.select")
     def test_check_task_dependencies_satisfied_no_dependencies(self, mock_select):
         """Test checking task dependencies when there are none."""
         mock_session = MagicMock()
@@ -176,7 +176,7 @@ class TestSchedulerDependencies:
         )
         assert result is True
 
-    @patch("taskagent_api.routers.scheduler.select")
+    @patch("humancompiler_api.routers.scheduler.select")
     def test_check_task_dependencies_satisfied_completed(self, mock_select):
         """Test checking task dependencies when all dependencies are completed."""
         task_id = uuid4()
@@ -202,7 +202,7 @@ class TestSchedulerDependencies:
         )
         assert result is True
 
-    @patch("taskagent_api.routers.scheduler.select")
+    @patch("humancompiler_api.routers.scheduler.select")
     def test_check_task_dependencies_not_satisfied_incomplete(self, mock_select):
         """Test checking task dependencies when dependencies are not completed."""
         task_id = uuid4()
@@ -225,7 +225,7 @@ class TestSchedulerDependencies:
         )
         assert result is False
 
-    @patch("taskagent_api.routers.scheduler.select")
+    @patch("humancompiler_api.routers.scheduler.select")
     def test_check_goal_dependencies_satisfied_no_dependencies(self, mock_select):
         """Test checking goal dependencies when there are none."""
         mock_session = MagicMock()
@@ -245,7 +245,7 @@ class TestSchedulerDependencies:
         )
         assert result is True
 
-    @patch("taskagent_api.routers.scheduler.select")
+    @patch("humancompiler_api.routers.scheduler.select")
     def test_check_goal_dependencies_satisfied_completed(self, mock_select):
         """Test checking goal dependencies when all dependencies are completed."""
         goal_id = uuid4()
@@ -272,7 +272,7 @@ class TestSchedulerDependencies:
         )
         assert result is True
 
-    @patch("taskagent_api.routers.scheduler.select")
+    @patch("humancompiler_api.routers.scheduler.select")
     def test_check_goal_dependencies_not_satisfied_incomplete(self, mock_select):
         """Test checking goal dependencies when dependencies are not completed."""
         goal_id = uuid4()
@@ -324,10 +324,14 @@ class TestSchedulerDependencies:
         assert len(result.assignments) == 1
         assert len(result.unscheduled_tasks) == 0
 
-    @patch("taskagent_api.routers.scheduler._get_task_dependencies")
-    @patch("taskagent_api.routers.scheduler._get_goal_dependencies")
-    @patch("taskagent_api.routers.scheduler._check_task_dependencies_satisfied_relaxed")
-    @patch("taskagent_api.routers.scheduler._check_goal_dependencies_satisfied_relaxed")
+    @patch("humancompiler_api.routers.scheduler._get_task_dependencies")
+    @patch("humancompiler_api.routers.scheduler._get_goal_dependencies")
+    @patch(
+        "humancompiler_api.routers.scheduler._check_task_dependencies_satisfied_relaxed"
+    )
+    @patch(
+        "humancompiler_api.routers.scheduler._check_goal_dependencies_satisfied_relaxed"
+    )
     def test_optimize_schedule_filters_dependent_tasks(
         self,
         mock_check_goal_deps,
@@ -387,16 +391,16 @@ class TestSchedulerDependencies:
         # Mock all dependency checks to return False
         with (
             patch(
-                "taskagent_api.routers.scheduler._get_task_dependencies"
+                "humancompiler_api.routers.scheduler._get_task_dependencies"
             ) as mock_get_task_deps,
             patch(
-                "taskagent_api.routers.scheduler._get_goal_dependencies"
+                "humancompiler_api.routers.scheduler._get_goal_dependencies"
             ) as mock_get_goal_deps,
             patch(
-                "taskagent_api.routers.scheduler._check_task_dependencies_satisfied_relaxed"
+                "humancompiler_api.routers.scheduler._check_task_dependencies_satisfied_relaxed"
             ) as mock_check_task_deps,
             patch(
-                "taskagent_api.routers.scheduler._check_goal_dependencies_satisfied_relaxed"
+                "humancompiler_api.routers.scheduler._check_goal_dependencies_satisfied_relaxed"
             ) as mock_check_goal_deps,
         ):
             mock_get_task_deps.return_value = {}
@@ -432,7 +436,7 @@ class TestSchedulerDependencies:
                 result.optimization_status == "NO_SCHEDULABLE_TASKS_DUE_TO_DEPENDENCIES"
             )
 
-    @patch("taskagent_api.routers.scheduler.select")
+    @patch("humancompiler_api.routers.scheduler.select")
     def test_batch_check_task_completion_status(self, mock_select):
         """Test batch checking of task completion status."""
         task1_id = str(uuid4())
@@ -450,7 +454,7 @@ class TestSchedulerDependencies:
         }
 
         # Set up the mock so task2_id maps to completed_task_uuid
-        with patch("taskagent_api.routers.scheduler.UUID") as mock_uuid:
+        with patch("humancompiler_api.routers.scheduler.UUID") as mock_uuid:
             # Configure UUID calls to return specific values
             mock_uuid.side_effect = (
                 lambda x: completed_task_uuid if x == task2_id else uuid4()
@@ -612,16 +616,16 @@ class TestSchedulerDependencies:
         # Mock task dependencies: task1 depends on task2
         with (
             patch(
-                "taskagent_api.routers.scheduler._get_task_dependencies"
+                "humancompiler_api.routers.scheduler._get_task_dependencies"
             ) as mock_get_task_deps,
             patch(
-                "taskagent_api.routers.scheduler._get_goal_dependencies"
+                "humancompiler_api.routers.scheduler._get_goal_dependencies"
             ) as mock_get_goal_deps,
             patch(
-                "taskagent_api.routers.scheduler._check_task_dependencies_satisfied_relaxed"
+                "humancompiler_api.routers.scheduler._check_task_dependencies_satisfied_relaxed"
             ) as mock_check_task_deps,
             patch(
-                "taskagent_api.routers.scheduler._check_goal_dependencies_satisfied_relaxed"
+                "humancompiler_api.routers.scheduler._check_goal_dependencies_satisfied_relaxed"
             ) as mock_check_goal_deps,
         ):
             mock_get_task_deps.return_value = {task1_id: [task2_id]}
@@ -649,7 +653,7 @@ class TestSchedulerDependencies:
             # Task2 (dependency) should be scheduled in slot 0, task1 in slot 1
             assert task2_assignment.slot_index < task1_assignment.slot_index
 
-    @patch("taskagent_api.routers.scheduler.select")
+    @patch("humancompiler_api.routers.scheduler.select")
     def test_batch_check_goal_completion_status(self, mock_select):
         """Test batch checking of goal completion status."""
         goal1_id = str(uuid4())
@@ -666,7 +670,7 @@ class TestSchedulerDependencies:
         }
 
         # Set up the mock so goal2_id maps to completed_goal_uuid
-        with patch("taskagent_api.routers.scheduler.UUID") as mock_uuid:
+        with patch("humancompiler_api.routers.scheduler.UUID") as mock_uuid:
             mock_uuid.side_effect = (
                 lambda x: completed_goal_uuid if x == goal2_id else uuid4()
             )
@@ -716,22 +720,22 @@ class TestSchedulerDependencies:
 
         with (
             patch(
-                "taskagent_api.routers.scheduler._get_task_dependencies"
+                "humancompiler_api.routers.scheduler._get_task_dependencies"
             ) as mock_get_task_deps,
             patch(
-                "taskagent_api.routers.scheduler._get_goal_dependencies"
+                "humancompiler_api.routers.scheduler._get_goal_dependencies"
             ) as mock_get_goal_deps,
             patch(
-                "taskagent_api.routers.scheduler._batch_check_task_completion_status"
+                "humancompiler_api.routers.scheduler._batch_check_task_completion_status"
             ) as mock_batch_task,
             patch(
-                "taskagent_api.routers.scheduler._batch_check_goal_completion_status"
+                "humancompiler_api.routers.scheduler._batch_check_goal_completion_status"
             ) as mock_batch_goal,
             patch(
-                "taskagent_api.routers.scheduler._check_task_dependencies_satisfied_relaxed"
+                "humancompiler_api.routers.scheduler._check_task_dependencies_satisfied_relaxed"
             ) as mock_check_task,
             patch(
-                "taskagent_api.routers.scheduler._check_goal_dependencies_satisfied_relaxed"
+                "humancompiler_api.routers.scheduler._check_goal_dependencies_satisfied_relaxed"
             ) as mock_check_goal,
         ):
             # Setup mocks

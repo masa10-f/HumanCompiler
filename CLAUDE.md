@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 プロンプトへの返答は日本語でお願いします。
-TaskAgentがgit repositoryです。
+HumanCompilerがgit repositoryです。
 pythonは仮想環境 .venv/bin/ を使用してください。
 コード中のコメント、コミットメッセージ、issue, PRの記述は英語でお願いします。
 コードの実装面で問題だと思うことがあればissueとして切り出してください。
@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## プロジェクト概要
 
-**TaskAgent** - 研究・開発プロジェクトを「プロジェクト → ゴール → タスク → 実績」の4階層で管理し、**OpenAI GPT-4** と **OR-Tools制約ソルバ** による自動スケジューリング・進捗可視化・リスケジューリングを行う **AI駆動タスク管理ウェブアプリケーション**。
+**HumanCompiler** - 研究・開発プロジェクトを「プロジェクト → ゴール → タスク → 実績」の4階層で管理し、**OpenAI GPT-4** と **OR-Tools制約ソルバ** による自動スケジューリング・進捗可視化・リスケジューリングを行う **AI駆動タスク管理ウェブアプリケーション**。
 
 ### 技術スタック
 - **フロントエンド**: Next.js 14 (App Router), React 18, TypeScript (strict), TailwindCSS, shadcn/ui
@@ -21,7 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### アーキテクチャ（monorepo構成）
 ```
-TaskAgent/
+HumanCompiler/
 ├── apps/
 │   ├── web/        # Next.js アプリ (TypeScript)
 │   └── api/        # FastAPI サービス (Python)
@@ -53,7 +53,7 @@ npm run dev              # Next.js → http://localhost:3000
 # バックエンド (ターミナル2)
 cd apps/api
 source ../../.venv/bin/activate
-python src/taskagent_api/main.py  # FastAPI → http://localhost:8000
+python src/humancompiler_api/main.py  # FastAPI → http://localhost:8000
 ```
 
 ### ビルド
@@ -152,7 +152,7 @@ GET /api/monitoring/metrics        # パフォーマンスメトリクス
 
 ### OpenAI統合
 - **GPT-4 Assistants API** (function calling)
-- **プランニングサービス**: `apps/api/src/taskagent_api/ai/planning_service.py`
+- **プランニングサービス**: `apps/api/src/humancompiler_api/ai/planning_service.py`
 - **ワークロード分析**: タスク量・締切・配分の自動分析
 - **優先度提案**: AI分析による最適な優先順位決定
 
@@ -169,11 +169,11 @@ GET /api/monitoring/metrics        # パフォーマンスメトリクス
   - Output Directory: `.next`
   - Install Command: `pnpm install`
   - Development Command: `npm run dev`
-  - mainブランチ → 本番環境 (https://taskagent-web.vercel.app/)
+  - mainブランチ → 本番環境 (https://humancompiler-web.vercel.app/)
   - Pull Request → プレビュー環境
 - **バックエンド**: Fly.io
-  - Production: `taskagent-api-masa` (https://taskagent-api-masa.fly.dev/)
-  - Preview: `taskagent-api-masa-preview`
+  - Production: `humancompiler-api-masa` (https://humancompiler-api-masa.fly.dev/)
+  - Preview: `humancompiler-api-masa-preview`
 
 ### 手動デプロイ (必要時のみ)
 ```bash
@@ -232,9 +232,9 @@ fly secrets set SUPABASE_SERVICE_ROLE_KEY=eyJh...
 - **OpenAPI仕様書**: http://localhost:8000/openapi.json
 
 ### 本番環境
-- **フロントエンド**: https://taskagent-web.vercel.app/
-- **バックエンドAPI**: https://taskagent-api-masa.fly.dev/
-- **API ドキュメント**: https://taskagent-api-masa.fly.dev/docs
+- **フロントエンド**: https://humancompiler-web.vercel.app/
+- **バックエンドAPI**: https://humancompiler-api-masa.fly.dev/
+- **API ドキュメント**: https://humancompiler-api-masa.fly.dev/docs
 
 ## セキュリティ機能
 
@@ -263,7 +263,7 @@ fly secrets set SUPABASE_SERVICE_ROLE_KEY=eyJh...
 
 #### 1. **事前バックアップ（必須）**
 ```python
-from taskagent_api.safe_migration import DataBackupManager
+from humancompiler_api.safe_migration import DataBackupManager
 
 # 必ずマイグレーション前にバックアップを作成
 backup_manager = DataBackupManager()
@@ -282,7 +282,7 @@ print(f"Backup created: {backup_path}")
 
 ##### **新しいカラム追加**
 ```python
-from taskagent_api.safe_migration import AddColumnMigration
+from humancompiler_api.safe_migration import AddColumnMigration
 
 # 安全にカラムを追加
 migration = AddColumnMigration(
@@ -294,7 +294,7 @@ backup_path = migration.execute_safe_migration("add_new_column")
 
 ##### **Enum値の変更**
 ```python
-from taskagent_api.safe_migration import EnumMigration
+from humancompiler_api.safe_migration import EnumMigration
 
 # 安全にEnum値を変更
 migration = EnumMigration(
@@ -309,14 +309,14 @@ backup_path = migration.execute_safe_migration("update_work_type_enum")
 ```bash
 # 開発環境での安全なマイグレーション
 PYTHONPATH=src python -c "
-from taskagent_api.safe_migration import SafeMigrationManager
+from humancompiler_api.safe_migration import SafeMigrationManager
 migration = SafeMigrationManager()
 migration.execute_safe_migration('migration_name')
 "
 
 # バックアップの復旧（緊急時）
 PYTHONPATH=src python -c "
-from taskagent_api.safe_migration import DataBackupManager
+from humancompiler_api.safe_migration import DataBackupManager
 manager = DataBackupManager()
 manager.restore_backup('backups/backup_20250814_120000.json')
 "
@@ -336,16 +336,16 @@ ls -la backups/
 
 # 2. バックアップから復旧
 PYTHONPATH=src python -c "
-from taskagent_api.safe_migration import DataBackupManager
+from humancompiler_api.safe_migration import DataBackupManager
 manager = DataBackupManager()
 manager.restore_backup('backups/最新のバックアップファイル.json')
 "
 
 # 3. データ整合性チェック
 PYTHONPATH=src python -c "
-from taskagent_api.database import db
+from humancompiler_api.database import db
 from sqlmodel import Session, select, text
-from taskagent_api.models import User, Project, Goal, Task
+from humancompiler_api.models import User, Project, Goal, Task
 
 engine = db.get_engine()
 with Session(engine) as session:
@@ -369,9 +369,9 @@ with Session(engine) as session:
 
 マイグレーション実行時に自動バックアップを作成する設定：
 ```python
-# apps/api/src/taskagent_api/database.py に追加
+# apps/api/src/humancompiler_api/database.py に追加
 import atexit
-from taskagent_api.safe_migration import DataBackupManager
+from humancompiler_api.safe_migration import DataBackupManager
 
 # アプリ終了時に自動バックアップ
 backup_manager = DataBackupManager()
@@ -380,7 +380,7 @@ atexit.register(lambda: backup_manager.create_backup("auto_shutdown_backup"))
 
 ## Row Level Security (RLS) セキュリティ対策
 
-**⚠️ 重要**: TaskAgentではSupabaseデータベースのRow Level Security (RLS)を有効化し、ユーザーデータの安全性を確保しています。
+**⚠️ 重要**: HumanCompilerではSupabaseデータベースのRow Level Security (RLS)を有効化し、ユーザーデータの安全性を確保しています。
 
 ### RLSセキュリティルール
 
@@ -476,7 +476,7 @@ ORDER BY tablename, policyname;
 - ✅ goal_dependencies, task_dependencies
 
 マイグレーションスクリプト: `apps/api/migrations/enable_rls_security.sql`
-実行スクリプト: `apps/api/src/taskagent_api/enable_rls_migration.py`
+実行スクリプト: `apps/api/src/humancompiler_api/enable_rls_migration.py`
 
 ## データエクスポート・インポート機能のメンテナンス
 
@@ -494,7 +494,7 @@ ORDER BY tablename, policyname;
 
 #### 1. **新しいテーブルの追加**
 ```python
-# apps/api/src/taskagent_api/safe_migration.py の以下のメソッドを更新:
+# apps/api/src/humancompiler_api/safe_migration.py の以下のメソッドを更新:
 
 # DataBackupManager.create_backup() - 全体バックアップ用
 def create_backup(self, backup_name: str | None = None) -> str:
@@ -553,8 +553,8 @@ backup_data["metadata"]["total_records"]["new_table"] = len(backup_data["new_tab
 
 ### 関連ファイル
 
-- **バックエンド**: `apps/api/src/taskagent_api/safe_migration.py`
-- **API**: `apps/api/src/taskagent_api/routers/data_export.py`
+- **バックエンド**: `apps/api/src/humancompiler_api/safe_migration.py`
+- **API**: `apps/api/src/humancompiler_api/routers/data_export.py`
 - **フロントエンド**: `apps/web/src/app/settings/page.tsx`
 - **テスト**: `apps/api/tests/test_data_export.py`
 

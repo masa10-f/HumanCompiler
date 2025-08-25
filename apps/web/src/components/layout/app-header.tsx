@@ -25,7 +25,7 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center space-x-8">
             <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
-              TaskAgent
+              HumanCompiler
             </h1>
             <nav className="hidden md:flex space-x-4">
               <Button

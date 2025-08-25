@@ -5,8 +5,8 @@ from datetime import datetime, timedelta
 from unittest.mock import Mock, patch, MagicMock
 from sqlmodel import Session
 
-from taskagent_api.ai.report_generator import WeeklyReportGenerator
-from taskagent_api.models import (
+from humancompiler_api.ai.report_generator import WeeklyReportGenerator
+from humancompiler_api.models import (
     WeeklyReportRequest,
     WeeklyReportResponse,
     WeeklyWorkSummary,
@@ -162,7 +162,7 @@ class TestWeeklyReportGenerator:
         assert summary.total_tasks_worked == 1
         assert len(summary.daily_breakdown) == 7
 
-    @patch("taskagent_api.ai.report_generator.OpenAI")
+    @patch("humancompiler_api.ai.report_generator.OpenAI")
     def test_generate_markdown_report_with_ai_success(
         self, mock_openai_class, report_generator
     ):
@@ -192,7 +192,7 @@ class TestWeeklyReportGenerator:
         assert result == "# Weekly Report\n\nTest content"
         mock_client.chat.completions.create.assert_called_once()
 
-    @patch("taskagent_api.ai.report_generator.OpenAI")
+    @patch("humancompiler_api.ai.report_generator.OpenAI")
     def test_generate_markdown_report_with_ai_failure_fallback(
         self, mock_openai_class, report_generator
     ):
@@ -346,7 +346,7 @@ class TestWeeklyReportErrorCases:
     def report_generator(self):
         return WeeklyReportGenerator()
 
-    @patch("taskagent_api.ai.report_generator.OpenAI")
+    @patch("humancompiler_api.ai.report_generator.OpenAI")
     def test_openai_api_key_error(self, mock_openai_class, report_generator):
         """Test handling of OpenAI API key authentication errors."""
         mock_client = Mock()
@@ -374,7 +374,7 @@ class TestWeeklyReportErrorCases:
             mock_logger.error.assert_called()
             assert "週間作業報告書" in result
 
-    @patch("taskagent_api.ai.report_generator.OpenAI")
+    @patch("humancompiler_api.ai.report_generator.OpenAI")
     def test_openai_rate_limit_error(self, mock_openai_class, report_generator):
         """Test handling of OpenAI rate limit errors."""
         mock_client = Mock()
@@ -402,7 +402,7 @@ class TestWeeklyReportErrorCases:
             mock_logger.warning.assert_called()
             assert "週間作業報告書" in result
 
-    @patch("taskagent_api.ai.report_generator.OpenAI")
+    @patch("humancompiler_api.ai.report_generator.OpenAI")
     def test_custom_model_usage(self, mock_openai_class, report_generator):
         """Test that custom OpenAI model is used correctly."""
         mock_client = Mock()

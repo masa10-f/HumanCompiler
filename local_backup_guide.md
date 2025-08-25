@@ -1,8 +1,8 @@
-# TaskAgent ローカルバックアップガイド
+# HumanCompiler ローカルバックアップガイド
 
 ## 📋 概要
 
-TaskAgentのローカルサーバー向け軽量バックアップシステムです。
+HumanCompilerのローカルサーバー向け軽量バックアップシステムです。
 Supabase Free プランの制限に影響されず、シンプルで信頼性の高いバックアップを実現します。
 
 ## 🎯 特徴
@@ -15,8 +15,8 @@ Supabase Free プランの制限に影響されず、シンプルで信頼性の
 ## 📁 ファイル構成
 
 ```
-TaskAgent/apps/api/
-├── src/taskagent_api/
+HumanCompiler/apps/api/
+├── src/humancompiler_api/
 │   ├── simple_backup.py       # 軽量バックアップシステム
 │   └── safe_migration.py      # 緊急時バックアップ機能
 ├── migrate.py                 # マイグレーション管理
@@ -30,7 +30,7 @@ TaskAgent/apps/api/
 ### 1. バックアップディレクトリの準備
 
 ```bash
-cd /home/masato/projects/taskagent/TaskAgent/apps/api
+cd /home/masato/projects/humancompiler/HumanCompiler/apps/api
 mkdir -p backups
 chmod 750 backups
 ```
@@ -43,7 +43,7 @@ source ../../.venv/bin/activate
 
 # 手動バックアップの実行
 PYTHONPATH=src python -c "
-from taskagent_api.simple_backup import create_manual_backup
+from humancompiler_api.simple_backup import create_manual_backup
 backup_path = create_manual_backup()
 print(f'バックアップ作成: {backup_path}')
 "
@@ -57,10 +57,10 @@ crontab -e
 
 # 以下の行を追加
 # 日次バックアップ（毎日午前2時）
-0 2 * * * cd /home/masato/projects/taskagent/TaskAgent/apps/api && source ../../.venv/bin/activate && PYTHONPATH=src python -c "from taskagent_api.simple_backup import create_manual_backup; create_manual_backup()" >> /var/log/taskagent-backup.log 2>&1
+0 2 * * * cd /home/masato/projects/humancompiler/HumanCompiler/apps/api && source ../../.venv/bin/activate && PYTHONPATH=src python -c "from humancompiler_api.simple_backup import create_manual_backup; create_manual_backup()" >> /var/log/humancompiler-backup.log 2>&1
 
 # 週次バックアップ（毎週月曜日午前1時）
-0 1 * * 1 cd /home/masato/projects/taskagent/TaskAgent/apps/api && source ../../.venv/bin/activate && PYTHONPATH=src python -c "from taskagent_api.simple_backup import get_backup_scheduler; get_backup_scheduler().create_weekly_backup()" >> /var/log/taskagent-backup.log 2>&1
+0 1 * * 1 cd /home/masato/projects/humancompiler/HumanCompiler/apps/api && source ../../.venv/bin/activate && PYTHONPATH=src python -c "from humancompiler_api.simple_backup import get_backup_scheduler; get_backup_scheduler().create_weekly_backup()" >> /var/log/humancompiler-backup.log 2>&1
 ```
 
 ## 📝 使用方法
@@ -69,14 +69,14 @@ crontab -e
 
 #### 即座にバックアップを作成
 ```bash
-cd /home/masato/projects/taskagent/TaskAgent/apps/api
+cd /home/masato/projects/humancompiler/HumanCompiler/apps/api
 source ../../.venv/bin/activate
-PYTHONPATH=src python src/taskagent_api/simple_backup.py
+PYTHONPATH=src python src/humancompiler_api/simple_backup.py
 ```
 
 #### Pythonコードから実行
 ```python
-from taskagent_api.simple_backup import get_backup_scheduler
+from humancompiler_api.simple_backup import get_backup_scheduler
 
 # バックアップスケジューラーを取得
 scheduler = get_backup_scheduler()
@@ -108,12 +108,12 @@ jq . backups/daily_backup_20250815_120000.json | head -20
 ### 1. 緊急時の完全復旧
 
 ```bash
-cd /home/masato/projects/taskagent/TaskAgent/apps/api
+cd /home/masato/projects/humancompiler/HumanCompiler/apps/api
 source ../../.venv/bin/activate
 
 # バックアップファイルから復旧
 PYTHONPATH=src python -c "
-from taskagent_api.safe_migration import DataBackupManager
+from humancompiler_api.safe_migration import DataBackupManager
 manager = DataBackupManager()
 manager.restore_backup('backups/daily_backup_20250815_120000.json')
 print('復旧完了')
@@ -125,8 +125,8 @@ print('復旧完了')
 ```python
 import json
 from sqlmodel import Session
-from taskagent_api.database import db
-from taskagent_api.models import User, Project, Goal, Task
+from humancompiler_api.database import db
+from humancompiler_api.models import User, Project, Goal, Task
 
 # バックアップファイル読み込み
 with open('backups/daily_backup_20250815_120000.json') as f:
@@ -147,13 +147,13 @@ with Session(engine) as session:
 
 ```bash
 # バックアップログの確認
-tail -f /var/log/taskagent-backup.log
+tail -f /var/log/humancompiler-backup.log
 
 # エラーのチェック
-grep -i "error\|failed\|❌" /var/log/taskagent-backup.log
+grep -i "error\|failed\|❌" /var/log/humancompiler-backup.log
 
 # 成功したバックアップの確認
-grep -i "backup created\|✅" /var/log/taskagent-backup.log
+grep -i "backup created\|✅" /var/log/humancompiler-backup.log
 ```
 
 ### ディスク使用量の監視
@@ -211,7 +211,7 @@ echo $DATABASE_URL
 
 # データベース接続テスト
 PYTHONPATH=src python -c "
-from taskagent_api.database import db
+from humancompiler_api.database import db
 import asyncio
 result = asyncio.run(db.health_check())
 print(f'DB Health: {result}')
@@ -221,7 +221,7 @@ print(f'DB Health: {result}')
 #### 3. 仮想環境の問題
 ```bash
 # 仮想環境の再作成
-cd /home/masato/projects/taskagent/TaskAgent
+cd /home/masato/projects/humancompiler/HumanCompiler
 rm -rf .venv
 python -m venv .venv
 source .venv/bin/activate
@@ -234,10 +234,10 @@ pip install -r apps/api/requirements.txt
 sudo systemctl status cron
 
 # cronログの確認
-grep -i taskagent /var/log/syslog
+grep -i humancompiler /var/log/syslog
 
 # 手動実行でのテスト
-cd /home/masato/projects/taskagent/TaskAgent/apps/api && source ../../.venv/bin/activate && PYTHONPATH=src python -c "from taskagent_api.simple_backup import create_manual_backup; create_manual_backup()"
+cd /home/masato/projects/humancompiler/HumanCompiler/apps/api && source ../../.venv/bin/activate && PYTHONPATH=src python -c "from humancompiler_api.simple_backup import create_manual_backup; create_manual_backup()"
 ```
 
 ## 📈 アップグレード時の注意
@@ -246,7 +246,7 @@ cd /home/masato/projects/taskagent/TaskAgent/apps/api && source ../../.venv/bin/
 
 ```bash
 # 依存関係の更新
-cd /home/masato/projects/taskagent/TaskAgent/apps/api
+cd /home/masato/projects/humancompiler/HumanCompiler/apps/api
 source ../../.venv/bin/activate
 pip install -r requirements.txt
 
@@ -255,7 +255,7 @@ python migrate.py status
 python migrate.py apply
 
 # バックアップ機能のテスト
-PYTHONPATH=src python -c "from taskagent_api.simple_backup import create_manual_backup; print('Test OK')"
+PYTHONPATH=src python -c "from humancompiler_api.simple_backup import create_manual_backup; print('Test OK')"
 ```
 
 ## 🔒 セキュリティ考慮事項
@@ -289,9 +289,9 @@ with open('backups/latest_backup.json') as f:
 
 問題が発生した場合：
 
-1. **ログの確認**: `/var/log/taskagent-backup.log`
+1. **ログの確認**: `/var/log/humancompiler-backup.log`
 2. **手動実行テスト**: 上記の手動バックアップコマンドを実行
 3. **データベース接続確認**: ヘルスチェックを実行
 4. **権限確認**: ファイル・ディレクトリの権限をチェック
 
-このシンプルなバックアップシステムにより、TaskAgentのデータを安全に保護できます。
+このシンプルなバックアップシステムにより、HumanCompilerのデータを安全に保護できます。

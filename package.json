@@ -1,5 +1,5 @@
 {
-  "name": "task-agent",
+  "name": "human-compiler",
   "private": true,
   "workspaces": [
     "apps/*"

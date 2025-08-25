@@ -15,9 +15,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
-from taskagent_api.main import app
-from taskagent_api.models import User, Project, Goal, Task, Schedule
-from taskagent_api.safe_migration import DataBackupManager, SafeMigrationError
+from humancompiler_api.main import app
+from humancompiler_api.models import User, Project, Goal, Task, Schedule
+from humancompiler_api.safe_migration import DataBackupManager, SafeMigrationError
 
 
 @pytest.fixture

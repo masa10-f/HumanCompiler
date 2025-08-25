@@ -9,7 +9,7 @@ import { Toaster } from '@/components/ui/toaster'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'TaskAgent - AI-Powered Task Management',
+  title: 'HumanCompiler - AI-Powered Task Management',
   description: 'Smart task management with AI scheduling and optimization',
   manifest: '/manifest.json',
 }

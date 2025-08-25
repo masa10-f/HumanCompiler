@@ -1,7 +1,7 @@
 # Content Security Policy (CSP) Documentation
 
 ## Overview
-This document explains the Content Security Policy (CSP) configuration for the TaskAgent web application.
+This document explains the Content Security Policy (CSP) configuration for the HumanCompiler web application.
 
 ## Current CSP Configuration
 
@@ -14,7 +14,7 @@ default-src 'self'
 script-src 'self' 'unsafe-eval' 'unsafe-inline' https://vercel.live
 style-src 'self' 'unsafe-inline'
 img-src 'self' data: https:
-connect-src 'self' https://taskagent-api-masa.fly.dev https://taskagent-api-masa-preview.fly.dev https://*.supabase.co https://vercel.live
+connect-src 'self' https://humancompiler-api-masa.fly.dev https://humancompiler-api-masa-preview.fly.dev https://*.supabase.co https://vercel.live
 font-src 'self' data:
 frame-src https://vercel.live
 ```

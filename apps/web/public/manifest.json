@@ -1,6 +1,6 @@
 {
-  "name": "TaskAgent - AI-Powered Task Management",
-  "short_name": "TaskAgent",
+  "name": "HumanCompiler - AI-Powered Task Management",
+  "short_name": "HumanCompiler",
   "description": "Smart task management with AI scheduling and optimization",
   "start_url": "/",
   "display": "standalone",

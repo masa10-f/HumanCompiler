@@ -6,14 +6,14 @@ import pytest
 from datetime import date, datetime
 from unittest.mock import Mock, AsyncMock
 
-from taskagent_api.ai.weekly_task_solver import (
+from humancompiler_api.ai.weekly_task_solver import (
     WeeklyTaskSolver,
     TaskSolverRequest,
     WeeklyConstraints,
     ProjectAllocation,
 )
-from taskagent_api.ai.models import WeeklyPlanContext, TaskPlan
-from taskagent_api.models import Project, Goal, Task
+from humancompiler_api.ai.models import WeeklyPlanContext, TaskPlan
+from humancompiler_api.models import Project, Goal, Task
 
 
 class TestWeeklyTaskSolver:

@@ -8,14 +8,14 @@ from sqlmodel import Session, SQLModel, create_engine
 from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
 
-from taskagent_api.models import (
+from humancompiler_api.models import (
     TaskCategory,
     WeeklyRecurringTask,
     WeeklyRecurringTaskCreate,
     WeeklyRecurringTaskUpdate,
     User,
 )
-from taskagent_api.services import weekly_recurring_task_service
+from humancompiler_api.services import weekly_recurring_task_service
 
 
 @pytest.fixture

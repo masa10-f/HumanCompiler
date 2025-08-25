@@ -7,9 +7,12 @@ from uuid import uuid4
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
-from taskagent_api.base_service import BaseService
-from taskagent_api.common.error_handlers import ResourceNotFoundError, ValidationError
-from taskagent_api.models import Project, ProjectCreate, ProjectUpdate, User
+from humancompiler_api.base_service import BaseService
+from humancompiler_api.common.error_handlers import (
+    ResourceNotFoundError,
+    ValidationError,
+)
+from humancompiler_api.models import Project, ProjectCreate, ProjectUpdate, User
 
 
 def create_test_project_service():
@@ -37,7 +40,7 @@ def create_test_project_service():
 @pytest.fixture
 def memory_db():
     """Create in-memory SQLite database for testing"""
-    from taskagent_api.database_config import setup_connection_listeners
+    from humancompiler_api.database_config import setup_connection_listeners
 
     engine = create_engine("sqlite:///:memory:")
 

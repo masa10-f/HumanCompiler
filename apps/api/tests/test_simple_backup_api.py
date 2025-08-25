@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from taskagent_api.main import app
+from humancompiler_api.main import app
 
 
 class TestSimpleBackupAPI:
@@ -22,7 +22,7 @@ class TestSimpleBackupAPI:
     def test_backup_status_endpoint(self, client):
         """Test backup status endpoint"""
         with patch(
-            "taskagent_api.routers.simple_backup_api.get_backup_scheduler"
+            "humancompiler_api.routers.simple_backup_api.get_backup_scheduler"
         ) as mock_get:
             mock_scheduler = MagicMock()
             mock_scheduler.get_backup_status.return_value = {
@@ -64,7 +64,7 @@ class TestSimpleBackupAPI:
     def test_backup_health_check_healthy(self, client):
         """Test backup health check - healthy status"""
         with patch(
-            "taskagent_api.routers.simple_backup_api.get_backup_scheduler"
+            "humancompiler_api.routers.simple_backup_api.get_backup_scheduler"
         ) as mock_get:
             mock_scheduler = MagicMock()
             mock_scheduler.get_backup_status.return_value = {
@@ -87,7 +87,7 @@ class TestSimpleBackupAPI:
     def test_backup_health_check_warning(self, client):
         """Test backup health check - warning status"""
         with patch(
-            "taskagent_api.routers.simple_backup_api.get_backup_scheduler"
+            "humancompiler_api.routers.simple_backup_api.get_backup_scheduler"
         ) as mock_get:
             mock_scheduler = MagicMock()
             mock_scheduler.get_backup_status.return_value = {
@@ -110,7 +110,7 @@ class TestSimpleBackupAPI:
     def test_backup_health_check_error(self, client):
         """Test backup health check - error status"""
         with patch(
-            "taskagent_api.routers.simple_backup_api.get_backup_scheduler"
+            "humancompiler_api.routers.simple_backup_api.get_backup_scheduler"
         ) as mock_get:
             mock_scheduler = MagicMock()
             mock_scheduler.get_backup_status.side_effect = Exception("System error")
@@ -127,7 +127,7 @@ class TestSimpleBackupAPI:
     def test_backup_info_endpoint(self, client):
         """Test backup info endpoint"""
         with patch(
-            "taskagent_api.routers.simple_backup_api.get_backup_scheduler"
+            "humancompiler_api.routers.simple_backup_api.get_backup_scheduler"
         ) as mock_get:
             mock_scheduler = MagicMock()
             mock_config = MagicMock()
@@ -156,7 +156,7 @@ class TestSimpleBackupAPI:
     def test_backup_status_endpoint_error(self, client):
         """Test backup status endpoint error handling"""
         with patch(
-            "taskagent_api.routers.simple_backup_api.get_backup_scheduler"
+            "humancompiler_api.routers.simple_backup_api.get_backup_scheduler"
         ) as mock_get:
             mock_get.side_effect = Exception("Scheduler error")
 
@@ -170,7 +170,7 @@ class TestSimpleBackupAPI:
     def test_backup_info_endpoint_error(self, client):
         """Test backup info endpoint error handling"""
         with patch(
-            "taskagent_api.routers.simple_backup_api.get_backup_scheduler"
+            "humancompiler_api.routers.simple_backup_api.get_backup_scheduler"
         ) as mock_get:
             mock_get.side_effect = Exception("Config error")
 
@@ -186,7 +186,7 @@ class TestSimpleBackupAPI:
         # This test would require actually hitting rate limits
         # For now, just verify endpoints are accessible
         with patch(
-            "taskagent_api.routers.simple_backup_api.get_backup_scheduler"
+            "humancompiler_api.routers.simple_backup_api.get_backup_scheduler"
         ) as mock_get:
             mock_scheduler = MagicMock()
             mock_scheduler.get_backup_status.return_value = {

@@ -14,7 +14,7 @@ from pathlib import Path
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from taskagent_api.migration_manager import MigrationManager
+from humancompiler_api.migration_manager import MigrationManager
 import argparse
 import logging
 

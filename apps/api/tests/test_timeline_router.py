@@ -7,8 +7,8 @@ from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
-from taskagent_api.main import app
-from taskagent_api.models import (
+from humancompiler_api.main import app
+from humancompiler_api.models import (
     User,
     Project,
     Goal,
@@ -18,8 +18,8 @@ from taskagent_api.models import (
     GoalStatus,
     WorkType,
 )
-from taskagent_api.auth import AuthUser, get_current_user
-from taskagent_api.database import get_session
+from humancompiler_api.auth import AuthUser, get_current_user
+from humancompiler_api.database import get_session
 
 
 # Test helper functions

@@ -75,7 +75,7 @@ export default function SignUpPage() {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">新規登録</CardTitle>
           <CardDescription>
-            TaskAgentアカウントを作成してください
+            HumanCompilerアカウントを作成してください
           </CardDescription>
         </CardHeader>
         <CardContent>

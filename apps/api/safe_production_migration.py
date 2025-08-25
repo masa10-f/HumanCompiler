@@ -17,9 +17,9 @@ from pathlib import Path
 # Add src to Python path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from taskagent_api.database import db
+from humancompiler_api.database import db
 from sqlmodel import Session, text
-from taskagent_api.safe_migration import DataBackupManager
+from humancompiler_api.safe_migration import DataBackupManager
 
 # Configure logging
 logging.basicConfig(

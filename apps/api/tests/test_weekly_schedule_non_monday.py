@@ -7,7 +7,7 @@ import pytest
 from datetime import datetime
 from fastapi import HTTPException
 
-from taskagent_api.routers.weekly_schedule import validate_week_start_date
+from humancompiler_api.routers.weekly_schedule import validate_week_start_date
 
 
 # Test dates for different days of the week

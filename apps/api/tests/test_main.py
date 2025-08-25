@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from taskagent_api.main import app
+from humancompiler_api.main import app
 
 client = TestClient(app)
 
