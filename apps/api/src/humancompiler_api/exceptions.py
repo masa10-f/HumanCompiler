@@ -4,8 +4,8 @@ from fastapi.responses import JSONResponse
 # from pydantic import ValidationError as PydanticValidationError  # Unused but may be needed
 
 
-class TaskAgentException(Exception):
-    """Base exception for TaskAgent API"""
+class HumanCompilerException(Exception):
+    """Base exception for HumanCompiler API"""
 
     def __init__(self, message: str, error_code: str | None = None):
         self.message = message
@@ -13,7 +13,7 @@ class TaskAgentException(Exception):
         super().__init__(message)
 
 
-class ResourceNotFoundError(TaskAgentException):
+class ResourceNotFoundError(HumanCompilerException):
     """Resource not found exception"""
 
     def __init__(self, resource_type: str, resource_id: str | None = None):
@@ -23,14 +23,14 @@ class ResourceNotFoundError(TaskAgentException):
         super().__init__(message, "RESOURCE_NOT_FOUND")
 
 
-class UnauthorizedError(TaskAgentException):
+class UnauthorizedError(HumanCompilerException):
     """Unauthorized access exception"""
 
     def __init__(self, message: str = "Unauthorized access"):
         super().__init__(message, "UNAUTHORIZED")
 
 
-class ValidationError(TaskAgentException):
+class ValidationError(HumanCompilerException):
     """Validation error exception"""
 
     def __init__(self, message: str, field: str | None = None):
@@ -41,6 +41,8 @@ class ValidationError(TaskAgentException):
 
 # Aliases for common exception names
 NotFoundError = ResourceNotFoundError
+# Backwards compatibility alias
+TaskAgentException = HumanCompilerException
 
 
 async def http_exception_handler(request: Request, exc: HTTPException):
@@ -101,8 +103,10 @@ async def pydantic_validation_exception_handler(request: Request, exc: Validatio
     )
 
 
-async def task_agent_exception_handler(request: Request, exc: TaskAgentException):
-    """Handle custom TaskAgent exceptions"""
+async def humancompiler_exception_handler(
+    request: Request, exc: HumanCompilerException
+):
+    """Handle custom HumanCompiler exceptions"""
     status_code = status.HTTP_400_BAD_REQUEST
 
     if isinstance(exc, ResourceNotFoundError):

@@ -44,7 +44,7 @@ class Settings(BaseSettings):
 
     # Security Configuration
     secret_key: str = Field(
-        default="taskagent-secret-key-change-in-production",
+        default="humancompiler-secret-key-change-in-production",
         description="Secret key for encryption",
     )
     encryption_key: str | None = Field(

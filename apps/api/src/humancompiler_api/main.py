@@ -13,11 +13,11 @@ from humancompiler_api.database import db
 from humancompiler_api.performance_monitor import performance_monitor
 from humancompiler_api.rate_limiter import configure_rate_limiting, limiter
 from humancompiler_api.exceptions import (
-    TaskAgentException,
+    HumanCompilerException,
     general_exception_handler,
     http_exception_handler,
+    humancompiler_exception_handler,
     pydantic_validation_exception_handler,
-    task_agent_exception_handler,
     validation_exception_handler,
 )
 from humancompiler_api.routers import (
@@ -230,7 +230,7 @@ configure_rate_limiting(app)
 app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(ValidationError, pydantic_validation_exception_handler)
-app.add_exception_handler(TaskAgentException, task_agent_exception_handler)
+app.add_exception_handler(HumanCompilerException, humancompiler_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 
 # Include API routers
