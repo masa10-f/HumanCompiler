@@ -47,6 +47,11 @@ async def create_project(
     "/",
     response_model=list[ProjectResponse],
 )
+@router.get(
+    "",  # Handle requests without trailing slash
+    response_model=list[ProjectResponse],
+    include_in_schema=False,  # Don't duplicate in OpenAPI schema
+)
 async def get_projects(
     session: Annotated[Session, Depends(get_session)],
     current_user: Annotated[AuthUser, Depends(get_current_user)],

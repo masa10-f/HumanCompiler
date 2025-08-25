@@ -124,7 +124,24 @@ async def get_current_user(
     Extract and validate user from JWT token
     """
     try:
+        if not credentials:
+            logger.warning("❌ [AUTH] No credentials provided")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="No authentication credentials provided",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         token = credentials.credentials
+        if not token:
+            logger.warning("❌ [AUTH] Empty token provided")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Empty authentication token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        logger.info(f"🔍 [AUTH] Attempting authentication with token: {token[:20]}...")
 
         # Verify token with Supabase
         client = db.get_client()
@@ -146,6 +163,9 @@ async def get_current_user(
             ) from e
 
         if not user_response.user:
+            logger.warning(
+                f"❌ [AUTH] Invalid token: {token[:20]}... - No user found in response"
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication token",
@@ -172,7 +192,12 @@ async def get_current_user(
         raise
     except Exception as e:
         # Log full error details for debugging but return generic message
-        logger.error(f"Authentication error: {type(e).__name__}: {str(e)}")
+        logger.error(
+            f"❌ [AUTH] Authentication exception: {type(e).__name__}: {str(e)}"
+        )
+        logger.error(
+            f"❌ [AUTH] Token was: {token[:20] if 'token' in locals() else 'N/A'}..."
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication failed",
