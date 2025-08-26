@@ -141,6 +141,11 @@ class TaskBase(SQLModel):
 
     title: str = SQLField(min_length=1, max_length=200)
     description: str | None = SQLField(default=None, max_length=1000)
+    memo: str | None = SQLField(
+        default=None,
+        max_length=2000,
+        description="Task memo for notes and additional information",
+    )
     estimate_hours: Decimal = SQLField(gt=0, max_digits=5, decimal_places=2)
     due_date: datetime | None = SQLField(default=None)
     status: TaskStatus = SQLField(
@@ -532,6 +537,7 @@ class TaskUpdate(BaseModel):
 
     title: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = Field(None, max_length=1000)
+    memo: str | None = Field(None, max_length=2000)
     estimate_hours: Decimal | None = Field(None, gt=0)
     due_date: datetime | None = None
     status: TaskStatus | None = None
