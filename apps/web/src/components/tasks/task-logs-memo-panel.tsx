@@ -7,8 +7,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { LogFormDialog } from '@/components/logs/log-form-dialog';
-import { ChevronDown, ChevronRight, Clock, MessageSquare, Plus, Edit, Save, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clock, MessageSquare, Edit, Save, X } from 'lucide-react';
 import { useLogsByTask } from '@/hooks/use-logs-query';
 import { useUpdateTask } from '@/hooks/use-tasks-query';
 import type { Task } from '@/types/task';
@@ -146,22 +145,10 @@ export function TaskLogsMemoPanel({ task }: TaskLogsMemoPanelProps) {
           {/* Work Logs Section */}
           <Card>
             <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  作業ログ一覧
-                </CardTitle>
-                <LogFormDialog
-                  taskId={task.id}
-                  taskTitle={task.title}
-                  trigger={
-                    <Button variant="outline" size="sm">
-                      <Plus className="h-4 w-4 mr-1" />
-                      新規記録
-                    </Button>
-                  }
-                />
-              </div>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                作業ログ一覧
+              </CardTitle>
             </CardHeader>
             <CardContent>
               {logsLoading ? (
@@ -190,7 +177,8 @@ export function TaskLogsMemoPanel({ task }: TaskLogsMemoPanelProps) {
                               month: 'numeric',
                               day: 'numeric',
                               hour: '2-digit',
-                              minute: '2-digit'
+                              minute: '2-digit',
+                              timeZone: 'Asia/Tokyo'
                             })}
                           </span>
                         </div>
