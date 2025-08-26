@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { Key, TrendingUp } from 'lucide-react'
+import Image from 'next/image'
 
 interface AppHeaderProps {
   currentPage?: 'dashboard' | 'projects' | 'ai-planning' | 'scheduling' | 'schedule-history' | 'timeline' | 'settings'
@@ -24,9 +25,18 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center space-x-8">
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
-              HumanCompiler
-            </h1>
+            <div className="flex items-center space-x-3">
+              <Image
+                src="/logo.png"
+                alt="HumanCompiler Logo"
+                width={32}
+                height={32}
+                className="rounded-lg"
+              />
+              <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
+                HumanCompiler
+              </h1>
+            </div>
             <nav className="hidden md:flex space-x-4">
               <Button
                 variant="ghost"
