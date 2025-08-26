@@ -238,42 +238,6 @@ export default function DashboardPage() {
           </TimelineErrorBoundary>
         </div>
 
-        {/* Recent Projects */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <Card>
-            <CardHeader>
-              <CardTitle>最近のプロジェクト</CardTitle>
-              <CardDescription>
-                進行中のプロジェクト一覧
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8 text-gray-500">
-                <p>まだプロジェクトがありません</p>
-                <Button className="mt-4" onClick={() => router.push('/projects')}>
-                  最初のプロジェクトを作成
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>今日のタスク</CardTitle>
-              <CardDescription>
-                本日予定されているタスク
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8 text-gray-500">
-                <p>本日のタスクはありません</p>
-                <Button className="mt-4">
-                  タスクを追加
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
       </main>
     </div>
   )
