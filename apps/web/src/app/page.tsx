@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowRight, Calendar, Clock, Target } from 'lucide-react'
 import Link from 'next/link'
+import Image from 'next/image'
 
 export default function Home() {
   return (
@@ -9,6 +10,15 @@ export default function Home() {
       <div className="container mx-auto px-4 py-16">
         {/* Hero Section */}
         <div className="text-center mb-16">
+          <div className="flex justify-center mb-6">
+            <Image
+              src="/logo.png"
+              alt="HumanCompiler Logo"
+              width={120}
+              height={120}
+              className="rounded-3xl shadow-lg"
+            />
+          </div>
           <h1 className="text-4xl md:text-6xl font-bold text-gray-900 dark:text-white mb-6">
             HumanCompiler
           </h1>
