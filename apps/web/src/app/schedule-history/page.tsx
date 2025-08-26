@@ -211,14 +211,13 @@ export default function ScheduleHistoryPage() {
                   {/* Note: Unscheduled tasks count is intentionally not displayed per issue #85 */}
                 </div>
 
-                {/* Task Assignments Preview */}
+                {/* Task Assignments */}
                 {schedule.plan_json.assignments.length > 0 && (
                   <div>
                     <h4 className="font-semibold mb-2">スケジュール済みタスク</h4>
-                    <div className="space-y-2">
+                    <div className="space-y-2 max-h-80 overflow-y-auto border border-gray-200 rounded-lg p-2">
                       {schedule.plan_json.assignments
                         .sort((a, b) => a.start_time.localeCompare(b.start_time))
-                        .slice(0, 3)
                         .map((assignment, index) => (
                         <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                           <div className="flex items-center gap-3">
@@ -258,11 +257,6 @@ export default function ScheduleHistoryPage() {
                           </div>
                         </div>
                       ))}
-                      {schedule.plan_json.assignments.length > 3 && (
-                        <div className="text-center text-sm text-gray-500 pt-2">
-                          他 {schedule.plan_json.assignments.length - 3} 個のタスク
-                        </div>
-                      )}
                     </div>
                   </div>
                 )}
