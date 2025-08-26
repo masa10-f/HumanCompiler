@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { useTasksByGoal } from '@/hooks/use-tasks-query';
@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { TaskFormDialog } from '@/components/tasks/task-form-dialog';
 import { TaskEditDialog } from '@/components/tasks/task-edit-dialog';
 import { TaskDeleteDialog } from '@/components/tasks/task-delete-dialog';
+import { TaskLogsMemoPanel } from '@/components/tasks/task-logs-memo-panel';
 import { LogFormDialog } from '@/components/logs/log-form-dialog';
 import { ArrowLeft, Plus, Clock, Calendar, GitBranch } from 'lucide-react';
 import { taskStatusLabels, taskStatusColors, workTypeLabels, workTypeColors, taskPriorityLabels, taskPriorityColors } from '@/types/task';
@@ -349,108 +350,115 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
                 </TableHeader>
                 <TableBody>
                   {tasks.map((task) => (
-                    <TableRow key={task.id}>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{task.title}</div>
-                          {task.description && (
-                            <div className="text-sm text-gray-500 line-clamp-1">
-                              {task.description}
+                    <React.Fragment key={task.id}>
+                      <TableRow>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">{task.title}</div>
+                            {task.description && (
+                              <div className="text-sm text-gray-500 line-clamp-1">
+                                {task.description}
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={workTypeColors[task.work_type || 'light_work']}>
+                            {workTypeLabels[task.work_type || 'light_work']}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={taskPriorityColors[task.priority || 3]}>
+                            {taskPriorityLabels[task.priority || 3]}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {task.dependencies && task.dependencies.length > 0 ? (
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1">
+                                <GitBranch className="h-4 w-4 text-blue-500" />
+                                <span className="text-sm text-muted-foreground">
+                                  {task.dependencies.length}件
+                                </span>
+                              </div>
+                              <div className="flex -space-x-2" title={`依存タスク: ${task.dependencies.map(d => d.depends_on_task?.title || '不明').join(', ')}`}>
+                                {task.dependencies.slice(0, 3).map((dep, index) => (
+                                  <div
+                                    key={dep.id}
+                                    className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 border border-white text-xs"
+                                    title={dep.depends_on_task?.title || '不明なタスク'}
+                                  >
+                                    {index + 1}
+                                  </div>
+                                ))}
+                                {task.dependencies.length > 3 && (
+                                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 border border-white text-xs">
+                                    +{task.dependencies.length - 3}
+                                  </div>
+                                )}
+                              </div>
                             </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">なし</span>
                           )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={workTypeColors[task.work_type || 'light_work']}>
-                          {workTypeLabels[task.work_type || 'light_work']}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={taskPriorityColors[task.priority || 3]}>
-                          {taskPriorityLabels[task.priority || 3]}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {task.dependencies && task.dependencies.length > 0 ? (
-                          <div className="flex items-center gap-2">
-                            <div className="flex items-center gap-1">
-                              <GitBranch className="h-4 w-4 text-blue-500" />
-                              <span className="text-sm text-muted-foreground">
-                                {task.dependencies.length}件
-                              </span>
-                            </div>
-                            <div className="flex -space-x-2" title={`依存タスク: ${task.dependencies.map(d => d.depends_on_task?.title || '不明').join(', ')}`}>
-                              {task.dependencies.slice(0, 3).map((dep, index) => (
-                                <div
-                                  key={dep.id}
-                                  className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 border border-white text-xs"
-                                  title={dep.depends_on_task?.title || '不明なタスク'}
-                                >
-                                  {index + 1}
-                                </div>
-                              ))}
-                              {task.dependencies.length > 3 && (
-                                <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 border border-white text-xs">
-                                  +{task.dependencies.length - 3}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">なし</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <TaskStatusSelect task={task} />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {task.estimate_hours}h
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <TaskActualTime taskId={task.id} />
-                      </TableCell>
-                      <TableCell>
-                        {task.due_date ? (
+                        </TableCell>
+                        <TableCell>
+                          <TaskStatusSelect task={task} />
+                        </TableCell>
+                        <TableCell>
                           <div className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            {new Date(task.due_date).toLocaleDateString('ja-JP')}
+                            <Clock className="h-3 w-3" />
+                            {task.estimate_hours}h
                           </div>
-                        ) : (
-                          <span className="text-gray-400">未設定</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm text-gray-500">
-                          {new Date(task.created_at).toLocaleDateString('ja-JP')}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <LogFormDialog
-                            taskId={task.id}
-                            taskTitle={task.title}
-                            trigger={
+                        </TableCell>
+                        <TableCell>
+                          <TaskActualTime taskId={task.id} />
+                        </TableCell>
+                        <TableCell>
+                          {task.due_date ? (
+                            <div className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {new Date(task.due_date).toLocaleDateString('ja-JP')}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">未設定</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm text-gray-500">
+                            {new Date(task.created_at).toLocaleDateString('ja-JP')}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <LogFormDialog
+                              taskId={task.id}
+                              taskTitle={task.title}
+                              trigger={
+                                <Button variant="outline" size="sm">
+                                  時間記録
+                                </Button>
+                              }
+                            />
+                            <TaskEditDialog task={task} availableTasks={tasks}>
                               <Button variant="outline" size="sm">
-                                時間記録
+                                編集
                               </Button>
-                            }
-                          />
-                          <TaskEditDialog task={task} availableTasks={tasks}>
-                            <Button variant="outline" size="sm">
-                              編集
-                            </Button>
-                          </TaskEditDialog>
-                          <TaskDeleteDialog task={task}>
-                            <Button variant="outline" size="sm">
-                              削除
-                            </Button>
-                          </TaskDeleteDialog>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                            </TaskEditDialog>
+                            <TaskDeleteDialog task={task}>
+                              <Button variant="outline" size="sm">
+                                削除
+                              </Button>
+                            </TaskDeleteDialog>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell colSpan={10} className="p-0">
+                          <TaskLogsMemoPanel task={task} />
+                        </TableCell>
+                      </TableRow>
+                    </React.Fragment>
                   ))}
                 </TableBody>
               </Table>

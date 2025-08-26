@@ -20,6 +20,7 @@ export interface Task {
   id: string;
   title: string;
   description: string | null;
+  memo?: string | null;
   estimate_hours: number;
   due_date: string | null;
   status: TaskStatus;
@@ -44,6 +45,7 @@ export interface TaskCreate {
 export interface TaskUpdate {
   title?: string;
   description?: string;
+  memo?: string;
   estimate_hours?: number;
   due_date?: string;
   status?: TaskStatus;
