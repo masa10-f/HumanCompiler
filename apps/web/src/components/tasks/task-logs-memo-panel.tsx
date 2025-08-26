@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -10,6 +10,8 @@ import { Separator } from '@/components/ui/separator';
 import { ChevronDown, ChevronRight, Clock, MessageSquare, Edit, Save, X } from 'lucide-react';
 import { useLogsByTask } from '@/hooks/use-logs-query';
 import { useUpdateTask } from '@/hooks/use-tasks-query';
+import { useToast } from '@/hooks/use-toast';
+import { sanitizeText } from '@/lib/security';
 import type { Task } from '@/types/task';
 import { log } from '@/lib/logger';
 
@@ -24,6 +26,13 @@ export function TaskLogsMemoPanel({ task }: TaskLogsMemoPanelProps) {
 
   const { data: logs = [], isLoading: logsLoading, error: logsError } = useLogsByTask(task.id);
   const updateTaskMutation = useUpdateTask();
+  const { toast } = useToast();
+
+  // Performance optimization: memoize total log time calculation
+  const totalLogTime = useMemo(() =>
+    logs.reduce((sum, logEntry) => sum + (logEntry.actual_minutes || 0), 0),
+    [logs]
+  );
 
   const handleSaveMemo = async () => {
     try {
@@ -32,10 +41,21 @@ export function TaskLogsMemoPanel({ task }: TaskLogsMemoPanelProps) {
         data: { memo: memoText }
       });
       setIsMemoEditing(false);
+      // Success notification
+      toast({
+        title: "メモを保存しました",
+        description: "タスクメモが正常に更新されました。",
+      });
     } catch (error) {
       log.error('Failed to update task memo', error, {
         component: 'TaskLogsMemoPanel',
         taskId: task.id
+      });
+      // Error notification
+      toast({
+        variant: "destructive",
+        title: "メモの保存に失敗しました",
+        description: "ネットワーク接続を確認して再試行してください。",
       });
     }
   };
@@ -45,8 +65,6 @@ export function TaskLogsMemoPanel({ task }: TaskLogsMemoPanelProps) {
     setIsMemoEditing(false);
   };
 
-  const totalLogTime = logs.reduce((sum, logEntry) => sum + (logEntry.actual_minutes || 0), 0);
-
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <CollapsibleTrigger asChild>
@@ -54,13 +72,16 @@ export function TaskLogsMemoPanel({ task }: TaskLogsMemoPanelProps) {
           variant="ghost"
           size="sm"
           className="flex items-center gap-2 w-full justify-start p-2 h-auto text-left hover:bg-gray-50"
+          aria-label={`${task.title}の作業ログとメモを${isOpen ? '閉じる' : '開く'}`}
+          aria-expanded={isOpen}
+          aria-describedby={`task-${task.id}-logs-memo-summary`}
         >
           {isOpen ? (
             <ChevronDown className="h-4 w-4" />
           ) : (
             <ChevronRight className="h-4 w-4" />
           )}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4" id={`task-${task.id}-logs-memo-summary`}>
             <div className="flex items-center gap-1">
               <Clock className="h-4 w-4 text-blue-600" />
               <span className="text-sm font-medium">
@@ -131,7 +152,12 @@ export function TaskLogsMemoPanel({ task }: TaskLogsMemoPanelProps) {
               ) : (
                 <div className="text-sm text-gray-600">
                   {task.memo ? (
-                    <div className="whitespace-pre-wrap">{task.memo}</div>
+                    <div
+                      className="whitespace-pre-wrap"
+                      dangerouslySetInnerHTML={{
+                        __html: sanitizeText(task.memo)
+                      }}
+                    />
                   ) : (
                     <div className="text-gray-400">メモはまだ設定されていません</div>
                   )}
@@ -183,9 +209,12 @@ export function TaskLogsMemoPanel({ task }: TaskLogsMemoPanelProps) {
                           </span>
                         </div>
                         {logEntry.comment && (
-                          <div className="text-sm text-gray-700 whitespace-pre-wrap">
-                            {logEntry.comment}
-                          </div>
+                          <div
+                            className="text-sm text-gray-700 whitespace-pre-wrap"
+                            dangerouslySetInnerHTML={{
+                              __html: sanitizeText(logEntry.comment)
+                            }}
+                          />
                         )}
                       </div>
                     </div>
