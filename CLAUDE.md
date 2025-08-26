@@ -2,7 +2,8 @@
 
 プロンプトへの返答は日本語でお願いします。
 HumanCompilerがgit repositoryです。
-pythonは仮想環境 .venv/bin/ を使用してください。
+Pythonは常に仮想環境（.venv）がアクティブな状態です。
+pytest、mypy、ruffは許可なしで直接実行できます。
 コード中のコメント、コミットメッセージ、issue, PRの記述は英語でお願いします。
 コードの実装面で問題だと思うことがあればissueとして切り出してください。
 データベースに登録されているデータを初期化するような操作は行わないでください。
@@ -37,10 +38,10 @@ HumanCompiler/
 # 依存関係のインストール
 pnpm i
 
-# Python仮想環境のセットアップ
+# Python仮想環境のセットアップ（初回のみ）
 cd apps/api
-source ../../.venv/bin/activate
 # 仮想環境がない場合: python -m venv ../../.venv
+# source ../../.venv/bin/activate  # 通常は自動でアクティブ
 uv pip install -r requirements.txt
 ```
 
@@ -52,7 +53,6 @@ npm run dev              # Next.js → http://localhost:3000
 
 # バックエンド (ターミナル2)
 cd apps/api
-source ../../.venv/bin/activate
 python src/humancompiler_api/main.py  # FastAPI → http://localhost:8000
 ```
 
@@ -73,10 +73,9 @@ npm run lint            # ESLint
 
 # バックエンド
 cd apps/api
-source ../../.venv/bin/activate
-PYTHONPATH=src python -m pytest tests/ -v
-ruff check .            # リンティング
-ruff format .           # フォーマット
+pytest tests/ -v        # テスト実行
+ruff check              # リンティング
+ruff format             # フォーマット
 mypy src                # 型チェック
 ```
 
@@ -87,7 +86,11 @@ users(id, email, created_at, updated_at)
 projects(id, owner_id, title, description, created_at, updated_at)
 goals(id, project_id, title, description, estimate_hours, created_at, updated_at)
 tasks(id, goal_id, title, description, estimate_hours, due_date, status, created_at, updated_at)
+goal_dependencies(id, goal_id, depends_on_goal_id, created_at)
+task_dependencies(id, task_id, depends_on_task_id, created_at)
 schedules(id, user_id, date, plan_json, created_at, updated_at)
+weekly_schedules(id, user_id, week_start_date, plan_json, created_at, updated_at)
+weekly_recurring_tasks(id, user_id, title, description, estimate_hours, work_type, created_at, updated_at)
 logs(id, task_id, actual_minutes, comment, created_at)
 user_settings(id, user_id, openai_api_key_encrypted, openai_model, ai_features_enabled)
 api_usage_logs(id, user_id, endpoint, tokens_used, cost_usd, response_status, request_timestamp)
@@ -109,6 +112,14 @@ GET/POST/PUT/DELETE /api/tasks/
 GET /api/tasks/goal/{goal_id}
 GET /api/tasks/project/{project_id}
 
+# 依存関係管理
+GET/POST/DELETE /api/goal-dependencies/
+GET/POST/DELETE /api/task-dependencies/
+
+# 週次タスク管理
+GET/POST/PUT/DELETE /api/weekly-recurring-tasks/
+GET/POST/PUT/DELETE /api/weekly-schedules/
+
 # ユーザー設定
 GET/POST/PUT /api/user-settings/
 ```
@@ -129,6 +140,19 @@ POST /api/schedule/daily           # CP-SAT制約ソルバ最適化
 GET  /api/schedule/test            # スケジューラテスト
 ```
 
+### **データ管理APIs**
+```bash
+# タイムライン表示
+GET  /api/timeline/{project_id}    # プロジェクトタイムライン
+
+# データエクスポート・インポート
+POST /api/export/user-data         # ユーザーデータエクスポート
+POST /api/import/user-data         # ユーザーデータインポート
+
+# レポート生成
+POST /api/reports/weekly           # 週次レポート生成
+```
+
 ### **監視・ヘルスチェック**
 ```bash
 GET /health                        # アプリケーションヘルスチェック
@@ -142,10 +166,14 @@ GET /api/monitoring/metrics        # パフォーマンスメトリクス
 
 ## 実装完了機能
 - ✅ **プロジェクト・ゴール・タスク管理** - 完全CRUD操作
+- ✅ **依存関係管理** - ゴール・タスク間の依存関係設定
+- ✅ **週次タスク管理** - 繰り返しタスクと週次スケジュール
 - ✅ **AI週間計画生成** - OpenAI GPT-4による自動計画
 - ✅ **ワークロード分析** - タスク量・締切・配分分析
 - ✅ **タスク優先度提案** - AI分析による優先度最適化
 - ✅ **OR-Tools制約最適化** - CP-SAT制約ソルバスケジューリング
+- ✅ **タイムライン表示** - プロジェクト進捗の視覚的表示
+- ✅ **データエクスポート・インポート** - ユーザーデータのバックアップ・復元
 - ✅ **統合ナビゲーション** - レスポンシブUI・shadcn/ui
 
 ## AI機能の技術的詳細
@@ -308,6 +336,7 @@ backup_path = migration.execute_safe_migration("update_work_type_enum")
 #### 4. **マイグレーション実行コマンド**
 ```bash
 # 開発環境での安全なマイグレーション
+cd apps/api
 PYTHONPATH=src python -c "
 from humancompiler_api.safe_migration import SafeMigrationManager
 migration = SafeMigrationManager()
@@ -331,6 +360,8 @@ manager.restore_backup('backups/backup_20250814_120000.json')
 #### 6. **緊急時の対応**
 データ消失が発生した場合：
 ```bash
+cd apps/api
+
 # 1. 最新バックアップを確認
 ls -la backups/
 
@@ -469,11 +500,11 @@ ORDER BY tablename, policyname;
 
 #### 6. **既存RLS実装状況（2025年8月対応済み）**
 
-全12テーブルでRLS有効化・ポリシー設定完了：
+全テーブルでRLS有効化・ポリシー設定完了：
 - ✅ users, projects, goals, tasks
+- ✅ goal_dependencies, task_dependencies
 - ✅ schedules, weekly_schedules, weekly_recurring_tasks
 - ✅ logs, user_settings, api_usage_logs
-- ✅ goal_dependencies, task_dependencies
 
 マイグレーションスクリプト: `apps/api/migrations/enable_rls_security.sql`
 実行スクリプト: `apps/api/src/humancompiler_api/enable_rls_migration.py`
