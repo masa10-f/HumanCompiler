@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { sanitizeText } from '@/lib/security';
 import type { Task } from '@/types/task';
 import { log } from '@/lib/logger';
+import { formatJSTDateTime } from '@/lib/date-utils';
 
 interface TaskLogsMemoPanelProps {
   task: Task;
@@ -198,14 +199,7 @@ export function TaskLogsMemoPanel({ task }: TaskLogsMemoPanelProps) {
                             {(logEntry.actual_minutes / 60).toFixed(1)}h
                           </Badge>
                           <span className="text-xs text-gray-500">
-                            {new Date(logEntry.created_at).toLocaleString('ja-JP', {
-                              year: 'numeric',
-                              month: 'numeric',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              timeZone: 'Asia/Tokyo'
-                            })}
+                            {formatJSTDateTime(logEntry.created_at)}
                           </span>
                         </div>
                         {logEntry.comment && (

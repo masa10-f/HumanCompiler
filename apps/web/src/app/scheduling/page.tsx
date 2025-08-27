@@ -34,13 +34,13 @@ import type {
 } from '@/types/ai-planning';
 import type { Project } from '@/types/project';
 import type { WeeklyRecurringTask } from '@/types/weekly-recurring-task';
+import { getJSTDateString } from '@/lib/date-utils';
 
 export default function SchedulingPage() {
   const { user, loading: authLoading } = useAuth();
 
   const [selectedDate, setSelectedDate] = useState(() => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
+    return getJSTDateString();
   });
 
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([
