@@ -31,6 +31,15 @@ def get_session():
         404: {"model": ErrorResponse, "description": "Project not found"},
     },
 )
+@router.post(
+    "",  # Handle requests without trailing slash
+    response_model=GoalResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        404: {"model": ErrorResponse, "description": "Project not found"},
+    },
+    include_in_schema=False,  # Don't duplicate in OpenAPI schema
+)
 async def create_goal(
     goal_data: GoalCreate,
     session: Annotated[Session, Depends(get_session)],
@@ -69,6 +78,14 @@ async def get_goals_by_project(
         404: {"model": ErrorResponse, "description": "Goal not found"},
     },
 )
+@router.get(
+    "/{goal_id}/",  # Handle requests with trailing slash
+    response_model=GoalResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Goal not found"},
+    },
+    include_in_schema=False,  # Don't duplicate in OpenAPI schema
+)
 async def get_goal(
     goal_id: str,
     session: Annotated[Session, Depends(get_session)],
@@ -95,6 +112,15 @@ async def get_goal(
         404: {"model": ErrorResponse, "description": "Goal not found"},
         422: {"model": ErrorResponse, "description": "Invalid status transition"},
     },
+)
+@router.put(
+    "/{goal_id}/",  # Handle requests with trailing slash
+    response_model=GoalResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Goal not found"},
+        422: {"model": ErrorResponse, "description": "Invalid status transition"},
+    },
+    include_in_schema=False,  # Don't duplicate in OpenAPI schema
 )
 async def update_goal(
     goal_id: str,
@@ -147,6 +173,14 @@ async def update_goal(
     responses={
         404: {"model": ErrorResponse, "description": "Goal not found"},
     },
+)
+@router.delete(
+    "/{goal_id}/",  # Handle requests with trailing slash
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        404: {"model": ErrorResponse, "description": "Goal not found"},
+    },
+    include_in_schema=False,  # Don't duplicate in OpenAPI schema
 )
 async def delete_goal(
     goal_id: str,

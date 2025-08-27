@@ -130,6 +130,7 @@ class Settings(BaseSettings):
                 expanded_origins.extend(
                     [
                         "https://humancompiler.vercel.app",
+                        "https://human-compiler.vercel.app",  # Add hyphenated domain
                         "https://humancompiler-five.vercel.app",
                         # Allow humancompiler prefixed domains only for security
                     ]
