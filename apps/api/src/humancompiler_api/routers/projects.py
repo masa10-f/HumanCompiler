@@ -31,6 +31,15 @@ def get_session():
         409: {"model": ErrorResponse, "description": "Project already exists"},
     },
 )
+@router.post(
+    "",  # Handle requests without trailing slash
+    response_model=ProjectResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        409: {"model": ErrorResponse, "description": "Project already exists"},
+    },
+    include_in_schema=False,  # Don't duplicate in OpenAPI schema
+)
 async def create_project(
     project_data: ProjectCreate,
     session: Annotated[Session, Depends(get_session)],
@@ -107,6 +116,14 @@ async def get_projects(
         404: {"model": ErrorResponse, "description": "Project not found"},
     },
 )
+@router.get(
+    "/{project_id}/",  # Handle requests with trailing slash
+    response_model=ProjectResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Project not found"},
+    },
+    include_in_schema=False,  # Don't duplicate in OpenAPI schema
+)
 async def get_project(
     project_id: UUID,
     session: Annotated[Session, Depends(get_session)],
@@ -133,6 +150,14 @@ async def get_project(
         404: {"model": ErrorResponse, "description": "Project not found"},
     },
 )
+@router.put(
+    "/{project_id}/",  # Handle requests with trailing slash
+    response_model=ProjectResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Project not found"},
+    },
+    include_in_schema=False,  # Don't duplicate in OpenAPI schema
+)
 async def update_project(
     project_id: UUID,
     project_data: ProjectUpdate,
@@ -152,6 +177,14 @@ async def update_project(
     responses={
         404: {"model": ErrorResponse, "description": "Project not found"},
     },
+)
+@router.delete(
+    "/{project_id}/",  # Handle requests with trailing slash
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        404: {"model": ErrorResponse, "description": "Project not found"},
+    },
+    include_in_schema=False,  # Don't duplicate in OpenAPI schema
 )
 async def delete_project(
     project_id: UUID,
