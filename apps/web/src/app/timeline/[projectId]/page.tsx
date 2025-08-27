@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { ArrowLeft } from 'lucide-react'
 import { subMonths, startOfMonth, endOfMonth } from 'date-fns'
 import type { TimelineFilters } from '@/types/timeline'
+import { getJSTDate } from '@/lib/date-utils'
 
 export default function ProjectTimelinePage() {
   const { isAuthenticated, loading } = useAuth()
@@ -22,13 +23,13 @@ export default function ProjectTimelinePage() {
   const projectId = params.projectId as string
 
   const [filters, setFilters] = useState<TimelineFilters>(() => {
-    const now = new Date()
+    const now = getJSTDate(new Date().toISOString().split('T')[0]!)
     const startDate = startOfMonth(subMonths(now, 2))
     const endDate = endOfMonth(now)
 
     return {
-      start_date: startDate.toISOString(),
-      end_date: endDate.toISOString(),
+      start_date: startDate.toISOString().split('T')[0],
+      end_date: endDate.toISOString().split('T')[0],
       time_unit: 'day',
       show_dependencies: true,
       show_task_segments: true
@@ -70,8 +71,8 @@ export default function ProjectTimelinePage() {
   const handleDateRangeChange = (startDate: Date, endDate: Date) => {
     setFilters(prev => ({
       ...prev,
-      start_date: startDate.toISOString(),
-      end_date: endDate.toISOString()
+      start_date: startDate.toISOString().split('T')[0],
+      end_date: endDate.toISOString().split('T')[0]
     }))
   }
 

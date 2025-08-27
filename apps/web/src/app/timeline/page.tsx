@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { CalendarIcon, TrendingUp } from 'lucide-react'
 import { subMonths, startOfMonth, endOfMonth } from 'date-fns'
+import { getJSTDate } from '@/lib/date-utils'
 
 export default function TimelinePage() {
   const { isAuthenticated, loading } = useAuth()
@@ -18,7 +19,7 @@ export default function TimelinePage() {
 
   // Calculate date range based on selection
   const getDateRange = (range: string) => {
-    const now = new Date()
+    const now = getJSTDate(new Date().toISOString().split('T')[0]!)
     let startDate: Date
     const endDate = endOfMonth(now)
 
@@ -40,8 +41,8 @@ export default function TimelinePage() {
     }
 
     return {
-      start_date: startDate.toISOString(),
-      end_date: endDate.toISOString()
+      start_date: startDate.toISOString().split('T')[0],
+      end_date: endDate.toISOString().split('T')[0]
     }
   }
 
