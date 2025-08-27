@@ -246,8 +246,7 @@ async def test_generate_weekly_plan_success(mock_context):
     service = OpenAIService()
     service.client = mock_client
 
-    with patch.object(service, "_log_api_usage", new_callable=AsyncMock):
-        response = await service.generate_weekly_plan(mock_context)
+    response = await service.generate_weekly_plan(mock_context)
 
     assert response.success
     assert len(response.task_plans) == 1
@@ -265,8 +264,7 @@ async def test_generate_weekly_plan_openai_error(mock_context):
     service = OpenAIService()
     service.client = mock_client
 
-    with patch.object(service, "_log_api_usage", new_callable=AsyncMock):
-        response = await service.generate_weekly_plan(mock_context)
+    response = await service.generate_weekly_plan(mock_context)
 
     assert not response.success
     assert "Error generating plan" in response.recommendations[0]

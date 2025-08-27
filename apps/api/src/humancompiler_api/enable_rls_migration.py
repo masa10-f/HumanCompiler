@@ -124,7 +124,6 @@ class RLSMigrationManager:
             "weekly_recurring_tasks",
             "logs",
             "user_settings",
-            "api_usage_logs",
             "goal_dependencies",
             "task_dependencies",
         ]

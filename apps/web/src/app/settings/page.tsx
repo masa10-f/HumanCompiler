@@ -8,18 +8,13 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Eye, EyeOff, Key, AlertCircle, CheckCircle, TrendingUp, Hash, DollarSign, RefreshCw, Download, Upload, Database } from "lucide-react"
+import { Eye, EyeOff, Key, AlertCircle, CheckCircle, Download, Upload, Database } from "lucide-react"
 import { AppHeader } from "@/components/layout/app-header"
 import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { supabase } from "@/lib/supabase"
 import { log } from "@/lib/logger"
 import { getJSTDateString } from "@/lib/date-utils"
 
-interface ApiUsageData {
-  total_tokens: number
-  total_cost: number
-  request_count: number
-}
 
 interface ModelInfo {
   name: string
@@ -50,11 +45,7 @@ export default function SettingsPage() {
   const [loadingSettings, setLoadingSettings] = useState(true)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
-  const [usageData, setUsageData] = useState<ApiUsageData | null>(null)
-  const [usageError, setUsageError] = useState("")
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
-  const [loadingUsage, setLoadingUsage] = useState(false)
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const [availableModels, setAvailableModels] = useState<AvailableModels | null>(null)
   const [exportLoading, setExportLoading] = useState(false)
   const [importLoading, setImportLoading] = useState(false)
@@ -154,10 +145,6 @@ export default function SettingsPage() {
         setHasApiKey(data.has_api_key)
         setOpenaiModel(data.openai_model)
 
-        // Fetch usage data if API key is configured
-        if (data.has_api_key) {
-          fetchUsageData(session.access_token)
-        }
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
@@ -169,34 +156,6 @@ export default function SettingsPage() {
     }
   }
 
-  const fetchUsageData = async (accessToken: string) => {
-    try {
-      setLoadingUsage(true)
-      setUsageError("") // Clear previous errors
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/usage`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        signal: abortControllerRef.current?.signal
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setUsageData(data)
-      } else {
-        const errorData = await response.json().catch(() => ({ detail: "Failed to load usage data" }))
-        setUsageError(errorData.detail || "Failed to load usage data")
-      }
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        return // Request was aborted, ignore the error
-      }
-      setUsageError("Network error occurred while loading usage data")
-      log.error('Failed to fetch usage data', err as Error, { component: 'Settings' })
-    } finally {
-      setLoadingUsage(false)
-    }
-  }
 
   const handleSaveApiKey = async () => {
     if (!apiKey) {
@@ -238,8 +197,6 @@ export default function SettingsPage() {
         setSuccess("API key saved successfully! AI features are now enabled.")
         setHasApiKey(true)
         setApiKey("") // Clear the input for security
-        // Refresh usage data after saving
-        fetchUsageData(session.access_token)
       } else {
         const data = await response.json()
         setError(data.detail || "Failed to save API key")
@@ -294,21 +251,6 @@ export default function SettingsPage() {
     }
   }
 
-  const handleRefreshUsage = async () => {
-    if (isRefreshing) return // Prevent multiple concurrent requests
-
-    try {
-      setIsRefreshing(true)
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session?.access_token) {
-        await fetchUsageData(session.access_token)
-      }
-    } catch (err) {
-      log.error('Failed to refresh usage data', err as Error, { component: 'Settings' })
-    } finally {
-      setIsRefreshing(false)
-    }
-  }
 
   const handleDeleteApiKey = async () => {
     setIsDeleteModalOpen(true)
@@ -636,96 +578,6 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {hasApiKey && (
-        <Card className="mt-6">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5" />
-                  API Usage Dashboard
-                </CardTitle>
-                <CardDescription>
-                  Your OpenAI API usage for the current period
-                </CardDescription>
-              </div>
-              <Button
-                onClick={handleRefreshUsage}
-                variant="outline"
-                size="sm"
-                disabled={loadingUsage || isRefreshing}
-              >
-                {loadingUsage || isRefreshing ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {usageError && (
-              <Alert variant="destructive" className="mb-4">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{usageError}</AlertDescription>
-              </Alert>
-            )}
-            {usageData ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-2">
-                      <Hash className="h-4 w-4 text-blue-600" />
-                      <div>
-                        <div className="text-2xl font-bold">
-                          {usageData.total_tokens.toLocaleString()}
-                        </div>
-                        <div className="text-xs text-muted-foreground">Total Tokens</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-2">
-                      <DollarSign className="h-4 w-4 text-green-600" />
-                      <div>
-                        <div className="text-2xl font-bold">
-                          ${typeof usageData.total_cost === 'number' ? usageData.total_cost.toFixed(4) : '0.0000'}
-                        </div>
-                        <div className="text-xs text-muted-foreground">Estimated Cost</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-2">
-                      <TrendingUp className="h-4 w-4 text-purple-600" />
-                      <div>
-                        <div className="text-2xl font-bold">
-                          {usageData.request_count}
-                        </div>
-                        <div className="text-xs text-muted-foreground">API Requests</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <p>No usage data available yet. Start using AI features to see your usage statistics.</p>
-              </div>
-            )}
-
-            <div className="mt-4 text-sm text-muted-foreground">
-              <p>Usage data is updated after each AI operation. Costs are estimated based on current OpenAI pricing.</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <Card className="mt-6">
         <CardHeader>

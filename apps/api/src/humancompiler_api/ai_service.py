@@ -16,7 +16,7 @@ from uuid import UUID
 
 from humancompiler_api.config import settings
 from humancompiler_api.crypto import get_crypto_service
-from humancompiler_api.models import Goal, Project, Task, UserSettings, ApiUsageLog
+from humancompiler_api.models import Goal, Project, Task, UserSettings
 from humancompiler_api.services import goal_service, project_service, task_service
 from core.cache import cached, invalidate_cache
 
@@ -408,15 +408,6 @@ Use the create_week_plan function to structure your response."""
 
             response = self.client.chat.completions.create(**api_params)
 
-            # Log API usage
-            if hasattr(response, "usage") and response.usage:
-                await self._log_api_usage(
-                    user_id=context.user_id,
-                    endpoint="weekly-plan",
-                    tokens_used=response.usage.total_tokens,
-                    response_status="success",
-                )
-
             # Debug: Log OpenAI response structure
             logger.info(f"🔍 OpenAI Response: {len(response.choices)} choices")
             for i, choice in enumerate(response.choices):
@@ -491,14 +482,6 @@ Use the create_week_plan function to structure your response."""
 
         except Exception as e:
             logger.error(f"Error generating weekly plan: {e}")
-            # Log API error
-            if hasattr(self, "session") and self.session:
-                await self._log_api_usage(
-                    user_id=context.user_id,
-                    endpoint="weekly-plan",
-                    tokens_used=0,
-                    response_status="error",
-                )
             return WeeklyPlanResponse(
                 success=False,
                 week_start_date=context.week_start_date.strftime("%Y-%m-%d"),
@@ -508,46 +491,6 @@ Use the create_week_plan function to structure your response."""
                 insights=["Please check OpenAI API configuration and try again"],
                 generated_at=datetime.now(),
             )
-
-    async def _log_api_usage(
-        self, user_id: str, endpoint: str, tokens_used: int, response_status: str
-    ) -> None:
-        """Log API usage to database."""
-        try:
-            # Use a separate session for logging to avoid interfering with main transaction
-            from humancompiler_api.database import get_db
-
-            # Estimate cost (GPT-4 Turbo pricing as of 2024)
-            # Input: $0.01 / 1K tokens, Output: $0.03 / 1K tokens
-            # Using average for simplicity
-            cost_per_1k_tokens = 0.02
-            cost_usd = (tokens_used / 1000) * cost_per_1k_tokens
-
-            usage_log = ApiUsageLog(
-                user_id=UUID(user_id),
-                endpoint=endpoint,
-                tokens_used=tokens_used,
-                cost_usd=cost_usd,
-                response_status=response_status,
-            )
-
-            # Use separate session for logging with proper context management
-            db_gen = get_db()
-            logging_session = next(db_gen)
-            try:
-                logging_session.add(usage_log)
-                logging_session.commit()
-            except Exception as commit_error:
-                logging_session.rollback()
-                logger.error(f"Failed to commit API usage log: {commit_error}")
-            finally:
-                try:
-                    next(db_gen)  # Close the generator
-                except StopIteration:
-                    pass
-
-        except Exception as e:
-            logger.error(f"Failed to log API usage: {e}")
 
 
 class WeeklyPlanService:
