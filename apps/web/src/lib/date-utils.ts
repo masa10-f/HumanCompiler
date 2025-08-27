@@ -5,6 +5,9 @@
  * ensuring that dates and times are correctly managed for Japanese users.
  */
 
+// JST offset constant for performance optimization
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000 // 9 hours in milliseconds
+
 /**
  * Get the current date in JST as YYYY-MM-DD string format
  * 
@@ -23,9 +26,13 @@
 export function getJSTDateString(): string {
   const now = new Date()
   
+  // Validate current date
+  if (isNaN(now.getTime())) {
+    throw new Error('Invalid current date')
+  }
+  
   // Create a new date object adjusted to JST (UTC+9)
-  const jstOffset = 9 * 60 * 60 * 1000 // 9 hours in milliseconds
-  const jstTime = new Date(now.getTime() + jstOffset)
+  const jstTime = new Date(now.getTime() + JST_OFFSET_MS)
   
   // Extract date components
   const year = jstTime.getUTCFullYear()
@@ -50,7 +57,7 @@ export function formatJSTDateTime(
   utcDateString: string,
   options: Intl.DateTimeFormatOptions = {
     year: 'numeric',
-    month: 'numeric',
+    month: 'numeric', 
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
@@ -58,6 +65,12 @@ export function formatJSTDateTime(
   }
 ): string {
   const date = new Date(utcDateString)
+  
+  // Validate parsed date
+  if (isNaN(date.getTime())) {
+    throw new Error(`Invalid date string: ${utcDateString}`)
+  }
+  
   return date.toLocaleString('ja-JP', options)
 }
 
@@ -85,7 +98,12 @@ export function parseUTCToJST(utcDateString: string): Date {
  * @returns Date object representing the start of day in JST
  */
 export function getJSTDate(dateString: string): Date {
-  // Create date in JST timezone to avoid UTC conversion issues
+  // Validate input format
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/
+  if (!dateRegex.test(dateString)) {
+    throw new Error(`Invalid date string format: ${dateString}. Expected YYYY-MM-DD format.`)
+  }
+  
   const parts = dateString.split('-').map(Number)
   
   if (parts.length !== 3 || parts.some(isNaN)) {
@@ -94,10 +112,23 @@ export function getJSTDate(dateString: string): Date {
   
   const [year, month, day] = parts as [number, number, number]
   
-  // Create date at midnight JST
-  const jstDate = new Date()
-  jstDate.setFullYear(year, month - 1, day)
-  jstDate.setHours(0, 0, 0, 0)
+  // Validate date values
+  if (year < 1000 || year > 9999 || month < 1 || month > 12 || day < 1 || day > 31) {
+    throw new Error(`Invalid date values: ${dateString}`)
+  }
+  
+  // Create date in JST timezone using ISO string to ensure JST interpretation
+  // This avoids local timezone dependency issues
+  const paddedMonth = String(month).padStart(2, '0')
+  const paddedDay = String(day).padStart(2, '0')
+  const jstISOString = `${year}-${paddedMonth}-${paddedDay}T00:00:00+09:00`
+  
+  const jstDate = new Date(jstISOString)
+  
+  // Final validation
+  if (isNaN(jstDate.getTime())) {
+    throw new Error(`Failed to create valid JST date from: ${dateString}`)
+  }
   
   return jstDate
 }
@@ -114,6 +145,11 @@ export function formatJapaneseDate(
   includeTime: boolean = false
 ): string {
   const dateObj = typeof date === 'string' ? new Date(date) : date
+  
+  // Validate date object
+  if (isNaN(dateObj.getTime())) {
+    throw new Error(`Invalid date: ${date}`)
+  }
   
   const options: Intl.DateTimeFormatOptions = {
     year: 'numeric',
@@ -138,8 +174,18 @@ export function formatJapaneseDate(
  */
 export function getJSTISOString(): string {
   const now = new Date()
-  const jstOffset = 9 * 60 * 60 * 1000 // 9 hours in milliseconds
-  const jstTime = new Date(now.getTime() + jstOffset)
+  
+  // Validate current date
+  if (isNaN(now.getTime())) {
+    throw new Error('Invalid current date')
+  }
+  
+  const jstTime = new Date(now.getTime() + JST_OFFSET_MS)
+  
+  // Validate JST time calculation
+  if (isNaN(jstTime.getTime())) {
+    throw new Error('Failed to calculate JST time')
+  }
   
   // Return as ISO string but replace Z with +09:00 to indicate JST
   return jstTime.toISOString().replace('Z', '+09:00')
