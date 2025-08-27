@@ -3,14 +3,28 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
-import { useProjects, useCreateProject } from '@/hooks/use-project-query';
+import { useProjects, useCreateProject, useUpdateProject, useDeleteProject } from '@/hooks/use-project-query';
 import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus } from 'lucide-react';
+import { Plus, Edit, Trash2, MoreVertical } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { AppHeader } from '@/components/layout/app-header';
 import { log } from '@/lib/logger';
 
@@ -19,12 +33,21 @@ export default function ProjectsPage() {
   const router = useRouter();
   const { data: projects = [], isLoading: loading, error, refetch } = useProjects();
   const createProjectMutation = useCreateProject();
+  const updateProjectMutation = useUpdateProject();
+  const deleteProjectMutation = useDeleteProject();
 
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<typeof projects[0] | null>(null);
 
   // Form state
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+
+  // Edit form state
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,6 +76,91 @@ export default function ProjectsPage() {
       toast({
         title: 'エラー',
         description: 'プロジェクトの作成に失敗しました。再試行してください。',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleEditProject = (project: typeof projects[0]) => {
+    setSelectedProject(project);
+    setEditTitle(project.title);
+    setEditDescription(project.description || '');
+    setShowEditDialog(true);
+  };
+
+  const handleUpdateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProject || !editTitle.trim()) return;
+
+    try {
+      log.component('Projects', 'updateProject', {
+        id: selectedProject.id,
+        title: editTitle,
+        description: editDescription
+      });
+
+      await updateProjectMutation.mutateAsync({
+        id: selectedProject.id,
+        data: {
+          title: editTitle.trim(),
+          description: editDescription.trim() || undefined,
+        },
+      });
+
+      toast({
+        title: 'プロジェクトを更新しました',
+        description: `「${editTitle}」が正常に更新されました。`,
+      });
+
+      log.component('Projects', 'projectUpdated', { id: selectedProject.id, title: editTitle });
+      setShowEditDialog(false);
+      setSelectedProject(null);
+    } catch (err) {
+      log.error('Failed to update project', err as Error, {
+        component: 'Projects',
+        id: selectedProject.id,
+        title: editTitle
+      });
+
+      toast({
+        title: 'エラー',
+        description: 'プロジェクトの更新に失敗しました。再試行してください。',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDeleteProject = (project: typeof projects[0]) => {
+    setSelectedProject(project);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDeleteProject = async () => {
+    if (!selectedProject) return;
+
+    try {
+      log.component('Projects', 'deleteProject', { id: selectedProject.id, title: selectedProject.title });
+
+      await deleteProjectMutation.mutateAsync(selectedProject.id);
+
+      toast({
+        title: 'プロジェクトを削除しました',
+        description: `「${selectedProject.title}」が正常に削除されました。`,
+      });
+
+      log.component('Projects', 'projectDeleted', { id: selectedProject.id, title: selectedProject.title });
+      setShowDeleteDialog(false);
+      setSelectedProject(null);
+    } catch (err) {
+      log.error('Failed to delete project', err as Error, {
+        component: 'Projects',
+        id: selectedProject.id,
+        title: selectedProject.title
+      });
+
+      toast({
+        title: 'エラー',
+        description: 'プロジェクトの削除に失敗しました。再試行してください。',
         variant: 'destructive',
       });
     }
@@ -187,17 +295,59 @@ export default function ProjectsPage() {
             {projects.map((project) => (
               <Card
                 key={project.id}
-                className="hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => router.push(`/projects/${project.id}`)}
+                className="hover:shadow-lg transition-shadow relative"
               >
                 <CardHeader>
-                  <CardTitle className="line-clamp-1">{project.title}</CardTitle>
-                  <CardDescription className="line-clamp-2">
-                    {project.description || 'プロジェクトの説明がありません'}
-                  </CardDescription>
+                  <div className="flex justify-between items-start">
+                    <div
+                      className="flex-1 cursor-pointer"
+                      onClick={() => router.push(`/projects/${project.id}`)}
+                    >
+                      <CardTitle className="line-clamp-1 pr-8">{project.title}</CardTitle>
+                      <CardDescription className="line-clamp-2">
+                        {project.description || 'プロジェクトの説明がありません'}
+                      </CardDescription>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          className="h-8 w-8 p-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <span className="sr-only">アクションメニューを開く</span>
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditProject(project);
+                          }}
+                        >
+                          <Edit className="mr-2 h-4 w-4" />
+                          編集
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteProject(project);
+                          }}
+                          className="text-red-600"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          削除
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-sm text-gray-500">
+                  <div
+                    className="text-sm text-gray-500 cursor-pointer"
+                    onClick={() => router.push(`/projects/${project.id}`)}
+                  >
                     作成日: {new Date(project.created_at).toLocaleDateString('ja-JP')}
                   </div>
                 </CardContent>
@@ -205,6 +355,94 @@ export default function ProjectsPage() {
             ))}
           </div>
         )}
+
+        {/* Edit Dialog */}
+        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>プロジェクトを編集</DialogTitle>
+              <DialogDescription>
+                プロジェクトの情報を更新してください。
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleUpdateProject}>
+              <div className="grid gap-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-title">プロジェクト名 *</Label>
+                  <Input
+                    id="edit-title"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    placeholder="プロジェクト名を入力"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-description">説明</Label>
+                  <Textarea
+                    id="edit-description"
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    placeholder="プロジェクトの説明を入力（任意）"
+                    rows={3}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowEditDialog(false);
+                    setSelectedProject(null);
+                  }}
+                  disabled={updateProjectMutation.isPending}
+                >
+                  キャンセル
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={updateProjectMutation.isPending || !editTitle.trim()}
+                >
+                  {updateProjectMutation.isPending ? '更新中...' : '更新'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>プロジェクトを削除しますか？</DialogTitle>
+              <DialogDescription>
+                「{selectedProject?.title}」を削除します。この操作は取り消せません。
+                プロジェクトに関連するすべてのゴール、タスク、ログも削除されます。
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowDeleteDialog(false);
+                  setSelectedProject(null);
+                }}
+                disabled={deleteProjectMutation.isPending}
+              >
+                キャンセル
+              </Button>
+              <Button
+                onClick={confirmDeleteProject}
+                variant="destructive"
+                disabled={deleteProjectMutation.isPending}
+              >
+                {deleteProjectMutation.isPending ? '削除中...' : '削除'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );
