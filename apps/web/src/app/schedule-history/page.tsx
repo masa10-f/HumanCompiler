@@ -77,7 +77,8 @@ export default function ScheduleHistoryPage() {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
-      weekday: 'long'
+      weekday: 'long',
+      timeZone: 'Asia/Tokyo'
     });
   };
 

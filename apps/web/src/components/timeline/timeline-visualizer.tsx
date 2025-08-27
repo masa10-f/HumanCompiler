@@ -399,7 +399,7 @@ export function TimelineVisualizer({
                     </span>
                     {task.due_date && (
                       <span className="text-xs text-gray-500">
-                        期限: {new Date(task.due_date).toLocaleDateString()}
+                        期限: {new Date(task.due_date).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' })}
                       </span>
                     )}
                   </div>
@@ -491,7 +491,7 @@ export function TimelineVisualizer({
             </div>
           </div>
           <div className="flex items-center gap-4 text-sm text-gray-500">
-            <span>期間: {new Date(layoutModel.timeline.start_date).toLocaleDateString()} ～ {new Date(layoutModel.timeline.end_date).toLocaleDateString()}</span>
+            <span>期間: {new Date(layoutModel.timeline.start_date).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' })} ～ {new Date(layoutModel.timeline.end_date).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' })}</span>
             <span>•</span>
             <span>{layoutModel.timeline.total_days}日間</span>
             <span>•</span>
@@ -534,8 +534,8 @@ export function TimelineVisualizer({
                 {data.project.title}のタイムライン - {layoutModel.goals.length}個のゴールと{layoutModel.goals.reduce((sum, g) => sum + g.segments.length, 0)}個のタスク
               </title>
               <desc id="timeline-description">
-                プロジェクト開始: {new Date(layoutModel.timeline.start_date).toLocaleDateString('ja-JP')}
-                終了予定: {new Date(layoutModel.timeline.end_date).toLocaleDateString('ja-JP')}
+                プロジェクト開始: {new Date(layoutModel.timeline.start_date).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' })}
+                終了予定: {new Date(layoutModel.timeline.end_date).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' })}
                 週間作業時間: {data.project.weekly_work_hours}時間
               </desc>
 

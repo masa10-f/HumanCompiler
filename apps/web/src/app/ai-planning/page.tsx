@@ -40,6 +40,7 @@ import { ProjectAllocationSettings } from '@/components/scheduling/project-alloc
 import { toast } from '@/hooks/use-toast';
 import { aiPlanningApi, weeklyScheduleApi, weeklyRecurringTasksApi, reportsApi } from '@/lib/api';
 import { log } from '@/lib/logger';
+import { getJSTDateString, getJSTISOString } from '@/lib/date-utils';
 import type { WeeklyPlanResponse, SavedWeeklySchedule } from '@/types/ai-planning';
 import type { WeeklyReportResponse } from '@/types/reports';
 import type { WeeklyRecurringTask } from '@/types/weekly-recurring-task';
@@ -53,11 +54,8 @@ export default function AIPlanningPage() {
   const [selectedRecurringTaskIds, setSelectedRecurringTaskIds] = useState<string[]>([]);
   const [projectAllocations, setProjectAllocations] = useState<Record<string, number>>({});
   const [weekStartDate, setWeekStartDate] = useState<string>(() => {
-    // Default to today's date instead of forcing Monday
-    const today = new Date();
-    const isoString = today.toISOString();
-    const datePart = isoString.split('T')[0];
-    return datePart || isoString.substring(0, 10); // Fallback to first 10 chars if split fails
+    // Default to today's date in JST instead of forcing Monday
+    return getJSTDateString();
   });
   const [capacityHours, setCapacityHours] = useState(40);
   const [userPrompt, setUserPrompt] = useState('');
@@ -186,12 +184,9 @@ export default function AIPlanningPage() {
     return !isNaN(date.getTime()) && /^\d{4}-\d{2}-\d{2}$/.test(dateString);
   };
 
-  // Helper function to get today's date
+  // Helper function to get today's date in JST
   const getTodaysDate = (): string => {
-    const today = new Date();
-    const isoString = today.toISOString();
-    const datePart = isoString.split('T')[0];
-    return datePart || isoString.substring(0, 10); // Fallback to first 10 chars if split fails
+    return getJSTDateString();
   };
 
   const generateWeeklyReport = async () => {
@@ -303,7 +298,7 @@ export default function AIPlanningPage() {
         optimization_insights: weeklyPlan.insights || [],
         recommendations: weeklyPlan.recommendations || [],
         capacity_hours: capacityHours,
-        generation_timestamp: new Date().toISOString(),
+        generation_timestamp: getJSTISOString(),
       };
 
       await weeklyScheduleApi.save(weeklyPlan.week_start_date, scheduleData);

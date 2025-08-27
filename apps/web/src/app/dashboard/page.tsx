@@ -16,6 +16,7 @@ import { TimelineOverview } from '@/components/timeline/timeline-overview'
 import { TimelineErrorBoundary } from '@/components/timeline/timeline-error-boundary'
 import { useTimelineOverview } from '@/hooks/use-timeline'
 import { getSlotKindLabel } from '@/constants/schedule'
+import { getJSTDateString, getJSTDate } from '@/lib/date-utils'
 
 export default function DashboardPage() {
   const { loading, isAuthenticated } = useAuth()
@@ -36,7 +37,7 @@ export default function DashboardPage() {
     const fetchTodaySchedule = async () => {
       if (!isAuthenticated) return
 
-      const today = new Date().toISOString().split('T')[0]
+      const today = getJSTDateString()
       try {
         const schedule = await schedulingApi.getByDate(today as string)
         setTodaySchedule(schedule)
@@ -151,12 +152,15 @@ export default function DashboardPage() {
                       本日のスケジュール
                     </CardTitle>
                     <CardDescription>
-                      {new Date().toLocaleDateString('ja-JP', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        weekday: 'long'
-                      })}
+                      {(() => {
+                        const jstDate = getJSTDate(getJSTDateString())
+                        return jstDate.toLocaleDateString('ja-JP', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric',
+                          weekday: 'long'
+                        })
+                      })()}
                     </CardDescription>
                   </div>
                   <div className="flex gap-2">

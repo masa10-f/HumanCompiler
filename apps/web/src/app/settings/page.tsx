@@ -13,6 +13,7 @@ import { AppHeader } from "@/components/layout/app-header"
 import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { supabase } from "@/lib/supabase"
 import { log } from "@/lib/logger"
+import { getJSTDateString } from "@/lib/date-utils"
 
 interface ApiUsageData {
   total_tokens: number
@@ -403,7 +404,7 @@ export default function SettingsPage() {
         const url = window.URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
-        link.download = `taskagent_data_export_${new Date().toISOString().split('T')[0]}.json`
+        link.download = `taskagent_data_export_${getJSTDateString()}.json`
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)

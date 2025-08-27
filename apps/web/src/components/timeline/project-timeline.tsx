@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast'
 import type { ProjectTimelineData, TimelineTask } from '@/types/timeline'
 import { format, parseISO, differenceInDays } from 'date-fns'
 import { ja } from 'date-fns/locale'
+import { getJSTDateString } from '@/lib/date-utils'
 
 interface ProjectTimelineProps {
   projectId: string
@@ -56,7 +57,7 @@ export function ProjectTimeline({
 
       // Download as PNG
       const link = document.createElement('a')
-      link.download = `${data.project.title}_timeline_${format(new Date(), 'yyyy-MM-dd')}.png`
+      link.download = `${data.project.title}_timeline_${getJSTDateString()}.png`
       link.href = canvas.toDataURL()
       link.click()
 
@@ -113,7 +114,8 @@ export function ProjectTimeline({
     if (!timelineCalculations) return 100
 
     const taskStart = parseISO(task.created_at)
-    const taskEnd = task.due_date ? parseISO(task.due_date) : new Date()
+    // Use JST date as default if no due date is specified
+    const taskEnd = task.due_date ? parseISO(task.due_date) : parseISO(getJSTDateString() + 'T23:59:59+09:00')
     const taskDays = differenceInDays(taskEnd, taskStart)
 
     if (timelineCalculations.totalDays <= 0) return 100
