@@ -101,8 +101,8 @@ export default function DashboardPage() {
           >
             <CardHeader className="text-center pb-4">
               <Brain className="h-8 w-8 text-purple-600 mx-auto mb-2" />
-              <CardTitle className="text-lg">AI週間計画</CardTitle>
-              <CardDescription>AIによる最適な週間計画生成</CardDescription>
+              <CardTitle className="text-lg">週次計画</CardTitle>
+              <CardDescription>週間計画の作成とタスク管理（AI分析オプション）</CardDescription>
             </CardHeader>
           </Card>
 
@@ -112,8 +112,8 @@ export default function DashboardPage() {
           >
             <CardHeader className="text-center pb-4">
               <Settings className="h-8 w-8 text-green-600 mx-auto mb-2" />
-              <CardTitle className="text-lg">スケジュール最適化</CardTitle>
-              <CardDescription>OR-Toolsによる制約最適化</CardDescription>
+              <CardTitle className="text-lg">日次計画</CardTitle>
+              <CardDescription>OR-Toolsによる日次スケジュール最適化</CardDescription>
             </CardHeader>
           </Card>
 

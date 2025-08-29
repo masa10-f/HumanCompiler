@@ -163,12 +163,12 @@ export default function AIPlanningPage() {
 
       setWeeklyPlan(response);
       toast({
-        title: '週間計画を生成しました',
+        title: '週次計画を作成しました',
         description: `${response.task_plans.length}個のタスクが計画されました`,
       });
     } catch (error) {
       toast({
-        title: '計画生成に失敗しました',
+        title: '計画作成に失敗しました',
         description: error instanceof Error ? error.message : '不明なエラーが発生しました',
         variant: 'destructive',
       });
@@ -422,11 +422,11 @@ export default function AIPlanningPage() {
           <div className="mb-4">
             <h1 className="text-3xl font-bold flex items-center gap-2">
               <Brain className="h-8 w-8 text-purple-600" />
-              AI週間計画
+              週次計画
             </h1>
           </div>
           <p className="text-gray-600">
-            AIがあなたのタスクを分析し、最適な週間計画を提案します。
+            登録されたタスクから週間計画を作成します。AI分析による優先度評価も利用可能です。
           </p>
         </div>
 
@@ -440,7 +440,7 @@ export default function AIPlanningPage() {
           <Key className="h-4 w-4" />
           <AlertTitle>OpenAI APIキーが未設定です</AlertTitle>
           <AlertDescription>
-            AI機能を使用するには、まずOpenAI APIキーを設定してください。
+            AI分析による優先度評価を使用するには、まずOpenAI APIキーを設定してください。
             <Button
               variant="link"
               className="ml-2 p-0"
@@ -455,7 +455,7 @@ export default function AIPlanningPage() {
       {hasApiKey && (
         <Tabs defaultValue="planning" className="space-y-6">
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="planning">週間計画生成</TabsTrigger>
+          <TabsTrigger value="planning">週次計画作成</TabsTrigger>
           <TabsTrigger value="weekly-tasks">週課管理</TabsTrigger>
           <TabsTrigger value="saved">保存済みスケジュール</TabsTrigger>
           <TabsTrigger value="report">週間作業報告</TabsTrigger>
@@ -470,7 +470,7 @@ export default function AIPlanningPage() {
                 計画設定
               </CardTitle>
               <CardDescription>
-                週間計画の生成条件を設定してください。
+                週次計画の作成条件を設定してください。
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -571,7 +571,7 @@ export default function AIPlanningPage() {
                 className="w-full"
               >
                 {isGenerating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                AI週間計画を生成
+                週次計画を作成
               </Button>
             </CardContent>
           </Card>
@@ -587,7 +587,7 @@ export default function AIPlanningPage() {
                       週間計画結果
                     </CardTitle>
                     <CardDescription>
-                      {weeklyPlan.week_start_date}週の計画が生成されました
+                      {weeklyPlan.week_start_date}週の計画が作成されました
                     </CardDescription>
                   </div>
                   <Button
@@ -945,7 +945,7 @@ export default function AIPlanningPage() {
                 <div className="text-center py-8 text-gray-500">
                   保存済みの週間スケジュールがありません。
                   <br />
-                  「週間計画生成」タブで新しい計画を作成してください。
+                  「週次計画作成」タブで新しい計画を作成してください。
                 </div>
               )}
 

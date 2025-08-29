@@ -157,11 +157,11 @@ export default function ScheduleHistoryPage() {
               <p className="text-gray-600 mb-4">
                 {selectedDate
                   ? '選択した日付にスケジュールが保存されていません。'
-                  : 'まだスケジュールが保存されていません。スケジューリングページで最適化結果を保存してみましょう。'
+                  : 'まだスケジュールが保存されていません。日次計画ページで最適化結果を保存してみましょう。'
                 }
               </p>
               <Button onClick={() => router.push('/scheduling')}>
-                スケジューリングページへ
+                日次計画ページへ
               </Button>
             </div>
           </CardContent>

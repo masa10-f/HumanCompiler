@@ -199,11 +199,11 @@ export default function SchedulingPage() {
           <div className="mb-4">
             <h1 className="text-3xl font-bold flex items-center gap-2">
               <Settings className="h-8 w-8 text-blue-600" />
-              スケジュール最適化
+              日次計画
             </h1>
           </div>
           <p className="text-gray-600">
-            OR-Toolsを使用してタスクの最適なスケジューリングを行います。
+            OR-Toolsを使用してタスクの最適な日次スケジュールを作成します。
           </p>
         </div>
 
@@ -214,7 +214,7 @@ export default function SchedulingPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calendar className="h-5 w-5" />
-                スケジュール設定
+                日次計画設定
               </CardTitle>
               <CardDescription>
                 最適化する日付と利用可能時間を設定してください。
