@@ -102,7 +102,7 @@ export default function DashboardPage() {
             <CardHeader className="text-center pb-4">
               <Brain className="h-8 w-8 text-purple-600 mx-auto mb-2" />
               <CardTitle className="text-lg">週次計画</CardTitle>
-              <CardDescription>AIによる最適な週次計画生成</CardDescription>
+              <CardDescription>週間計画の作成とタスク管理（AI分析オプション）</CardDescription>
             </CardHeader>
           </Card>
 
