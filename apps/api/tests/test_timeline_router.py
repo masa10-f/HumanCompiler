@@ -16,6 +16,7 @@ from humancompiler_api.models import (
     Log,
     TaskStatus,
     GoalStatus,
+    ProjectStatus,
     WorkType,
 )
 from humancompiler_api.auth import AuthUser, get_current_user
@@ -46,6 +47,7 @@ def create_test_project(
         owner_id=owner_id,
         title=title,
         description="Test project description",
+        status=ProjectStatus.PENDING,
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
     )
