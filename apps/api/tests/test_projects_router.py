@@ -14,6 +14,7 @@ from humancompiler_api.models import (
     ProjectCreate,
     ProjectUpdate,
     ProjectResponse,
+    ProjectStatus,
     ErrorResponse,
 )
 from humancompiler_api.routers.projects import (
@@ -44,7 +45,11 @@ def auth_user():
 @pytest.fixture
 def project_create_data():
     """Mock project creation data"""
-    return ProjectCreate(title="Test Project", description="Test description")
+    return ProjectCreate(
+        title="Test Project",
+        description="Test description",
+        status=ProjectStatus.PENDING,
+    )
 
 
 @pytest.fixture
@@ -63,6 +68,7 @@ def mock_project():
     project.id = UUID("12345678-1234-5678-1234-567812345678")
     project.title = "Test Project"
     project.description = "Test description"
+    project.status = ProjectStatus.PENDING
     project.weekly_work_hours = Decimal("40")
     project.owner_id = UUID("87654321-4321-8765-4321-876543218765")
     project.created_at = datetime.now()
@@ -111,6 +117,7 @@ async def test_get_projects_success(mock_session, auth_user):
     mock_project.id = UUID("12345678-1234-5678-1234-567812345678")
     mock_project.title = "Project 1"
     mock_project.description = "Test description"
+    mock_project.status = ProjectStatus.PENDING
     mock_project.weekly_work_hours = Decimal("40")
     mock_project.owner_id = UUID("87654321-4321-8765-4321-876543218765")
     mock_project.created_at = datetime.now()
@@ -151,6 +158,7 @@ async def test_get_projects_with_timing_logs(mock_session, auth_user):
     mock_project.id = UUID("12345678-1234-5678-1234-567812345678")
     mock_project.title = "Project 1"
     mock_project.description = "Test description"
+    mock_project.status = ProjectStatus.PENDING
     mock_project.weekly_work_hours = Decimal("40")
     mock_project.owner_id = UUID("87654321-4321-8765-4321-876543218765")
     mock_project.created_at = datetime.now()

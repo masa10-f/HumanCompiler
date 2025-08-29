@@ -24,12 +24,20 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useProjects } from '@/hooks/use-projects';
 import type { Project } from '@/types/project';
 
 const projectFormSchema = z.object({
   title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
   description: z.string().max(500, '500文字以内で入力してください').optional(),
+  status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']),
 });
 
 type ProjectFormData = z.infer<typeof projectFormSchema>;
@@ -49,6 +57,7 @@ export function ProjectEditDialog({ project, children }: ProjectEditDialogProps)
     defaultValues: {
       title: project.title,
       description: project.description || '',
+      status: project.status || 'pending',
     },
   });
 
@@ -57,6 +66,7 @@ export function ProjectEditDialog({ project, children }: ProjectEditDialogProps)
     form.reset({
       title: project.title,
       description: project.description || '',
+      status: project.status || 'pending',
     });
   }, [project, form]);
 
@@ -66,6 +76,7 @@ export function ProjectEditDialog({ project, children }: ProjectEditDialogProps)
       await updateProject(project.id, {
         title: data.title,
         description: data.description || undefined,
+        status: data.status,
       });
       setOpen(false);
     } catch (error) {
@@ -118,6 +129,29 @@ export function ProjectEditDialog({ project, children }: ProjectEditDialogProps)
                       {...field}
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="status"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>ステータス</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="ステータスを選択" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="pending">未開始</SelectItem>
+                      <SelectItem value="in_progress">進行中</SelectItem>
+                      <SelectItem value="completed">完了</SelectItem>
+                      <SelectItem value="cancelled">キャンセル</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

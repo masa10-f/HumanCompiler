@@ -22,6 +22,7 @@ from humancompiler_api.models import (
     Project,
     ProjectCreate,
     ProjectUpdate,
+    ProjectStatus,
     Task,
     TaskCreate,
     TaskUpdate,
@@ -100,6 +101,7 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
             owner_id=user_id,
             title=data.title,
             description=data.description,
+            status=data.status,
         )
 
     def _get_user_filter(self, user_id: str | UUID):

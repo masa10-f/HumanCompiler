@@ -21,6 +21,7 @@ from ..models import (
     Log,
     TaskStatus,
     GoalStatus,
+    ProjectStatus,
     GoalDependency,
 )
 
@@ -135,6 +136,7 @@ async def get_project_timeline(
                 "id": str(project.id),
                 "title": project.title,
                 "description": project.description,
+                "status": project.status,
                 "weekly_work_hours": weekly_work_hours,
                 "created_at": project.created_at.isoformat(),
                 "updated_at": project.updated_at.isoformat(),
@@ -307,6 +309,7 @@ async def get_timeline_overview(
                 "id": str(project.id),
                 "title": project.title,
                 "description": project.description,
+                "status": project.status,
                 "created_at": project.created_at.isoformat(),
                 "updated_at": project.updated_at.isoformat(),
                 "statistics": {

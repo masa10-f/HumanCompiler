@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { useProjects, useCreateProject, useUpdateProject, useDeleteProject } from '@/hooks/use-project-query';
@@ -27,6 +27,99 @@ import {
 } from '@/components/ui/dialog';
 import { AppHeader } from '@/components/layout/app-header';
 import { log } from '@/lib/logger';
+import { Project, ProjectStatus } from '@/types/project';
+import {
+  getProjectStatusIcon,
+  getProjectStatusLabel,
+  getAllProjectStatuses
+} from '@/constants/project-status';
+
+// Component to display and manage project status
+const ProjectStatusDropdown = memo(function ProjectStatusDropdown({ project }: { project: Project }) {
+  const updateProjectMutation = useUpdateProject();
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const handleStatusChange = async (newStatus: ProjectStatus) => {
+    if (newStatus === project.status || isUpdating) return;
+
+    setIsUpdating(true);
+    try {
+      await updateProjectMutation.mutateAsync({
+        id: project.id,
+        data: { status: newStatus }
+      });
+
+      toast({
+        title: 'ステータスを更新しました',
+        description: `プロジェクトのステータスを「${getProjectStatusLabel(newStatus)}」に変更しました。`,
+      });
+    } catch (error) {
+      let errorMessage = 'ステータスの更新に失敗しました。';
+      let errorTitle = 'エラー';
+
+      const errorStatus = (error as { response?: { status?: number } })?.response?.status;
+
+      if (errorStatus === 404) {
+        errorTitle = 'プロジェクトが見つかりません';
+        errorMessage = '更新対象のプロジェクトが削除されている可能性があります。';
+      } else if (errorStatus === 403) {
+        errorTitle = '権限エラー';
+        errorMessage = 'このプロジェクトを更新する権限がありません。';
+      } else if (errorStatus === 422) {
+        errorTitle = '入力エラー';
+        errorMessage = '無効なステータス値です。ページを再読み込みしてください。';
+      } else if (errorStatus && errorStatus >= 500) {
+        errorTitle = 'サーバーエラー';
+        errorMessage = 'サーバーで問題が発生しました。しばらく時間をおいてから再試行してください。';
+      } else if (!navigator.onLine) {
+        errorTitle = 'ネットワークエラー';
+        errorMessage = 'インターネット接続を確認してください。';
+      }
+
+      toast({
+        title: errorTitle,
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const currentStatus = project.status || 'pending';
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-100 transition-colors"
+          onClick={(e) => e.stopPropagation()}
+          disabled={isUpdating}
+        >
+          {getProjectStatusIcon(currentStatus)}
+          <span className="text-sm">{getProjectStatusLabel(currentStatus)}</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {getAllProjectStatuses().map((status) => (
+          <DropdownMenuItem
+            key={status}
+            onClick={(e: React.MouseEvent) => {
+              e.stopPropagation();
+              handleStatusChange(status);
+            }}
+            className={currentStatus === status ? 'bg-gray-100' : ''}
+          >
+            <div className="flex items-center gap-2">
+              {getProjectStatusIcon(status)}
+              <span>{getProjectStatusLabel(status)}</span>
+            </div>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+});
 
 export default function ProjectsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -59,6 +152,7 @@ export default function ProjectsPage() {
       await createProjectMutation.mutateAsync({
         title: title.trim(),
         description: description.trim() || undefined,
+        status: 'pending',
       });
 
       toast({
@@ -344,11 +438,15 @@ export default function ProjectsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div
-                    className="text-sm text-gray-500 cursor-pointer"
-                    onClick={() => router.push(`/projects/${project.id}`)}
-                  >
-                    作成日: {new Date(project.created_at).toLocaleDateString('ja-JP')}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-gray-500">
+                        作成日: {new Date(project.created_at).toLocaleDateString('ja-JP')}
+                      </div>
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <ProjectStatusDropdown project={project} />
+                      </div>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
