@@ -5,7 +5,6 @@ from uuid import UUID
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func
 from sqlmodel import Session, select
 
 from humancompiler_api.auth import get_current_user_id
@@ -18,7 +17,6 @@ from humancompiler_api.models import (
     UserSettingsResponse,
     UserSettingsUpdate,
     User,
-    ApiUsageLog,
 )
 
 router = APIRouter(prefix="/api/user", tags=["user-settings"])
@@ -279,26 +277,3 @@ async def delete_openai_key(
     settings.ai_features_enabled = False
 
     session.commit()
-
-
-@router.get("/usage")
-async def get_api_usage(
-    user_id: Annotated[UUID, Depends(get_current_user_id)],
-    session: Annotated[Session, Depends(get_session)],
-) -> dict:
-    """Get user's API usage statistics."""
-    # Query aggregated usage data
-    statement = select(
-        func.sum(ApiUsageLog.tokens_used).label("total_tokens"),
-        func.sum(ApiUsageLog.cost_usd).label("total_cost"),
-        func.count(ApiUsageLog.id).label("request_count"),
-    ).where(ApiUsageLog.user_id == user_id)
-
-    result = session.exec(statement)
-    row = result.one()
-
-    return {
-        "total_tokens": int(row.total_tokens or 0),
-        "total_cost": float(row.total_cost or 0),
-        "request_count": int(row.request_count or 0),
-    }

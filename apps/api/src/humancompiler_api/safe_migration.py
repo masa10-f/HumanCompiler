@@ -29,7 +29,6 @@ from humancompiler_api.models import (
     WeeklyRecurringTask,
     Log,
     UserSettings,
-    ApiUsageLog,
     GoalDependency,
     TaskDependency,
 )
@@ -105,12 +104,6 @@ class DataBackupManager:
                 user_settings = session.exec(select(UserSettings)).all()
                 backup_data["user_settings"] = [us.model_dump() for us in user_settings]
 
-                # Backup API usage logs
-                api_usage_logs = session.exec(select(ApiUsageLog)).all()
-                backup_data["api_usage_logs"] = [
-                    aul.model_dump() for aul in api_usage_logs
-                ]
-
                 # Backup goal dependencies
                 goal_dependencies = session.exec(select(GoalDependency)).all()
                 backup_data["goal_dependencies"] = [
@@ -139,7 +132,6 @@ class DataBackupManager:
                         ),
                         "logs": len(backup_data["logs"]),
                         "user_settings": len(backup_data["user_settings"]),
-                        "api_usage_logs": len(backup_data["api_usage_logs"]),
                         "goal_dependencies": len(backup_data["goal_dependencies"]),
                         "task_dependencies": len(backup_data["task_dependencies"]),
                     },
@@ -161,7 +153,6 @@ class DataBackupManager:
             )
             logger.info(f"   Logs: {len(backup_data['logs'])}")
             logger.info(f"   UserSettings: {len(backup_data['user_settings'])}")
-            logger.info(f"   ApiUsageLogs: {len(backup_data['api_usage_logs'])}")
             logger.info(f"   GoalDependencies: {len(backup_data['goal_dependencies'])}")
             logger.info(f"   TaskDependencies: {len(backup_data['task_dependencies'])}")
 
@@ -310,12 +301,6 @@ class DataBackupManager:
                 backup_data["user_settings"] = [us.model_dump() for us in user_settings]
 
                 # Backup user's API usage logs
-                api_usage_logs = session.exec(
-                    select(ApiUsageLog).where(ApiUsageLog.user_id == user_id)
-                ).all()
-                backup_data["api_usage_logs"] = [
-                    aul.model_dump() for aul in api_usage_logs
-                ]
 
                 # Backup goal dependencies for user's goals
                 goal_dependencies = []
@@ -361,7 +346,6 @@ class DataBackupManager:
                         ),
                         "logs": len(backup_data["logs"]),
                         "user_settings": len(backup_data["user_settings"]),
-                        "api_usage_logs": len(backup_data["api_usage_logs"]),
                         "goal_dependencies": len(backup_data["goal_dependencies"]),
                         "task_dependencies": len(backup_data["task_dependencies"]),
                     },
