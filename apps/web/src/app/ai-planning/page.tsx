@@ -422,7 +422,7 @@ export default function AIPlanningPage() {
           <div className="mb-4">
             <h1 className="text-3xl font-bold flex items-center gap-2">
               <Brain className="h-8 w-8 text-purple-600" />
-              AI週間計画
+              週次計画
             </h1>
           </div>
           <p className="text-gray-600">
@@ -571,7 +571,7 @@ export default function AIPlanningPage() {
                 className="w-full"
               >
                 {isGenerating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                AI週間計画を生成
+                週次計画を生成
               </Button>
             </CardContent>
           </Card>

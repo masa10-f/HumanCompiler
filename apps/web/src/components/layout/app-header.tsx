@@ -57,14 +57,14 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                 onClick={() => router.push('/ai-planning')}
                 className={getPageClass('ai-planning')}
               >
-                AI計画
+                週次計画
               </Button>
               <Button
                 variant="ghost"
                 onClick={() => router.push('/scheduling')}
                 className={getPageClass('scheduling')}
               >
-                スケジューリング
+                日次計画
               </Button>
               <Button
                 variant="ghost"

@@ -499,7 +499,7 @@ export default function SettingsPage() {
               )}
             </div>
             <p className="text-sm text-muted-foreground">
-              AI計画生成と洞察に使用するモデルを選択してください
+              週次計画生成と洞察に使用するモデルを選択してください
             </p>
           </div>
 
