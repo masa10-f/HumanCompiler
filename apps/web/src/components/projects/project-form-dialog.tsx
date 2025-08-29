@@ -24,11 +24,19 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useProjects } from '@/hooks/use-projects';
 
 const projectFormSchema = z.object({
   title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
   description: z.string().max(500, '500文字以内で入力してください').optional(),
+  status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']).default('pending'),
 });
 
 type ProjectFormData = z.infer<typeof projectFormSchema>;
@@ -47,6 +55,7 @@ export function ProjectFormDialog({ children }: ProjectFormDialogProps) {
     defaultValues: {
       title: '',
       description: '',
+      status: 'pending' as const,
     },
   });
 
@@ -56,6 +65,7 @@ export function ProjectFormDialog({ children }: ProjectFormDialogProps) {
       await createProject({
         title: data.title,
         description: data.description || undefined,
+        status: data.status,
       });
       form.reset();
       setOpen(false);
@@ -109,6 +119,29 @@ export function ProjectFormDialog({ children }: ProjectFormDialogProps) {
                       {...field}
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="status"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>ステータス</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="ステータスを選択" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="pending">未開始</SelectItem>
+                      <SelectItem value="in_progress">進行中</SelectItem>
+                      <SelectItem value="completed">完了</SelectItem>
+                      <SelectItem value="cancelled">キャンセル</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

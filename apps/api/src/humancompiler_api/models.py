@@ -20,6 +20,15 @@ class TaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class ProjectStatus(str, Enum):
+    """Project status enum"""
+
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
 class GoalStatus(str, Enum):
     """Goal status enum"""
 
@@ -81,6 +90,12 @@ class ProjectBase(SQLModel):
 
     title: str = SQLField(min_length=1, max_length=200)
     description: str | None = SQLField(default=None, max_length=1000)
+    status: ProjectStatus = SQLField(
+        default=ProjectStatus.PENDING,
+        sa_column=Column(
+            SQLEnum(ProjectStatus, values_callable=lambda x: [e.value for e in x])
+        ),
+    )
 
 
 class Project(ProjectBase, table=True):  # type: ignore[call-arg]
@@ -432,6 +447,7 @@ class ProjectUpdate(BaseModel):
 
     title: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = Field(None, max_length=1000)
+    status: ProjectStatus | None = None
 
 
 class ProjectResponse(ProjectBase):

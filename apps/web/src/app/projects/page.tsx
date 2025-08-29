@@ -59,6 +59,7 @@ export default function ProjectsPage() {
       await createProjectMutation.mutateAsync({
         title: title.trim(),
         description: description.trim() || undefined,
+        status: 'pending',
       });
 
       toast({
