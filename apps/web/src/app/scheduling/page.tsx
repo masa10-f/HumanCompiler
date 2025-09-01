@@ -71,7 +71,11 @@ export default function SchedulingPage() {
         // Load projects, goals, weekly schedule options, and weekly recurring tasks in parallel
         const [projectsResult, weeklyOptionsResult, weeklyTasksResult] = await Promise.all([
           projectsApi.getAll(),
-          schedulingApi.getWeeklyScheduleOptions(),
+          schedulingApi.getWeeklyScheduleOptions().catch(err => {
+            console.error('Weekly schedule options loading failed:', err.message || err);
+            // Return empty array to allow other data to load
+            return [];
+          }),
           weeklyRecurringTasksApi.getAll(0, 100, undefined, true), // Get all active weekly tasks
         ]);
 

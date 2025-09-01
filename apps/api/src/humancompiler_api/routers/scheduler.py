@@ -2,6 +2,7 @@
 Scheduler API endpoints for task scheduling optimization.
 """
 
+import json
 import logging
 import math
 from dataclasses import dataclass, field
@@ -2134,6 +2135,7 @@ async def _get_tasks_from_weekly_schedule(
         )
 
         # Get weekly schedule for this week
+        # Try multiple approaches to find the weekly schedule
         weekly_schedule = session.exec(
             select(WeeklySchedule).where(
                 WeeklySchedule.user_id == user_id,
@@ -2141,8 +2143,36 @@ async def _get_tasks_from_weekly_schedule(
             )
         ).first()
 
+        # If not found, try to find any schedule within this week (flexible search)
         if not weekly_schedule:
-            logger.info(f"No weekly schedule found for week starting {week_start}")
+            logger.debug(
+                f"No exact match found, trying flexible search for week {week_start}"
+            )
+
+            # Calculate the end of the week (Sunday)
+            week_end = week_start + timedelta(days=6)
+            week_end_datetime = datetime.combine(week_end, datetime.min.time())
+
+            # Find any weekly schedule that starts within this week
+            weekly_schedules_in_range = session.exec(
+                select(WeeklySchedule).where(
+                    WeeklySchedule.user_id == user_id,
+                    WeeklySchedule.week_start_date >= week_start_datetime,
+                    WeeklySchedule.week_start_date <= week_end_datetime,
+                )
+            ).all()
+
+            if weekly_schedules_in_range:
+                weekly_schedule = weekly_schedules_in_range[
+                    0
+                ]  # Use the first one found
+                logger.info("Found weekly schedule with flexible search")
+            else:
+                logger.info(f"No weekly schedule found for week containing {date_str}")
+                return []
+
+        if not weekly_schedule:
+            logger.info(f"No weekly schedule found for week containing {date_str}")
             return []
 
         # Extract task IDs from weekly schedule
@@ -2151,8 +2181,13 @@ async def _get_tasks_from_weekly_schedule(
             logger.info("Weekly schedule found but no selected_tasks data")
             return []
 
-        task_ids = [task["task_id"] for task in schedule_data["selected_tasks"]]
-        logger.info(f"Found {len(task_ids)} tasks in weekly schedule")
+        selected_tasks = schedule_data["selected_tasks"]
+        try:
+            task_ids = [task["task_id"] for task in selected_tasks]
+            logger.info(f"Extracted {len(task_ids)} task IDs from weekly schedule")
+        except (KeyError, TypeError) as e:
+            logger.error(f"Error extracting task_ids from selected_tasks: {e}")
+            return []
 
         if not task_ids:
             return []
@@ -2165,6 +2200,7 @@ async def _get_tasks_from_weekly_schedule(
         tasks = []
         weekly_recurring_tasks = []
 
+        # Process regular tasks from selected_tasks
         for task_id in task_ids:
             try:
                 task_uuid = UUID(task_id)
@@ -2177,7 +2213,9 @@ async def _get_tasks_from_weekly_schedule(
                 weekly_task = session.get(WeeklyRecurringTask, task_uuid)
                 if weekly_task:
                     weekly_recurring_tasks.append(weekly_task)
-                    logger.info(f"Found weekly recurring task: {weekly_task.title}")
+                    logger.info(
+                        f"Found weekly recurring task from selected_tasks: {weekly_task.title}"
+                    )
                 else:
                     logger.warning(
                         f"Task ID {task_id} not found in either tasks or weekly recurring tasks"
@@ -2185,6 +2223,39 @@ async def _get_tasks_from_weekly_schedule(
             except ValueError:
                 logger.warning(f"Invalid UUID format for task ID: {task_id}")
                 continue
+
+        # Also process selected_recurring_task_ids if present
+        if "selected_recurring_task_ids" in schedule_data:
+            recurring_task_ids = schedule_data["selected_recurring_task_ids"]
+            logger.info(
+                f"Processing {len(recurring_task_ids)} selected recurring task IDs: {recurring_task_ids}"
+            )
+
+            for recurring_task_id in recurring_task_ids:
+                try:
+                    task_uuid = UUID(recurring_task_id)
+                    # Check if we already processed this task
+                    if any(wt.id == task_uuid for wt in weekly_recurring_tasks):
+                        logger.debug(
+                            f"Weekly recurring task {recurring_task_id} already processed"
+                        )
+                        continue
+
+                    weekly_task = session.get(WeeklyRecurringTask, task_uuid)
+                    if weekly_task:
+                        weekly_recurring_tasks.append(weekly_task)
+                        logger.info(
+                            f"Added weekly recurring task from selected_recurring_task_ids: {weekly_task.title}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Weekly recurring task ID {recurring_task_id} not found"
+                        )
+                except ValueError:
+                    logger.warning(
+                        f"Invalid UUID format for recurring task ID: {recurring_task_id}"
+                    )
+                    continue
 
         # Create pseudo-tasks for weekly recurring tasks
         # Weekly recurring tasks need to be converted to Task-like objects for the scheduler
