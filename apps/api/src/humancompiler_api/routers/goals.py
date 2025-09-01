@@ -11,6 +11,8 @@ from humancompiler_api.models import (
     GoalResponse,
     GoalStatus,
     GoalUpdate,
+    SortBy,
+    SortOrder,
 )
 from humancompiler_api.services import goal_service
 
@@ -63,10 +65,12 @@ async def get_goals_by_project(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    sort_by: Annotated[SortBy, Query()] = SortBy.STATUS,
+    sort_order: Annotated[SortOrder, Query()] = SortOrder.ASC,
 ) -> list[GoalResponse]:
     """Get goals for specific project"""
     goals = goal_service.get_goals_by_project(
-        session, project_id, current_user.user_id, skip, limit
+        session, project_id, current_user.user_id, skip, limit, sort_by, sort_order
     )
     return [GoalResponse.model_validate(goal) for goal in goals]
 

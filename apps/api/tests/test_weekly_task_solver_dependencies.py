@@ -4,7 +4,7 @@ Tests for weekly task solver dependency relaxation functionality.
 
 from datetime import datetime, date
 from unittest.mock import MagicMock, AsyncMock, patch
-from uuid import uuid4, UUID
+from uuid import uuid4
 
 import pytest
 from sqlmodel import Session

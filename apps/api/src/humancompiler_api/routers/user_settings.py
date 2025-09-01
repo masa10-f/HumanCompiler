@@ -2,9 +2,8 @@
 
 from typing import Annotated
 from uuid import UUID
-from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlmodel import Session, select
 
 from humancompiler_api.auth import get_current_user_id
@@ -16,7 +15,6 @@ from humancompiler_api.models import (
     UserSettingsCreate,
     UserSettingsResponse,
     UserSettingsUpdate,
-    User,
 )
 
 router = APIRouter(prefix="/api/user", tags=["user-settings"])

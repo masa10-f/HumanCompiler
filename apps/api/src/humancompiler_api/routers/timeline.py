@@ -5,8 +5,8 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlmodel import Session, select, and_, or_
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlmodel import Session, select
 from sqlalchemy.orm import selectinload
 
 from ..auth import get_current_user, AuthUser
@@ -14,15 +14,13 @@ from ..database import get_session
 from ..rate_limiter import limiter
 from ..config import settings
 from ..models import (
-    User,
     Project,
     Goal,
     Task,
-    Log,
     TaskStatus,
     GoalStatus,
-    ProjectStatus,
-    GoalDependency,
+    SortBy,
+    SortOrder,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,6 +55,8 @@ async def get_project_timeline(
     weekly_work_hours: float = Query(
         40.0, description="Weekly work hours for timeline calculation"
     ),
+    sort_by: SortBy = Query(SortBy.STATUS, description="Sort field"),
+    sort_order: SortOrder = Query(SortOrder.ASC, description="Sort order"),
     current_user: AuthUser = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:

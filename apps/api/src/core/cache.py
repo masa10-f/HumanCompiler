@@ -3,16 +3,12 @@ Caching module for TaskAgent API
 Provides TTL-based in-memory caching with configurable strategies
 """
 
-from typing import Any, Optional, TypeVar, Union
-from collections.abc import Awaitable
+from typing import Any, TypeVar
 from collections.abc import Callable
 from functools import wraps
 import hashlib
-import json
 import asyncio
-from datetime import datetime, timedelta
 from cachetools import TTLCache
-from cachetools.keys import hashkey
 import logging
 
 logger = logging.getLogger(__name__)

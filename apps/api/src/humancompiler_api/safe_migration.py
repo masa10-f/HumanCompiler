@@ -8,15 +8,13 @@ during the work_type feature implementation.
 
 import logging
 from datetime import datetime, UTC
-from typing import Any, Optional, Union
+from typing import Any
 from collections.abc import Callable
 from pathlib import Path
 import json
-import shutil
 
 from sqlmodel import Session, select, text
-from sqlalchemy import inspect, MetaData
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import inspect
 
 from humancompiler_api.database import db
 from humancompiler_api.models import (

@@ -4,7 +4,6 @@ Simple production migration for priority column
 """
 
 import sys
-import os
 
 sys.path.insert(0, "/app/src")
 

@@ -8,15 +8,13 @@ Issue #131: JSONデータのエクスポート機能
 import json
 import tempfile
 import uuid
-from datetime import datetime, timezone, UTC
+from datetime import datetime, UTC
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session, select
 
 from humancompiler_api.main import app
-from humancompiler_api.models import User, Project, Goal, Task, Schedule
 from humancompiler_api.safe_migration import DataBackupManager, SafeMigrationError
 
 

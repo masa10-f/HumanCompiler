@@ -2,9 +2,8 @@
 Tests for authentication module
 """
 
-import asyncio
 import time
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import Mock, patch
 
 import pytest
 from fastapi import HTTPException, status
@@ -21,7 +20,6 @@ from humancompiler_api.auth import (
     MAX_AUTH_ATTEMPTS,
     RATE_LIMIT_WINDOW,
 )
-from humancompiler_api.models import UserCreate
 
 
 @pytest.fixture

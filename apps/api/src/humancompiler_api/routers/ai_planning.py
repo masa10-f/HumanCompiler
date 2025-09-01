@@ -16,11 +16,9 @@ from humancompiler_api.ai.weekly_task_solver import (
     TaskSolverRequest,
     TaskSolverResponse,
 )
-from humancompiler_api.ai_service import OpenAIService
 from humancompiler_api.auth import get_current_user_id
-from humancompiler_api.database import get_session, db
+from humancompiler_api.database import get_session
 from humancompiler_api.models import ErrorResponse
-from core.cache import cached, invalidate_cache
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ai", tags=["ai-planning"])

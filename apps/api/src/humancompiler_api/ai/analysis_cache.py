@@ -3,8 +3,7 @@ Caching wrappers for AI analysis functions
 """
 
 from datetime import date, datetime
-from typing import Any, Optional
-from uuid import UUID
+from typing import Any
 
 from sqlmodel import Session
 

@@ -8,7 +8,7 @@ to provide intelligent task selection, project allocation, and constraint-based 
 import json
 import logging
 import re
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -20,8 +20,6 @@ from humancompiler_api.ai.context_collector import ContextCollector
 from humancompiler_api.ai.models import WeeklyPlanContext, TaskPlan
 from humancompiler_api.ai.task_utils import filter_valid_tasks
 from humancompiler_api.models import (
-    Project,
-    Goal,
     Task,
     UserSettings,
     Log,

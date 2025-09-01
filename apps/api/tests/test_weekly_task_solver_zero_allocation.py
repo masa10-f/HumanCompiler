@@ -2,7 +2,7 @@
 Tests for weekly task solver zero allocation constraint bug fix.
 """
 
-from datetime import datetime, date
+from datetime import datetime
 from unittest.mock import MagicMock, AsyncMock, patch
 from uuid import uuid4
 

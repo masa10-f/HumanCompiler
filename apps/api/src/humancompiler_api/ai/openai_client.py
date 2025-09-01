@@ -4,7 +4,6 @@ OpenAI client wrapper for AI services using latest Responses API
 
 import json
 import logging
-import os
 import re
 from datetime import datetime
 from uuid import UUID
@@ -19,7 +18,7 @@ from openai import (
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from humancompiler_api.ai.models import TaskPlan, WeeklyPlanContext, WeeklyPlanResponse
+from humancompiler_api.ai.models import WeeklyPlanContext, WeeklyPlanResponse
 from humancompiler_api.ai.task_utils import filter_valid_tasks
 from humancompiler_api.config import settings
 from humancompiler_api.crypto import get_crypto_service

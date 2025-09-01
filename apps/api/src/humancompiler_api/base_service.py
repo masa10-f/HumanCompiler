@@ -3,7 +3,7 @@ Base service class with common CRUD operations
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone, UTC
+from datetime import datetime, UTC
 from typing import Generic, TypeVar
 from uuid import UUID, uuid4
 
@@ -14,6 +14,7 @@ from humancompiler_api.common.error_handlers import (
     safe_execute,
     validate_uuid,
 )
+from humancompiler_api.models import ALLOWED_SORT_FIELDS, STATUS_PRIORITY
 
 T = TypeVar("T", bound=SQLModel)
 CreateT = TypeVar("CreateT")
@@ -74,9 +75,11 @@ class BaseService(ABC, Generic[T, CreateT, UpdateT]):
         user_id: str | UUID,
         skip: int = 0,
         limit: int = 100,
+        sort_by: str | None = None,
+        sort_order: str | None = None,
         **filters,
     ) -> list[T]:
-        """Get all entities for specific user with optional filters"""
+        """Get all entities for specific user with optional filters and sorting"""
         user_id_validated = validate_uuid(user_id, "user_id")
         statement = select(self.model).where(self._get_user_filter(user_id_validated))
 
@@ -85,12 +88,53 @@ class BaseService(ABC, Generic[T, CreateT, UpdateT]):
             if hasattr(self.model, key) and value is not None:
                 statement = statement.where(getattr(self.model, key) == value)
 
-        # Add consistent ordering for predictable results
-        if hasattr(self.model, "created_at"):
-            statement = statement.order_by(self.model.created_at.desc())
+        # Add sorting logic with enhanced validation
+        if sort_by:
+            # Validate sort field is allowed for this model
+            model_name = self.model.__name__
+            allowed_fields = ALLOWED_SORT_FIELDS.get(model_name, set())
+
+            if sort_by not in allowed_fields:
+                raise ValueError(
+                    f"Invalid sort field '{sort_by}' for {model_name}. Allowed fields: {allowed_fields}"
+                )
+
+            # Check if field exists on model
+            if not hasattr(self.model, sort_by):
+                raise ValueError(f"Field '{sort_by}' not found on {model_name} model")
+
+            sort_column = getattr(self.model, sort_by)
+
+            # Handle status sorting with priority order
+            if sort_by == "status":
+                status_order = self._get_status_order()
+                if status_order:
+                    # Use CASE statement for status priority ordering
+                    from sqlalchemy import case
+
+                    order_expr = case(status_order, value=sort_column)
+                else:
+                    order_expr = sort_column
+            else:
+                order_expr = sort_column
+
+            # Apply sort order
+            if sort_order and sort_order.lower() == "desc":
+                statement = statement.order_by(order_expr.desc())
+            else:
+                statement = statement.order_by(order_expr.asc())
+        else:
+            # Default ordering for predictable results
+            if hasattr(self.model, "created_at"):
+                statement = statement.order_by(self.model.created_at.desc())
 
         statement = statement.offset(skip).limit(limit)
         return list(session.exec(statement).all())
+
+    def _get_status_order(self) -> dict | None:
+        """Get status priority order for sorting. Override in subclasses if needed."""
+        model_name = self.model.__name__.lower()
+        return STATUS_PRIORITY.get(model_name, STATUS_PRIORITY["default"])
 
     def update(
         self,

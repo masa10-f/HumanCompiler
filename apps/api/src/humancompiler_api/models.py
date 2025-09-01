@@ -1,4 +1,4 @@
-from datetime import datetime, timezone, UTC
+from datetime import datetime, UTC
 from decimal import Decimal
 from enum import Enum
 from typing import Any
@@ -57,6 +57,41 @@ class WorkType(str, Enum):
     LIGHT_WORK = "light_work"
     STUDY = "study"
     FOCUSED_WORK = "focused_work"
+
+
+class SortBy(str, Enum):
+    """Sort field options for list endpoints"""
+
+    STATUS = "status"
+    TITLE = "title"
+    CREATED_AT = "created_at"
+    UPDATED_AT = "updated_at"
+    PRIORITY = "priority"
+
+
+class SortOrder(str, Enum):
+    """Sort order options"""
+
+    ASC = "asc"
+    DESC = "desc"
+
+
+# Model-specific allowed sort fields for validation
+ALLOWED_SORT_FIELDS = {
+    "Project": {"status", "title", "created_at", "updated_at"},
+    "Goal": {"status", "title", "created_at", "updated_at"},
+    "Task": {"status", "title", "created_at", "updated_at", "priority"},
+    "WeeklyRecurringTask": {"title", "created_at", "updated_at"},
+    "Log": {"created_at", "updated_at"},
+}
+
+# Status priority configurations for consistent sorting
+STATUS_PRIORITY = {
+    "default": {"pending": 1, "in_progress": 2, "completed": 3, "cancelled": 4},
+    "project": {"pending": 1, "in_progress": 2, "completed": 3, "cancelled": 4},
+    "goal": {"pending": 1, "in_progress": 2, "completed": 3, "cancelled": 4},
+    "task": {"pending": 1, "in_progress": 2, "completed": 3, "cancelled": 4},
+}
 
 
 # Database Models (SQLModel)

@@ -3,7 +3,6 @@ Tests for caching functionality
 """
 
 import time
-from unittest.mock import Mock, patch
 import pytest
 
 from core.cache import (

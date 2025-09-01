@@ -11,6 +11,8 @@ from humancompiler_api.models import (
     ProjectCreate,
     ProjectResponse,
     ProjectUpdate,
+    SortBy,
+    SortOrder,
 )
 from humancompiler_api.services import project_service
 
@@ -66,46 +68,32 @@ async def get_projects(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    sort_by: Annotated[SortBy, Query()] = SortBy.STATUS,
+    sort_order: Annotated[SortOrder, Query()] = SortOrder.ASC,
 ) -> list[ProjectResponse]:
     """Get projects for current user"""
     import logging
-    import time
 
     logger = logging.getLogger(__name__)
 
-    start_time = time.time()
-    logger.info(f"📋 Getting projects for user {current_user.user_id}")
+    logger.debug(
+        f"Getting projects for user {current_user.user_id} (skip={skip}, limit={limit}, sort={sort_by.value}:{sort_order.value})"
+    )
 
     try:
-        logger.info(
-            f"🔍 [PROJECTS] About to call project_service.get_projects with user_id: {current_user.user_id}"
-        )
-        db_start = time.time()
         projects = project_service.get_projects(
-            session, current_user.user_id, skip, limit
-        )
-        db_time = time.time() - db_start
-        logger.info(
-            f"✅ [PROJECTS] Successfully retrieved {len(projects)} projects in {db_time:.3f}s"
+            session, current_user.user_id, skip, limit, sort_by, sort_order
         )
 
-        response_start = time.time()
         result = [ProjectResponse.model_validate(project) for project in projects]
-        response_time = time.time() - response_start
-
-        total_time = time.time() - start_time
-        logger.info(
-            f"✅ Found {len(projects)} projects | DB: {db_time:.3f}s | Response: {response_time:.3f}s | Total: {total_time:.3f}s"
-        )
+        logger.debug(f"Retrieved {len(projects)} projects successfully")
 
         return result
     except Exception as e:
-        logger.error(f"❌ [PROJECTS] Error getting projects: {type(e).__name__}: {e}")
-        logger.error(f"❌ [PROJECTS] User ID was: {current_user.user_id}")
-        logger.error(f"❌ [PROJECTS] Parameters: skip={skip}, limit={limit}")
-        import traceback
-
-        logger.error(f"❌ [PROJECTS] Traceback: {traceback.format_exc()}")
+        logger.error(f"Error getting projects for user {current_user.user_id}: {e}")
+        logger.debug(
+            f"Parameters: skip={skip}, limit={limit}, sort_by={sort_by}, sort_order={sort_order}"
+        )
         raise
 
 
