@@ -2135,6 +2135,7 @@ async def _get_tasks_from_weekly_schedule(
         )
 
         # Get weekly schedule for this week
+        # Try multiple approaches to find the weekly schedule
         weekly_schedule = session.exec(
             select(WeeklySchedule).where(
                 WeeklySchedule.user_id == user_id,
@@ -2142,8 +2143,44 @@ async def _get_tasks_from_weekly_schedule(
             )
         ).first()
 
+        # If not found, try to find any schedule within this week (more flexible search)
         if not weekly_schedule:
-            logger.info(f"No weekly schedule found for week starting {week_start}")
+            logger.info(
+                f"No weekly schedule found for exact week start {week_start}. Trying flexible search..."
+            )
+
+            # Calculate the end of the week (Sunday)
+            week_end = week_start + timedelta(days=6)
+            week_end_datetime = datetime.combine(week_end, datetime.min.time())
+
+            logger.info(
+                f"Searching for weekly schedules between {week_start} and {week_end}"
+            )
+
+            # Find any weekly schedule that starts within this week
+            weekly_schedules_in_range = session.exec(
+                select(WeeklySchedule).where(
+                    WeeklySchedule.user_id == user_id,
+                    WeeklySchedule.week_start_date >= week_start_datetime,
+                    WeeklySchedule.week_start_date <= week_end_datetime,
+                )
+            ).all()
+
+            if weekly_schedules_in_range:
+                weekly_schedule = weekly_schedules_in_range[
+                    0
+                ]  # Use the first one found
+                logger.info(
+                    f"Found weekly schedule with flexible search: {weekly_schedule.week_start_date}"
+                )
+            else:
+                logger.info(
+                    f"No weekly schedule found for week containing {date_str} (week {week_start} to {week_end})"
+                )
+                return []
+
+        if not weekly_schedule:
+            logger.info(f"No weekly schedule found for week containing {date_str}")
             return []
 
         # Extract task IDs from weekly schedule
