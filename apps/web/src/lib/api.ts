@@ -52,7 +52,7 @@ import type {
   WeeklyRecurringTaskCreate,
   WeeklyRecurringTaskUpdate
 } from '@/types/weekly-recurring-task';
-import type { SortBy, SortOrder, SortOptions } from '@/types/sort';
+import type { SortOptions } from '@/types/sort';
 
 // Helper function to ensure HTTPS protocol
 const ensureHttps = (url: string): string => {

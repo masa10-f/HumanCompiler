@@ -26,7 +26,7 @@ export function SortDropdown({
   sortFields = defaultSortFields,
   className,
 }: SortDropdownProps) {
-  const currentField = sortFields.find(f => f.value === currentSort.sortBy) || sortFields[0];
+  const currentField = sortFields.find(f => f.value === currentSort.sortBy) || sortFields[0] || { value: SortBy.STATUS, label: 'Status' };
   const isAscending = currentSort.sortOrder === SortOrder.ASC;
 
   const handleSortFieldChange = (field: SortBy) => {
