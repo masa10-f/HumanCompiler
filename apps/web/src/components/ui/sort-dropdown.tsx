@@ -1,6 +1,5 @@
 'use client';
 
-import { ChevronDownIcon } from '@heroicons/react/20/solid';
 // React imports
 import { Fragment } from 'react';
 
