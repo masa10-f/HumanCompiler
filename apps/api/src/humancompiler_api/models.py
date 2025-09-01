@@ -76,6 +76,24 @@ class SortOrder(str, Enum):
     DESC = "desc"
 
 
+# Model-specific allowed sort fields for validation
+ALLOWED_SORT_FIELDS = {
+    "Project": {"status", "title", "created_at", "updated_at"},
+    "Goal": {"status", "title", "created_at", "updated_at"},
+    "Task": {"status", "title", "created_at", "updated_at", "priority"},
+    "WeeklyRecurringTask": {"title", "created_at", "updated_at"},
+    "Log": {"created_at", "updated_at"},
+}
+
+# Status priority configurations for consistent sorting
+STATUS_PRIORITY = {
+    "default": {"pending": 1, "in_progress": 2, "completed": 3, "cancelled": 4},
+    "project": {"pending": 1, "in_progress": 2, "completed": 3, "cancelled": 4},
+    "goal": {"pending": 1, "in_progress": 2, "completed": 3, "cancelled": 4},
+    "task": {"pending": 1, "in_progress": 2, "completed": 3, "cancelled": 4},
+}
+
+
 # Database Models (SQLModel)
 class UserBase(SQLModel):
     """Base user model"""

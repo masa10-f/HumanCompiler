@@ -177,10 +177,10 @@ async def test_get_projects_with_timing_logs(mock_session, auth_user):
 
             result = await get_projects(mock_session, auth_user)
 
-            # Verify logging calls were made
-            assert mock_log_instance.info.called
+            # Verify debug logging calls were made (changed from info to debug)
+            assert mock_log_instance.debug.called
             assert "Getting projects for user" in str(
-                mock_log_instance.info.call_args_list[0]
+                mock_log_instance.debug.call_args_list[0]
             )
 
 

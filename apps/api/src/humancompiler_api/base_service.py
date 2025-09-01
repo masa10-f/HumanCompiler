@@ -14,6 +14,7 @@ from humancompiler_api.common.error_handlers import (
     safe_execute,
     validate_uuid,
 )
+from humancompiler_api.models import ALLOWED_SORT_FIELDS, STATUS_PRIORITY
 
 T = TypeVar("T", bound=SQLModel)
 CreateT = TypeVar("CreateT")
@@ -87,8 +88,21 @@ class BaseService(ABC, Generic[T, CreateT, UpdateT]):
             if hasattr(self.model, key) and value is not None:
                 statement = statement.where(getattr(self.model, key) == value)
 
-        # Add sorting logic
-        if sort_by and hasattr(self.model, sort_by):
+        # Add sorting logic with enhanced validation
+        if sort_by:
+            # Validate sort field is allowed for this model
+            model_name = self.model.__name__
+            allowed_fields = ALLOWED_SORT_FIELDS.get(model_name, set())
+
+            if sort_by not in allowed_fields:
+                raise ValueError(
+                    f"Invalid sort field '{sort_by}' for {model_name}. Allowed fields: {allowed_fields}"
+                )
+
+            # Check if field exists on model
+            if not hasattr(self.model, sort_by):
+                raise ValueError(f"Field '{sort_by}' not found on {model_name} model")
+
             sort_column = getattr(self.model, sort_by)
 
             # Handle status sorting with priority order
@@ -119,8 +133,8 @@ class BaseService(ABC, Generic[T, CreateT, UpdateT]):
 
     def _get_status_order(self) -> dict | None:
         """Get status priority order for sorting. Override in subclasses if needed."""
-        # Default status order: pending -> in_progress -> completed -> cancelled
-        return {"pending": 1, "in_progress": 2, "completed": 3, "cancelled": 4}
+        model_name = self.model.__name__.lower()
+        return STATUS_PRIORITY.get(model_name, STATUS_PRIORITY["default"])
 
     def update(
         self,
