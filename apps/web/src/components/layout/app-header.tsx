@@ -1,16 +1,35 @@
 "use client"
 
+// React hooks
+import { useState } from 'react'
+
+// Next.js imports
 import { useRouter } from 'next/navigation'
-import { useAuth } from '@/hooks/use-auth'
+import Image from 'next/image'
+
+// UI components
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+
+// Icons
 import { TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings } from 'lucide-react'
-import Image from 'next/image'
-import { useState } from 'react'
+
+// Hooks
+import { useAuth } from '@/hooks/use-auth'
 
 interface AppHeaderProps {
   currentPage?: 'dashboard' | 'projects' | 'ai-planning' | 'scheduling' | 'schedule-history' | 'timeline' | 'settings'
 }
+
+const NAVIGATION_ITEMS = [
+  { id: 'dashboard', label: 'ダッシュボード', path: '/dashboard', icon: Home },
+  { id: 'projects', label: 'プロジェクト', path: '/projects', icon: FolderOpen },
+  { id: 'ai-planning', label: '週次計画', path: '/ai-planning', icon: Calendar },
+  { id: 'scheduling', label: '日次計画', path: '/scheduling', icon: Clock },
+  { id: 'schedule-history', label: 'スケジュール履歴', path: '/schedule-history', icon: History },
+  { id: 'timeline', label: 'タイムライン', path: '/timeline', icon: TrendingUp },
+  { id: 'settings', label: '設定', path: '/settings', icon: Settings },
+] as const
 
 export function AppHeader({ currentPage }: AppHeaderProps) {
   const router = useRouter()
@@ -24,19 +43,14 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
   }
 
   const handleNavigation = (path: string) => {
-    router.push(path)
-    setIsDialogOpen(false)
+    try {
+      router.push(path)
+      setIsDialogOpen(false)
+    } catch (error) {
+      console.error('Navigation failed:', error)
+      // ユーザーに通知する場合はtoastなどを使用
+    }
   }
-
-  const navigationItems = [
-    { id: 'dashboard', label: 'ダッシュボード', path: '/dashboard', icon: Home },
-    { id: 'projects', label: 'プロジェクト', path: '/projects', icon: FolderOpen },
-    { id: 'ai-planning', label: '週次計画', path: '/ai-planning', icon: Calendar },
-    { id: 'scheduling', label: '日次計画', path: '/scheduling', icon: Clock },
-    { id: 'schedule-history', label: 'スケジュール履歴', path: '/schedule-history', icon: History },
-    { id: 'timeline', label: 'タイムライン', path: '/timeline', icon: TrendingUp },
-    { id: 'settings', label: '設定', path: '/settings', icon: Settings },
-  ]
 
   return (
     <header className="bg-white dark:bg-gray-800 shadow-sm border-b">
@@ -57,21 +71,15 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
             </div>
             {/* Desktop Navigation */}
             <nav className="hidden md:flex space-x-4">
-              {navigationItems.map((item) => (
+              {NAVIGATION_ITEMS.map((item) => (
                 <Button
                   key={item.id}
                   variant="ghost"
                   onClick={() => router.push(item.path)}
                   className={getPageClass(item.id)}
                 >
-                  {item.id === 'timeline' || item.id === 'settings' ? (
-                    <>
-                      <item.icon className="h-4 w-4 mr-2" />
-                      {item.label}
-                    </>
-                  ) : (
-                    item.label
-                  )}
+                  <item.icon className="h-4 w-4 mr-2" />
+                  {item.label}
                 </Button>
               ))}
             </nav>
@@ -80,7 +88,7 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
             <div className="md:hidden">
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="ghost" size="sm">
+                  <Button variant="ghost" size="sm" aria-label="メニューを開く">
                     <Menu className="h-5 w-5" />
                   </Button>
                 </DialogTrigger>
@@ -98,7 +106,7 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                     </DialogTitle>
                   </DialogHeader>
                   <div className="mt-6 space-y-2">
-                    {navigationItems.map((item) => (
+                    {NAVIGATION_ITEMS.map((item) => (
                       <Button
                         key={item.id}
                         variant={currentPage === item.id ? "secondary" : "ghost"}

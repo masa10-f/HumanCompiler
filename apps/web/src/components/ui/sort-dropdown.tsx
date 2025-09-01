@@ -1,9 +1,16 @@
 'use client';
 
-import { ChevronDownIcon } from '@heroicons/react/20/solid';
+// React imports
 import { Fragment } from 'react';
+
+// UI libraries
 import { Menu, Transition } from '@headlessui/react';
+import { ChevronDownIcon } from '@heroicons/react/20/solid';
+
+// Utilities
 import { cn } from '@/lib/utils';
+
+// Types
 import { SortBy, SortOrder, SortOptions } from '@/types/sort';
 
 interface SortDropdownProps {
@@ -30,6 +37,10 @@ export function SortDropdown({
   const isAscending = currentSort.sortOrder === SortOrder.ASC;
 
   const handleSortFieldChange = (field: SortBy) => {
+    if (!Object.values(SortBy).includes(field)) {
+      console.warn('Invalid sort field:', field);
+      return;
+    }
     onSortChange({
       sortBy: field,
       sortOrder: currentSort.sortOrder || SortOrder.ASC,
@@ -91,6 +102,7 @@ export function SortDropdown({
         onClick={handleSortOrderToggle}
         className="inline-flex items-center justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
         title={isAscending ? '昇順' : '降順'}
+        aria-label={`並び順を${isAscending ? '降順' : '昇順'}に変更`}
       >
         <svg
           className={cn('h-4 w-4 transition-transform', {
