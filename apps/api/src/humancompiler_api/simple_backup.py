@@ -14,7 +14,6 @@ import shutil
 import threading
 from datetime import datetime, UTC
 from pathlib import Path
-from typing import Optional, Union
 
 from humancompiler_api.safe_migration import DataBackupManager
 

@@ -1,10 +1,8 @@
 """Database migration manager for TaskAgent"""
 
 import logging
-import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from sqlalchemy import text
 from sqlmodel import Session, create_engine

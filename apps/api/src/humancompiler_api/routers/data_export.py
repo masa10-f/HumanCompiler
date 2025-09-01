@@ -8,7 +8,6 @@ Issue #131: JSONデータのエクスポート機能
 import logging
 import os
 import tempfile
-from typing import Any
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, Depends, UploadFile, File
@@ -236,7 +235,6 @@ async def get_export_info(
             Task,
             Schedule,
             WeeklySchedule,
-            Log,
         )
 
         with db_session:

@@ -13,6 +13,8 @@ from humancompiler_api.models import (
     TaskDependencyCreate,
     TaskDependencyResponse,
     TaskDependencyTaskInfo,
+    SortBy,
+    SortOrder,
 )
 from humancompiler_api.services import task_service
 
@@ -100,10 +102,12 @@ async def get_tasks_by_goal(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    sort_by: Annotated[SortBy, Query()] = SortBy.STATUS,
+    sort_order: Annotated[SortOrder, Query()] = SortOrder.ASC,
 ) -> list[TaskResponse]:
     """Get tasks for specific goal"""
     tasks = task_service.get_tasks_by_goal(
-        session, goal_id, current_user.user_id, skip, limit
+        session, goal_id, current_user.user_id, skip, limit, sort_by, sort_order
     )
     task_responses = []
     print(f"Processing {len(tasks)} tasks for goal {goal_id}")
@@ -155,10 +159,12 @@ async def get_tasks_by_project(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    sort_by: Annotated[SortBy, Query()] = SortBy.STATUS,
+    sort_order: Annotated[SortOrder, Query()] = SortOrder.ASC,
 ) -> list[TaskResponse]:
     """Get all tasks for specific project"""
     tasks = task_service.get_tasks_by_project(
-        session, project_id, current_user.user_id, skip, limit
+        session, project_id, current_user.user_id, skip, limit, sort_by, sort_order
     )
     return [TaskResponse.model_validate(task) for task in tasks]
 

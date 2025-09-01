@@ -4,7 +4,7 @@ Weekly schedule API endpoints for storing and retrieving weekly task selections.
 
 import json
 import logging
-from datetime import datetime, date
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -13,11 +13,8 @@ from pydantic import BaseModel, Field
 
 from humancompiler_api.auth import get_current_user_id
 from humancompiler_api.database import db
-from humancompiler_api.exceptions import ResourceNotFoundError, ValidationError
 from humancompiler_api.models import (
     WeeklySchedule,
-    WeeklyScheduleCreate,
-    WeeklyScheduleUpdate,
     WeeklyScheduleResponse,
     ErrorResponse,
 )

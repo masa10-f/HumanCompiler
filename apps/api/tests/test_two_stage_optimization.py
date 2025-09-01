@@ -3,8 +3,8 @@ Test the two-stage optimization process: OpenAI Priority Extraction + OR-Tools.
 """
 
 import pytest
-from datetime import date, datetime, timedelta
-from unittest.mock import Mock, AsyncMock, patch
+from datetime import date, timedelta
+from unittest.mock import Mock, AsyncMock
 
 from humancompiler_api.ai.weekly_task_solver import (
     WeeklyTaskSolver,

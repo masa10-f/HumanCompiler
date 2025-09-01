@@ -6,7 +6,7 @@ import time
 from collections import deque
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import event, text
 from sqlalchemy.engine import Engine

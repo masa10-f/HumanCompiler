@@ -694,8 +694,6 @@ class TestSchedulerAPI:
         self, mock_get_tasks, mock_session, mock_get_goal, mock_auth
     ):
         """Test daily schedule creation with slot-level weekly task assignment."""
-        from humancompiler_api.models import Task
-        from decimal import Decimal
         from uuid import uuid4
 
         # Mock session

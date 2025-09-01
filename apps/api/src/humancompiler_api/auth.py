@@ -88,7 +88,6 @@ async def ensure_user_exists(user_id: str, email: str) -> None:
                 session.rollback()
 
                 from humancompiler_api.models import User
-                from sqlmodel import select
                 from uuid import UUID
                 from datetime import datetime, UTC
 

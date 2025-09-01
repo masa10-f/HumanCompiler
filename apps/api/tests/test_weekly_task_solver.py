@@ -3,7 +3,7 @@ Basic tests for WeeklyTaskSolver functionality.
 """
 
 import pytest
-from datetime import date, datetime
+from datetime import date
 from unittest.mock import Mock, AsyncMock
 
 from humancompiler_api.ai.weekly_task_solver import (
@@ -13,7 +13,7 @@ from humancompiler_api.ai.weekly_task_solver import (
     ProjectAllocation,
 )
 from humancompiler_api.ai.models import WeeklyPlanContext, TaskPlan
-from humancompiler_api.models import Project, Goal, Task
+from humancompiler_api.models import Goal, Task
 
 
 class TestWeeklyTaskSolver:

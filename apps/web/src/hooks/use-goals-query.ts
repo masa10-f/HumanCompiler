@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { goalsApi } from '@/lib/api'
 import type { Goal, GoalCreate, GoalUpdate } from '@/types/goal'
+import type { SortOptions } from '@/types/sort'
 
 // Query keys for consistent caching
 export const goalKeys = {
@@ -13,10 +14,11 @@ export const goalKeys = {
 }
 
 // Hook for fetching goals by project
-export function useGoalsByProject(projectId: string, skip = 0, limit = 20) {
+export function useGoalsByProject(projectId: string, skip = 0, limit = 20, sortOptions?: SortOptions) {
+  const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
   return useQuery({
-    queryKey: goalKeys.byProject(projectId),
-    queryFn: () => goalsApi.getByProject(projectId, skip, limit),
+    queryKey: [...goalKeys.byProject(projectId), sortKey],
+    queryFn: () => goalsApi.getByProject(projectId, skip, limit, sortOptions),
     enabled: !!projectId,
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes

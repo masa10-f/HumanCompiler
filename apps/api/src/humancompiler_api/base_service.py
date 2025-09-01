@@ -3,7 +3,7 @@ Base service class with common CRUD operations
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone, UTC
+from datetime import datetime, UTC
 from typing import Generic, TypeVar
 from uuid import UUID, uuid4
 
@@ -74,9 +74,11 @@ class BaseService(ABC, Generic[T, CreateT, UpdateT]):
         user_id: str | UUID,
         skip: int = 0,
         limit: int = 100,
+        sort_by: str | None = None,
+        sort_order: str | None = None,
         **filters,
     ) -> list[T]:
-        """Get all entities for specific user with optional filters"""
+        """Get all entities for specific user with optional filters and sorting"""
         user_id_validated = validate_uuid(user_id, "user_id")
         statement = select(self.model).where(self._get_user_filter(user_id_validated))
 
@@ -85,12 +87,40 @@ class BaseService(ABC, Generic[T, CreateT, UpdateT]):
             if hasattr(self.model, key) and value is not None:
                 statement = statement.where(getattr(self.model, key) == value)
 
-        # Add consistent ordering for predictable results
-        if hasattr(self.model, "created_at"):
-            statement = statement.order_by(self.model.created_at.desc())
+        # Add sorting logic
+        if sort_by and hasattr(self.model, sort_by):
+            sort_column = getattr(self.model, sort_by)
+
+            # Handle status sorting with priority order
+            if sort_by == "status":
+                status_order = self._get_status_order()
+                if status_order:
+                    # Use CASE statement for status priority ordering
+                    from sqlalchemy import case
+
+                    order_expr = case(status_order, value=sort_column)
+                else:
+                    order_expr = sort_column
+            else:
+                order_expr = sort_column
+
+            # Apply sort order
+            if sort_order and sort_order.lower() == "desc":
+                statement = statement.order_by(order_expr.desc())
+            else:
+                statement = statement.order_by(order_expr.asc())
+        else:
+            # Default ordering for predictable results
+            if hasattr(self.model, "created_at"):
+                statement = statement.order_by(self.model.created_at.desc())
 
         statement = statement.offset(skip).limit(limit)
         return list(session.exec(statement).all())
+
+    def _get_status_order(self) -> dict | None:
+        """Get status priority order for sorting. Override in subclasses if needed."""
+        # Default status order: pending -> in_progress -> completed -> cancelled
+        return {"pending": 1, "in_progress": 2, "completed": 3, "cancelled": 4}
 
     def update(
         self,

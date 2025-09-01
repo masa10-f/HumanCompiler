@@ -2,9 +2,7 @@
 Tests for scheduler remaining hours functionality (Issue #130).
 """
 
-import pytest
 from unittest.mock import MagicMock
-from decimal import Decimal
 
 from humancompiler_api.routers.scheduler import (
     SchedulerTask,

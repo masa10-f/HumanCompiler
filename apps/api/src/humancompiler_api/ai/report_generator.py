@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta
 
 from openai import OpenAI
-from sqlmodel import Session, select, and_, func
+from sqlmodel import Session, select, and_
 from sqlalchemy.orm import selectinload
 
 from humancompiler_api.models import (

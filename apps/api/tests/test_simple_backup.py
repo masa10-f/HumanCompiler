@@ -2,14 +2,12 @@
 Tests for simple backup system
 """
 
-import asyncio
 import json
 import os
 import tempfile
 from datetime import datetime, timedelta, UTC
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
-import shutil
+from unittest.mock import MagicMock, patch
 
 import pytest
 

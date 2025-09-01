@@ -11,6 +11,8 @@ from humancompiler_api.models import (
     ProjectCreate,
     ProjectResponse,
     ProjectUpdate,
+    SortBy,
+    SortOrder,
 )
 from humancompiler_api.services import project_service
 
@@ -66,6 +68,8 @@ async def get_projects(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    sort_by: Annotated[SortBy, Query()] = SortBy.STATUS,
+    sort_order: Annotated[SortOrder, Query()] = SortOrder.ASC,
 ) -> list[ProjectResponse]:
     """Get projects for current user"""
     import logging
@@ -82,7 +86,7 @@ async def get_projects(
         )
         db_start = time.time()
         projects = project_service.get_projects(
-            session, current_user.user_id, skip, limit
+            session, current_user.user_id, skip, limit, sort_by, sort_order
         )
         db_time = time.time() - db_start
         logger.info(

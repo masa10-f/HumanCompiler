@@ -33,6 +33,8 @@ import {
   getProjectStatusLabel,
   getAllProjectStatuses
 } from '@/constants/project-status';
+import { SortBy, SortOrder, SortOptions } from '@/types/sort';
+import { SortDropdown } from '@/components/ui/sort-dropdown';
 
 // Component to display and manage project status
 const ProjectStatusDropdown = memo(function ProjectStatusDropdown({ project }: { project: Project }) {
@@ -124,7 +126,14 @@ const ProjectStatusDropdown = memo(function ProjectStatusDropdown({ project }: {
 export default function ProjectsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const { data: projects = [], isLoading: loading, error, refetch } = useProjects();
+
+  // Sort state
+  const [sortOptions, setSortOptions] = useState<SortOptions>({
+    sortBy: SortBy.STATUS,
+    sortOrder: SortOrder.ASC,
+  });
+
+  const { data: projects = [], isLoading: loading, error, refetch } = useProjects(0, 20, sortOptions);
   const createProjectMutation = useCreateProject();
   const updateProjectMutation = useUpdateProject();
   const deleteProjectMutation = useDeleteProject();
@@ -285,13 +294,25 @@ export default function ProjectsPage() {
             <h1 className="text-3xl font-bold">プロジェクト一覧</h1>
             <p className="text-gray-600 mt-2">研究・開発プロジェクトを管理します。</p>
           </div>
-          <Button
-            onClick={() => setShowCreateForm(true)}
-            className="flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            新規プロジェクト作成
-          </Button>
+          <div className="flex items-center gap-4">
+            <SortDropdown
+              currentSort={sortOptions}
+              onSortChange={setSortOptions}
+              sortFields={[
+                { value: SortBy.STATUS, label: 'ステータス' },
+                { value: SortBy.TITLE, label: 'タイトル' },
+                { value: SortBy.CREATED_AT, label: '作成日' },
+                { value: SortBy.UPDATED_AT, label: '更新日' },
+              ]}
+            />
+            <Button
+              onClick={() => setShowCreateForm(true)}
+              className="flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              新規プロジェクト作成
+            </Button>
+          </div>
         </div>
 
         {error && (

@@ -2,7 +2,6 @@
 Scheduler API endpoints for task scheduling optimization.
 """
 
-import json
 import logging
 import math
 from dataclasses import dataclass, field
