@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { tasksApi } from '@/lib/api'
 import type { Task, TaskCreate, TaskUpdate } from '@/types/task'
+import type { SortOptions } from '@/types/sort'
 
 // Query keys for consistent caching
 export const taskKeys = {
@@ -14,10 +15,11 @@ export const taskKeys = {
 }
 
 // Hook for fetching tasks by goal
-export function useTasksByGoal(goalId: string, skip = 0, limit = 50) {
+export function useTasksByGoal(goalId: string, skip = 0, limit = 50, sortOptions?: SortOptions) {
+  const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
   return useQuery({
-    queryKey: taskKeys.byGoal(goalId),
-    queryFn: () => tasksApi.getByGoal(goalId, skip, limit),
+    queryKey: [...taskKeys.byGoal(goalId), sortKey],
+    queryFn: () => tasksApi.getByGoal(goalId, skip, limit, sortOptions),
     enabled: !!goalId,
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
@@ -25,10 +27,11 @@ export function useTasksByGoal(goalId: string, skip = 0, limit = 50) {
 }
 
 // Hook for fetching tasks by project
-export function useTasksByProject(projectId: string, skip = 0, limit = 50) {
+export function useTasksByProject(projectId: string, skip = 0, limit = 50, sortOptions?: SortOptions) {
+  const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
   return useQuery({
-    queryKey: taskKeys.byProject(projectId),
-    queryFn: () => tasksApi.getByProject(projectId, skip, limit),
+    queryKey: [...taskKeys.byProject(projectId), sortKey],
+    queryFn: () => tasksApi.getByProject(projectId, skip, limit, sortOptions),
     enabled: !!projectId,
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes

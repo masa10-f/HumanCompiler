@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { projectsApi } from '@/lib/api'
 import type { Project, ProjectCreate, ProjectUpdate } from '@/types/project'
+import type { SortOptions } from '@/types/sort'
 
 // Query keys for consistent caching
 export const projectKeys = {
@@ -23,10 +24,11 @@ export function useProject(projectId: string) {
 }
 
 // Hook for fetching all projects
-export function useProjects(skip = 0, limit = 20) {
+export function useProjects(skip = 0, limit = 20, sortOptions?: SortOptions) {
+  const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
   return useQuery({
-    queryKey: projectKeys.list(`skip-${skip}-limit-${limit}`),
-    queryFn: () => projectsApi.getAll(skip, limit),
+    queryKey: projectKeys.list(`skip-${skip}-limit-${limit}-${sortKey}`),
+    queryFn: () => projectsApi.getAll(skip, limit, sortOptions),
     staleTime: 2 * 60 * 1000, // 2 minutes for list view
     gcTime: 5 * 60 * 1000, // 5 minutes
   })

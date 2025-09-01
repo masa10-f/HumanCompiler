@@ -9,6 +9,7 @@ import { toast } from "@/components/ui/use-toast"
 import { WeeklyRecurringTaskDialog } from "@/components/weekly-recurring-task-dialog"
 import { weeklyRecurringTasksApi } from "@/lib/api"
 import type { WeeklyRecurringTask } from "@/types/weekly-recurring-task"
+import { AppHeader } from "@/components/layout/app-header"
 
 export default function WeeklyTasksPage() {
   const [tasks, setTasks] = useState<WeeklyRecurringTask[]>([])
@@ -96,7 +97,9 @@ export default function WeeklyTasksPage() {
   }
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <AppHeader currentPage="ai-planning" />
+      <div className="container mx-auto p-6">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-3xl font-bold">週課管理</h1>
@@ -175,6 +178,7 @@ export default function WeeklyTasksPage() {
         task={editingTask}
         onSaved={handleTaskSaved}
       />
+      </div>
     </div>
   )
 }
