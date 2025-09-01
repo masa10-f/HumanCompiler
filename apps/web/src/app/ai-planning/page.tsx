@@ -293,6 +293,7 @@ export default function AIPlanningPage() {
       setSavingSchedule(true);
       const scheduleData = {
         selected_tasks: weeklyPlan.task_plans,
+        selected_recurring_task_ids: selectedRecurringTaskIds,
         total_allocated_hours: weeklyPlan.total_planned_hours,
         project_allocations: projectAllocations,
         optimization_insights: weeklyPlan.insights || [],
