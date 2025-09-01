@@ -24,6 +24,7 @@ import { ArrowLeft, Plus, Clock, Calendar, GitBranch } from 'lucide-react';
 import { taskStatusLabels, taskStatusColors, workTypeLabels, workTypeColors, taskPriorityLabels, taskPriorityColors } from '@/types/task';
 import type { TaskStatus, Task } from '@/types/task';
 import { log } from '@/lib/logger';
+import { AppHeader } from '@/components/layout/app-header';
 
 interface GoalDetailPageProps {
   params: {
@@ -208,7 +209,9 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
   });
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <AppHeader currentPage="projects" />
+      <div className="container mx-auto py-8">
       {/* Header */}
       <div className="flex items-center gap-4 mb-8">
         <Button
@@ -465,6 +468,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
             </CardContent>
           </Card>
         )}
+        </div>
       </div>
     </div>
   );

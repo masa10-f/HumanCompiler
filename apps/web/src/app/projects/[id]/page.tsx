@@ -36,6 +36,7 @@ import {
   getAllProjectStatuses
 } from '@/constants/project-status';
 import { useUpdateProject } from '@/hooks/use-project-query';
+import { AppHeader } from '@/components/layout/app-header';
 
 interface ProjectDetailPageProps {
   params: {
@@ -356,7 +357,9 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   if (!project) return null;
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <AppHeader currentPage="projects" />
+      <div className="container mx-auto py-8">
       {/* Header */}
       <div className="flex items-center gap-4 mb-8">
         <Button
@@ -492,6 +495,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
             ))}
           </div>
         )}
+        </div>
       </div>
     </div>
   );

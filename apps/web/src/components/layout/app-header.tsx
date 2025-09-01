@@ -1,23 +1,55 @@
 "use client"
 
+// React hooks
+import { useState } from 'react'
+
+// Next.js imports
 import { useRouter } from 'next/navigation'
-import { useAuth } from '@/hooks/use-auth'
-import { Button } from '@/components/ui/button'
-import { Key, TrendingUp } from 'lucide-react'
 import Image from 'next/image'
+
+// UI components
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+
+// Icons
+import { TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings } from 'lucide-react'
+
+// Hooks
+import { useAuth } from '@/hooks/use-auth'
 
 interface AppHeaderProps {
   currentPage?: 'dashboard' | 'projects' | 'ai-planning' | 'scheduling' | 'schedule-history' | 'timeline' | 'settings'
 }
 
+const NAVIGATION_ITEMS = [
+  { id: 'dashboard', label: 'ダッシュボード', path: '/dashboard', icon: Home },
+  { id: 'projects', label: 'プロジェクト', path: '/projects', icon: FolderOpen },
+  { id: 'ai-planning', label: '週次計画', path: '/ai-planning', icon: Calendar },
+  { id: 'scheduling', label: '日次計画', path: '/scheduling', icon: Clock },
+  { id: 'schedule-history', label: 'スケジュール履歴', path: '/schedule-history', icon: History },
+  { id: 'timeline', label: 'タイムライン', path: '/timeline', icon: TrendingUp },
+  { id: 'settings', label: '設定', path: '/settings', icon: Settings },
+] as const
+
 export function AppHeader({ currentPage }: AppHeaderProps) {
   const router = useRouter()
   const { user, signOut } = useAuth()
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
 
   const getPageClass = (page: string) => {
     return currentPage === page
       ? "text-gray-900 dark:text-white font-medium"
       : "text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+  }
+
+  const handleNavigation = (path: string) => {
+    try {
+      router.push(path)
+      setIsDialogOpen(false)
+    } catch (error) {
+      console.error('Navigation failed:', error)
+      // ユーザーに通知する場合はtoastなどを使用
+    }
   }
 
   return (
@@ -37,61 +69,74 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                 HumanCompiler
               </h1>
             </div>
+            {/* Desktop Navigation */}
             <nav className="hidden md:flex space-x-4">
-              <Button
-                variant="ghost"
-                onClick={() => router.push('/dashboard')}
-                className={getPageClass('dashboard')}
-              >
-                ダッシュボード
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => router.push('/projects')}
-                className={getPageClass('projects')}
-              >
-                プロジェクト
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => router.push('/ai-planning')}
-                className={getPageClass('ai-planning')}
-              >
-                週次計画
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => router.push('/scheduling')}
-                className={getPageClass('scheduling')}
-              >
-                日次計画
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => router.push('/schedule-history')}
-                className={getPageClass('schedule-history')}
-              >
-                スケジュール履歴
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => router.push('/timeline')}
-                className={getPageClass('timeline')}
-              >
-                <TrendingUp className="h-4 w-4 mr-2" />
-                タイムライン
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => router.push('/settings')}
-                className={getPageClass('settings')}
-              >
-                <Key className="h-4 w-4 mr-2" />
-                設定
-              </Button>
+              {NAVIGATION_ITEMS.map((item) => (
+                <Button
+                  key={item.id}
+                  variant="ghost"
+                  onClick={() => router.push(item.path)}
+                  className={getPageClass(item.id)}
+                >
+                  <item.icon className="h-4 w-4 mr-2" />
+                  {item.label}
+                </Button>
+              ))}
             </nav>
+
+            {/* Mobile Navigation */}
+            <div className="md:hidden">
+              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="ghost" size="sm" aria-label="メニューを開く">
+                    <Menu className="h-5 w-5" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-sm">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center space-x-3">
+                      <Image
+                        src="/logo.png"
+                        alt="HumanCompiler Logo"
+                        width={24}
+                        height={24}
+                        className="rounded-lg"
+                      />
+                      <span>HumanCompiler</span>
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="mt-6 space-y-2">
+                    {NAVIGATION_ITEMS.map((item) => (
+                      <Button
+                        key={item.id}
+                        variant={currentPage === item.id ? "secondary" : "ghost"}
+                        className="w-full justify-start"
+                        onClick={() => handleNavigation(item.path)}
+                      >
+                        <item.icon className="h-4 w-4 mr-3" />
+                        {item.label}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="mt-6 border-t pt-4">
+                    {user?.email && (
+                      <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 truncate">
+                        {user.email}
+                      </p>
+                    )}
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={signOut}
+                    >
+                      ログアウト
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
-          <div className="flex items-center space-x-4">
+          <div className="hidden md:flex items-center space-x-4">
             {user?.email && (
               <span className="text-sm text-gray-600 dark:text-gray-300">
                 {user.email}
