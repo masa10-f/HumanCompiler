@@ -2143,19 +2143,15 @@ async def _get_tasks_from_weekly_schedule(
             )
         ).first()
 
-        # If not found, try to find any schedule within this week (more flexible search)
+        # If not found, try to find any schedule within this week (flexible search)
         if not weekly_schedule:
-            logger.info(
-                f"No weekly schedule found for exact week start {week_start}. Trying flexible search..."
+            logger.debug(
+                f"No exact match found, trying flexible search for week {week_start}"
             )
 
             # Calculate the end of the week (Sunday)
             week_end = week_start + timedelta(days=6)
             week_end_datetime = datetime.combine(week_end, datetime.min.time())
-
-            logger.info(
-                f"Searching for weekly schedules between {week_start} and {week_end}"
-            )
 
             # Find any weekly schedule that starts within this week
             weekly_schedules_in_range = session.exec(
@@ -2170,13 +2166,9 @@ async def _get_tasks_from_weekly_schedule(
                 weekly_schedule = weekly_schedules_in_range[
                     0
                 ]  # Use the first one found
-                logger.info(
-                    f"Found weekly schedule with flexible search: {weekly_schedule.week_start_date}"
-                )
+                logger.info("Found weekly schedule with flexible search")
             else:
-                logger.info(
-                    f"No weekly schedule found for week containing {date_str} (week {week_start} to {week_end})"
-                )
+                logger.info(f"No weekly schedule found for week containing {date_str}")
                 return []
 
         if not weekly_schedule:
@@ -2185,31 +2177,16 @@ async def _get_tasks_from_weekly_schedule(
 
         # Extract task IDs from weekly schedule
         schedule_data = weekly_schedule.schedule_json
-        logger.info(
-            f"Weekly schedule data structure: {json.dumps(schedule_data, default=str, indent=2) if schedule_data else 'None'}"
-        )
-
         if not schedule_data or "selected_tasks" not in schedule_data:
-            logger.warning(
-                f"Weekly schedule found but no selected_tasks data. Schedule data keys: {list(schedule_data.keys()) if schedule_data else 'None'}"
-            )
+            logger.info("Weekly schedule found but no selected_tasks data")
             return []
 
         selected_tasks = schedule_data["selected_tasks"]
-        logger.info(
-            f"Selected tasks structure: {json.dumps(selected_tasks[:2] if len(selected_tasks) > 2 else selected_tasks, default=str, indent=2) if selected_tasks else 'Empty array'}"
-        )
-
         try:
             task_ids = [task["task_id"] for task in selected_tasks]
-            logger.info(
-                f"Extracted {len(task_ids)} task IDs from weekly schedule: {task_ids[:5]}..."
-            )
+            logger.info(f"Extracted {len(task_ids)} task IDs from weekly schedule")
         except (KeyError, TypeError) as e:
             logger.error(f"Error extracting task_ids from selected_tasks: {e}")
-            logger.error(
-                f"First selected task structure: {selected_tasks[0] if selected_tasks else 'No tasks'}"
-            )
             return []
 
         if not task_ids:

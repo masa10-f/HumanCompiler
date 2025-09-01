@@ -72,12 +72,7 @@ export default function SchedulingPage() {
         const [projectsResult, weeklyOptionsResult, weeklyTasksResult] = await Promise.all([
           projectsApi.getAll(),
           schedulingApi.getWeeklyScheduleOptions().catch(err => {
-            console.error('Weekly schedule options loading failed:', err);
-            console.error('Error details:', {
-              status: err.status,
-              message: err.message,
-              stack: err.stack
-            });
+            console.error('Weekly schedule options loading failed:', err.message || err);
             // Return empty array to allow other data to load
             return [];
           }),
@@ -90,15 +85,9 @@ export default function SchedulingPage() {
 
       } catch (error) {
         console.error('Failed to load initial data:', error);
-        console.error('Error type:', error instanceof Error ? error.constructor.name : typeof error);
-        console.error('Error details:', {
-          message: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined
-        });
-
         toast({
           title: 'データ読み込みエラー',
-          description: `初期データの読み込みに失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`,
+          description: '初期データの読み込みに失敗しました',
           variant: 'destructive',
         });
       } finally {
