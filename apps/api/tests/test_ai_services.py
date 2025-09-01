@@ -17,7 +17,7 @@ from humancompiler_api.ai_service import (
     WeeklyPlanResponse,
     TaskPlan,
 )
-from humancompiler_api.models import Goal, Project, Task, TaskStatus, UserSettings
+from humancompiler_api.models import Goal, Project, Task, TaskStatus
 
 
 @pytest.fixture

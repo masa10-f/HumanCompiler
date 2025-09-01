@@ -2,7 +2,7 @@
 Tests for scheduler dependency constraints.
 """
 
-from datetime import datetime, time
+from datetime import time
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -22,7 +22,6 @@ from humancompiler_api.routers.scheduler import (
     _check_task_dependencies_satisfied,
     _check_goal_dependencies_satisfied,
     _check_task_dependencies_satisfied_relaxed,
-    _check_goal_dependencies_satisfied_relaxed,
     _batch_check_task_completion_status,
     _batch_check_goal_completion_status,
 )

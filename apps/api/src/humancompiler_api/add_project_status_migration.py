@@ -7,7 +7,6 @@ It includes automatic backup creation and validation.
 """
 
 import logging
-from typing import Any
 
 from sqlalchemy import text
 from sqlmodel import Session

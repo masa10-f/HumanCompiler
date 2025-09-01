@@ -18,7 +18,7 @@ from humancompiler_api.config import settings
 from humancompiler_api.crypto import get_crypto_service
 from humancompiler_api.models import Goal, Project, Task, UserSettings
 from humancompiler_api.services import goal_service, project_service, task_service
-from core.cache import cached, invalidate_cache
+from core.cache import cached
 
 logger = logging.getLogger(__name__)
 

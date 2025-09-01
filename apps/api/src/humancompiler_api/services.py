@@ -2,7 +2,7 @@
 Refactored services using base service class
 """
 
-from datetime import datetime, timezone, UTC
+from datetime import datetime, UTC
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -22,7 +22,6 @@ from humancompiler_api.models import (
     Project,
     ProjectCreate,
     ProjectUpdate,
-    ProjectStatus,
     Task,
     TaskCreate,
     TaskUpdate,
@@ -34,8 +33,10 @@ from humancompiler_api.models import (
     WeeklyRecurringTask,
     WeeklyRecurringTaskCreate,
     WeeklyRecurringTaskUpdate,
+    SortBy,
+    SortOrder,
 )
-from core.cache import cached, invalidate_cache, CacheManager
+from core.cache import cached, invalidate_cache
 
 
 class UserService:
@@ -110,10 +111,23 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
 
     @cached(cache_type="short", key_prefix="projects_list")
     def get_projects(
-        self, session: Session, owner_id: str | UUID, skip: int = 0, limit: int = 100
+        self,
+        session: Session,
+        owner_id: str | UUID,
+        skip: int = 0,
+        limit: int = 100,
+        sort_by: SortBy = SortBy.STATUS,
+        sort_order: SortOrder = SortOrder.ASC,
     ) -> list[Project]:
-        """Get projects for specific owner"""
-        return self.get_all(session, owner_id, skip, limit)
+        """Get projects for specific owner with sorting"""
+        return self.get_all(
+            session,
+            owner_id,
+            skip,
+            limit,
+            sort_by=sort_by.value,
+            sort_order=sort_order.value,
+        )
 
     @cached(cache_type="medium", key_prefix="project_detail")
     def get_project(
@@ -280,15 +294,25 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
         owner_id: str | UUID,
         skip: int = 0,
         limit: int = 100,
+        sort_by: SortBy = SortBy.STATUS,
+        sort_order: SortOrder = SortOrder.ASC,
     ) -> list[Goal]:
-        """Get goals for specific project"""
+        """Get goals for specific project with sorting"""
         # Verify project ownership
         project = self.project_service.get_project(session, project_id, owner_id)
         if not project:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
             )
-        return self.get_all(session, owner_id, skip, limit, project_id=project_id)
+        return self.get_all(
+            session,
+            owner_id,
+            skip,
+            limit,
+            sort_by=sort_by.value,
+            sort_order=sort_order.value,
+            project_id=project_id,
+        )
 
     def update_goal(
         self,
@@ -521,15 +545,25 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         owner_id: str | UUID,
         skip: int = 0,
         limit: int = 100,
+        sort_by: SortBy = SortBy.STATUS,
+        sort_order: SortOrder = SortOrder.ASC,
     ) -> list[Task]:
-        """Get tasks for specific goal"""
+        """Get tasks for specific goal with sorting"""
         # Verify goal ownership
         goal = self.goal_service.get_goal(session, goal_id, owner_id)
         if not goal:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found"
             )
-        return self.get_all(session, owner_id, skip, limit, goal_id=goal_id)
+        return self.get_all(
+            session,
+            owner_id,
+            skip,
+            limit,
+            sort_by=sort_by.value,
+            sort_order=sort_order.value,
+            goal_id=goal_id,
+        )
 
     @cached(cache_type="short", key_prefix="tasks_by_project")
     def get_tasks_by_project(
@@ -539,8 +573,10 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         owner_id: str | UUID,
         skip: int = 0,
         limit: int = 100,
+        sort_by: SortBy = SortBy.STATUS,
+        sort_order: SortOrder = SortOrder.ASC,
     ) -> list[Task]:
-        """Get all tasks for specific project"""
+        """Get all tasks for specific project with sorting"""
         # Verify project ownership
         project = self.project_service.get_project(session, project_id, owner_id)
         if not project:
@@ -548,13 +584,37 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
                 status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
             )
 
-        statement = (
-            select(Task)
-            .join(Goal)
-            .where(Goal.project_id == project_id)
-            .offset(skip)
-            .limit(limit)
-        )
+        statement = select(Task).join(Goal).where(Goal.project_id == project_id)
+
+        # Add sorting logic
+        if sort_by and hasattr(Task, sort_by.value):
+            sort_column = getattr(Task, sort_by.value)
+
+            # Handle status sorting with priority order
+            if sort_by.value == "status":
+                status_order = {
+                    "pending": 1,
+                    "in_progress": 2,
+                    "completed": 3,
+                    "cancelled": 4,
+                }
+                # Use CASE statement for status priority ordering
+                from sqlalchemy import case
+
+                order_expr = case(status_order, value=sort_column)
+            else:
+                order_expr = sort_column
+
+            # Apply sort order
+            if sort_order and sort_order.value.lower() == "desc":
+                statement = statement.order_by(order_expr.desc())
+            else:
+                statement = statement.order_by(order_expr.asc())
+        else:
+            # Default ordering
+            statement = statement.order_by(Task.created_at.desc())
+
+        statement = statement.offset(skip).limit(limit)
         return list(session.exec(statement).all())
 
     def get_all_user_tasks(

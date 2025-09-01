@@ -16,6 +16,8 @@ from humancompiler_api.models import (
     ProjectResponse,
     ProjectStatus,
     ErrorResponse,
+    SortBy,
+    SortOrder,
 )
 from humancompiler_api.routers.projects import (
     router,
@@ -175,10 +177,10 @@ async def test_get_projects_with_timing_logs(mock_session, auth_user):
 
             result = await get_projects(mock_session, auth_user)
 
-            # Verify logging calls were made
-            assert mock_log_instance.info.called
+            # Verify debug logging calls were made (changed from info to debug)
+            assert mock_log_instance.debug.called
             assert "Getting projects for user" in str(
-                mock_log_instance.info.call_args_list[0]
+                mock_log_instance.debug.call_args_list[0]
             )
 
 
@@ -304,7 +306,9 @@ async def test_get_projects_service_call(mock_session, auth_user):
     ) as mock_get:
         await get_projects(mock_session, auth_user, skip=5, limit=10)
 
-        mock_get.assert_called_once_with(mock_session, auth_user.user_id, 5, 10)
+        mock_get.assert_called_once_with(
+            mock_session, auth_user.user_id, 5, 10, SortBy.STATUS, SortOrder.ASC
+        )
 
 
 @pytest.mark.asyncio
@@ -366,3 +370,46 @@ def test_error_response_creation():
     assert error.error.code == "RESOURCE_NOT_FOUND"
     assert error.error.message == "Project not found"
     assert error.error.details["project_id"] == str(project_id)
+
+
+@pytest.mark.asyncio
+async def test_get_projects_with_sorting_parameters(mock_session, auth_user):
+    """Test projects retrieval with sorting parameters"""
+    mock_projects = []
+
+    with patch(
+        "humancompiler_api.routers.projects.project_service.get_projects",
+        return_value=mock_projects,
+    ) as mock_get:
+        result = await get_projects(
+            mock_session,
+            auth_user,
+            skip=0,
+            limit=20,
+            sort_by=SortBy.STATUS,
+            sort_order=SortOrder.DESC,
+        )
+
+        # Verify that the service was called with correct sorting parameters
+        mock_get.assert_called_once_with(
+            mock_session, auth_user.user_id, 0, 20, SortBy.STATUS, SortOrder.DESC
+        )
+        assert isinstance(result, list)
+
+
+@pytest.mark.asyncio
+async def test_get_projects_with_default_sorting(mock_session, auth_user):
+    """Test projects retrieval with default sorting parameters"""
+    mock_projects = []
+
+    with patch(
+        "humancompiler_api.routers.projects.project_service.get_projects",
+        return_value=mock_projects,
+    ) as mock_get:
+        result = await get_projects(mock_session, auth_user)
+
+        # Verify that the service was called with default sorting parameters
+        mock_get.assert_called_once_with(
+            mock_session, auth_user.user_id, 0, 20, SortBy.STATUS, SortOrder.ASC
+        )
+        assert isinstance(result, list)

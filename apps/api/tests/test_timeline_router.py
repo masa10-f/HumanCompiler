@@ -3,9 +3,8 @@
 import pytest
 from datetime import datetime, timedelta, UTC
 from uuid import uuid4, UUID
-from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from humancompiler_api.main import app
 from humancompiler_api.models import (

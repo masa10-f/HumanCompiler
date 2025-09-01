@@ -8,7 +8,6 @@ This script ensures data safety by:
 4. Verifying migration success
 """
 
-import os
 import sys
 import logging
 from datetime import datetime, UTC

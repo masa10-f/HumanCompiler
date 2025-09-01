@@ -2,9 +2,8 @@
 Tests for AI planning router with cache mocking
 """
 
-from datetime import date, datetime
+from datetime import datetime
 from unittest.mock import Mock, patch, AsyncMock
-from uuid import UUID
 
 import pytest
 from fastapi import HTTPException, status
@@ -16,7 +15,6 @@ from humancompiler_api.routers.ai_planning import (
     suggest_task_priorities,
 )
 from humancompiler_api.ai_service import WeeklyPlanRequest, WeeklyPlanResponse
-import datetime as dt
 
 
 @pytest.fixture
@@ -360,17 +358,15 @@ async def test_generate_weekly_plan_success(
         )
         MockService.return_value = mock_service_instance
 
-        # Mock OpenAIService
-        with patch("humancompiler_api.routers.ai_planning.OpenAIService"):
-            result = await generate_weekly_plan(
-                weekly_plan_request,
-                "87654321-4321-8765-4321-876543218765",
-                mock_session,
-            )
+        result = await generate_weekly_plan(
+            weekly_plan_request,
+            "87654321-4321-8765-4321-876543218765",
+            mock_session,
+        )
 
-            assert result.success is True
-            assert result.total_planned_hours == 25.0
-            assert "Focus on deep work" in result.recommendations[0]
+        assert result.success is True
+        assert result.total_planned_hours == 25.0
+        assert "Focus on deep work" in result.recommendations[0]
 
 
 @pytest.mark.asyncio

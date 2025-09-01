@@ -3,11 +3,9 @@ Test cases for task deletion functionality
 """
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlmodel import Session, select
+from sqlmodel import Session
 
-from humancompiler_api.database import db
-from humancompiler_api.models import Task, TaskDependency, Log, Project, Goal
+from humancompiler_api.models import Task, TaskDependency, Log
 from humancompiler_api.services import TaskService, ProjectService, GoalService
 from conftest import create_test_data
 

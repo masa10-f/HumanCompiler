@@ -1,8 +1,8 @@
 """Tests for weekly report generation functionality."""
 
 import pytest
-from datetime import datetime, timedelta
-from unittest.mock import Mock, patch, MagicMock
+from datetime import datetime
+from unittest.mock import Mock, patch
 from sqlmodel import Session
 
 from humancompiler_api.ai.report_generator import WeeklyReportGenerator
@@ -10,8 +10,6 @@ from humancompiler_api.models import (
     WeeklyReportRequest,
     WeeklyReportResponse,
     WeeklyWorkSummary,
-    ProjectProgressSummary,
-    TaskProgressSummary,
     Log,
     Task,
     Goal,

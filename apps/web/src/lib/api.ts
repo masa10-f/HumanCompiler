@@ -52,6 +52,7 @@ import type {
   WeeklyRecurringTaskCreate,
   WeeklyRecurringTaskUpdate
 } from '@/types/weekly-recurring-task';
+import type { SortOptions } from '@/types/sort';
 
 // Helper function to ensure HTTPS protocol
 const ensureHttps = (url: string): string => {
@@ -344,8 +345,20 @@ class ApiClient {
   }
 
   // Project API methods
-  async getProjects(skip: number = 0, limit: number = 20): Promise<Project[]> {
-    return this.request<Project[]>(`/api/projects/?skip=${skip}&limit=${limit}`);
+  async getProjects(skip: number = 0, limit: number = 20, sortOptions?: SortOptions): Promise<Project[]> {
+    const params = new URLSearchParams({
+      skip: skip.toString(),
+      limit: limit.toString(),
+    });
+
+    if (sortOptions?.sortBy) {
+      params.set('sort_by', sortOptions.sortBy);
+    }
+    if (sortOptions?.sortOrder) {
+      params.set('sort_order', sortOptions.sortOrder);
+    }
+
+    return this.request<Project[]>(`/api/projects/?${params.toString()}`);
   }
 
   async getProject(projectId: string): Promise<Project> {
@@ -373,8 +386,20 @@ class ApiClient {
   }
 
   // Goal API methods
-  async getGoalsByProject(projectId: string, skip: number = 0, limit: number = 20): Promise<Goal[]> {
-    return this.request<Goal[]>(`/api/goals/project/${projectId}?skip=${skip}&limit=${limit}`);
+  async getGoalsByProject(projectId: string, skip: number = 0, limit: number = 20, sortOptions?: SortOptions): Promise<Goal[]> {
+    const params = new URLSearchParams({
+      skip: skip.toString(),
+      limit: limit.toString(),
+    });
+
+    if (sortOptions?.sortBy) {
+      params.set('sort_by', sortOptions.sortBy);
+    }
+    if (sortOptions?.sortOrder) {
+      params.set('sort_order', sortOptions.sortOrder);
+    }
+
+    return this.request<Goal[]>(`/api/goals/project/${projectId}?${params.toString()}`);
   }
 
   async getGoal(goalId: string): Promise<Goal> {
@@ -420,12 +445,36 @@ class ApiClient {
   }
 
   // Task API methods
-  async getTasksByGoal(goalId: string, skip: number = 0, limit: number = 20): Promise<Task[]> {
-    return this.request<Task[]>(`/api/tasks/goal/${goalId}?skip=${skip}&limit=${limit}`);
+  async getTasksByGoal(goalId: string, skip: number = 0, limit: number = 20, sortOptions?: SortOptions): Promise<Task[]> {
+    const params = new URLSearchParams({
+      skip: skip.toString(),
+      limit: limit.toString(),
+    });
+
+    if (sortOptions?.sortBy) {
+      params.set('sort_by', sortOptions.sortBy);
+    }
+    if (sortOptions?.sortOrder) {
+      params.set('sort_order', sortOptions.sortOrder);
+    }
+
+    return this.request<Task[]>(`/api/tasks/goal/${goalId}?${params.toString()}`);
   }
 
-  async getTasksByProject(projectId: string, skip: number = 0, limit: number = 20): Promise<Task[]> {
-    return this.request<Task[]>(`/api/tasks/project/${projectId}?skip=${skip}&limit=${limit}`);
+  async getTasksByProject(projectId: string, skip: number = 0, limit: number = 20, sortOptions?: SortOptions): Promise<Task[]> {
+    const params = new URLSearchParams({
+      skip: skip.toString(),
+      limit: limit.toString(),
+    });
+
+    if (sortOptions?.sortBy) {
+      params.set('sort_by', sortOptions.sortBy);
+    }
+    if (sortOptions?.sortOrder) {
+      params.set('sort_order', sortOptions.sortOrder);
+    }
+
+    return this.request<Task[]>(`/api/tasks/project/${projectId}?${params.toString()}`);
   }
 
   async getTask(taskId: string): Promise<Task> {
@@ -642,12 +691,21 @@ class ApiClient {
 
 
   // Timeline API methods
-  async getProjectTimeline(projectId: string, startDate?: string, endDate?: string, timeUnit?: string, weeklyWorkHours?: number): Promise<ProjectTimelineData> {
+  async getProjectTimeline(
+    projectId: string,
+    startDate?: string,
+    endDate?: string,
+    timeUnit?: string,
+    weeklyWorkHours?: number,
+    sortOptions?: SortOptions
+  ): Promise<ProjectTimelineData> {
     const params = new URLSearchParams();
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
     if (timeUnit) params.append('time_unit', timeUnit);
     if (weeklyWorkHours !== undefined) params.append('weekly_work_hours', weeklyWorkHours.toString());
+    if (sortOptions?.sortBy) params.append('sort_by', sortOptions.sortBy);
+    if (sortOptions?.sortOrder) params.append('sort_order', sortOptions.sortOrder);
 
     return this.request<ProjectTimelineData>(`/api/timeline/projects/${projectId}/?${params.toString()}`);
   }
@@ -720,7 +778,8 @@ export const apiClient = new ApiClient();
 
 // Export individual API functions for easier use
 export const projectsApi = {
-  getAll: (skip?: number, limit?: number) => apiClient.getProjects(skip, limit),
+  getAll: (skip?: number, limit?: number, sortOptions?: SortOptions) =>
+    apiClient.getProjects(skip, limit, sortOptions),
   getById: (id: string) => apiClient.getProject(id),
   create: (data: ProjectCreate) => apiClient.createProject(data),
   update: (id: string, data: ProjectUpdate) => apiClient.updateProject(id, data),
@@ -728,8 +787,8 @@ export const projectsApi = {
 };
 
 export const goalsApi = {
-  getByProject: (projectId: string, skip?: number, limit?: number) =>
-    apiClient.getGoalsByProject(projectId, skip, limit),
+  getByProject: (projectId: string, skip?: number, limit?: number, sortOptions?: SortOptions) =>
+    apiClient.getGoalsByProject(projectId, skip, limit, sortOptions),
   getById: (id: string) => apiClient.getGoal(id),
   create: (data: GoalCreate) => apiClient.createGoal(data),
   update: (id: string, data: GoalUpdate) => apiClient.updateGoal(id, data),
@@ -740,10 +799,10 @@ export const goalsApi = {
 };
 
 export const tasksApi = {
-  getByGoal: (goalId: string, skip?: number, limit?: number) =>
-    apiClient.getTasksByGoal(goalId, skip, limit),
-  getByProject: (projectId: string, skip?: number, limit?: number) =>
-    apiClient.getTasksByProject(projectId, skip, limit),
+  getByGoal: (goalId: string, skip?: number, limit?: number, sortOptions?: SortOptions) =>
+    apiClient.getTasksByGoal(goalId, skip, limit, sortOptions),
+  getByProject: (projectId: string, skip?: number, limit?: number, sortOptions?: SortOptions) =>
+    apiClient.getTasksByProject(projectId, skip, limit, sortOptions),
   getById: (id: string) => apiClient.getTask(id),
   create: (data: TaskCreate) => apiClient.createTask(data),
   update: (id: string, data: TaskUpdate) => apiClient.updateTask(id, data),
@@ -807,8 +866,8 @@ export const weeklyRecurringTasksApi = {
 
 
 export const timelineApi = {
-  getProjectTimeline: (projectId: string, startDate?: string, endDate?: string, timeUnit?: string, weeklyWorkHours?: number) =>
-    apiClient.getProjectTimeline(projectId, startDate, endDate, timeUnit, weeklyWorkHours),
+  getProjectTimeline: (projectId: string, startDate?: string, endDate?: string, timeUnit?: string, weeklyWorkHours?: number, sortOptions?: SortOptions) =>
+    apiClient.getProjectTimeline(projectId, startDate, endDate, timeUnit, weeklyWorkHours, sortOptions),
   getOverview: (startDate?: string, endDate?: string) =>
     apiClient.getTimelineOverview(startDate, endDate),
 };
