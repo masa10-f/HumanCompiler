@@ -688,6 +688,14 @@ class LogResponse(LogBase):
     task_id: UUID
     created_at: datetime
 
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        """Ensure datetime is serialized with UTC timezone info"""
+        if value.tzinfo is None:
+            # Assume naive datetime is UTC and add timezone info
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -715,6 +723,14 @@ class UserSettingsResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     has_api_key: bool = Field(description="Whether API key is configured")
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetimes(self, value: datetime) -> str:
+        """Ensure datetime is serialized with UTC timezone info"""
+        if value.tzinfo is None:
+            # Assume naive datetime is UTC and add timezone info
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -746,6 +762,14 @@ class TaskDependencyResponse(BaseModel):
     created_at: datetime
     depends_on_task: TaskDependencyTaskInfo | None = None
 
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        """Ensure datetime is serialized with UTC timezone info"""
+        if value.tzinfo is None:
+            # Assume naive datetime is UTC and add timezone info
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -774,6 +798,14 @@ class GoalDependencyResponse(BaseModel):
     depends_on_goal_id: UUID
     created_at: datetime
     depends_on_goal: GoalDependencyGoalInfo | None = None
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        """Ensure datetime is serialized with UTC timezone info"""
+        if value.tzinfo is None:
+            # Assume naive datetime is UTC and add timezone info
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -897,5 +929,13 @@ class WeeklyReportResponse(BaseModel):
     project_summaries: list[ProjectProgressSummary]
     markdown_report: str
     generated_at: datetime
+
+    @field_serializer("generated_at")
+    def serialize_generated_at(self, value: datetime) -> str:
+        """Ensure datetime is serialized with UTC timezone info"""
+        if value.tzinfo is None:
+            # Assume naive datetime is UTC and add timezone info
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
 
     model_config = ConfigDict(from_attributes=True)
