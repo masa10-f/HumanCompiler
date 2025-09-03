@@ -7,7 +7,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { ChevronDown, ChevronRight, Clock, MessageSquare, Edit, Save, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clock, MessageSquare, Edit, Save, X, Trash2 } from 'lucide-react';
 import { useLogsByTask } from '@/hooks/use-logs-query';
 import { useUpdateTask } from '@/hooks/use-tasks-query';
 import { useToast } from '@/hooks/use-toast';
@@ -15,6 +15,8 @@ import { sanitizeText } from '@/lib/security';
 import type { Task } from '@/types/task';
 import { log } from '@/lib/logger';
 import { formatJSTDateTime } from '@/lib/date-utils';
+import { LogEditDialog } from '@/components/logs/log-edit-dialog';
+import { LogDeleteDialog } from '@/components/logs/log-delete-dialog';
 
 interface TaskLogsMemoPanelProps {
   task: Task;
@@ -210,6 +212,33 @@ export function TaskLogsMemoPanel({ task }: TaskLogsMemoPanelProps) {
                             }}
                           />
                         )}
+                      </div>
+                      <div className="flex items-center gap-1 ml-2">
+                        <LogEditDialog
+                          log={logEntry}
+                          trigger={
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-gray-500 hover:text-blue-600"
+                            >
+                              <Edit className="h-4 w-4" />
+                              <span className="sr-only">ログを編集</span>
+                            </Button>
+                          }
+                        />
+                        <LogDeleteDialog
+                          log={logEntry}
+                        >
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-gray-500 hover:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">ログを削除</span>
+                          </Button>
+                        </LogDeleteDialog>
                       </div>
                     </div>
                   ))}
