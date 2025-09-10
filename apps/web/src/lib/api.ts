@@ -253,7 +253,8 @@ class ApiClient {
       console.log('✅ [ApiClient] Auth headers obtained');
 
       const baseUrl = this.getBaseURL();
-      const fullUrl = `${baseUrl}${endpoint}`;
+      // Ensure proper URL construction for relative URLs (when baseUrl is empty)
+      const fullUrl = baseUrl ? `${baseUrl}${endpoint}` : endpoint;
       console.log('🔍 [ApiClient] Making fetch request to:', fullUrl);
       // Safe header logging
       const headerObj = { ...headers, ...options.headers };

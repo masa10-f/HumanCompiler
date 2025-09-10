@@ -5,13 +5,18 @@
   "rewrites": [
     {
       "source": "/api/health",
-      "destination": "https://humancompiler-api-masa-preview.fly.dev/health"
+      "destination": "https://humancompiler-api-masa.fly.dev/health"
     },
     {
       "source": "/api/(.*)",
-      "destination": "https://humancompiler-api-masa-preview.fly.dev/api/$1"
+      "destination": "https://humancompiler-api-masa.fly.dev/api/$1"
     }
   ],
+  "functions": {
+    "app/api/**": {
+      "maxDuration": 30
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",
@@ -38,7 +43,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://vercel.live; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://humancompiler-api-masa-preview.fly.dev https://*.supabase.co https://vercel.live; font-src 'self' data:; frame-src https://vercel.live;"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://vercel.live; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://humancompiler-api-masa.fly.dev https://humancompiler-api-masa-preview.fly.dev https://*.supabase.co https://vercel.live; font-src 'self' data:; frame-src https://vercel.live;"
         }
       ]
     },
