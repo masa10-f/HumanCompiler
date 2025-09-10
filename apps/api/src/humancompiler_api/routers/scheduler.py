@@ -82,7 +82,6 @@ class TimeSlot:
     capacity_hours: float | None = None
     # New fields for slot-level assignment
     assigned_project_id: str | None = None
-    assigned_weekly_task_id: str | None = None
 
 
 @dataclass
@@ -982,35 +981,6 @@ def optimize_schedule(tasks, time_slots, date=None, session=None, user_id=None):
                 if task_project_id != slot.assigned_project_id:
                     model.Add(x[i, j] == 0)
 
-        if slot.assigned_weekly_task_id:
-            # This slot can only be assigned the specified weekly task
-            logger.debug(
-                f"Adding weekly task constraint for slot {j}: task {slot.assigned_weekly_task_id}"
-            )
-            for i, task in enumerate(tasks):
-                # If task ID doesn't match slot's assigned weekly task, forbid assignment
-                if (
-                    str(task.id) != slot.assigned_weekly_task_id
-                ):  # Ensure string comparison for UUID vs string
-                    model.Add(x[i, j] == 0)
-
-    # Additional constraint: tasks assigned to specific slots can only be scheduled in those slots
-    task_to_slot_assignments = {}
-    for j, slot in enumerate(time_slots):
-        if slot.assigned_weekly_task_id:
-            task_to_slot_assignments[slot.assigned_weekly_task_id] = j
-        if slot.assigned_project_id:
-            # For project assignments, we allow flexible slot assignment (handled above)
-            pass
-
-    # Forbid assigned weekly tasks from being scheduled in other slots
-    for task_id, assigned_slot_idx in task_to_slot_assignments.items():
-        for i, task in enumerate(tasks):
-            if str(task.id) == task_id:  # Ensure string comparison for UUID vs string
-                # This task can only be assigned to its designated slot
-                for j in range(len(time_slots)):
-                    if j != assigned_slot_idx:
-                        model.Add(x[i, j] == 0)
     for i, task in enumerate(tasks):
         for j, slot in enumerate(time_slots):
             # Bonus for matching task kind with slot kind
@@ -1153,9 +1123,6 @@ class TimeSlotInput(BaseModel):
     # New fields for slot-level assignment
     assigned_project_id: str | None = Field(
         None, description="Specified project ID for this slot"
-    )
-    assigned_weekly_task_id: str | None = Field(
-        None, description="Specified weekly recurring task ID for this slot"
     )
 
     @field_validator("start", "end")
@@ -1496,20 +1463,6 @@ async def create_daily_schedule(
                             detail=f"Access denied to project {slot_input.assigned_project_id}",
                         )
 
-                if slot_input.assigned_weekly_task_id:
-                    # Verify weekly task ownership
-                    weekly_task = session.exec(
-                        select(WeeklyRecurringTask).where(
-                            WeeklyRecurringTask.id
-                            == slot_input.assigned_weekly_task_id,
-                            WeeklyRecurringTask.user_id == user_id,
-                        )
-                    ).first()
-                    if not weekly_task:
-                        raise HTTPException(
-                            status_code=403,
-                            detail=f"Access denied to weekly task {slot_input.assigned_weekly_task_id}",
-                        )
         except (DatabaseError, SQLAlchemyError) as e:
             # In test environments or when database is not available, skip ownership validation
             logger.warning(f"Skipping ownership validation due to database error: {e}")
@@ -1533,7 +1486,6 @@ async def create_daily_schedule(
                 kind=slot_kind,
                 capacity_hours=slot_input.capacity_hours,
                 assigned_project_id=slot_input.assigned_project_id,
-                assigned_weekly_task_id=slot_input.assigned_weekly_task_id,
             )
             scheduler_slots.append(time_slot)
 
@@ -2192,117 +2144,41 @@ async def _get_tasks_from_weekly_schedule(
             return []
 
         # Get the actual task objects from database
-        # Handle both regular tasks and weekly recurring tasks
         from uuid import UUID
-        from humancompiler_api.models import WeeklyRecurringTask
 
         tasks = []
-        weekly_recurring_tasks = []
 
         # Process regular tasks from selected_tasks
         for task_id in task_ids:
             try:
                 task_uuid = UUID(task_id)
-                # First try to get as regular task
                 task = session.get(Task, task_uuid)
                 if task:
                     tasks.append(task)
-                    continue
-                # If not found as regular task, try as weekly recurring task
-                weekly_task = session.get(WeeklyRecurringTask, task_uuid)
-                if weekly_task:
-                    weekly_recurring_tasks.append(weekly_task)
-                    logger.info(
-                        f"Found weekly recurring task from selected_tasks: {weekly_task.title}"
-                    )
                 else:
-                    logger.warning(
-                        f"Task ID {task_id} not found in either tasks or weekly recurring tasks"
-                    )
+                    logger.warning(f"Task ID {task_id} not found")
             except ValueError:
                 logger.warning(f"Invalid UUID format for task ID: {task_id}")
                 continue
 
-        # Also process selected_recurring_task_ids if present
-        if "selected_recurring_task_ids" in schedule_data:
-            recurring_task_ids = schedule_data["selected_recurring_task_ids"]
-            logger.info(
-                f"Processing {len(recurring_task_ids)} selected recurring task IDs: {recurring_task_ids}"
-            )
-
-            for recurring_task_id in recurring_task_ids:
-                try:
-                    task_uuid = UUID(recurring_task_id)
-                    # Check if we already processed this task
-                    if any(wt.id == task_uuid for wt in weekly_recurring_tasks):
-                        logger.debug(
-                            f"Weekly recurring task {recurring_task_id} already processed"
-                        )
-                        continue
-
-                    weekly_task = session.get(WeeklyRecurringTask, task_uuid)
-                    if weekly_task:
-                        weekly_recurring_tasks.append(weekly_task)
-                        logger.info(
-                            f"Added weekly recurring task from selected_recurring_task_ids: {weekly_task.title}"
-                        )
-                    else:
-                        logger.warning(
-                            f"Weekly recurring task ID {recurring_task_id} not found"
-                        )
-                except ValueError:
-                    logger.warning(
-                        f"Invalid UUID format for recurring task ID: {recurring_task_id}"
-                    )
-                    continue
-
-        # Create pseudo-tasks for weekly recurring tasks
-        # Weekly recurring tasks need to be converted to Task-like objects for the scheduler
-        for weekly_task in weekly_recurring_tasks:
-            # Create a temporary task-like object with necessary fields
-            pseudo_task = type(
-                "PseudoTask",
-                (),
-                {
-                    "id": weekly_task.id,
-                    "title": f"[週課] {weekly_task.title}",
-                    "estimate_hours": weekly_task.estimate_hours,
-                    "status": "pending",  # Weekly recurring tasks are always pending for scheduling
-                    "due_date": None,  # Weekly recurring tasks don't have specific due dates
-                    "work_type": "light_work",  # Default work type for weekly recurring tasks
-                    "goal_id": None,  # Weekly recurring tasks don't belong to specific goals
-                    "is_weekly_recurring": True,  # Mark as weekly recurring
-                },
-            )()
-            tasks.append(pseudo_task)
-
         # Apply project allocation filtering if configured in schedule_json
-        # Note: Weekly recurring tasks will not be affected by project allocation filtering
-        regular_tasks = [
-            t for t in tasks if not getattr(t, "is_weekly_recurring", False)
-        ]
-        weekly_tasks = [t for t in tasks if getattr(t, "is_weekly_recurring", False)]
         if (
             weekly_schedule.schedule_json
             and "project_allocations" in weekly_schedule.schedule_json
             and weekly_schedule.schedule_json["project_allocations"]
         ):
-            filtered_regular_tasks = await _apply_project_allocation_filtering(
+            filtered_tasks = await _apply_project_allocation_filtering(
                 session,
-                regular_tasks,
+                tasks,
                 weekly_schedule.schedule_json["project_allocations"],
                 date_str,
             )
-            # Combine filtered regular tasks with weekly recurring tasks
-            all_tasks = list(filtered_regular_tasks) + weekly_tasks
+            return filtered_tasks
         else:
-            all_tasks = tasks
-
-        logger.info(
-            f"Retrieved {len(all_tasks)} tasks from database based on weekly schedule "
-            f"({len(regular_tasks)} regular tasks, {len(weekly_tasks)} weekly recurring tasks)"
-        )
-        return all_tasks
+            logger.info(
+                f"Retrieved {len(tasks)} tasks from database based on weekly schedule"
+            )
+            return tasks
 
     except Exception as e:
         logger.error(f"Error getting tasks from weekly schedule: {e}")

@@ -75,7 +75,6 @@ export interface TimeSlot {
   capacity_hours?: number;
   // New fields for slot-level assignment
   assigned_project_id?: string;
-  assigned_weekly_task_id?: string;
 }
 
 export interface TaskSource {

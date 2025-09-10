@@ -1,5 +1,7 @@
 import { supabase } from './supabase';
 import { ApiError, NetworkError, logError } from './errors';
+import { getApiEndpoint, appConfig, safeLog } from './config';
+import { fetchWithFallback } from './fetch-with-fallback';
 import type {
   Project,
   ProjectCreate,
@@ -58,177 +60,60 @@ import type { SortOptions } from '@/types/sort';
 const ensureHttps = (url: string): string => {
   if (!url) return url;
 
-  // Force HTTPS for production API endpoints (including all fly.dev and taskagent domains)
-  if (url.startsWith('http://') &&
-      (url.includes('taskagent-api-masa') ||
-       url.includes('.fly.dev') ||
-       url.includes('taskagent') ||
-       url.includes('vercel.app'))) {
+  // Force HTTPS for production API endpoints
+  if (appConfig.security.enforceHttps && url.startsWith('http://')) {
     const httpsUrl = url.replace('http://', 'https://');
-    console.log(`🔒 ensureHttps: Converting ${url} to ${httpsUrl}`);
+    safeLog('info', `🔒 ensureHttps: Converting ${url} to ${httpsUrl}`);
     return httpsUrl;
   }
 
-  console.log(`🔒 ensureHttps: No change needed for ${url}`);
   return url;
 };
 
-// Determine API URL based on environment
-const getApiBaseUrl = () => {
-  console.log(`🚀 getApiBaseUrl() called at ${new Date().toISOString()}`);
-
-  // Client-side hostname detection takes priority over env var for production
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    console.log(`🌐 Current hostname: ${hostname}`);
-
-    // HumanCompiler Production - use relative URL to leverage Vercel rewrites
-    if (hostname === 'human-compiler.vercel.app') {
-      console.log(`🏭 Using HumanCompiler Production API via Vercel Rewrite`);
-      return '';  // Use relative URL to leverage Vercel rewrites
-    }
-  }
-
-  // If explicitly set via environment variable, use it (but NEVER for HumanCompiler production)
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    // Additional safety check for HumanCompiler production
-    if (typeof window !== 'undefined' && window.location.hostname === 'human-compiler.vercel.app') {
-      console.log(`🚫 BLOCKED: Ignoring NEXT_PUBLIC_API_URL for HumanCompiler production`);
-    } else if (process.env.NODE_ENV !== 'production') {
-      const originalUrl = process.env.NEXT_PUBLIC_API_URL;
-      const secureUrl = ensureHttps(originalUrl);
-      console.log(`🔧 Using env var NEXT_PUBLIC_API_URL: ${originalUrl} -> ${secureUrl}`);
-      return secureUrl;
-    }
-  }
-
-  // Server-side: use environment-based detection
-  if (typeof window === 'undefined') {
-    // During SSR, use relative URL for production (Vercel rewrites handle routing)
-    return process.env.NODE_ENV === 'production'
-      ? ''  // Use relative URL for production SSR
-      : 'http://localhost:8000';
-  }
-
-  // Client-side: use hostname detection (already handled above, this is fallback)
-  const hostname = window.location.hostname;
-
-  // Debug logging
-  console.log(`🌐 Fallback hostname check: ${hostname}`);
-
-  // Add to window object for debugging and cache busting
-  (window as any).taskAgentDebug = {
-    hostname,
-    timestamp: new Date().toISOString(),
-    version: '2025-08-25-v2'  // Update this to force cache refresh
-  };
-
-  // Force cache clear for HumanCompiler production if needed
-  if (hostname === 'human-compiler.vercel.app') {
-    console.log(`🧹 Cache info for HumanCompiler production debugging`);
-  }
-
-  // TaskAgent Production Vercel deployment (exact match)
-  if (hostname === 'taskagent.vercel.app') {
-    console.log(`🏭 Using TaskAgent Production API`);
-    return 'https://taskagent-api-masa.fly.dev';
-  }
-
-  // HumanCompiler Vercel preview deployments
-  if (hostname.includes('humancompiler') || hostname.includes('human-compiler')) {
-    console.log(`🔬 Using HumanCompiler Preview API`);
-    return 'https://humancompiler-api-masa-preview.fly.dev';
-  }
-
-  // TaskAgent Vercel preview deployments (any other vercel.app domain)
-  if (hostname.endsWith('.vercel.app')) {
-    console.log(`🔬 Using TaskAgent Preview API`);
-    return 'https://taskagent-api-masa-preview.fly.dev';
-  }
-
-  // Local development
-  if (hostname === 'localhost' || hostname.startsWith('localhost:')) {
-    console.log(`💻 Using Local API`);
-    return 'http://localhost:8000';
-  }
-
-  // Default fallback - check for HumanCompiler domains first
-  console.log(`🔄 Using Default API (NODE_ENV: ${process.env.NODE_ENV})`);
-
-  // If hostname contains humancompiler, use humancompiler API
-  if (hostname.includes('humancompiler') || hostname.includes('human-compiler')) {
-    return process.env.NODE_ENV === 'production'
-      ? 'https://humancompiler-api-masa.fly.dev'
-      : 'http://localhost:8000';
-  }
-
-  // Otherwise use TaskAgent API
-  return process.env.NODE_ENV === 'production'
-    ? 'https://taskagent-api-masa.fly.dev'
-    : 'http://localhost:8000';
-};
+// Note: getApiBaseUrl removed - use getApiEndpoint() directly
 
 // API client configuration
 class ApiClient {
   private getBaseURL(): string {
-    const url = getApiBaseUrl();
-    console.log(`🔗 ApiClient.getBaseURL() called, returning: ${url}`);
-
-    // CRITICAL: Force relative URL for HumanCompiler production to prevent direct Fly.io access
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      if (hostname === 'human-compiler.vercel.app') {
-        console.log(`🔒 FORCED: Using relative URL for HumanCompiler production`);
-        return '';  // Always return empty string for production
-      }
-    }
-
+    const url = getApiEndpoint();
+    safeLog('debug', `🔗 ApiClient.getBaseURL() returning: ${url}`);
     return url;
   }
 
   private async getAuthHeaders(): Promise<HeadersInit> {
-    console.log('🔍 [ApiClient] Getting Supabase session...');
+    safeLog('debug', '🔍 [ApiClient] Getting Supabase session...');
 
     // Try to refresh the session first
     const { data: { session }, error } = await supabase.auth.getSession();
 
-    console.log('🔍 [ApiClient] Session data:', {
-      hasSession: !!session,
-      hasAccessToken: !!session?.access_token,
-      userId: session?.user?.id,
-      email: session?.user?.email,
-      expiresAt: session?.expires_at ? new Date(session.expires_at * 1000).toISOString() : 'N/A',
-      isExpired: session?.expires_at ? Date.now() / 1000 > session.expires_at : 'Unknown'
-    });
-
     if (error) {
-      console.error('❌ [ApiClient] Supabase auth error:', error);
+      safeLog('error', '❌ [ApiClient] Supabase auth error:', error);
       throw new Error('Authentication error');
     }
 
     if (!session?.access_token) {
-      console.error('❌ [ApiClient] No access token found');
+      safeLog('error', '❌ [ApiClient] No access token found');
       throw new Error('User not authenticated');
     }
 
     // Check if token is expired and refresh if needed
     if (session.expires_at && Date.now() / 1000 > session.expires_at - 60) {
-      console.log('🔄 [ApiClient] Token expiring soon, refreshing...');
+      safeLog('debug', '🔄 [ApiClient] Token expiring soon, refreshing...');
       const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
 
       if (refreshError || !refreshedSession.session) {
-        console.error('❌ [ApiClient] Failed to refresh token:', refreshError);
+        safeLog('error', '❌ [ApiClient] Failed to refresh token:', refreshError);
         throw new Error('Failed to refresh authentication');
       }
 
-      console.log('✅ [ApiClient] Token refreshed successfully');
+      safeLog('info', '✅ [ApiClient] Token refreshed successfully');
       return {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${refreshedSession.session.access_token}`,
       };
     }
 
-    console.log('✅ [ApiClient] Auth headers prepared');
+    safeLog('debug', '✅ [ApiClient] Auth headers prepared');
     return {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${session.access_token}`,
@@ -245,36 +130,26 @@ class ApiClient {
       timestamp: new Date()
     };
 
-    console.log('🔍 [ApiClient] Starting request:', context);
+    safeLog('debug', '🔍 [ApiClient] Starting request:', context);
 
     try {
-      console.log('🔍 [ApiClient] Getting auth headers...');
+      safeLog('debug', '🔍 [ApiClient] Getting auth headers...');
       const headers = await this.getAuthHeaders();
-      console.log('✅ [ApiClient] Auth headers obtained');
+      safeLog('debug', '✅ [ApiClient] Auth headers obtained');
 
-      const baseUrl = this.getBaseURL();
-      const fullUrl = `${baseUrl}${endpoint}`;
-      console.log('🔍 [ApiClient] Making fetch request to:', fullUrl);
-      // Safe header logging
-      const headerObj = { ...headers, ...options.headers };
-      const authHeader = typeof headerObj === 'object' && headerObj && 'Authorization' in headerObj
-        ? String(headerObj.Authorization) : undefined;
-
-      console.log('🔍 [ApiClient] Request headers:', {
-        ...headerObj,
-        Authorization: authHeader ? `${authHeader.substring(0, 20)}...` : 'None'
-      });
-
-      const response = await fetch(fullUrl, {
+      // Use enhanced fetch with fallback
+      const response = await fetchWithFallback(endpoint, {
         ...options,
         headers: {
           ...headers,
           ...options.headers,
         },
-        redirect: 'follow', // Allow automatic redirects but preserve headers
+        timeout: appConfig.api.timeout,
+        maxRetries: appConfig.api.retryAttempts,
+        retryDelay: appConfig.api.retryDelay,
       });
 
-      console.log('🔍 [ApiClient] Response received:', {
+      safeLog('debug', '🔍 [ApiClient] Response received:', {
         status: response.status,
         statusText: response.statusText,
         ok: response.ok
@@ -307,28 +182,18 @@ class ApiClient {
 
       // Handle 204 No Content responses
       if (response.status === 204) {
-        console.log('✅ [ApiClient] 204 No Content response');
+        safeLog('debug', '✅ [ApiClient] 204 No Content response');
         return {} as T;
       }
 
-      console.log('🔍 [ApiClient] Parsing JSON response...');
+      safeLog('debug', '🔍 [ApiClient] Parsing JSON response...');
       const responseData = await response.json();
-      console.log('✅ [ApiClient] JSON response parsed:', responseData);
+      safeLog('debug', '✅ [ApiClient] JSON response parsed successfully');
       return responseData;
     } catch (error) {
-      // If it's already an ApiError, re-throw it
-      if (error instanceof ApiError) {
+      // If it's already an ApiError or NetworkError, re-throw it
+      if (error instanceof ApiError || error instanceof NetworkError) {
         throw error;
-      }
-
-      // Handle network errors (fetch failures)
-      if (error instanceof TypeError) {
-        const networkError = new NetworkError(
-          `Network request failed: ${error.message}`,
-          context
-        );
-        logError(networkError, context);
-        throw networkError;
       }
 
       // Fallback for unknown errors
@@ -879,27 +744,32 @@ export const reportsApi = {
 
 // Export helper function for getting secure API URL
 export const getSecureApiUrl = (): string => {
-  const baseUrl = getApiBaseUrl();
+  const baseUrl = getApiEndpoint();
   const secureUrl = ensureHttps(baseUrl);
-  console.log(`🔗 getSecureApiUrl: ${baseUrl} -> ${secureUrl}`);
+  safeLog('debug', `🔗 getSecureApiUrl: ${baseUrl} -> ${secureUrl}`);
   return secureUrl;
 };
 
-// Secure fetch wrapper that enforces HTTPS
-export const secureFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
-  // Force HTTPS on the URL at fetch time
-  const secureUrl = ensureHttps(url);
-  console.log(`🛡️ secureFetch: ${url} -> ${secureUrl}`);
+// Export helper function for getting properly constructed API URL for fetch calls
+export const getApiUrl = (): string => {
+  const baseUrl = getApiEndpoint();
+  safeLog('debug', `🔒 getApiUrl: returning ${baseUrl}`);
+  return baseUrl;
+};
 
-  // Add additional security headers
-  const secureOptions: RequestInit = {
+// Secure fetch wrapper that enforces HTTPS and includes fallback functionality
+export const secureFetch = async (endpoint: string, options: RequestInit = {}): Promise<Response> => {
+  safeLog('debug', `🛡️ secureFetch called for endpoint: ${endpoint}`);
+
+  // Use the enhanced fetch with fallback
+  return fetchWithFallback(endpoint, {
     ...options,
-    // Force HTTPS in request
     headers: {
       ...options.headers,
       'Upgrade-Insecure-Requests': '1',
     },
-  };
-
-  return fetch(secureUrl, secureOptions);
+    timeout: appConfig.api.timeout,
+    maxRetries: appConfig.api.retryAttempts,
+    retryDelay: appConfig.api.retryDelay,
+  });
 };
