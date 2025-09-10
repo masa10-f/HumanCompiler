@@ -38,7 +38,7 @@ import { WeeklyRecurringTaskSelector } from '@/components/weekly-recurring-task-
 import { WeeklyRecurringTaskDialog } from '@/components/weekly-recurring-task-dialog';
 import { ProjectAllocationSettings } from '@/components/scheduling/project-allocation-settings';
 import { toast } from '@/hooks/use-toast';
-import { aiPlanningApi, weeklyScheduleApi, weeklyRecurringTasksApi, reportsApi, getApiUrl } from '@/lib/api';
+import { aiPlanningApi, weeklyScheduleApi, weeklyRecurringTasksApi, reportsApi, secureFetch } from '@/lib/api';
 import { log } from '@/lib/logger';
 import { getJSTDateString, getJSTISOString } from '@/lib/date-utils';
 import type { WeeklyPlanResponse, SavedWeeklySchedule } from '@/types/ai-planning';
@@ -81,8 +81,7 @@ export default function AIPlanningPage() {
     }
 
     try {
-      const apiUrl = getApiUrl();
-      const response = await fetch(apiUrl ? `${apiUrl}/api/user/settings` : '/api/user/settings', {
+      const response = await secureFetch('/api/user/settings', {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
