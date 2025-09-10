@@ -38,7 +38,7 @@ import { WeeklyRecurringTaskSelector } from '@/components/weekly-recurring-task-
 import { WeeklyRecurringTaskDialog } from '@/components/weekly-recurring-task-dialog';
 import { ProjectAllocationSettings } from '@/components/scheduling/project-allocation-settings';
 import { toast } from '@/hooks/use-toast';
-import { aiPlanningApi, weeklyScheduleApi, weeklyRecurringTasksApi, reportsApi } from '@/lib/api';
+import { aiPlanningApi, weeklyScheduleApi, weeklyRecurringTasksApi, reportsApi, getApiUrl } from '@/lib/api';
 import { log } from '@/lib/logger';
 import { getJSTDateString, getJSTISOString } from '@/lib/date-utils';
 import type { WeeklyPlanResponse, SavedWeeklySchedule } from '@/types/ai-planning';
@@ -69,18 +69,6 @@ export default function AIPlanningPage() {
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   const checkUserSettings = useCallback(async () => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-    if (!apiUrl) {
-      log.error('Environment variable NEXT_PUBLIC_API_URL is not defined', null, { component: 'AIPlanning' });
-      toast({
-        title: 'エラー',
-        description: 'ユーザー設定を取得できません。サポートまでお問い合わせください。',
-        variant: 'destructive',
-      });
-      setCheckingApiKey(false);
-      return;
-    }
-
     if (!session?.access_token) {
       log.error('No authenticated session found', null, { component: 'AIPlanning' });
       toast({
@@ -93,7 +81,8 @@ export default function AIPlanningPage() {
     }
 
     try {
-      const response = await fetch(`${apiUrl}/api/user/settings`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(apiUrl ? `${apiUrl}/api/user/settings` : '/api/user/settings', {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },

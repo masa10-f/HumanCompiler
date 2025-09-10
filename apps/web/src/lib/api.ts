@@ -886,6 +886,23 @@ export const getSecureApiUrl = (): string => {
   return secureUrl;
 };
 
+// Export helper function for getting properly constructed API URL for fetch calls
+export const getApiUrl = (): string => {
+  // Use the same logic as ApiClient.getBaseURL()
+  const baseUrl = getApiBaseUrl();
+
+  // Force relative URL for HumanCompiler production to prevent direct Fly.io access
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    if (hostname === 'human-compiler.vercel.app') {
+      console.log(`🔒 getApiUrl: Using relative URL for HumanCompiler production`);
+      return '';  // Return empty string for production to use Vercel rewrites
+    }
+  }
+
+  return baseUrl;
+};
+
 // Secure fetch wrapper that enforces HTTPS
 export const secureFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
   // Force HTTPS on the URL at fetch time

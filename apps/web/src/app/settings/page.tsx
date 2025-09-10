@@ -14,6 +14,7 @@ import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { supabase } from "@/lib/supabase"
 import { log } from "@/lib/logger"
 import { getJSTDateString } from "@/lib/date-utils"
+import { getApiUrl } from "@/lib/api"
 
 
 interface ModelInfo {
@@ -97,7 +98,8 @@ export default function SettingsPage() {
 
   const fetchAvailableModels = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/models`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(apiUrl ? `${apiUrl}/api/user/models` : '/api/user/models', {
         signal: abortControllerRef.current?.signal
       })
 
@@ -133,7 +135,8 @@ export default function SettingsPage() {
         return
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/settings`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(apiUrl ? `${apiUrl}/api/user/settings` : '/api/user/settings', {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
@@ -181,7 +184,8 @@ export default function SettingsPage() {
         return
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/settings`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(apiUrl ? `${apiUrl}/api/user/settings` : '/api/user/settings', {
         method: hasApiKey ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
@@ -227,7 +231,8 @@ export default function SettingsPage() {
         return
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/settings`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(apiUrl ? `${apiUrl}/api/user/settings` : '/api/user/settings', {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -272,7 +277,8 @@ export default function SettingsPage() {
         return
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/user/settings/openai-key`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(apiUrl ? `${apiUrl}/api/user/settings/openai-key` : '/api/user/settings/openai-key', {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${session.access_token}`,
@@ -302,7 +308,8 @@ export default function SettingsPage() {
         return
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/export/info`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(apiUrl ? `${apiUrl}/api/export/info` : '/api/export/info', {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
@@ -335,7 +342,8 @@ export default function SettingsPage() {
         return
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/export/user-data`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(apiUrl ? `${apiUrl}/api/export/user-data` : '/api/export/user-data', {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
@@ -385,7 +393,8 @@ export default function SettingsPage() {
       const formData = new FormData()
       formData.append('file', importFile)
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/import/user-data`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(apiUrl ? `${apiUrl}/api/import/user-data` : '/api/import/user-data', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${session.access_token}`,
