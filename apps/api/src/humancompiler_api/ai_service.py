@@ -18,33 +18,10 @@ from humancompiler_api.config import settings
 from humancompiler_api.crypto import get_crypto_service
 from humancompiler_api.models import Goal, Project, Task, UserSettings
 from humancompiler_api.services import goal_service, project_service, task_service
+from humancompiler_api.ai.models import WeeklyPlanContext
 from core.cache import cached
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class WeeklyPlanContext:
-    """Context data for weekly planning."""
-
-    user_id: str
-    week_start_date: date
-    projects: list[Project]
-    goals: list[Goal]
-    tasks: list[Task]
-    capacity_hours: float
-    preferences: dict[str, Any]
-
-
-class WeeklyPlanRequest(BaseModel):
-    """Request model for weekly plan generation."""
-
-    week_start_date: str = Field(..., description="Week start date (YYYY-MM-DD)")
-    capacity_hours: float = Field(40.0, description="Available hours for the week")
-    project_filter: list[str] | None = Field(None, description="Filter by project IDs")
-    preferences: dict[str, Any] = Field(
-        default_factory=dict, description="User preferences"
-    )
 
 
 class TaskPlan(BaseModel):
@@ -493,82 +470,4 @@ Use the create_week_plan function to structure your response."""
             )
 
 
-class WeeklyPlanService:
-    """Service for weekly plan generation and management."""
-
-    def __init__(self, openai_service: OpenAIService | None = None):
-        """Initialize service."""
-        self.openai_service = openai_service or OpenAIService()
-
-    async def collect_context(
-        self,
-        session,
-        user_id: str,
-        week_start_date: date,
-        project_filter: list[str] | None = None,
-        capacity_hours: float = 40.0,
-        preferences: dict[str, Any] | None = None,
-    ) -> WeeklyPlanContext:
-        """Collect context data for weekly planning."""
-
-        # Get user's projects
-        projects = project_service.get_projects(session, user_id)
-
-        # Filter projects if specified
-        if project_filter:
-            projects = [p for p in projects if p.id in project_filter]
-
-        # Get goals for the projects
-        goals = []
-        for project in projects:
-            project_goals = goal_service.get_goals_by_project(
-                session, project.id, user_id
-            )
-            goals.extend(project_goals)
-
-        # Get pending tasks for the goals
-        tasks = []
-        for goal in goals:
-            goal_tasks = task_service.get_tasks_by_goal(session, goal.id, user_id)
-            # Only include pending and in-progress tasks
-            pending_tasks = [
-                t for t in goal_tasks if t.status in ["pending", "in_progress"]
-            ]
-            tasks.extend(pending_tasks)
-
-        return WeeklyPlanContext(
-            user_id=user_id,
-            week_start_date=week_start_date,
-            projects=projects,
-            goals=goals,
-            tasks=tasks,
-            capacity_hours=capacity_hours,
-            preferences=preferences or {},
-        )
-
-    async def generate_weekly_plan(
-        self, session, user_id: str, request: WeeklyPlanRequest
-    ) -> WeeklyPlanResponse:
-        """Generate weekly plan for user."""
-
-        # Parse week start date
-        week_start = datetime.strptime(request.week_start_date, "%Y-%m-%d").date()
-
-        # Collect context
-        context = await self.collect_context(
-            session=session,
-            user_id=user_id,
-            week_start_date=week_start,
-            project_filter=request.project_filter,
-            capacity_hours=request.capacity_hours,
-            preferences=request.preferences,
-        )
-
-        # Create user-specific OpenAI service if not provided
-        if not hasattr(self, "openai_service") or not self.openai_service:
-            self.openai_service = await OpenAIService.create_for_user(
-                UUID(user_id), session
-            )
-
-        # Generate plan using OpenAI
-        return await self.openai_service.generate_weekly_plan(context, session)
+# WeeklyPlanService moved to ai/planning_service.py

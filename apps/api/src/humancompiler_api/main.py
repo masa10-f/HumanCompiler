@@ -51,11 +51,25 @@ async def lifespan(app: FastAPI):
     if settings.environment in ["production", "staging"]:
         logger.info("🔧 Running production database migration...")
         try:
-            from humancompiler_api.production_migration import (
-                migrate_add_priority_column,
-            )
+            # Use safe production migration from root directory
+            import subprocess
+            import sys
+            from pathlib import Path
 
-            migration_success = migrate_add_priority_column()
+            safe_migration_path = (
+                Path(__file__).parent.parent.parent / "safe_production_migration.py"
+            )
+            result = subprocess.run(
+                [sys.executable, str(safe_migration_path)],
+                capture_output=True,
+                text=True,
+                cwd=safe_migration_path.parent,
+            )
+            migration_success = result.returncode == 0
+
+            if not migration_success:
+                logger.error(f"Migration stderr: {result.stderr}")
+                logger.error(f"Migration stdout: {result.stdout}")
             if migration_success:
                 logger.info("✅ Database migration completed successfully")
             else:

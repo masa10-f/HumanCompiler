@@ -14,7 +14,7 @@ from humancompiler_api.routers.ai_planning import (
     analyze_workload,
     suggest_task_priorities,
 )
-from humancompiler_api.ai_service import WeeklyPlanRequest, WeeklyPlanResponse
+from humancompiler_api.ai import WeeklyPlanRequest, WeeklyPlanResponse
 
 
 @pytest.fixture
