@@ -1,5 +1,7 @@
 # HumanCompiler Commercial License
 
+> ⚠️ **NOTE**: This commercial licensing program is currently **under development**. The pricing plans, support details, and specific terms described in this document are **preliminary and subject to change**. Please contact us for the most up-to-date information.
+
 ## Overview
 
 This document provides detailed information about the commercial licensing option for HumanCompiler.
@@ -34,7 +36,9 @@ You can use the free AGPL-3.0 license if:
 
 ## Commercial License Benefits
 
-Our commercial license includes:
+> ⚠️ **NOTE**: The specific benefits and support levels are currently **being planned** and may be adjusted based on customer feedback and operational capacity.
+
+Our commercial license is planned to include:
 
 ### 1. **Freedom from AGPL-3.0 Restrictions**
 - No requirement to disclose your source code
@@ -69,38 +73,42 @@ Our commercial license includes:
 
 ## Pricing
 
-We offer flexible pricing based on your needs:
+> ⚠️ **NOTE**: Pricing plans are currently **under consideration** and have not been finalized. The tiers and features listed below are preliminary proposals.
 
-### **Startup Plan**
+We are planning to offer flexible pricing based on your needs:
+
+### **Startup Plan** (Proposed)
 - For companies with less than 10 employees
 - Up to 1,000 users
 - Email support
-- **Contact us for pricing**
+- **Pricing to be determined**
 
-### **Business Plan**
+### **Business Plan** (Proposed)
 - For companies with 10-100 employees
 - Up to 10,000 users
 - Priority support (SLA)
 - Custom feature requests
-- **Contact us for pricing**
+- **Pricing to be determined**
 
-### **Enterprise Plan**
+### **Enterprise Plan** (Proposed)
 - For large organizations (100+ employees)
 - Unlimited users
 - Dedicated support engineer
 - Custom development
 - On-premise deployment support
 - Legal indemnification
-- **Contact us for pricing**
+- **Pricing to be determined**
 
 ---
 
 ## How to Purchase
 
-To obtain a commercial license, please contact us:
+> ⚠️ **NOTE**: The commercial licensing program is currently **in development**. We are not yet accepting commercial license applications, but we welcome inquiries and feedback to help shape our offering.
 
-### **Email**: [masa1063fuk@gmail.com]
-### **Website**: [https://github.com/masa10-f/masa10-f.github.io]
+To express interest or inquire about commercial licensing, please contact us:
+
+### **Email**: masa1063fuk@gmail.com
+### **Website**: [to-be-added]
 
 Please include the following information in your inquiry:
 
@@ -111,7 +119,7 @@ Please include the following information in your inquiry:
 5. **Required features**
 6. **Support level needed**
 
-We will respond within 2 business days with a customized quote.
+We will respond as soon as possible to discuss your needs and potential licensing options.
 
 ---
 
@@ -119,7 +127,7 @@ We will respond within 2 business days with a customized quote.
 
 ### Q1: Can I evaluate HumanCompiler before purchasing a commercial license?
 
-**A:** Yes! You can use the AGPL-3.0 version for evaluation purposes. We also offer a 30-day trial period for commercial licenses.
+**A:** Yes! You can use the AGPL-3.0 version for evaluation purposes. Commercial license trial programs are still being planned.
 
 ### Q2: What happens if I start with AGPL-3.0 and later want a commercial license?
 
@@ -131,15 +139,15 @@ We will respond within 2 business days with a customized quote.
 
 ### Q4: Is the commercial license perpetual or subscription-based?
 
-**A:** We offer both options. Perpetual licenses include 1 year of support and updates, with optional renewal. Subscription licenses include continuous support and updates.
+**A:** We are still evaluating both perpetual and subscription-based models. Please contact us to discuss your preferred licensing model.
 
-### Q5: Can I get a refund if the commercial license doesn't meet my needs?
+### Q5: When will commercial licenses be available?
 
-**A:** Yes, we offer a 30-day money-back guarantee for commercial licenses.
+**A:** The commercial licensing program is currently under development. We welcome early inquiries to help us prioritize features and pricing that meet customer needs.
 
-### Q6: Do you offer source code escrow?
+### Q6: Can I provide feedback on the commercial licensing plans?
 
-**A:** Yes, for Enterprise Plan customers, we provide source code escrow services to protect your investment.
+**A:** Absolutely! We welcome feedback from potential commercial users. Please contact us with your requirements and suggestions.
 
 ---
 
@@ -158,11 +166,13 @@ Violations of the commercial license terms may result in termination and legal a
 
 ## Contact Information
 
-For commercial licensing inquiries:
+For commercial licensing inquiries and feedback:
 
-- **Email**: [masa1063fuk@gmail.com]
-- **Website**: [https://github.com/masa10-f/masa10-f.github.io]
+- **Email**: masa1063fuk@gmail.com
+- **Website**: [to-be-added]
 - **GitHub**: https://github.com/masa10-f/HumanCompiler
+
+> We encourage early inquiries from potential commercial users. Your feedback will help shape our commercial licensing program.
 
 ---
 
