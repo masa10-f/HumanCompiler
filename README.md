@@ -82,7 +82,7 @@ HumanCompiler/
 
 1. **Clone the repository:**
 ```bash
-git clone https://github.com/[your-username]/HumanCompiler.git
+git clone https://github.com/masa10-f/HumanCompiler.git
 cd HumanCompiler
 ```
 
@@ -234,6 +234,8 @@ For personal use, academic research, and open-source projects.
 **Requirements:**
 - If you provide this software as a network service (SaaS), you **must** disclose your source code to users under AGPL-3.0
 
+📄 Full license text: [LICENSE-AGPL-3.0](LICENSE-AGPL-3.0)
+
 ### Option 2: Commercial License
 
 For commercial SaaS deployment **without** source code disclosure.
@@ -278,7 +280,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines (coming soon).
 
 - **Documentation**: [GitHub Wiki](https://github.com/masa10-f/HumanCompiler/wiki)
 - **Issues**: [GitHub Issues](https://github.com/masa10-f/HumanCompiler/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/[your-username]/HumanCompiler/discussions)
+- **Discussions**: [GitHub Discussions](https://github.com/masa10-f/HumanCompiler/discussions)
 - **Commercial License**: [masa1063fuk@gmail.com]
 
 ---
@@ -306,6 +308,6 @@ Built with amazing open-source technologies:
 
 ---
 
-**Made with ❤️ by Masato Ohba**
+**Made with ❤️ by Masato Fukushima**
 
 *Copyright (c) 2024-2025 Masato Fukushima - Licensed under AGPL-3.0 OR Commercial License*

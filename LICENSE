@@ -21,6 +21,9 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+The complete AGPL-3.0 license text is available in the LICENSE-AGPL-3.0 file
+in this repository, or at: https://www.gnu.org/licenses/agpl-3.0.txt
+
 AGPL-3.0 applies to:
 - Personal use
 - Academic research
@@ -30,8 +33,6 @@ AGPL-3.0 applies to:
 IMPORTANT: If you provide this software as a service over a network (SaaS),
 you MUST make the complete source code of your modified version available
 to all users of that service under the AGPL-3.0 license.
-
-Full AGPL-3.0 license text: https://www.gnu.org/licenses/agpl-3.0.txt
 
 ================================================================================
 OPTION 2: COMMERCIAL LICENSE
@@ -49,7 +50,6 @@ Commercial licenses include:
 
 For commercial licensing inquiries, please contact:
 - Email: masa1063fuk@gmail.com
-- Website: [to-be-added]
 
 ================================================================================
 THIRD-PARTY LICENSES
