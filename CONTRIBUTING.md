@@ -149,8 +149,9 @@ npm run dev
 ```
 
 5. **Verify setup:**
-- Frontend: http://localhost:3000
-- Backend: http://localhost:8000/docs
+- Frontend (local): http://localhost:3000
+- Backend API docs (local): http://localhost:8000/docs
+- Backend API docs (production): https://humancompiler-api-masa.fly.dev/docs
 
 ---
 
@@ -464,7 +465,8 @@ For questions about licensing, contact: masa1063fuk@gmail.com
 ### Documentation
 
 - **README**: General project overview
-- **API Docs**: http://localhost:8000/docs
+- **API Docs (Local)**: http://localhost:8000/docs
+- **API Docs (Production)**: https://humancompiler-api-masa.fly.dev/docs
 - **Wiki**: https://github.com/masa10-f/HumanCompiler/wiki
 
 ### Communication Channels
