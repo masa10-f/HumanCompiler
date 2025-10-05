@@ -1,21 +1,76 @@
-MIT License
+HumanCompiler - Dual License
 
-Copyright (c) 2021 Supabase, Inc. and contributors
+Copyright (c) 2024-2025 Masato Ohba
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This project is dual-licensed under the following terms:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+================================================================================
+OPTION 1: GNU AFFERO GENERAL PUBLIC LICENSE Version 3 (AGPL-3.0)
+================================================================================
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+AGPL-3.0 applies to:
+- Personal use
+- Academic research
+- Open-source projects
+- Internal business use (with source code disclosure for network use)
+
+IMPORTANT: If you provide this software as a service over a network (SaaS),
+you MUST make the complete source code of your modified version available
+to all users of that service under the AGPL-3.0 license.
+
+Full AGPL-3.0 license text: https://www.gnu.org/licenses/agpl-3.0.txt
+
+================================================================================
+OPTION 2: COMMERCIAL LICENSE
+================================================================================
+
+If you want to use HumanCompiler in a commercial SaaS product WITHOUT
+disclosing your source code, you must obtain a commercial license.
+
+Commercial licenses include:
+- Right to use without source code disclosure
+- Priority technical support
+- Custom feature development
+- Service level agreements (SLA)
+- Legal indemnification
+
+For commercial licensing inquiries, please contact:
+- Email: [masa1063fuk@gmail.com]
+- Website: [https://github.com/masa10-f/masa10-f.github.io]
+
+================================================================================
+THIRD-PARTY LICENSES
+================================================================================
+
+This project includes or depends on third-party open-source software:
+- Next.js (MIT License)
+- FastAPI (MIT License)
+- Supabase (Apache 2.0 License)
+- OpenAI SDK (Apache 2.0 License)
+- OR-Tools (Apache 2.0 License)
+- shadcn/ui (MIT License)
+
+See package.json and requirements.txt for complete dependency information.
+
+================================================================================
+LICENSE CHOICE
+================================================================================
+
+You may choose either license option based on your use case:
+1. AGPL-3.0 for open-source and compliant use
+2. Commercial License for proprietary SaaS deployment
+
+By using this software, you agree to comply with the terms of your chosen license.
