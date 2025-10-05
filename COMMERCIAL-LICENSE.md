@@ -108,7 +108,7 @@ We are planning to offer flexible pricing based on your needs:
 To express interest or inquire about commercial licensing, please contact us:
 
 ### **Email**: masa1063fuk@gmail.com
-### **Website**: [to-be-added]
+### **Website**: TBD
 
 Please include the following information in your inquiry:
 
@@ -169,7 +169,7 @@ Violations of the commercial license terms may result in termination and legal a
 For commercial licensing inquiries and feedback:
 
 - **Email**: masa1063fuk@gmail.com
-- **Website**: [to-be-added]
+- **Website**: TBD
 - **GitHub**: https://github.com/masa10-f/HumanCompiler
 
 > We encourage early inquiries from potential commercial users. Your feedback will help shape our commercial licensing program.

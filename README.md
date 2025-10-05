@@ -261,7 +261,7 @@ We welcome contributions! Please note:
 3. Add tests for new features
 4. Update documentation as needed
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines (coming soon).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ---
 
