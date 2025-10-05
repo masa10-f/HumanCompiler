@@ -272,6 +272,32 @@ mypy src              # Type checking
 - Tests: `test_*.py` (e.g., `test_api.py`)
 - Models: `snake_case.py` (e.g., `task_model.py`)
 
+### License Headers (SPDX Identifiers)
+
+**All new source files must include SPDX license identifiers:**
+
+**TypeScript/JavaScript files:**
+```typescript
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2024-2025 Masato Fukushima <masa1063fuk@gmail.com>
+//
+// This file is part of HumanCompiler.
+// For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
+```
+
+**Python files:**
+```python
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2024-2025 Masato Fukushima <masa1063fuk@gmail.com>
+#
+# This file is part of HumanCompiler.
+# For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
+```
+
+Template files are available:
+- `.spdx-header-typescript.txt`
+- `.spdx-header-python.txt`
+
 ---
 
 ## 📝 Commit Guidelines

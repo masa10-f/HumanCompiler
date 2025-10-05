@@ -273,6 +273,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 - Python: Use uv virtual environment (`.venv/bin`)
 - TypeScript: Strict mode enabled
 - Create issues for code quality concerns
+- **New files**: Add SPDX license identifier headers (see `.spdx-header-*.txt` templates)
 
 ---
 
