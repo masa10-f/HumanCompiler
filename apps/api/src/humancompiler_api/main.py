@@ -91,7 +91,7 @@ async def lifespan(app: FastAPI):
 
             # Simple backup system (ローカル定期バックアップはcronで実行)
             logger.info(
-                "💡 バックアップ設定は local_backup_guide.md を参照してください"
+                "💡 バックアップ設定は docs/dev/local-backup-guide.md を参照してください"
             )
         else:
             logger.warning("⚠️ Database connection failed, continuing in degraded mode")

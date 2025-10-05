@@ -20,7 +20,6 @@ from humancompiler_api.models import (
 router = APIRouter(prefix="/api/user", tags=["user-settings"])
 
 
-# Available OpenAI models based on openai_api.md (2025-08-12)
 AVAILABLE_MODELS = {
     "gpt-5": {
         "name": "GPT-5",
