@@ -142,7 +142,7 @@ python src/humancompiler_api/main.py
 Terminal 2 (Frontend):
 ```bash
 cd apps/web
-npm run dev
+pnpm run dev
 # → http://localhost:3000
 ```
 
@@ -176,8 +176,8 @@ Interactive API documentation available at:
 ```bash
 # Frontend
 cd apps/web
-npm run type-check    # TypeScript validation
-npm run lint          # ESLint
+pnpm run type-check    # TypeScript validation
+pnpm run lint          # ESLint
 
 # Backend
 cd apps/api

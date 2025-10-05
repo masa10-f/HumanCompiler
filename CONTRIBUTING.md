@@ -148,7 +148,7 @@ python src/humancompiler_api/main.py
 
 # Terminal 2 (Frontend)
 cd apps/web
-npm run dev
+pnpm run dev
 ```
 
 5. **Verify setup:**
@@ -203,9 +203,9 @@ async function getTasks(id) {  // No type annotations
 **Run checks:**
 ```bash
 cd apps/web
-npm run type-check
-npm run lint
-npm run format
+pnpm run type-check
+pnpm run lint
+pnpm run format
 ```
 
 #### **Python (Backend)**
@@ -380,8 +380,8 @@ git checkout -b feat/add-gantt-chart
 ```bash
 # Frontend
 cd apps/web
-npm run type-check
-npm run lint
+pnpm run type-check
+pnpm run lint
 
 # Backend
 cd apps/api

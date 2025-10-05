@@ -4,6 +4,7 @@
   "private": true,
   "license": "AGPL-3.0-or-later OR SEE LICENSE IN ../../COMMERCIAL-LICENSE.md",
   "author": "Masato Fukushima <masa1063fuk@gmail.com>",
+  "packageManager": "pnpm@9.0.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
