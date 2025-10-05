@@ -219,7 +219,7 @@ cd apps/api
 - ✅ Encrypted API key storage
 - ✅ Input validation (Pydantic/Zod)
 
-See [SECURITY.md](SECURITY.md) and [SUPABASE_SETTINGS.md](SUPABASE_SETTINGS.md) for details.
+See [SECURITY.md](SECURITY.md) and [docs/dev/database-setup.md](docs/dev/database-setup.md) for details.
 
 ---
 
