@@ -101,22 +101,34 @@ uv pip install -r requirements.txt
 
 4. **Configure environment variables:**
 
+⚠️ **IMPORTANT**: Copy `.env.example` files and replace placeholder values with your actual credentials. See the example files for detailed instructions.
+
 Create `apps/api/.env`:
 ```bash
-SUPABASE_URL="https://your-project.supabase.co"
-SUPABASE_ANON_KEY="your-anon-key"
-SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
-DATABASE_URL="postgresql://postgres:password@db.supabase.co:5432/postgres"
-OPENAI_API_KEY="sk-proj-your-key"
+# Copy from example and update with your credentials
+cp apps/api/.env.example apps/api/.env
+
+# Then edit apps/api/.env with your actual values:
+SUPABASE_URL="https://YOUR_PROJECT_ID.supabase.co"
+SUPABASE_ANON_KEY="your-actual-anon-key-from-supabase-dashboard"
+SUPABASE_SERVICE_ROLE_KEY="your-actual-service-role-key-from-supabase-dashboard"
+DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@db.YOUR_PROJECT.supabase.co:5432/postgres"
+OPENAI_API_KEY="sk-proj-your-actual-openai-api-key"
 ENVIRONMENT="development"
 ```
 
 Create `apps/web/.env.local`:
 ```bash
-NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
-NEXT_PUBLIC_SUPABASE_ANON_KEY="your-anon-key"
+# Copy from example and update with your credentials
+cp apps/web/.env.example apps/web/.env.local
+
+# Then edit apps/web/.env.local with your actual values:
+NEXT_PUBLIC_SUPABASE_URL="https://YOUR_PROJECT_ID.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="your-actual-anon-key-from-supabase-dashboard"
 NEXT_PUBLIC_API_DEVELOPMENT_URL="http://localhost:8000"
 ```
+
+📚 **Get your Supabase credentials**: https://app.supabase.com/project/YOUR_PROJECT/settings/api
 
 5. **Run development servers:**
 

@@ -134,7 +134,10 @@ uv pip install -r requirements.txt
 cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.example apps/web/.env.local
 
-# Configure your Supabase and OpenAI credentials
+# ⚠️ IMPORTANT: Edit the copied files and replace placeholder values with your actual credentials
+# - Get Supabase credentials: https://app.supabase.com/project/YOUR_PROJECT/settings/api
+# - Get OpenAI API key: https://platform.openai.com/api-keys
+# - See the .env.example files for detailed instructions and warnings
 ```
 
 4. **Run development servers:**
