@@ -1,6 +1,13 @@
 {
   "name": "human-compiler",
+  "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0-or-later OR SEE LICENSE IN COMMERCIAL-LICENSE.md",
+  "author": "Masato Fukushima <masa1063fuk@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/masa10-f/HumanCompiler.git"
+  },
   "workspaces": [
     "apps/*"
   ],

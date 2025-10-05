@@ -196,3 +196,7 @@ static/uploads/
 *.lprof
 *.stats
 *.trace
+
+# custom
+CLAUDE.md
+AGENTS.md

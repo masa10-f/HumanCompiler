@@ -1,0 +1,56 @@
+title: "[Idea]: "
+labels: ["idea"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Share Your Idea
+
+        Use this discussion category to share ideas for improving HumanCompiler.
+
+        For formal feature requests, please use the [Feature Request issue template](https://github.com/masa10-f/HumanCompiler/issues/new?template=feature_request.yml) instead.
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your Idea
+      description: Describe your idea for improving HumanCompiler
+      placeholder: Share your idea here...
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What problem does this idea solve, or what improvement does it bring?
+      placeholder: Explain why this idea would be valuable...
+    validations:
+      required: false
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Examples
+      description: Any examples from other applications or mockups?
+      placeholder: Share examples or mockups here...
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: What area of the application does this idea relate to?
+      options:
+        - User Experience
+        - AI & Automation
+        - Project Management
+        - Scheduling & Planning
+        - Performance
+        - Developer Experience
+        - Documentation
+        - Community & Ecosystem
+        - Other
+    validations:
+      required: false

@@ -1,0 +1,143 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behavior in HumanCompiler
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the information below to help us investigate and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe the bug you encountered...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Detailed steps to reproduce the behavior
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. Scroll down to '...'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+      placeholder: Describe what you expected to happen...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+      placeholder: Describe what actually happened...
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: If applicable, add screenshots to help explain your problem.
+      placeholder: Paste screenshots here...
+    validations:
+      required: false
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of the application is affected?
+      options:
+        - Frontend (Next.js/React)
+        - Backend (FastAPI)
+        - Database (Supabase)
+        - AI Features (OpenAI/GPT-4)
+        - Scheduler (OR-Tools)
+        - Authentication
+        - API Endpoints
+        - UI/UX
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: environment-os
+    attributes:
+      label: Operating System
+      description: What OS are you using?
+      placeholder: e.g., Ubuntu 22.04, macOS 14.1, Windows 11
+    validations:
+      required: true
+
+  - type: input
+    id: environment-browser
+    attributes:
+      label: Browser
+      description: What browser are you using? (if frontend issue)
+      placeholder: e.g., Chrome 120, Firefox 121, Safari 17
+    validations:
+      required: false
+
+  - type: input
+    id: environment-versions
+    attributes:
+      label: Version Information
+      description: What versions are you using?
+      placeholder: |
+        - Node.js: 20.10.0
+        - Python: 3.13.0
+        - pnpm: 8.15.0
+    validations:
+      required: false
+
+  - type: textarea
+    id: error-logs
+    attributes:
+      label: Error Logs
+      description: If applicable, paste relevant error messages or stack traces.
+      placeholder: Paste error logs here...
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context about the problem here.
+      placeholder: Any additional information that might help...
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      description: Please confirm the following before submitting
+      options:
+        - label: I have searched for existing issues that match this bug
+          required: true
+        - label: I have provided clear steps to reproduce
+          required: true
+        - label: I have included relevant error messages or logs
+          required: false
+        - label: I have tested this on the latest version
+          required: false

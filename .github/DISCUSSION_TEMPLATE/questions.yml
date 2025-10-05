@@ -1,0 +1,56 @@
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Ask a Question
+
+        Use this discussion category for general questions about HumanCompiler.
+
+        Before asking:
+        - Check the [README](https://github.com/masa10-f/HumanCompiler#readme)
+        - Search [existing discussions](https://github.com/masa10-f/HumanCompiler/discussions)
+        - Review [API documentation](https://humancompiler-api-masa.fly.dev/docs)
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: What would you like to know?
+      placeholder: Ask your question here...
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Provide any relevant context that might help us understand your question
+      placeholder: |
+        - What are you trying to accomplish?
+        - What have you already tried?
+        - Any relevant code snippets or error messages
+    validations:
+      required: false
+
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Topic
+      description: What area does your question relate to?
+      options:
+        - Installation & Setup
+        - Frontend (Next.js/React)
+        - Backend (FastAPI)
+        - Database (Supabase)
+        - AI Features (OpenAI/GPT-4)
+        - Scheduler (OR-Tools)
+        - Authentication & Security
+        - API Usage
+        - Deployment
+        - Licensing
+        - Contributing
+        - Other
+    validations:
+      required: false

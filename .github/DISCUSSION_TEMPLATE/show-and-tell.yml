@@ -1,0 +1,73 @@
+title: "[Show and Tell]: "
+labels: ["show-and-tell"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Show and Tell
+
+        Share what you've built with HumanCompiler! We'd love to see:
+        - Custom integrations
+        - Workflow automations
+        - Use case implementations
+        - Extensions or plugins
+        - Tips and tricks
+
+  - type: textarea
+    id: showcase
+    attributes:
+      label: What Did You Build?
+      description: Tell us about your project or implementation
+      placeholder: Describe what you've built with HumanCompiler...
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Technical Details
+      description: Share technical details about your implementation
+      placeholder: |
+        - Technologies used
+        - Integration approach
+        - Challenges overcome
+        - Performance considerations
+    validations:
+      required: false
+
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshots/Links
+      description: Add screenshots, videos, or links to your project
+      placeholder: |
+        Paste screenshots or provide links here...
+    validations:
+      required: false
+
+  - type: textarea
+    id: learnings
+    attributes:
+      label: Key Learnings
+      description: What did you learn from building this?
+      placeholder: Share your experience and lessons learned...
+    validations:
+      required: false
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      description: What type of project is this?
+      options:
+        - Custom Integration
+        - Workflow Automation
+        - AI Enhancement
+        - UI Customization
+        - API Extension
+        - Deployment Configuration
+        - Analytics & Reporting
+        - Educational/Tutorial
+        - Other
+    validations:
+      required: false

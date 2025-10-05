@@ -1,0 +1,156 @@
+name: ✨ Feature Request
+description: Suggest a new feature or enhancement for HumanCompiler
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Please provide detailed information to help us understand and evaluate your request.
+
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: Feature Description
+      description: A clear and concise description of the feature you'd like to see.
+      placeholder: Describe the feature you want...
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: Explain how this feature would be used and who would benefit from it.
+      placeholder: |
+        As a [type of user], I want [feature] so that [benefit].
+
+        Example scenarios where this feature would be useful:
+        - Scenario 1: ...
+        - Scenario 2: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: benefits
+    attributes:
+      label: Benefits
+      description: What are the main benefits of implementing this feature?
+      placeholder: |
+        - Improves productivity by...
+        - Solves the problem of...
+        - Enables users to...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of the application would this feature affect?
+      options:
+        - Frontend (Next.js/React)
+        - Backend (FastAPI)
+        - Database (Supabase)
+        - AI Features (OpenAI/GPT-4)
+        - Scheduler (OR-Tools)
+        - Authentication
+        - API Endpoints
+        - UI/UX
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature to you?
+      options:
+        - Critical (blocking my work)
+        - High (significantly improves workflow)
+        - Medium (nice to have)
+        - Low (minor enhancement)
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Implementation
+      description: If you have ideas on how this could be implemented, please share them.
+      placeholder: |
+        Suggested approach:
+        1. Use library/technology X for...
+        2. Add new endpoint/component at...
+        3. Integrate with existing feature Y...
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternative Solutions
+      description: Have you considered any alternative solutions or workarounds?
+      placeholder: Describe any alternatives you've considered...
+    validations:
+      required: false
+
+  - type: textarea
+    id: mockups
+    attributes:
+      label: Mockups/Examples
+      description: If applicable, add mockups, screenshots, or links to examples from other applications.
+      placeholder: Paste mockups or links here...
+    validations:
+      required: false
+
+  - type: textarea
+    id: related-features
+    attributes:
+      label: Related Features
+      description: Are there existing features that this would build upon or complement?
+      placeholder: |
+        - Works with existing feature X
+        - Extends functionality of Y
+        - Similar to feature Z in other applications
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: backward-compatibility
+    attributes:
+      label: Backward Compatibility
+      description: How should this feature handle existing data and functionality?
+      options:
+        - label: This feature should maintain backward compatibility with existing functionality
+          required: false
+        - label: This feature may require breaking changes (please explain in additional context)
+          required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context, requirements, or considerations.
+      placeholder: Any additional information that might help...
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      description: Please confirm the following before submitting
+      options:
+        - label: I have searched for existing feature requests that match this idea
+          required: true
+        - label: I have provided clear use cases and benefits
+          required: true
+        - label: I understand this feature aligns with HumanCompiler's goals (AI-powered task management)
+          required: true
+        - label: I am willing to contribute to this feature implementation (optional)
+          required: false

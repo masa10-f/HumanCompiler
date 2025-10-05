@@ -2,6 +2,8 @@
   "name": "@human-compiler/web",
   "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0-or-later OR SEE LICENSE IN ../../COMMERCIAL-LICENSE.md",
+  "author": "Masato Fukushima <masa1063fuk@gmail.com>",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
