@@ -37,7 +37,7 @@ primary_region = "nrt"  # Tokyo region for lower latency
 [vm]
   cpu_kind = "shared"
   cpus = 1
-  memory_mb = 1024
+  memory_mb = 512
 
 [deploy]
   release_command = "python -c 'print(\"Starting HumanCompiler API...\")'"
