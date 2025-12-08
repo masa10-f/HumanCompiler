@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, memo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { useProject } from '@/hooks/use-project-query';
 import { useGoalsByProject } from '@/hooks/use-goals-query';
@@ -37,12 +37,6 @@ import {
 } from '@/constants/project-status';
 import { useUpdateProject } from '@/hooks/use-project-query';
 import { AppHeader } from '@/components/layout/app-header';
-
-interface ProjectDetailPageProps {
-  params: {
-    id: string;
-  };
-}
 
 // Component to display and manage project status
 const ProjectStatusDropdown = memo(function ProjectStatusDropdown({ project }: { project: Project }) {
@@ -289,29 +283,31 @@ function GoalDependencies({ goalId, projectId }: { goalId: string; projectId: st
   );
 }
 
-export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
+export default function ProjectDetailPage() {
   const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const params = useParams();
+  const id = params.id as string;
+
   const {
     data: project,
     isLoading: projectLoading,
     error: projectError,
     refetch: refetchProject
-  } = useProject(params.id);
+  } = useProject(id);
 
   const {
     data: goals = [],
     isLoading: goalsLoading,
     error: goalsError,
     refetch: refetchGoals
-  } = useGoalsByProject(params.id);
+  } = useGoalsByProject(id);
 
   const { data: projectProgress } = useQuery({
-    queryKey: ['progress', 'project', params.id],
-    queryFn: () => progressApi.getProject(params.id),
+    queryKey: ['progress', 'project', id],
+    queryFn: () => progressApi.getProject(id),
     enabled: !!project,
   });
-
-  const router = useRouter();
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -406,7 +402,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
             <h2 className="text-2xl font-bold">ゴール一覧</h2>
             <p className="text-gray-600 mt-2">このプロジェクトの目標を管理します。</p>
           </div>
-          <GoalFormDialog projectId={params.id}>
+          <GoalFormDialog projectId={id}>
             <Button>
               <Plus className="h-4 w-4 mr-2" />
               新規ゴール作成
@@ -436,7 +432,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <GoalFormDialog projectId={params.id}>
+              <GoalFormDialog projectId={id}>
                 <Button>
                   <Plus className="h-4 w-4 mr-2" />
                   最初のゴールを作成
@@ -450,7 +446,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
               <Card
                 key={goal.id}
                 className="hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => router.push(`/projects/${params.id}/goals/${goal.id}`)}
+                onClick={() => router.push(`/projects/${id}/goals/${goal.id}`)}
               >
                 <CardHeader>
                   <div className="flex justify-between items-start mb-2">
@@ -474,7 +470,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
 
                     <div>
                       <div className="text-xs text-gray-500 mb-1">依存関係:</div>
-                      <GoalDependencies goalId={goal.id} projectId={params.id} />
+                      <GoalDependencies goalId={goal.id} projectId={id} />
                     </div>
 
                     <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
