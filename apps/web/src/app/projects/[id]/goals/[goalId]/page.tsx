@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { useTasksByGoal } from '@/hooks/use-tasks-query';
 import { useGoal } from '@/hooks/use-goals-query';
@@ -25,13 +25,6 @@ import { taskStatusLabels, taskStatusColors, workTypeLabels, workTypeColors, tas
 import type { TaskStatus, Task } from '@/types/task';
 import { log } from '@/lib/logger';
 import { AppHeader } from '@/components/layout/app-header';
-
-interface GoalDetailPageProps {
-  params: {
-    id: string;
-    goalId: string;
-  };
-}
 
 // Component to display actual time for a task
 function TaskActualTime({ taskId }: { taskId: string }) {
@@ -86,37 +79,40 @@ function TaskStatusSelect({ task }: { task: Task }) {
   );
 }
 
-export default function GoalDetailPage({ params }: GoalDetailPageProps) {
+export default function GoalDetailPage() {
   const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const params = useParams();
+  const id = params.id as string;
+  const goalId = params.goalId as string;
+
   const {
     data: tasks = [],
     isLoading: tasksLoading,
     error: tasksError,
     refetch: refetchTasks
-  } = useTasksByGoal(params.goalId);
+  } = useTasksByGoal(goalId);
 
   const {
     data: goal,
     isLoading: goalLoading,
     error: goalError,
     refetch: refetchGoal
-  } = useGoal(params.goalId);
+  } = useGoal(goalId);
 
   const {
     data: project,
     isLoading: projectLoading,
     error: projectError,
     refetch: refetchProject
-  } = useProject(params.id);
+  } = useProject(id);
 
   // Get goal progress data for actual work hours
   const { data: goalProgress } = useQuery({
-    queryKey: ['progress', 'goal', params.goalId],
-    queryFn: () => progressApi.getGoal(params.goalId),
+    queryKey: ['progress', 'goal', goalId],
+    queryFn: () => progressApi.getGoal(goalId),
     enabled: !!goal,
   });
-
-  const router = useRouter();
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -152,7 +148,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
           </div>
           <div className="flex gap-2 justify-center">
             <Button onClick={() => { refetchGoal(); refetchProject(); }}>再試行</Button>
-            <Button variant="outline" onClick={() => router.push(`/projects/${params.id}`)}>プロジェクトに戻る</Button>
+            <Button variant="outline" onClick={() => router.push(`/projects/${id}`)}>プロジェクトに戻る</Button>
           </div>
         </div>
       </div>
@@ -166,7 +162,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
 
   // Debug: Log tasks data to understand the structure
   log.debug('Tasks data for goal detail', {
-    goalId: params.goalId,
+    goalId: goalId,
     tasksData: tasks.map(t => ({
       id: t.id,
       title: t.title,
@@ -184,7 +180,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
       taskTitle: task.title,
       hours,
       originalType: typeof task.estimate_hours,
-      goalId: params.goalId
+      goalId: goalId
     });
     return sum + hours;
   }, 0);
@@ -202,7 +198,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
   const totalActualHours = goalProgress ? goalProgress.actual_minutes / 60 : 0;
 
   log.debug('Goal detail calculated values', {
-    goalId: params.goalId,
+    goalId: goalId,
     totalEstimateHours,
     completedEstimateHours,
     totalActualHours
@@ -217,7 +213,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => router.push(`/projects/${params.id}`)}
+          onClick={() => router.push(`/projects/${id}`)}
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
           プロジェクトに戻る
@@ -295,7 +291,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
             <h2 className="text-2xl font-bold">タスク一覧</h2>
             <p className="text-gray-600 mt-2">このゴールのタスクを管理します。</p>
           </div>
-          <TaskFormDialog goalId={params.goalId}>
+          <TaskFormDialog goalId={goalId}>
             <Button>
               <Plus className="h-4 w-4 mr-2" />
               新規タスク作成
@@ -325,7 +321,7 @@ export default function GoalDetailPage({ params }: GoalDetailPageProps) {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <TaskFormDialog goalId={params.goalId}>
+              <TaskFormDialog goalId={goalId}>
                 <Button>
                   <Plus className="h-4 w-4 mr-2" />
                   最初のタスクを作成
