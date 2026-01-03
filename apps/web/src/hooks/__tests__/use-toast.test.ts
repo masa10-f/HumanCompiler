@@ -81,7 +81,6 @@ describe('reducer', () => {
 
     it('should not modify other toasts', () => {
       const toast1 = { id: '1', title: 'First', open: true }
-      const toast2 = { id: '2', title: 'Second', open: true }
       // Note: With TOAST_LIMIT of 1, we test with single toast
       const stateWithToast = { toasts: [toast1] }
 
