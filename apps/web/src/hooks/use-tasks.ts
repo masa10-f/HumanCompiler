@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { tasksApi } from '@/lib/api';
 import { log } from '@/lib/logger';
+import { handleHookError } from './utils/hook-error-handler';
 import type { Task, TaskCreate, TaskUpdate } from '@/types/task';
 
 export interface UseTasksReturn {
@@ -13,146 +14,132 @@ export interface UseTasksReturn {
   refetch: () => Promise<void>;
 }
 
-export function useTasks(goalId: string): UseTasksReturn {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+interface TasksHookConfig {
+  type: 'goal' | 'project';
+  hookName: string;
+}
 
-  const fetchTasks = useCallback(async () => {
-    if (!goalId) return;
+/**
+ * Factory function to create task hooks with shared logic.
+ * Eliminates duplication between useTasks and useProjectTasks.
+ */
+function createTasksHook(config: TasksHookConfig) {
+  const { type, hookName } = config;
+  const idKey = type === 'goal' ? 'goalId' : 'projectId';
 
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await tasksApi.getByGoal(goalId);
-      setTasks(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch tasks');
-    } finally {
-      setLoading(false);
-    }
-  }, [goalId]);
+  return function useTasksInternal(id: string): UseTasksReturn {
+    const [tasks, setTasks] = useState<Task[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-  const createTask = useCallback(async (data: TaskCreate) => {
-    try {
-      setError(null);
-      log.component('useTasks', 'createTask', data, { goalId });
-      const newTask = await tasksApi.create(data);
-      log.component('useTasks', 'taskCreated', newTask, { goalId, taskId: newTask.id });
-      setTasks(prev => [...prev, newTask]);
-    } catch (err) {
-      log.error('Failed to create task', err, { component: 'useTasks', goalId, action: 'createTask' });
-      setError(err instanceof Error ? err.message : 'Failed to create task');
-      throw err;
-    }
-  }, [goalId]);
+    const fetchTasks = useCallback(async () => {
+      if (!id) return;
 
-  const updateTask = useCallback(async (id: string, data: TaskUpdate) => {
-    try {
-      setError(null);
-      const updatedTask = await tasksApi.update(id, data);
-      setTasks(prev => prev.map(task =>
-        task.id === id ? updatedTask : task
-      ));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update task');
-      throw err;
-    }
-  }, []);
+      try {
+        setLoading(true);
+        setError(null);
+        log.component(hookName, 'fetching', { [idKey]: id });
 
-  const deleteTask = useCallback(async (id: string) => {
-    try {
-      setError(null);
-      await tasksApi.delete(id);
-      setTasks(prev => prev.filter(task => task.id !== id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete task');
-      throw err;
-    }
-  }, []);
+        const data =
+          type === 'goal'
+            ? await tasksApi.getByGoal(id)
+            : await tasksApi.getByProject(id);
 
-  useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
+        log.component(hookName, 'fetch_success', {
+          count: data.length,
+          [idKey]: id,
+        });
+        setTasks(data);
+      } catch (err) {
+        const errorMessage = handleHookError(err, hookName, 'fetch tasks', {
+          [idKey]: id,
+        });
+        setError(errorMessage);
+      } finally {
+        setLoading(false);
+      }
+    }, [id]);
 
-  return {
-    tasks,
-    loading,
-    error,
-    createTask,
-    updateTask,
-    deleteTask,
-    refetch: fetchTasks,
+    const createTask = useCallback(
+      async (data: TaskCreate) => {
+        try {
+          setError(null);
+          log.userAction('create_task', data, { component: hookName, [idKey]: id });
+
+          const newTask = await tasksApi.create(data);
+          log.component(hookName, 'create_success', {
+            taskId: newTask.id,
+            [idKey]: id,
+          });
+
+          setTasks((prev) => [...prev, newTask]);
+        } catch (err) {
+          const errorMessage = handleHookError(err, hookName, 'create task', {
+            [idKey]: id,
+          });
+          setError(errorMessage);
+          throw err;
+        }
+      },
+      [id]
+    );
+
+    const updateTask = useCallback(async (taskId: string, data: TaskUpdate) => {
+      try {
+        setError(null);
+        log.component(hookName, 'updating', { taskId, ...data });
+
+        const updatedTask = await tasksApi.update(taskId, data);
+        log.component(hookName, 'update_success', { taskId });
+
+        setTasks((prev) =>
+          prev.map((task) => (task.id === taskId ? updatedTask : task))
+        );
+      } catch (err) {
+        const errorMessage = handleHookError(err, hookName, 'update task', {
+          taskId,
+        });
+        setError(errorMessage);
+        throw err;
+      }
+    }, []);
+
+    const deleteTask = useCallback(async (taskId: string) => {
+      try {
+        setError(null);
+        log.component(hookName, 'deleting', { taskId });
+
+        await tasksApi.delete(taskId);
+        log.component(hookName, 'delete_success', { taskId });
+
+        setTasks((prev) => prev.filter((task) => task.id !== taskId));
+      } catch (err) {
+        const errorMessage = handleHookError(err, hookName, 'delete task', {
+          taskId,
+        });
+        setError(errorMessage);
+        throw err;
+      }
+    }, []);
+
+    useEffect(() => {
+      fetchTasks();
+    }, [fetchTasks]);
+
+    return {
+      tasks,
+      loading,
+      error,
+      createTask,
+      updateTask,
+      deleteTask,
+      refetch: fetchTasks,
+    };
   };
 }
 
-// Hook for project-wide task management (optional)
-export function useProjectTasks(projectId: string): UseTasksReturn {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchTasks = useCallback(async () => {
-    if (!projectId) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await tasksApi.getByProject(projectId);
-      setTasks(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch tasks');
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId]);
-
-  const createTask = useCallback(async (data: TaskCreate) => {
-    try {
-      setError(null);
-      const newTask = await tasksApi.create(data);
-      setTasks(prev => [...prev, newTask]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create task');
-      throw err;
-    }
-  }, []);
-
-  const updateTask = useCallback(async (id: string, data: TaskUpdate) => {
-    try {
-      setError(null);
-      const updatedTask = await tasksApi.update(id, data);
-      setTasks(prev => prev.map(task =>
-        task.id === id ? updatedTask : task
-      ));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update task');
-      throw err;
-    }
-  }, []);
-
-  const deleteTask = useCallback(async (id: string) => {
-    try {
-      setError(null);
-      await tasksApi.delete(id);
-      setTasks(prev => prev.filter(task => task.id !== id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete task');
-      throw err;
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
-
-  return {
-    tasks,
-    loading,
-    error,
-    createTask,
-    updateTask,
-    deleteTask,
-    refetch: fetchTasks,
-  };
-}
+export const useTasks = createTasksHook({ type: 'goal', hookName: 'useTasks' });
+export const useProjectTasks = createTasksHook({
+  type: 'project',
+  hookName: 'useProjectTasks',
+});
