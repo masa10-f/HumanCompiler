@@ -4,6 +4,7 @@ import React from 'react'
 import { AlertTriangle, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { logger } from '@/lib/logger'
 
 interface Props {
   children: React.ReactNode
@@ -30,8 +31,8 @@ export class TimelineErrorBoundary extends React.Component<Props, State> {
     return { hasError: true, error }
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Timeline Error Boundary caught an error:', error, errorInfo)
+  componentDidCatch(error: Error, _errorInfo: React.ErrorInfo) {
+    logger.error('Timeline Error Boundary caught an error', error, { component: 'TimelineErrorBoundary', action: 'componentDidCatch' })
 
     // Log to external service if available
     if (typeof window !== 'undefined' && window.gtag) {
@@ -145,7 +146,7 @@ export function useErrorHandler() {
   }, [])
 
   const handleError = React.useCallback((error: Error) => {
-    console.error('Timeline Error:', error)
+    logger.error('Timeline Error', error, { component: 'useErrorHandler' })
 
     // Log to external service if available
     if (typeof window !== 'undefined' && window.gtag) {

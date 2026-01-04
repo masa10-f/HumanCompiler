@@ -9,6 +9,7 @@ import { ChevronDownIcon } from '@heroicons/react/20/solid';
 
 // Utilities
 import { cn } from '@/lib/utils';
+import { logger } from '@/lib/logger';
 
 // Types
 import { SortBy, SortOrder, SortOptions } from '@/types/sort';
@@ -38,7 +39,7 @@ export function SortDropdown({
 
   const handleSortFieldChange = (field: SortBy) => {
     if (!Object.values(SortBy).includes(field)) {
-      console.warn('Invalid sort field:', field);
+      logger.warn('Invalid sort field', { field }, { component: 'SortDropdown' });
       return;
     }
     onSortChange({

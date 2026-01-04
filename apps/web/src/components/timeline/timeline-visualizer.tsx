@@ -13,6 +13,7 @@ import { TimelineGoalBar } from './timeline-goal-bar'
 import { TimelineDependencyArrow } from './timeline-dependency-arrow'
 import { TimelineTooltip } from './timeline-tooltip'
 import type { TimelineData, LayoutModel, LayoutGoal, LayoutTaskSegment, TimelineFilters } from '@/lib/timeline/types'
+import { logger } from '@/lib/logger'
 
 interface TimelineVisualizerProps {
   data: TimelineData | null
@@ -62,10 +63,10 @@ export function TimelineVisualizer({
       const needsVirtualization = goalCount > 100 || taskCount > 500
 
       if (goalCount > 50 || taskCount > 200) {
-        console.warn(`Large dataset detected: ${goalCount} goals, ${taskCount} tasks`)
+        logger.warn('Large dataset detected', { goalCount, taskCount }, { component: 'TimelineVisualizer' })
 
         if (needsVirtualization) {
-          console.warn('Virtualization recommended for optimal performance')
+          logger.warn('Virtualization recommended for optimal performance', { component: 'TimelineVisualizer' })
         }
       }
 
@@ -78,18 +79,18 @@ export function TimelineVisualizer({
 
       return computeTimelineLayout(data, layoutOptions)
     } catch (error) {
-      console.error('Layout computation failed:', error)
+      logger.error('Layout computation failed', error instanceof Error ? error : new Error(String(error)), { component: 'TimelineVisualizer' })
 
       // Try simplified mode as fallback - but prevent infinite loops
       if (!isSimplifiedMode) {
-        console.log('Attempting fallback to simplified mode...')
+        logger.debug('Attempting fallback to simplified mode', { component: 'TimelineVisualizer' })
         // Use setTimeout to prevent immediate re-computation and potential stack overflow
         setTimeout(() => setIsSimplifiedMode(true), 0)
         return null // Will trigger re-computation with simplified mode
       }
 
       // If simplified mode also fails, return null instead of throwing
-      console.error('Simplified mode also failed, rendering fallback UI')
+      logger.warn('Simplified mode also failed, rendering fallback UI', { component: 'TimelineVisualizer' })
       return null
     }
   }, [data, isSimplifiedMode])
@@ -184,7 +185,7 @@ export function TimelineVisualizer({
         description: "SVG形式でタイムラインが保存されました。",
       })
     } catch (error) {
-      console.error('Download failed:', error)
+      logger.error('Download failed', error instanceof Error ? error : new Error(String(error)), { component: 'TimelineVisualizer' })
       handleError(error instanceof Error ? error : new Error('SVG download failed'))
       toast({
         title: "ダウンロードに失敗しました",
@@ -290,7 +291,7 @@ export function TimelineVisualizer({
   // Reset simplified mode when new data comes in (separate effect to prevent loops)
   useEffect(() => {
     if (data && isSimplifiedMode) {
-      console.log('Resetting simplified mode for new data')
+      logger.debug('Resetting simplified mode for new data', { component: 'TimelineVisualizer' })
       setIsSimplifiedMode(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -304,8 +305,8 @@ export function TimelineVisualizer({
       // Log performance metrics in development
       if (process.env.NODE_ENV === 'development') {
         const computeTime = now - layoutComputeTimestamp
-        console.log(`Timeline layout computed in ${computeTime.toFixed(2)}ms`)
-        console.log(`Goals: ${layoutModel.goals.length}, Tasks: ${layoutModel.goals.reduce((sum, g) => sum + g.segments.length, 0)}`)
+        const taskCount = layoutModel.goals.reduce((sum, g) => sum + g.segments.length, 0)
+        logger.debug('Timeline layout computed', { computeTimeMs: computeTime.toFixed(2), goalCount: layoutModel.goals.length, taskCount }, { component: 'TimelineVisualizer' })
       }
 
       // Update timestamp after logging to avoid infinite loop

@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -17,6 +18,8 @@ from humancompiler_api.models import (
     SortOrder,
 )
 from humancompiler_api.services import task_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -50,10 +53,7 @@ async def create_task(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> TaskResponse:
     """Create a new task"""
-    import logging
     import time
-
-    logger = logging.getLogger(__name__)
 
     start_time = time.time()
     logger.info(
@@ -110,10 +110,10 @@ async def get_tasks_by_goal(
         session, goal_id, current_user.user_id, skip, limit, sort_by, sort_order
     )
     task_responses = []
-    print(f"Processing {len(tasks)} tasks for goal {goal_id}")
+    logger.debug(f"Processing {len(tasks)} tasks for goal {goal_id}")
 
     for i, task in enumerate(tasks):
-        print(f"Processing task {i + 1}/{len(tasks)}: {task.id} - {task.title}")
+        logger.debug(f"Processing task {i + 1}/{len(tasks)}: {task.id} - {task.title}")
 
         # Create task response with dependencies
         task_response = TaskResponse.model_validate(task)
@@ -135,14 +135,14 @@ async def get_tasks_by_goal(
 
         task_response.dependencies = dependency_responses
 
-        print(
-            f"✓ Task {task.id} loaded with {len(task_response.dependencies)} dependencies"
+        logger.debug(
+            f"Task {task.id} loaded with {len(task_response.dependencies)} dependencies"
         )
 
         task_responses.append(task_response)
-        print(f"✓ Task {task.id} added to response (total: {len(task_responses)})")
+        logger.debug(f"Task {task.id} added to response (total: {len(task_responses)})")
 
-    print(f"Returning {len(task_responses)} task responses")
+    logger.debug(f"Returning {len(task_responses)} task responses")
     return task_responses
 
 

@@ -10,6 +10,7 @@ import { WeeklyRecurringTaskDialog } from "@/components/weekly-recurring-task-di
 import { weeklyRecurringTasksApi } from "@/lib/api"
 import type { WeeklyRecurringTask } from "@/types/weekly-recurring-task"
 import { AppHeader } from "@/components/layout/app-header"
+import { logger } from "@/lib/logger"
 
 export default function WeeklyTasksPage() {
   const [tasks, setTasks] = useState<WeeklyRecurringTask[]>([])
@@ -22,7 +23,7 @@ export default function WeeklyTasksPage() {
       const tasks = await weeklyRecurringTasksApi.getAll()
       setTasks(tasks)
     } catch (error) {
-      console.error("Error fetching weekly tasks:", error)
+      logger.error("Error fetching weekly tasks", error instanceof Error ? error : new Error(String(error)), { component: "WeeklyTasksPage" })
       toast({
         title: "エラー",
         description: "週課の取得に失敗しました",
@@ -62,7 +63,7 @@ export default function WeeklyTasksPage() {
 
       fetchTasks()
     } catch (error) {
-      console.error("Error deleting task:", error)
+      logger.error("Error deleting task", error instanceof Error ? error : new Error(String(error)), { component: "WeeklyTasksPage" })
       toast({
         title: "エラー",
         description: "週課の削除に失敗しました",

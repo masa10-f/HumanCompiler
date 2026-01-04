@@ -2,6 +2,8 @@
  * Schedule-related constants and utilities for type-safe slot kind handling
  */
 
+import { logger } from '@/lib/logger'
+
 export type SlotKind = 'study' | 'focused_work' | 'light_work' | 'meeting';
 
 export const slotKindLabels: Record<SlotKind, string> = {
@@ -27,7 +29,7 @@ export const getSlotKindLabel = (slotKind: string): string => {
   const typedSlotKind = slotKind as SlotKind;
 
   if (!(slotKind in slotKindLabels)) {
-    console.warn(`Unknown slot kind: ${slotKind}, using fallback to meeting`);
+    logger.warn('Unknown slot kind, using fallback to meeting', { slotKind }, { component: 'schedule' });
     return slotKindLabels.meeting;
   }
 
@@ -43,7 +45,7 @@ export const getSlotKindColor = (slotKind: string): string => {
   const typedSlotKind = slotKind as SlotKind;
 
   if (!(slotKind in slotKindColors)) {
-    console.warn(`Unknown slot kind: ${slotKind}, using fallback to meeting`);
+    logger.warn('Unknown slot kind, using fallback to meeting', { slotKind }, { component: 'schedule' });
     return slotKindColors.meeting;
   }
 

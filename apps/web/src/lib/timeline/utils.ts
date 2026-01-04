@@ -1,12 +1,13 @@
 import { parseISO, differenceInDays, format } from 'date-fns'
 import type { TimelineGoal, DependencyGraph } from './types'
+import { logger } from '@/lib/logger'
 
 /**
  * Safe debug logging utility for timeline operations
  */
-function debugLog(message: string): void {
+function debugLog(message: string, data?: Record<string, unknown>): void {
   if (process.env.NODE_ENV === 'development' && process.env.DEBUG_TIMELINE) {
-    console.debug(`[Timeline] ${message}`)
+    logger.debug(message, data, { component: 'TimelineUtils' })
   }
 }
 
@@ -305,7 +306,7 @@ export function calculateDependencyBasedStartTimes(
 
       if (depStartTime === undefined) {
         // This can happen with circular dependencies - handle gracefully
-        console.warn(`[Timeline] Start time not calculated for dependency goal ${depId} before processing goal "${goal.title}" (${goalId}) - possible circular dependency`)
+        logger.warn('Start time not calculated for dependency goal - possible circular dependency', { depId, goalId, goalTitle: goal.title }, { component: 'TimelineUtils' })
         continue
       }
 
@@ -318,7 +319,7 @@ export function calculateDependencyBasedStartTimes(
 
     // Debug logging
     const endTime = maxDependencyEndTime + goal.estimate_hours
-    debugLog(`Goal "${goal.title}" (${goalId}): start at ${maxDependencyEndTime}h, end at ${endTime}h, duration ${goal.estimate_hours}h, dependencies: [${dependencies.join(', ')}]`)
+    debugLog('Goal timing calculated', { goalTitle: goal.title, goalId, startHours: maxDependencyEndTime, endHours: endTime, durationHours: goal.estimate_hours, dependencies })
   }
 
   // Handle any goals not in the topological order (shouldn't happen but defensive programming)

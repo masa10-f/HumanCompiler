@@ -24,6 +24,7 @@ import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/components/ui/use-toast"
 import { weeklyRecurringTasksApi } from "@/lib/api"
 import type { WeeklyRecurringTask, WeeklyRecurringTaskCreate, WeeklyRecurringTaskUpdate, TaskCategory } from "@/types/weekly-recurring-task"
+import { logger } from "@/lib/logger"
 
 interface WeeklyRecurringTaskDialogProps {
   open: boolean
@@ -117,7 +118,7 @@ export function WeeklyRecurringTaskDialog({
 
       onSaved()
     } catch (error) {
-      console.error("Error saving task:", error)
+      logger.error("Error saving task", error instanceof Error ? error : new Error(String(error)), { component: "WeeklyRecurringTaskDialog" })
       toast({
         title: "エラー",
         description: "週課の保存に失敗しました",

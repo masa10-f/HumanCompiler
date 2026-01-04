@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useToast } from '@/hooks/use-toast'
 import type { ProjectTimelineData, TimelineOverviewData, TimelineFilters } from '@/types/timeline'
 import { timelineApi } from '@/lib/api'
+import { logger } from '@/lib/logger'
 
 export function useProjectTimeline(projectId: string | null, filters?: TimelineFilters, weeklyWorkHours?: number) {
   const [data, setData] = useState<ProjectTimelineData | null>(null)
@@ -89,12 +90,12 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
   // Note: we specifically want to avoid including the full filters object to prevent unnecessary re-renders
 
   const fetchOverview = useCallback(async () => {
-    console.log('🔍 [useTimelineOverview] Starting fetchOverview... Call #', Date.now())
-    console.log('🔍 [useTimelineOverview] Filters:', memoizedFilters)
+    logger.debug('Starting fetchOverview', { callNumber: Date.now() }, { component: 'useTimelineOverview' })
+    logger.debug('Filters', memoizedFilters, { component: 'useTimelineOverview' })
 
     // Prevent multiple simultaneous calls and unmounted component updates
     if (loadingRef.current || !mountedRef.current) {
-      console.log('🔍 [useTimelineOverview] Already loading or unmounted, skipping call')
+      logger.debug('Already loading or unmounted, skipping call', null, { component: 'useTimelineOverview' })
       return
     }
 
@@ -103,18 +104,21 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
     setError(null)
 
     try {
-      console.log('🔍 [useTimelineOverview] Calling timelineApi.getOverview...')
+      logger.debug('Calling timelineApi.getOverview', { component: 'useTimelineOverview' })
       const overviewData = await timelineApi.getOverview(memoizedFilters?.start_date, memoizedFilters?.end_date)
-      console.log('✅ [useTimelineOverview] API response received:', overviewData)
+      logger.debug('API response received', overviewData, { component: 'useTimelineOverview' })
 
       if (mountedRef.current) {
         setData(overviewData)
-        console.log('✅ [useTimelineOverview] Data set successfully')
+        logger.debug('Data set successfully', { component: 'useTimelineOverview' })
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'タイムライン概要の取得に失敗しました'
-      console.error('❌ [useTimelineOverview] API error:', err)
-      console.error('❌ [useTimelineOverview] Error message:', errorMessage)
+      logger.error(
+        'API error',
+        err instanceof Error ? err : new Error(String(err)),
+        { component: 'useTimelineOverview' }
+      )
 
       if (mountedRef.current) {
         setError(errorMessage)
@@ -128,7 +132,7 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
     } finally {
       loadingRef.current = false
       if (mountedRef.current) {
-        console.log('🔍 [useTimelineOverview] Setting isLoading to false')
+        logger.debug('Setting isLoading to false', null, { component: 'useTimelineOverview' })
         setIsLoading(false)
       }
     }
@@ -137,7 +141,7 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
   // Note: toast is intentionally excluded from dependencies to prevent infinite loops
 
   useEffect(() => {
-    console.log('🔍 [useTimelineOverview] useEffect triggered, calling fetchOverview')
+    logger.debug('useEffect triggered, calling fetchOverview', null, { component: 'useTimelineOverview' })
     fetchOverview()
 
     return () => {

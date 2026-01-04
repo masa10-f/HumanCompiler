@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import type { User } from '@supabase/supabase-js'
+import { logger } from '@/lib/logger'
 
 export interface AuthUser {
   id: string
@@ -21,7 +22,7 @@ export async function signUp(email: string, password: string) {
 }
 
 export async function signIn(email: string, password: string) {
-  console.log('🔑 Attempting sign in with:', { email, passwordLength: password.length })
+  logger.debug('Attempting sign in', { email, passwordLength: password.length }, { component: 'auth', action: 'signIn' })
 
   try {
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -30,18 +31,19 @@ export async function signIn(email: string, password: string) {
     })
 
     if (error) {
-      console.error('❌ Supabase sign in error:', {
-        message: error.message,
+      logger.error('Supabase sign in error', new Error(error.message), {
+        component: 'auth',
+        action: 'signIn',
         status: error.status,
         name: error.name
       })
       throw new Error(error.message || 'ログインに失敗しました')
     }
 
-    console.log('✅ Sign in successful:', { userId: data.user?.id })
+    logger.info('Sign in successful', { userId: data.user?.id }, { component: 'auth', action: 'signIn' })
     return data
   } catch (error) {
-    console.error('❌ Sign in failed:', error)
+    logger.error('Sign in failed', error instanceof Error ? error : new Error(String(error)), { component: 'auth', action: 'signIn' })
     throw error
   }
 }

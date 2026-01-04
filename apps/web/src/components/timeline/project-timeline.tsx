@@ -13,6 +13,7 @@ import type { ProjectTimelineData, TimelineTask } from '@/types/timeline'
 import { format, parseISO, differenceInDays } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import { getJSTDateString } from '@/lib/date-utils'
+import { logger } from '@/lib/logger'
 
 interface ProjectTimelineProps {
   projectId: string
@@ -66,7 +67,7 @@ export function ProjectTimeline({
         description: "プロジェクトタイムラインが画像として保存されました。",
       })
     } catch (error) {
-      console.error('Download failed:', error)
+      logger.error('Download failed', error instanceof Error ? error : new Error(String(error)), { component: 'ProjectTimeline' })
       toast({
         title: "ダウンロードに失敗しました",
         description: "画像の生成中にエラーが発生しました。",

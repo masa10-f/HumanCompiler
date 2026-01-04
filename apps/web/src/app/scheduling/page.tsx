@@ -34,6 +34,7 @@ import type {
 } from '@/types/ai-planning';
 import type { Project } from '@/types/project';
 import { getJSTDateString } from '@/lib/date-utils';
+import { logger } from '@/lib/logger';
 
 export default function SchedulingPage() {
   const { user, loading: authLoading } = useAuth();
@@ -70,7 +71,7 @@ export default function SchedulingPage() {
         const [projectsResult, weeklyOptionsResult] = await Promise.all([
           projectsApi.getAll(),
           schedulingApi.getWeeklyScheduleOptions().catch(err => {
-            console.error('Weekly schedule options loading failed:', err.message || err);
+            logger.error('Weekly schedule options loading failed', err instanceof Error ? err : new Error(String(err)), { component: 'SchedulingPage' });
             // Return empty array to allow other data to load
             return [];
           }),
@@ -80,7 +81,7 @@ export default function SchedulingPage() {
         setWeeklyScheduleOptions(weeklyOptionsResult);
 
       } catch (error) {
-        console.error('Failed to load initial data:', error);
+        logger.error('Failed to load initial data', error instanceof Error ? error : new Error(String(error)), { component: 'SchedulingPage' });
         toast({
           title: 'データ読み込みエラー',
           description: '初期データの読み込みに失敗しました',
