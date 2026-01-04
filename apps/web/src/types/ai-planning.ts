@@ -19,6 +19,25 @@ export interface TaskPlan {
   rationale: string;
 }
 
+// Solver metrics from OR-Tools optimization
+export interface SolverMetrics {
+  capacity_utilization?: number;
+  project_balance_score?: number;
+  projects_involved?: number;
+  avg_task_hours?: number;
+  task_count?: number;
+  project_distribution?: Record<string, number>;
+  [key: string]: unknown;
+}
+
+// Constraint analysis from the solver
+export interface ConstraintAnalysis {
+  capacity_utilization?: number;
+  urgent_task_count?: number;
+  overload_risk?: boolean;
+  [key: string]: unknown;
+}
+
 export interface WeeklyPlanResponse {
   success: boolean;
   week_start_date: string;
@@ -27,8 +46,8 @@ export interface WeeklyPlanResponse {
   recommendations: string[];
   insights: string[];
   project_allocations?: ProjectAllocation[];
-  constraint_analysis?: Record<string, any>;
-  solver_metrics?: Record<string, any>;
+  constraint_analysis?: ConstraintAnalysis;
+  solver_metrics?: SolverMetrics;
   generated_at: string;
 }
 
@@ -130,12 +149,13 @@ export interface ScheduleResult {
 // Weekly Schedule Storage types
 export interface WeeklyScheduleData {
   success: boolean;
+  week_start_date: string;
   selected_tasks: TaskPlan[];
   total_allocated_hours: number;
   project_allocations: ProjectAllocation[];
   optimization_insights: string[];
-  constraint_analysis: Record<string, any>;
-  solver_metrics: Record<string, any>;
+  constraint_analysis: ConstraintAnalysis;
+  solver_metrics: SolverMetrics;
   generated_at: string;
 }
 

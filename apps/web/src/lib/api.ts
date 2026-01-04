@@ -37,6 +37,7 @@ import type {
 import type {
   WeeklyPlanRequest,
   WeeklyPlanResponse,
+  WeeklyScheduleData,
   WorkloadAnalysis,
   PrioritySuggestions,
   ScheduleRequest,
@@ -404,7 +405,7 @@ class ApiClient {
       use_ai_priority: planRequest.use_ai_priority || false,
     };
 
-    const solverResponse = await this.request<any>('/api/ai/weekly-task-solver', {
+    const solverResponse = await this.request<WeeklyScheduleData>('/api/ai/weekly-task-solver', {
       method: 'POST',
       body: JSON.stringify(solverRequest),
     });
