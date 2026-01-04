@@ -34,8 +34,8 @@ export class TimelineErrorBoundary extends React.Component<Props, State> {
     console.error('Timeline Error Boundary caught an error:', error, errorInfo)
 
     // Log to external service if available
-    if (typeof window !== 'undefined' && (window as any).gtag) {
-      (window as any).gtag('event', 'exception', {
+    if (typeof window !== 'undefined' && window.gtag) {
+      window.gtag('event', 'exception', {
         description: `Timeline Error: ${error.message}`,
         fatal: false,
       })
@@ -148,8 +148,8 @@ export function useErrorHandler() {
     console.error('Timeline Error:', error)
 
     // Log to external service if available
-    if (typeof window !== 'undefined' && (window as any).gtag) {
-      (window as any).gtag('event', 'exception', {
+    if (typeof window !== 'undefined' && window.gtag) {
+      window.gtag('event', 'exception', {
         description: `Timeline Error: ${error.message}`,
         fatal: false,
       })

@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Goal, GoalStatus } from '@/types/goal';
 import { Project, ProjectStatus } from '@/types/project';
+import { ApiError } from '@/lib/errors';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getGoalStatusIcon,
@@ -61,7 +62,7 @@ const ProjectStatusDropdown = memo(function ProjectStatusDropdown({ project }: {
       let errorMessage = 'ステータスの更新に失敗しました。';
       let errorTitle = 'エラー';
 
-      const errorStatus = (error as { response?: { status?: number } })?.response?.status;
+      const errorStatus = error instanceof ApiError ? error.statusCode : undefined;
 
       if (errorStatus === 404) {
         errorTitle = 'プロジェクトが見つかりません';
@@ -121,6 +122,12 @@ const ProjectStatusDropdown = memo(function ProjectStatusDropdown({ project }: {
   );
 });
 
+// Context type for goal status mutation
+interface GoalStatusMutationContext {
+  previousGoals: Goal[] | undefined;
+  previousGoal: Goal | undefined;
+}
+
 // Component to display and manage goal status
 const GoalStatusDropdown = memo(function GoalStatusDropdown({ goal }: { goal: Goal }) {
   const queryClient = useQueryClient();
@@ -136,13 +143,13 @@ const GoalStatusDropdown = memo(function GoalStatusDropdown({ goal }: { goal: Go
       await queryClient.cancelQueries({ queryKey: ['goal', goal.id] });
 
       // Snapshot the previous value for rollback
-      const previousGoals = queryClient.getQueryData(['goals', 'project', goal.project_id]);
-      const previousGoal = queryClient.getQueryData(['goal', goal.id]);
+      const previousGoals = queryClient.getQueryData<Goal[]>(['goals', 'project', goal.project_id]);
+      const previousGoal = queryClient.getQueryData<Goal>(['goal', goal.id]);
 
       // Optimistically update to the new value
-      queryClient.setQueryData(['goals', 'project', goal.project_id], (old: any) => {
+      queryClient.setQueryData<Goal[]>(['goals', 'project', goal.project_id], (old) => {
         if (old) {
-          return old.map((g: Goal) =>
+          return old.map((g) =>
             g.id === goal.id ? { ...g, status: newStatus } : g
           );
         }
@@ -168,7 +175,7 @@ const GoalStatusDropdown = memo(function GoalStatusDropdown({ goal }: { goal: Go
       });
       setIsUpdating(false);
     },
-    onError: (error: any, newStatus: GoalStatus, context: any) => {
+    onError: (error: Error, _newStatus: GoalStatus, context: GoalStatusMutationContext | undefined) => {
       // Rollback optimistic updates
       if (context?.previousGoals) {
         queryClient.setQueryData(['goals', 'project', goal.project_id], context.previousGoals);
@@ -180,16 +187,18 @@ const GoalStatusDropdown = memo(function GoalStatusDropdown({ goal }: { goal: Go
       let errorMessage = 'ステータスの更新に失敗しました。';
       let errorTitle = 'エラー';
 
-      if (error?.response?.status === 404) {
+      const errorStatus = error instanceof ApiError ? error.statusCode : undefined;
+
+      if (errorStatus === 404) {
         errorTitle = 'ゴールが見つかりません';
         errorMessage = '更新対象のゴールが削除されている可能性があります。';
-      } else if (error?.response?.status === 403) {
+      } else if (errorStatus === 403) {
         errorTitle = '権限エラー';
         errorMessage = 'このゴールを更新する権限がありません。';
-      } else if (error?.response?.status === 422) {
+      } else if (errorStatus === 422) {
         errorTitle = '入力エラー';
         errorMessage = '無効なステータス値です。ページを再読み込みしてください。';
-      } else if (error?.response?.status >= 500) {
+      } else if (errorStatus && errorStatus >= 500) {
         errorTitle = 'サーバーエラー';
         errorMessage = 'サーバーで問題が発生しました。しばらく時間をおいてから再試行してください。';
       } else if (!navigator.onLine) {
