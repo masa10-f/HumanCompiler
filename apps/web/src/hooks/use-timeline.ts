@@ -117,7 +117,7 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
       logger.error(
         'API error',
         err instanceof Error ? err : new Error(String(err)),
-        { component: 'useTimelineOverview', errorMessage }
+        { component: 'useTimelineOverview' }
       )
 
       if (mountedRef.current) {
