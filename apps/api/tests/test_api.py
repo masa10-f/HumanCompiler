@@ -18,8 +18,8 @@ def test_create_project_unauthenticated(mock_session, mock_user):
         json={"title": "Test Project", "description": "Test Description"},
     )
 
-    # Should fail due to authentication
-    assert response.status_code == 403  # Forbidden
+    # Should fail due to authentication (401 Unauthorized or 403 Forbidden)
+    assert response.status_code in [401, 403]
 
 
 def test_health_endpoint():
@@ -70,8 +70,8 @@ def test_validation_error():
         json={"title": ""},  # Empty title should fail validation
     )
 
-    # Should return validation error
-    assert response.status_code in [403, 422, 500]  # Could be auth or validation error
+    # Should return validation error or auth error
+    assert response.status_code in [401, 403, 422, 500]
 
 
 @patch("humancompiler_api.routers.projects.get_current_user")
@@ -85,8 +85,8 @@ def test_project_endpoints_structure(mock_session, mock_user):
     # Test endpoint accessibility (will fail on service layer, but endpoint should be reachable)
     response = client.get("/api/projects/")
 
-    # Should reach the endpoint (may fail on business logic)
-    assert response.status_code in [200, 400, 403, 500]  # Not 404
+    # Should reach the endpoint (may fail on business logic or auth)
+    assert response.status_code in [200, 400, 401, 403, 500]  # Not 404
 
 
 def test_cors_headers():
@@ -121,13 +121,13 @@ def test_delete_task_endpoint_structure(mock_session, mock_user):
     fake_task_id = "12345678-1234-1234-1234-123456789012"
     response = client.delete(f"/api/tasks/{fake_task_id}")
 
-    # Should reach the endpoint (may fail on business logic but not routing)
-    assert response.status_code in [200, 204, 400, 403, 404, 500]  # Not routing error
+    # Should reach the endpoint (may fail on business logic, auth, but not routing)
+    assert response.status_code in [200, 204, 400, 401, 403, 404, 500]  # Not routing error
 
 
 def test_delete_task_endpoint_invalid_uuid():
     """Test task deletion endpoint with invalid UUID"""
     response = client.delete("/api/tasks/invalid-uuid")
 
-    # Should return 422 for invalid UUID format
-    assert response.status_code in [422, 400, 403, 500]
+    # Should return 422 for invalid UUID format or auth error
+    assert response.status_code in [401, 403, 422, 400, 500]

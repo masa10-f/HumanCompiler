@@ -2,7 +2,7 @@
 Tests for AI planning router with cache mocking
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import Mock, patch, AsyncMock
 
 import pytest
@@ -26,9 +26,10 @@ def mock_session():
 @pytest.fixture
 def weekly_plan_request():
     """Mock weekly plan request"""
-    future_date = "2025-12-01"
+    # Use a date within the valid range (not more than 7 days in the past)
+    valid_date = datetime.now().strftime("%Y-%m-%d")
     return WeeklyPlanRequest(
-        week_start_date=future_date,
+        week_start_date=valid_date,
         capacity_hours=40.0,
         project_filter=None,
         preferences={},
@@ -38,10 +39,11 @@ def weekly_plan_request():
 @pytest.fixture
 def mock_plan_response():
     """Mock weekly plan response"""
-    future_date = "2025-12-01"
+    # Use a date within the valid range (not more than 7 days in the past)
+    valid_date = datetime.now().strftime("%Y-%m-%d")
     return WeeklyPlanResponse(
         success=True,
-        week_start_date=future_date,
+        week_start_date=valid_date,
         total_planned_hours=25.0,
         task_plans=[],
         recommendations=["Focus on deep work in the morning"],
