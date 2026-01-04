@@ -66,7 +66,7 @@ export function TimelineVisualizer({
         logger.warn('Large dataset detected', { goalCount, taskCount }, { component: 'TimelineVisualizer' })
 
         if (needsVirtualization) {
-          logger.warn('Virtualization recommended for optimal performance', null, { component: 'TimelineVisualizer' })
+          logger.warn('Virtualization recommended for optimal performance', { component: 'TimelineVisualizer' })
         }
       }
 
@@ -83,14 +83,14 @@ export function TimelineVisualizer({
 
       // Try simplified mode as fallback - but prevent infinite loops
       if (!isSimplifiedMode) {
-        logger.debug('Attempting fallback to simplified mode', null, { component: 'TimelineVisualizer' })
+        logger.debug('Attempting fallback to simplified mode', { component: 'TimelineVisualizer' })
         // Use setTimeout to prevent immediate re-computation and potential stack overflow
         setTimeout(() => setIsSimplifiedMode(true), 0)
         return null // Will trigger re-computation with simplified mode
       }
 
       // If simplified mode also fails, return null instead of throwing
-      logger.error('Simplified mode also failed, rendering fallback UI', null, { component: 'TimelineVisualizer' })
+      logger.warn('Simplified mode also failed, rendering fallback UI', { component: 'TimelineVisualizer' })
       return null
     }
   }, [data, isSimplifiedMode])
@@ -291,7 +291,7 @@ export function TimelineVisualizer({
   // Reset simplified mode when new data comes in (separate effect to prevent loops)
   useEffect(() => {
     if (data && isSimplifiedMode) {
-      logger.debug('Resetting simplified mode for new data', null, { component: 'TimelineVisualizer' })
+      logger.debug('Resetting simplified mode for new data', { component: 'TimelineVisualizer' })
       setIsSimplifiedMode(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

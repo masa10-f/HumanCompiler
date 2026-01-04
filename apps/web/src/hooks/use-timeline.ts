@@ -104,18 +104,21 @@ export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date'
     setError(null)
 
     try {
-      logger.debug('Calling timelineApi.getOverview', null, { component: 'useTimelineOverview' })
+      logger.debug('Calling timelineApi.getOverview', { component: 'useTimelineOverview' })
       const overviewData = await timelineApi.getOverview(memoizedFilters?.start_date, memoizedFilters?.end_date)
       logger.debug('API response received', overviewData, { component: 'useTimelineOverview' })
 
       if (mountedRef.current) {
         setData(overviewData)
-        logger.debug('Data set successfully', null, { component: 'useTimelineOverview' })
+        logger.debug('Data set successfully', { component: 'useTimelineOverview' })
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'タイムライン概要の取得に失敗しました'
-      logger.error('API error', err instanceof Error ? err : new Error(String(err)), { component: 'useTimelineOverview' })
-      logger.error('Error message', new Error(errorMessage), { component: 'useTimelineOverview' })
+      logger.error(
+        'API error',
+        err instanceof Error ? err : new Error(String(err)),
+        { component: 'useTimelineOverview', errorMessage }
+      )
 
       if (mountedRef.current) {
         setError(errorMessage)

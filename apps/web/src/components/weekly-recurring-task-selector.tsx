@@ -27,7 +27,7 @@ export function WeeklyRecurringTaskSelector({
 
   const fetchTasks = useCallback(async () => {
     try {
-      logger.debug('Fetching active weekly tasks', null, { component: 'WeeklyRecurringTaskSelector' });
+      logger.debug('Fetching active weekly tasks', { component: 'WeeklyRecurringTaskSelector' });
       const data = await weeklyRecurringTasksApi.getActive()
       setTasks(data)
     } catch (error) {

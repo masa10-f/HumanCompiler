@@ -53,10 +53,7 @@ async def create_task(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> TaskResponse:
     """Create a new task"""
-    import logging
     import time
-
-    logger = logging.getLogger(__name__)
 
     start_time = time.time()
     logger.info(

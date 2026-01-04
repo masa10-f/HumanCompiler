@@ -16,8 +16,8 @@ if (!supabaseUrl || !supabaseAnonKey) {
   if (process.env.NODE_ENV === 'production') {
     throw new Error(`${errorMessage}. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.`);
   } else {
-    logger.error(errorMessage, null, { component: 'supabase' });
-    logger.warn('Using fallback values for development/build time', null, { component: 'supabase' });
+    logger.error(errorMessage, new Error(errorMessage), { component: 'supabase' });
+    logger.warn('Using fallback values for development/build time', { component: 'supabase' });
   }
 }
 
