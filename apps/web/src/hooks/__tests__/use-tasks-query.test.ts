@@ -209,6 +209,8 @@ describe('useCreateTask', () => {
 
     const { result, queryClient } = renderHookWithClient(() => useCreateTask())
 
+    const setQueryDataSpy = jest.spyOn(queryClient, 'setQueryData')
+
     await act(async () => {
       await result.current.mutateAsync({
         title: 'Cached Task',
@@ -217,8 +219,11 @@ describe('useCreateTask', () => {
       })
     })
 
-    const cachedTask = queryClient.getQueryData(taskKeys.detail('cached-task'))
-    expect(cachedTask).toEqual(newTask)
+    // Verify setQueryData was called for the task detail
+    expect(setQueryDataSpy).toHaveBeenCalledWith(
+      taskKeys.detail('cached-task'),
+      newTask
+    )
   })
 })
 
