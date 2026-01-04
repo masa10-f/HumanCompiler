@@ -17,6 +17,9 @@ import { TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings 
 // Hooks
 import { useAuth } from '@/hooks/use-auth'
 
+// Utils
+import { logger } from '@/lib/logger'
+
 interface AppHeaderProps {
   currentPage?: 'dashboard' | 'projects' | 'ai-planning' | 'scheduling' | 'schedule-history' | 'timeline' | 'settings'
 }
@@ -47,7 +50,7 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
       router.push(path)
       setIsDialogOpen(false)
     } catch (error) {
-      console.error('Navigation failed:', error)
+      logger.error('Navigation failed', error instanceof Error ? error : new Error(String(error)), { component: 'AppHeader' })
       // ユーザーに通知する場合はtoastなどを使用
     }
   }

@@ -8,6 +8,7 @@ import { Clock, Tag } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { weeklyRecurringTasksApi } from "@/lib/api"
 import type { WeeklyRecurringTask } from "@/types/weekly-recurring-task"
+import { logger } from "@/lib/logger"
 
 interface WeeklyRecurringTaskSelectorProps {
   selectedTaskIds: string[]
@@ -26,11 +27,11 @@ export function WeeklyRecurringTaskSelector({
 
   const fetchTasks = useCallback(async () => {
     try {
-      console.log('📡 WeeklyRecurringTaskSelector: Fetching active weekly tasks');
+      logger.debug('Fetching active weekly tasks', null, { component: 'WeeklyRecurringTaskSelector' });
       const data = await weeklyRecurringTasksApi.getActive()
       setTasks(data)
     } catch (error) {
-      console.error("Error fetching weekly tasks:", error)
+      logger.error("Error fetching weekly tasks", error instanceof Error ? error : new Error(String(error)), { component: "WeeklyRecurringTaskSelector" })
       toast({
         title: "エラー",
         description: "週課の取得に失敗しました",

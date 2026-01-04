@@ -19,6 +19,7 @@ import {
   calculateDependencyBasedStartTimes,
   hoursOffsetToDate
 } from './utils'
+import { logger } from '@/lib/logger'
 
 export class TimelineLayoutEngine {
   private config: TimelineConfig
@@ -94,10 +95,11 @@ export class TimelineLayoutEngine {
       if (explicitEndDate) {
         const calculatedEndDate = this.getCachedDate(projectStart, endTime, weeklyWorkHours)
         if (calculatedEndDate > explicitEndDate) {
-          console.warn(
-            `[Timeline] Goal "${goal.title}" scheduling conflict: ` +
-            `calculated end ${calculatedEndDate.toISOString()} exceeds deadline ${explicitEndDate.toISOString()}`
-          )
+          logger.warn('Goal scheduling conflict', {
+            goalTitle: goal.title,
+            calculatedEnd: calculatedEndDate.toISOString(),
+            deadline: explicitEndDate.toISOString()
+          }, { component: 'TimelineLayoutEngine' })
         }
       }
 
@@ -106,16 +108,17 @@ export class TimelineLayoutEngine {
       if (explicitStartDate) {
         const calculatedStartDate = this.getCachedDate(projectStart, startTime, weeklyWorkHours)
         if (calculatedStartDate < explicitStartDate) {
-          console.warn(
-            `[Timeline] Goal "${goal.title}" dependency conflict: ` +
-            `dependency-based start ${calculatedStartDate.toISOString()} is before explicit start ${explicitStartDate.toISOString()}`
-          )
+          logger.warn('Goal dependency conflict', {
+            goalTitle: goal.title,
+            dependencyBasedStart: calculatedStartDate.toISOString(),
+            explicitStart: explicitStartDate.toISOString()
+          }, { component: 'TimelineLayoutEngine' })
         }
       }
 
       // Validate estimate hours are reasonable
       if (goal.estimate_hours <= 0) {
-        console.warn(`[Timeline] Goal "${goal.title}" has invalid estimate hours: ${goal.estimate_hours}`)
+        logger.warn('Goal has invalid estimate hours', { goalTitle: goal.title, estimateHours: goal.estimate_hours }, { component: 'TimelineLayoutEngine' })
       }
     }
 
@@ -414,12 +417,12 @@ export class TimelineLayoutEngine {
       const toGoal = goalPositions.get(edge.to)
 
       if (!fromGoal) {
-        console.error(`[Timeline] Source goal not found for arrow: ${edge.from} -> ${edge.to}`)
+        logger.error('Source goal not found for arrow', new Error(`Missing source goal: ${edge.from} -> ${edge.to}`), { component: 'TimelineLayoutEngine' })
         return
       }
 
       if (!toGoal) {
-        console.error(`[Timeline] Target goal not found for arrow: ${edge.from} -> ${edge.to}`)
+        logger.error('Target goal not found for arrow', new Error(`Missing target goal: ${edge.from} -> ${edge.to}`), { component: 'TimelineLayoutEngine' })
         return
       }
 

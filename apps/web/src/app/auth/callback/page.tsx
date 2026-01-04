@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from '@/hooks/use-toast'
 import { Loader2 } from 'lucide-react'
+import { logger } from '@/lib/logger'
 
 export default function AuthCallbackPage() {
   const router = useRouter()
@@ -22,7 +23,7 @@ export default function AuthCallbackPage() {
         const { data, error } = await supabase.auth.getSession()
 
         if (error) {
-          console.error('Authentication callback error:', error)
+          logger.error('Authentication callback error', new Error(error.message), { component: 'AuthCallbackPage' })
           toast({
             title: '認証に失敗しました',
             description: error.message || 'メール認証に失敗しました',
@@ -43,7 +44,7 @@ export default function AuthCallbackPage() {
           router.push('/login')
         }
       } catch (error) {
-        console.error('Authentication callback failed:', error)
+        logger.error('Authentication callback failed', error instanceof Error ? error : new Error(String(error)), { component: 'AuthCallbackPage' })
         toast({
           title: '認証エラー',
           description: error instanceof Error ? error.message : '認証処理でエラーが発生しました',
