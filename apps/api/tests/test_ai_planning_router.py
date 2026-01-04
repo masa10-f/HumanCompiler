@@ -2,7 +2,7 @@
 Tests for AI planning router with cache mocking
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import Mock, patch, AsyncMock
 
 import pytest

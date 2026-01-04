@@ -122,7 +122,15 @@ def test_delete_task_endpoint_structure(mock_session, mock_user):
     response = client.delete(f"/api/tasks/{fake_task_id}")
 
     # Should reach the endpoint (may fail on business logic, auth, but not routing)
-    assert response.status_code in [200, 204, 400, 401, 403, 404, 500]  # Not routing error
+    assert response.status_code in [
+        200,
+        204,
+        400,
+        401,
+        403,
+        404,
+        500,
+    ]  # Not routing error
 
 
 def test_delete_task_endpoint_invalid_uuid():
