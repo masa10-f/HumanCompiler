@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { goalsApi } from '@/lib/api';
+import { log } from '@/lib/logger';
+import { handleHookError } from './utils/hook-error-handler';
 import type { Goal, GoalCreate, GoalUpdate } from '@/types/goal';
 
 export interface UseGoalsReturn {
@@ -23,35 +25,67 @@ export function useGoals(projectId: string): UseGoalsReturn {
     try {
       setLoading(true);
       setError(null);
+      log.component('useGoals', 'fetching', { projectId });
+
       const data = await goalsApi.getByProject(projectId);
+      log.component('useGoals', 'fetch_success', {
+        count: data.length,
+        projectId,
+      });
       setGoals(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch goals');
+      const errorMessage = handleHookError(err, 'useGoals', 'fetch goals', {
+        projectId,
+      });
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   }, [projectId]);
 
-  const createGoal = useCallback(async (data: GoalCreate) => {
-    try {
-      setError(null);
-      const newGoal = await goalsApi.create(data);
-      setGoals(prev => [...prev, newGoal]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create goal');
-      throw err;
-    }
-  }, []);
+  const createGoal = useCallback(
+    async (data: GoalCreate) => {
+      try {
+        setError(null);
+        log.userAction('create_goal', data, {
+          component: 'useGoals',
+          projectId,
+        });
+
+        const newGoal = await goalsApi.create(data);
+        log.component('useGoals', 'create_success', {
+          goalId: newGoal.id,
+          projectId,
+        });
+
+        setGoals((prev) => [...prev, newGoal]);
+      } catch (err) {
+        const errorMessage = handleHookError(err, 'useGoals', 'create goal', {
+          projectId,
+        });
+        setError(errorMessage);
+        throw err;
+      }
+    },
+    [projectId]
+  );
 
   const updateGoal = useCallback(async (id: string, data: GoalUpdate) => {
     try {
       setError(null);
+      log.component('useGoals', 'updating', { goalId: id, ...data });
+
       const updatedGoal = await goalsApi.update(id, data);
-      setGoals(prev => prev.map(goal =>
-        goal.id === id ? updatedGoal : goal
-      ));
+      log.component('useGoals', 'update_success', { goalId: id });
+
+      setGoals((prev) =>
+        prev.map((goal) => (goal.id === id ? updatedGoal : goal))
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update goal');
+      const errorMessage = handleHookError(err, 'useGoals', 'update goal', {
+        goalId: id,
+      });
+      setError(errorMessage);
       throw err;
     }
   }, []);
@@ -59,10 +93,17 @@ export function useGoals(projectId: string): UseGoalsReturn {
   const deleteGoal = useCallback(async (id: string) => {
     try {
       setError(null);
+      log.component('useGoals', 'deleting', { goalId: id });
+
       await goalsApi.delete(id);
-      setGoals(prev => prev.filter(goal => goal.id !== id));
+      log.component('useGoals', 'delete_success', { goalId: id });
+
+      setGoals((prev) => prev.filter((goal) => goal.id !== id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete goal');
+      const errorMessage = handleHookError(err, 'useGoals', 'delete goal', {
+        goalId: id,
+      });
+      setError(errorMessage);
       throw err;
     }
   }, []);

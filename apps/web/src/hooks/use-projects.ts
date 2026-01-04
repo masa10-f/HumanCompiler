@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { projectsApi } from '@/lib/api';
-import type { Project, ProjectCreate, ProjectUpdate } from '@/types/project';
 import { log } from '@/lib/logger';
+import { handleHookError } from './utils/hook-error-handler';
+import type { Project, ProjectCreate, ProjectUpdate } from '@/types/project';
 
 export interface UseProjectsReturn {
   projects: Project[];
@@ -22,14 +23,14 @@ export function useProjects(): UseProjectsReturn {
     try {
       setLoading(true);
       setError(null);
-      log.component('useProjects', 'fetching', { action: 'fetch_projects' });
+      log.component('useProjects', 'fetching');
 
       const data = await projectsApi.getAll();
       log.component('useProjects', 'fetch_success', { count: data.length });
       setProjects(data);
     } catch (err) {
-      log.error('Failed to fetch projects', err, { component: 'useProjects', action: 'fetch_error' });
-      setError(err instanceof Error ? err.message : 'Failed to fetch projects');
+      const errorMessage = handleHookError(err, 'useProjects', 'fetch projects');
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -41,36 +42,65 @@ export function useProjects(): UseProjectsReturn {
       log.userAction('create_project', data, { component: 'useProjects' });
 
       const newProject = await projectsApi.create(data);
-      log.component('useProjects', 'create_success', { projectId: newProject.id });
+      log.component('useProjects', 'create_success', {
+        projectId: newProject.id,
+      });
 
-      setProjects(prev => [...prev, newProject]);
+      setProjects((prev) => [...prev, newProject]);
     } catch (err) {
-      log.error('Failed to create project', err, { component: 'useProjects', action: 'create_error' });
-      setError(err instanceof Error ? err.message : 'Failed to create project');
+      const errorMessage = handleHookError(
+        err,
+        'useProjects',
+        'create project'
+      );
+      setError(errorMessage);
       throw err;
     }
   }, []);
 
-  const updateProject = useCallback(async (id: string, data: ProjectUpdate) => {
-    try {
-      setError(null);
-      const updatedProject = await projectsApi.update(id, data);
-      setProjects(prev => prev.map(project =>
-        project.id === id ? updatedProject : project
-      ));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update project');
-      throw err;
-    }
-  }, []);
+  const updateProject = useCallback(
+    async (id: string, data: ProjectUpdate) => {
+      try {
+        setError(null);
+        log.component('useProjects', 'updating', { projectId: id, ...data });
+
+        const updatedProject = await projectsApi.update(id, data);
+        log.component('useProjects', 'update_success', { projectId: id });
+
+        setProjects((prev) =>
+          prev.map((project) => (project.id === id ? updatedProject : project))
+        );
+      } catch (err) {
+        const errorMessage = handleHookError(
+          err,
+          'useProjects',
+          'update project',
+          { projectId: id }
+        );
+        setError(errorMessage);
+        throw err;
+      }
+    },
+    []
+  );
 
   const deleteProject = useCallback(async (id: string) => {
     try {
       setError(null);
+      log.component('useProjects', 'deleting', { projectId: id });
+
       await projectsApi.delete(id);
-      setProjects(prev => prev.filter(project => project.id !== id));
+      log.component('useProjects', 'delete_success', { projectId: id });
+
+      setProjects((prev) => prev.filter((project) => project.id !== id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete project');
+      const errorMessage = handleHookError(
+        err,
+        'useProjects',
+        'delete project',
+        { projectId: id }
+      );
+      setError(errorMessage);
       throw err;
     }
   }, []);

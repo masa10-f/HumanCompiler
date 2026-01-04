@@ -20,6 +20,15 @@ jest.mock('@/lib/api', () => ({
   },
 }))
 
+// Mock logger
+jest.mock('@/lib/logger', () => ({
+  log: {
+    component: jest.fn(),
+    error: jest.fn(),
+    userAction: jest.fn(),
+  },
+}))
+
 // Import after mocks
 import { useGoals } from '../use-goals'
 
