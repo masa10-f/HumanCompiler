@@ -14,7 +14,7 @@ import {
   getProjectStatusLabel,
   getAllProjectStatuses,
 } from '@/constants/project-status'
-import { ApiError } from '@/lib/errors'
+import { getStatusUpdateError } from '@/lib/status-error-handler'
 import type { Project, ProjectStatus } from '@/types/project'
 
 interface ProjectStatusDropdownProps {
@@ -42,31 +42,10 @@ export const ProjectStatusDropdown = memo(function ProjectStatusDropdown({
         description: `プロジェクトのステータスを「${getProjectStatusLabel(newStatus)}」に変更しました。`,
       })
     } catch (error) {
-      let errorMessage = 'ステータスの更新に失敗しました。'
-      let errorTitle = 'エラー'
-
-      const errorStatus = error instanceof ApiError ? error.statusCode : undefined
-
-      if (errorStatus === 404) {
-        errorTitle = 'プロジェクトが見つかりません'
-        errorMessage = '更新対象のプロジェクトが削除されている可能性があります。'
-      } else if (errorStatus === 403) {
-        errorTitle = '権限エラー'
-        errorMessage = 'このプロジェクトを更新する権限がありません。'
-      } else if (errorStatus === 422) {
-        errorTitle = '入力エラー'
-        errorMessage = '無効なステータス値です。ページを再読み込みしてください。'
-      } else if (errorStatus && errorStatus >= 500) {
-        errorTitle = 'サーバーエラー'
-        errorMessage = 'サーバーで問題が発生しました。しばらく時間をおいてから再試行してください。'
-      } else if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        errorTitle = 'ネットワークエラー'
-        errorMessage = 'インターネット接続を確認してください。'
-      }
-
+      const { title, message } = getStatusUpdateError(error as Error, 'project')
       toast({
-        title: errorTitle,
-        description: errorMessage,
+        title,
+        description: message,
         variant: 'destructive',
       })
     } finally {

@@ -2,22 +2,20 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { goalsApi } from '@/lib/api'
-import { useGoalsByProject } from '@/hooks/use-goals-query'
 import { Badge } from '@/components/ui/badge'
 import { GitBranch } from 'lucide-react'
+import type { Goal } from '@/types/goal'
 
 interface GoalDependenciesProps {
   goalId: string
-  projectId: string
+  allGoals: Goal[]
 }
 
-export function GoalDependencies({ goalId, projectId }: GoalDependenciesProps) {
+export function GoalDependencies({ goalId, allGoals }: GoalDependenciesProps) {
   const { data: dependencies = [] } = useQuery({
     queryKey: ['goalDependencies', goalId],
     queryFn: () => goalsApi.getDependencies(goalId),
   })
-
-  const { data: allGoals = [] } = useGoalsByProject(projectId)
 
   if (dependencies.length === 0) {
     return <span className="text-sm text-muted-foreground">なし</span>

@@ -75,7 +75,7 @@ export function GoalList({
             <GoalCard
               key={goal.id}
               goal={goal}
-              projectId={projectId}
+              allGoals={goals}
               onNavigate={onNavigateToGoal}
             />
           ))}

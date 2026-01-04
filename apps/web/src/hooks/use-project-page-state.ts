@@ -17,13 +17,13 @@ export interface ProjectPageState {
   project: Project | undefined
   projectLoading: boolean
   projectError: Error | null
-  refetchProject: () => void
+  refetchProject: ReturnType<typeof useProject>['refetch']
 
   // Goals data
   goals: Goal[]
   goalsLoading: boolean
   goalsError: Error | null
-  refetchGoals: () => void
+  refetchGoals: ReturnType<typeof useGoalsByProject>['refetch']
 
   // Progress data
   projectProgress: ProjectProgress | undefined

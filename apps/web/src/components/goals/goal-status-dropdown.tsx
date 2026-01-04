@@ -15,7 +15,7 @@ import {
   getGoalStatusLabel,
   getAllGoalStatuses,
 } from '@/constants/goal-status'
-import { ApiError } from '@/lib/errors'
+import { getStatusUpdateError } from '@/lib/status-error-handler'
 import type { Goal, GoalStatus } from '@/types/goal'
 
 interface GoalStatusDropdownProps {
@@ -64,7 +64,7 @@ export const GoalStatusDropdown = memo(function GoalStatusDropdown({
       // Return context for potential rollback
       return { previousGoals, previousGoal }
     },
-    onSuccess: (_data, newStatus) => {
+    onSuccess: (_, newStatus) => {
       queryClient.invalidateQueries({ queryKey: ['goals', 'project', goal.project_id] })
       queryClient.invalidateQueries({ queryKey: ['goal', goal.id] })
       toast({
@@ -73,7 +73,7 @@ export const GoalStatusDropdown = memo(function GoalStatusDropdown({
       })
       setIsUpdating(false)
     },
-    onError: (error: Error, _newStatus: GoalStatus, context: GoalStatusMutationContext | undefined) => {
+    onError: (error: Error, _, context: GoalStatusMutationContext | undefined) => {
       // Rollback optimistic updates
       if (context?.previousGoals) {
         queryClient.setQueryData(['goals', 'project', goal.project_id], context.previousGoals)
@@ -82,31 +82,10 @@ export const GoalStatusDropdown = memo(function GoalStatusDropdown({
         queryClient.setQueryData(['goal', goal.id], context.previousGoal)
       }
 
-      let errorMessage = 'ステータスの更新に失敗しました。'
-      let errorTitle = 'エラー'
-
-      const errorStatus = error instanceof ApiError ? error.statusCode : undefined
-
-      if (errorStatus === 404) {
-        errorTitle = 'ゴールが見つかりません'
-        errorMessage = '更新対象のゴールが削除されている可能性があります。'
-      } else if (errorStatus === 403) {
-        errorTitle = '権限エラー'
-        errorMessage = 'このゴールを更新する権限がありません。'
-      } else if (errorStatus === 422) {
-        errorTitle = '入力エラー'
-        errorMessage = '無効なステータス値です。ページを再読み込みしてください。'
-      } else if (errorStatus && errorStatus >= 500) {
-        errorTitle = 'サーバーエラー'
-        errorMessage = 'サーバーで問題が発生しました。しばらく時間をおいてから再試行してください。'
-      } else if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        errorTitle = 'ネットワークエラー'
-        errorMessage = 'インターネット接続を確認してください。'
-      }
-
+      const { title, message } = getStatusUpdateError(error, 'goal')
       toast({
-        title: errorTitle,
-        description: errorMessage,
+        title,
+        description: message,
         variant: 'destructive',
       })
       setIsUpdating(false)
