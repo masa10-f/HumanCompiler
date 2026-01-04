@@ -45,21 +45,6 @@ describe('reducer', () => {
       })
 
       // TOAST_LIMIT is 1, so only the newest toast is kept
-      expect(result.toasts[0]).toEqual(newToast)
-      expect(result.toasts).toHaveLength(1)
-    })
-
-    it('should limit toasts to TOAST_LIMIT (1)', () => {
-      const existingToast = { id: '1', title: 'First', open: true }
-      const newToast = { id: '2', title: 'Second', open: true }
-      const stateWithToast = { toasts: [existingToast] }
-
-      const result = reducer(stateWithToast, {
-        type: 'ADD_TOAST',
-        toast: newToast,
-      })
-
-      // TOAST_LIMIT is 1, so only the newest toast should remain
       expect(result.toasts).toHaveLength(1)
       expect(result.toasts[0]).toEqual(newToast)
     })

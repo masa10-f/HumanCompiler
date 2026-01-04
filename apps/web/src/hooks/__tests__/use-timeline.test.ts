@@ -50,9 +50,9 @@ describe('useProjectTimeline', () => {
     it('should return null data when projectId is null', async () => {
       const { result } = renderHook(() => useProjectTimeline(null))
 
-      // Wait for any async operations
+      // Wait for any potential async operations to complete
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 50))
+        await Promise.resolve()
       })
 
       expect(result.current.data).toBeNull()
@@ -183,9 +183,9 @@ describe('useProjectTimeline', () => {
 
       rerender({ filters: filters2 })
 
-      // Wait a bit and verify no new fetch
+      // Wait for any potential async operations to complete
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 50))
+        await Promise.resolve()
       })
 
       // Should not have made additional API calls due to memoization

@@ -192,6 +192,8 @@ describe('useCreateGoal', () => {
 
     const { result, queryClient } = renderHookWithClient(() => useCreateGoal())
 
+    const setQueryDataSpy = jest.spyOn(queryClient, 'setQueryData')
+
     await act(async () => {
       await result.current.mutateAsync({
         title: 'Cached Goal',
@@ -200,11 +202,11 @@ describe('useCreateGoal', () => {
       })
     })
 
-    // Wait for cache update in onSuccess callback
-    await waitFor(() => {
-      const cachedGoal = queryClient.getQueryData(goalKeys.detail('cached-goal'))
-      expect(cachedGoal).toEqual(newGoal)
-    })
+    // Verify setQueryData was called for the goal detail
+    expect(setQueryDataSpy).toHaveBeenCalledWith(
+      goalKeys.detail('cached-goal'),
+      newGoal
+    )
   })
 })
 

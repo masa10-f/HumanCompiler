@@ -159,14 +159,23 @@ export const createMockTimelineOverviewData = (overrides: Partial<TimelineOvervi
 })
 
 // Batch factories for multiple items
-export const createMockProjects = (count: number, overrides: Partial<Project> = {}): Project[] =>
-  Array.from({ length: count }, (_, i) => createMockProject({ title: `Project ${i + 1}`, ...overrides }))
+// Note: id is explicitly excluded from overrides to ensure unique IDs for each item
+export const createMockProjects = (count: number, overrides: Partial<Project> = {}): Project[] => {
+  const { id: _id, ...projectOverrides } = overrides
+  return Array.from({ length: count }, (_, i) => createMockProject({ title: `Project ${i + 1}`, ...projectOverrides }))
+}
 
-export const createMockGoals = (count: number, overrides: Partial<Goal> = {}): Goal[] =>
-  Array.from({ length: count }, (_, i) => createMockGoal({ title: `Goal ${i + 1}`, ...overrides }))
+export const createMockGoals = (count: number, overrides: Partial<Goal> = {}): Goal[] => {
+  const { id: _id, ...goalOverrides } = overrides
+  return Array.from({ length: count }, (_, i) => createMockGoal({ title: `Goal ${i + 1}`, ...goalOverrides }))
+}
 
-export const createMockTasks = (count: number, overrides: Partial<Task> = {}): Task[] =>
-  Array.from({ length: count }, (_, i) => createMockTask({ title: `Task ${i + 1}`, ...overrides }))
+export const createMockTasks = (count: number, overrides: Partial<Task> = {}): Task[] => {
+  const { id: _id, ...taskOverrides } = overrides
+  return Array.from({ length: count }, (_, i) => createMockTask({ title: `Task ${i + 1}`, ...taskOverrides }))
+}
 
-export const createMockLogs = (count: number, overrides: Partial<Log> = {}): Log[] =>
-  Array.from({ length: count }, (_, i) => createMockLog({ actual_minutes: 30 * (i + 1), ...overrides }))
+export const createMockLogs = (count: number, overrides: Partial<Log> = {}): Log[] => {
+  const { id: _id, ...logOverrides } = overrides
+  return Array.from({ length: count }, (_, i) => createMockLog({ actual_minutes: 30 * (i + 1), ...logOverrides }))
+}

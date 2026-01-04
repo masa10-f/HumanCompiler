@@ -75,5 +75,5 @@ export const waitForMutationToSettle = async (
 // Helper to wait for next tick (useful for async state updates)
 export const waitForNextTick = () => new Promise((resolve) => setTimeout(resolve, 0))
 
-// Helper to flush all promises
-export const flushPromises = () => new Promise((resolve) => setImmediate(resolve))
+// Helper to flush all promises (cross-platform compatible)
+export const flushPromises = () => Promise.resolve()

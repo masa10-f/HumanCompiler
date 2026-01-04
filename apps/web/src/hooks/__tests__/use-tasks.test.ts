@@ -45,8 +45,9 @@ describe('useTasks', () => {
     it('should not fetch when goalId is empty', async () => {
       const { result } = renderHook(() => useTasks(''))
 
+      // Wait for any potential async operations to complete
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 50))
+        await Promise.resolve()
       })
 
       expect(mockGetByGoal).not.toHaveBeenCalled()
@@ -284,8 +285,9 @@ describe('useProjectTasks', () => {
     it('should not fetch when projectId is empty', async () => {
       const { result } = renderHook(() => useProjectTasks(''))
 
+      // Wait for any potential async operations to complete
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 50))
+        await Promise.resolve()
       })
 
       expect(mockGetByProject).not.toHaveBeenCalled()

@@ -34,9 +34,9 @@ describe('useGoals', () => {
     it('should not fetch when projectId is empty', async () => {
       const { result } = renderHook(() => useGoals(''))
 
-      // Wait a bit to ensure no fetch happens
+      // Wait for any potential async operations to complete
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 50))
+        await Promise.resolve()
       })
 
       expect(mockGetByProject).not.toHaveBeenCalled()

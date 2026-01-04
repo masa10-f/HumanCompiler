@@ -29,15 +29,9 @@ global.IntersectionObserver = class IntersectionObserver {
     this.rootMargin = ''
     this.thresholds = []
   }
-  observe() {
-    return null
-  }
-  unobserve() {
-    return null
-  }
-  disconnect() {
-    return null
-  }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
   takeRecords() {
     return []
   }
