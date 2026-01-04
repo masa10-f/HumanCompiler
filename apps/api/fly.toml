@@ -39,9 +39,6 @@ primary_region = "nrt"  # Tokyo region for lower latency
   cpus = 1
   memory_mb = 512
 
-[deploy]
-  release_command = "python -c 'print(\"Starting HumanCompiler API...\")'"
-
 # Database and secrets configuration
 # Set these with: fly secrets set KEY=VALUE
 # Required secrets:

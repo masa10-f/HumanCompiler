@@ -26,9 +26,6 @@ primary_region = "nrt"  # Tokyo region for lower latency
   cpus = 1
   memory_mb = 512  # Smaller instance for preview (vs 1024 for production)
 
-[deploy]
-  release_command = "python -c 'print(\"Starting HumanCompiler API Preview...\")'"
-
 # Preview environment uses same database but different secrets for isolation
 # Required secrets (will be set via GitHub Actions):
 # - DATABASE_URL (can share with production or use separate staging DB)
