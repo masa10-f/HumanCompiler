@@ -22,7 +22,9 @@ export const GoalCard = memo(function GoalCard({
 }: GoalCardProps) {
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+      // Only handle keydown if the event originated from the card itself
+      // This prevents hijacking keyboard interactions from child elements (buttons, dropdowns)
+      if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
         e.preventDefault()
         onNavigate(goal.id)
       }
