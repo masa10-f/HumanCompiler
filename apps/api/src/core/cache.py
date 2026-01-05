@@ -69,8 +69,7 @@ def cached(
         async def async_wrapper(*args, **kwargs) -> Any:
             # Skip caching if condition is False
             if condition and not condition(*args, **kwargs):
-                # Type: ignore because we know func is async
-                result = func(*args, **kwargs)  # type: ignore
+                result = func(*args, **kwargs)
                 if asyncio.iscoroutine(result):
                     return await result
                 return result
@@ -89,8 +88,7 @@ def cached(
 
             # Execute function and cache result
             logger.debug(f"Cache miss for {cache_key}")
-            # Type: ignore because we know func is async
-            result = func(*args, **kwargs)  # type: ignore
+            result = func(*args, **kwargs)
             if asyncio.iscoroutine(result):
                 result = await result
 

@@ -722,7 +722,13 @@ def _check_goal_dependencies_satisfied(
         return False  # Assume not satisfied on error
 
 
-def optimize_schedule(tasks, time_slots, date=None, session=None, user_id=None):
+def optimize_schedule(
+    tasks: list[SchedulerTask],
+    time_slots: list[TimeSlot],
+    date: datetime | None = None,
+    session: Session | None = None,
+    user_id: str | UUID | None = None,
+) -> ScheduleResult:
     """
     OR-Tools CP-SAT constraint solver implementation for task scheduling optimization.
 
@@ -996,17 +1002,12 @@ def optimize_schedule(tasks, time_slots, date=None, session=None, user_id=None):
     # Constraint 5: Deadline constraints (soft constraint via penalty)
     deadline_bonus = {}
     if date:
-        schedule_date = (
-            datetime.strptime(date, "%Y-%m-%d") if isinstance(date, str) else date
-        )
+        schedule_date = date
         for i, task in enumerate(tasks):
             for j, _slot in enumerate(time_slots):
                 if task.due_date:
-                    # Ensure both are date objects
-                    if isinstance(task.due_date, datetime):
-                        due_date_obj = task.due_date.date()
-                    else:
-                        due_date_obj = task.due_date
+                    # due_date is datetime, extract date for comparison
+                    due_date_obj = task.due_date.date()
                     days_until_due = (due_date_obj - schedule_date.date()).days
                     # Bonus for scheduling tasks closer to deadline
                     deadline_bonus[i, j] = (

@@ -10,7 +10,7 @@ from humancompiler_api.database import db
 logger = logging.getLogger(__name__)
 
 
-def migrate_add_priority_column():
+def migrate_add_priority_column() -> bool:
     """
     Safely add priority column to tasks table in production.
     Returns True if successful, False otherwise.

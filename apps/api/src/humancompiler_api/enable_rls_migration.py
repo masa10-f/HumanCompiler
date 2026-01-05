@@ -268,7 +268,7 @@ class RLSMigrationManager:
         return True
 
 
-def main():
+def main() -> None:
     """Main entry point"""
     logging.basicConfig(
         level=logging.DEBUG,  # Changed to DEBUG for more detailed error information

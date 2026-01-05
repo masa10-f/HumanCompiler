@@ -1,3 +1,4 @@
+from collections.abc import Generator
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -16,7 +17,7 @@ from humancompiler_api.services import UserService
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-def get_session():
+def get_session() -> Generator[Session, None, None]:
     """Database session dependency"""
     with Session(db.get_engine()) as session:
         yield session
