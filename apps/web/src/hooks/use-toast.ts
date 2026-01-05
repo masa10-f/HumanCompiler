@@ -130,6 +130,21 @@ function dispatch(action: Action) {
 
 type Toast = Omit<ToasterToast, "id">
 
+/**
+ * Displays a toast notification.
+ * Can be used outside of React components for programmatic notifications.
+ *
+ * @param props - Toast configuration including title, description, and variant
+ * @returns Object with id, dismiss, and update methods
+ *
+ * @example
+ * ```ts
+ * toast({
+ *   title: "Success",
+ *   description: "Operation completed successfully",
+ * });
+ * ```
+ */
 function toast({ ...props }: Toast) {
   const id = genId()
 
@@ -159,6 +174,18 @@ function toast({ ...props }: Toast) {
   }
 }
 
+/**
+ * Toast notification system hook.
+ * Provides global toast state management and notification methods.
+ *
+ * @returns Toast state and methods for displaying notifications
+ *
+ * @example
+ * ```tsx
+ * const { toast, dismiss, toasts } = useToast();
+ * toast({ title: "Hello", description: "World" });
+ * ```
+ */
 function useToast() {
   const [state, setState] = React.useState<State>(memoryState)
 

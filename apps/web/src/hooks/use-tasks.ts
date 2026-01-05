@@ -4,6 +4,9 @@ import { log } from '@/lib/logger';
 import { handleHookError } from './utils/hook-error-handler';
 import type { Task, TaskCreate, TaskUpdate } from '@/types/task';
 
+/**
+ * Return type for task management hooks.
+ */
 export interface UseTasksReturn {
   tasks: Task[];
   loading: boolean;
@@ -138,7 +141,32 @@ function createTasksHook(config: TasksHookConfig) {
   };
 }
 
+/**
+ * Hook for managing tasks associated with a specific goal.
+ * Provides CRUD operations and loading/error states.
+ *
+ * @param goalId - The goal UUID to fetch tasks for
+ * @returns Task management state and methods
+ *
+ * @example
+ * ```tsx
+ * const { tasks, loading, createTask } = useTasks(goalId);
+ * ```
+ */
 export const useTasks = createTasksHook({ type: 'goal', hookName: 'useTasks' });
+
+/**
+ * Hook for managing tasks associated with a specific project.
+ * Similar to useTasks but fetches by project ID.
+ *
+ * @param projectId - The project UUID to fetch tasks for
+ * @returns Task management state and methods
+ *
+ * @example
+ * ```tsx
+ * const { tasks, loading, createTask } = useProjectTasks(projectId);
+ * ```
+ */
 export const useProjectTasks = createTasksHook({
   type: 'project',
   hookName: 'useProjectTasks',

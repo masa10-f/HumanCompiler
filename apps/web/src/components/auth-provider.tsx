@@ -14,6 +14,13 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
 })
 
+/**
+ * Authentication provider component.
+ * Manages Supabase auth state and provides user context to children.
+ *
+ * @param props - Component props
+ * @param props.children - Child components to wrap with auth context
+ */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
@@ -46,6 +53,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
+/**
+ * Hook to access authentication context.
+ *
+ * @returns Auth context with user and loading state
+ * @throws Error if used outside AuthProvider
+ */
 export const useAuthContext = () => {
   const context = useContext(AuthContext)
   if (context === undefined) {

@@ -6,7 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { logger } from '@/lib/logger'
 
+/**
+ * Props for GlobalErrorBoundary component.
+ */
 interface Props {
+  /** Child components to wrap with error boundary */
   children: React.ReactNode
 }
 
@@ -16,6 +20,11 @@ interface State {
   errorInfo: React.ErrorInfo | null
 }
 
+/**
+ * Global error boundary component.
+ * Catches JavaScript errors anywhere in the child component tree
+ * and displays a fallback UI with error details in development.
+ */
 export class GlobalErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props)

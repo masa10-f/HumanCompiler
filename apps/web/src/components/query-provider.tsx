@@ -4,6 +4,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { useState } from 'react'
 
+/**
+ * React Query provider component.
+ * Configures QueryClient with default options and provides devtools.
+ *
+ * @param props - Component props
+ * @param props.children - Child components to wrap with query context
+ */
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () => new QueryClient({

@@ -3,10 +3,20 @@ import { logsApi } from '@/lib/api'
 import type { Log, LogCreate, LogUpdate } from '@/types/log'
 import { queryKeys } from '@/lib/query-keys'
 
-// Re-export log keys for backward compatibility
+/**
+ * Query keys for log caching with React Query.
+ * Re-exported from centralized query keys for backward compatibility.
+ */
 export const logKeys = queryKeys.logs
 
-// Hook for fetching logs by task
+/**
+ * Fetches logs for a specific task with pagination.
+ *
+ * @param taskId - The task UUID to fetch logs for
+ * @param skip - Number of records to skip (default: 0)
+ * @param limit - Maximum records to return (default: 50)
+ * @returns UseQueryResult with log array
+ */
 export function useLogsByTask(taskId: string, skip = 0, limit = 50) {
   return useQuery({
     queryKey: logKeys.byTask(taskId),
@@ -17,7 +27,13 @@ export function useLogsByTask(taskId: string, skip = 0, limit = 50) {
   })
 }
 
-// Hook for batch fetching logs for multiple tasks
+/**
+ * Batch fetches logs for multiple tasks efficiently.
+ * Uses the batch API endpoint for optimized fetching.
+ *
+ * @param taskIds - Array of task UUIDs to fetch logs for
+ * @returns UseQueryResult with logs grouped by task
+ */
 export function useBatchLogsQuery(taskIds: string[]) {
   return useQuery({
     queryKey: queryKeys.logs.batch(taskIds),
@@ -31,7 +47,12 @@ export function useBatchLogsQuery(taskIds: string[]) {
   });
 }
 
-// Hook for fetching a single log
+/**
+ * Fetches a single log by ID.
+ *
+ * @param logId - The log UUID to fetch
+ * @returns UseQueryResult with log data
+ */
 export function useLog(logId: string) {
   return useQuery({
     queryKey: logKeys.detail(logId),
@@ -42,7 +63,12 @@ export function useLog(logId: string) {
   })
 }
 
-// Hook for creating a log
+/**
+ * Mutation hook for creating a new log.
+ * Automatically invalidates log and progress cache on success.
+ *
+ * @returns UseMutationResult with mutateAsync function
+ */
 export function useCreateLog() {
   const queryClient = useQueryClient()
 
@@ -66,7 +92,12 @@ export function useCreateLog() {
   })
 }
 
-// Hook for updating a log
+/**
+ * Mutation hook for updating a log.
+ * Updates cache and invalidates log and progress data on success.
+ *
+ * @returns UseMutationResult with mutateAsync function
+ */
 export function useUpdateLog() {
   const queryClient = useQueryClient()
 
@@ -91,7 +122,12 @@ export function useUpdateLog() {
   })
 }
 
-// Hook for deleting a log
+/**
+ * Mutation hook for deleting a log.
+ * Removes from cache and invalidates log and progress data on success.
+ *
+ * @returns UseMutationResult with mutateAsync function
+ */
 export function useDeleteLog() {
   const queryClient = useQueryClient()
 
@@ -120,7 +156,13 @@ export function useDeleteLog() {
   })
 }
 
-// Helper hook to calculate total actual minutes for a task
+/**
+ * Helper hook to calculate total actual minutes for a task.
+ * Aggregates time from all logs associated with the task.
+ *
+ * @param taskId - The task UUID to calculate time for
+ * @returns Object with totalMinutes, totalHours, and logs array
+ */
 export function useTaskActualMinutes(taskId: string) {
   const { data: logs = [] } = useLogsByTask(taskId)
 

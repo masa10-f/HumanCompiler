@@ -4,6 +4,9 @@ import { log } from '@/lib/logger';
 import { handleHookError } from './utils/hook-error-handler';
 import type { Goal, GoalCreate, GoalUpdate } from '@/types/goal';
 
+/**
+ * Return type for the useGoals hook.
+ */
 export interface UseGoalsReturn {
   goals: Goal[];
   loading: boolean;
@@ -14,6 +17,19 @@ export interface UseGoalsReturn {
   refetch: () => Promise<void>;
 }
 
+/**
+ * Hook for managing goals for a specific project.
+ * Provides loading/error states and CRUD mutation methods.
+ *
+ * @param projectId - The project UUID to fetch goals for
+ * @returns Goal management state and methods
+ *
+ * @example
+ * ```tsx
+ * const { goals, loading, createGoal } = useGoals(projectId);
+ * await createGoal({ title: "New Goal", project_id: projectId });
+ * ```
+ */
 export function useGoals(projectId: string): UseGoalsReturn {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(false);

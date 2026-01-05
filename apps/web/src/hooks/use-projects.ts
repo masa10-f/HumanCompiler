@@ -4,6 +4,9 @@ import { log } from '@/lib/logger';
 import { handleHookError } from './utils/hook-error-handler';
 import type { Project, ProjectCreate, ProjectUpdate } from '@/types/project';
 
+/**
+ * Return type for the useProjects hook.
+ */
 export interface UseProjectsReturn {
   projects: Project[];
   loading: boolean;
@@ -14,6 +17,18 @@ export interface UseProjectsReturn {
   refetch: () => Promise<void>;
 }
 
+/**
+ * Hook for managing project CRUD operations with local state.
+ * Provides loading/error states and mutation methods.
+ *
+ * @returns Project management state and methods
+ *
+ * @example
+ * ```tsx
+ * const { projects, loading, createProject, refetch } = useProjects();
+ * await createProject({ title: "New Project" });
+ * ```
+ */
 export function useProjects(): UseProjectsReturn {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);

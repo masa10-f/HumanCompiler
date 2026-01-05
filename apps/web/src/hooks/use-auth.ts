@@ -6,6 +6,20 @@ import type { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { toast } from '@/hooks/use-toast'
 
+/**
+ * Authentication hook for Supabase auth integration.
+ * Manages user session state and provides sign out functionality.
+ * Handles automatic redirects on auth state changes.
+ *
+ * @returns Authentication state and methods
+ *
+ * @example
+ * ```tsx
+ * const { user, loading, signOut, isAuthenticated } = useAuth();
+ * if (loading) return <Loading />;
+ * if (!isAuthenticated) redirect('/login');
+ * ```
+ */
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)

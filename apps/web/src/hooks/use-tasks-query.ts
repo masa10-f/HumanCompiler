@@ -3,7 +3,10 @@ import { tasksApi } from '@/lib/api'
 import type { Task, TaskCreate, TaskUpdate } from '@/types/task'
 import type { SortOptions } from '@/types/sort'
 
-// Query keys for consistent caching
+/**
+ * Query keys for task caching with React Query.
+ * Provides consistent cache key structure for all task-related queries.
+ */
 export const taskKeys = {
   all: ['tasks'] as const,
   lists: () => [...taskKeys.all, 'list'] as const,
@@ -14,7 +17,15 @@ export const taskKeys = {
   byProject: (projectId: string) => [...taskKeys.all, 'project', projectId] as const,
 }
 
-// Hook for fetching tasks by goal
+/**
+ * Fetches tasks for a specific goal with pagination and sorting.
+ *
+ * @param goalId - The goal UUID to fetch tasks for
+ * @param skip - Number of records to skip (default: 0)
+ * @param limit - Maximum records to return (default: 50)
+ * @param sortOptions - Optional sorting configuration
+ * @returns UseQueryResult with task array
+ */
 export function useTasksByGoal(goalId: string, skip = 0, limit = 50, sortOptions?: SortOptions) {
   const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
   return useQuery({
@@ -26,7 +37,15 @@ export function useTasksByGoal(goalId: string, skip = 0, limit = 50, sortOptions
   })
 }
 
-// Hook for fetching tasks by project
+/**
+ * Fetches tasks for a specific project with pagination and sorting.
+ *
+ * @param projectId - The project UUID to fetch tasks for
+ * @param skip - Number of records to skip (default: 0)
+ * @param limit - Maximum records to return (default: 50)
+ * @param sortOptions - Optional sorting configuration
+ * @returns UseQueryResult with task array
+ */
 export function useTasksByProject(projectId: string, skip = 0, limit = 50, sortOptions?: SortOptions) {
   const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
   return useQuery({
@@ -38,7 +57,12 @@ export function useTasksByProject(projectId: string, skip = 0, limit = 50, sortO
   })
 }
 
-// Hook for fetching a single task
+/**
+ * Fetches a single task by ID.
+ *
+ * @param taskId - The task UUID to fetch
+ * @returns UseQueryResult with task data
+ */
 export function useTask(taskId: string) {
   return useQuery({
     queryKey: taskKeys.detail(taskId),
@@ -49,7 +73,12 @@ export function useTask(taskId: string) {
   })
 }
 
-// Hook for creating a task
+/**
+ * Mutation hook for creating a new task.
+ * Automatically invalidates task cache for the goal on success.
+ *
+ * @returns UseMutationResult with mutateAsync function
+ */
 export function useCreateTask() {
   const queryClient = useQueryClient()
 
@@ -74,7 +103,12 @@ export function useCreateTask() {
   })
 }
 
-// Hook for updating a task
+/**
+ * Mutation hook for updating a task.
+ * Updates cache and invalidates task lists on success.
+ *
+ * @returns UseMutationResult with mutateAsync function
+ */
 export function useUpdateTask() {
   const queryClient = useQueryClient()
 
@@ -99,7 +133,12 @@ export function useUpdateTask() {
   })
 }
 
-// Hook for deleting a task
+/**
+ * Mutation hook for deleting a task.
+ * Removes from cache and invalidates task lists on success.
+ *
+ * @returns UseMutationResult with mutateAsync function
+ */
 export function useDeleteTask() {
   const queryClient = useQueryClient()
 
