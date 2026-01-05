@@ -80,15 +80,15 @@ asyncio_mode = "auto"
 
 [tool.mypy]
 python_version = "3.11"
-# Gradual typing approach - start with basic checks
-warn_return_any = false
+# Gradual typing approach - Phase 1+2: Stricter settings
+warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false  # Allow untyped functions for now
 ignore_missing_imports = true
 strict_optional = false  # Allow implicit Optional for gradual adoption
-warn_redundant_casts = false
+warn_redundant_casts = true
 warn_unused_ignores = false
-check_untyped_defs = false  # Don't check untyped functions yet
+check_untyped_defs = true  # Check untyped function bodies
 # plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]  # Not available in pre-commit env
 no_implicit_reexport = false
 # Focus on critical errors only
@@ -96,6 +96,7 @@ warn_unreachable = true
 disallow_any_generics = false
 disallow_untyped_calls = false
 # Disable complex checking for gradual adoption
+# Note: no-any-return kept to track SQLModel/Pydantic Any returns for Phase 3
 disable_error_code = ["attr-defined", "override", "call-overload", "union-attr", "arg-type", "assignment", "no-redef", "return-value", "var-annotated", "no-any-return"]
 
 [tool.coverage.run]

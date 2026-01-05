@@ -8,7 +8,7 @@ from collections.abc import Callable
 from functools import wraps
 import hashlib
 import asyncio
-from cachetools import TTLCache
+from cachetools import TTLCache  # type: ignore[import-untyped]
 import logging
 
 logger = logging.getLogger(__name__)

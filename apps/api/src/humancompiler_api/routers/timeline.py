@@ -2,7 +2,6 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -21,6 +20,17 @@ from ..models import (
     GoalStatus,
     SortBy,
     SortOrder,
+)
+from .schemas.timeline import (
+    GoalTimelineData,
+    ProjectInfo,
+    ProjectOverviewData,
+    ProjectStatistics,
+    ProjectTimelineResponse,
+    TaskTimelineData,
+    TimelineInfo,
+    TimelineOverviewInfo,
+    TimelineOverviewResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,7 +56,7 @@ def conditional_rate_limit(rate: str):
     return decorator
 
 
-@router.get("/projects/{project_id}")
+@router.get("/projects/{project_id}", response_model=ProjectTimelineResponse)
 async def get_project_timeline(
     project_id: UUID,
     start_date: datetime = Query(None, description="Timeline start date"),
@@ -59,7 +69,7 @@ async def get_project_timeline(
     sort_order: SortOrder = Query(SortOrder.ASC, description="Sort order"),
     current_user: AuthUser = Depends(get_current_user),
     session: Session = Depends(get_session),
-) -> dict[str, Any]:
+) -> ProjectTimelineResponse:
     """
     Get timeline data for a specific project
 
@@ -131,23 +141,7 @@ async def get_project_timeline(
         )
         goals = session.exec(goals_statement).all()
 
-        timeline_data = {
-            "project": {
-                "id": str(project.id),
-                "title": project.title,
-                "description": project.description,
-                "status": project.status,
-                "weekly_work_hours": weekly_work_hours,
-                "created_at": project.created_at.isoformat(),
-                "updated_at": project.updated_at.isoformat(),
-            },
-            "timeline": {
-                "start_date": start_date.isoformat(),
-                "end_date": end_date.isoformat(),
-                "time_unit": time_unit,
-            },
-            "goals": [],
-        }
+        goals_data: list[GoalTimelineData] = []
 
         for goal in goals:
             # Use preloaded tasks from the relationship (N+1 problem fixed)
@@ -156,20 +150,7 @@ async def get_project_timeline(
             # Get dependency goal IDs
             dependency_ids = [str(dep.depends_on_goal_id) for dep in goal.dependencies]
 
-            goal_data = {
-                "id": str(goal.id),
-                "title": goal.title,
-                "description": goal.description,
-                "status": goal.status,
-                "estimate_hours": float(goal.estimate_hours),
-                "start_date": None,
-                "end_date": None,
-                "dependencies": dependency_ids,
-                "created_at": goal.created_at.isoformat(),
-                "updated_at": goal.updated_at.isoformat(),
-                "tasks": [],
-            }
-
+            tasks_data: list[TaskTimelineData] = []
             for task in tasks:
                 # Use preloaded logs from the relationship (N+1 problem fixed)
                 logs = task.logs
@@ -185,31 +166,62 @@ async def get_project_timeline(
                 # Determine task status color
                 status_color = _get_status_color(task.status, progress_percentage)
 
-                task_data = {
-                    "id": str(task.id),
-                    "title": task.title,
-                    "description": task.description,
-                    "status": task.status,
-                    "estimate_hours": float(task.estimate_hours),
-                    "due_date": task.due_date.isoformat() if task.due_date else None,
-                    "created_at": task.created_at.isoformat(),
-                    "updated_at": task.updated_at.isoformat(),
-                    "progress_percentage": round(progress_percentage, 1),
-                    "status_color": status_color,
-                    "actual_hours": round(total_actual_minutes / 60, 2),
-                    "logs_count": len(logs),
-                }
-
-                goal_data["tasks"].append(task_data)
+                tasks_data.append(
+                    TaskTimelineData(
+                        id=str(task.id),
+                        title=task.title,
+                        description=task.description,
+                        status=task.status,
+                        estimate_hours=float(task.estimate_hours),
+                        due_date=task.due_date.isoformat() if task.due_date else None,
+                        created_at=task.created_at.isoformat(),
+                        updated_at=task.updated_at.isoformat(),
+                        progress_percentage=round(progress_percentage, 1),
+                        status_color=status_color,
+                        actual_hours=round(total_actual_minutes / 60, 2),
+                        logs_count=len(logs),
+                    )
+                )
 
             # Sort tasks by created_at for timeline display
-            goal_data["tasks"].sort(key=lambda x: x["created_at"])
-            timeline_data["goals"].append(goal_data)
+            tasks_data.sort(key=lambda x: x.created_at)
+
+            goals_data.append(
+                GoalTimelineData(
+                    id=str(goal.id),
+                    title=goal.title,
+                    description=goal.description,
+                    status=goal.status,
+                    estimate_hours=float(goal.estimate_hours),
+                    start_date=None,
+                    end_date=None,
+                    dependencies=dependency_ids,
+                    created_at=goal.created_at.isoformat(),
+                    updated_at=goal.updated_at.isoformat(),
+                    tasks=tasks_data,
+                )
+            )
 
         # Sort goals by created_at for timeline display
-        timeline_data["goals"].sort(key=lambda x: x["created_at"])
+        goals_data.sort(key=lambda x: x.created_at)
 
-        return timeline_data
+        return ProjectTimelineResponse(
+            project=ProjectInfo(
+                id=str(project.id),
+                title=project.title,
+                description=project.description,
+                status=project.status,
+                weekly_work_hours=weekly_work_hours,
+                created_at=project.created_at.isoformat(),
+                updated_at=project.updated_at.isoformat(),
+            ),
+            timeline=TimelineInfo(
+                start_date=start_date.isoformat(),
+                end_date=end_date.isoformat(),
+                time_unit=time_unit,
+            ),
+            goals=goals_data,
+        )
 
     except Exception as e:
         logger.error(
@@ -225,13 +237,13 @@ async def get_project_timeline(
         raise HTTPException(status_code=500, detail=detail)
 
 
-@router.get("/overview")
+@router.get("/overview", response_model=TimelineOverviewResponse)
 async def get_timeline_overview(
     start_date: datetime = Query(None, description="Timeline start date"),
     end_date: datetime = Query(None, description="Timeline end date"),
     current_user: AuthUser = Depends(get_current_user),
     session: Session = Depends(get_session),
-) -> dict[str, Any]:
+) -> TimelineOverviewResponse:
     """
     Get timeline overview for all projects of the current user
 
@@ -272,13 +284,7 @@ async def get_timeline_overview(
         if len(projects) == 0:
             logger.warning(f"No projects found for user {current_user.user_id}")
 
-        overview_data = {
-            "timeline": {
-                "start_date": start_date.isoformat(),
-                "end_date": end_date.isoformat(),
-            },
-            "projects": [],
-        }
+        projects_data: list[ProjectOverviewData] = []
 
         for project in projects:
             # Use preloaded goals from the relationship (N+1 problem fixed)
@@ -305,39 +311,45 @@ async def get_timeline_overview(
                 [t for t in all_tasks if t.status == TaskStatus.IN_PROGRESS]
             )
 
-            project_data = {
-                "id": str(project.id),
-                "title": project.title,
-                "description": project.description,
-                "status": project.status,
-                "created_at": project.created_at.isoformat(),
-                "updated_at": project.updated_at.isoformat(),
-                "statistics": {
-                    "total_goals": total_goals,
-                    "completed_goals": completed_goals,
-                    "in_progress_goals": in_progress_goals,
-                    "total_tasks": total_tasks,
-                    "completed_tasks": completed_tasks,
-                    "in_progress_tasks": in_progress_tasks,
-                    "goals_completion_rate": round(
-                        (completed_goals / total_goals) * 100, 1
-                    )
-                    if total_goals > 0
-                    else 0,
-                    "tasks_completion_rate": round(
-                        (completed_tasks / total_tasks) * 100, 1
-                    )
-                    if total_tasks > 0
-                    else 0,
-                },
-            }
-
-            overview_data["projects"].append(project_data)
+            projects_data.append(
+                ProjectOverviewData(
+                    id=str(project.id),
+                    title=project.title,
+                    description=project.description,
+                    status=project.status,
+                    created_at=project.created_at.isoformat(),
+                    updated_at=project.updated_at.isoformat(),
+                    statistics=ProjectStatistics(
+                        total_goals=total_goals,
+                        completed_goals=completed_goals,
+                        in_progress_goals=in_progress_goals,
+                        total_tasks=total_tasks,
+                        completed_tasks=completed_tasks,
+                        in_progress_tasks=in_progress_tasks,
+                        goals_completion_rate=round(
+                            (completed_goals / total_goals) * 100, 1
+                        )
+                        if total_goals > 0
+                        else 0,
+                        tasks_completion_rate=round(
+                            (completed_tasks / total_tasks) * 100, 1
+                        )
+                        if total_tasks > 0
+                        else 0,
+                    ),
+                )
+            )
 
         # Sort projects by updated_at (most recent first)
-        overview_data["projects"].sort(key=lambda x: x["updated_at"], reverse=True)
+        projects_data.sort(key=lambda x: x.updated_at, reverse=True)
 
-        return overview_data
+        return TimelineOverviewResponse(
+            timeline=TimelineOverviewInfo(
+                start_date=start_date.isoformat(),
+                end_date=end_date.isoformat(),
+            ),
+            projects=projects_data,
+        )
 
     except Exception as e:
         logger.error(
