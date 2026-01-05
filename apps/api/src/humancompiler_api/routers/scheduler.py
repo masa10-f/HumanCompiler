@@ -1495,7 +1495,11 @@ async def create_daily_schedule(
             f"Running optimization with {len(scheduler_tasks)} tasks and {len(scheduler_slots)} slots"
         )
         optimization_result = optimize_schedule(
-            scheduler_tasks, scheduler_slots, request.date, session, user_id
+            scheduler_tasks,
+            scheduler_slots,
+            datetime.strptime(request.date, "%Y-%m-%d"),
+            session,
+            user_id,
         )
 
         # Process results
