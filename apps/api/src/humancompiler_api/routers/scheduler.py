@@ -665,7 +665,13 @@ def _check_goal_dependencies_satisfied(
         return False  # Assume not satisfied on error
 
 
-def optimize_schedule(tasks, time_slots, date=None, session=None, user_id=None):
+def optimize_schedule(
+    tasks: list[SchedulerTask],
+    time_slots: list[TimeSlot],
+    date: datetime | None = None,
+    session: Session | None = None,
+    user_id: str | UUID | None = None,
+) -> ScheduleResult:
     """
     OR-Tools CP-SAT constraint solver implementation for task scheduling optimization.
 
@@ -1214,7 +1220,11 @@ async def create_daily_schedule(
             f"Running optimization with {len(scheduler_tasks)} tasks and {len(scheduler_slots)} slots"
         )
         optimization_result = optimize_schedule(
-            scheduler_tasks, scheduler_slots, request.date, session, user_id
+            scheduler_tasks,
+            scheduler_slots,
+            datetime.strptime(request.date, "%Y-%m-%d"),
+            session,
+            user_id,
         )
 
         # Process results

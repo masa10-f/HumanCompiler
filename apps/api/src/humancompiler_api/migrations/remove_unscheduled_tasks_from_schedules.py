@@ -30,7 +30,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def remove_unscheduled_tasks_from_schedules():
+def remove_unscheduled_tasks_from_schedules() -> bool:
     """
     Remove unscheduled_tasks from all existing schedule records.
 
@@ -121,7 +121,7 @@ def remove_unscheduled_tasks_from_schedules():
     return True
 
 
-def main():
+def main() -> None:
     """Main function to run the migration."""
     logger.info("=== Remove unscheduled_tasks from schedules migration ===")
     logger.info(

@@ -3,12 +3,15 @@ Caching wrappers for AI analysis functions
 """
 
 from datetime import date, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlmodel import Session
 
 from core.cache import cached
 from humancompiler_api.services import goal_service, project_service, task_service
+
+if TYPE_CHECKING:
+    from humancompiler_api.services import GoalService, ProjectService, TaskService
 
 
 @cached(cache_type="extended", key_prefix="workload_analysis")
@@ -220,7 +223,7 @@ _goal_service = None
 _task_service = None
 
 
-def get_services():
+def get_services() -> tuple["ProjectService", "GoalService", "TaskService"]:
     """Get singleton service instances"""
     global _project_service, _goal_service, _task_service
 

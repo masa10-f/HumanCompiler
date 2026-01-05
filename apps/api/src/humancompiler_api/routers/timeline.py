@@ -1,7 +1,9 @@
 """Timeline visualization API endpoints for project progress tracking"""
 
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
+from typing import Any, TypeVar
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -37,16 +39,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+F = TypeVar("F", bound=Callable[..., Awaitable[Any]])
 
-def conditional_rate_limit(rate: str):
+
+def conditional_rate_limit(rate: str) -> Callable[[F], F]:
     """Apply rate limiting only in non-test environments"""
 
-    def decorator(func):
+    def decorator(func: F) -> F:
         if settings.environment == "test":
             return func
         else:
             # Ensure proper async handling and response wrapping
-            async def wrapper(*args, **kwargs):
+            async def wrapper(*args: Any, **kwargs: Any) -> Any:
                 # Apply rate limiting
                 limited_func = limiter.limit(rate)(func)
                 return await limited_func(*args, **kwargs)
