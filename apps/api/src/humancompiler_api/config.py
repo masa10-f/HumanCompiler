@@ -227,7 +227,7 @@ class Settings(BaseSettings):
 # Global settings instance
 # Settings will automatically load from environment variables via pydantic_settings
 try:
-    settings = Settings()
+    settings = Settings()  # type: ignore[call-arg]
 except Exception as e:
     # In development or when env vars are missing, use minimal config
     import warnings
