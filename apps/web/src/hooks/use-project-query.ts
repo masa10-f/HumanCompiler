@@ -3,7 +3,10 @@ import { projectsApi } from '@/lib/api'
 import type { Project, ProjectCreate, ProjectUpdate } from '@/types/project'
 import type { SortOptions } from '@/types/sort'
 
-// Query keys for consistent caching
+/**
+ * Query keys for project caching with React Query.
+ * Provides consistent cache key structure for all project-related queries.
+ */
 export const projectKeys = {
   all: ['projects'] as const,
   lists: () => [...projectKeys.all, 'list'] as const,
@@ -12,7 +15,13 @@ export const projectKeys = {
   detail: (id: string) => [...projectKeys.details(), id] as const,
 }
 
-// Hook for fetching a single project
+/**
+ * Fetches a single project by ID.
+ * Uses React Query for caching and automatic revalidation.
+ *
+ * @param projectId - The project UUID to fetch
+ * @returns UseQueryResult with project data, loading state, and error
+ */
 export function useProject(projectId: string) {
   return useQuery({
     queryKey: projectKeys.detail(projectId),
@@ -23,7 +32,14 @@ export function useProject(projectId: string) {
   })
 }
 
-// Hook for fetching all projects
+/**
+ * Fetches all projects with pagination and sorting.
+ *
+ * @param skip - Number of records to skip (default: 0)
+ * @param limit - Maximum records to return (default: 20)
+ * @param sortOptions - Optional sorting configuration
+ * @returns UseQueryResult with project array
+ */
 export function useProjects(skip = 0, limit = 20, sortOptions?: SortOptions) {
   const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
   return useQuery({
@@ -34,7 +50,12 @@ export function useProjects(skip = 0, limit = 20, sortOptions?: SortOptions) {
   })
 }
 
-// Hook for creating a project
+/**
+ * Mutation hook for creating a new project.
+ * Automatically invalidates project list cache on success.
+ *
+ * @returns UseMutationResult with mutateAsync function
+ */
 export function useCreateProject() {
   const queryClient = useQueryClient()
 
@@ -53,7 +74,12 @@ export function useCreateProject() {
   })
 }
 
-// Hook for updating a project
+/**
+ * Mutation hook for updating a project.
+ * Updates cache and invalidates project lists on success.
+ *
+ * @returns UseMutationResult with mutateAsync function
+ */
 export function useUpdateProject() {
   const queryClient = useQueryClient()
 
@@ -73,7 +99,12 @@ export function useUpdateProject() {
   })
 }
 
-// Hook for deleting a project
+/**
+ * Mutation hook for deleting a project.
+ * Removes from cache and invalidates project lists on success.
+ *
+ * @returns UseMutationResult with mutateAsync function
+ */
 export function useDeleteProject() {
   const queryClient = useQueryClient()
 

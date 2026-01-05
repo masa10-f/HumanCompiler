@@ -35,11 +35,20 @@ const goalFormSchema = z.object({
 
 type GoalFormData = z.infer<typeof goalFormSchema>;
 
+/**
+ * Props for GoalFormDialog component.
+ */
 interface GoalFormDialogProps {
+  /** Project UUID to associate the new goal with */
   projectId: string;
+  /** Trigger element that opens the dialog */
   children: React.ReactNode;
 }
 
+/**
+ * Dialog component for creating a new goal.
+ * Provides a form with validation for goal creation.
+ */
 export function GoalFormDialog({ projectId, children }: GoalFormDialogProps) {
   const [open, setOpen] = useState(false);
   const createGoalMutation = useCreateGoal();

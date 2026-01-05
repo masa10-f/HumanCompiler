@@ -8,6 +8,10 @@ import type { Project } from '@/types/project'
 import type { Goal } from '@/types/goal'
 import type { ProjectProgress } from '@/types/progress'
 
+/**
+ * Aggregated state for project detail page.
+ * Combines auth, project, goals, and progress data.
+ */
 export interface ProjectPageState {
   // Authentication
   user: ReturnType<typeof useAuth>['user']
@@ -36,6 +40,20 @@ export interface ProjectPageState {
   shouldRedirect: boolean
 }
 
+/**
+ * Composite hook for project detail page state management.
+ * Aggregates authentication, project data, goals, and progress.
+ * Provides computed states for initialization and redirects.
+ *
+ * @param projectId - The project UUID to load
+ * @returns Complete page state including all data and computed flags
+ *
+ * @example
+ * ```tsx
+ * const { project, goals, isInitializing, shouldRedirect } = useProjectPageState(id);
+ * if (shouldRedirect) router.push('/login');
+ * ```
+ */
 export function useProjectPageState(projectId: string): ProjectPageState {
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()

@@ -6,6 +6,15 @@ import type { ProjectTimelineData, TimelineOverviewData, TimelineFilters } from 
 import { timelineApi } from '@/lib/api'
 import { logger } from '@/lib/logger'
 
+/**
+ * Hook for fetching project timeline data with filtering support.
+ * Handles date range filtering and weekly work hours configuration.
+ *
+ * @param projectId - Project UUID to fetch timeline for (null to skip)
+ * @param filters - Optional date range and time unit filters
+ * @param weeklyWorkHours - Weekly capacity in hours (default: 40)
+ * @returns Timeline data, loading state, error, and refetch method
+ */
 export function useProjectTimeline(projectId: string | null, filters?: TimelineFilters, weeklyWorkHours?: number) {
   const [data, setData] = useState<ProjectTimelineData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -70,6 +79,13 @@ export function useProjectTimeline(projectId: string | null, filters?: TimelineF
   }
 }
 
+/**
+ * Hook for fetching timeline overview across all projects.
+ * Provides high-level timeline aggregation data.
+ *
+ * @param filters - Optional date range filters
+ * @returns Overview data, loading state, error, and refetch method
+ */
 export function useTimelineOverview(filters?: Pick<TimelineFilters, 'start_date' | 'end_date'>) {
   const [data, setData] = useState<TimelineOverviewData | null>(null)
   const [isLoading, setIsLoading] = useState(false)

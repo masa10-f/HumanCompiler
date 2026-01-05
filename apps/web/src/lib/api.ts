@@ -73,7 +73,11 @@ const ensureHttps = (url: string): string => {
 
 // Note: getApiBaseUrl removed - use getApiEndpoint() directly
 
-// API client configuration
+/**
+ * API Client for HumanCompiler backend communication.
+ * Handles authentication headers, error handling, and HTTPS enforcement.
+ * Uses fetchWithFallback for retry logic and timeout handling.
+ */
 class ApiClient {
   private getBaseURL(): string {
     const url = getApiEndpoint();
@@ -210,7 +214,16 @@ class ApiClient {
     }
   }
 
-  // Project API methods
+  // === Project API methods ===
+
+  /**
+   * Fetches all projects for the authenticated user.
+   *
+   * @param skip - Pagination offset (default: 0)
+   * @param limit - Maximum results (default: 20)
+   * @param sortOptions - Sorting configuration
+   * @returns Array of Project objects
+   */
   async getProjects(skip: number = 0, limit: number = 20, sortOptions?: SortOptions): Promise<Project[]> {
     const params = new URLSearchParams({
       skip: skip.toString(),
@@ -251,7 +264,17 @@ class ApiClient {
     });
   }
 
-  // Goal API methods
+  // === Goal API methods ===
+
+  /**
+   * Fetches goals for a specific project.
+   *
+   * @param projectId - The project UUID
+   * @param skip - Pagination offset (default: 0)
+   * @param limit - Maximum results (default: 20)
+   * @param sortOptions - Sorting configuration
+   * @returns Array of Goal objects
+   */
   async getGoalsByProject(projectId: string, skip: number = 0, limit: number = 20, sortOptions?: SortOptions): Promise<Goal[]> {
     const params = new URLSearchParams({
       skip: skip.toString(),
@@ -292,7 +315,14 @@ class ApiClient {
     });
   }
 
-  // Goal dependency methods
+  // === Goal dependency methods ===
+
+  /**
+   * Creates a dependency relationship between goals.
+   *
+   * @param dependencyData - Dependency creation data
+   * @returns Created GoalDependency object
+   */
   async addGoalDependency(dependencyData: GoalDependencyCreate): Promise<GoalDependency> {
     return this.request<GoalDependency>('/api/goal-dependencies/', {
       method: 'POST',
@@ -310,7 +340,17 @@ class ApiClient {
     });
   }
 
-  // Task API methods
+  // === Task API methods ===
+
+  /**
+   * Fetches tasks for a specific goal.
+   *
+   * @param goalId - The goal UUID
+   * @param skip - Pagination offset (default: 0)
+   * @param limit - Maximum results (default: 20)
+   * @param sortOptions - Sorting configuration
+   * @returns Array of Task objects
+   */
   async getTasksByGoal(goalId: string, skip: number = 0, limit: number = 20, sortOptions?: SortOptions): Promise<Task[]> {
     const params = new URLSearchParams({
       skip: skip.toString(),
@@ -367,7 +407,15 @@ class ApiClient {
     });
   }
 
-  // Task dependency methods
+  // === Task dependency methods ===
+
+  /**
+   * Creates a dependency relationship between tasks.
+   *
+   * @param taskId - The dependent task UUID
+   * @param dependsOnTaskId - The prerequisite task UUID
+   * @returns Created TaskDependency object
+   */
   async addTaskDependency(taskId: string, dependsOnTaskId: string): Promise<TaskDependency> {
     return this.request<TaskDependency>(`/api/tasks/${taskId}/dependencies/`, {
       method: 'POST',
@@ -387,7 +435,14 @@ class ApiClient {
     });
   }
 
-  // AI Planning API methods
+  // === AI Planning API methods ===
+
+  /**
+   * Generates a weekly task plan using OR-Tools optimizer.
+   *
+   * @param planRequest - Weekly plan request configuration
+   * @returns Optimized weekly plan response
+   */
   async generateWeeklyPlan(planRequest: WeeklyPlanRequest): Promise<WeeklyPlanResponse> {
     // Use the new OR-Tools weekly task solver instead of legacy weekly-plan
     const solverRequest = {
@@ -445,7 +500,14 @@ class ApiClient {
     return this.request<TestAIIntegrationResponse>('/api/ai/weekly-plan/test');
   }
 
-  // Scheduling API methods
+  // === Scheduling API methods ===
+
+  /**
+   * Optimizes daily schedule using constraint solver.
+   *
+   * @param scheduleRequest - Schedule optimization request
+   * @returns Optimized schedule result
+   */
   async optimizeDailySchedule(scheduleRequest: ScheduleRequest): Promise<ScheduleResult> {
     return this.request<ScheduleResult>('/api/schedule/daily', {
       method: 'POST',
@@ -480,7 +542,16 @@ class ApiClient {
     return this.request<import('@/types/ai-planning').WeeklyScheduleOption[]>('/api/schedule/weekly-schedule-options');
   }
 
-  // Log API methods
+  // === Log API methods ===
+
+  /**
+   * Fetches logs for a specific task.
+   *
+   * @param taskId - The task UUID
+   * @param skip - Pagination offset (default: 0)
+   * @param limit - Maximum results (default: 20)
+   * @returns Array of Log objects
+   */
   async getLogsByTask(taskId: string, skip: number = 0, limit: number = 20): Promise<Log[]> {
     return this.request<Log[]>(`/api/logs/task/${taskId}?skip=${skip}&limit=${limit}`);
   }
@@ -517,7 +588,14 @@ class ApiClient {
     });
   }
 
-  // Progress API methods
+  // === Progress API methods ===
+
+  /**
+   * Fetches progress data for a project.
+   *
+   * @param projectId - The project UUID
+   * @returns Project progress metrics
+   */
   async getProjectProgress(projectId: string): Promise<ProjectProgress> {
     return this.request<ProjectProgress>(`/api/progress/project/${projectId}/`);
   }
@@ -530,7 +608,15 @@ class ApiClient {
     return this.request<TaskProgress>(`/api/progress/task/${taskId}/`);
   }
 
-  // Weekly Schedule API methods
+  // === Weekly Schedule API methods ===
+
+  /**
+   * Fetches saved weekly schedules.
+   *
+   * @param skip - Pagination offset (default: 0)
+   * @param limit - Maximum results (default: 30)
+   * @returns Array of saved weekly schedules
+   */
   async getWeeklySchedules(skip = 0, limit = 30): Promise<SavedWeeklySchedule[]> {
     return this.request<SavedWeeklySchedule[]>(`/api/weekly-schedule/list?skip=${skip}&limit=${limit}`);
   }
@@ -556,7 +642,19 @@ class ApiClient {
   }
 
 
-  // Timeline API methods
+  // === Timeline API methods ===
+
+  /**
+   * Fetches timeline data for a project.
+   *
+   * @param projectId - The project UUID
+   * @param startDate - Optional filter start date
+   * @param endDate - Optional filter end date
+   * @param timeUnit - Time granularity (day, week, month)
+   * @param weeklyWorkHours - Weekly capacity hours
+   * @param sortOptions - Sorting configuration
+   * @returns Project timeline data
+   */
   async getProjectTimeline(
     projectId: string,
     startDate?: string,
@@ -584,7 +682,15 @@ class ApiClient {
     return this.request<TimelineOverviewData>(`/api/timeline/overview?${params.toString()}`);
   }
 
-  // Reports API methods
+  // === Reports API methods ===
+
+  /**
+   * Generates a weekly progress report.
+   *
+   * @param weekStartDate - Start date of the week (YYYY-MM-DD)
+   * @param projectIds - Optional project IDs to filter
+   * @returns Weekly report data
+   */
   async generateWeeklyReport(weekStartDate: string, projectIds?: string[]): Promise<import('@/types/reports').WeeklyReportResponse> {
     const body: any = { week_start_date: weekStartDate };
     if (projectIds && projectIds.length > 0) {
@@ -596,7 +702,17 @@ class ApiClient {
     });
   }
 
-  // Weekly Recurring Tasks
+  // === Weekly Recurring Tasks ===
+
+  /**
+   * Fetches weekly recurring task templates.
+   *
+   * @param skip - Pagination offset (default: 0)
+   * @param limit - Maximum results (default: 20)
+   * @param category - Optional category filter
+   * @param isActive - Optional active status filter
+   * @returns Array of recurring task templates
+   */
   async getWeeklyRecurringTasks(
     skip: number = 0,
     limit: number = 20,
@@ -642,7 +758,12 @@ class ApiClient {
 
 export const apiClient = new ApiClient();
 
-// Export individual API functions for easier use
+// === Convenience API wrappers ===
+
+/**
+ * Project API convenience wrapper.
+ * Provides simplified methods for project CRUD operations.
+ */
 export const projectsApi = {
   getAll: (skip?: number, limit?: number, sortOptions?: SortOptions) =>
     apiClient.getProjects(skip, limit, sortOptions),
@@ -652,6 +773,10 @@ export const projectsApi = {
   delete: (id: string) => apiClient.deleteProject(id),
 };
 
+/**
+ * Goals API convenience wrapper.
+ * Provides methods for goal CRUD and dependency operations.
+ */
 export const goalsApi = {
   getByProject: (projectId: string, skip?: number, limit?: number, sortOptions?: SortOptions) =>
     apiClient.getGoalsByProject(projectId, skip, limit, sortOptions),
@@ -664,6 +789,10 @@ export const goalsApi = {
   deleteDependency: (dependencyId: string) => apiClient.deleteGoalDependency(dependencyId),
 };
 
+/**
+ * Tasks API convenience wrapper.
+ * Provides methods for task CRUD and dependency operations.
+ */
 export const tasksApi = {
   getByGoal: (goalId: string, skip?: number, limit?: number, sortOptions?: SortOptions) =>
     apiClient.getTasksByGoal(goalId, skip, limit, sortOptions),
@@ -680,6 +809,10 @@ export const tasksApi = {
     apiClient.deleteTaskDependency(taskId, dependencyId),
 };
 
+/**
+ * AI Planning API convenience wrapper.
+ * Provides methods for AI-powered task planning and workload analysis.
+ */
 export const aiPlanningApi = {
   generateWeeklyPlan: (request: WeeklyPlanRequest) => apiClient.generateWeeklyPlan(request),
   analyzeWorkload: (projectIds?: string[]) => apiClient.analyzeWorkload(projectIds),
@@ -687,6 +820,10 @@ export const aiPlanningApi = {
   testIntegration: () => apiClient.testAIIntegration(),
 };
 
+/**
+ * Scheduling API convenience wrapper.
+ * Provides methods for daily schedule optimization.
+ */
 export const schedulingApi = {
   optimizeDaily: (request: ScheduleRequest) => apiClient.optimizeDailySchedule(request),
   save: (scheduleData: ScheduleResult & { date: string; generated_at: string }) => apiClient.saveDailySchedule(scheduleData),
@@ -696,6 +833,10 @@ export const schedulingApi = {
   getWeeklyScheduleOptions: () => apiClient.getWeeklyScheduleOptions(),
 };
 
+/**
+ * Logs API convenience wrapper.
+ * Provides methods for work log CRUD operations.
+ */
 export const logsApi = {
   getByTask: (taskId: string, skip?: number, limit?: number) =>
     apiClient.getLogsByTask(taskId, skip, limit),
@@ -707,12 +848,20 @@ export const logsApi = {
   delete: (id: string) => apiClient.deleteLog(id),
 };
 
+/**
+ * Progress API convenience wrapper.
+ * Provides methods for fetching progress metrics.
+ */
 export const progressApi = {
   getProject: (projectId: string) => apiClient.getProjectProgress(projectId),
   getGoal: (goalId: string) => apiClient.getGoalProgress(goalId),
   getTask: (taskId: string) => apiClient.getTaskProgress(taskId),
 };
 
+/**
+ * Weekly Schedule API convenience wrapper.
+ * Provides methods for managing saved weekly schedules.
+ */
 export const weeklyScheduleApi = {
   getAll: (skip?: number, limit?: number) => apiClient.getWeeklySchedules(skip, limit),
   getByWeek: (weekStartDate: string) => apiClient.getWeeklySchedule(weekStartDate),
@@ -720,6 +869,10 @@ export const weeklyScheduleApi = {
   delete: (weekStartDate: string) => apiClient.deleteWeeklySchedule(weekStartDate),
 };
 
+/**
+ * Weekly Recurring Tasks API convenience wrapper.
+ * Provides methods for managing recurring task templates.
+ */
 export const weeklyRecurringTasksApi = {
   getAll: (skip?: number, limit?: number, category?: string, isActive?: boolean) =>
     apiClient.getWeeklyRecurringTasks(skip, limit, category, isActive),
@@ -730,7 +883,10 @@ export const weeklyRecurringTasksApi = {
   delete: (taskId: string) => apiClient.deleteWeeklyRecurringTask(taskId),
 };
 
-
+/**
+ * Timeline API convenience wrapper.
+ * Provides methods for timeline visualization data.
+ */
 export const timelineApi = {
   getProjectTimeline: (projectId: string, startDate?: string, endDate?: string, timeUnit?: string, weeklyWorkHours?: number, sortOptions?: SortOptions) =>
     apiClient.getProjectTimeline(projectId, startDate, endDate, timeUnit, weeklyWorkHours, sortOptions),
@@ -738,10 +894,16 @@ export const timelineApi = {
     apiClient.getTimelineOverview(startDate, endDate),
 };
 
+/**
+ * Reports API convenience wrapper.
+ * Provides methods for generating progress reports.
+ */
 export const reportsApi = {
   generateWeeklyReport: (weekStartDate: string, projectIds?: string[]) =>
     apiClient.generateWeeklyReport(weekStartDate, projectIds),
 };
+
+// === Helper functions ===
 
 // Export helper function for getting secure API URL
 export const getSecureApiUrl = (): string => {

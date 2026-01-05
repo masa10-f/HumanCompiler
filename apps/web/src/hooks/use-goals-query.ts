@@ -3,7 +3,10 @@ import { goalsApi } from '@/lib/api'
 import type { Goal, GoalCreate, GoalUpdate } from '@/types/goal'
 import type { SortOptions } from '@/types/sort'
 
-// Query keys for consistent caching
+/**
+ * Query keys for goal caching with React Query.
+ * Provides consistent cache key structure for all goal-related queries.
+ */
 export const goalKeys = {
   all: ['goals'] as const,
   lists: () => [...goalKeys.all, 'list'] as const,
@@ -13,7 +16,15 @@ export const goalKeys = {
   byProject: (projectId: string) => [...goalKeys.all, 'project', projectId] as const,
 }
 
-// Hook for fetching goals by project
+/**
+ * Fetches goals for a specific project with pagination and sorting.
+ *
+ * @param projectId - The project UUID to fetch goals for
+ * @param skip - Number of records to skip (default: 0)
+ * @param limit - Maximum records to return (default: 20)
+ * @param sortOptions - Optional sorting configuration
+ * @returns UseQueryResult with goal array
+ */
 export function useGoalsByProject(projectId: string, skip = 0, limit = 20, sortOptions?: SortOptions) {
   const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
   return useQuery({
@@ -25,7 +36,12 @@ export function useGoalsByProject(projectId: string, skip = 0, limit = 20, sortO
   })
 }
 
-// Hook for fetching a single goal
+/**
+ * Fetches a single goal by ID.
+ *
+ * @param goalId - The goal UUID to fetch
+ * @returns UseQueryResult with goal data
+ */
 export function useGoal(goalId: string) {
   return useQuery({
     queryKey: goalKeys.detail(goalId),
@@ -36,7 +52,12 @@ export function useGoal(goalId: string) {
   })
 }
 
-// Hook for creating a goal
+/**
+ * Mutation hook for creating a new goal.
+ * Automatically invalidates goal cache for the project on success.
+ *
+ * @returns UseMutationResult with mutateAsync function
+ */
 export function useCreateGoal() {
   const queryClient = useQueryClient()
 
@@ -57,7 +78,12 @@ export function useCreateGoal() {
   })
 }
 
-// Hook for updating a goal
+/**
+ * Mutation hook for updating a goal.
+ * Updates cache and invalidates goal lists on success.
+ *
+ * @returns UseMutationResult with mutateAsync function
+ */
 export function useUpdateGoal() {
   const queryClient = useQueryClient()
 
@@ -79,7 +105,12 @@ export function useUpdateGoal() {
   })
 }
 
-// Hook for deleting a goal
+/**
+ * Mutation hook for deleting a goal.
+ * Removes from cache and invalidates goal lists on success.
+ *
+ * @returns UseMutationResult with mutateAsync function
+ */
 export function useDeleteGoal() {
   const queryClient = useQueryClient()
 
