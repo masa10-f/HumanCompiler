@@ -239,7 +239,7 @@ except Exception as e:
     # Create settings with default values for development
     from types import SimpleNamespace
 
-    settings = SimpleNamespace()  # type: ignore[assignment]
+    settings = SimpleNamespace()  # Development fallback
     settings.api_title = "HumanCompiler API"
     settings.api_version = "0.1.0"
     settings.api_description = "AI-powered task management and scheduling API"
@@ -264,7 +264,7 @@ except Exception as e:
 
 
 # Production security check
-def validate_production_config():
+def validate_production_config() -> None:
     """Validate configuration for production deployment security."""
     if hasattr(settings, "environment") and settings.environment == "production":
         default_secret = "taskagent-secret-key-change-in-production"  # nosec B105

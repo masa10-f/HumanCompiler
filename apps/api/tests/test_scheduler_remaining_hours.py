@@ -12,7 +12,7 @@ from humancompiler_api.routers.scheduler import (
     TimeSlot,
     SlotKind,
 )
-from datetime import time
+from datetime import datetime, time
 
 
 class TestSchedulerRemainingHours:
@@ -105,7 +105,7 @@ class TestSchedulerRemainingHours:
         ]
 
         # Run optimization
-        result = optimize_schedule(tasks, slots, date="2025-06-23")
+        result = optimize_schedule(tasks, slots, date=datetime(2025, 6, 23))
 
         # Check that the optimization was successful
         assert result.success is True
@@ -220,7 +220,7 @@ class TestSchedulerRemainingHours:
             ),
         ]
 
-        result = optimize_schedule(tasks, slots, date="2025-06-23")
+        result = optimize_schedule(tasks, slots, date=datetime(2025, 6, 23))
 
         # Should successfully optimize based on remaining hours
         assert result.success is True

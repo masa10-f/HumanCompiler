@@ -1,3 +1,4 @@
+from collections.abc import Generator
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Annotated
 
@@ -60,7 +61,7 @@ class ProjectProgress(BaseModel):
         return float(value)
 
 
-def get_session():
+def get_session() -> Generator[Session, None, None]:
     """Database session dependency"""
     with Session(db.get_engine()) as session:
         yield session

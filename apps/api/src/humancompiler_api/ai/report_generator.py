@@ -63,8 +63,8 @@ class WeeklyReportGenerator:
             .where(
                 and_(
                     Project.owner_id == user_id,
-                    Log.created_at >= start_date,
-                    Log.created_at <= end_date,
+                    Log.created_at >= start_date,  # type: ignore[operator]
+                    Log.created_at <= end_date,  # type: ignore[operator]
                 )
             )
         )

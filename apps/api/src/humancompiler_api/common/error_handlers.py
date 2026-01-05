@@ -3,6 +3,8 @@ Common error handling utilities
 """
 
 import logging
+from collections.abc import Callable
+from typing import Any, TypeVar
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -10,6 +12,8 @@ from sqlmodel import Session
 from humancompiler_api.models import ErrorResponse
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 
 class ServiceError(Exception):
@@ -99,7 +103,9 @@ def handle_service_error(error: Exception) -> HTTPException:
         )
 
 
-def safe_execute(session: Session, operation, rollback_on_error: bool = True):
+def safe_execute(
+    session: Session, operation: Callable[[], T], rollback_on_error: bool = True
+) -> T:
     """Safely execute database operations with error handling"""
     try:
         result = operation()
@@ -132,7 +138,7 @@ def validate_uuid(value: str | UUID, name: str) -> UUID:
         raise ValidationError(f"Invalid UUID format for {name}: {value}") from None
 
 
-def check_resource_ownership(resource, user_id: str | UUID, resource_type: str):
+def check_resource_ownership(resource: T, user_id: str | UUID, resource_type: str) -> T:
     """Check if user owns the resource"""
     if not resource:
         raise ResourceNotFoundError(resource_type, "unknown")

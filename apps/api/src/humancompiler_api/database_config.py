@@ -1,13 +1,16 @@
 """Database configuration and connection management"""
 
 import logging
+from typing import Any
+
 from sqlalchemy import event
+from sqlalchemy.engine import Engine
 from sqlalchemy.pool import Pool
 
 logger = logging.getLogger(__name__)
 
 
-def configure_database_extensions():
+def configure_database_extensions() -> None:
     """Configure database extensions and disable problematic features"""
 
     # Disable psycopg2 hstore extension if available
@@ -41,11 +44,11 @@ def configure_database_extensions():
         logger.warning(f"Error disabling hstore extension: {e}")
 
 
-def setup_connection_listeners(engine):
+def setup_connection_listeners(engine: Engine) -> None:
     """Setup SQLAlchemy connection event listeners"""
 
     @event.listens_for(Pool, "connect")
-    def set_sqlite_pragma(dbapi_connection, connection_record):
+    def set_sqlite_pragma(dbapi_connection: Any, connection_record: Any) -> None:
         """Configure SQLite pragmas for better performance"""
         # Check if this is SQLite
         if hasattr(dbapi_connection, "execute"):
@@ -68,7 +71,9 @@ def setup_connection_listeners(engine):
                 logger.debug(f"Failed to set SQLite pragmas: {e}")
 
     @event.listens_for(Pool, "connect")
-    def set_postgresql_search_path(dbapi_connection, connection_record):
+    def set_postgresql_search_path(
+        dbapi_connection: Any, connection_record: Any
+    ) -> None:
         """Set PostgreSQL search path for security"""
         # Check if this is PostgreSQL
         if hasattr(dbapi_connection, "execute"):

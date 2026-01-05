@@ -1,3 +1,4 @@
+from collections.abc import Generator
 from typing import Annotated
 from uuid import UUID
 
@@ -18,7 +19,7 @@ from humancompiler_api.services import weekly_recurring_task_service
 router = APIRouter(prefix="/weekly-recurring-tasks", tags=["weekly-recurring-tasks"])
 
 
-def get_session():
+def get_session() -> Generator[Session, None, None]:
     """Database session dependency"""
     with Session(db.get_engine()) as session:
         yield session
