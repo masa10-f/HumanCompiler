@@ -32,11 +32,11 @@ class Database:
     """Database connection manager"""
 
     def __init__(self):
-        self._client: Client = None
-        self._service_client: Client = None
+        self._client: Client | None = None
+        self._service_client: Client | None = None
         self._engine = None
 
-    def get_client(self) -> Client:
+    def get_client(self) -> Client | None:
         """Get Supabase client for user operations"""
         if self._client is None:
             try:
@@ -56,7 +56,7 @@ class Database:
                 raise
         return self._client
 
-    def get_service_client(self) -> Client:
+    def get_service_client(self) -> Client | None:
         """Get Supabase client with service role for admin operations"""
         if self._service_client is None:
             self._service_client = create_client(
