@@ -1,0 +1,40 @@
+"""Optimization backends decoupled from the API layer.
+
+This package is intentionally dependency-light. It defines solver inputs/outputs and
+implements OR-Tools-based optimizers behind stable, pure-Python interfaces.
+"""
+
+from .daily import (
+    Assignment,
+    DailySolverConfig,
+    ScheduleResult,
+    SchedulerTask,
+    SlotKind,
+    TaskKind,
+    TimeSlot,
+    optimize_daily_schedule,
+)
+from .weekly import (
+    ProjectAllocationSpec,
+    WeeklySelectionResult,
+    WeeklySolverConfig,
+    WeeklyTaskSpec,
+    optimize_weekly_selection,
+)
+
+__all__ = [
+    "Assignment",
+    "DailySolverConfig",
+    "optimize_daily_schedule",
+    "ScheduleResult",
+    "SchedulerTask",
+    "SlotKind",
+    "TaskKind",
+    "TimeSlot",
+    "ProjectAllocationSpec",
+    "optimize_weekly_selection",
+    "WeeklySelectionResult",
+    "WeeklySolverConfig",
+    "WeeklyTaskSpec",
+]
+

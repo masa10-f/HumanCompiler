@@ -1501,280 +1501,90 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
         2. Applies OR-Tools CP-SAT solver for resource allocation
         """
         try:
-            from ortools.sat.python import cp_model
+            from humancompiler_optimizer.weekly import (
+                ProjectAllocationSpec,
+                WeeklySolverConfig,
+                WeeklyTaskSpec,
+                optimize_weekly_selection,
+            )
 
-            # Create CP-SAT model
-            model = cp_model.CpModel()
-            solver = cp_model.CpSolver()
-
-            # Use remaining hours map from context if not provided
             if remaining_hours_map is None:
                 remaining_hours_map = getattr(context, "remaining_hours_map", {})
 
-            # Decision variables: whether to select each task
-            task_vars = {}
-            task_hours = {}
-            task_priority_scores = {}
+            goal_to_project_id = {
+                str(goal.id): str(goal.project_id) for goal in context.goals
+            }
+
+            solver_tasks: list[WeeklyTaskSpec] = []
+            task_hours: dict[str, float] = {}
+            task_priority_scores: dict[str, float] = {}
 
             for task in context.tasks:
                 task_id = str(task.id)
-                task_vars[task_id] = model.NewBoolVar(f"task_{task_id}")
-                # Use remaining hours from map, fallback to estimate if not available
-                task_hours[task_id] = remaining_hours_map.get(
-                    task_id, float(task.estimate_hours or 0)
+                hours = remaining_hours_map.get(task_id, float(task.estimate_hours or 0))
+                priority_score = task_priorities.get(task_id, 5.0)
+                project_id = (
+                    goal_to_project_id.get(str(task.goal_id))
+                    if getattr(task, "goal_id", None)
+                    else None
                 )
-                task_priority_scores[task_id] = task_priorities.get(task_id, 5.0)
 
-            # Add selected weekly recurring tasks
-            weekly_task_vars = {}
-            weekly_task_hours = {}
-            weekly_task_priorities = {}
+                solver_tasks.append(
+                    WeeklyTaskSpec(
+                        id=task_id,
+                        title=task.title,
+                        hours=hours,
+                        priority_score=priority_score,
+                        project_id=project_id,
+                    )
+                )
+                task_hours[task_id] = hours
+                task_priority_scores[task_id] = priority_score
 
-            if context.selected_recurring_task_ids:
+            recurring_solver_tasks: list[WeeklyTaskSpec] = []
+            recurring_hours: dict[str, float] = {}
+            recurring_priority_scores: dict[str, float] = {}
+
+            selected_recurring_ids = set(context.selected_recurring_task_ids or [])
+            if selected_recurring_ids:
                 for weekly_task in context.weekly_recurring_tasks:
-                    if str(weekly_task.id) in context.selected_recurring_task_ids:
-                        task_id = f"weekly_{weekly_task.id}"
-                        weekly_task_vars[task_id] = model.NewBoolVar(
-                            f"weekly_{task_id}"
-                        )
-                        weekly_task_hours[task_id] = float(
-                            weekly_task.estimate_hours or 0
-                        )
-                        weekly_task_priorities[task_id] = (
-                            8.0  # High priority for weekly tasks
-                        )
+                    weekly_id = str(weekly_task.id)
+                    if weekly_id not in selected_recurring_ids:
+                        continue
 
-            # Constraint 1: Total capacity constraint
-            total_hours_expr = []
-            for task_id, var in task_vars.items():
-                total_hours_expr.append(
-                    var * int(task_hours[task_id] * 10)
-                )  # Scale for integer
-            for task_id, var in weekly_task_vars.items():
-                total_hours_expr.append(var * int(weekly_task_hours[task_id] * 10))
+                    hours = float(weekly_task.estimate_hours or 0)
+                    recurring_solver_tasks.append(
+                        WeeklyTaskSpec(
+                            id=weekly_id,
+                            title=weekly_task.title,
+                            hours=hours,
+                            priority_score=8.0,
+                            project_id=None,
+                        )
+                    )
+                    recurring_hours[weekly_id] = hours
+                    recurring_priority_scores[weekly_id] = 8.0
 
-            model.Add(
-                sum(total_hours_expr) <= int(constraints.total_capacity_hours * 10)
+            allocation_specs = [
+                ProjectAllocationSpec(
+                    project_id=str(a.project_id),
+                    project_title=a.project_title,
+                    target_hours=float(a.target_hours),
+                    max_hours=float(a.max_hours),
+                    priority_weight=float(a.priority_weight),
+                )
+                for a in project_allocations
+            ]
+
+            solve_result = optimize_weekly_selection(
+                tasks=solver_tasks,
+                recurring_tasks=recurring_solver_tasks,
+                project_allocations=allocation_specs,
+                total_capacity_hours=float(constraints.total_capacity_hours),
+                config=WeeklySolverConfig(max_time_in_seconds=30.0),
             )
 
-            # Constraint 2: Project allocation constraints
-            for allocation in project_allocations:
-                project_tasks = []
-                project_goal_ids = [
-                    goal.id
-                    for goal in context.goals
-                    if goal.project_id == allocation.project_id
-                ]
-
-                for task in context.tasks:
-                    if task.goal_id in project_goal_ids:
-                        task_id = str(task.id)
-                        if task_id in task_vars:
-                            project_tasks.append(
-                                task_vars[task_id] * int(task_hours[task_id] * 10)
-                            )
-
-                if project_tasks:
-                    # Calculate available task hours for this project
-                    available_task_hours = sum(
-                        task_hours[str(task.id)]
-                        for task in context.tasks
-                        if task.goal_id in project_goal_ids
-                        and str(task.id) in task_hours
-                    )
-
-                    # Skip constraint if target_hours is 0 (0% allocation)
-                    if (
-                        allocation.target_hours <= 0.001
-                    ):  # Use small epsilon for float comparison
-                        # For 0% allocation, explicitly set maximum to 0
-                        if len(project_tasks) > 0:
-                            model.Add(sum(project_tasks) <= 0)
-                            logger.debug(
-                                f"Applied 0% allocation constraint for project {allocation.project_id}"
-                            )
-                    else:
-                        # Very strict allocation constraints: 0.95-1.05x target hours range
-                        # Project allocation is the HIGHEST priority constraint
-
-                        # Ideal range: 95%-105% of target hours (much stricter)
-                        ideal_min_hours = int(allocation.target_hours * 0.95 * 10)
-                        ideal_max_hours = int(allocation.target_hours * 1.05 * 10)
-
-                        # Adjust constraints based on available task hours
-                        if available_task_hours * 10 < ideal_min_hours:
-                            # Not enough tasks available - use all available hours
-                            hard_min_hours = int(available_task_hours * 10)
-                            max_hours = int(available_task_hours * 10)
-                        else:
-                            # Sufficient tasks available - enforce strict 0.9-1.1x range
-                            hard_min_hours = ideal_min_hours
-                            max_hours = min(
-                                ideal_max_hours, int(available_task_hours * 10)
-                            )
-
-                        if len(project_tasks) > 0 and max_hours > 0:
-                            model.Add(sum(project_tasks) >= hard_min_hours)
-                            model.Add(sum(project_tasks) <= max_hours)
-                            # Determine constraint type for logging
-                            constraint_type = (
-                                "very strict 0.95-1.05x (PROJECT ALLOCATION PRIORITY)"
-                                if available_task_hours * 10 >= ideal_min_hours
-                                else "limited by available tasks"
-                            )
-                            logger.debug(
-                                f"Applied {constraint_type} allocation constraint for project {allocation.project_id}: "
-                                f"{hard_min_hours / 10:.1f}h - {max_hours / 10:.1f}h "
-                                f"(target: {allocation.target_hours:.1f}h, available: {available_task_hours:.1f}h)"
-                            )
-
-            # Constraint 3: Task dependency ordering constraints
-            # Note: Dependency constraints are applied during task filtering in _collect_solver_context
-            # The tasks passed to this optimization function are already filtered to satisfy dependencies
-
-            # Constraint 4: Prefer high-priority tasks
-            priority_expr = []
-
-            # Add task priority weights
-            for task_id, var in task_vars.items():
-                base_priority = int(task_priority_scores[task_id] * 100)
-
-                # Boost priority for tasks that align with project allocation preferences
-                project_allocation_bonus = 0
-                task = next((t for t in context.tasks if str(t.id) == task_id), None)
-                if task:
-                    goal = next(
-                        (g for g in context.goals if g.id == task.goal_id), None
-                    )
-                    if goal:
-                        # Find matching project allocation
-                        allocation = next(
-                            (
-                                a
-                                for a in project_allocations
-                                if a.project_id == goal.project_id
-                            ),
-                            None,
-                        )
-                        if allocation:
-                            # Massively boost priority based on project allocation percentage
-                            # This makes project allocation the HIGHEST priority factor
-                            project_allocation_bonus = int(
-                                allocation.priority_weight
-                                * 1000  # Increased from 50 to 1000
-                            )
-
-                total_priority = base_priority + project_allocation_bonus
-                priority_expr.append(var * total_priority)
-
-            # Add weekly task priorities (no project allocation bonus)
-            for task_id, var in weekly_task_vars.items():
-                priority_weight = int(weekly_task_priorities[task_id] * 100)
-                priority_expr.append(var * priority_weight)
-
-            # Objective: Maximize priority-weighted task selection
-            model.Maximize(sum(priority_expr))
-
-            # Solve the optimization problem
-            solver.parameters.max_time_in_seconds = 30.0  # Timeout after 30 seconds
-
-            status = solver.Solve(model)
-
-            # Process results
-            selected_tasks = []
-            insights = []
-
-            if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
-                # Extract selected regular tasks
-                for task in context.tasks:
-                    task_id = str(task.id)
-                    if task_id in task_vars and solver.Value(task_vars[task_id]) == 1:
-                        selected_tasks.append(
-                            TaskPlan(
-                                task_id=task_id,
-                                task_title=task.title,
-                                estimated_hours=task_hours[
-                                    task_id
-                                ],  # task_hours = remaining_hours (estimate - actual)
-                                priority=int(task_priority_scores[task_id]),
-                                rationale=f"OR-Tools最適化で選択 (優先度: {task_priority_scores[task_id]:.1f})",
-                            )
-                        )
-
-                # Extract selected weekly recurring tasks
-                for weekly_task in context.weekly_recurring_tasks:
-                    task_id = f"weekly_{weekly_task.id}"
-                    if (
-                        task_id in weekly_task_vars
-                        and solver.Value(weekly_task_vars[task_id]) == 1
-                    ):
-                        selected_tasks.append(
-                            TaskPlan(
-                                task_id=str(weekly_task.id),
-                                task_title=f"[週課] {weekly_task.title}",
-                                estimated_hours=weekly_task_hours[
-                                    task_id
-                                ],  # Full estimate_hours for weekly recurring tasks
-                                priority=int(weekly_task_priorities[task_id]),
-                                rationale="週間反復タスクとしてOR-Tools最適化で選択",
-                            )
-                        )
-
-                # Generate insights
-                total_selected_hours = sum(
-                    task.estimated_hours for task in selected_tasks
-                )
-                capacity_utilization = (
-                    total_selected_hours / constraints.total_capacity_hours
-                )
-
-                insights = [
-                    "🔧 OR-Tools制約ソルバーによる最適化完了",
-                    f"📊 選択タスク数: {len(selected_tasks)}個",
-                    f"⏱️ 総工数: {total_selected_hours:.1f}時間 (容量利用率: {capacity_utilization:.1%})",
-                    f"🎯 最適化ステータス: {'最適解' if status == cp_model.OPTIMAL else '実行可能解'}",
-                ]
-
-                if user_prompt:
-                    insights.append(
-                        f"💬 ユーザー指示「{user_prompt}」を優先度計算に反映"
-                    )
-
-                # Analyze project distribution
-                project_distribution: dict[str, float] = {}
-                for task_plan in selected_tasks:
-                    # Find project for this task
-                    db_task = next(
-                        (t for t in context.tasks if str(t.id) == task_plan.task_id),
-                        None,
-                    )
-                    if db_task:
-                        goal = next(
-                            (g for g in context.goals if g.id == db_task.goal_id), None
-                        )
-                        if goal:
-                            project = next(
-                                (
-                                    p
-                                    for p in context.projects
-                                    if p.id == goal.project_id
-                                ),
-                                None,
-                            )
-                            if project:
-                                project_title = project.title
-                                project_distribution[project_title] = (
-                                    project_distribution.get(project_title, 0)
-                                    + task_plan.estimated_hours
-                                )
-
-                if project_distribution:
-                    insights.append("📈 プロジェクト別配分:")
-                    for project_title, hours in project_distribution.items():
-                        insights.append(f"  • {project_title}: {hours:.1f}時間")
-
-            else:
-                # Optimization failed - use fallback
+            if not solve_result.success:
                 logger.warning("OR-Tools optimization failed, using fallback heuristic")
 
                 insights = [
@@ -1788,6 +1598,94 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                     remaining_hours_map=getattr(context, "remaining_hours_map", {}),
                 )
                 insights.extend(fallback_insights)
+                return selected_tasks, insights
+
+            task_by_id = {str(t.id): t for t in context.tasks}
+            weekly_by_id = {str(t.id): t for t in context.weekly_recurring_tasks}
+
+            selected_tasks: list[TaskPlan] = []
+            for task_id in solve_result.selected_task_ids:
+                db_task = task_by_id.get(task_id)
+                if not db_task:
+                    continue
+                selected_tasks.append(
+                    TaskPlan(
+                        task_id=task_id,
+                        task_title=db_task.title,
+                        estimated_hours=task_hours[task_id],
+                        priority=int(task_priority_scores[task_id]),
+                        rationale=f"OR-Tools最適化で選択 (優先度: {task_priority_scores[task_id]:.1f})",
+                    )
+                )
+
+            for weekly_id in solve_result.selected_recurring_task_ids:
+                weekly_task = weekly_by_id.get(weekly_id)
+                if not weekly_task:
+                    continue
+                selected_tasks.append(
+                    TaskPlan(
+                        task_id=weekly_id,
+                        task_title=f"[週課] {weekly_task.title}",
+                        estimated_hours=recurring_hours.get(
+                            weekly_id, float(weekly_task.estimate_hours or 0)
+                        ),
+                        priority=int(recurring_priority_scores.get(weekly_id, 8.0)),
+                        rationale="週間反復タスクとしてOR-Tools最適化で選択",
+                    )
+                )
+
+            total_selected_hours = sum(task.estimated_hours for task in selected_tasks)
+            capacity_utilization = (
+                total_selected_hours / constraints.total_capacity_hours
+                if constraints.total_capacity_hours
+                else 0.0
+            )
+
+            status_label = (
+                "最適解" if solve_result.status == "OPTIMAL" else "実行可能解"
+            )
+
+            insights = [
+                "🔧 OR-Tools制約ソルバーによる最適化完了",
+                f"📊 選択タスク数: {len(selected_tasks)}個",
+                f"⏱️ 総工数: {total_selected_hours:.1f}時間 (容量利用率: {capacity_utilization:.1%})",
+                f"🎯 最適化ステータス: {status_label}",
+            ]
+
+            if user_prompt:
+                insights.append(
+                    f"💬 ユーザー指示「{user_prompt}」を優先度計算に反映"
+                )
+
+            project_distribution: dict[str, float] = {}
+            for task_plan in selected_tasks:
+                db_task = next(
+                    (t for t in context.tasks if str(t.id) == task_plan.task_id),
+                    None,
+                )
+                if not db_task:
+                    continue
+
+                goal = next((g for g in context.goals if g.id == db_task.goal_id), None)
+                if not goal:
+                    continue
+
+                project = next(
+                    (p for p in context.projects if p.id == goal.project_id),
+                    None,
+                )
+                if not project:
+                    continue
+
+                project_distribution[project.title] = (
+                    project_distribution.get(project.title, 0)
+                    + task_plan.estimated_hours
+                )
+
+            if project_distribution:
+                insights.append("📈 プロジェクト別配分:")
+                for project_title, hours in project_distribution.items():
+                    insights.append(f"  • {project_title}: {hours:.1f}時間")
 
             return selected_tasks, insights
 
