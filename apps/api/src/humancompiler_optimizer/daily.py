@@ -5,7 +5,8 @@ import time as time_module
 from dataclasses import dataclass, field
 from datetime import datetime, time
 from enum import Enum
-from typing import Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 
 class TaskKind(Enum):
@@ -117,7 +118,11 @@ def optimize_daily_schedule(
             datetime.combine(datetime.today(), slot.end)
             - datetime.combine(datetime.today(), slot.start)
         ).total_seconds() / 60
-        capacity = slot.capacity_hours * 60 if slot.capacity_hours is not None else slot_duration
+        capacity = (
+            slot.capacity_hours * 60
+            if slot.capacity_hours is not None
+            else slot_duration
+        )
         slot_capacities.append(min(capacity, slot_duration))
 
     # Convert task remaining hours to minutes for optimization
@@ -134,7 +139,9 @@ def optimize_daily_schedule(
     for i, _task in enumerate(tasks):
         for j, _slot in enumerate(time_slots):
             max_duration = min(task_durations[i], int(slot_capacities[j]))
-            assigned_durations[i, j] = model.NewIntVar(0, max_duration, f"duration_{i}_{j}")
+            assigned_durations[i, j] = model.NewIntVar(
+                0, max_duration, f"duration_{i}_{j}"
+            )
 
             if max_duration >= 1:
                 model.Add(assigned_durations[i, j] >= 1).OnlyEnforceIf(x[i, j])
@@ -147,7 +154,8 @@ def optimize_daily_schedule(
     # Constraint 2: Slot capacity constraints
     for j, _slot in enumerate(time_slots):
         model.Add(
-            sum(assigned_durations[i, j] for i in range(len(tasks))) <= int(slot_capacities[j])
+            sum(assigned_durations[i, j] for i in range(len(tasks)))
+            <= int(slot_capacities[j])
         )
 
     # Constraint 3: Dependency ordering constraints (soft requirement; only if both are scheduled)
@@ -176,7 +184,9 @@ def optimize_daily_schedule(
             if not dependent_task_indices:
                 continue
             for prerequisite_goal_id in prerequisite_goal_ids:
-                prerequisite_task_indices = goal_to_task_indices.get(prerequisite_goal_id)
+                prerequisite_task_indices = goal_to_task_indices.get(
+                    prerequisite_goal_id
+                )
                 if not prerequisite_task_indices:
                     continue
                 for dependent_task_idx in dependent_task_indices:
@@ -184,7 +194,9 @@ def optimize_daily_schedule(
                         for j in range(len(time_slots)):
                             for k in range(j + 1, len(time_slots)):
                                 model.Add(
-                                    x[dependent_task_idx, j] + x[prerequisite_task_idx, k] <= 1
+                                    x[dependent_task_idx, j]
+                                    + x[prerequisite_task_idx, k]
+                                    <= 1
                                 )
 
     # Constraint 4.5: Slot-specific project assignment constraints
@@ -209,7 +221,9 @@ def optimize_daily_schedule(
 
     priority_weights: dict[int, int] = {}
     for i, task in enumerate(tasks):
-        priority_weights[i] = max(config.min_score, config.priority_score_base - task.priority)
+        priority_weights[i] = max(
+            config.min_score, config.priority_score_base - task.priority
+        )
 
     deadline_bonus: dict[tuple[int, int], int] = {}
     if date:
@@ -219,7 +233,10 @@ def optimize_daily_schedule(
                 if task.due_date:
                     days_until_due = (task.due_date.date() - schedule_date.date()).days
                     deadline_bonus[i, j] = (
-                        max(config.min_score, config.deadline_score_base - days_until_due)
+                        max(
+                            config.min_score,
+                            config.deadline_score_base - days_until_due,
+                        )
                         if days_until_due >= 0
                         else config.min_score
                     )
@@ -274,7 +291,9 @@ def optimize_daily_schedule(
         objective_value = float(solver.ObjectiveValue())
     else:
         unscheduled_tasks = [task.id for task in tasks]
-        optimization_status = "INFEASIBLE" if status == cp_model.INFEASIBLE else "UNKNOWN"
+        optimization_status = (
+            "INFEASIBLE" if status == cp_model.INFEASIBLE else "UNKNOWN"
+        )
         success = False
         objective_value = 0.0
 
@@ -287,4 +306,3 @@ def optimize_daily_schedule(
         solve_time_seconds=solve_time,
         objective_value=objective_value,
     )
-

@@ -1521,7 +1521,9 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
 
             for task in context.tasks:
                 task_id = str(task.id)
-                hours = remaining_hours_map.get(task_id, float(task.estimate_hours or 0))
+                hours = remaining_hours_map.get(
+                    task_id, float(task.estimate_hours or 0)
+                )
                 priority_score = task_priorities.get(task_id, 5.0)
                 project_id = (
                     goal_to_project_id.get(str(task.goal_id))
@@ -1653,9 +1655,7 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
             ]
 
             if user_prompt:
-                insights.append(
-                    f"💬 ユーザー指示「{user_prompt}」を優先度計算に反映"
-                )
+                insights.append(f"💬 ユーザー指示「{user_prompt}」を優先度計算に反映")
 
             project_distribution: dict[str, float] = {}
             for task_plan in selected_tasks:

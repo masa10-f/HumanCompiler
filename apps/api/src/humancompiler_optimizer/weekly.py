@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time as time_module
 from dataclasses import dataclass, field
-from typing import Sequence
+from collections.abc import Sequence
 
 
 @dataclass(frozen=True)
@@ -74,9 +74,7 @@ def optimize_weekly_selection(
 
     # Decision variables
     task_vars = {t.id: model.NewBoolVar(f"task_{t.id}") for t in tasks}
-    recurring_vars = {
-        t.id: model.NewBoolVar(f"weekly_{t.id}") for t in recurring_tasks
-    }
+    recurring_vars = {t.id: model.NewBoolVar(f"weekly_{t.id}") for t in recurring_tasks}
 
     # Constraint 1: Total capacity constraint
     total_hours_expr = []
@@ -106,8 +104,12 @@ def optimize_weekly_selection(
             model.Add(sum(project_terms) <= 0)
             continue
 
-        ideal_min_hours = int(allocation.target_hours * config.ideal_min_factor * hours_scale)
-        ideal_max_hours = int(allocation.target_hours * config.ideal_max_factor * hours_scale)
+        ideal_min_hours = int(
+            allocation.target_hours * config.ideal_min_factor * hours_scale
+        )
+        ideal_max_hours = int(
+            allocation.target_hours * config.ideal_max_factor * hours_scale
+        )
 
         if available_task_hours * hours_scale < ideal_min_hours:
             hard_min_hours = int(available_task_hours * hours_scale)
@@ -134,7 +136,9 @@ def optimize_weekly_selection(
         priority_expr.append(task_vars[task.id] * (base_priority + bonus))
 
     for task in recurring_tasks:
-        priority_expr.append(recurring_vars[task.id] * int(task.priority_score * priority_scale))
+        priority_expr.append(
+            recurring_vars[task.id] * int(task.priority_score * priority_scale)
+        )
 
     model.Maximize(sum(priority_expr))
 
@@ -187,4 +191,3 @@ def optimize_weekly_selection(
         solve_time_seconds=solve_time,
         objective_value=float(solver.ObjectiveValue()),
     )
-
