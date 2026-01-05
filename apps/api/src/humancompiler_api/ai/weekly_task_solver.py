@@ -13,7 +13,10 @@ from typing import Any
 from uuid import UUID
 
 from openai import OpenAI, APIError, RateLimitError, AuthenticationError
+from openai.types.chat import ChatCompletion
 from pydantic import BaseModel, Field
+
+from humancompiler_api.ai.types import ConstraintAnalysis, SolverMetrics
 from sqlmodel import Session, select
 
 from humancompiler_api.ai.context_collector import ContextCollector
@@ -92,8 +95,8 @@ class TaskSolverResponse(BaseModel):
     project_allocations: list[ProjectAllocation]
     selected_tasks: list[TaskPlan]
     optimization_insights: list[str]
-    constraint_analysis: dict[str, Any]
-    solver_metrics: dict[str, Any]
+    constraint_analysis: ConstraintAnalysis | dict[str, Any]
+    solver_metrics: SolverMetrics | dict[str, Any]
     generated_at: datetime
 
 
@@ -272,7 +275,7 @@ class TaskPriorityExtractor:
         }
 
     def _parse_priority_response(
-        self, response, context: WeeklyPlanContext
+        self, response: ChatCompletion, context: WeeklyPlanContext
     ) -> dict[str, float]:
         """Parse priority extraction response."""
         try:
@@ -797,7 +800,7 @@ class WeeklyTaskSolver:
 
     def _analyze_constraints(
         self, context: WeeklyPlanContext, constraints: WeeklyConstraints
-    ) -> dict[str, Any]:
+    ) -> ConstraintAnalysis:
         """Analyze current constraints and workload."""
         total_task_hours = sum(
             getattr(task, "remaining_hours", float(task.estimate_hours or 0))
@@ -1245,7 +1248,7 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
             }
 
     def _parse_responses_solver_output(
-        self, response, context: WeeklyPlanContext
+        self, response: ChatCompletion, context: WeeklyPlanContext
     ) -> dict[str, Any]:
         """Parse Responses API output for task solver"""
         try:
@@ -1344,7 +1347,7 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
         project_allocations: list[ProjectAllocation],
         constraints: WeeklyConstraints,
         context: WeeklyPlanContext,
-    ) -> dict[str, Any]:
+    ) -> SolverMetrics:
         """Calculate solver performance metrics."""
         total_allocated = sum(task.estimated_hours for task in selected_tasks)
         capacity_utilization = total_allocated / constraints.total_capacity_hours
@@ -1445,7 +1448,7 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
             }
 
     def _parse_chat_completions_solver_response(
-        self, response, context: WeeklyPlanContext
+        self, response: ChatCompletion, context: WeeklyPlanContext
     ) -> dict[str, Any]:
         """Parse Chat Completions API response for task solver"""
         try:

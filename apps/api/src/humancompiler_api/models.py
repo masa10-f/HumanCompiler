@@ -426,7 +426,7 @@ class UserSettingsBase(SQLModel):
     ai_features_enabled: bool = SQLField(default=False)
 
 
-class UserSettings(UserSettingsBase, table=True):
+class UserSettings(UserSettingsBase, table=True):  # type: ignore[call-arg]
     """User settings database model"""
 
     __tablename__ = "user_settings"

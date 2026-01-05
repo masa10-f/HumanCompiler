@@ -6,7 +6,10 @@ import logging
 from datetime import date
 from typing import Any
 
+from sqlmodel import Session
+
 from humancompiler_api.ai.models import WeeklyPlanContext
+from humancompiler_api.ai.types import WeeklyPlanPreferences
 from humancompiler_api.services import (
     goal_service,
     project_service,
@@ -28,12 +31,12 @@ class ContextCollector:
 
     async def collect_weekly_plan_context(
         self,
-        session,
+        session: Session,
         user_id: str,
         week_start_date: date,
         project_filter: list[str] | None = None,
         capacity_hours: float = 40.0,
-        preferences: dict[str, Any] | None = None,
+        preferences: WeeklyPlanPreferences | dict[str, Any] | None = None,
         selected_recurring_task_ids: list[str] | None = None,
     ) -> WeeklyPlanContext:
         """Collect context data for weekly planning"""
