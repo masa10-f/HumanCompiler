@@ -55,6 +55,12 @@ import type {
   WeeklyRecurringTaskCreate,
   WeeklyRecurringTaskUpdate
 } from '@/types/weekly-recurring-task';
+import type {
+  WorkSession,
+  WorkSessionStartRequest,
+  WorkSessionCheckoutRequest,
+  WorkSessionWithLog
+} from '@/types/work-session';
 import type { SortOptions } from '@/types/sort';
 
 // Helper function to ensure HTTPS protocol
@@ -754,6 +760,74 @@ class ApiClient {
       method: 'DELETE',
     });
   }
+
+  // === Work Sessions ===
+
+  /**
+   * Start a new work session for a task.
+   * Only one active session per user is allowed.
+   *
+   * @param data - Session start data including task_id and planned_checkout_at
+   * @returns The created work session
+   */
+  async startWorkSession(data: WorkSessionStartRequest): Promise<WorkSession> {
+    return this.request<WorkSession>('/api/work-sessions/start', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  /**
+   * Checkout (end) the current active session.
+   * Creates a log entry automatically.
+   *
+   * @param data - Checkout data including decision and optional KPT
+   * @returns The updated session with generated log
+   */
+  async checkoutWorkSession(data: WorkSessionCheckoutRequest): Promise<WorkSessionWithLog> {
+    return this.request<WorkSessionWithLog>('/api/work-sessions/checkout', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  /**
+   * Get the current active session for the authenticated user.
+   *
+   * @returns The active session or null if none exists
+   */
+  async getCurrentWorkSession(): Promise<WorkSession | null> {
+    return this.request<WorkSession | null>('/api/work-sessions/current');
+  }
+
+  /**
+   * Get session history for the authenticated user.
+   *
+   * @param skip - Pagination offset (default: 0)
+   * @param limit - Maximum results (default: 20)
+   * @returns Array of work sessions
+   */
+  async getWorkSessionHistory(skip: number = 0, limit: number = 20): Promise<WorkSession[]> {
+    return this.request<WorkSession[]>(`/api/work-sessions/history?skip=${skip}&limit=${limit}`);
+  }
+
+  /**
+   * Get sessions for a specific task.
+   *
+   * @param taskId - The task ID
+   * @param skip - Pagination offset (default: 0)
+   * @param limit - Maximum results (default: 20)
+   * @returns Array of work sessions for the task
+   */
+  async getWorkSessionsByTask(
+    taskId: string,
+    skip: number = 0,
+    limit: number = 20
+  ): Promise<WorkSession[]> {
+    return this.request<WorkSession[]>(
+      `/api/work-sessions/task/${taskId}?skip=${skip}&limit=${limit}`
+    );
+  }
 }
 
 export const apiClient = new ApiClient();
@@ -901,6 +975,19 @@ export const timelineApi = {
 export const reportsApi = {
   generateWeeklyReport: (weekStartDate: string, projectIds?: string[]) =>
     apiClient.generateWeeklyReport(weekStartDate, projectIds),
+};
+
+/**
+ * Work Sessions API convenience wrapper.
+ * Provides methods for Runner/Focus mode session management.
+ */
+export const workSessionsApi = {
+  start: (data: WorkSessionStartRequest) => apiClient.startWorkSession(data),
+  checkout: (data: WorkSessionCheckoutRequest) => apiClient.checkoutWorkSession(data),
+  getCurrent: () => apiClient.getCurrentWorkSession(),
+  getHistory: (skip?: number, limit?: number) => apiClient.getWorkSessionHistory(skip, limit),
+  getByTask: (taskId: string, skip?: number, limit?: number) =>
+    apiClient.getWorkSessionsByTask(taskId, skip, limit),
 };
 
 // === Helper functions ===

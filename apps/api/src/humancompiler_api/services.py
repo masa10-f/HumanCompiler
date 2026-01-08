@@ -33,6 +33,12 @@ from humancompiler_api.models import (
     WeeklyRecurringTask,
     WeeklyRecurringTaskCreate,
     WeeklyRecurringTaskUpdate,
+    WorkSession,
+    WorkSessionStartRequest,
+    WorkSessionCheckoutRequest,
+    CheckoutType,
+    SessionDecision,
+    ContinueReason,
     SortBy,
     SortOrder,
 )
@@ -1066,9 +1072,231 @@ class WeeklyRecurringTaskService(
         return True
 
 
+class WorkSessionService(
+    BaseService[WorkSession, WorkSessionStartRequest, WorkSessionCheckoutRequest]
+):
+    """Work session service for Runner/Focus mode"""
+
+    def __init__(
+        self,
+        task_service_instance: TaskService | None = None,
+        log_service_instance: LogService | None = None,
+    ):
+        super().__init__(WorkSession)
+        self._task_service = task_service_instance
+        self._log_service = log_service_instance
+
+    @property
+    def task_service(self) -> TaskService:
+        if self._task_service is None:
+            self._task_service = TaskService()
+        return self._task_service
+
+    @property
+    def log_service(self) -> LogService:
+        if self._log_service is None:
+            self._log_service = LogService()
+        return self._log_service
+
+    def _create_instance(
+        self, data: WorkSessionStartRequest, user_id: str | UUID, **kwargs
+    ) -> WorkSession:
+        """Create a new work session instance"""
+        return WorkSession(
+            user_id=user_id,
+            task_id=data.task_id,
+            planned_checkout_at=data.planned_checkout_at,
+            planned_outcome=data.planned_outcome,
+        )
+
+    def _get_user_filter(self, user_id: str | UUID):
+        """Get filter for work session ownership"""
+        return WorkSession.user_id == user_id
+
+    def get_current_session(
+        self, session: Session, user_id: str | UUID
+    ) -> WorkSession | None:
+        """Get the current active session for user (ended_at is NULL)"""
+        user_id_validated = validate_uuid(user_id, "user_id")
+        statement = select(WorkSession).where(
+            WorkSession.user_id == user_id_validated,
+            WorkSession.ended_at.is_(None),
+        )
+        return session.exec(statement).first()
+
+    def start_session(
+        self,
+        session: Session,
+        data: WorkSessionStartRequest,
+        user_id: str | UUID,
+    ) -> WorkSession:
+        """Start a new work session
+
+        Raises:
+            HTTPException: 409 if an active session already exists
+            HTTPException: 404 if the task is not found
+        """
+        user_id_validated = validate_uuid(user_id, "user_id")
+
+        # Check for existing active session
+        existing = self.get_current_session(session, user_id_validated)
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An active session already exists. Please end it first.",
+            )
+
+        # Verify task ownership
+        task = self.task_service.get_task(session, data.task_id, user_id_validated)
+        if not task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Task not found",
+            )
+
+        return self.create(session, data, user_id_validated)
+
+    def checkout_session(
+        self,
+        session: Session,
+        user_id: str | UUID,
+        checkout_data: WorkSessionCheckoutRequest,
+    ) -> tuple[WorkSession, Log]:
+        """Checkout the current session and create a log entry
+
+        Returns:
+            Tuple of (updated WorkSession, created Log)
+
+        Raises:
+            HTTPException: 404 if no active session found
+        """
+        user_id_validated = validate_uuid(user_id, "user_id")
+
+        # Get current session
+        current_session = self.get_current_session(session, user_id_validated)
+        if not current_session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No active session found",
+            )
+
+        # Calculate actual minutes
+        ended_at = datetime.now(UTC)
+        actual_minutes = max(
+            1, int((ended_at - current_session.started_at).total_seconds() / 60)
+        )
+
+        # Update session
+        current_session.ended_at = ended_at
+        current_session.checkout_type = checkout_data.checkout_type
+        current_session.decision = checkout_data.decision
+        current_session.continue_reason = checkout_data.continue_reason
+        current_session.kpt_keep = checkout_data.kpt_keep
+        current_session.kpt_problem = checkout_data.kpt_problem
+        current_session.kpt_try = checkout_data.kpt_try
+        current_session.remaining_estimate_hours = (
+            checkout_data.remaining_estimate_hours
+        )
+        current_session.updated_at = ended_at
+
+        # Create log entry with KPT summary
+        kpt_summary = self._generate_kpt_summary(
+            checkout_data.kpt_keep,
+            checkout_data.kpt_problem,
+            checkout_data.kpt_try,
+        )
+
+        log_data = LogCreate(
+            task_id=current_session.task_id,
+            actual_minutes=actual_minutes,
+            comment=kpt_summary,
+        )
+
+        session.add(current_session)
+        new_log = self.log_service.create_log(session, log_data, user_id_validated)
+
+        session.commit()
+        session.refresh(current_session)
+
+        return current_session, new_log
+
+    def get_sessions_by_task(
+        self,
+        session: Session,
+        task_id: str | UUID,
+        user_id: str | UUID,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> list[WorkSession]:
+        """Get sessions for a specific task"""
+        user_id_validated = validate_uuid(user_id, "user_id")
+        task_id_validated = validate_uuid(task_id, "task_id")
+
+        # Verify task ownership
+        task = self.task_service.get_task(session, task_id_validated, user_id_validated)
+        if not task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Task not found",
+            )
+
+        statement = (
+            select(WorkSession)
+            .where(
+                WorkSession.user_id == user_id_validated,
+                WorkSession.task_id == task_id_validated,
+            )
+            .order_by(WorkSession.started_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        return list(session.exec(statement).all())
+
+    def get_session_history(
+        self,
+        session: Session,
+        user_id: str | UUID,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> list[WorkSession]:
+        """Get all sessions for a user, ordered by started_at descending"""
+        user_id_validated = validate_uuid(user_id, "user_id")
+
+        statement = (
+            select(WorkSession)
+            .where(WorkSession.user_id == user_id_validated)
+            .order_by(WorkSession.started_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        return list(session.exec(statement).all())
+
+    def _generate_kpt_summary(
+        self,
+        keep: str | None,
+        problem: str | None,
+        try_: str | None,
+    ) -> str | None:
+        """Generate KPT summary for log comment (max 500 chars)"""
+        parts = []
+        if keep:
+            parts.append(f"K: {keep[:100]}")
+        if problem:
+            parts.append(f"P: {problem[:100]}")
+        if try_:
+            parts.append(f"T: {try_[:100]}")
+
+        if not parts:
+            return None
+
+        summary = " | ".join(parts)
+        return summary[:500] if len(summary) > 500 else summary
+
+
 # Create service instances for use in routers
 project_service = ProjectService()
 goal_service = GoalService()
 task_service = TaskService()
 log_service = LogService()
 weekly_recurring_task_service = WeeklyRecurringTaskService()
+work_session_service = WorkSessionService()

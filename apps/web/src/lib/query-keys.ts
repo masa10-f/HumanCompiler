@@ -79,6 +79,15 @@ export const queryKeys = {
     all: ['taskDependencies'] as const,
     byTask: (taskId: string) => [...queryKeys.taskDependencies.all, 'task', taskId] as const,
   },
+
+  // Work session keys
+  workSessions: {
+    all: ['workSessions'] as const,
+    current: () => [...queryKeys.workSessions.all, 'current'] as const,
+    history: () => [...queryKeys.workSessions.all, 'history'] as const,
+    byTask: (taskId: string) => [...queryKeys.workSessions.all, 'task', taskId] as const,
+    detail: (id: string) => [...queryKeys.workSessions.all, 'detail', id] as const,
+  },
 } as const;
 
 // Export type for type safety
