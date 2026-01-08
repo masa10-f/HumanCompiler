@@ -811,14 +811,17 @@ def optimize_schedule(
             date=schedule_date,
             task_dependencies=task_dependencies,
             goal_dependencies=goal_dependencies,
-            config=DailySolverConfig(max_time_in_seconds=5.0, log_search_progress=False),
+            config=DailySolverConfig(
+                max_time_in_seconds=5.0, log_search_progress=False
+            ),
         )
     except Exception as e:
         logger.error(f"OR-Tools solver failed with exception: {e}")
         return ScheduleResult(
             success=False,
             assignments=[],
-            unscheduled_tasks=[task.id for task in tasks] + unscheduled_due_to_dependencies,
+            unscheduled_tasks=[task.id for task in tasks]
+            + unscheduled_due_to_dependencies,
             total_scheduled_hours=0.0,
             optimization_status="SOLVER_ERROR",
             solve_time_seconds=time_module.time() - start_time,

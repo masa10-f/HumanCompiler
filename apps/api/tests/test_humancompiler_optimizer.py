@@ -67,7 +67,10 @@ class TestDailySolverBasic:
         ]
         slots = [
             TimeSlot(
-                start=time(9, 0), end=time(12, 0), kind=SlotKind.LIGHT_WORK, capacity_hours=2.0
+                start=time(9, 0),
+                end=time(12, 0),
+                kind=SlotKind.LIGHT_WORK,
+                capacity_hours=2.0,
             ),
         ]
         result = optimize_daily_schedule(tasks=tasks, time_slots=slots)
@@ -97,7 +100,10 @@ class TestDailySolverKindMatching:
         """Solver should prefer assigning tasks to matching slot kinds."""
         tasks = [
             SchedulerTask(
-                id="focused_task", title="Focused", estimate_hours=1.0, kind=TaskKind.FOCUSED_WORK
+                id="focused_task",
+                title="Focused",
+                estimate_hours=1.0,
+                kind=TaskKind.FOCUSED_WORK,
             ),
         ]
         slots = [
@@ -117,12 +123,19 @@ class TestDailySolverPriority:
     def test_higher_priority_preferred(self):
         """Higher priority tasks (lower number) should be scheduled first."""
         tasks = [
-            SchedulerTask(id="low_priority", title="Low", estimate_hours=2.0, priority=9),
-            SchedulerTask(id="high_priority", title="High", estimate_hours=2.0, priority=1),
+            SchedulerTask(
+                id="low_priority", title="Low", estimate_hours=2.0, priority=9
+            ),
+            SchedulerTask(
+                id="high_priority", title="High", estimate_hours=2.0, priority=1
+            ),
         ]
         slots = [
             TimeSlot(
-                start=time(9, 0), end=time(12, 0), kind=SlotKind.LIGHT_WORK, capacity_hours=2.0
+                start=time(9, 0),
+                end=time(12, 0),
+                kind=SlotKind.LIGHT_WORK,
+                capacity_hours=2.0,
             ),
         ]
         result = optimize_daily_schedule(tasks=tasks, time_slots=slots)
@@ -154,10 +167,15 @@ class TestDailySolverDeadline:
         ]
         slots = [
             TimeSlot(
-                start=time(9, 0), end=time(12, 0), kind=SlotKind.LIGHT_WORK, capacity_hours=2.0
+                start=time(9, 0),
+                end=time(12, 0),
+                kind=SlotKind.LIGHT_WORK,
+                capacity_hours=2.0,
             ),
         ]
-        result = optimize_daily_schedule(tasks=tasks, time_slots=slots, date=schedule_date)
+        result = optimize_daily_schedule(
+            tasks=tasks, time_slots=slots, date=schedule_date
+        )
         assert result.success is True
         scheduled_ids = [a.task_id for a in result.assignments]
         assert "near_deadline" in scheduled_ids
@@ -320,13 +338,25 @@ class TestWeeklySolverProjectAllocation:
         """Solver should respect project allocation targets."""
         tasks = [
             WeeklyTaskSpec(
-                id="proj_a_task1", title="A1", hours=5.0, priority_score=5.0, project_id="proj_a"
+                id="proj_a_task1",
+                title="A1",
+                hours=5.0,
+                priority_score=5.0,
+                project_id="proj_a",
             ),
             WeeklyTaskSpec(
-                id="proj_a_task2", title="A2", hours=5.0, priority_score=5.0, project_id="proj_a"
+                id="proj_a_task2",
+                title="A2",
+                hours=5.0,
+                priority_score=5.0,
+                project_id="proj_a",
             ),
             WeeklyTaskSpec(
-                id="proj_b_task1", title="B1", hours=5.0, priority_score=5.0, project_id="proj_b"
+                id="proj_b_task1",
+                title="B1",
+                hours=5.0,
+                priority_score=5.0,
+                project_id="proj_b",
             ),
         ]
         allocations = [
@@ -344,10 +374,18 @@ class TestWeeklySolverProjectAllocation:
         """Zero allocation should exclude project tasks."""
         tasks = [
             WeeklyTaskSpec(
-                id="proj_a_task", title="A", hours=5.0, priority_score=5.0, project_id="proj_a"
+                id="proj_a_task",
+                title="A",
+                hours=5.0,
+                priority_score=5.0,
+                project_id="proj_a",
             ),
             WeeklyTaskSpec(
-                id="proj_b_task", title="B", hours=5.0, priority_score=5.0, project_id="proj_b"
+                id="proj_b_task",
+                title="B",
+                hours=5.0,
+                priority_score=5.0,
+                project_id="proj_b",
             ),
         ]
         allocations = [
@@ -367,7 +405,9 @@ class TestWeeklySolverRecurringTasks:
     def test_includes_recurring_tasks(self):
         """Recurring tasks should be included in selection."""
         tasks = [
-            WeeklyTaskSpec(id="regular", title="Regular", hours=5.0, priority_score=5.0),
+            WeeklyTaskSpec(
+                id="regular", title="Regular", hours=5.0, priority_score=5.0
+            ),
         ]
         recurring = [
             WeeklyTaskSpec(id="weekly1", title="Weekly", hours=2.0, priority_score=8.0),
@@ -381,10 +421,14 @@ class TestWeeklySolverRecurringTasks:
     def test_recurring_tasks_count_toward_capacity(self):
         """Recurring tasks should count toward total capacity."""
         tasks = [
-            WeeklyTaskSpec(id="regular", title="Regular", hours=35.0, priority_score=5.0),
+            WeeklyTaskSpec(
+                id="regular", title="Regular", hours=35.0, priority_score=5.0
+            ),
         ]
         recurring = [
-            WeeklyTaskSpec(id="weekly1", title="Weekly", hours=10.0, priority_score=8.0),
+            WeeklyTaskSpec(
+                id="weekly1", title="Weekly", hours=10.0, priority_score=8.0
+            ),
         ]
         result = optimize_weekly_selection(
             tasks=tasks, recurring_tasks=recurring, total_capacity_hours=40.0
