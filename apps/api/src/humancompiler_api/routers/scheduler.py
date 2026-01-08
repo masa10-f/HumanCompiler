@@ -3,17 +3,23 @@ Scheduler API endpoints for task scheduling optimization.
 """
 
 import logging
-import math
-from dataclasses import dataclass, field
 from datetime import datetime, time, UTC, timedelta
-from enum import Enum
 from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator, ConfigDict, field_serializer
 from sqlmodel import Session, select, cast, String
-from ortools.sat.python import cp_model
+
+from humancompiler_optimizer.daily import (
+    DailySolverConfig,
+    ScheduleResult,
+    SchedulerTask,
+    SlotKind,
+    TaskKind,
+    TimeSlot,
+    optimize_daily_schedule,
+)
 
 from humancompiler_api.auth import get_current_user_id
 from humancompiler_api.database import db
@@ -40,69 +46,6 @@ from sqlalchemy.exc import SQLAlchemyError, DatabaseError
 # OR-Tools CP-SAT scheduler implementation
 logger = logging.getLogger(__name__)
 logger.info("Using OR-Tools CP-SAT constraint solver for scheduling optimization")
-
-
-class TaskKind(Enum):
-    LIGHT_WORK = "light_work"
-    FOCUSED_WORK = "focused_work"
-    STUDY = "study"
-
-
-class SlotKind(Enum):
-    LIGHT_WORK = "light_work"
-    FOCUSED_WORK = "focused_work"
-    STUDY = "study"
-
-
-@dataclass
-class SchedulerTask:
-    id: str
-    title: str
-    estimate_hours: float
-    priority: int = 1
-    due_date: datetime | None = None
-    kind: TaskKind = TaskKind.LIGHT_WORK
-    goal_id: str | None = None
-    is_weekly_recurring: bool = False  # Add flag to distinguish weekly recurring tasks
-    actual_hours: float = 0.0  # Total actual hours logged for this task
-    project_id: str | None = None  # Project ID for slot assignment constraints
-
-    @property
-    def remaining_hours(self) -> float:
-        """Calculate remaining hours (estimate - actual)."""
-        remaining = self.estimate_hours - self.actual_hours
-        return max(0.0, remaining)  # Never return negative remaining hours
-
-
-@dataclass
-class TimeSlot:
-    start: time
-    end: time
-    kind: SlotKind
-    capacity_hours: float | None = None
-    # New fields for slot-level assignment
-    assigned_project_id: str | None = None
-
-
-@dataclass
-class Assignment:
-    """Represents a task assignment to a time slot."""
-
-    task_id: str
-    slot_index: int
-    start_time: time
-    duration_hours: float
-
-
-@dataclass
-class ScheduleResult:
-    success: bool
-    assignments: list[Assignment] = field(default_factory=list)
-    unscheduled_tasks: list[str] = field(default_factory=list)
-    total_scheduled_hours: float = 0.0
-    optimization_status: str = "MOCKED"
-    solve_time_seconds: float = 0.0
-    objective_value: float = 0.0
 
 
 def _get_task_actual_hours(session: Session, task_ids: list[str]) -> dict[str, float]:
@@ -758,6 +701,8 @@ def optimize_schedule(
     # Filter tasks based on dependency constraints
     schedulable_tasks = []
     unscheduled_due_to_dependencies = []
+    task_dependencies: dict[str, list[str]] = {}
+    goal_dependencies: dict[str, list[str]] = {}
 
     if session:
         # Get dependency data
@@ -850,256 +795,53 @@ def optimize_schedule(
             solve_time_seconds=time_module.time() - start_time,
         )
 
-    # Create CP-SAT model
-    model = cp_model.CpModel()
-
-    # Calculate slot capacities in minutes for better precision
-    slot_capacities = []
-    for slot in time_slots:
-        slot_duration = (
-            datetime.combine(datetime.today(), slot.end)
-            - datetime.combine(datetime.today(), slot.start)
-        ).total_seconds() / 60  # Convert to minutes
-        capacity = (
-            slot.capacity_hours * 60
-            if slot.capacity_hours is not None
-            else slot_duration
-        )
-        slot_capacities.append(min(capacity, slot_duration))
-
-    # Convert task remaining hours to minutes for optimization
-    task_durations = [math.ceil(task.remaining_hours * 60) for task in tasks]
-
-    # Decision variables: x[i][j] = 1 if task i is assigned to slot j
-    x = {}
-    for i, _task in enumerate(tasks):
-        for j, _slot in enumerate(time_slots):
-            x[i, j] = model.NewBoolVar(f"task_{i}_slot_{j}")
-
-    # Variable for actual assigned duration (in minutes)
-    assigned_durations = {}
-    for i, _task in enumerate(tasks):
-        for j, _slot in enumerate(time_slots):
-            # Duration is between 0 and min(task_duration, slot_capacity)
-            max_duration = min(task_durations[i], int(slot_capacities[j]))
-            assigned_durations[i, j] = model.NewIntVar(
-                0, max_duration, f"duration_{i}_{j}"
-            )
-
-            # If task is assigned to slot, duration must be positive (if possible)
-            if max_duration >= 1:
-                model.Add(assigned_durations[i, j] >= 1).OnlyEnforceIf(x[i, j])
-            model.Add(assigned_durations[i, j] == 0).OnlyEnforceIf(x[i, j].Not())
-
-    # Constraint 1: Each task is assigned to at most one slot
-    for i, _task in enumerate(tasks):
-        model.Add(sum(x[i, j] for j in range(len(time_slots))) <= 1)
-
-    # Constraint 2: Slot capacity constraints
-    for j, _slot in enumerate(time_slots):
-        model.Add(
-            sum(assigned_durations[i, j] for i in range(len(tasks)))
-            <= int(slot_capacities[j])
-        )
-
-    # Constraint 3: Task dependency ordering constraints
-    # If session is available, add ordering constraints for task dependencies
-    if session:
-        task_dependencies_in_schedule = _get_task_dependencies(session, tasks)
-        goal_dependencies_in_schedule = _get_goal_dependencies(session, tasks)
-        task_id_to_index = {task.id: i for i, task in enumerate(tasks)}
-
-        # Add task dependency constraints
-        for task_id, dependent_task_ids in task_dependencies_in_schedule.items():
-            if task_id in task_id_to_index:
-                task_idx = task_id_to_index[task_id]
-
-                for dep_task_id in dependent_task_ids:
-                    if dep_task_id in task_id_to_index:
-                        dep_task_idx = task_id_to_index[dep_task_id]
-
-                        # Add temporal ordering constraint:
-                        # If dependent task is assigned to slot j, prerequisite task cannot be assigned to any later slot k (k > j)
-                        for j in range(len(time_slots)):
-                            for k in range(j + 1, len(time_slots)):
-                                # If dependent task is in earlier slot j, prerequisite task cannot be in later slot k
-                                # This ensures prerequisite is scheduled before or at the same time as dependent task
-                                model.Add(x[task_idx, j] + x[dep_task_idx, k] <= 1)
-
-                        logger.debug(
-                            f"Added task dependency constraint: task {task_id} depends on {dep_task_id}"
-                        )
-
-        # Add goal dependency constraints
-        # Goal A depends on Goal B means all tasks in Goal A must be scheduled after all tasks in Goal B
-        goal_to_task_indices = {}
-        for i, task in enumerate(tasks):
-            if task.goal_id and not task.is_weekly_recurring:
-                if task.goal_id not in goal_to_task_indices:
-                    goal_to_task_indices[task.goal_id] = []
-                goal_to_task_indices[task.goal_id].append(i)
-
-        for goal_id, dependent_goal_ids in goal_dependencies_in_schedule.items():
-            if goal_id in goal_to_task_indices:
-                dependent_goal_task_indices = goal_to_task_indices[goal_id]
-
-                for dep_goal_id in dependent_goal_ids:
-                    if dep_goal_id in goal_to_task_indices:
-                        prerequisite_goal_task_indices = goal_to_task_indices[
-                            dep_goal_id
-                        ]
-
-                        # Add constraint: all tasks in dependent goal must be scheduled after all tasks in prerequisite goal
-                        for dependent_task_idx in dependent_goal_task_indices:
-                            for prerequisite_task_idx in prerequisite_goal_task_indices:
-                                for j in range(len(time_slots)):
-                                    for k in range(j + 1, len(time_slots)):
-                                        # If dependent goal task is in earlier slot j, prerequisite goal task cannot be in later slot k
-                                        model.Add(
-                                            x[dependent_task_idx, j]
-                                            + x[prerequisite_task_idx, k]
-                                            <= 1
-                                        )
-
-                        logger.debug(
-                            f"Added goal dependency constraint: goal {goal_id} depends on {dep_goal_id}"
-                        )
-
-    # Constraint 4: Task kind matching with slot kind (soft constraint via penalty)
-    kind_match_bonus = {}
-
-    # Constraint 4.5: Slot-specific project assignment constraints
-    for j, slot in enumerate(time_slots):
-        if slot.assigned_project_id:
-            # This slot can only be assigned tasks from the specified project
-            logger.debug(
-                f"Adding project constraint for slot {j}: project {slot.assigned_project_id}"
-            )
-            for i, task in enumerate(tasks):
-                # Skip weekly recurring tasks (they don't have project_id)
-                if task.is_weekly_recurring:
-                    continue
-
-                # Use project_id directly from SchedulerTask (already set during task creation)
-                task_project_id = task.project_id
-
-                # If task project doesn't match slot's assigned project, forbid assignment
-                if task_project_id != slot.assigned_project_id:
-                    model.Add(x[i, j] == 0)
-
-    for i, task in enumerate(tasks):
-        for j, slot in enumerate(time_slots):
-            # Bonus for matching task kind with slot kind
-            match_score = 10 if task.kind.value == slot.kind.value else 1
-            kind_match_bonus[i, j] = match_score
-
-    # Constraint 4: Priority-based scheduling (higher priority gets better treatment)
-    priority_weights = {}
-    for i, task in enumerate(tasks):
-        # Higher priority (lower number) gets higher weight
-        priority_weights[i] = max(1, 10 - task.priority)
-
-    # Constraint 5: Deadline constraints (soft constraint via penalty)
-    deadline_bonus = {}
-    if date:
+    schedule_date = None
+    if isinstance(date, str):
+        try:
+            schedule_date = datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            schedule_date = None
+    elif isinstance(date, datetime):
         schedule_date = date
-        for i, task in enumerate(tasks):
-            for j, _slot in enumerate(time_slots):
-                if task.due_date:
-                    # due_date is datetime, extract date for comparison
-                    due_date_obj = task.due_date.date()
-                    days_until_due = (due_date_obj - schedule_date.date()).days
-                    # Bonus for scheduling tasks closer to deadline
-                    deadline_bonus[i, j] = (
-                        max(1, 10 - days_until_due) if days_until_due >= 0 else 1
-                    )
-                else:
-                    deadline_bonus[i, j] = 1
-    else:
-        # No date provided, use neutral deadline bonus
-        for i, _task in enumerate(tasks):
-            for j, _slot in enumerate(time_slots):
-                deadline_bonus[i, j] = 1
 
-    # Objective: Maximize weighted scheduled time with bonuses
-    objective_terms = []
-    for i, _task in enumerate(tasks):
-        for j, _slot in enumerate(time_slots):
-            # Weight = base_duration * priority_weight * kind_match * deadline_bonus
-            weight = priority_weights[i] * kind_match_bonus[i, j] * deadline_bonus[i, j]
-            objective_terms.append(assigned_durations[i, j] * weight)
-
-    model.Maximize(sum(objective_terms))
-
-    # Solve the model
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = 5.0  # 5 second timeout
-    solver.parameters.log_search_progress = False
-
-    status = solver.Solve(model)
-    solve_time = time_module.time() - start_time
-
-    # Process results
-    assignments = []
-    unscheduled_tasks = []
-    total_scheduled_minutes = 0
-
-    if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-        # Extract assignments
-        for i, task in enumerate(tasks):
-            assigned = False
-            for j, slot in enumerate(time_slots):
-                if solver.Value(x[i, j]) == 1:
-                    duration_minutes = solver.Value(assigned_durations[i, j])
-                    duration_hours = duration_minutes / 60.0
-
-                    assignments.append(
-                        Assignment(
-                            task_id=task.id,
-                            slot_index=j,
-                            start_time=slot.start,
-                            duration_hours=duration_hours,
-                        )
-                    )
-                    total_scheduled_minutes += duration_minutes
-                    assigned = True
-                    break
-
-            if not assigned:
-                unscheduled_tasks.append(task.id)
-
-        # Determine optimization status
-        if status == cp_model.OPTIMAL:
-            optimization_status = "OPTIMAL"
-        else:
-            optimization_status = "FEASIBLE"
-
-        success = True
-        objective_value = solver.ObjectiveValue()
-
-    else:
-        # No solution found
-        unscheduled_tasks = [task.id for task in tasks]
-        optimization_status = (
-            "INFEASIBLE" if status == cp_model.INFEASIBLE else "UNKNOWN"
+    try:
+        solver_result = optimize_daily_schedule(
+            tasks,
+            time_slots,
+            date=schedule_date,
+            task_dependencies=task_dependencies,
+            goal_dependencies=goal_dependencies,
+            config=DailySolverConfig(
+                max_time_in_seconds=5.0, log_search_progress=False
+            ),
         )
-        success = False
-        objective_value = None
+    except Exception as e:
+        logger.error(f"OR-Tools solver failed with exception: {e}")
+        return ScheduleResult(
+            success=False,
+            assignments=[],
+            unscheduled_tasks=[task.id for task in tasks]
+            + unscheduled_due_to_dependencies,
+            total_scheduled_hours=0.0,
+            optimization_status="SOLVER_ERROR",
+            solve_time_seconds=time_module.time() - start_time,
+            objective_value=0.0,
+        )
 
-    # Add tasks that were unscheduled due to dependencies
+    unscheduled_tasks = list(solver_result.unscheduled_tasks)
     if session and unscheduled_due_to_dependencies:
         unscheduled_tasks.extend(unscheduled_due_to_dependencies)
 
-    total_scheduled_hours = total_scheduled_minutes / 60.0
-
+    # Use wall-clock time from start (includes dependency filtering) rather than
+    # solver_result.solve_time_seconds (solver-only time) to reflect total API latency.
     return ScheduleResult(
-        success=success,
-        assignments=assignments,
+        success=solver_result.success,
+        assignments=solver_result.assignments,
         unscheduled_tasks=unscheduled_tasks,
-        total_scheduled_hours=total_scheduled_hours,
-        optimization_status=optimization_status,
-        solve_time_seconds=solve_time,
-        objective_value=objective_value if objective_value is not None else 0.0,
+        total_scheduled_hours=solver_result.total_scheduled_hours,
+        optimization_status=solver_result.optimization_status,
+        solve_time_seconds=time_module.time() - start_time,
+        objective_value=solver_result.objective_value,
     )
 
 
