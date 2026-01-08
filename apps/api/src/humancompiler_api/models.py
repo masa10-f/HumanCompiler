@@ -836,7 +836,7 @@ class WorkSessionResponse(WorkSessionBase):
     @field_serializer("remaining_estimate_hours")
     def serialize_remaining_estimate_hours(self, value: Decimal | None) -> float | None:
         """Convert Decimal to float for JSON serialization"""
-        return float(value) if value else None
+        return float(value) if value is not None else None
 
     @field_serializer(
         "started_at", "ended_at", "created_at", "updated_at", "planned_checkout_at"

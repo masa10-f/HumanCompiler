@@ -40,7 +40,7 @@ export function useCurrentWorkSession() {
  */
 export function useWorkSessionHistory(skip = 0, limit = 20) {
   return useQuery({
-    queryKey: queryKeys.workSessions.history(),
+    queryKey: queryKeys.workSessions.history(skip, limit),
     queryFn: () => workSessionsApi.getHistory(skip, limit),
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
@@ -55,7 +55,7 @@ export function useWorkSessionHistory(skip = 0, limit = 20) {
  */
 export function useWorkSessionsByTask(taskId: string, skip = 0, limit = 20) {
   return useQuery({
-    queryKey: queryKeys.workSessions.byTask(taskId),
+    queryKey: queryKeys.workSessions.byTask(taskId, skip, limit),
     queryFn: () => workSessionsApi.getByTask(taskId, skip, limit),
     enabled: !!taskId,
     staleTime: 5 * 60 * 1000,
@@ -71,10 +71,18 @@ export function useStartWorkSession() {
 
   return useMutation({
     mutationFn: (data: WorkSessionStartRequest) => workSessionsApi.start(data),
-    onSuccess: () => {
+    onSuccess: (_result, data) => {
       // Invalidate session queries
       queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.current() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.history() });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.workSessions.all,
+        predicate: (query) => query.queryKey[1] === 'history',
+      });
+      // Invalidate byTask cache for the started task
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.workSessions.all,
+        predicate: (query) => query.queryKey[1] === 'task' && query.queryKey[2] === data.task_id,
+      });
     },
   });
 }
@@ -91,9 +99,13 @@ export function useCheckoutWorkSession() {
     onSuccess: (result: WorkSessionWithLog) => {
       // Invalidate session queries
       queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.current() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.history() });
       queryClient.invalidateQueries({
-        queryKey: queryKeys.workSessions.byTask(result.task_id),
+        queryKey: queryKeys.workSessions.all,
+        predicate: (query) => query.queryKey[1] === 'history',
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.workSessions.all,
+        predicate: (query) => query.queryKey[1] === 'task' && query.queryKey[2] === result.task_id,
       });
 
       // Invalidate log and progress queries (log was auto-created)
@@ -108,12 +120,12 @@ export function useCheckoutWorkSession() {
 }
 
 /**
- * Helper hook to check if a session is overdue.
+ * Helper function to check if a session is overdue.
  *
  * @param session - The work session to check
  * @returns Object with isOverdue boolean and minutes overdue
  */
-export function useSessionOverdueStatus(session: WorkSession | null | undefined) {
+export function getSessionOverdueStatus(session: WorkSession | null | undefined) {
   if (!session || session.ended_at) {
     return { isOverdue: false, minutesOverdue: 0 };
   }
@@ -130,12 +142,12 @@ export function useSessionOverdueStatus(session: WorkSession | null | undefined)
 }
 
 /**
- * Helper hook to calculate remaining time until checkout.
+ * Helper function to calculate remaining time until checkout.
  *
  * @param session - The work session
  * @returns Object with remaining time info
  */
-export function useSessionRemainingTime(session: WorkSession | null | undefined) {
+export function getSessionRemainingTime(session: WorkSession | null | undefined) {
   if (!session || session.ended_at) {
     return { hasSession: false, minutesRemaining: 0, isOverdue: false };
   }
