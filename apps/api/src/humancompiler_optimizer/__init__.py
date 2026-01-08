@@ -12,6 +12,7 @@ from .daily import (
     SlotKind,
     TaskKind,
     TimeSlot,
+    WorkKind,
     optimize_daily_schedule,
 )
 from .weekly import (
@@ -31,6 +32,7 @@ __all__ = [
     "SlotKind",
     "TaskKind",
     "TimeSlot",
+    "WorkKind",
     "ProjectAllocationSpec",
     "optimize_weekly_selection",
     "WeeklySelectionResult",

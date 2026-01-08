@@ -804,19 +804,33 @@ def optimize_schedule(
     elif isinstance(date, datetime):
         schedule_date = date
 
-    solver_result = optimize_daily_schedule(
-        tasks,
-        time_slots,
-        date=schedule_date,
-        task_dependencies=task_dependencies,
-        goal_dependencies=goal_dependencies,
-        config=DailySolverConfig(max_time_in_seconds=5.0, log_search_progress=False),
-    )
+    try:
+        solver_result = optimize_daily_schedule(
+            tasks,
+            time_slots,
+            date=schedule_date,
+            task_dependencies=task_dependencies,
+            goal_dependencies=goal_dependencies,
+            config=DailySolverConfig(max_time_in_seconds=5.0, log_search_progress=False),
+        )
+    except Exception as e:
+        logger.error(f"OR-Tools solver failed with exception: {e}")
+        return ScheduleResult(
+            success=False,
+            assignments=[],
+            unscheduled_tasks=[task.id for task in tasks] + unscheduled_due_to_dependencies,
+            total_scheduled_hours=0.0,
+            optimization_status="SOLVER_ERROR",
+            solve_time_seconds=time_module.time() - start_time,
+            objective_value=0.0,
+        )
 
     unscheduled_tasks = list(solver_result.unscheduled_tasks)
     if session and unscheduled_due_to_dependencies:
         unscheduled_tasks.extend(unscheduled_due_to_dependencies)
 
+    # Use wall-clock time from start (includes dependency filtering) rather than
+    # solver_result.solve_time_seconds (solver-only time) to reflect total API latency.
     return ScheduleResult(
         success=solver_result.success,
         assignments=solver_result.assignments,

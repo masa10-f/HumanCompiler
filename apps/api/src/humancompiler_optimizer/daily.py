@@ -9,16 +9,21 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 
-class TaskKind(Enum):
+class WorkKind(Enum):
+    """Common enum for task and slot work types.
+
+    This enum represents the type of work, used for both tasks and time slots.
+    Matching task kind with slot kind improves scheduling quality.
+    """
+
     LIGHT_WORK = "light_work"
     FOCUSED_WORK = "focused_work"
     STUDY = "study"
 
 
-class SlotKind(Enum):
-    LIGHT_WORK = "light_work"
-    FOCUSED_WORK = "focused_work"
-    STUDY = "study"
+# Aliases for backward compatibility and semantic clarity
+TaskKind = WorkKind
+SlotKind = WorkKind
 
 
 @dataclass

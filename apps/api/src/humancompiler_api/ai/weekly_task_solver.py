@@ -1561,6 +1561,8 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                             title=weekly_task.title,
                             hours=hours,
                             priority_score=8.0,
+                            # Weekly recurring tasks are not tied to specific projects,
+                            # so they are excluded from project allocation constraints.
                             project_id=None,
                         )
                     )
