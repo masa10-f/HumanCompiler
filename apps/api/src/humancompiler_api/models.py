@@ -76,6 +76,36 @@ class SortOrder(str, Enum):
     DESC = "desc"
 
 
+class CheckoutType(str, Enum):
+    """Checkout type for work sessions"""
+
+    MANUAL = "manual"
+    SCHEDULED = "scheduled"
+    OVERDUE = "overdue"
+    INTERRUPTED = "interrupted"
+
+
+class SessionDecision(str, Enum):
+    """Decision made at session checkout"""
+
+    CONTINUE = "continue"
+    SWITCH = "switch"
+    BREAK = "break"
+    COMPLETE = "complete"
+
+
+class ContinueReason(str, Enum):
+    """Reason for continuing a session"""
+
+    GOOD_STOPPING_POINT = "good_stopping_point"
+    WAITING_FOR_BLOCKER = "waiting_for_blocker"
+    NEED_RESEARCH = "need_research"
+    IN_FLOW_STATE = "in_flow_state"
+    UNEXPECTED_COMPLEXITY = "unexpected_complexity"
+    TIME_CONSTRAINT = "time_constraint"
+    OTHER = "other"
+
+
 # Model-specific allowed sort fields for validation
 ALLOWED_SORT_FIELDS = {
     "Project": {"status", "title", "created_at", "updated_at"},
@@ -118,6 +148,7 @@ class User(UserBase, table=True):  # type: ignore[call-arg]
         back_populates="user"
     )
     settings: "UserSettings" = Relationship(back_populates="user")
+    work_sessions: list["WorkSession"] = Relationship(back_populates="user")
 
 
 class ProjectBase(SQLModel):
@@ -239,6 +270,7 @@ class Task(TaskBase, table=True):  # type: ignore[call-arg]
         back_populates="depends_on_task",
         sa_relationship_kwargs={"foreign_keys": "TaskDependency.depends_on_task_id"},
     )
+    work_sessions: list["WorkSession"] = Relationship(back_populates="task")
 
 
 class GoalDependencyBase(SQLModel):
@@ -416,6 +448,65 @@ class Log(LogBase, table=True):  # type: ignore[call-arg]
 
     # Relationships
     task: Task = Relationship(back_populates="logs")
+
+
+class WorkSessionBase(SQLModel):
+    """Base work session model"""
+
+    planned_checkout_at: datetime
+    planned_outcome: str | None = SQLField(default=None, max_length=500)
+
+
+class WorkSession(WorkSessionBase, table=True):  # type: ignore[call-arg]
+    """Work session database model for Runner/Focus mode"""
+
+    __tablename__ = "work_sessions"
+
+    id: UUID | None = SQLField(default=None, primary_key=True)
+    user_id: UUID = SQLField(foreign_key="users.id", index=True)
+    task_id: UUID = SQLField(foreign_key="tasks.id", ondelete="CASCADE", index=True)
+
+    # Timing
+    started_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
+    ended_at: datetime | None = SQLField(default=None)
+
+    # Session outcome
+    checkout_type: CheckoutType | None = SQLField(
+        default=None,
+        sa_column=Column(
+            SQLEnum(CheckoutType, values_callable=lambda x: [e.value for e in x])
+        ),
+    )
+    decision: SessionDecision | None = SQLField(
+        default=None,
+        sa_column=Column(
+            SQLEnum(SessionDecision, values_callable=lambda x: [e.value for e in x])
+        ),
+    )
+    continue_reason: ContinueReason | None = SQLField(
+        default=None,
+        sa_column=Column(
+            SQLEnum(ContinueReason, values_callable=lambda x: [e.value for e in x])
+        ),
+    )
+
+    # KPT reflection
+    kpt_keep: str | None = SQLField(default=None, max_length=500)
+    kpt_problem: str | None = SQLField(default=None, max_length=500)
+    kpt_try: str | None = SQLField(default=None, max_length=500)
+
+    # Additional metadata
+    remaining_estimate_hours: Decimal | None = SQLField(
+        default=None, ge=0, max_digits=5, decimal_places=2
+    )
+
+    # Timestamps
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+
+    # Relationships
+    user: "User" = Relationship(back_populates="work_sessions")
+    task: "Task" = Relationship(back_populates="work_sessions")
 
 
 class UserSettingsBase(SQLModel):
@@ -697,6 +788,72 @@ class LogResponse(LogBase):
         return value.isoformat()
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# Work Session API Models
+class WorkSessionStartRequest(BaseModel):
+    """Request model for starting a work session"""
+
+    task_id: UUID
+    planned_checkout_at: datetime
+    planned_outcome: str | None = Field(None, max_length=500)
+
+
+class WorkSessionCheckoutRequest(BaseModel):
+    """Request model for checking out a work session"""
+
+    checkout_type: CheckoutType = CheckoutType.MANUAL
+    decision: SessionDecision
+    continue_reason: ContinueReason | None = None
+    kpt_keep: str | None = Field(None, max_length=500)
+    kpt_problem: str | None = Field(None, max_length=500)
+    kpt_try: str | None = Field(None, max_length=500)
+    remaining_estimate_hours: Decimal | None = Field(None, ge=0)
+    next_task_id: UUID | None = None
+
+
+class WorkSessionResponse(WorkSessionBase):
+    """Work session response model"""
+
+    id: UUID
+    user_id: UUID
+    task_id: UUID
+    started_at: datetime
+    ended_at: datetime | None
+    checkout_type: CheckoutType | None
+    decision: SessionDecision | None
+    continue_reason: ContinueReason | None
+    kpt_keep: str | None
+    kpt_problem: str | None
+    kpt_try: str | None
+    remaining_estimate_hours: Decimal | None
+    actual_minutes: int | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("remaining_estimate_hours")
+    def serialize_remaining_estimate_hours(self, value: Decimal | None) -> float | None:
+        """Convert Decimal to float for JSON serialization"""
+        return float(value) if value is not None else None
+
+    @field_serializer(
+        "started_at", "ended_at", "created_at", "updated_at", "planned_checkout_at"
+    )
+    def serialize_datetimes(self, value: datetime | None) -> str | None:
+        """Ensure datetime is serialized with UTC timezone info"""
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
+
+class WorkSessionWithLogResponse(WorkSessionResponse):
+    """Work session response with generated log"""
+
+    generated_log: LogResponse | None = None
 
 
 class UserSettingsCreate(BaseModel):

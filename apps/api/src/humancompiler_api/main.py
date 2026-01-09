@@ -43,6 +43,7 @@ from humancompiler_api.routers import (
     user_settings,
     weekly_schedule,
     weekly_recurring_tasks,
+    work_sessions,
 )
 
 
@@ -256,6 +257,7 @@ app.include_router(user_settings.router)
 app.include_router(monitoring.router)
 app.include_router(simple_backup_api.router)
 app.include_router(data_export.router, tags=["data-export"])
+app.include_router(work_sessions.router, prefix="/api")
 
 
 # Health check endpoint

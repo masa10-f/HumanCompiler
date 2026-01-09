@@ -8,6 +8,7 @@ from . import (
     tasks,
     user_settings,
     users,
+    work_sessions,
 )
 
 __all__ = [
@@ -19,4 +20,5 @@ __all__ = [
     "tasks",
     "user_settings",
     "users",
+    "work_sessions",
 ]
