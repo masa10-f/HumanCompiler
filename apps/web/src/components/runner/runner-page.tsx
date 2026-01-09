@@ -10,6 +10,7 @@ import { ActionButtons } from './action-buttons';
 import { TaskSwitcher } from './task-switcher';
 import { StartSessionDialog } from './start-session-dialog';
 import { CheckoutDialog } from './checkout-dialog';
+import { BreakDialog } from './break-dialog';
 import { useState } from 'react';
 import { Play, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -33,6 +34,7 @@ export function RunnerPage() {
 
   const [startDialogOpen, setStartDialogOpen] = useState(false);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
+  const [breakDialogOpen, setBreakDialogOpen] = useState(false);
 
   // Auth loading
   if (authLoading) {
@@ -135,6 +137,7 @@ export function RunnerPage() {
               sessionStatus={sessionStatus}
               isCheckingOut={isCheckingOut}
               onCheckout={() => setCheckoutDialogOpen(true)}
+              onBreak={() => setBreakDialogOpen(true)}
             />
 
             {/* Next candidates */}
@@ -198,6 +201,16 @@ export function RunnerPage() {
           onCheckout={async (decision, options) => {
             await checkout(decision, options);
             setCheckoutDialogOpen(false);
+          }}
+        />
+
+        <BreakDialog
+          open={breakDialogOpen}
+          onOpenChange={setBreakDialogOpen}
+          isProcessing={isCheckingOut}
+          onConfirm={async () => {
+            await checkout('break');
+            setBreakDialogOpen(false);
           }}
         />
       </main>

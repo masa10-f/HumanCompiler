@@ -8,12 +8,14 @@ interface ActionButtonsProps {
   sessionStatus: RunnerSessionStatus;
   isCheckingOut: boolean;
   onCheckout: () => void;
+  onBreak: () => void;
 }
 
 export function ActionButtons({
   sessionStatus,
   isCheckingOut,
   onCheckout,
+  onBreak,
 }: ActionButtonsProps) {
   const isOverdue = sessionStatus === 'overdue';
 
@@ -37,7 +39,7 @@ export function ActionButtons({
           size="lg"
           variant="outline"
           className="flex-1 min-h-[48px]"
-          onClick={onCheckout}
+          onClick={onBreak}
           disabled={isCheckingOut}
         >
           <Coffee className="h-4 w-4 mr-2" />
