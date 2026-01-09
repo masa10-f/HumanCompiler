@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 
 // Icons
-import { TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings } from 'lucide-react'
+import { TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play } from 'lucide-react'
 
 // Hooks
 import { useAuth } from '@/hooks/use-auth'
@@ -21,11 +21,12 @@ import { useAuth } from '@/hooks/use-auth'
 import { logger } from '@/lib/logger'
 
 interface AppHeaderProps {
-  currentPage?: 'dashboard' | 'projects' | 'ai-planning' | 'scheduling' | 'schedule-history' | 'timeline' | 'settings'
+  currentPage?: 'dashboard' | 'projects' | 'ai-planning' | 'scheduling' | 'schedule-history' | 'timeline' | 'settings' | 'runner'
 }
 
 const NAVIGATION_ITEMS = [
   { id: 'dashboard', label: 'ダッシュボード', path: '/dashboard', icon: Home },
+  { id: 'runner', label: 'Runner', path: '/runner', icon: Play },
   { id: 'projects', label: 'プロジェクト', path: '/projects', icon: FolderOpen },
   { id: 'ai-planning', label: '週次計画', path: '/ai-planning', icon: Calendar },
   { id: 'scheduling', label: '日次計画', path: '/scheduling', icon: Clock },
