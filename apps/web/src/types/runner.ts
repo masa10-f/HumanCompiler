@@ -98,13 +98,33 @@ export function formatDuration(seconds: number): string {
 
 /**
  * Calculate end time from start time and duration
+ * Validates input format and handles day overflow explicitly
  */
 export function calculateEndTime(startTime: string, durationHours: number): string {
-  const timeParts = startTime.split(':').map(Number);
-  const hours = timeParts[0] ?? 0;
-  const minutes = timeParts[1] ?? 0;
+  // Validate input as HH:MM (24-hour) before parsing
+  const timeMatch = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(startTime);
+  if (!timeMatch) {
+    // If the input format is invalid, return it unchanged
+    return startTime;
+  }
+
+  const hours = Number(timeMatch[1]);
+  const minutes = Number(timeMatch[2]);
+
   const totalMinutes = hours * 60 + minutes + durationHours * 60;
-  const endHours = Math.floor(totalMinutes / 60) % 24;
+  const endTotalHours = Math.floor(totalMinutes / 60);
   const endMinutes = Math.floor(totalMinutes % 60);
-  return `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
+  const dayOffset = Math.floor(endTotalHours / 24);
+  const endHoursInDay = ((endTotalHours % 24) + 24) % 24;
+
+  const timeString = `${endHoursInDay.toString().padStart(2, '0')}:${endMinutes
+    .toString()
+    .padStart(2, '0')}`;
+
+  // If the end time is on a later day, make this explicit
+  if (dayOffset > 0) {
+    return `${timeString}+${dayOffset}d`;
+  }
+
+  return timeString;
 }

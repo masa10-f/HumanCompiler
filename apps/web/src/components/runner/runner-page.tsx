@@ -35,6 +35,7 @@ export function RunnerPage() {
   const [startDialogOpen, setStartDialogOpen] = useState(false);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [breakDialogOpen, setBreakDialogOpen] = useState(false);
+  const [selectedNextTaskId, setSelectedNextTaskId] = useState<string | null>(null);
 
   // Auth loading
   if (authLoading) {
@@ -144,8 +145,8 @@ export function RunnerPage() {
             {nextCandidates.length > 0 && (
               <TaskSwitcher
                 candidates={nextCandidates}
-                onSelect={() => {
-                  // Open checkout dialog with switch intent
+                onSelect={(taskId) => {
+                  setSelectedNextTaskId(taskId);
                   setCheckoutDialogOpen(true);
                 }}
               />
@@ -184,23 +185,36 @@ export function RunnerPage() {
         <StartSessionDialog
           open={startDialogOpen}
           onOpenChange={setStartDialogOpen}
-          candidates={hasSchedule ? todaySchedule!.plan_json.assignments : []}
+          candidates={todaySchedule?.plan_json?.assignments ?? []}
           isStarting={isStarting}
           onStart={async (taskId, plannedCheckoutAt, plannedOutcome) => {
-            await startSession(taskId, plannedCheckoutAt, plannedOutcome);
-            setStartDialogOpen(false);
+            try {
+              await startSession(taskId, plannedCheckoutAt, plannedOutcome);
+              setStartDialogOpen(false);
+            } catch (error) {
+              console.error('Start session failed:', error);
+            }
           }}
         />
 
         <CheckoutDialog
           open={checkoutDialogOpen}
-          onOpenChange={setCheckoutDialogOpen}
+          onOpenChange={(open) => {
+            setCheckoutDialogOpen(open);
+            if (!open) setSelectedNextTaskId(null);
+          }}
           session={session}
           sessionDetails={sessionDetails}
           isCheckingOut={isCheckingOut}
+          selectedNextTaskId={selectedNextTaskId}
           onCheckout={async (decision, options) => {
-            await checkout(decision, options);
-            setCheckoutDialogOpen(false);
+            try {
+              await checkout(decision, options);
+              setCheckoutDialogOpen(false);
+              setSelectedNextTaskId(null);
+            } catch (error) {
+              console.error('Checkout failed:', error);
+            }
           }}
         />
 
@@ -209,8 +223,12 @@ export function RunnerPage() {
           onOpenChange={setBreakDialogOpen}
           isProcessing={isCheckingOut}
           onConfirm={async () => {
-            await checkout('break');
-            setBreakDialogOpen(false);
+            try {
+              await checkout('break');
+              setBreakDialogOpen(false);
+            } catch (error) {
+              console.error('Break checkout failed:', error);
+            }
           }}
         />
       </main>

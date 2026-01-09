@@ -26,11 +26,16 @@ import type {
 
 /**
  * Get today's date in YYYY-MM-DD format (JST)
+ *
+ * Computes JST based on UTC to avoid dependence on the local system timezone.
  */
 function getJSTDateString(): string {
   const now = new Date();
-  const jstOffset = 9 * 60; // JST is UTC+9
-  const jstTime = new Date(now.getTime() + jstOffset * 60 * 1000);
+  // Convert current local time to UTC milliseconds
+  const utcMillis = now.getTime() + now.getTimezoneOffset() * 60 * 1000;
+  // JST is UTC+9
+  const jstMillis = utcMillis + 9 * 60 * 60 * 1000;
+  const jstTime = new Date(jstMillis);
   const datePart = jstTime.toISOString().split('T')[0];
   return datePart ?? now.toISOString().slice(0, 10);
 }
@@ -131,9 +136,14 @@ export function useRunner(): UseRunnerReturn {
 
         // Only include future tasks (or use all if no session)
         if (session) {
-          const timeParts = assignment.start_time.split(':').map(Number);
-          const hours = timeParts[0] ?? 0;
-          const minutes = timeParts[1] ?? 0;
+          // Validate time format HH:MM before parsing
+          const timeMatch = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(assignment.start_time);
+          if (!timeMatch) {
+            // Invalid format - include task by default
+            return true;
+          }
+          const hours = Number(timeMatch[1]);
+          const minutes = Number(timeMatch[2]);
           const assignmentTime = new Date();
           assignmentTime.setHours(hours, minutes, 0, 0);
           return assignmentTime >= now;

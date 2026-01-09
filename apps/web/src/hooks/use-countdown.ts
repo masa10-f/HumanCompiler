@@ -4,7 +4,7 @@
  * Provides real-time countdown to a target time with 1-second precision.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { formatDuration } from '@/types/runner';
 
 interface UseCountdownReturn {
@@ -20,6 +20,41 @@ interface UseCountdownReturn {
   progressPercent: number;
 }
 
+interface CountdownState {
+  seconds: number;
+  isOverdue: boolean;
+  progressPercent: number;
+}
+
+function calculateRemaining(
+  targetTime: string | Date | null | undefined,
+  startTime: string | Date | null | undefined
+): CountdownState {
+  if (!targetTime) {
+    return { seconds: 0, isOverdue: false, progressPercent: 0 };
+  }
+
+  const target = typeof targetTime === 'string' ? new Date(targetTime) : targetTime;
+  const now = new Date();
+  const diffMs = target.getTime() - now.getTime();
+  const seconds = Math.floor(diffMs / 1000);
+
+  // Calculate progress percentage
+  let progressPercent = 0;
+  if (startTime) {
+    const start = typeof startTime === 'string' ? new Date(startTime) : startTime;
+    const totalMs = target.getTime() - start.getTime();
+    const elapsedMs = now.getTime() - start.getTime();
+    progressPercent = totalMs > 0 ? Math.min(100, (elapsedMs / totalMs) * 100) : 0;
+  }
+
+  return {
+    seconds,
+    isOverdue: seconds < 0,
+    progressPercent,
+  };
+}
+
 /**
  * Hook for countdown timer functionality
  *
@@ -31,33 +66,19 @@ export function useCountdown(
   targetTime: string | Date | null | undefined,
   startTime?: string | Date | null
 ): UseCountdownReturn {
-  const calculateRemaining = useCallback(() => {
-    if (!targetTime) {
-      return { seconds: 0, isOverdue: false, progressPercent: 0 };
-    }
+  const [state, setState] = useState<CountdownState>(() =>
+    calculateRemaining(targetTime, startTime)
+  );
 
-    const target = typeof targetTime === 'string' ? new Date(targetTime) : targetTime;
-    const now = new Date();
-    const diffMs = target.getTime() - now.getTime();
-    const seconds = Math.floor(diffMs / 1000);
+  // Use refs to store current values for the interval callback
+  const targetTimeRef = useRef(targetTime);
+  const startTimeRef = useRef(startTime);
 
-    // Calculate progress percentage
-    let progressPercent = 0;
-    if (startTime) {
-      const start = typeof startTime === 'string' ? new Date(startTime) : startTime;
-      const totalMs = target.getTime() - start.getTime();
-      const elapsedMs = now.getTime() - start.getTime();
-      progressPercent = totalMs > 0 ? Math.min(100, (elapsedMs / totalMs) * 100) : 0;
-    }
-
-    return {
-      seconds,
-      isOverdue: seconds < 0,
-      progressPercent,
-    };
+  // Keep refs in sync
+  useEffect(() => {
+    targetTimeRef.current = targetTime;
+    startTimeRef.current = startTime;
   }, [targetTime, startTime]);
-
-  const [state, setState] = useState(() => calculateRemaining());
 
   useEffect(() => {
     if (!targetTime) {
@@ -66,15 +87,15 @@ export function useCountdown(
     }
 
     // Update immediately
-    setState(calculateRemaining());
+    setState(calculateRemaining(targetTime, startTime));
 
-    // Update every second
+    // Update every second using refs for current values
     const interval = setInterval(() => {
-      setState(calculateRemaining());
+      setState(calculateRemaining(targetTimeRef.current, startTimeRef.current));
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [targetTime, calculateRemaining]);
+  }, [targetTime, startTime]);
 
   return {
     seconds: state.seconds,

@@ -33,6 +33,7 @@ interface CheckoutDialogProps {
   session: WorkSession | null;
   sessionDetails: CurrentSessionDetails | null;
   isCheckingOut: boolean;
+  selectedNextTaskId?: string | null;
   onCheckout: (decision: SessionDecision, options?: CheckoutOptions) => Promise<void>;
 }
 
@@ -42,6 +43,7 @@ export function CheckoutDialog({
   session,
   sessionDetails,
   isCheckingOut,
+  selectedNextTaskId,
   onCheckout,
 }: CheckoutDialogProps) {
   const [decision, setDecision] = useState<SessionDecision>('switch');
@@ -50,19 +52,23 @@ export function CheckoutDialog({
   const [kptProblem, setKptProblem] = useState('');
   const [kptTry, setKptTry] = useState('');
 
-  // Calculate actual work time
-  const actualMinutes = session
+  // Calculate elapsed work time
+  const elapsedMinutes = session
     ? Math.floor(
         (Date.now() - new Date(session.started_at).getTime()) / (1000 * 60)
       )
     : 0;
-  const actualHours = (actualMinutes / 60).toFixed(1);
+  const elapsedHours = (elapsedMinutes / 60).toFixed(1);
 
   const handleCheckout = async () => {
     const options: CheckoutOptions = {};
 
     if (decision === 'continue' && continueReason) {
       options.continue_reason = continueReason;
+    }
+
+    if (decision === 'switch' && selectedNextTaskId) {
+      options.next_task_id = selectedNextTaskId;
     }
 
     if (kptKeep) options.kpt_keep = kptKeep;
@@ -107,7 +113,7 @@ export function CheckoutDialog({
           <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-4 space-y-2">
             <p className="font-medium">{sessionDetails.task.title}</p>
             <p className="text-sm text-muted-foreground">
-              作業時間: {actualHours}時間（{actualMinutes}分）
+              作業時間: {elapsedHours}時間（{elapsedMinutes}分）
             </p>
           </div>
 
@@ -123,8 +129,16 @@ export function CheckoutDialog({
                 (key) => (
                   <div
                     key={key}
-                    className="flex items-center space-x-2 rounded-lg border p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800"
+                    role="button"
+                    tabIndex={0}
+                    className="flex items-center space-x-2 rounded-lg border p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                     onClick={() => setDecision(key)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setDecision(key);
+                      }
+                    }}
                   >
                     <RadioGroupItem value={key} id={`decision-${key}`} />
                     <label

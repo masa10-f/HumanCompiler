@@ -95,8 +95,16 @@ export function StartSessionDialog({
               {candidates.map((assignment) => (
                 <div
                   key={assignment.task_id}
-                  className="flex items-center space-x-3 rounded-lg border p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800"
+                  role="button"
+                  tabIndex={0}
+                  className="flex items-center space-x-3 rounded-lg border p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                   onClick={() => setSelectedTaskId(assignment.task_id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedTaskId(assignment.task_id);
+                    }
+                  }}
                 >
                   <RadioGroupItem
                     value={assignment.task_id}

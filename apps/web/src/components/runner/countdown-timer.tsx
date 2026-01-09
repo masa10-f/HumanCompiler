@@ -61,7 +61,6 @@ export function CountdownTimer({
           <Progress
             value={Math.min(progressPercent, 100)}
             className="h-2"
-            // indicatorClassName={getProgressColor()}
           />
           <div className="flex justify-between text-xs text-muted-foreground">
             <span>開始: {startTime}</span>
