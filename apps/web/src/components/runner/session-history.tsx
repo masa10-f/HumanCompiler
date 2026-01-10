@@ -24,7 +24,7 @@ interface SessionHistoryProps {
 
 /**
  * Calculate actual work minutes from session timestamps.
- * Falls back to actual_minutes if available, otherwise calculates from timestamps.
+ * Prioritizes actual_minutes if available, otherwise calculates from timestamps.
  */
 function calculateWorkMinutes(session: WorkSession): number {
   if (session.actual_minutes != null) {
