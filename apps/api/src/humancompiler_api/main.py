@@ -54,19 +54,22 @@ async def lifespan(app: FastAPI):
     logger = logging.getLogger(__name__)
     logger.info("🚀 FastAPI server starting up...")
 
-    # Run production database migration on startup (for staging and production)
+    # Run database migrations on startup (for staging and production)
     if settings.environment in ["production", "staging"]:
-        logger.info("🔧 Running production database migration...")
+        logger.info("🔧 Running database migrations...")
         try:
-            from humancompiler_api.production_migration import (
-                migrate_add_priority_column,
-            )
+            from humancompiler_api.migration_manager import MigrationManager
+            from pathlib import Path
 
-            migration_success = migrate_add_priority_column()
-            if migration_success:
-                logger.info("✅ Database migration completed successfully")
+            # Resolve migrations directory path
+            migrations_dir = Path(__file__).parent.parent.parent / "migrations"
+            manager = MigrationManager(str(migrations_dir))
+            applied, failed = manager.apply_all_pending()
+
+            if failed == 0:
+                logger.info(f"✅ Database migrations completed: {applied} applied")
             else:
-                logger.error("❌ Database migration failed")
+                logger.error(f"❌ Database migration failed: {failed} errors")
         except Exception as e:
             logger.error(f"💥 Database migration error: {e}")
 
