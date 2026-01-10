@@ -36,6 +36,7 @@ import { useUpdateTask } from '@/hooks/use-tasks-query';
 import { toast } from '@/hooks/use-toast';
 import { taskStatusLabels } from '@/types/task';
 import { TaskDependenciesManager } from './task-dependencies-manager';
+import { SessionHistory } from '@/components/runner/session-history';
 import type { Task } from '@/types/task';
 import { roundToDecimals, parseFloatSafe } from '@/lib/number-utils';
 
@@ -137,9 +138,10 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
           </DialogDescription>
         </DialogHeader>
         <Tabs defaultValue="basic" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="basic">基本情報</TabsTrigger>
             <TabsTrigger value="dependencies">依存関係</TabsTrigger>
+            <TabsTrigger value="history">作業履歴</TabsTrigger>
           </TabsList>
 
           <TabsContent value="basic">
@@ -323,6 +325,10 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
                 // Optionally refresh task data
               }}
             />
+          </TabsContent>
+
+          <TabsContent value="history">
+            <SessionHistory taskId={task.id} taskTitle={task.title} />
           </TabsContent>
         </Tabs>
       </DialogContent>
