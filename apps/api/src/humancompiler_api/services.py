@@ -3,10 +3,11 @@ Refactored services using base service class
 """
 
 from datetime import datetime, UTC
+from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlmodel import Session, delete, select
+from sqlmodel import Session, delete, func, select
 
 from humancompiler_api.base_service import BaseService
 from humancompiler_api.common.error_handlers import validate_uuid
@@ -1196,9 +1197,10 @@ class WorkSessionService(
 
         # Calculate actual minutes
         ended_at = datetime.now(UTC)
-        actual_minutes = max(
-            1, int((ended_at - current_session.started_at).total_seconds() / 60)
-        )
+        started_at = current_session.started_at
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=UTC)
+        actual_minutes = max(1, int((ended_at - started_at).total_seconds() / 60))
 
         # Update session
         current_session.ended_at = ended_at
@@ -1228,6 +1230,59 @@ class WorkSessionService(
 
         session.add(current_session)
         new_log = self.log_service.create_log(session, log_data, user_id_validated)
+
+        # If remaining estimate is provided, update task.estimate_hours so that
+        # (estimate_hours - actual_hours) ~= remaining_estimate_hours.
+        if checkout_data.remaining_estimate_hours is not None:
+            total_minutes = session.exec(
+                select(func.coalesce(func.sum(Log.actual_minutes), 0)).where(
+                    Log.task_id == current_session.task_id
+                )
+            ).one()
+            total_minutes_int = int(total_minutes or 0)
+
+            remaining_hours = checkout_data.remaining_estimate_hours.quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+            new_estimate_hours = (
+                Decimal(total_minutes_int) / Decimal(60) + remaining_hours
+            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+            # Task.estimate_hours is constrained to NUMERIC(5,2) and must be > 0.
+            max_estimate_hours = Decimal("999.99")
+            if new_estimate_hours > max_estimate_hours:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"Updated estimate_hours ({new_estimate_hours}h) exceeds "
+                        f"maximum ({max_estimate_hours}h)"
+                    ),
+                )
+            if new_estimate_hours <= 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Updated estimate_hours must be greater than 0",
+                )
+
+            task = self.task_service.get_task(
+                session, current_session.task_id, user_id_validated
+            )
+            if not task:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Task not found",
+                )
+
+            task.estimate_hours = new_estimate_hours
+            task.updated_at = ended_at
+            session.add(task)
+            session.flush()
+
+            # Keep cache invalidation consistent with TaskService.update_task
+            invalidate_cache("short", "tasks_list")
+            invalidate_cache("short", "tasks_by_goal")
+            invalidate_cache("short", "tasks_by_project")
+            invalidate_cache("medium", "task_detail")
 
         session.commit()
         session.refresh(current_session)
