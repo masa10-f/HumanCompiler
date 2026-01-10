@@ -45,12 +45,14 @@ export function SessionKptEditDialog({
     if (!session) return;
 
     try {
+      // Send empty string to clear, non-empty to update
+      // Backend will convert empty string to null
       await updateMutation.mutateAsync({
         sessionId: session.id,
         data: {
-          kpt_keep: kptKeep || undefined,
-          kpt_problem: kptProblem || undefined,
-          kpt_try: kptTry || undefined,
+          kpt_keep: kptKeep,
+          kpt_problem: kptProblem,
+          kpt_try: kptTry,
         },
       });
       onOpenChange(false);

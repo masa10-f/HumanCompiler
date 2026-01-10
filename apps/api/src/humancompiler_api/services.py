@@ -1181,6 +1181,19 @@ class WorkSessionService(
                 detail="No active session found",
             )
 
+        # Validate: continue decision requires at least one KPT field
+        if checkout_data.decision == SessionDecision.CONTINUE:
+            has_kpt = bool(
+                checkout_data.kpt_keep
+                or checkout_data.kpt_problem
+                or checkout_data.kpt_try
+            )
+            if not has_kpt:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="At least one KPT field is required when continuing",
+                )
+
         # Calculate actual minutes
         ended_at = datetime.now(UTC)
         actual_minutes = max(
@@ -1340,7 +1353,7 @@ class WorkSessionService(
                 detail="Cannot edit KPT of an active session",
             )
 
-        # Update only KPT fields (only if provided)
+        # Update KPT fields: empty string clears the field, None means no change
         if update_data.kpt_keep is not None:
             work_session.kpt_keep = update_data.kpt_keep or None
         if update_data.kpt_problem is not None:

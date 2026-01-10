@@ -22,6 +22,27 @@ interface SessionHistoryProps {
   taskTitle: string;
 }
 
+/**
+ * Calculate actual work minutes from session timestamps.
+ * Falls back to actual_minutes if available, otherwise calculates from timestamps.
+ */
+function calculateWorkMinutes(session: WorkSession): number {
+  if (session.actual_minutes != null) {
+    return session.actual_minutes;
+  }
+  if (session.ended_at && session.started_at) {
+    const startMs = new Date(session.started_at).getTime();
+    const endMs = new Date(session.ended_at).getTime();
+    return Math.floor((endMs - startMs) / (1000 * 60));
+  }
+  // Active session - calculate from start to now
+  if (session.started_at && !session.ended_at) {
+    const startMs = new Date(session.started_at).getTime();
+    return Math.floor((Date.now() - startMs) / (1000 * 60));
+  }
+  return 0;
+}
+
 export function SessionHistory({ taskId, taskTitle }: SessionHistoryProps) {
   const { data: sessions, isLoading } = useWorkSessionsByTask(taskId);
   const [editSession, setEditSession] = useState<WorkSession | null>(null);
@@ -73,17 +94,23 @@ export function SessionHistory({ taskId, taskTitle }: SessionHistoryProps) {
                   </span>
                   <span className="flex items-center gap-1">
                     <Clock className="h-4 w-4" />
-                    {session.actual_minutes ?? 0}分
+                    {calculateWorkMinutes(session)}分
+                    {!session.ended_at && (
+                      <Badge variant="secondary" className="ml-1 text-xs">作業中</Badge>
+                    )}
                   </span>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setEditSession(session)}
-                >
-                  <Pencil className="h-4 w-4 mr-1" />
-                  KPT編集
-                </Button>
+                {/* Only show edit button for completed sessions */}
+                {session.ended_at && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditSession(session)}
+                  >
+                    <Pencil className="h-4 w-4 mr-1" />
+                    KPT編集
+                  </Button>
+                )}
               </div>
 
               {/* KPT display */}
