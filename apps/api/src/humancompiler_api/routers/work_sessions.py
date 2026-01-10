@@ -21,6 +21,7 @@ from humancompiler_api.models import (
     LogResponse,
     WorkSessionStartRequest,
     WorkSessionCheckoutRequest,
+    WorkSessionUpdate,
     WorkSessionResponse,
     WorkSessionWithLogResponse,
 )
@@ -155,3 +156,26 @@ async def get_sessions_by_task(
         session, task_id, current_user.user_id, skip, limit
     )
     return [WorkSessionResponse.model_validate(s) for s in sessions]
+
+
+@router.put(
+    "/{session_id}",
+    response_model=WorkSessionResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Session not found"},
+        400: {"model": ErrorResponse, "description": "Cannot edit active session"},
+    },
+    summary="Update work session KPT",
+    description="Update KPT (Keep/Problem/Try) fields of a completed work session. Only KPT fields can be updated.",
+)
+async def update_session(
+    session_id: str,
+    update_data: WorkSessionUpdate,
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> WorkSessionResponse:
+    """Update work session KPT fields"""
+    work_session = work_session_service.update_session_kpt(
+        session, session_id, current_user.user_id, update_data
+    )
+    return WorkSessionResponse.model_validate(work_session)

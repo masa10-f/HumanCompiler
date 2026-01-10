@@ -73,6 +73,15 @@ export interface WorkSessionCheckoutRequest {
 }
 
 /**
+ * Request model for updating a work session's KPT fields
+ */
+export interface WorkSessionUpdateRequest {
+  kpt_keep?: string;
+  kpt_problem?: string;
+  kpt_try?: string;
+}
+
+/**
  * Work session response with generated log
  */
 export interface WorkSessionWithLog extends WorkSession {

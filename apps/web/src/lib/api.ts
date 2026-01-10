@@ -59,6 +59,7 @@ import type {
   WorkSession,
   WorkSessionStartRequest,
   WorkSessionCheckoutRequest,
+  WorkSessionUpdateRequest,
   WorkSessionWithLog
 } from '@/types/work-session';
 import type { SortOptions } from '@/types/sort';
@@ -828,6 +829,23 @@ class ApiClient {
       `/api/work-sessions/task/${taskId}?skip=${skip}&limit=${limit}`
     );
   }
+
+  /**
+   * Update a work session's KPT fields.
+   *
+   * @param sessionId - The session ID to update
+   * @param data - KPT update data
+   * @returns The updated work session
+   */
+  async updateWorkSession(
+    sessionId: string,
+    data: WorkSessionUpdateRequest
+  ): Promise<WorkSession> {
+    return this.request<WorkSession>(`/api/work-sessions/${sessionId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
 }
 
 export const apiClient = new ApiClient();
@@ -988,6 +1006,8 @@ export const workSessionsApi = {
   getHistory: (skip?: number, limit?: number) => apiClient.getWorkSessionHistory(skip, limit),
   getByTask: (taskId: string, skip?: number, limit?: number) =>
     apiClient.getWorkSessionsByTask(taskId, skip, limit),
+  update: (sessionId: string, data: WorkSessionUpdateRequest) =>
+    apiClient.updateWorkSession(sessionId, data),
 };
 
 // === Helper functions ===

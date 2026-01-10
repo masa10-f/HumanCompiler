@@ -812,6 +812,18 @@ class WorkSessionCheckoutRequest(BaseModel):
     next_task_id: UUID | None = None
 
 
+class WorkSessionUpdate(BaseModel):
+    """Request model for updating a work session's KPT fields.
+
+    Only allows updating KPT (Keep/Problem/Try) reflection fields.
+    Other session data cannot be modified after checkout.
+    """
+
+    kpt_keep: str | None = Field(None, max_length=500)
+    kpt_problem: str | None = Field(None, max_length=500)
+    kpt_try: str | None = Field(None, max_length=500)
+
+
 class WorkSessionResponse(WorkSessionBase):
     """Work session response model"""
 

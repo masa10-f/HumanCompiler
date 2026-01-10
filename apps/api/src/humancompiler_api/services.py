@@ -36,6 +36,7 @@ from humancompiler_api.models import (
     WorkSession,
     WorkSessionStartRequest,
     WorkSessionCheckoutRequest,
+    WorkSessionUpdate,
     CheckoutType,
     SessionDecision,
     ContinueReason,
@@ -1291,6 +1292,68 @@ class WorkSessionService(
 
         summary = " | ".join(parts)
         return summary[:500] if len(summary) > 500 else summary
+
+    def update_session_kpt(
+        self,
+        session: Session,
+        session_id: str | UUID,
+        user_id: str | UUID,
+        update_data: WorkSessionUpdate,
+    ) -> WorkSession:
+        """Update KPT fields of a completed work session.
+
+        Only allows updating KPT (Keep/Problem/Try) fields.
+        Other session data cannot be modified after checkout.
+
+        Args:
+            session: Database session
+            session_id: ID of the work session to update
+            user_id: ID of the user (for ownership verification)
+            update_data: KPT update data
+
+        Returns:
+            Updated WorkSession
+
+        Raises:
+            HTTPException: 404 if session not found or not owned by user
+            HTTPException: 400 if session is still active (ended_at is None)
+        """
+        user_id_validated = validate_uuid(user_id, "user_id")
+        session_id_validated = validate_uuid(session_id, "session_id")
+
+        work_session = session.exec(
+            select(WorkSession).where(
+                WorkSession.id == session_id_validated,
+                WorkSession.user_id == user_id_validated,
+            )
+        ).first()
+
+        if not work_session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Work session not found",
+            )
+
+        if work_session.ended_at is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot edit KPT of an active session",
+            )
+
+        # Update only KPT fields (only if provided)
+        if update_data.kpt_keep is not None:
+            work_session.kpt_keep = update_data.kpt_keep or None
+        if update_data.kpt_problem is not None:
+            work_session.kpt_problem = update_data.kpt_problem or None
+        if update_data.kpt_try is not None:
+            work_session.kpt_try = update_data.kpt_try or None
+
+        work_session.updated_at = datetime.now(UTC)
+        session.add(work_session)
+        session.commit()
+        session.refresh(work_session)
+
+        return work_session
 
 
 # Create service instances for use in routers

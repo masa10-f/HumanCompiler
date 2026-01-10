@@ -16,6 +16,7 @@ import type {
   WorkSession,
   WorkSessionStartRequest,
   WorkSessionCheckoutRequest,
+  WorkSessionUpdateRequest,
   WorkSessionWithLog,
 } from '@/types/work-session';
 
@@ -115,6 +116,31 @@ export function useCheckoutWorkSession() {
         });
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.progress.all });
+    },
+  });
+}
+
+/**
+ * Hook for updating a work session's KPT fields.
+ * Invalidates session history and byTask queries on success.
+ */
+export function useUpdateWorkSession() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ sessionId, data }: { sessionId: string; data: WorkSessionUpdateRequest }) =>
+      workSessionsApi.update(sessionId, data),
+    onSuccess: (result: WorkSession) => {
+      // Invalidate session history queries
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.workSessions.all,
+        predicate: (query) => query.queryKey[1] === 'history',
+      });
+      // Invalidate byTask cache for the updated session's task
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.workSessions.all,
+        predicate: (query) => query.queryKey[1] === 'task' && query.queryKey[2] === result.task_id,
+      });
     },
   });
 }
