@@ -4,19 +4,20 @@ This directory contains SQL migration files for the HumanCompiler database schem
 
 ## Migration Strategy
 
-### Production-Safe Migrations (RECOMMENDED)
+All database migrations are managed through SQL files and the MigrationManager. **Only numbered migrations** (`NNN_*.sql` format, e.g., `001_initial_schema.sql`) are automatically applied on application startup for staging and production environments. Non-numbered migrations (like `enable_rls_security.sql`) require manual application.
 
-For production environments, use comprehensive migration scripts with safety features:
-- `add_goal_status_safe.py` - Goal status column with backup, rollback, and verification
+### Available Migrations
 
-### SQL-Only Migrations (Development)
-
-For development/testing environments only:
 - `001_initial_schema.sql` - Initial database schema with all base tables
 - `002_add_user_settings_and_api_usage.sql` - Adds user settings and API usage tracking tables
 - `003_add_performance_indexes.sql` - Performance optimization indexes
 - `004_add_task_dependencies.sql` - Task dependency relationships
 - `005_add_weekly_schedules.sql` - Weekly scheduling functionality
+- `006_drop_api_usage_logs.sql` - Remove API usage logs table
+- `007_add_work_sessions.sql` - Work sessions tracking
+- `008_add_priority_column.sql` - Task priority column
+- `009_add_project_status.sql` - Project status column
+- `enable_rls_security.sql` - Row Level Security policies (manual application)
 
 ## Data Loss Prevention Policy
 
