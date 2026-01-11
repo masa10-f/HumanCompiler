@@ -174,18 +174,27 @@ class MigrationManager:
 
         return statements
 
+    def _is_numbered_migration(self, filename: str) -> bool:
+        """Check if a migration file follows the numbered naming convention (NNN_*.sql)"""
+        import re
+
+        # Match files starting with 3 digits followed by underscore
+        return bool(re.match(r"^\d{3}_", filename))
+
     def get_pending_migrations(self) -> list[tuple[str, Path]]:
         """Get list of pending migrations to apply"""
         if not self.migrations_dir.exists():
             logger.warning(f"Migrations directory {self.migrations_dir} does not exist")
             return []
 
-        # Get all migration files
+        # Get all numbered migration files (NNN_*.sql format)
+        # This excludes manual migrations like enable_rls_security.sql
         migration_files = sorted(
             [
                 f
                 for f in self.migrations_dir.glob("*.sql")
                 if not f.name.endswith("_rollback.sql")
+                and self._is_numbered_migration(f.name)
             ]
         )
 
@@ -318,6 +327,7 @@ class MigrationManager:
                 f.stem
                 for f in self.migrations_dir.glob("*.sql")
                 if not f.name.endswith("_rollback.sql")
+                and self._is_numbered_migration(f.name)
             ]
         )
 

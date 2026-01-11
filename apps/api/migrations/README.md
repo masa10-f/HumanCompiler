@@ -4,7 +4,7 @@ This directory contains SQL migration files for the HumanCompiler database schem
 
 ## Migration Strategy
 
-All database migrations are managed through SQL files and the MigrationManager. SQL migrations are automatically applied on application startup for staging and production environments.
+All database migrations are managed through SQL files and the MigrationManager. **Only numbered migrations** (`NNN_*.sql` format, e.g., `001_initial_schema.sql`) are automatically applied on application startup for staging and production environments. Non-numbered migrations (like `enable_rls_security.sql`) require manual application.
 
 ### Available Migrations
 
