@@ -380,16 +380,8 @@ class NotificationService:
                     results.append((session, NotificationLevel.OVERDUE))
                 continue
 
-            # Check for 5-min warning first (lowest priority but earliest in time)
-            if (
-                checkout_time <= five_min_from_now
-                and not session.notification_5min_sent
-            ):
-                results.append((session, NotificationLevel.LIGHT))
-                continue
-
-            # Check for checkout time notification (STRONG) before overdue
-            # This ensures proper escalation: LIGHT -> STRONG -> OVERDUE
+            # Check for checkout time notification (STRONG) first
+            # If checkout time has passed, prioritize STRONG over LIGHT
             if checkout_time <= now and not session.notification_checkout_sent:
                 results.append((session, NotificationLevel.STRONG))
                 continue
@@ -397,6 +389,15 @@ class NotificationService:
             # Check for overdue notification (past checkout time, after STRONG was sent)
             if checkout_time <= now and not session.notification_overdue_sent:
                 results.append((session, NotificationLevel.OVERDUE))
+                continue
+
+            # Check for 5-min warning (only if checkout time hasn't passed yet)
+            if (
+                checkout_time <= five_min_from_now
+                and checkout_time > now
+                and not session.notification_5min_sent
+            ):
+                results.append((session, NotificationLevel.LIGHT))
 
         return results
 
