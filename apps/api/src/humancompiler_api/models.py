@@ -106,6 +106,22 @@ class ContinueReason(str, Enum):
     OTHER = "other"
 
 
+class NotificationLevel(str, Enum):
+    """Notification urgency level for checkout reminders"""
+
+    LIGHT = "light"  # 5 min before: gentle reminder
+    STRONG = "strong"  # At checkout time: urgent
+    OVERDUE = "overdue"  # Past due: critical
+
+
+class DeviceType(str, Enum):
+    """Device type for push subscriptions"""
+
+    DESKTOP = "desktop"
+    MOBILE = "mobile"
+    TABLET = "tablet"
+
+
 # Model-specific allowed sort fields for validation
 ALLOWED_SORT_FIELDS = {
     "Project": {"status", "title", "created_at", "updated_at"},
@@ -149,6 +165,7 @@ class User(UserBase, table=True):  # type: ignore[call-arg]
     )
     settings: "UserSettings" = Relationship(back_populates="user")
     work_sessions: list["WorkSession"] = Relationship(back_populates="user")
+    push_subscriptions: list["PushSubscription"] = Relationship(back_populates="user")
 
 
 class ProjectBase(SQLModel):
@@ -500,6 +517,18 @@ class WorkSession(WorkSessionBase, table=True):  # type: ignore[call-arg]
         default=None, ge=0, max_digits=5, decimal_places=2
     )
 
+    # Snooze tracking (Issue #228)
+    snooze_count: int = SQLField(default=0)
+    last_snooze_at: datetime | None = SQLField(default=None)
+
+    # Notification state tracking (Issue #228)
+    notification_5min_sent: bool = SQLField(default=False)
+    notification_checkout_sent: bool = SQLField(default=False)
+    notification_overdue_sent: bool = SQLField(default=False)
+
+    # Unresponsive session tracking (Issue #228)
+    marked_unresponsive_at: datetime | None = SQLField(default=None)
+
     # Timestamps
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
@@ -507,6 +536,42 @@ class WorkSession(WorkSessionBase, table=True):  # type: ignore[call-arg]
     # Relationships
     user: "User" = Relationship(back_populates="work_sessions")
     task: "Task" = Relationship(back_populates="work_sessions")
+
+
+class PushSubscriptionBase(SQLModel):
+    """Base push subscription model for Web Push notifications"""
+
+    endpoint: str = SQLField(max_length=2000)
+    p256dh_key: str = SQLField(max_length=500)
+    auth_key: str = SQLField(max_length=500)
+    user_agent: str | None = SQLField(default=None, max_length=500)
+    device_type: DeviceType | None = SQLField(
+        default=None,
+        sa_column=Column(
+            SQLEnum(DeviceType, values_callable=lambda x: [e.value for e in x])
+        ),
+    )
+
+
+class PushSubscription(PushSubscriptionBase, table=True):  # type: ignore[call-arg]
+    """Push subscription database model for storing Web Push API subscriptions"""
+
+    __tablename__ = "push_subscriptions"
+
+    id: UUID | None = SQLField(default=None, primary_key=True)
+    user_id: UUID = SQLField(foreign_key="users.id", index=True)
+
+    # Status tracking
+    is_active: bool = SQLField(default=True)
+    last_successful_push: datetime | None = SQLField(default=None)
+    failure_count: int = SQLField(default=0)
+
+    # Timestamps
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+
+    # Relationships
+    user: "User" = Relationship(back_populates="push_subscriptions")
 
 
 class UserSettingsBase(SQLModel):
@@ -840,6 +905,11 @@ class WorkSessionResponse(WorkSessionBase):
     kpt_try: str | None
     remaining_estimate_hours: Decimal | None
     actual_minutes: int | None = None
+    # Snooze tracking (Issue #228)
+    snooze_count: int = 0
+    last_snooze_at: datetime | None = None
+    # Unresponsive tracking (Issue #228)
+    marked_unresponsive_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -851,7 +921,13 @@ class WorkSessionResponse(WorkSessionBase):
         return float(value) if value is not None else None
 
     @field_serializer(
-        "started_at", "ended_at", "created_at", "updated_at", "planned_checkout_at"
+        "started_at",
+        "ended_at",
+        "created_at",
+        "updated_at",
+        "planned_checkout_at",
+        "last_snooze_at",
+        "marked_unresponsive_at",
     )
     def serialize_datetimes(self, value: datetime | None) -> str | None:
         """Ensure datetime is serialized with UTC timezone info"""
@@ -1108,3 +1184,90 @@ class WeeklyReportResponse(BaseModel):
         return value.isoformat()
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# Push Subscription API Models (Issue #228)
+class PushSubscriptionCreate(BaseModel):
+    """Request model for registering a push subscription"""
+
+    endpoint: str = Field(..., max_length=2000)
+    keys: dict[str, str] = Field(
+        ..., description="Keys object with p256dh and auth properties"
+    )
+    user_agent: str | None = Field(None, max_length=500)
+    device_type: DeviceType | None = None
+
+    @field_validator("keys")
+    @classmethod
+    def validate_keys(cls, v: dict[str, str]) -> dict[str, str]:
+        """Validate that keys contain required p256dh and auth"""
+        if "p256dh" not in v or "auth" not in v:
+            raise ValueError("Keys must contain p256dh and auth properties")
+        return v
+
+
+class PushSubscriptionResponse(PushSubscriptionBase):
+    """Response model for push subscription"""
+
+    id: UUID
+    user_id: UUID
+    is_active: bool
+    last_successful_push: datetime | None
+    failure_count: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("last_successful_push", "created_at", "updated_at")
+    def serialize_datetimes(self, value: datetime | None) -> str | None:
+        """Ensure datetime is serialized with UTC timezone info"""
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
+
+# Snooze API Models (Issue #228)
+class SnoozeRequest(BaseModel):
+    """Request model for snoozing a session checkout"""
+
+    snooze_minutes: int = Field(default=5, ge=1, le=15)
+
+
+class SnoozeResponse(BaseModel):
+    """Response model for snooze action"""
+
+    session: WorkSessionResponse
+    new_planned_checkout_at: datetime
+    snooze_count: int
+    max_snooze_count: int = 2
+
+    @field_serializer("new_planned_checkout_at")
+    def serialize_datetime(self, value: datetime) -> str:
+        """Ensure datetime is serialized with UTC timezone info"""
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
+
+# WebSocket Notification Models (Issue #228)
+class NotificationMessage(BaseModel):
+    """WebSocket notification message model"""
+
+    id: str = Field(..., description="Unique notification ID")
+    type: str = Field(default="notification", description="Message type")
+    level: NotificationLevel
+    title: str
+    body: str
+    session_id: str
+    action_url: str | None = None
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @field_serializer("timestamp")
+    def serialize_timestamp(self, value: datetime) -> str:
+        """Ensure datetime is serialized with UTC timezone info"""
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()

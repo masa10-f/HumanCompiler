@@ -3,6 +3,8 @@
  *
  * Combines work session management with schedule data
  * to provide a complete Runner experience.
+ *
+ * Issue #228: Added notification integration for checkout reminders.
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -13,7 +15,8 @@ import {
   getSessionOverdueStatus,
 } from './use-work-sessions';
 import { useCountdown } from './use-countdown';
-import { schedulingApi, tasksApi, goalsApi, projectsApi } from '@/lib/api';
+import { useNotifications } from './use-notifications';
+import { schedulingApi, tasksApi, goalsApi, projectsApi, workSessionsApi } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 import type { SessionDecision } from '@/types/work-session';
 import type {
@@ -106,6 +109,32 @@ export function useRunner(): UseRunnerReturn {
   // Mutations
   const startMutation = useStartWorkSession();
   const checkoutMutation = useCheckoutWorkSession();
+
+  // Issue #228: Notification integration
+  const {
+    currentNotification,
+    hasPermission: hasNotificationPermission,
+    isSubscribed: isNotificationSubscribed,
+    isConnected: isWebSocketConnected,
+    isSupported: isNotificationSupported,
+    requestPermission: requestNotificationPermission,
+    subscribe: subscribeToNotifications,
+    dismissNotification,
+    snooze: snoozeSession,
+    isSnoozing,
+  } = useNotifications();
+
+  // Issue #228: Check for unresponsive session on mount
+  const {
+    data: unresponsiveSession,
+    refetch: refetchUnresponsive,
+  } = useQuery({
+    queryKey: queryKeys.workSessions.unresponsive(),
+    queryFn: () => workSessionsApi.getUnresponsive(),
+    enabled: !session, // Only check when no active session
+    staleTime: 0,
+    retry: false,
+  });
 
   // Countdown timer
   const countdown = useCountdown(
@@ -217,5 +246,23 @@ export function useRunner(): UseRunnerReturn {
     // Refresh
     refetchSession,
     refetchSchedule,
+
+    // Issue #228: Notification state
+    currentNotification: currentNotification ?? null,
+    hasNotificationPermission,
+    isNotificationSubscribed,
+    isWebSocketConnected,
+    isNotificationSupported,
+    unresponsiveSession: unresponsiveSession ?? null,
+    snoozeCount: session?.snooze_count ?? 0,
+    maxSnoozeCount: 2,
+
+    // Issue #228: Notification actions
+    requestNotificationPermission,
+    subscribeToNotifications,
+    dismissNotification,
+    snoozeSession,
+    isSnoozing,
+    refetchUnresponsive,
   };
 }

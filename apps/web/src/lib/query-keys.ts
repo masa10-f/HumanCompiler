@@ -89,6 +89,7 @@ export const queryKeys = {
     byTask: (taskId: string, skip?: number, limit?: number) =>
       [...queryKeys.workSessions.all, 'task', taskId, { skip, limit }] as const,
     detail: (id: string) => [...queryKeys.workSessions.all, 'detail', id] as const,
+    unresponsive: () => [...queryKeys.workSessions.all, 'unresponsive'] as const,
   },
 } as const;
 

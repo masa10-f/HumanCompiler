@@ -3,6 +3,7 @@
  */
 
 import type { Log } from './log';
+import type { Task } from './task';
 
 /**
  * Checkout type for work sessions
@@ -47,6 +48,16 @@ export interface WorkSession {
   actual_minutes: number | null;
   created_at: string;
   updated_at: string;
+
+  // Issue #228: Notification/escalation fields
+  snooze_count?: number;
+  last_snooze_at?: string | null;
+  notification_5min_sent?: boolean;
+  notification_checkout_sent?: boolean;
+  marked_unresponsive_at?: string | null;
+
+  // Optional task relation for unresponsive dialog
+  task?: Task;
 }
 
 /**
