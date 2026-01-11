@@ -140,8 +140,9 @@ export function useWebSocket(
         setIsConnected(false);
         clearTimers();
 
-        // Don't reconnect if closed intentionally (code 1000) or auth failed
-        if (event.code === 1000 || event.code === 4001 || event.code === 4003) {
+        // Close codes that should not trigger reconnection
+        const noReconnectCodes = [1000, 4001, 4003]; // Normal close, auth required, user mismatch
+        if (noReconnectCodes.includes(event.code)) {
           return;
         }
 

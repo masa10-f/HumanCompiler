@@ -11,7 +11,7 @@ Provides endpoints for managing work sessions:
 from collections.abc import Generator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session
 
 from humancompiler_api.auth import AuthUser, get_current_user
@@ -206,8 +206,6 @@ async def snooze_session(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> SnoozeResponse:
     """Snooze the checkout timer"""
-    from fastapi import HTTPException
-
     notification_service = NotificationService(session)
 
     try:
@@ -216,7 +214,7 @@ async def snooze_session(
             snooze_data.snooze_minutes,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     return SnoozeResponse(
         session=WorkSessionResponse.model_validate(work_session),

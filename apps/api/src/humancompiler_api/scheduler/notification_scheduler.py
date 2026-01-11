@@ -11,7 +11,6 @@ jobs per session. This is simpler and works well for single-instance deployments
 For multi-instance deployments, consider using a persistent job store (e.g., Redis).
 """
 
-import asyncio
 import logging
 from datetime import datetime, timedelta, UTC
 
@@ -72,12 +71,8 @@ async def check_and_send_notifications():
 
             for work_session, level in sessions_to_notify:
                 try:
-                    # Get task title for notification message
-                    task_title = None
-                    if work_session.task:
-                        task_title = work_session.task.title
+                    task_title = work_session.task.title if work_session.task else None
 
-                    # Send notification
                     await notification_service.send_notification(
                         user_id=work_session.user_id,
                         session_id=str(work_session.id),
@@ -154,25 +149,17 @@ def get_scheduler_status() -> dict:
     scheduler = get_scheduler()
 
     if not scheduler.running:
-        return {
-            "status": "stopped",
-            "jobs": [],
+        return {"status": "stopped", "jobs": []}
+
+    job_info = [
+        {
+            "id": job.id,
+            "name": job.name,
+            "next_run_time": job.next_run_time.isoformat()
+            if job.next_run_time
+            else None,
         }
+        for job in scheduler.get_jobs()
+    ]
 
-    jobs = scheduler.get_jobs()
-    job_info = []
-    for job in jobs:
-        job_info.append(
-            {
-                "id": job.id,
-                "name": job.name,
-                "next_run_time": job.next_run_time.isoformat()
-                if job.next_run_time
-                else None,
-            }
-        )
-
-    return {
-        "status": "running",
-        "jobs": job_info,
-    }
+    return {"status": "running", "jobs": job_info}

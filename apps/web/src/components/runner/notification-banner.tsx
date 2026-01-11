@@ -114,7 +114,7 @@ export function NotificationBanner({
           )}
         </div>
 
-        {snoozeCount >= maxSnoozeCount && notification.level !== 'overdue' && (
+        {config.showSnooze && snoozeCount >= maxSnoozeCount && (
           <p className="text-xs text-muted-foreground mt-2">
             スヌーズ上限に達しました
           </p>

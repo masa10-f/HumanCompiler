@@ -9,7 +9,6 @@ Handles:
 - Detecting and marking unresponsive sessions
 """
 
-import json
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta, UTC
@@ -18,7 +17,6 @@ from uuid import UUID, uuid4
 from fastapi import WebSocket
 from sqlmodel import Session, select
 
-from humancompiler_api.config import settings
 from humancompiler_api.models import (
     NotificationLevel,
     NotificationMessage,
@@ -252,12 +250,13 @@ class NotificationService:
         if not work_session:
             return
 
-        if level == NotificationLevel.LIGHT:
-            work_session.notification_5min_sent = True
-        elif level == NotificationLevel.STRONG:
-            work_session.notification_checkout_sent = True
-        elif level == NotificationLevel.OVERDUE:
-            work_session.notification_overdue_sent = True
+        # Map notification level to corresponding flag attribute
+        flag_mapping = {
+            NotificationLevel.LIGHT: "notification_5min_sent",
+            NotificationLevel.STRONG: "notification_checkout_sent",
+            NotificationLevel.OVERDUE: "notification_overdue_sent",
+        }
+        setattr(work_session, flag_mapping[level], True)
 
         work_session.updated_at = datetime.now(UTC)
         self.session.add(work_session)

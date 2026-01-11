@@ -25,13 +25,13 @@ import type {
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 // WebSocket base URL (derived from API URL)
-const getWebSocketUrl = (apiUrl: string): string => {
-  const url = new URL(apiUrl);
+function getWebSocketBaseUrl(): string {
+  const url = new URL(API_BASE_URL);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   return url.toString().replace(/\/$/, '');
-};
+}
 
-const WS_BASE_URL = getWebSocketUrl(API_BASE_URL);
+const WS_BASE_URL = getWebSocketBaseUrl();
 
 interface UseNotificationsReturn extends NotificationState {
   /** Request notification permission */
