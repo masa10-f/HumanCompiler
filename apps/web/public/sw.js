@@ -3,8 +3,11 @@
  *
  * Handles:
  * - Push notification reception
- * - Notification click actions (checkout, snooze)
+ * - Notification click actions (checkout only)
  * - Background sync for offline support
+ *
+ * Note: Snooze action removed from push notifications due to Service Worker
+ * authentication limitations. Snooze must be performed from within the app.
  */
 
 // Service Worker version for cache busting
@@ -64,13 +67,10 @@ self.addEventListener('push', (event) => {
     },
     actions: [
       { action: 'checkout', title: 'チェックアウト' },
+      // Note: Snooze action removed - Service Workers cannot access auth tokens
+      // from localStorage. Users must open the app to snooze.
     ],
   };
-
-  // Add snooze action for non-overdue notifications
-  if (level !== 'overdue') {
-    options.actions.push({ action: 'snooze', title: 'スヌーズ (5分)' });
-  }
 
   // Vibration pattern based on urgency
   if (level === 'overdue') {
@@ -98,11 +98,6 @@ self.addEventListener('notificationclick', (event) => {
     // Open Runner page with checkout trigger
     event.waitUntil(
       openOrFocusWindow('/runner?checkout=true')
-    );
-  } else if (event.action === 'snooze') {
-    // Send snooze request to API
-    event.waitUntil(
-      handleSnooze(session_id)
     );
   } else {
     // Default click - open runner page
@@ -138,51 +133,6 @@ async function openOrFocusWindow(url) {
 
   // No existing window, open new one
   return clients.openWindow(url);
-}
-
-/**
- * Handle snooze action from notification
- */
-async function handleSnooze(session_id) {
-  try {
-    // Get the stored auth token
-    // Note: In production, you'd want to handle this more securely
-    const response = await fetch('/api/work-sessions/snooze', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        // Auth token would need to be included here
-        // This is a limitation - service workers can't easily access
-        // cookies/localStorage from the main thread
-      },
-      body: JSON.stringify({ snooze_minutes: 5 }),
-      credentials: 'include',
-    });
-
-    if (response.ok) {
-      console.log('[SW] Snooze successful');
-      // Show confirmation notification
-      await self.registration.showNotification('スヌーズしました', {
-        body: '5分後に再通知します',
-        icon: '/icon-192x192.png',
-        tag: 'snooze-confirmation',
-        requireInteraction: false,
-      });
-    } else {
-      console.error('[SW] Snooze failed:', response.status);
-      // Show error notification
-      await self.registration.showNotification('スヌーズ失敗', {
-        body: 'スヌーズ上限に達したか、エラーが発生しました',
-        icon: '/icon-192x192.png',
-        tag: 'snooze-error',
-        requireInteraction: false,
-      });
-    }
-  } catch (error) {
-    console.error('[SW] Snooze error:', error);
-    // Open the runner page as fallback
-    await openOrFocusWindow('/runner');
-  }
 }
 
 // Message event - communication from main thread

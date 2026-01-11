@@ -8,7 +8,7 @@
  * - Message handling
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import type { WebSocketMessage } from '@/types/notification';
 
 interface UseWebSocketOptions {
@@ -196,16 +196,26 @@ export function useWebSocket(
     }
   }, []);
 
+  // Keep refs in sync with latest callbacks to avoid dependency issues
+  const connectRef = useRef(connect);
+  const disconnectRef = useRef(disconnect);
+
+  useLayoutEffect(() => {
+    connectRef.current = connect;
+    disconnectRef.current = disconnect;
+  }, [connect, disconnect]);
+
   // Auto-connect on mount if enabled and URL is provided
+  // Using refs to avoid unnecessary reconnections when callbacks change
   useEffect(() => {
     if (opts.autoConnect && url) {
-      connect();
+      connectRef.current();
     }
 
     return () => {
-      disconnect();
+      disconnectRef.current();
     };
-  }, [url, opts.autoConnect, connect, disconnect]);
+  }, [url, opts.autoConnect]);
 
   return {
     isConnected,

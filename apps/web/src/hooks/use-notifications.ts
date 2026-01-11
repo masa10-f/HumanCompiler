@@ -92,6 +92,10 @@ export function useNotifications(): UseNotificationsReturn {
   const isSupported = useMemo(() => isNotificationSupported(), []);
 
   // WebSocket URL with auth token
+  // NOTE: Known security limitation for MVP - token is exposed in URL query parameters.
+  // This can appear in browser history and server logs.
+  // Future improvement: Authenticate via WebSocket message after connection.
+  // See: https://github.com/anthropics/taskagent/issues/XXX
   const wsUrl = useMemo(() => {
     if (!isAuthenticated || !userId || !accessToken) return null;
     return `${WS_BASE_URL}/ws/notifications/${userId}?token=${accessToken}`;

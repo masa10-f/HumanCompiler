@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, UTC
 from uuid import UUID, uuid4
 
 from fastapi import WebSocket
+from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 
 from humancompiler_api.models import (
@@ -180,7 +181,7 @@ class NotificationService:
         subscriptions = self.session.exec(
             select(PushSubscription).where(
                 PushSubscription.user_id == user_id,
-                PushSubscription.is_active == True,  # noqa: E712
+                PushSubscription.is_active.is_(True),
             )
         ).all()
 
@@ -363,31 +364,26 @@ class NotificationService:
 
         results = []
 
-        # Get all active sessions
+        # Get all active sessions with task eager loaded (fixes N+1 query issue)
         active_sessions = self.session.exec(
-            select(WorkSession).where(
-                WorkSession.ended_at == None,  # noqa: E711
-            )
+            select(WorkSession)
+            .where(WorkSession.ended_at == None)  # noqa: E711
+            .options(selectinload(WorkSession.task))
         ).all()
 
         for session in active_sessions:
             checkout_time = session.planned_checkout_at
 
-            # Check for unresponsive (10+ min overdue) - mark session and skip further notifications
+            # Check for unresponsive (10+ min overdue) - send OVERDUE and mark session
             if checkout_time <= overdue_threshold:
-                if not session.marked_unresponsive_at:
+                if not session.notification_overdue_sent:
                     results.append((session, NotificationLevel.OVERDUE))
                 continue
 
-            # Check for checkout time notification (STRONG) first
+            # Check for checkout time notification (STRONG)
             # If checkout time has passed, prioritize STRONG over LIGHT
             if checkout_time <= now and not session.notification_checkout_sent:
                 results.append((session, NotificationLevel.STRONG))
-                continue
-
-            # Check for overdue notification (past checkout time, after STRONG was sent)
-            if checkout_time <= now and not session.notification_overdue_sent:
-                results.append((session, NotificationLevel.OVERDUE))
                 continue
 
             # Check for 5-min warning (only if checkout time hasn't passed yet)
@@ -474,7 +470,7 @@ class NotificationService:
             self.session.exec(
                 select(PushSubscription).where(
                     PushSubscription.user_id == user_id,
-                    PushSubscription.is_active == True,  # noqa: E712
+                    PushSubscription.is_active.is_(True),
                 )
             ).all()
         )
