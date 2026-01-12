@@ -37,6 +37,8 @@ const levelConfig: Record<
     className: string;
     showDismiss: boolean;
     showSnooze: boolean;
+    ariaLive: 'polite' | 'assertive';
+    urgencyPrefix: string;
   }
 > = {
   light: {
@@ -46,6 +48,8 @@ const levelConfig: Record<
       'border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200',
     showDismiss: true,
     showSnooze: true,
+    ariaLive: 'polite',
+    urgencyPrefix: '',
   },
   strong: {
     icon: Bell,
@@ -54,6 +58,8 @@ const levelConfig: Record<
       'border-yellow-200 bg-yellow-50 text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-200 animate-pulse',
     showDismiss: false,
     showSnooze: true,
+    ariaLive: 'assertive',
+    urgencyPrefix: '重要: ',
   },
   overdue: {
     icon: AlertTriangle,
@@ -61,6 +67,8 @@ const levelConfig: Record<
     className: 'animate-bounce',
     showDismiss: false,
     showSnooze: false,
+    ariaLive: 'assertive',
+    urgencyPrefix: '緊急: ',
   },
 };
 
@@ -87,8 +95,11 @@ export function NotificationBanner({
     <Alert
       variant={config.variant}
       className={cn('relative mb-4', config.className)}
+      role="alert"
+      aria-live={config.ariaLive}
+      aria-label={`${config.urgencyPrefix}${notification.title}`}
     >
-      <Icon className="h-5 w-5" />
+      <Icon className="h-5 w-5" aria-hidden="true" />
       <AlertTitle className="font-semibold">{notification.title}</AlertTitle>
       <AlertDescription className="mt-2">
         <p className="text-sm">{notification.body}</p>

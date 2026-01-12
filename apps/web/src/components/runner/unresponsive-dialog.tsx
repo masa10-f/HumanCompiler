@@ -51,17 +51,18 @@ export function UnresponsiveDialog({
 
   // Get task title if available
   const taskTitle = session.task?.title || 'タスク';
+  const descriptionId = 'unresponsive-dialog-description';
 
   return (
     <AlertDialog open={true}>
-      <AlertDialogContent className="max-w-md">
+      <AlertDialogContent className="max-w-md" aria-describedby={descriptionId}>
         <AlertDialogHeader>
           <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
             <AlertTriangle className="h-6 w-6" />
             <AlertDialogTitle>未応答セッションがあります</AlertDialogTitle>
           </div>
           <AlertDialogDescription asChild>
-            <div className="space-y-4 pt-2">
+            <div id={descriptionId} className="space-y-4 pt-2">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Clock className="h-4 w-4" />
                 <span>
