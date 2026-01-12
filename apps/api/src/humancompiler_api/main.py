@@ -31,6 +31,7 @@ from humancompiler_api.routers import (
     goals,
     logs,
     monitoring,
+    notifications,
     progress,
     projects,
     reports,
@@ -41,6 +42,7 @@ from humancompiler_api.routers import (
     timeline,
     users,
     user_settings,
+    websocket,
     weekly_schedule,
     weekly_recurring_tasks,
     work_sessions,
@@ -97,6 +99,17 @@ async def lifespan(app: FastAPI):
             logger.info(
                 "💡 バックアップ設定は docs/dev/local-backup-guide.md を参照してください"
             )
+
+            # Start notification scheduler (Issue #228)
+            try:
+                from humancompiler_api.scheduler.notification_scheduler import (
+                    start_notification_scheduler,
+                )
+
+                start_notification_scheduler()
+                logger.info("✅ Notification scheduler started")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to start notification scheduler: {e}")
         else:
             logger.warning("⚠️ Database connection failed, continuing in degraded mode")
     except Exception as e:
@@ -108,6 +121,17 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown
     logger.info("🔄 FastAPI server shutting down...")
+
+    # Stop notification scheduler (Issue #228)
+    try:
+        from humancompiler_api.scheduler.notification_scheduler import (
+            stop_notification_scheduler,
+        )
+
+        stop_notification_scheduler()
+        logger.info("✅ Notification scheduler stopped")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to stop notification scheduler: {e}")
 
     # Simple backup system - no scheduler to stop
     logger.info("✅ Server shutdown complete")
@@ -261,6 +285,9 @@ app.include_router(monitoring.router)
 app.include_router(simple_backup_api.router)
 app.include_router(data_export.router, tags=["data-export"])
 app.include_router(work_sessions.router, prefix="/api")
+# Issue #228: Notification/Escalation routers
+app.include_router(notifications.router, prefix="/api")
+app.include_router(websocket.router)
 
 
 # Health check endpoint

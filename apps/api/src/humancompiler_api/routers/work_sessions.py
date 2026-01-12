@@ -11,7 +11,7 @@ Provides endpoints for managing work sessions:
 from collections.abc import Generator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session
 
 from humancompiler_api.auth import AuthUser, get_current_user
@@ -19,6 +19,8 @@ from humancompiler_api.database import db
 from humancompiler_api.models import (
     ErrorResponse,
     LogResponse,
+    SnoozeRequest,
+    SnoozeResponse,
     WorkSessionStartRequest,
     WorkSessionCheckoutRequest,
     WorkSessionUpdate,
@@ -26,6 +28,7 @@ from humancompiler_api.models import (
     WorkSessionWithLogResponse,
 )
 from humancompiler_api.services import work_session_service
+from humancompiler_api.notification_service import NotificationService
 
 router = APIRouter(prefix="/work-sessions", tags=["work-sessions"])
 
@@ -178,4 +181,64 @@ async def update_session(
     work_session = work_session_service.update_session_kpt(
         session, session_id, current_user.user_id, update_data
     )
+    return WorkSessionResponse.model_validate(work_session)
+
+
+# Issue #228: Notification/Escalation endpoints
+
+
+@router.post(
+    "/snooze",
+    response_model=SnoozeResponse,
+    responses={
+        400: {
+            "model": ErrorResponse,
+            "description": "Snooze limit reached or session unresponsive",
+        },
+        404: {"model": ErrorResponse, "description": "No active session found"},
+    },
+    summary="Snooze current session checkout",
+    description="Extend the planned checkout time by 5 minutes. Limited to 2 snoozes per session. Cannot snooze if session is marked unresponsive.",
+)
+async def snooze_session(
+    snooze_data: SnoozeRequest,
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> SnoozeResponse:
+    """Snooze the checkout timer"""
+    notification_service = NotificationService(session)
+
+    try:
+        work_session = notification_service.snooze_session(
+            current_user.user_id,
+            snooze_data.snooze_minutes,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return SnoozeResponse(
+        session=WorkSessionResponse.model_validate(work_session),
+        new_planned_checkout_at=work_session.planned_checkout_at,
+        snooze_count=work_session.snooze_count,
+        max_snooze_count=2,
+    )
+
+
+@router.get(
+    "/unresponsive",
+    response_model=WorkSessionResponse | None,
+    summary="Get unresponsive session",
+    description="Check if there's an unresponsive session requiring immediate checkout. Returns the session if found, null otherwise.",
+)
+async def get_unresponsive_session(
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> WorkSessionResponse | None:
+    """Get unresponsive session for recovery flow"""
+    notification_service = NotificationService(session)
+    work_session = notification_service.get_unresponsive_session(current_user.user_id)
+
+    if not work_session:
+        return None
+
     return WorkSessionResponse.model_validate(work_session)

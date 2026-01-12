@@ -7,6 +7,7 @@ import type { Task } from './task';
 import type { Goal } from './goal';
 import type { Project } from './project';
 import type { DailySchedule } from './api-responses';
+import type { NotificationMessage, SnoozeResponse } from './notification';
 
 /**
  * Runner session status
@@ -79,6 +80,24 @@ export interface UseRunnerReturn {
   // Refresh
   refetchSession: () => void;
   refetchSchedule: () => void;
+
+  // Issue #228: Notification state
+  currentNotification: NotificationMessage | null;
+  hasNotificationPermission: boolean;
+  isNotificationSubscribed: boolean;
+  isWebSocketConnected: boolean;
+  isNotificationSupported: boolean;
+  unresponsiveSession: WorkSession | null;
+  snoozeCount: number;
+  maxSnoozeCount: number;
+
+  // Issue #228: Notification actions
+  requestNotificationPermission: () => Promise<boolean>;
+  subscribeToNotifications: () => Promise<void>;
+  dismissNotification: () => void;
+  snoozeSession: () => Promise<SnoozeResponse>;
+  isSnoozing: boolean;
+  refetchUnresponsive: () => void;
 }
 
 /**

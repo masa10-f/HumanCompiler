@@ -228,3 +228,48 @@ async def get_current_user_id(
     Get current user ID from authenticated user
     """
     return current_user.user_id
+
+
+async def verify_token_for_websocket(token: str) -> AuthUser:
+    """
+    Verify a token for WebSocket authentication.
+
+    This is similar to get_current_user but doesn't use FastAPI dependencies,
+    making it suitable for WebSocket authentication via query parameters.
+
+    Raises:
+        Exception: If token is invalid or verification fails
+    """
+    if not token:
+        raise ValueError("No token provided")
+
+    logger.info(f"🔍 [WS AUTH] Verifying WebSocket token: {token[:20]}...")
+
+    # Verify token with Supabase
+    client = db.get_client()
+
+    import asyncio
+
+    try:
+        user_response = await asyncio.wait_for(
+            asyncio.to_thread(client.auth.get_user, token),
+            timeout=5.0,
+        )
+    except TimeoutError as e:
+        logger.error("❌ [WS AUTH] Supabase auth timeout")
+        raise Exception("Authentication service timeout") from e
+
+    if not user_response.user:
+        logger.warning(f"❌ [WS AUTH] Invalid token: {token[:20]}...")
+        raise Exception("Invalid authentication token")
+
+    user = user_response.user
+    logger.info(f"✅ [WS AUTH] WebSocket user authenticated: {user.id}")
+
+    # Ensure user exists in database
+    try:
+        await ensure_user_exists(user.id, user.email or "unknown@example.com")
+    except Exception as e:
+        logger.warning(f"⚠️ [WS AUTH] Failed to ensure user exists: {e}")
+
+    return AuthUser(user_id=user.id, email=user.email or "unknown@example.com")

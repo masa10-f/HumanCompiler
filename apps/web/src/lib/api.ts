@@ -846,6 +846,16 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
+
+  /**
+   * Get unresponsive session for the authenticated user (Issue #228).
+   * Returns the oldest unresponsive session that needs checkout.
+   *
+   * @returns Unresponsive session or null if none exists
+   */
+  async getUnresponsiveSession(): Promise<WorkSession | null> {
+    return this.request<WorkSession | null>('/api/work-sessions/unresponsive');
+  }
 }
 
 export const apiClient = new ApiClient();
@@ -1008,6 +1018,7 @@ export const workSessionsApi = {
     apiClient.getWorkSessionsByTask(taskId, skip, limit),
   update: (sessionId: string, data: WorkSessionUpdateRequest) =>
     apiClient.updateWorkSession(sessionId, data),
+  getUnresponsive: () => apiClient.getUnresponsiveSession(),
 };
 
 // === Helper functions ===
