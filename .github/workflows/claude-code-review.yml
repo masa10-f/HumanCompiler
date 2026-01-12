@@ -40,8 +40,8 @@ jobs:
           # Allow bots to trigger the action
           allowed_bots: "*"
 
-          # Optional: Specify model via claude_args (defaults to Claude Sonnet 4)
-          # claude_args: "--model claude-opus-4-1-20250805"
+          # Allow gh CLI commands for PR operations
+          claude_args: "--allowed-tools 'Bash(gh pr *)' 'Bash(gh api *)'"
 
           # Prompt for automated review (no @claude mention needed)
           prompt: |
