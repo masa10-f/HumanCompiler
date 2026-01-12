@@ -11,6 +11,7 @@ import { TaskSwitcher } from './task-switcher';
 import { StartSessionDialog } from './start-session-dialog';
 import { CheckoutDialog } from './checkout-dialog';
 import { BreakDialog } from './break-dialog';
+import { NotificationBanner } from './notification-banner';
 import { useState } from 'react';
 import { Play, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -30,6 +31,12 @@ export function RunnerPage() {
     isCheckingOut,
     startSession,
     checkout,
+    currentNotification,
+    dismissNotification,
+    snoozeSession,
+    isSnoozing,
+    snoozeCount,
+    maxSnoozeCount,
   } = useRunner();
 
   const [startDialogOpen, setStartDialogOpen] = useState(false);
@@ -116,6 +123,19 @@ export function RunnerPage() {
         {/* Session active state */}
         {session && sessionDetails && (
           <>
+            {/* Notification banner */}
+            {currentNotification && (
+              <NotificationBanner
+                notification={currentNotification}
+                onDismiss={dismissNotification}
+                onSnooze={snoozeSession}
+                onCheckout={() => setCheckoutDialogOpen(true)}
+                isSnoozing={isSnoozing}
+                snoozeCount={snoozeCount}
+                maxSnoozeCount={maxSnoozeCount}
+              />
+            )}
+
             {/* Current task display */}
             <SessionDisplay
               session={session}

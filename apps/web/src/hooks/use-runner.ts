@@ -120,9 +120,17 @@ export function useRunner(): UseRunnerReturn {
     requestPermission: requestNotificationPermission,
     subscribe: subscribeToNotifications,
     dismissNotification,
-    snooze: snoozeSession,
+    snooze,
     isSnoozing,
   } = useNotifications();
+
+  // Wrap snooze to refetch session after success (Issue #244 fix)
+  const snoozeSession = async () => {
+    const result = await snooze();
+    // Refetch session to update snooze_count in UI
+    await refetchSession();
+    return result;
+  };
 
   // Issue #228: Check for unresponsive session on mount
   const {
