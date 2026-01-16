@@ -487,6 +487,16 @@ class WorkSession(WorkSessionBase, table=True):  # type: ignore[call-arg]
     started_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
     ended_at: datetime | None = SQLField(default=None)
 
+    # Pause/Resume fields
+    paused_at: datetime | None = SQLField(
+        default=None,
+        description="Timestamp when the session was paused. NULL means active or ended.",
+    )
+    total_paused_seconds: int = SQLField(
+        default=0,
+        description="Total accumulated pause time in seconds across all pause/resume cycles.",
+    )
+
     # Session outcome
     checkout_type: CheckoutType | None = SQLField(
         default=None,
@@ -889,6 +899,21 @@ class WorkSessionUpdate(BaseModel):
     kpt_try: str | None = Field(None, max_length=500)
 
 
+class WorkSessionPauseRequest(BaseModel):
+    """Request model for pausing a work session (currently empty, but can be extended)"""
+
+    pass
+
+
+class WorkSessionResumeRequest(BaseModel):
+    """Request model for resuming a paused work session"""
+
+    extend_checkout: bool = Field(
+        default=True,
+        description="Whether to extend planned_checkout_at by the paused duration",
+    )
+
+
 class WorkSessionResponse(WorkSessionBase):
     """Work session response model"""
 
@@ -897,6 +922,8 @@ class WorkSessionResponse(WorkSessionBase):
     task_id: UUID
     started_at: datetime
     ended_at: datetime | None
+    paused_at: datetime | None = None
+    total_paused_seconds: int = 0
     checkout_type: CheckoutType | None
     decision: SessionDecision | None
     continue_reason: ContinueReason | None
@@ -926,6 +953,7 @@ class WorkSessionResponse(WorkSessionBase):
         "created_at",
         "updated_at",
         "planned_checkout_at",
+        "paused_at",
         "last_snooze_at",
         "marked_unresponsive_at",
     )

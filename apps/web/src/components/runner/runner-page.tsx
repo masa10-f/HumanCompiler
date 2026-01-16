@@ -10,11 +10,13 @@ import { ActionButtons } from './action-buttons';
 import { TaskSwitcher } from './task-switcher';
 import { StartSessionDialog } from './start-session-dialog';
 import { CheckoutDialog } from './checkout-dialog';
-import { BreakDialog } from './break-dialog';
+import { PauseDialog } from './pause-dialog';
+import { ResumeDialog } from './resume-dialog';
 import { NotificationBanner } from './notification-banner';
 import { useState } from 'react';
-import { Play, AlertCircle } from 'lucide-react';
+import { Play, AlertCircle, Pause } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { formatDuration } from '@/types/runner';
 
 export function RunnerPage() {
   const { user, loading: authLoading } = useAuth();
@@ -24,13 +26,18 @@ export function RunnerPage() {
     sessionStatus,
     remainingSeconds,
     isOverdue,
+    isPaused,
     nextCandidates,
     todaySchedule,
     isLoading,
     isStarting,
     isCheckingOut,
+    isPausing,
+    isResuming,
     startSession,
     checkout,
+    pauseSession,
+    resumeSession,
     currentNotification,
     dismissNotification,
     snoozeSession,
@@ -41,8 +48,16 @@ export function RunnerPage() {
 
   const [startDialogOpen, setStartDialogOpen] = useState(false);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
-  const [breakDialogOpen, setBreakDialogOpen] = useState(false);
+  const [pauseDialogOpen, setPauseDialogOpen] = useState(false);
+  const [resumeDialogOpen, setResumeDialogOpen] = useState(false);
   const [selectedNextTaskId, setSelectedNextTaskId] = useState<string | null>(null);
+
+  // Calculate paused duration for resume dialog
+  const pausedDuration = session?.paused_at
+    ? formatDuration(
+        Math.floor((Date.now() - new Date(session.paused_at).getTime()) / 1000)
+      )
+    : '0:00:00';
 
   // Auth loading
   if (authLoading) {
@@ -103,6 +118,12 @@ export function RunnerPage() {
             <Play className="h-6 w-6" />
             Runner
           </h1>
+          {sessionStatus === 'paused' && (
+            <span className="px-3 py-1 bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 rounded-full text-sm font-medium flex items-center gap-1">
+              <Pause className="h-3 w-3" />
+              一時停止中
+            </span>
+          )}
           {sessionStatus === 'overdue' && (
             <span className="px-3 py-1 bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 rounded-full text-sm font-medium">
               超過中
@@ -149,16 +170,21 @@ export function RunnerPage() {
             <CountdownTimer
               remainingSeconds={remainingSeconds}
               isOverdue={isOverdue}
+              isPaused={isPaused}
               startedAt={session.started_at}
               plannedCheckoutAt={session.planned_checkout_at}
+              pausedAt={session.paused_at}
             />
 
             {/* Action buttons */}
             <ActionButtons
               sessionStatus={sessionStatus}
               isCheckingOut={isCheckingOut}
+              isPausing={isPausing}
+              isResuming={isResuming}
               onCheckout={() => setCheckoutDialogOpen(true)}
-              onBreak={() => setBreakDialogOpen(true)}
+              onPause={() => setPauseDialogOpen(true)}
+              onResume={() => setResumeDialogOpen(true)}
             />
 
             {/* Next candidates */}
@@ -238,16 +264,31 @@ export function RunnerPage() {
           }}
         />
 
-        <BreakDialog
-          open={breakDialogOpen}
-          onOpenChange={setBreakDialogOpen}
-          isProcessing={isCheckingOut}
+        <PauseDialog
+          open={pauseDialogOpen}
+          onOpenChange={setPauseDialogOpen}
+          isProcessing={isPausing}
           onConfirm={async () => {
             try {
-              await checkout('break');
-              setBreakDialogOpen(false);
+              await pauseSession();
+              setPauseDialogOpen(false);
             } catch (error) {
-              console.error('Break checkout failed:', error);
+              console.error('Pause failed:', error);
+            }
+          }}
+        />
+
+        <ResumeDialog
+          open={resumeDialogOpen}
+          onOpenChange={setResumeDialogOpen}
+          isProcessing={isResuming}
+          pausedDuration={pausedDuration}
+          onConfirm={async (extendCheckout) => {
+            try {
+              await resumeSession(extendCheckout);
+              setResumeDialogOpen(false);
+            } catch (error) {
+              console.error('Resume failed:', error);
             }
           }}
         />

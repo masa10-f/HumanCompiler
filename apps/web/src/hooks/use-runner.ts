@@ -12,7 +12,10 @@ import {
   useCurrentWorkSession,
   useStartWorkSession,
   useCheckoutWorkSession,
+  usePauseWorkSession,
+  useResumeWorkSession,
   getSessionOverdueStatus,
+  isSessionPaused,
 } from './use-work-sessions';
 import { useCountdown } from './use-countdown';
 import { useNotifications } from './use-notifications';
@@ -109,6 +112,8 @@ export function useRunner(): UseRunnerReturn {
   // Mutations
   const startMutation = useStartWorkSession();
   const checkoutMutation = useCheckoutWorkSession();
+  const pauseMutation = usePauseWorkSession();
+  const resumeMutation = useResumeWorkSession();
 
   // Issue #228: Notification integration
   const {
@@ -144,19 +149,25 @@ export function useRunner(): UseRunnerReturn {
     retry: false,
   });
 
-  // Countdown timer
+  // Check if session is paused
+  const isPaused = isSessionPaused(session);
+
+  // Countdown timer (pass paused_at to freeze countdown when paused)
   const countdown = useCountdown(
     session?.planned_checkout_at,
-    session?.started_at
+    session?.started_at,
+    session?.paused_at
   );
 
   // Calculate session status
   const overdueStatus = getSessionOverdueStatus(session);
   const sessionStatus: RunnerSessionStatus = !session
     ? 'idle'
-    : overdueStatus.isOverdue
-      ? 'overdue'
-      : 'active';
+    : isPaused
+      ? 'paused'
+      : overdueStatus.isOverdue
+        ? 'overdue'
+        : 'active';
 
   // Extract next task candidates from today's schedule
   const nextCandidates: TaskCandidate[] = (() => {
@@ -232,6 +243,16 @@ export function useRunner(): UseRunnerReturn {
     queryClient.invalidateQueries({ queryKey: ['runner'] });
   };
 
+  const pauseSession = async (): Promise<void> => {
+    await pauseMutation.mutateAsync();
+    queryClient.invalidateQueries({ queryKey: ['runner'] });
+  };
+
+  const resumeSession = async (extendCheckout: boolean = true): Promise<void> => {
+    await resumeMutation.mutateAsync({ extend_checkout: extendCheckout });
+    queryClient.invalidateQueries({ queryKey: ['runner'] });
+  };
+
   return {
     // State
     session: session ?? null,
@@ -239,6 +260,7 @@ export function useRunner(): UseRunnerReturn {
     sessionStatus,
     remainingSeconds: countdown.seconds,
     isOverdue: countdown.isOverdue,
+    isPaused,
     nextCandidates,
     todaySchedule: todaySchedule ?? null,
 
@@ -246,10 +268,14 @@ export function useRunner(): UseRunnerReturn {
     isLoading: sessionLoading || scheduleLoading || detailsLoading,
     isStarting: startMutation.isPending,
     isCheckingOut: checkoutMutation.isPending,
+    isPausing: pauseMutation.isPending,
+    isResuming: resumeMutation.isPending,
 
     // Actions
     startSession,
     checkout,
+    pauseSession,
+    resumeSession,
 
     // Refresh
     refetchSession,

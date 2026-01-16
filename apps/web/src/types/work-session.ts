@@ -37,6 +37,8 @@ export interface WorkSession {
   started_at: string;
   planned_checkout_at: string;
   ended_at: string | null;
+  paused_at: string | null;
+  total_paused_seconds: number;
   checkout_type: CheckoutType | null;
   decision: SessionDecision | null;
   continue_reason: ContinueReason | null;
@@ -90,6 +92,20 @@ export interface WorkSessionUpdateRequest {
   kpt_keep?: string;
   kpt_problem?: string;
   kpt_try?: string;
+}
+
+/**
+ * Request model for pausing a work session
+ */
+export interface WorkSessionPauseRequest {
+  // Currently empty, but can be extended
+}
+
+/**
+ * Request model for resuming a work session
+ */
+export interface WorkSessionResumeRequest {
+  extend_checkout?: boolean;
 }
 
 /**

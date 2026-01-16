@@ -8,6 +8,8 @@ from enum import Enum
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from ortools.sat.python import cp_model
+
 
 class WorkKind(Enum):
     """Common enum for task and slot work types.
@@ -84,12 +86,6 @@ class DailySolverConfig:
     min_score: int = 1
 
 
-def _import_cp_model():
-    from ortools.sat.python import cp_model
-
-    return cp_model
-
-
 def optimize_daily_schedule(
     tasks: Sequence[SchedulerTask],
     time_slots: Sequence[TimeSlot],
@@ -113,7 +109,6 @@ def optimize_daily_schedule(
             solve_time_seconds=time_module.time() - start_time,
         )
 
-    cp_model = _import_cp_model()
     model = cp_model.CpModel()
 
     # Calculate slot capacities in minutes for better precision

@@ -17,6 +17,7 @@ import type {
   WorkSessionStartRequest,
   WorkSessionCheckoutRequest,
   WorkSessionUpdateRequest,
+  WorkSessionResumeRequest,
   WorkSessionWithLog,
 } from '@/types/work-session';
 
@@ -146,13 +147,61 @@ export function useUpdateWorkSession() {
 }
 
 /**
+ * Hook for pausing the current work session.
+ * Invalidates current session query on success.
+ */
+export function usePauseWorkSession() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => workSessionsApi.pause(),
+    onSuccess: () => {
+      // Invalidate current session query to reflect paused state
+      queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.current() });
+    },
+  });
+}
+
+/**
+ * Hook for resuming a paused work session.
+ * Invalidates current session query on success.
+ */
+export function useResumeWorkSession() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data?: WorkSessionResumeRequest) => workSessionsApi.resume(data),
+    onSuccess: () => {
+      // Invalidate current session query to reflect resumed state
+      queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.current() });
+    },
+  });
+}
+
+/**
+ * Helper function to check if a session is paused.
+ *
+ * @param session - The work session to check
+ * @returns boolean indicating if session is paused
+ */
+export function isSessionPaused(session: WorkSession | null | undefined): boolean {
+  return !!session && !session.ended_at && !!session.paused_at;
+}
+
+/**
  * Helper function to check if a session is overdue.
+ * A paused session is never considered overdue.
  *
  * @param session - The work session to check
  * @returns Object with isOverdue boolean and minutes overdue
  */
 export function getSessionOverdueStatus(session: WorkSession | null | undefined) {
   if (!session || session.ended_at) {
+    return { isOverdue: false, minutesOverdue: 0 };
+  }
+
+  // Paused sessions are not considered overdue
+  if (session.paused_at) {
     return { isOverdue: false, minutesOverdue: 0 };
   }
 

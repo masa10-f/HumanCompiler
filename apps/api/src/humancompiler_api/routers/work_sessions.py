@@ -24,6 +24,8 @@ from humancompiler_api.models import (
     WorkSessionStartRequest,
     WorkSessionCheckoutRequest,
     WorkSessionUpdate,
+    WorkSessionPauseRequest,
+    WorkSessionResumeRequest,
     WorkSessionResponse,
     WorkSessionWithLogResponse,
 )
@@ -94,6 +96,47 @@ async def checkout_session(
     response.generated_log = LogResponse.model_validate(log)
     response.actual_minutes = actual_minutes
     return response
+
+
+@router.post(
+    "/pause",
+    response_model=WorkSessionResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "No active session found"},
+        400: {"model": ErrorResponse, "description": "Session is already paused"},
+    },
+    summary="Pause current session",
+    description="Pause the current active session. Time spent while paused is not counted towards actual work time.",
+)
+async def pause_session(
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> WorkSessionResponse:
+    """Pause the current session"""
+    work_session = work_session_service.pause_session(session, current_user.user_id)
+    return WorkSessionResponse.model_validate(work_session)
+
+
+@router.post(
+    "/resume",
+    response_model=WorkSessionResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "No active session found"},
+        400: {"model": ErrorResponse, "description": "Session is not paused"},
+    },
+    summary="Resume paused session",
+    description="Resume a paused session. Optionally extends planned_checkout_at by the pause duration.",
+)
+async def resume_session(
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+    resume_data: WorkSessionResumeRequest = WorkSessionResumeRequest(),
+) -> WorkSessionResponse:
+    """Resume a paused session"""
+    work_session = work_session_service.resume_session(
+        session, current_user.user_id, resume_data
+    )
+    return WorkSessionResponse.model_validate(work_session)
 
 
 @router.get(
