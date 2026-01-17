@@ -155,9 +155,9 @@ export function usePauseWorkSession() {
 
   return useMutation({
     mutationFn: () => workSessionsApi.pause(),
-    onSuccess: () => {
-      // Invalidate current session query to reflect paused state
-      queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.current() });
+    onSuccess: (result: WorkSession) => {
+      // Immediately update cache with paused session to freeze countdown
+      queryClient.setQueryData(queryKeys.workSessions.current(), result);
     },
   });
 }
@@ -171,9 +171,9 @@ export function useResumeWorkSession() {
 
   return useMutation({
     mutationFn: (data?: WorkSessionResumeRequest) => workSessionsApi.resume(data),
-    onSuccess: () => {
-      // Invalidate current session query to reflect resumed state
-      queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.current() });
+    onSuccess: (result: WorkSession) => {
+      // Immediately update cache with resumed session to restart countdown
+      queryClient.setQueryData(queryKeys.workSessions.current(), result);
     },
   });
 }
