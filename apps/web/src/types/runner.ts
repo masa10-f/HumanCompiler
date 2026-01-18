@@ -12,7 +12,7 @@ import type { NotificationMessage, SnoozeResponse } from './notification';
 /**
  * Runner session status
  */
-export type RunnerSessionStatus = 'idle' | 'active' | 'overdue';
+export type RunnerSessionStatus = 'idle' | 'active' | 'paused' | 'overdue';
 
 /**
  * Task candidate from today's schedule
@@ -61,6 +61,7 @@ export interface UseRunnerReturn {
   sessionStatus: RunnerSessionStatus;
   remainingSeconds: number;
   isOverdue: boolean;
+  isPaused: boolean;
   nextCandidates: TaskCandidate[];
   todaySchedule: DailySchedule | null;
 
@@ -68,6 +69,8 @@ export interface UseRunnerReturn {
   isLoading: boolean;
   isStarting: boolean;
   isCheckingOut: boolean;
+  isPausing: boolean;
+  isResuming: boolean;
 
   // Actions
   startSession: (
@@ -76,6 +79,8 @@ export interface UseRunnerReturn {
     plannedOutcome?: string
   ) => Promise<void>;
   checkout: (decision: SessionDecision, options?: CheckoutOptions) => Promise<void>;
+  pauseSession: () => Promise<void>;
+  resumeSession: (extendCheckout?: boolean) => Promise<void>;
 
   // Refresh
   refetchSession: () => void;

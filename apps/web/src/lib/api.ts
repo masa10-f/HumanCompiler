@@ -60,6 +60,7 @@ import type {
   WorkSessionStartRequest,
   WorkSessionCheckoutRequest,
   WorkSessionUpdateRequest,
+  WorkSessionResumeRequest,
   WorkSessionWithLog
 } from '@/types/work-session';
 import type { SortOptions } from '@/types/sort';
@@ -856,6 +857,32 @@ class ApiClient {
   async getUnresponsiveSession(): Promise<WorkSession | null> {
     return this.request<WorkSession | null>('/api/work-sessions/unresponsive');
   }
+
+  /**
+   * Pause the current active session.
+   * Time spent while paused is not counted towards actual work time.
+   *
+   * @returns The paused work session
+   */
+  async pauseWorkSession(): Promise<WorkSession> {
+    return this.request<WorkSession>('/api/work-sessions/pause', {
+      method: 'POST',
+    });
+  }
+
+  /**
+   * Resume a paused session.
+   * Optionally extends planned_checkout_at by the pause duration.
+   *
+   * @param data - Resume options including extend_checkout flag
+   * @returns The resumed work session
+   */
+  async resumeWorkSession(data: WorkSessionResumeRequest = {}): Promise<WorkSession> {
+    return this.request<WorkSession>('/api/work-sessions/resume', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
 }
 
 export const apiClient = new ApiClient();
@@ -1019,6 +1046,8 @@ export const workSessionsApi = {
   update: (sessionId: string, data: WorkSessionUpdateRequest) =>
     apiClient.updateWorkSession(sessionId, data),
   getUnresponsive: () => apiClient.getUnresponsiveSession(),
+  pause: () => apiClient.pauseWorkSession(),
+  resume: (data?: WorkSessionResumeRequest) => apiClient.resumeWorkSession(data),
 };
 
 // === Helper functions ===

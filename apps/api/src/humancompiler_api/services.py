@@ -38,6 +38,8 @@ from humancompiler_api.models import (
     WorkSessionStartRequest,
     WorkSessionCheckoutRequest,
     WorkSessionUpdate,
+    WorkSessionPauseRequest,
+    WorkSessionResumeRequest,
     CheckoutType,
     SessionDecision,
     ContinueReason,
@@ -1195,12 +1197,30 @@ class WorkSessionService(
                     detail="At least one KPT field is required when continuing",
                 )
 
-        # Calculate actual minutes
+        # If session is paused, add current pause duration to total
         ended_at = datetime.now(UTC)
+        total_paused_seconds = current_session.total_paused_seconds or 0
+
+        if current_session.paused_at is not None:
+            # Session is currently paused, add current pause duration
+            paused_at = current_session.paused_at
+            if paused_at.tzinfo is None:
+                paused_at = paused_at.replace(tzinfo=UTC)
+            current_pause_duration = int((ended_at - paused_at).total_seconds())
+            total_paused_seconds += current_pause_duration
+            # Clear paused_at since we're ending the session
+            current_session.paused_at = None
+
+        # Update total_paused_seconds in the session
+        current_session.total_paused_seconds = total_paused_seconds
+
+        # Calculate actual minutes (excluding paused time)
         started_at = current_session.started_at
         if started_at.tzinfo is None:
             started_at = started_at.replace(tzinfo=UTC)
-        actual_minutes = max(1, int((ended_at - started_at).total_seconds() / 60))
+        total_elapsed_seconds = int((ended_at - started_at).total_seconds())
+        actual_seconds = total_elapsed_seconds - total_paused_seconds
+        actual_minutes = max(1, actual_seconds // 60)
 
         # Update session
         current_session.ended_at = ended_at
@@ -1360,6 +1380,120 @@ class WorkSessionService(
 
         summary = " | ".join(parts)
         return summary[:500] if len(summary) > 500 else summary
+
+    def pause_session(
+        self,
+        session: Session,
+        user_id: str | UUID,
+    ) -> WorkSession:
+        """Pause the current active session
+
+        Sets paused_at to current time. Session remains active but time
+        is not counted until resumed.
+
+        Raises:
+            HTTPException: 404 if no active session found
+            HTTPException: 400 if session is already paused
+        """
+        user_id_validated = validate_uuid(user_id, "user_id")
+
+        # Get current session
+        current_session = self.get_current_session(session, user_id_validated)
+        if not current_session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No active session found",
+            )
+
+        # Check if already paused
+        if current_session.paused_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Session is already paused",
+            )
+
+        # Set paused_at
+        current_session.paused_at = datetime.now(UTC)
+        current_session.updated_at = datetime.now(UTC)
+
+        session.add(current_session)
+        session.commit()
+        session.refresh(current_session)
+
+        return current_session
+
+    def resume_session(
+        self,
+        session: Session,
+        user_id: str | UUID,
+        resume_data: WorkSessionResumeRequest,
+    ) -> WorkSession:
+        """Resume a paused session
+
+        Calculates pause duration and adds to total_paused_seconds.
+        Optionally extends planned_checkout_at by the pause duration.
+
+        Args:
+            session: Database session
+            user_id: User ID
+            resume_data: Resume options including extend_checkout flag
+
+        Returns:
+            Updated WorkSession
+
+        Raises:
+            HTTPException: 404 if no active session found
+            HTTPException: 400 if session is not paused
+        """
+        user_id_validated = validate_uuid(user_id, "user_id")
+
+        # Get current session
+        current_session = self.get_current_session(session, user_id_validated)
+        if not current_session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No active session found",
+            )
+
+        # Check if actually paused
+        if current_session.paused_at is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Session is not paused",
+            )
+
+        # Calculate pause duration
+        now = datetime.now(UTC)
+        paused_at = current_session.paused_at
+        if paused_at.tzinfo is None:
+            paused_at = paused_at.replace(tzinfo=UTC)
+        pause_duration_seconds = int((now - paused_at).total_seconds())
+
+        # Update total_paused_seconds
+        current_session.total_paused_seconds = (
+            current_session.total_paused_seconds or 0
+        ) + pause_duration_seconds
+
+        # Optionally extend planned_checkout_at
+        if resume_data.extend_checkout:
+            planned_checkout = current_session.planned_checkout_at
+            if planned_checkout.tzinfo is None:
+                planned_checkout = planned_checkout.replace(tzinfo=UTC)
+            from datetime import timedelta
+
+            current_session.planned_checkout_at = planned_checkout + timedelta(
+                seconds=pause_duration_seconds
+            )
+
+        # Clear paused_at
+        current_session.paused_at = None
+        current_session.updated_at = now
+
+        session.add(current_session)
+        session.commit()
+        session.refresh(current_session)
+
+        return current_session
 
     def update_session_kpt(
         self,
