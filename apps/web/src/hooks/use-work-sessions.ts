@@ -20,6 +20,7 @@ import type {
   WorkSessionResumeRequest,
   WorkSessionWithLog,
 } from '@/types/work-session';
+import type { WorkSessionWithReschedule } from '@/types/reschedule';
 
 /**
  * Hook for getting the current active session.
@@ -92,13 +93,15 @@ export function useStartWorkSession() {
 /**
  * Hook for checking out (ending) the current session.
  * Invalidates session, log, and progress queries on success.
+ * Returns WorkSessionWithReschedule including any reschedule suggestion.
  */
 export function useCheckoutWorkSession() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (data: WorkSessionCheckoutRequest) => workSessionsApi.checkout(data),
-    onSuccess: (result: WorkSessionWithLog) => {
+    onSuccess: (result: WorkSessionWithReschedule) => {
+      const session = result.session;
       // Invalidate session queries
       queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.current() });
       queryClient.invalidateQueries({
@@ -107,16 +110,21 @@ export function useCheckoutWorkSession() {
       });
       queryClient.invalidateQueries({
         queryKey: queryKeys.workSessions.all,
-        predicate: (query) => query.queryKey[1] === 'task' && query.queryKey[2] === result.task_id,
+        predicate: (query) => query.queryKey[1] === 'task' && query.queryKey[2] === session.task_id,
       });
 
       // Invalidate log and progress queries (log was auto-created)
-      if (result.generated_log) {
+      if (session.generated_log) {
         queryClient.invalidateQueries({
-          queryKey: queryKeys.logs.byTask(result.task_id),
+          queryKey: queryKeys.logs.byTask(session.task_id),
         });
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.progress.all });
+
+      // Invalidate reschedule suggestions (Issue #227)
+      if (result.reschedule_suggestion) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.reschedule.suggestions() });
+      }
     },
   });
 }

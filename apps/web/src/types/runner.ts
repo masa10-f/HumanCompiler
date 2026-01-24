@@ -8,6 +8,7 @@ import type { Goal } from './goal';
 import type { Project } from './project';
 import type { DailySchedule } from './api-responses';
 import type { NotificationMessage, SnoozeResponse } from './notification';
+import type { RescheduleSuggestion } from './reschedule';
 
 /**
  * Runner session status
@@ -78,7 +79,7 @@ export interface UseRunnerReturn {
     plannedCheckoutAt: string,
     plannedOutcome?: string
   ) => Promise<void>;
-  checkout: (decision: SessionDecision, options?: CheckoutOptions) => Promise<void>;
+  checkout: (decision: SessionDecision, options?: CheckoutOptions) => Promise<RescheduleSuggestion | null>;
   pauseSession: () => Promise<void>;
   resumeSession: (extendCheckout?: boolean) => Promise<void>;
 

@@ -63,6 +63,12 @@ import type {
   WorkSessionResumeRequest,
   WorkSessionWithLog
 } from '@/types/work-session';
+import type {
+  RescheduleSuggestion,
+  RescheduleDecision,
+  RescheduleDecisionRequest,
+  WorkSessionWithReschedule
+} from '@/types/reschedule';
 import type { SortOptions } from '@/types/sort';
 
 // Helper function to ensure HTTPS protocol
@@ -786,11 +792,84 @@ class ApiClient {
    * @param data - Checkout data including decision and optional KPT
    * @returns The updated session with generated log
    */
-  async checkoutWorkSession(data: WorkSessionCheckoutRequest): Promise<WorkSessionWithLog> {
-    return this.request<WorkSessionWithLog>('/api/work-sessions/checkout', {
+  async checkoutWorkSession(data: WorkSessionCheckoutRequest): Promise<WorkSessionWithReschedule> {
+    return this.request<WorkSessionWithReschedule>('/api/work-sessions/checkout', {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  }
+
+  // === Reschedule API (Issue #227) ===
+
+  /**
+   * Get pending reschedule suggestions.
+   *
+   * @returns Array of pending reschedule suggestions
+   */
+  async getPendingRescheduleSuggestions(): Promise<RescheduleSuggestion[]> {
+    return this.request<RescheduleSuggestion[]>('/api/reschedule/suggestions');
+  }
+
+  /**
+   * Get a specific reschedule suggestion.
+   *
+   * @param suggestionId - The suggestion ID
+   * @returns The reschedule suggestion
+   */
+  async getRescheduleSuggestion(suggestionId: string): Promise<RescheduleSuggestion> {
+    return this.request<RescheduleSuggestion>(`/api/reschedule/suggestions/${suggestionId}`);
+  }
+
+  /**
+   * Accept a reschedule suggestion.
+   *
+   * @param suggestionId - The suggestion ID to accept
+   * @param reason - Optional reason for accepting
+   * @returns The updated suggestion
+   */
+  async acceptRescheduleSuggestion(
+    suggestionId: string,
+    reason?: string
+  ): Promise<RescheduleSuggestion> {
+    const body: RescheduleDecisionRequest = reason ? { reason } : {};
+    return this.request<RescheduleSuggestion>(
+      `/api/reschedule/suggestions/${suggestionId}/accept`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  /**
+   * Reject a reschedule suggestion.
+   *
+   * @param suggestionId - The suggestion ID to reject
+   * @param reason - Optional reason for rejecting
+   * @returns The updated suggestion
+   */
+  async rejectRescheduleSuggestion(
+    suggestionId: string,
+    reason?: string
+  ): Promise<RescheduleSuggestion> {
+    const body: RescheduleDecisionRequest = reason ? { reason } : {};
+    return this.request<RescheduleSuggestion>(
+      `/api/reschedule/suggestions/${suggestionId}/reject`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }
+    );
+  }
+
+  /**
+   * Get reschedule decision history.
+   *
+   * @param limit - Maximum results (default: 50)
+   * @returns Array of reschedule decisions
+   */
+  async getRescheduleDecisionHistory(limit: number = 50): Promise<RescheduleDecision[]> {
+    return this.request<RescheduleDecision[]>(`/api/reschedule/decisions?limit=${limit}`);
   }
 
   /**
@@ -1048,6 +1127,20 @@ export const workSessionsApi = {
   getUnresponsive: () => apiClient.getUnresponsiveSession(),
   pause: () => apiClient.pauseWorkSession(),
   resume: (data?: WorkSessionResumeRequest) => apiClient.resumeWorkSession(data),
+};
+
+/**
+ * Reschedule API convenience wrapper (Issue #227).
+ * Provides methods for managing reschedule suggestions.
+ */
+export const rescheduleApi = {
+  getPendingSuggestions: () => apiClient.getPendingRescheduleSuggestions(),
+  getSuggestion: (suggestionId: string) => apiClient.getRescheduleSuggestion(suggestionId),
+  acceptSuggestion: (suggestionId: string, reason?: string) =>
+    apiClient.acceptRescheduleSuggestion(suggestionId, reason),
+  rejectSuggestion: (suggestionId: string, reason?: string) =>
+    apiClient.rejectRescheduleSuggestion(suggestionId, reason),
+  getDecisionHistory: (limit?: number) => apiClient.getRescheduleDecisionHistory(limit),
 };
 
 // === Helper functions ===
