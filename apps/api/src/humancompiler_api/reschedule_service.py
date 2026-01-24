@@ -233,15 +233,16 @@ class RescheduleService:
             return None
 
         plan_json = schedule.plan_json
-        slots = plan_json.get("slots", [])
-        if not slots:
+        # Use "assignments" key (standard format used by scheduler and UI)
+        assignments = plan_json.get("assignments", [])
+        if not assignments:
             return None
 
         # Extract task IDs and build lookup
         task_ids = [
-            slot.get("task_id") or slot.get("taskId")
-            for slot in slots
-            if slot.get("task_id") or slot.get("taskId")
+            assignment.get("task_id") or assignment.get("taskId")
+            for assignment in assignments
+            if assignment.get("task_id") or assignment.get("taskId")
         ]
 
         if not task_ids:
@@ -251,9 +252,9 @@ class RescheduleService:
         task_lookup = self._build_task_lookup(session, task_ids)
 
         # Calculate the impact of the checkout
-        original_schedule = slots.copy()
+        original_schedule = [a.copy() for a in assignments]
         proposed_schedule = self._compute_proposed_schedule(
-            slots=slots,
+            slots=assignments,
             completed_task_id=str(work_session.task_id),
             remaining_estimate_hours=remaining_estimate_hours,
             decision=decision,
@@ -280,8 +281,8 @@ class RescheduleService:
             work_session_id=work_session.id,
             trigger_type=RescheduleTriggerType.CHECKOUT,
             trigger_decision=decision.value,
-            original_schedule_json={"slots": original_schedule},
-            proposed_schedule_json={"slots": proposed_schedule},
+            original_schedule_json={"assignments": original_schedule},
+            proposed_schedule_json={"assignments": proposed_schedule},
             diff_json=diff.to_dict(),
             status=RescheduleSuggestionStatus.PENDING,
             expires_at=expires_at,
@@ -498,12 +499,12 @@ class RescheduleService:
         if not schedule:
             return
 
-        # Update the schedule with proposed changes
+        # Update the schedule with proposed changes (use "assignments" key)
         proposed = suggestion.proposed_schedule_json
-        if proposed and "slots" in proposed:
+        if proposed and "assignments" in proposed:
             schedule.plan_json = {
                 **schedule.plan_json,
-                "slots": proposed["slots"],
+                "assignments": proposed["assignments"],
             }
             schedule.updated_at = datetime.now(UTC)
             session.add(schedule)
