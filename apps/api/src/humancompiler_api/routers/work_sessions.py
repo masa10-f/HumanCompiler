@@ -8,6 +8,7 @@ Provides endpoints for managing work sessions:
 - Get session history
 """
 
+import logging
 from collections.abc import Generator
 from typing import Annotated
 
@@ -35,6 +36,8 @@ from humancompiler_api.models import (
 from humancompiler_api.services import work_session_service
 from humancompiler_api.notification_service import NotificationService
 from humancompiler_api.reschedule_service import reschedule_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/work-sessions", tags=["work-sessions"])
 
@@ -127,7 +130,7 @@ async def checkout_session(
                 )
     except Exception:
         # Don't fail checkout if reschedule suggestion fails
-        pass
+        logger.exception("Failed to generate reschedule suggestion")
 
     return WorkSessionWithRescheduleResponse(
         session=session_response,
