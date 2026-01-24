@@ -12,7 +12,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { rescheduleApi } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
-import type { RescheduleSuggestion, RescheduleDecision } from '@/types/reschedule';
 
 /**
  * Hook for getting pending reschedule suggestions.

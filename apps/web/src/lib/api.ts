@@ -61,7 +61,6 @@ import type {
   WorkSessionCheckoutRequest,
   WorkSessionUpdateRequest,
   WorkSessionResumeRequest,
-  WorkSessionWithLog
 } from '@/types/work-session';
 import type {
   RescheduleSuggestion,

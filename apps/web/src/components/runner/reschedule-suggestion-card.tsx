@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { RefreshCw, Check, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { RescheduleSuggestion, ScheduleDiff } from '@/types/reschedule';
+import type { RescheduleSuggestion } from '@/types/reschedule';
 import { CHANGE_TYPE_LABELS, CHANGE_TYPE_COLORS } from '@/types/reschedule';
 import { RescheduleDiffModal } from './reschedule-diff-modal';
 

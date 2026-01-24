@@ -22,7 +22,7 @@ import { useNotifications } from './use-notifications';
 import { schedulingApi, tasksApi, goalsApi, projectsApi, workSessionsApi } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 import type { SessionDecision } from '@/types/work-session';
-import type { RescheduleSuggestion, WorkSessionWithReschedule } from '@/types/reschedule';
+import type { RescheduleSuggestion } from '@/types/reschedule';
 import type {
   UseRunnerReturn,
   TaskCandidate,
