@@ -336,10 +336,9 @@ class RescheduleService:
                 completed_task_found = True
 
                 if decision == SessionDecision.COMPLETE:
-                    # Task is done - mark as completed (remove from remaining work)
-                    updated_slot = slot.copy()
-                    updated_slot["status"] = "completed"
-                    proposed.append(updated_slot)
+                    # Task is done - remove from proposed schedule
+                    # (not appending to proposed = task removed from remaining work)
+                    pass
                 elif decision == SessionDecision.CONTINUE:
                     # Task continues - update with remaining estimate
                     updated_slot = slot.copy()
