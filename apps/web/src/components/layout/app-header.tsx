@@ -74,22 +74,23 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
               </h1>
             </div>
             {/* Desktop Navigation */}
-            <nav className="hidden md:flex space-x-4">
+            <nav className="hidden lg:flex space-x-1">
               {NAVIGATION_ITEMS.map((item) => (
                 <Button
                   key={item.id}
                   variant="ghost"
                   onClick={() => router.push(item.path)}
-                  className={getPageClass(item.id)}
+                  className={`${getPageClass(item.id)} px-2 xl:px-3`}
+                  title={item.label}
                 >
-                  <item.icon className="h-4 w-4 mr-2" />
-                  {item.label}
+                  <item.icon className="h-4 w-4 xl:mr-2" />
+                  <span className="hidden xl:inline">{item.label}</span>
                 </Button>
               ))}
             </nav>
 
             {/* Mobile Navigation */}
-            <div className="md:hidden">
+            <div className="lg:hidden">
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
                   <Button variant="ghost" size="sm" aria-label="メニューを開く">
@@ -140,13 +141,13 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
               </Dialog>
             </div>
           </div>
-          <div className="hidden md:flex items-center space-x-4">
+          <div className="hidden lg:flex items-center space-x-2 xl:space-x-4">
             {user?.email && (
-              <span className="text-sm text-muted-foreground px-3 py-1.5 bg-muted/50 rounded-full">
+              <span className="hidden xl:inline text-sm text-muted-foreground px-3 py-1.5 bg-muted/50 rounded-full truncate max-w-[200px]">
                 {user.email}
               </span>
             )}
-            <Button variant="outline" onClick={signOut} className="border-border hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50">
+            <Button variant="outline" onClick={signOut} className="border-border hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50 whitespace-nowrap">
               ログアウト
             </Button>
           </div>
