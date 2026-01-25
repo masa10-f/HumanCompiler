@@ -42,8 +42,8 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
 
   const getPageClass = (page: string) => {
     return currentPage === page
-      ? "text-gray-900 dark:text-white font-medium"
-      : "text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+      ? "bg-primary/10 text-primary font-medium border-b-2 border-primary rounded-none"
+      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
   }
 
   const handleNavigation = (path: string) => {
@@ -57,7 +57,7 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
   }
 
   return (
-    <header className="bg-white dark:bg-gray-800 shadow-sm border-b">
+    <header className="bg-card/95 backdrop-blur-sm shadow-md border-b border-border/60 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center space-x-8">
@@ -67,9 +67,9 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                 alt="HumanCompiler Logo"
                 width={32}
                 height={32}
-                className="rounded-lg"
+                className="rounded-lg shadow-sm"
               />
-              <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
+              <h1 className="text-xl font-bold text-foreground bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                 HumanCompiler
               </h1>
             </div>
@@ -122,15 +122,15 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                       </Button>
                     ))}
                   </div>
-                  <div className="mt-6 border-t pt-4">
+                  <div className="mt-6 border-t border-border/60 pt-4">
                     {user?.email && (
-                      <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 truncate">
+                      <p className="text-sm text-muted-foreground mb-3 truncate px-3 py-1.5 bg-muted/50 rounded-lg">
                         {user.email}
                       </p>
                     )}
                     <Button
                       variant="outline"
-                      className="w-full"
+                      className="w-full hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50"
                       onClick={signOut}
                     >
                       ログアウト
@@ -142,11 +142,11 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
           </div>
           <div className="hidden md:flex items-center space-x-4">
             {user?.email && (
-              <span className="text-sm text-gray-600 dark:text-gray-300">
+              <span className="text-sm text-muted-foreground px-3 py-1.5 bg-muted/50 rounded-full">
                 {user.email}
               </span>
             )}
-            <Button variant="outline" onClick={signOut}>
+            <Button variant="outline" onClick={signOut} className="border-border hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50">
               ログアウト
             </Button>
           </div>

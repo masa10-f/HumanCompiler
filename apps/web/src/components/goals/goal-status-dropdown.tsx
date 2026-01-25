@@ -14,6 +14,7 @@ import {
   getGoalStatusIcon,
   getGoalStatusLabel,
   getAllGoalStatuses,
+  GOAL_STATUS_CONFIG,
 } from '@/constants/goal-status'
 import { getStatusUpdateError } from '@/lib/status-error-handler'
 import type { Goal, GoalStatus } from '@/types/goal'
@@ -101,34 +102,40 @@ export const GoalStatusDropdown = memo(function GoalStatusDropdown({
 
   const currentStatus = goal.status || 'pending'
 
+  const statusConfig = GOAL_STATUS_CONFIG[currentStatus as keyof typeof GOAL_STATUS_CONFIG] || GOAL_STATUS_CONFIG.pending
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-100 transition-colors"
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${statusConfig.bgClassName} ${statusConfig.className} hover:opacity-80 border border-current/20`}
           onClick={(e) => e.stopPropagation()}
           disabled={isUpdating}
         >
           {getGoalStatusIcon(currentStatus)}
-          <span className="text-sm">{getGoalStatusLabel(currentStatus)}</span>
+          <span>{getGoalStatusLabel(currentStatus)}</span>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        {getAllGoalStatuses().map((status) => (
-          <DropdownMenuItem
-            key={status}
-            onClick={(e: React.MouseEvent) => {
-              e.stopPropagation()
-              handleStatusChange(status)
-            }}
-            className={currentStatus === status ? 'bg-gray-100' : ''}
-          >
-            <div className="flex items-center gap-2">
-              {getGoalStatusIcon(status)}
-              <span>{getGoalStatusLabel(status)}</span>
-            </div>
-          </DropdownMenuItem>
-        ))}
+      <DropdownMenuContent align="start" className="min-w-[160px]">
+        {getAllGoalStatuses().map((status) => {
+          const config = GOAL_STATUS_CONFIG[status]
+          const isSelected = currentStatus === status
+          return (
+            <DropdownMenuItem
+              key={status}
+              onClick={(e: React.MouseEvent) => {
+                e.stopPropagation()
+                handleStatusChange(status)
+              }}
+              className={`${isSelected ? config.bgClassName : ''} ${config.className} cursor-pointer`}
+            >
+              <div className="flex items-center gap-2">
+                {getGoalStatusIcon(status)}
+                <span>{getGoalStatusLabel(status)}</span>
+              </div>
+            </DropdownMenuItem>
+          )
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   )

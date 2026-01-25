@@ -13,6 +13,7 @@ import {
   getProjectStatusIcon,
   getProjectStatusLabel,
   getAllProjectStatuses,
+  PROJECT_STATUS_CONFIG,
 } from '@/constants/project-status'
 import { getStatusUpdateError } from '@/lib/status-error-handler'
 import type { Project, ProjectStatus } from '@/types/project'
@@ -54,31 +55,36 @@ export const ProjectStatusDropdown = memo(function ProjectStatusDropdown({
   }
 
   const currentStatus = project.status || 'pending'
+  const statusConfig = PROJECT_STATUS_CONFIG[currentStatus as keyof typeof PROJECT_STATUS_CONFIG] || PROJECT_STATUS_CONFIG.pending
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-100 transition-colors"
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${statusConfig.bgClassName} ${statusConfig.className} hover:opacity-80 border border-current/20`}
           disabled={isUpdating}
         >
           {getProjectStatusIcon(currentStatus)}
-          <span className="text-sm">{getProjectStatusLabel(currentStatus)}</span>
+          <span>{getProjectStatusLabel(currentStatus)}</span>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        {getAllProjectStatuses().map((status) => (
-          <DropdownMenuItem
-            key={status}
-            onClick={() => handleStatusChange(status)}
-            className={currentStatus === status ? 'bg-gray-100' : ''}
-          >
-            <div className="flex items-center gap-2">
-              {getProjectStatusIcon(status)}
-              <span>{getProjectStatusLabel(status)}</span>
-            </div>
-          </DropdownMenuItem>
-        ))}
+      <DropdownMenuContent align="start" className="min-w-[160px]">
+        {getAllProjectStatuses().map((status) => {
+          const config = PROJECT_STATUS_CONFIG[status]
+          const isSelected = currentStatus === status
+          return (
+            <DropdownMenuItem
+              key={status}
+              onClick={() => handleStatusChange(status)}
+              className={`${isSelected ? config.bgClassName : ''} ${config.className} cursor-pointer`}
+            >
+              <div className="flex items-center gap-2">
+                {getProjectStatusIcon(status)}
+                <span>{getProjectStatusLabel(status)}</span>
+              </div>
+            </DropdownMenuItem>
+          )
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   )

@@ -50,28 +50,32 @@ export const GoalCard = memo(function GoalCard({
           {goal.description || 'ゴールの説明がありません'}
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
+      <CardContent className="pt-4">
+        <div className="space-y-4">
           <div className="flex justify-between items-center">
-            <div className="text-sm text-gray-600">見積時間: {goal.estimate_hours}h</div>
-            <div className="text-xs text-gray-500">
+            <div className="text-sm text-muted-foreground flex items-center gap-2">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-info/10 text-info font-medium">
+                見積: {goal.estimate_hours}h
+              </span>
+            </div>
+            <div className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded">
               {new Date(goal.created_at).toLocaleDateString('ja-JP')}
             </div>
           </div>
 
           <div>
-            <div className="text-xs text-gray-500 mb-1">依存関係:</div>
+            <div className="text-xs text-muted-foreground mb-2 font-medium">依存関係:</div>
             <GoalDependencies goalId={goal.id} allGoals={allGoals} />
           </div>
 
-          <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+          <div className="flex gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
             <GoalEditDialog goal={goal}>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" className="flex-1">
                 編集
               </Button>
             </GoalEditDialog>
             <GoalDeleteDialog goal={goal}>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" className="flex-1 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50">
                 削除
               </Button>
             </GoalDeleteDialog>
