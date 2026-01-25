@@ -37,7 +37,7 @@ export default function ProjectTimelinePage() {
   })
 
   const [useNewVisualizer, setUseNewVisualizer] = useState(true)
-  const [weeklyWorkHours, setWeeklyWorkHours] = useState(40)
+  const [weeklyWorkHours, setWeeklyWorkHours] = useState(20)
 
   const { data: timelineData, isLoading: timelineLoading, error: timelineError, refetch } = useProjectTimeline(projectId, filters, weeklyWorkHours)
 

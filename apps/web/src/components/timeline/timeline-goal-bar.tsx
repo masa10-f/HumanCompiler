@@ -106,7 +106,7 @@ export function TimelineGoalBar({
         </filter>
       </defs>
 
-      {/* Goal Label with better typography */}
+      {/* Goal Label - Clean simple style */}
       <text
         x={dimensions.padding.left - 16}
         y={y + dimensions.row_height / 2}
@@ -116,8 +116,7 @@ export function TimelineGoalBar({
         style={{
           fontSize: '13px',
           fontWeight: 500,
-          fill: '#374151',
-          letterSpacing: '-0.01em',
+          fill: '#475569',
         }}
       >
         {goal.title.length > 20 ? `${goal.title.slice(0, 18)}...` : goal.title}
@@ -303,23 +302,14 @@ export function TimelineGoalBar({
         </g>
       )}
 
-      {/* Status Indicator - Modern dot with ring */}
-      <g className="pointer-events-none">
-        <circle
-          cx={goal.x0 - 12}
-          cy={barY + dimensions.goal_bar_height / 2}
-          r="6"
-          fill={styles.bg}
-          stroke={styles.gradient[0]}
-          strokeWidth="2"
-        />
-        <circle
-          cx={goal.x0 - 12}
-          cy={barY + dimensions.goal_bar_height / 2}
-          r="3"
-          fill={styles.gradient[0]}
-        />
-      </g>
+      {/* Status Indicator - Simple dot */}
+      <circle
+        cx={goal.x0 - 8}
+        cy={barY + dimensions.goal_bar_height / 2}
+        r="4"
+        fill={styles.gradient[0]}
+        className="pointer-events-none"
+      />
 
       {/* Estimate Hours Label - Modern badge style */}
       <g className="pointer-events-none">

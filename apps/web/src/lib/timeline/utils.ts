@@ -335,7 +335,7 @@ export function calculateDependencyBasedStartTimes(
 /**
  * Convert hours offset to Date object based on weekly work hours
  */
-export function hoursOffsetToDate(baseDate: Date, hoursOffset: number, weeklyWorkHours: number = 40): Date {
+export function hoursOffsetToDate(baseDate: Date, hoursOffset: number, weeklyWorkHours: number = 20): Date {
   const result = new Date(baseDate)
   // Calculate duration in weeks based on weekly work hours
   const weeksOffset = hoursOffset / weeklyWorkHours
