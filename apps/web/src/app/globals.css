@@ -4,48 +4,120 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* 背景とテキスト */
+    --background: 210 20% 98%;
+    --foreground: 222.2 47% 11.2%;
+
+    /* カード - 微妙な影と背景で識別しやすく */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 222.2 47% 11.2%;
+
+    /* ポップオーバー */
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 222.2 47% 11.2%;
+
+    /* プライマリ - より鮮やかなブルー */
     --primary: 221.2 83.2% 53.3%;
     --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222.2 84% 4.9%;
+
+    /* セカンダリ - 識別しやすいグレーブルー */
+    --secondary: 214.3 31.8% 91.4%;
+    --secondary-foreground: 222.2 47% 11.2%;
+
+    /* ミュート */
     --muted: 210 40% 96%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222.2 84% 4.9%;
+    --muted-foreground: 215.4 16.3% 42%;
+
+    /* アクセント - プライマリと区別できる紫系 */
+    --accent: 262 83.3% 57.8%;
+    --accent-foreground: 210 40% 98%;
+
+    /* 警告・エラー */
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
+
+    /* 成功 - グリーン */
+    --success: 142.1 76.2% 36.3%;
+    --success-foreground: 210 40% 98%;
+
+    /* 警告 - アンバー/オレンジ */
+    --warning: 38 92% 50%;
+    --warning-foreground: 222.2 47% 11.2%;
+
+    /* 情報 - ライトブルー */
+    --info: 199 89% 48%;
+    --info-foreground: 210 40% 98%;
+
+    /* ボーダー - より明確に */
+    --border: 214.3 31.8% 85%;
+    --input: 214.3 31.8% 85%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
+
+    /* サイドバー */
+    --sidebar: 220 14% 96%;
+    --sidebar-foreground: 222.2 47% 11.2%;
+    --sidebar-border: 214.3 31.8% 88%;
+    --sidebar-accent: 221.2 83.2% 53.3%;
+    --sidebar-accent-foreground: 210 40% 98%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    /* 背景とテキスト */
+    --background: 224 71% 4%;
+    --foreground: 213 31% 91%;
+
+    /* カード - ダークモードで微妙に明るい背景 */
+    --card: 224 71% 7%;
+    --card-foreground: 213 31% 91%;
+
+    /* ポップオーバー */
+    --popover: 224 71% 7%;
+    --popover-foreground: 213 31% 91%;
+
+    /* プライマリ - 鮮やかなブルー */
     --primary: 217.2 91.2% 59.8%;
     --primary-foreground: 222.2 84% 4.9%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
+
+    /* セカンダリ */
+    --secondary: 222.2 47% 15%;
+    --secondary-foreground: 213 31% 91%;
+
+    /* ミュート */
+    --muted: 223 47% 15%;
+    --muted-foreground: 215.4 16.3% 56.9%;
+
+    /* アクセント - 紫系 */
+    --accent: 262 83.3% 67.8%;
+    --accent-foreground: 222.2 84% 4.9%;
+
+    /* 警告・エラー */
+    --destructive: 0 62.8% 50%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 94.1%;
+
+    /* 成功 */
+    --success: 142.1 70.6% 45.3%;
+    --success-foreground: 222.2 84% 4.9%;
+
+    /* 警告 */
+    --warning: 38 92% 50%;
+    --warning-foreground: 222.2 84% 4.9%;
+
+    /* 情報 */
+    --info: 199 89% 58%;
+    --info-foreground: 222.2 84% 4.9%;
+
+    /* ボーダー - より明確に */
+    --border: 216 34% 20%;
+    --input: 216 34% 20%;
+    --ring: 224.3 76.3% 70%;
+
+    /* サイドバー */
+    --sidebar: 224 71% 6%;
+    --sidebar-foreground: 213 31% 91%;
+    --sidebar-border: 216 34% 17%;
+    --sidebar-accent: 217.2 91.2% 59.8%;
+    --sidebar-accent-foreground: 222.2 84% 4.9%;
   }
 }
 

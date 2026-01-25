@@ -9,26 +9,30 @@ export const GOAL_STATUS_CONFIG = {
   pending: {
     icon: Clock,
     label: '未着手',
-    color: 'gray',
-    className: 'text-gray-500',
+    color: 'muted',
+    className: 'text-muted-foreground',
+    bgClassName: 'bg-muted/50',
   },
   in_progress: {
     icon: Play,
     label: '進行中',
-    color: 'blue',
-    className: 'text-blue-500',
+    color: 'primary',
+    className: 'text-primary',
+    bgClassName: 'bg-primary/10',
   },
   completed: {
     icon: CheckCircle,
     label: '完了',
-    color: 'green',
-    className: 'text-green-500',
+    color: 'success',
+    className: 'text-success',
+    bgClassName: 'bg-success/10',
   },
   cancelled: {
     icon: XCircle,
     label: 'キャンセル',
-    color: 'red',
-    className: 'text-red-500',
+    color: 'destructive',
+    className: 'text-destructive',
+    bgClassName: 'bg-destructive/10',
   },
 } as const;
 
