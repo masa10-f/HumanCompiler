@@ -106,21 +106,34 @@ export function TimelineGoalBar({
         </filter>
       </defs>
 
-      {/* Goal Label - Clean simple style */}
-      <text
-        x={dimensions.padding.left - 16}
-        y={y + dimensions.row_height / 2}
-        textAnchor="end"
-        dominantBaseline="middle"
-        className="select-none"
-        style={{
-          fontSize: '13px',
-          fontWeight: 500,
-          fill: '#475569',
-        }}
-      >
-        {goal.title.length > 20 ? `${goal.title.slice(0, 18)}...` : goal.title}
-      </text>
+      {/* Goal Label with background highlight */}
+      <g className="goal-label">
+        <rect
+          x={10}
+          y={y + dimensions.row_height / 2 - 12}
+          width={dimensions.padding.left - 30}
+          height="24"
+          fill="#ffffff"
+          stroke="#e2e8f0"
+          strokeWidth="1"
+          rx="6"
+          ry="6"
+        />
+        <text
+          x={dimensions.padding.left - 20}
+          y={y + dimensions.row_height / 2}
+          textAnchor="end"
+          dominantBaseline="middle"
+          className="select-none"
+          style={{
+            fontSize: '12px',
+            fontWeight: 600,
+            fill: '#334155',
+          }}
+        >
+          {goal.title.length > 18 ? `${goal.title.slice(0, 16)}...` : goal.title}
+        </text>
+      </g>
 
       {/* Subtle row background on hover/select */}
       {isSelected && (
