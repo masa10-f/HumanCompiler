@@ -35,6 +35,7 @@ from humancompiler_api.routers import (
     progress,
     projects,
     reports,
+    reschedule,
     scheduler,
     simple_backup_api,
     task_dependencies,
@@ -285,6 +286,8 @@ app.include_router(monitoring.router)
 app.include_router(simple_backup_api.router)
 app.include_router(data_export.router, tags=["data-export"])
 app.include_router(work_sessions.router, prefix="/api")
+# Issue #227: Reschedule router
+app.include_router(reschedule.router, prefix="/api")
 # Issue #228: Notification/Escalation routers
 app.include_router(notifications.router, prefix="/api")
 app.include_router(websocket.router)

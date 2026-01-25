@@ -2,6 +2,7 @@
 
 import { useAuth } from '@/hooks/use-auth';
 import { useRunner } from '@/hooks/use-runner';
+import { useReschedule } from '@/hooks/use-reschedule';
 import { AppHeader } from '@/components/layout/app-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SessionDisplay } from './session-display';
@@ -13,10 +14,12 @@ import { CheckoutDialog } from './checkout-dialog';
 import { PauseDialog } from './pause-dialog';
 import { ResumeDialog } from './resume-dialog';
 import { NotificationBanner } from './notification-banner';
+import { RescheduleSuggestionCard } from './reschedule-suggestion-card';
 import { useState } from 'react';
 import { Play, AlertCircle, Pause } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { formatDuration } from '@/types/runner';
+import type { RescheduleSuggestion } from '@/types/reschedule';
 
 export function RunnerPage() {
   const { user, loading: authLoading } = useAuth();
@@ -51,6 +54,15 @@ export function RunnerPage() {
   const [pauseDialogOpen, setPauseDialogOpen] = useState(false);
   const [resumeDialogOpen, setResumeDialogOpen] = useState(false);
   const [selectedNextTaskId, setSelectedNextTaskId] = useState<string | null>(null);
+
+  // Issue #227: Reschedule suggestion state
+  const [lastRescheduleSuggestion, setLastRescheduleSuggestion] = useState<RescheduleSuggestion | null>(null);
+  const {
+    acceptSuggestion,
+    rejectSuggestion,
+    isAccepting,
+    isRejecting,
+  } = useReschedule();
 
   // Calculate paused duration for resume dialog
   const pausedDuration = session?.paused_at
@@ -202,29 +214,48 @@ export function RunnerPage() {
 
         {/* Idle state - no active session */}
         {!session && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">タスクを開始</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {hasSchedule ? (
-                <>
+          <>
+            {/* Issue #227: Reschedule suggestion after checkout */}
+            {lastRescheduleSuggestion && lastRescheduleSuggestion.status === 'pending' && (
+              <RescheduleSuggestionCard
+                suggestion={lastRescheduleSuggestion}
+                onAccept={async (suggestionId) => {
+                  await acceptSuggestion(suggestionId);
+                  setLastRescheduleSuggestion(null);
+                }}
+                onReject={async (suggestionId) => {
+                  await rejectSuggestion(suggestionId);
+                  setLastRescheduleSuggestion(null);
+                }}
+                isAccepting={isAccepting}
+                isRejecting={isRejecting}
+              />
+            )}
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">タスクを開始</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {hasSchedule ? (
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      本日のスケジュールからタスクを選択して作業を開始します。
+                    </p>
+                    <TaskSwitcher
+                      candidates={nextCandidates}
+                      onSelect={() => setStartDialogOpen(true)}
+                      isSelectionMode
+                    />
+                  </>
+                ) : (
                   <p className="text-sm text-muted-foreground">
-                    本日のスケジュールからタスクを選択して作業を開始します。
+                    スケジュールがないため、タスクを開始できません。
                   </p>
-                  <TaskSwitcher
-                    candidates={nextCandidates}
-                    onSelect={() => setStartDialogOpen(true)}
-                    isSelectionMode
-                  />
-                </>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  スケジュールがないため、タスクを開始できません。
-                </p>
-              )}
-            </CardContent>
-          </Card>
+                )}
+              </CardContent>
+            </Card>
+          </>
         )}
 
         {/* Dialogs */}
@@ -255,9 +286,13 @@ export function RunnerPage() {
           selectedNextTaskId={selectedNextTaskId}
           onCheckout={async (decision, options) => {
             try {
-              await checkout(decision, options);
+              const rescheduleSuggestion = await checkout(decision, options);
               setCheckoutDialogOpen(false);
               setSelectedNextTaskId(null);
+              // Issue #227: Save reschedule suggestion for display
+              if (rescheduleSuggestion) {
+                setLastRescheduleSuggestion(rescheduleSuggestion);
+              }
             } catch (error) {
               console.error('Checkout failed:', error);
             }

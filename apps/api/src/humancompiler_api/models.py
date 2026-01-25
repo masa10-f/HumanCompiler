@@ -122,6 +122,22 @@ class DeviceType(str, Enum):
     TABLET = "tablet"
 
 
+class RescheduleSuggestionStatus(str, Enum):
+    """Status of a reschedule suggestion"""
+
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+
+
+class RescheduleTriggerType(str, Enum):
+    """Trigger type for reschedule suggestion"""
+
+    CHECKOUT = "checkout"
+    OVERDUE_RECOVERY = "overdue_recovery"
+
+
 # Model-specific allowed sort fields for validation
 ALLOWED_SORT_FIELDS = {
     "Project": {"status", "title", "created_at", "updated_at"},
@@ -612,6 +628,70 @@ class UserSettings(UserSettingsBase, table=True):  # type: ignore[call-arg]
 
     # Relationships
     user: User = Relationship(back_populates="settings")
+
+
+# Reschedule Models (Issue #227)
+class RescheduleSuggestionBase(SQLModel):
+    """Base reschedule suggestion model"""
+
+    trigger_type: RescheduleTriggerType = SQLField(
+        sa_column=Column(
+            SQLEnum(
+                RescheduleTriggerType, values_callable=lambda x: [e.value for e in x]
+            )
+        )
+    )
+    trigger_decision: str | None = SQLField(default=None, max_length=50)
+    original_schedule_json: dict[str, Any] = SQLField(
+        sa_column=Column(JSON), default_factory=dict
+    )
+    proposed_schedule_json: dict[str, Any] = SQLField(
+        sa_column=Column(JSON), default_factory=dict
+    )
+    diff_json: dict[str, Any] = SQLField(sa_column=Column(JSON), default_factory=dict)
+    status: RescheduleSuggestionStatus = SQLField(
+        default=RescheduleSuggestionStatus.PENDING,
+        sa_column=Column(
+            SQLEnum(
+                RescheduleSuggestionStatus,
+                values_callable=lambda x: [e.value for e in x],
+            )
+        ),
+    )
+
+
+class RescheduleSuggestion(RescheduleSuggestionBase, table=True):  # type: ignore[call-arg]
+    """Reschedule suggestion database model for checkout-based rescheduling"""
+
+    __tablename__ = "reschedule_suggestions"
+
+    id: UUID | None = SQLField(default=None, primary_key=True)
+    user_id: UUID = SQLField(foreign_key="users.id", index=True)
+    work_session_id: UUID = SQLField(foreign_key="work_sessions.id", index=True)
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    decided_at: datetime | None = SQLField(default=None)
+    expires_at: datetime | None = SQLField(default=None)
+
+
+class RescheduleDecisionBase(SQLModel):
+    """Base reschedule decision model"""
+
+    accepted: bool
+    reason: str | None = SQLField(default=None, max_length=1000)
+    context_json: dict[str, Any] = SQLField(
+        sa_column=Column(JSON), default_factory=dict
+    )
+
+
+class RescheduleDecision(RescheduleDecisionBase, table=True):  # type: ignore[call-arg]
+    """Reschedule decision database model for learning logs"""
+
+    __tablename__ = "reschedule_decisions"
+
+    id: UUID | None = SQLField(default=None, primary_key=True)
+    suggestion_id: UUID = SQLField(foreign_key="reschedule_suggestions.id", index=True)
+    user_id: UUID = SQLField(foreign_key="users.id", index=True)
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
 
 # API Request/Response Models (Pydantic)
@@ -1299,3 +1379,89 @@ class NotificationMessage(BaseModel):
         if value.tzinfo is None:
             value = value.replace(tzinfo=UTC)
         return value.isoformat()
+
+
+# Reschedule API Models (Issue #227)
+class ScheduleDiffItem(BaseModel):
+    """Individual diff item in a schedule change"""
+
+    task_id: str
+    task_title: str
+    change_type: str  # "pushed", "added", "removed", "reordered"
+    original_slot_index: int | None = None
+    new_slot_index: int | None = None
+    reason: str
+
+
+class ScheduleDiff(BaseModel):
+    """Schedule diff between original and proposed schedules"""
+
+    pushed_tasks: list[ScheduleDiffItem] = Field(default_factory=list)
+    added_tasks: list[ScheduleDiffItem] = Field(default_factory=list)
+    removed_tasks: list[ScheduleDiffItem] = Field(default_factory=list)
+    reordered_tasks: list[ScheduleDiffItem] = Field(default_factory=list)
+    total_changes: int = 0
+    has_significant_changes: bool = False
+
+
+class RescheduleSuggestionResponse(BaseModel):
+    """Response model for reschedule suggestion"""
+
+    id: UUID
+    user_id: UUID
+    work_session_id: UUID
+    trigger_type: RescheduleTriggerType
+    trigger_decision: str | None
+    original_schedule_json: dict[str, Any]
+    proposed_schedule_json: dict[str, Any]
+    diff_json: dict[str, Any]
+    diff: ScheduleDiff | None = None
+    status: RescheduleSuggestionStatus
+    created_at: datetime
+    decided_at: datetime | None
+    expires_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("created_at", "decided_at", "expires_at")
+    def serialize_datetimes(self, value: datetime | None) -> str | None:
+        """Ensure datetime is serialized with UTC timezone info"""
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
+
+class RescheduleDecisionRequest(BaseModel):
+    """Request model for accepting/rejecting a reschedule suggestion"""
+
+    reason: str | None = Field(None, max_length=1000)
+
+
+class RescheduleDecisionResponse(BaseModel):
+    """Response model for reschedule decision"""
+
+    id: UUID
+    suggestion_id: UUID
+    user_id: UUID
+    accepted: bool
+    reason: str | None
+    context_json: dict[str, Any]
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        """Ensure datetime is serialized with UTC timezone info"""
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
+
+class WorkSessionWithRescheduleResponse(BaseModel):
+    """Work session response with optional reschedule suggestion"""
+
+    session: "WorkSessionWithLogResponse"
+    reschedule_suggestion: RescheduleSuggestionResponse | None = None

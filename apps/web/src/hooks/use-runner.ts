@@ -22,6 +22,7 @@ import { useNotifications } from './use-notifications';
 import { schedulingApi, tasksApi, goalsApi, projectsApi, workSessionsApi } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 import type { SessionDecision } from '@/types/work-session';
+import type { RescheduleSuggestion } from '@/types/reschedule';
 import type {
   UseRunnerReturn,
   TaskCandidate,
@@ -227,8 +228,8 @@ export function useRunner(): UseRunnerReturn {
   const checkout = async (
     decision: SessionDecision,
     options?: CheckoutOptions
-  ): Promise<void> => {
-    await checkoutMutation.mutateAsync({
+  ): Promise<RescheduleSuggestion | null> => {
+    const result = await checkoutMutation.mutateAsync({
       decision,
       checkout_type: options?.checkout_type,
       continue_reason: options?.continue_reason,
@@ -241,6 +242,9 @@ export function useRunner(): UseRunnerReturn {
 
     // Invalidate related queries
     queryClient.invalidateQueries({ queryKey: ['runner'] });
+
+    // Return reschedule suggestion if present (Issue #227)
+    return result.reschedule_suggestion ?? null;
   };
 
   const pauseSession = async (): Promise<void> => {

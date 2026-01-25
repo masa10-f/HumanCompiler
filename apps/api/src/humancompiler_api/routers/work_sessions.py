@@ -8,6 +8,7 @@ Provides endpoints for managing work sessions:
 - Get session history
 """
 
+import logging
 from collections.abc import Generator
 from typing import Annotated
 
@@ -19,6 +20,8 @@ from humancompiler_api.database import db
 from humancompiler_api.models import (
     ErrorResponse,
     LogResponse,
+    RescheduleSuggestionResponse,
+    ScheduleDiff,
     SnoozeRequest,
     SnoozeResponse,
     WorkSessionStartRequest,
@@ -28,9 +31,13 @@ from humancompiler_api.models import (
     WorkSessionResumeRequest,
     WorkSessionResponse,
     WorkSessionWithLogResponse,
+    WorkSessionWithRescheduleResponse,
 )
 from humancompiler_api.services import work_session_service
 from humancompiler_api.notification_service import NotificationService
+from humancompiler_api.reschedule_service import reschedule_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/work-sessions", tags=["work-sessions"])
 
@@ -68,19 +75,19 @@ async def start_session(
 
 @router.post(
     "/checkout",
-    response_model=WorkSessionWithLogResponse,
+    response_model=WorkSessionWithRescheduleResponse,
     responses={
         404: {"model": ErrorResponse, "description": "No active session found"},
     },
     summary="Checkout current session",
-    description="End the current session with a decision (continue/switch/break/complete), KPT reflection, and optionally update remaining estimate. A log entry is automatically created.",
+    description="End the current session with a decision (continue/switch/break/complete), KPT reflection, and optionally update remaining estimate. A log entry is automatically created. Returns reschedule suggestion if schedule changes are detected.",
 )
 async def checkout_session(
     checkout_data: WorkSessionCheckoutRequest,
     session: Annotated[Session, Depends(get_session)],
     current_user: Annotated[AuthUser, Depends(get_current_user)],
-) -> WorkSessionWithLogResponse:
-    """Checkout current session and create log"""
+) -> WorkSessionWithRescheduleResponse:
+    """Checkout current session, create log, and generate reschedule suggestion if needed"""
     work_session, log = work_session_service.checkout_session(
         session, current_user.user_id, checkout_data
     )
@@ -92,10 +99,43 @@ async def checkout_session(
             (work_session.ended_at - work_session.started_at).total_seconds() / 60
         )
 
-    response = WorkSessionWithLogResponse.model_validate(work_session)
-    response.generated_log = LogResponse.model_validate(log)
-    response.actual_minutes = actual_minutes
-    return response
+    session_response = WorkSessionWithLogResponse.model_validate(work_session)
+    session_response.generated_log = LogResponse.model_validate(log)
+    session_response.actual_minutes = actual_minutes
+
+    # Generate reschedule suggestion if needed (Issue #227)
+    reschedule_suggestion = None
+    try:
+        suggestion = reschedule_service.generate_reschedule_suggestion(
+            session,
+            work_session,
+            checkout_data.remaining_estimate_hours,
+            checkout_data.decision,
+        )
+        if suggestion:
+            reschedule_suggestion = RescheduleSuggestionResponse.model_validate(
+                suggestion
+            )
+            # Parse diff_json into ScheduleDiff
+            if suggestion.diff_json:
+                reschedule_suggestion.diff = ScheduleDiff(
+                    pushed_tasks=suggestion.diff_json.get("pushed_tasks", []),
+                    added_tasks=suggestion.diff_json.get("added_tasks", []),
+                    removed_tasks=suggestion.diff_json.get("removed_tasks", []),
+                    reordered_tasks=suggestion.diff_json.get("reordered_tasks", []),
+                    total_changes=suggestion.diff_json.get("total_changes", 0),
+                    has_significant_changes=suggestion.diff_json.get(
+                        "has_significant_changes", False
+                    ),
+                )
+    except Exception:
+        # Don't fail checkout if reschedule suggestion fails
+        logger.exception("Failed to generate reschedule suggestion")
+
+    return WorkSessionWithRescheduleResponse(
+        session=session_response,
+        reschedule_suggestion=reschedule_suggestion,
+    )
 
 
 @router.post(

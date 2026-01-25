@@ -91,6 +91,14 @@ export const queryKeys = {
     detail: (id: string) => [...queryKeys.workSessions.all, 'detail', id] as const,
     unresponsive: () => [...queryKeys.workSessions.all, 'unresponsive'] as const,
   },
+
+  // Reschedule keys (Issue #227)
+  reschedule: {
+    all: ['reschedule'] as const,
+    suggestions: () => [...queryKeys.reschedule.all, 'suggestions'] as const,
+    suggestion: (id: string) => [...queryKeys.reschedule.all, 'suggestion', id] as const,
+    decisions: (limit?: number) => [...queryKeys.reschedule.all, 'decisions', { limit }] as const,
+  },
 } as const;
 
 // Export type for type safety
