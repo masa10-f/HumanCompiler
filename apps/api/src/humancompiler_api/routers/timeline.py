@@ -67,7 +67,7 @@ async def get_project_timeline(
     end_date: datetime = Query(None, description="Timeline end date"),
     time_unit: str = Query("day", description="Time unit: day, week, month"),
     weekly_work_hours: float = Query(
-        40.0, description="Weekly work hours for timeline calculation"
+        20.0, description="Weekly work hours for timeline calculation"
     ),
     sort_by: SortBy = Query(SortBy.STATUS, description="Sort field"),
     sort_order: SortOrder = Query(SortOrder.ASC, description="Sort order"),
