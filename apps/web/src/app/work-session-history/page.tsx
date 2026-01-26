@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,7 +28,6 @@ import {
   ChevronUp,
   Pencil,
   Play,
-  ExternalLink,
   Timer,
 } from 'lucide-react';
 import { AppHeader } from '@/components/layout/app-header';
@@ -135,11 +133,11 @@ export default function WorkSessionHistoryPage() {
     return sessions.filter((session) => {
       // Date range filter
       if (startDate) {
-        const sessionDate = new Date(session.started_at).toISOString().split('T')[0];
+        const sessionDate = new Date(session.started_at).toISOString().split('T')[0] ?? '';
         if (sessionDate < startDate) return false;
       }
       if (endDate) {
-        const sessionDate = new Date(session.started_at).toISOString().split('T')[0];
+        const sessionDate = new Date(session.started_at).toISOString().split('T')[0] ?? '';
         if (sessionDate > endDate) return false;
       }
 
@@ -392,15 +390,6 @@ export default function WorkSessionHistoryPage() {
                           <Badge variant={getDecisionBadgeVariant(session.decision)}>
                             {SESSION_DECISION_LABELS[session.decision]}
                           </Badge>
-                        )}
-                        {session.task && (
-                          <Link
-                            href={`/projects/${session.task.project_id}/goals/${session.task.goal_id}`}
-                            className="text-blue-500 hover:text-blue-700 transition-colors"
-                            title="タスク詳細を表示"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </Link>
                         )}
                       </div>
                     </div>
