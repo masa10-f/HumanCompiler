@@ -834,6 +834,16 @@ class TaskResponse(TaskBase):
         return float(value)
 
 
+class TaskSummary(BaseModel):
+    """Minimal task info for embedding in other responses (e.g., work session history)"""
+
+    id: UUID
+    title: str
+    status: TaskStatus
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ScheduleCreate(ScheduleBase):
     """Schedule creation request"""
 
@@ -1019,6 +1029,8 @@ class WorkSessionResponse(WorkSessionBase):
     marked_unresponsive_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+    # Optional task info for history display (Issue #236)
+    task: TaskSummary | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
