@@ -224,6 +224,8 @@ export interface ScheduleRequest {
   use_weekly_schedule?: boolean;
   /** その他の設定 */
   preferences?: Record<string, unknown>;
+  /** ユーザーが手動で配置した固定割り当て */
+  fixed_assignments?: FixedAssignment[];
 }
 
 /**
@@ -251,6 +253,8 @@ export interface TaskAssignment {
   slot_end: string;
   /** スロット種別 */
   slot_kind: string;
+  /** ユーザーによる固定割り当てかどうか */
+  is_fixed?: boolean;
 }
 
 /**
@@ -274,6 +278,19 @@ export interface TaskInfo {
   goal_id?: string;
   /** 所属プロジェクトID */
   project_id?: string;
+}
+
+/**
+ * 固定割り当て
+ * @description ユーザーが手動でスロットに割り当てたタスク
+ */
+export interface FixedAssignment {
+  /** タスクID */
+  task_id: string;
+  /** 割り当てスロットインデックス */
+  slot_index: number;
+  /** 割り当て時間（時間単位、省略時はタスクの残り時間を使用） */
+  duration_hours?: number;
 }
 
 /**

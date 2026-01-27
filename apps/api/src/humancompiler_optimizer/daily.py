@@ -57,11 +57,21 @@ class TimeSlot:
 
 
 @dataclass
+class FixedAssignment:
+    """User-defined fixed task assignment."""
+
+    task_id: str
+    slot_index: int
+    duration_hours: float | None = None  # None means use task's remaining hours
+
+
+@dataclass
 class Assignment:
     task_id: str
     slot_index: int
     start_time: time
     duration_hours: float
+    is_fixed: bool = False  # Whether this was a user-defined fixed assignment
 
 
 @dataclass
@@ -94,6 +104,7 @@ def optimize_daily_schedule(
     task_dependencies: Mapping[str, Sequence[str]] | None = None,
     goal_dependencies: Mapping[str, Sequence[str]] | None = None,
     config: DailySolverConfig | None = None,
+    fixed_assignments: Sequence[FixedAssignment] | None = None,
 ) -> ScheduleResult:
     start_time = time_module.time()
     if config is None:
@@ -125,6 +136,38 @@ def optimize_daily_schedule(
         )
         slot_capacities.append(min(capacity, slot_duration))
 
+    # Build task ID to index mapping
+    task_id_to_index = {task.id: i for i, task in enumerate(tasks)}
+
+    # Process fixed assignments
+    fixed_assignments = fixed_assignments or []
+    fixed_task_slot_map: dict[int, int] = {}  # task_index -> slot_index
+    fixed_durations: dict[int, float] = {}  # task_index -> duration_minutes
+    reserved_capacity: dict[int, float] = {j: 0.0 for j in range(len(time_slots))}
+
+    for fa in fixed_assignments:
+        task_idx = task_id_to_index.get(fa.task_id)
+        if task_idx is None:
+            continue  # Skip if task not found
+        if fa.slot_index < 0 or fa.slot_index >= len(time_slots):
+            continue  # Skip invalid slot index
+
+        task = tasks[task_idx]
+        # Determine duration: use specified duration or task's remaining hours
+        if fa.duration_hours is not None:
+            duration_minutes = fa.duration_hours * 60
+        else:
+            duration_minutes = task.remaining_hours * 60
+
+        # Clamp duration to slot capacity
+        available_capacity = slot_capacities[fa.slot_index] - reserved_capacity[fa.slot_index]
+        duration_minutes = min(duration_minutes, available_capacity)
+
+        if duration_minutes > 0:
+            fixed_task_slot_map[task_idx] = fa.slot_index
+            fixed_durations[task_idx] = duration_minutes
+            reserved_capacity[fa.slot_index] += duration_minutes
+
     # Convert task remaining hours to minutes for optimization
     task_durations = [math.ceil(task.remaining_hours * 60) for task in tasks]
 
@@ -146,6 +189,18 @@ def optimize_daily_schedule(
             if max_duration >= 1:
                 model.Add(assigned_durations[i, j] >= 1).OnlyEnforceIf(x[i, j])
             model.Add(assigned_durations[i, j] == 0).OnlyEnforceIf(x[i, j].Not())
+
+    # Constraint 0: Fixed assignments - these tasks MUST be assigned to their specified slots
+    for task_idx, slot_idx in fixed_task_slot_map.items():
+        # Force assignment to the specified slot
+        model.Add(x[task_idx, slot_idx] == 1)
+        # Prevent assignment to other slots
+        for other_slot in range(len(time_slots)):
+            if other_slot != slot_idx:
+                model.Add(x[task_idx, other_slot] == 0)
+        # Set the fixed duration
+        fixed_duration = int(fixed_durations[task_idx])
+        model.Add(assigned_durations[task_idx, slot_idx] == fixed_duration)
 
     # Constraint 1: Each task is assigned to at most one slot
     for i, _task in enumerate(tasks):
@@ -272,12 +327,15 @@ def optimize_daily_schedule(
             for j, slot in enumerate(time_slots):
                 if solver.Value(x[i, j]) == 1:
                     duration_minutes = solver.Value(assigned_durations[i, j])
+                    # Check if this was a fixed assignment
+                    is_fixed = i in fixed_task_slot_map and fixed_task_slot_map[i] == j
                     assignments.append(
                         Assignment(
                             task_id=task.id,
                             slot_index=j,
                             start_time=slot.start,
                             duration_hours=duration_minutes / 60.0,
+                            is_fixed=is_fixed,
                         )
                     )
                     total_scheduled_minutes += duration_minutes
