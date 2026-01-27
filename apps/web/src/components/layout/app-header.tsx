@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 
 // Icons
-import { TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play } from 'lucide-react'
+import { TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play, Timer } from 'lucide-react'
 
 // Hooks
 import { useAuth } from '@/hooks/use-auth'
@@ -21,7 +21,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { logger } from '@/lib/logger'
 
 interface AppHeaderProps {
-  currentPage?: 'dashboard' | 'projects' | 'ai-planning' | 'scheduling' | 'schedule-history' | 'timeline' | 'settings' | 'runner'
+  currentPage?: 'dashboard' | 'projects' | 'ai-planning' | 'scheduling' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner'
 }
 
 const NAVIGATION_ITEMS = [
@@ -31,6 +31,7 @@ const NAVIGATION_ITEMS = [
   { id: 'ai-planning', label: '週次計画', path: '/ai-planning', icon: Calendar },
   { id: 'scheduling', label: '日次計画', path: '/scheduling', icon: Clock },
   { id: 'schedule-history', label: 'スケジュール履歴', path: '/schedule-history', icon: History },
+  { id: 'work-session-history', label: 'セッション履歴', path: '/work-session-history', icon: Timer },
   { id: 'timeline', label: 'タイムライン', path: '/timeline', icon: TrendingUp },
   { id: 'settings', label: '設定', path: '/settings', icon: Settings },
 ] as const

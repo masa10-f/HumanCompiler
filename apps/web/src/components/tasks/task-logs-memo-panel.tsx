@@ -7,9 +7,15 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { ChevronDown, ChevronRight, Clock, MessageSquare, Edit, Save, X, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clock, MessageSquare, Edit, Save, X, Trash2, Timer, Pencil } from 'lucide-react';
 import { useLogsByTask } from '@/hooks/use-logs-query';
 import { useUpdateTask } from '@/hooks/use-tasks-query';
+import { useWorkSessionsByTask } from '@/hooks/use-work-sessions';
+import { SessionKptEditDialog } from '@/components/runner/session-kpt-edit-dialog';
+import { SESSION_DECISION_LABELS } from '@/types/work-session';
+import type { WorkSession } from '@/types/work-session';
+import { format } from 'date-fns';
+import { ja } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { sanitizeText } from '@/lib/security';
 import type { Task } from '@/types/task';
@@ -22,12 +28,30 @@ interface TaskLogsMemoPanelProps {
   task: Task;
 }
 
+/**
+ * Calculate actual work minutes from session timestamps.
+ */
+function calculateSessionWorkMinutes(session: WorkSession): number {
+  if (session.actual_minutes != null) {
+    return session.actual_minutes;
+  }
+  if (session.ended_at && session.started_at) {
+    const startMs = new Date(session.started_at).getTime();
+    const endMs = new Date(session.ended_at).getTime();
+    const pausedSeconds = session.total_paused_seconds || 0;
+    return Math.floor((endMs - startMs) / (1000 * 60)) - Math.floor(pausedSeconds / 60);
+  }
+  return 0;
+}
+
 export function TaskLogsMemoPanel({ task }: TaskLogsMemoPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isMemoEditing, setIsMemoEditing] = useState(false);
   const [memoText, setMemoText] = useState(task.memo || '');
+  const [editSession, setEditSession] = useState<WorkSession | null>(null);
 
   const { data: logs = [], isLoading: logsLoading, error: logsError } = useLogsByTask(task.id);
+  const { data: sessions = [], isLoading: sessionsLoading } = useWorkSessionsByTask(task.id);
   const updateTaskMutation = useUpdateTask();
   const { toast } = useToast();
 
@@ -35,6 +59,12 @@ export function TaskLogsMemoPanel({ task }: TaskLogsMemoPanelProps) {
   const totalLogTime = useMemo(() =>
     logs.reduce((sum, logEntry) => sum + (logEntry.actual_minutes || 0), 0),
     [logs]
+  );
+
+  // Total session time
+  const totalSessionTime = useMemo(() =>
+    sessions.reduce((sum, session) => sum + calculateSessionWorkMinutes(session), 0),
+    [sessions]
   );
 
   const handleSaveMemo = async () => {
@@ -89,6 +119,12 @@ export function TaskLogsMemoPanel({ task }: TaskLogsMemoPanelProps) {
               <Clock className="h-4 w-4 text-blue-600" />
               <span className="text-sm font-medium">
                 作業ログ ({logs.length}件, {(totalLogTime / 60).toFixed(1)}h)
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Timer className="h-4 w-4 text-purple-600" />
+              <span className="text-sm font-medium">
+                セッション ({sessions.length}件, {(totalSessionTime / 60).toFixed(1)}h)
               </span>
             </div>
             <div className="flex items-center gap-1">
@@ -163,6 +199,111 @@ export function TaskLogsMemoPanel({ task }: TaskLogsMemoPanelProps) {
                     />
                   ) : (
                     <div className="text-gray-400">メモはまだ設定されていません</div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Separator />
+
+          {/* Work Sessions Section */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Timer className="h-4 w-4" />
+                作業セッション履歴
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {sessionsLoading ? (
+                <div className="text-sm text-gray-500">セッションを読み込み中...</div>
+              ) : sessions.length === 0 ? (
+                <div className="text-sm text-gray-400">セッション履歴はまだありません</div>
+              ) : (
+                <div className="space-y-3">
+                  {sessions.map((session) => {
+                    const workMinutes = calculateSessionWorkMinutes(session);
+                    const hasKpt = session.kpt_keep || session.kpt_problem || session.kpt_try;
+                    return (
+                      <div
+                        key={session.id}
+                        className="p-3 bg-gray-50 rounded-md space-y-2"
+                      >
+                        {/* Session metadata */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                            <span>
+                              {format(new Date(session.started_at), 'MM/dd (E) HH:mm', { locale: ja })}
+                            </span>
+                            <Badge variant="secondary" className="text-xs">
+                              {workMinutes}分
+                            </Badge>
+                            {session.decision && (
+                              <Badge variant="outline" className="text-xs">
+                                {SESSION_DECISION_LABELS[session.decision]}
+                              </Badge>
+                            )}
+                            {!session.ended_at && (
+                              <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">
+                                作業中
+                              </Badge>
+                            )}
+                          </div>
+                          {session.ended_at && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditSession(session)}
+                              className="h-8 w-8 p-0 text-gray-500 hover:text-blue-600"
+                            >
+                              <Pencil className="h-4 w-4" />
+                              <span className="sr-only">KPT編集</span>
+                            </Button>
+                          )}
+                        </div>
+
+                        {/* KPT display */}
+                        {hasKpt ? (
+                          <div className="space-y-1.5 pl-1">
+                            {session.kpt_keep && (
+                              <div className="flex items-start gap-2">
+                                <Badge variant="outline" className="text-green-600 border-green-600 shrink-0 text-xs">
+                                  K
+                                </Badge>
+                                <p className="text-sm text-gray-700">{session.kpt_keep}</p>
+                              </div>
+                            )}
+                            {session.kpt_problem && (
+                              <div className="flex items-start gap-2">
+                                <Badge variant="outline" className="text-red-600 border-red-600 shrink-0 text-xs">
+                                  P
+                                </Badge>
+                                <p className="text-sm text-gray-700">{session.kpt_problem}</p>
+                              </div>
+                            )}
+                            {session.kpt_try && (
+                              <div className="flex items-start gap-2">
+                                <Badge variant="outline" className="text-blue-600 border-blue-600 shrink-0 text-xs">
+                                  T
+                                </Badge>
+                                <p className="text-sm text-gray-700">{session.kpt_try}</p>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground italic pl-1">KPT未記入</p>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {sessions.length > 0 && (
+                    <div className="pt-2 border-t">
+                      <div className="text-sm font-medium text-gray-900">
+                        合計セッション時間: {(totalSessionTime / 60).toFixed(1)}時間 ({totalSessionTime}分)
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
@@ -256,6 +397,13 @@ export function TaskLogsMemoPanel({ task }: TaskLogsMemoPanelProps) {
           </Card>
         </div>
       </CollapsibleContent>
+
+      {/* KPT Edit Dialog */}
+      <SessionKptEditDialog
+        session={editSession}
+        open={!!editSession}
+        onOpenChange={(open) => !open && setEditSession(null)}
+      />
     </Collapsible>
   );
 }

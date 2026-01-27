@@ -7,6 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy.orm import selectinload
 from sqlmodel import Session, delete, func, select
 
 from humancompiler_api.base_service import BaseService
@@ -1348,11 +1349,17 @@ class WorkSessionService(
         skip: int = 0,
         limit: int = 20,
     ) -> list[WorkSession]:
-        """Get all sessions for a user, ordered by started_at descending"""
+        """Get all sessions for a user, ordered by started_at descending.
+
+        Includes task relationship for display in history view.
+        """
         user_id_validated = validate_uuid(user_id, "user_id")
 
         statement = (
             select(WorkSession)
+            .options(
+                selectinload(WorkSession.task)
+            )  # Eager load task for history display
             .where(WorkSession.user_id == user_id_validated)
             .order_by(WorkSession.started_at.desc())
             .offset(skip)
