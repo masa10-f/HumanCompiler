@@ -3,7 +3,7 @@
  */
 
 import type { WorkSession, SessionDecision, ContinueReason } from './work-session';
-import type { Task } from './task';
+import type { Task, TaskStatus, WorkType } from './task';
 import type { Goal } from './goal';
 import type { Project } from './project';
 import type { DailySchedule } from './api-responses';
@@ -27,6 +27,16 @@ export interface TaskCandidate {
   scheduled_end: string;
   duration_hours: number;
   slot_kind: string;
+}
+
+/**
+ * Task candidate with additional task details for TaskCard display
+ */
+export interface TaskCandidateWithDetails extends TaskCandidate {
+  task_status: TaskStatus;
+  task_work_type: WorkType;
+  task_priority?: number;
+  task_due_date?: string;
 }
 
 /**
