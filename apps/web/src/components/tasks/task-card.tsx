@@ -17,10 +17,10 @@ import {
 export interface TaskCardProps {
   taskId: string;
   title: string;
-  status: TaskStatus;
-  workType: WorkType;
   projectId: string;
   goalId: string;
+  status?: TaskStatus;
+  workType?: WorkType;
   estimateHours?: number;
   priority?: number;
   dueDate?: string;
@@ -29,16 +29,19 @@ export interface TaskCardProps {
 export function TaskCard({
   taskId: _taskId,
   title,
-  status,
-  workType,
   projectId,
   goalId,
+  status,
+  workType,
   estimateHours,
   priority,
   dueDate,
 }: TaskCardProps) {
   void _taskId; // Reserved for future use (e.g., task detail page link)
   const linkHref = `/projects/${projectId}/goals/${goalId}`;
+
+  const hasBadges = status || workType;
+  const hasMetadata = estimateHours !== undefined || priority !== undefined || dueDate;
 
   return (
     <Card className="hover:bg-muted/50 transition-colors">
@@ -50,16 +53,22 @@ export function TaskCard({
           {title}
         </Link>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge className={taskStatusColors[status]}>
-            {taskStatusLabels[status]}
-          </Badge>
-          <Badge className={workTypeColors[workType]}>
-            {workTypeLabels[workType]}
-          </Badge>
-        </div>
+        {hasBadges && (
+          <div className="flex flex-wrap items-center gap-2">
+            {status && (
+              <Badge className={taskStatusColors[status]}>
+                {taskStatusLabels[status]}
+              </Badge>
+            )}
+            {workType && (
+              <Badge className={workTypeColors[workType]}>
+                {workTypeLabels[workType]}
+              </Badge>
+            )}
+          </div>
+        )}
 
-        {(estimateHours !== undefined || priority !== undefined || dueDate) && (
+        {hasMetadata && (
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             {estimateHours !== undefined && (
               <span className="flex items-center gap-1">
