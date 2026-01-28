@@ -30,16 +30,6 @@ export function NotePageLayout({
     entityId,
   });
 
-  const handleContentUpdate = (content: string) => {
-    // Content is updated in state, will be saved on debounce
-  };
-
-  const handleSave = async () => {
-    if (note) {
-      await updateNote({ content: note.content });
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">

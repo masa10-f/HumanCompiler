@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import { useProject } from '@/hooks/use-project-query';
 import { useAuth } from '@/hooks/use-auth';
 import { AppHeader } from '@/components/layout/app-header';
@@ -38,11 +39,11 @@ export default function ProjectNotesPage() {
           entityTitle={project?.title || 'Project'}
           breadcrumb={
             <span>
-              <a href="/projects" className="hover:text-blue-600">Projects</a>
+              <Link href="/projects" className="hover:text-blue-600">Projects</Link>
               {' / '}
-              <a href={`/projects/${projectId}`} className="hover:text-blue-600">
+              <Link href={`/projects/${projectId}`} className="hover:text-blue-600">
                 {project?.title || 'Project'}
-              </a>
+              </Link>
               {' / '}
               <span className="text-gray-700 dark:text-gray-300">Notes</span>
             </span>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import { useProject } from '@/hooks/use-project-query';
 import { useGoal } from '@/hooks/use-goals-query';
 import { useAuth } from '@/hooks/use-auth';
@@ -41,15 +42,15 @@ export default function GoalNotesPage() {
           entityTitle={goal?.title || 'Goal'}
           breadcrumb={
             <span>
-              <a href="/projects" className="hover:text-blue-600">Projects</a>
+              <Link href="/projects" className="hover:text-blue-600">Projects</Link>
               {' / '}
-              <a href={`/projects/${projectId}`} className="hover:text-blue-600">
+              <Link href={`/projects/${projectId}`} className="hover:text-blue-600">
                 {project?.title || 'Project'}
-              </a>
+              </Link>
               {' / '}
-              <a href={`/projects/${projectId}/goals/${goalId}`} className="hover:text-blue-600">
+              <Link href={`/projects/${projectId}/goals/${goalId}`} className="hover:text-blue-600">
                 {goal?.title || 'Goal'}
-              </a>
+              </Link>
               {' / '}
               <span className="text-gray-700 dark:text-gray-300">Notes</span>
             </span>

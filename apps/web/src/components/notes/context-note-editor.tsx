@@ -8,7 +8,7 @@ import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Bold,
@@ -51,7 +51,6 @@ export function ContextNoteEditor({
   className,
   readOnly = false,
 }: ContextNoteEditorProps) {
-  const [isFocused, setIsFocused] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const editor = useEditor({
@@ -95,8 +94,6 @@ export function ContextNoteEditor({
         }, 2000); // Auto-save after 2 seconds of inactivity
       }
     },
-    onFocus: () => setIsFocused(true),
-    onBlur: () => setIsFocused(false),
   });
 
   // Update editor content when prop changes

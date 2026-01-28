@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useState } from 'react';
 import { useProject } from '@/hooks/use-project-query';
 import { useGoal } from '@/hooks/use-goals-query';
@@ -81,15 +82,15 @@ export default function TaskDetailPage() {
             Back to Goal
           </Button>
           <div className="text-sm text-gray-500 dark:text-gray-400">
-            <a href="/projects" className="hover:text-blue-600">Projects</a>
+            <Link href="/projects" className="hover:text-blue-600">Projects</Link>
             {' / '}
-            <a href={`/projects/${projectId}`} className="hover:text-blue-600">
+            <Link href={`/projects/${projectId}`} className="hover:text-blue-600">
               {project?.title || 'Project'}
-            </a>
+            </Link>
             {' / '}
-            <a href={`/projects/${projectId}/goals/${goalId}`} className="hover:text-blue-600">
+            <Link href={`/projects/${projectId}/goals/${goalId}`} className="hover:text-blue-600">
               {goal?.title || 'Goal'}
-            </a>
+            </Link>
             {' / '}
             <span className="text-gray-700 dark:text-gray-300">{task.title}</span>
           </div>
