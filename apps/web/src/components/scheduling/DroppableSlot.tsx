@@ -26,6 +26,7 @@ interface DroppableSlotProps {
   onSlotChange: (index: number, field: keyof TimeSlot, value: string | number | undefined) => void;
   onRemoveSlot: (index: number) => void;
   onRemoveTask: (taskId: string) => void;
+  onTaskDurationChange?: (taskId: string, durationHours: number | undefined) => void;
 }
 
 export function DroppableSlot({
@@ -36,6 +37,7 @@ export function DroppableSlot({
   onSlotChange,
   onRemoveSlot,
   onRemoveTask,
+  onTaskDurationChange,
 }: DroppableSlotProps) {
   const { isOver, setNodeRef, active } = useDroppable({
     id: `slot-${slotIndex}`,
@@ -192,14 +194,38 @@ export function DroppableSlot({
       >
         {assignedTasks.length > 0 ? (
           <div className="space-y-2">
-            {assignedTasks.map(({ task, isFixed }) => (
-              <DraggableTask
-                key={task.id}
-                task={task}
-                isAssigned
-                isFixed={isFixed}
-                onRemove={() => onRemoveTask(task.id)}
-              />
+            {assignedTasks.map(({ task, isFixed, duration_hours }) => (
+              <div key={task.id} className="space-y-1">
+                <DraggableTask
+                  task={task}
+                  isAssigned
+                  isFixed={isFixed}
+                  onRemove={() => onRemoveTask(task.id)}
+                />
+                {/* Duration editor for manual assignments */}
+                {!isFixed && onTaskDurationChange && (
+                  <div className="flex items-center gap-2 pl-2 ml-5">
+                    <Label className="text-xs text-gray-500 whitespace-nowrap">時間:</Label>
+                    <Input
+                      type="number"
+                      min={0.25}
+                      max={task.estimate_hours}
+                      step={0.25}
+                      value={duration_hours ?? ''}
+                      placeholder={`${task.estimate_hours}h (全量)`}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        onTaskDurationChange(
+                          task.id,
+                          value ? parseFloat(value) : undefined
+                        );
+                      }}
+                      className="h-7 w-24 text-xs"
+                    />
+                    <span className="text-xs text-gray-400">/ {task.estimate_hours}h</span>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         ) : (

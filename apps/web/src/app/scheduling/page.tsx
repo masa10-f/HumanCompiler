@@ -215,7 +215,7 @@ export default function SchedulingPage() {
       const task = availableTasks.find(t => t.id === a.taskId);
       return {
         task: task!,
-        isFixed: true,
+        isFixed: false,  // Allow removal and re-dragging before optimization
         duration_hours: a.durationHours,
       };
     }).filter(t => t.task);
@@ -281,6 +281,12 @@ export default function SchedulingPage() {
 
   const removeTaskFromSlot = (taskId: string) => {
     setManualAssignments(prev => prev.filter(a => a.taskId !== taskId));
+  };
+
+  const updateTaskDuration = (taskId: string, durationHours: number | undefined) => {
+    setManualAssignments(prev => prev.map(a =>
+      a.taskId === taskId ? { ...a, durationHours } : a
+    ));
   };
 
   const clearAllAssignments = () => {
@@ -515,6 +521,7 @@ export default function SchedulingPage() {
                 tasks={availableTasks}
                 assignedTaskIds={assignedTaskIds}
                 isLoading={isLoadingTasks}
+                projects={projects}
               />
             </div>
 
@@ -555,6 +562,7 @@ export default function SchedulingPage() {
                         onSlotChange={updateTimeSlot}
                         onRemoveSlot={removeTimeSlot}
                         onRemoveTask={removeTaskFromSlot}
+                        onTaskDurationChange={updateTaskDuration}
                       />
                     ))
                   )}

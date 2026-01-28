@@ -10,16 +10,19 @@ import { ListTodo, Search, Filter } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DraggableTask } from './DraggableTask';
 import type { TaskInfo } from '@/types/ai-planning';
+import type { Project } from '@/types/project';
 
 interface TaskPoolProps {
   tasks: TaskInfo[];
   assignedTaskIds: Set<string>;
   isLoading?: boolean;
+  projects?: Project[];
 }
 
-export function TaskPool({ tasks, assignedTaskIds, isLoading }: TaskPoolProps) {
+export function TaskPool({ tasks, assignedTaskIds, isLoading, projects = [] }: TaskPoolProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [kindFilter, setKindFilter] = useState<string>('all');
+  const [projectFilter, setProjectFilter] = useState<string>('all');
 
   const { isOver, setNodeRef } = useDroppable({
     id: 'task-pool',
@@ -44,9 +47,14 @@ export function TaskPool({ tasks, assignedTaskIds, isLoading }: TaskPoolProps) {
         return false;
       }
 
+      // Apply project filter
+      if (projectFilter !== 'all' && task.project_id !== projectFilter) {
+        return false;
+      }
+
       return true;
     });
-  }, [tasks, assignedTaskIds, searchQuery, kindFilter]);
+  }, [tasks, assignedTaskIds, searchQuery, kindFilter, projectFilter]);
 
   // Group tasks by kind for better organization
   const groupedTasks = useMemo(() => {
@@ -112,8 +120,8 @@ export function TaskPool({ tasks, assignedTaskIds, isLoading }: TaskPoolProps) {
         </div>
 
         {/* Search and Filter */}
-        <div className="flex gap-2 mt-4">
-          <div className="relative flex-1">
+        <div className="space-y-2 mt-4">
+          <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
             <Input
               placeholder="タスクを検索..."
@@ -122,18 +130,35 @@ export function TaskPool({ tasks, assignedTaskIds, isLoading }: TaskPoolProps) {
               className="pl-8 h-9"
             />
           </div>
-          <Select value={kindFilter} onValueChange={setKindFilter}>
-            <SelectTrigger className="w-[120px] h-9">
-              <Filter className="h-4 w-4 mr-1" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">すべて</SelectItem>
-              <SelectItem value="focused_work">集中作業</SelectItem>
-              <SelectItem value="study">学習</SelectItem>
-              <SelectItem value="light_work">軽作業</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex gap-2">
+            <Select value={kindFilter} onValueChange={setKindFilter}>
+              <SelectTrigger className="flex-1 h-9">
+                <Filter className="h-4 w-4 mr-1" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">すべての種別</SelectItem>
+                <SelectItem value="focused_work">集中作業</SelectItem>
+                <SelectItem value="study">学習</SelectItem>
+                <SelectItem value="light_work">軽作業</SelectItem>
+              </SelectContent>
+            </Select>
+            {projects.length > 0 && (
+              <Select value={projectFilter} onValueChange={setProjectFilter}>
+                <SelectTrigger className="flex-1 h-9">
+                  <SelectValue placeholder="プロジェクト" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">すべてのプロジェクト</SelectItem>
+                  {projects.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
         </div>
       </CardHeader>
 
