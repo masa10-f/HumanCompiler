@@ -198,5 +198,4 @@ static/uploads/
 *.trace
 
 # custom
-CLAUDE.md
 AGENTS.md
