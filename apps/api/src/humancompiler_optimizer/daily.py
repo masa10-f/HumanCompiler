@@ -143,7 +143,7 @@ def optimize_daily_schedule(
     fixed_assignments = fixed_assignments or []
     fixed_task_slot_map: dict[int, int] = {}  # task_index -> slot_index
     fixed_durations: dict[int, float] = {}  # task_index -> duration_minutes
-    reserved_capacity: dict[int, float] = {j: 0.0 for j in range(len(time_slots))}
+    reserved_capacity: dict[int, float] = dict.fromkeys(range(len(time_slots)), 0.0)
 
     for fa in fixed_assignments:
         task_idx = task_id_to_index.get(fa.task_id)
@@ -160,7 +160,9 @@ def optimize_daily_schedule(
             duration_minutes = task.remaining_hours * 60
 
         # Clamp duration to slot capacity
-        available_capacity = slot_capacities[fa.slot_index] - reserved_capacity[fa.slot_index]
+        available_capacity = (
+            slot_capacities[fa.slot_index] - reserved_capacity[fa.slot_index]
+        )
         duration_minutes = min(duration_minutes, available_capacity)
 
         if duration_minutes > 0:

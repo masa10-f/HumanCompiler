@@ -924,7 +924,9 @@ class FixedAssignmentInput(BaseModel):
     task_id: str = Field(..., description="Task ID to assign")
     slot_index: int = Field(..., ge=0, description="Target slot index (0-based)")
     duration_hours: float | None = Field(
-        None, ge=0, description="Duration in hours (optional, uses remaining task hours if not specified)"
+        None,
+        ge=0,
+        description="Duration in hours (optional, uses remaining task hours if not specified)",
     )
 
 
