@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Clock, Trash2, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DraggableTask } from './DraggableTask';
-import type { TimeSlot, TaskInfo, FixedAssignment } from '@/types/ai-planning';
+import type { TimeSlot, TaskInfo } from '@/types/ai-planning';
 import type { Project } from '@/types/project';
 
 interface SlotTask {

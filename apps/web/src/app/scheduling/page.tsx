@@ -76,7 +76,6 @@ export default function SchedulingPage() {
   const [taskSource, setTaskSource] = useState<TaskSource>({ type: 'all_tasks' });
   const [projects, setProjects] = useState<Project[]>([]);
   const [weeklyScheduleOptions, setWeeklyScheduleOptions] = useState<WeeklyScheduleOption[]>([]);
-  const [loading, setLoading] = useState(false);
 
   // Available tasks for scheduling
   const [availableTasks, setAvailableTasks] = useState<TaskInfo[]>([]);
@@ -104,8 +103,6 @@ export default function SchedulingPage() {
       if (!user) return;
 
       try {
-        setLoading(true);
-
         const [projectsResult, weeklyOptionsResult] = await Promise.all([
           projectsApi.getAll(),
           schedulingApi.getWeeklyScheduleOptions().catch(err => {
@@ -125,7 +122,7 @@ export default function SchedulingPage() {
           variant: 'destructive',
         });
       } finally {
-        setLoading(false);
+        // Loading complete
       }
     };
 
