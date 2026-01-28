@@ -701,6 +701,13 @@ def optimize_schedule(
             solve_time_seconds=time_module.time() - start_time,
         )
 
+    # Build set of task IDs that have fixed assignments (user explicitly wants to schedule these)
+    fixed_assignment_task_ids = set()
+    if fixed_assignments:
+        for fa in fixed_assignments:
+            fixed_assignment_task_ids.add(fa.task_id)
+        logger.debug(f"Fixed assignment task IDs: {fixed_assignment_task_ids}")
+
     # Filter tasks based on dependency constraints
     schedulable_tasks = []
     unscheduled_due_to_dependencies = []
@@ -726,12 +733,20 @@ def optimize_schedule(
         weekly_recurring_count = 0
         task_dependency_blocked = 0
         goal_dependency_blocked = 0
+        fixed_assignment_included = 0
 
         # Filter tasks with relaxed dependency constraints
         # Allow tasks if their dependencies are either completed or available in the same schedule
         available_task_ids = {task.id for task in tasks}
 
         for task in tasks:
+            # Tasks with fixed assignments are always schedulable (user explicitly wants them)
+            if task.id in fixed_assignment_task_ids:
+                schedulable_tasks.append(task)
+                fixed_assignment_included += 1
+                logger.debug(f"Task {task.id} '{task.title}' included due to fixed assignment")
+                continue
+
             # Weekly recurring tasks are always schedulable (they don't have dependencies)
             if task.is_weekly_recurring:
                 schedulable_tasks.append(task)
@@ -776,7 +791,7 @@ def optimize_schedule(
         # Summary logging with detailed breakdown
         logger.info(
             f"Dependency filtering summary: {len(schedulable_tasks)} schedulable tasks "
-            f"({weekly_recurring_count} weekly recurring), "
+            f"({weekly_recurring_count} weekly recurring, {fixed_assignment_included} fixed assignments), "
             f"{len(unscheduled_due_to_dependencies)} blocked "
             f"({task_dependency_blocked} by task deps, {goal_dependency_blocked} by goal deps)"
         )
