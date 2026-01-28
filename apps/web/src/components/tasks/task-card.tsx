@@ -27,7 +27,7 @@ export interface TaskCardProps {
 }
 
 export function TaskCard({
-  taskId: _taskId,
+  taskId,
   title,
   projectId,
   goalId,
@@ -37,8 +37,7 @@ export function TaskCard({
   priority,
   dueDate,
 }: TaskCardProps) {
-  void _taskId; // Reserved for future use (e.g., task detail page link)
-  const linkHref = `/projects/${projectId}/goals/${goalId}`;
+  const linkHref = `/projects/${projectId}/goals/${goalId}/tasks/${taskId}`;
 
   const hasBadges = status || workType;
   const hasMetadata = estimateHours !== undefined || priority !== undefined || dueDate;

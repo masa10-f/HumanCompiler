@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { useTasksByGoal } from '@/hooks/use-tasks-query';
@@ -353,7 +354,12 @@ export default function GoalDetailPage() {
                       <TableRow>
                         <TableCell>
                           <div>
-                            <div className="font-medium">{task.title}</div>
+                            <Link
+                              href={`/projects/${id}/goals/${goalId}/tasks/${task.id}`}
+                              className="font-medium hover:text-blue-600 hover:underline"
+                            >
+                              {task.title}
+                            </Link>
                             {task.description && (
                               <div className="text-sm text-gray-500 line-clamp-1">
                                 {task.description}
