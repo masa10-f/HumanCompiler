@@ -69,6 +69,10 @@ import type {
   WorkSessionWithReschedule
 } from '@/types/reschedule';
 import type { SortOptions } from '@/types/sort';
+import type {
+  ContextNote,
+  ContextNoteUpdate
+} from '@/types/context-note';
 
 // Helper function to ensure HTTPS protocol
 const ensureHttps = (url: string): string => {
@@ -961,6 +965,80 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
+
+  // === Context Notes API methods ===
+
+  /**
+   * Get or create a note for a project.
+   *
+   * @param projectId - The project UUID
+   * @returns The context note
+   */
+  async getProjectNote(projectId: string): Promise<ContextNote> {
+    return this.request<ContextNote>(`/api/notes/projects/${projectId}`);
+  }
+
+  /**
+   * Update a project's note.
+   *
+   * @param projectId - The project UUID
+   * @param data - Note update data
+   * @returns The updated context note
+   */
+  async updateProjectNote(projectId: string, data: ContextNoteUpdate): Promise<ContextNote> {
+    return this.request<ContextNote>(`/api/notes/projects/${projectId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  /**
+   * Get or create a note for a goal.
+   *
+   * @param goalId - The goal UUID
+   * @returns The context note
+   */
+  async getGoalNote(goalId: string): Promise<ContextNote> {
+    return this.request<ContextNote>(`/api/notes/goals/${goalId}`);
+  }
+
+  /**
+   * Update a goal's note.
+   *
+   * @param goalId - The goal UUID
+   * @param data - Note update data
+   * @returns The updated context note
+   */
+  async updateGoalNote(goalId: string, data: ContextNoteUpdate): Promise<ContextNote> {
+    return this.request<ContextNote>(`/api/notes/goals/${goalId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  /**
+   * Get or create a note for a task.
+   *
+   * @param taskId - The task UUID
+   * @returns The context note
+   */
+  async getTaskNote(taskId: string): Promise<ContextNote> {
+    return this.request<ContextNote>(`/api/notes/tasks/${taskId}`);
+  }
+
+  /**
+   * Update a task's note.
+   *
+   * @param taskId - The task UUID
+   * @param data - Note update data
+   * @returns The updated context note
+   */
+  async updateTaskNote(taskId: string, data: ContextNoteUpdate): Promise<ContextNote> {
+    return this.request<ContextNote>(`/api/notes/tasks/${taskId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
 }
 
 export const apiClient = new ApiClient();
@@ -1140,6 +1218,22 @@ export const rescheduleApi = {
   rejectSuggestion: (suggestionId: string, reason?: string) =>
     apiClient.rejectRescheduleSuggestion(suggestionId, reason),
   getDecisionHistory: (limit?: number) => apiClient.getRescheduleDecisionHistory(limit),
+};
+
+/**
+ * Context Notes API convenience wrapper.
+ * Provides methods for managing rich text notes on projects, goals, and tasks.
+ */
+export const notesApi = {
+  getProjectNote: (projectId: string) => apiClient.getProjectNote(projectId),
+  updateProjectNote: (projectId: string, data: ContextNoteUpdate) =>
+    apiClient.updateProjectNote(projectId, data),
+  getGoalNote: (goalId: string) => apiClient.getGoalNote(goalId),
+  updateGoalNote: (goalId: string, data: ContextNoteUpdate) =>
+    apiClient.updateGoalNote(goalId, data),
+  getTaskNote: (taskId: string) => apiClient.getTaskNote(taskId),
+  updateTaskNote: (taskId: string, data: ContextNoteUpdate) =>
+    apiClient.updateTaskNote(taskId, data),
 };
 
 // === Helper functions ===
