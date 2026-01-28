@@ -128,7 +128,18 @@ source ../../.venv/bin/activate
 uv pip install -r requirements.txt
 ```
 
-3. **Set up environment variables:**
+3. **Enable pre-commit hooks (required):**
+```bash
+# Install pre-commit (if not installed)
+pip install pre-commit
+
+# Install hooks in the repository
+pre-commit install
+```
+
+This ensures code quality checks (linting, formatting) run automatically before each commit, preventing CI failures.
+
+4. **Set up environment variables:**
 ```bash
 # Copy example files
 cp apps/api/.env.example apps/api/.env
@@ -140,7 +151,7 @@ cp apps/web/.env.example apps/web/.env.local
 # - See the .env.example files for detailed instructions and warnings
 ```
 
-4. **Run development servers:**
+5. **Run development servers:**
 ```bash
 # Terminal 1 (Backend)
 cd apps/api
@@ -151,7 +162,7 @@ cd apps/web
 pnpm run dev
 ```
 
-5. **Verify setup:**
+6. **Verify setup:**
 - Frontend (local): http://localhost:3000
 - Backend API docs (local): http://localhost:8000/docs
 - Backend API docs (production): https://humancompiler-api-masa.fly.dev/docs

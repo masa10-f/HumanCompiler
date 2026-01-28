@@ -13,6 +13,7 @@ from sqlmodel import Session, select, cast, String
 
 from humancompiler_optimizer.daily import (
     DailySolverConfig,
+    FixedAssignment,
     ScheduleResult,
     SchedulerTask,
     SlotKind,
@@ -671,6 +672,7 @@ def optimize_schedule(
     date: datetime | None = None,
     session: Session | None = None,
     user_id: str | UUID | None = None,
+    fixed_assignments: list[FixedAssignment] | None = None,
 ) -> ScheduleResult:
     """
     OR-Tools CP-SAT constraint solver implementation for task scheduling optimization.
@@ -681,6 +683,7 @@ def optimize_schedule(
     - Task type constraints: Matching task kinds with slot kinds
     - Capacity constraints: Maximum hours per slot
     - Priority constraints: Higher priority tasks get better slots
+    - Fixed assignments: User-defined task-to-slot assignments that solver must respect
 
     Returns optimized schedule with constraint satisfaction guarantees.
     """
@@ -697,6 +700,13 @@ def optimize_schedule(
             optimization_status="NO_TASKS_OR_SLOTS",
             solve_time_seconds=time_module.time() - start_time,
         )
+
+    # Build set of task IDs that have fixed assignments (user explicitly wants to schedule these)
+    fixed_assignment_task_ids = set()
+    if fixed_assignments:
+        for fa in fixed_assignments:
+            fixed_assignment_task_ids.add(fa.task_id)
+        logger.debug(f"Fixed assignment task IDs: {fixed_assignment_task_ids}")
 
     # Filter tasks based on dependency constraints
     schedulable_tasks = []
@@ -723,12 +733,22 @@ def optimize_schedule(
         weekly_recurring_count = 0
         task_dependency_blocked = 0
         goal_dependency_blocked = 0
+        fixed_assignment_included = 0
 
         # Filter tasks with relaxed dependency constraints
         # Allow tasks if their dependencies are either completed or available in the same schedule
         available_task_ids = {task.id for task in tasks}
 
         for task in tasks:
+            # Tasks with fixed assignments are always schedulable (user explicitly wants them)
+            if task.id in fixed_assignment_task_ids:
+                schedulable_tasks.append(task)
+                fixed_assignment_included += 1
+                logger.debug(
+                    f"Task {task.id} '{task.title}' included due to fixed assignment"
+                )
+                continue
+
             # Weekly recurring tasks are always schedulable (they don't have dependencies)
             if task.is_weekly_recurring:
                 schedulable_tasks.append(task)
@@ -773,7 +793,7 @@ def optimize_schedule(
         # Summary logging with detailed breakdown
         logger.info(
             f"Dependency filtering summary: {len(schedulable_tasks)} schedulable tasks "
-            f"({weekly_recurring_count} weekly recurring), "
+            f"({weekly_recurring_count} weekly recurring, {fixed_assignment_included} fixed assignments), "
             f"{len(unscheduled_due_to_dependencies)} blocked "
             f"({task_dependency_blocked} by task deps, {goal_dependency_blocked} by goal deps)"
         )
@@ -814,6 +834,7 @@ def optimize_schedule(
             config=DailySolverConfig(
                 max_time_in_seconds=5.0, log_search_progress=False
             ),
+            fixed_assignments=fixed_assignments,
         )
     except Exception as e:
         logger.error(f"OR-Tools solver failed with exception: {e}")
@@ -914,6 +935,18 @@ class TaskSource(BaseModel):
         return v
 
 
+class FixedAssignmentInput(BaseModel):
+    """User-defined fixed task assignment to a specific slot."""
+
+    task_id: str = Field(..., description="Task ID to assign")
+    slot_index: int = Field(..., ge=0, description="Target slot index (0-based)")
+    duration_hours: float | None = Field(
+        None,
+        ge=0,
+        description="Duration in hours (optional, uses remaining task hours if not specified)",
+    )
+
+
 class DailyScheduleRequest(BaseModel):
     """Request model for daily schedule optimization."""
 
@@ -934,6 +967,11 @@ class DailyScheduleRequest(BaseModel):
     time_slots: list[TimeSlotInput] = Field(..., description="Available time slots")
     preferences: dict[str, Any] = Field(
         default_factory=dict, description="Scheduling preferences"
+    )
+    # User-defined fixed assignments for manual task scheduling
+    fixed_assignments: list[FixedAssignmentInput] = Field(
+        default_factory=list,
+        description="User-defined fixed task assignments. Solver will respect these and fill remaining capacity.",
     )
 
     @field_validator("date")
@@ -979,6 +1017,10 @@ class ScheduleAssignment(BaseModel):
     slot_start: str
     slot_end: str
     slot_kind: str
+    is_fixed: bool = Field(
+        default=False,
+        description="Whether this assignment was manually fixed by the user",
+    )
 
 
 class DailyScheduleResponse(BaseModel):
@@ -1232,9 +1274,21 @@ async def create_daily_schedule(
             )
             scheduler_slots.append(time_slot)
 
+        # Convert fixed assignments
+        scheduler_fixed_assignments = []
+        for fa in request.fixed_assignments:
+            scheduler_fixed_assignments.append(
+                FixedAssignment(
+                    task_id=fa.task_id,
+                    slot_index=fa.slot_index,
+                    duration_hours=fa.duration_hours,
+                )
+            )
+
         # Run optimization
         logger.info(
-            f"Running optimization with {len(scheduler_tasks)} tasks and {len(scheduler_slots)} slots"
+            f"Running optimization with {len(scheduler_tasks)} tasks, {len(scheduler_slots)} slots, "
+            f"and {len(scheduler_fixed_assignments)} fixed assignments"
         )
         optimization_result = optimize_schedule(
             scheduler_tasks,
@@ -1242,6 +1296,7 @@ async def create_daily_schedule(
             datetime.strptime(request.date, "%Y-%m-%d"),
             session,
             user_id,
+            fixed_assignments=scheduler_fixed_assignments,
         )
 
         # Process results
@@ -1263,6 +1318,7 @@ async def create_daily_schedule(
                 slot_start=slot_input.start,
                 slot_end=slot_input.end,
                 slot_kind=slot_input.kind,
+                is_fixed=assignment.is_fixed,
             )
             assignments.append(schedule_assignment)
 
