@@ -7,6 +7,7 @@ implements OR-Tools-based optimizers behind stable, pure-Python interfaces.
 from .daily import (
     Assignment,
     DailySolverConfig,
+    FixedAssignment,
     ScheduleResult,
     SchedulerTask,
     SlotKind,
@@ -26,6 +27,7 @@ from .weekly import (
 __all__ = [
     "Assignment",
     "DailySolverConfig",
+    "FixedAssignment",
     "optimize_daily_schedule",
     "ScheduleResult",
     "SchedulerTask",
