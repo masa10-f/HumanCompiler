@@ -38,7 +38,7 @@ export default function TaskDetailPage() {
   const goalId = params.goalId as string;
   const taskId = params.taskId as string;
 
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const { data: project, isLoading: projectLoading } = useProject(projectId);
   const { data: goal, isLoading: goalLoading } = useGoal(goalId);
   const { data: task, isLoading: taskLoading } = useTask(taskId);

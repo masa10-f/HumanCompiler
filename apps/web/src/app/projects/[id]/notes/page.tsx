@@ -10,8 +10,8 @@ import { Loader2 } from 'lucide-react';
 export default function ProjectNotesPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
-  const { project, isLoading: projectLoading } = useProject(projectId);
+  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { data: project, isLoading: projectLoading } = useProject(projectId);
 
   if (authLoading || projectLoading) {
     return (

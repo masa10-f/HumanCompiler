@@ -2,7 +2,7 @@
 
 import { useParams } from 'next/navigation';
 import { useProject } from '@/hooks/use-project-query';
-import { useGoal } from '@/hooks/use-goals';
+import { useGoal } from '@/hooks/use-goals-query';
 import { useAuth } from '@/hooks/use-auth';
 import { AppHeader } from '@/components/layout/app-header';
 import { NotePageLayout } from '@/components/notes/note-page-layout';
@@ -12,9 +12,9 @@ export default function GoalNotesPage() {
   const params = useParams();
   const projectId = params.id as string;
   const goalId = params.goalId as string;
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
-  const { project, isLoading: projectLoading } = useProject(projectId);
-  const { goal, loading: goalLoading } = useGoal(goalId);
+  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { data: project, isLoading: projectLoading } = useProject(projectId);
+  const { data: goal, isLoading: goalLoading } = useGoal(goalId);
 
   if (authLoading || projectLoading || goalLoading) {
     return (
