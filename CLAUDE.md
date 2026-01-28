@@ -9,7 +9,7 @@ HumanCompiler is an AI-powered task management system with automated scheduling.
 **Tech Stack:**
 - **Frontend:** Next.js 15 (App Router), React 18, TypeScript (strict), TailwindCSS, shadcn/ui
 - **Backend:** FastAPI (Python 3.11+), SQLModel ORM, Pydantic
-- **AI/Optimization:** OpenAI GPT-4, OR-Tools CP-SAT solver
+- **AI/Optimization:** OpenAI GPT-5, OR-Tools CP-SAT solver
 - **Database:** Supabase PostgreSQL (with Row Level Security)
 - **Package Manager:** pnpm 9.0.0 (monorepo)
 
@@ -239,6 +239,7 @@ refactor(tasks): Consolidate task filtering logic
 - Use present tense ("Add feature" not "Added feature")
 - Subject line: < 72 characters
 - Separate body with blank line
+- **Do NOT use `--amend` option** - Always create new commits in this workspace
 
 ## Pull Request Guidelines
 
