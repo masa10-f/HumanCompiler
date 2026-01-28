@@ -744,7 +744,9 @@ def optimize_schedule(
             if task.id in fixed_assignment_task_ids:
                 schedulable_tasks.append(task)
                 fixed_assignment_included += 1
-                logger.debug(f"Task {task.id} '{task.title}' included due to fixed assignment")
+                logger.debug(
+                    f"Task {task.id} '{task.title}' included due to fixed assignment"
+                )
                 continue
 
             # Weekly recurring tasks are always schedulable (they don't have dependencies)
