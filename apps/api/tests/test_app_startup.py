@@ -8,8 +8,6 @@ without errors, catching issues that might not be detected by linting or
 type checking alone.
 """
 
-import pytest
-
 
 class TestAppStartup:
     """Tests for application startup and module imports."""
