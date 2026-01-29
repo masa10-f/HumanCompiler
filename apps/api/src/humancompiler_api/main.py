@@ -58,24 +58,10 @@ async def lifespan(app: FastAPI):
     logger = logging.getLogger(__name__)
     logger.info("🚀 FastAPI server starting up...")
 
-    # Run database migrations on startup (for staging and production)
-    if settings.environment in ["production", "staging"]:
-        logger.info("🔧 Running database migrations...")
-        try:
-            from humancompiler_api.migration_manager import MigrationManager
-            from pathlib import Path
-
-            # Resolve migrations directory path
-            migrations_dir = Path(__file__).parent.parent.parent / "migrations"
-            manager = MigrationManager(str(migrations_dir))
-            applied, failed = manager.apply_all_pending()
-
-            if failed == 0:
-                logger.info(f"✅ Database migrations completed: {applied} applied")
-            else:
-                logger.error(f"❌ Database migration failed: {failed} errors")
-        except Exception as e:
-            logger.error(f"💥 Database migration error: {e}")
+    # Database migrations are now run manually before deployment
+    # Use: python migrate.py apply
+    # Auto-migration disabled for faster startup (Fly.io health check timeout)
+    logger.info("💡 Migrations should be run manually: python migrate.py apply")
 
     # Log configuration info
     logger.info(f"Environment: {settings.environment}")
