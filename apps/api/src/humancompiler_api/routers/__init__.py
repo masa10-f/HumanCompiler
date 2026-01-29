@@ -3,7 +3,7 @@ from . import (
     ai_planning,
     goals,
     monitoring,
-    notes,
+    # notes,  # Disabled - migration rollback needed
     notifications,
     projects,
     scheduler,
@@ -18,7 +18,7 @@ __all__ = [
     "ai_planning",
     "goals",
     "monitoring",
-    "notes",
+    # "notes",  # Disabled - migration rollback needed
     "notifications",
     "projects",
     "scheduler",
