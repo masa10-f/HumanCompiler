@@ -24,3 +24,6 @@ ALTER TABLE logs ADD CONSTRAINT logs_task_id_fkey
 -- when the application restarts and SQLModel creates the tables
 
 -- This file serves as documentation of the schema changes for production deployment
+
+-- No-op statement to prevent empty query error
+SELECT 1;

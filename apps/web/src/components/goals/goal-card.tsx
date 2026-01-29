@@ -1,6 +1,8 @@
 'use client'
 
 import { memo, useCallback } from 'react'
+import Link from 'next/link'
+import { FileText } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { GoalStatusDropdown } from './goal-status-dropdown'
@@ -69,6 +71,11 @@ export const GoalCard = memo(function GoalCard({
           </div>
 
           <div className="flex gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
+            <Button variant="outline" size="sm" title="Notes" asChild>
+              <Link href={`/projects/${goal.project_id}/goals/${goal.id}/notes`}>
+                <FileText className="h-4 w-4" />
+              </Link>
+            </Button>
             <GoalEditDialog goal={goal}>
               <Button variant="outline" size="sm" className="flex-1">
                 編集

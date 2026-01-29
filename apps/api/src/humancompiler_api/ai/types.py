@@ -4,7 +4,7 @@ This module provides TypedDict definitions for complex dictionary structures
 used throughout the AI module, replacing loose dict[str, Any] annotations.
 """
 
-from typing import TypedDict
+from typing_extensions import TypedDict
 from uuid import UUID
 
 

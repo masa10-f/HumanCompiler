@@ -2,7 +2,7 @@ from datetime import datetime, UTC
 from decimal import Decimal
 from enum import Enum
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, ConfigDict, field_serializer, field_validator
 from sqlalchemy import JSON, text, UUID as SQLAlchemyUUID
@@ -1477,3 +1477,130 @@ class WorkSessionWithRescheduleResponse(BaseModel):
 
     session: "WorkSessionWithLogResponse"
     reschedule_suggestion: RescheduleSuggestionResponse | None = None
+
+
+# Context Notes Models (Issue #258)
+class ContentType(str, Enum):
+    """Content type for context notes"""
+
+    MARKDOWN = "markdown"
+    HTML = "html"
+    TIPTAP_JSON = "tiptap_json"
+
+
+class ContextNoteBase(SQLModel):
+    """Base context note model"""
+
+    content: str = SQLField(default="")
+    content_type: str = SQLField(default="markdown", max_length=20)
+
+
+class ContextNote(ContextNoteBase, table=True):  # type: ignore[call-arg]
+    """Context note database model for rich text notes on projects, goals, and tasks"""
+
+    __tablename__ = "context_notes"
+
+    id: UUID | None = SQLField(default_factory=uuid4, primary_key=True)
+
+    # Owner (for RLS - no complex JOINs needed)
+    user_id: UUID = SQLField(foreign_key="users.id", ondelete="CASCADE")
+
+    # Target entity (exactly one must be set)
+    project_id: UUID | None = SQLField(
+        default=None, foreign_key="projects.id", ondelete="CASCADE"
+    )
+    goal_id: UUID | None = SQLField(
+        default=None, foreign_key="goals.id", ondelete="CASCADE"
+    )
+    task_id: UUID | None = SQLField(
+        default=None, foreign_key="tasks.id", ondelete="CASCADE"
+    )
+
+    # Timestamps
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+
+    # Note: attachments relationship removed - note_attachments table not yet implemented
+
+
+class NoteAttachmentBase(SQLModel):
+    """Base note attachment model"""
+
+    filename: str = SQLField(max_length=255)
+    content_type: str = SQLField(max_length=100)
+    file_size: int
+    storage_path: str = SQLField(max_length=500)
+
+
+class NoteAttachment(NoteAttachmentBase, table=True):  # type: ignore[call-arg]
+    """Note attachment database model for images and files"""
+
+    __tablename__ = "note_attachments"
+
+    id: UUID | None = SQLField(default=None, primary_key=True)
+    note_id: UUID = SQLField(foreign_key="context_notes.id", ondelete="CASCADE")
+
+    # Timestamps
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+
+    # Note: Relationship removed - note_attachments table not yet implemented
+    # note: ContextNote = Relationship(back_populates="attachments")
+
+
+# Context Notes API Models
+class ContextNoteCreate(BaseModel):
+    """Context note creation request"""
+
+    content: str = Field(default="")
+    content_type: str = Field(default="markdown", max_length=20)
+
+
+class ContextNoteUpdate(BaseModel):
+    """Context note update request"""
+
+    content: str | None = None
+    content_type: str | None = Field(None, max_length=20)
+
+
+class NoteAttachmentResponse(BaseModel):
+    """Note attachment response model"""
+
+    id: UUID
+    note_id: UUID
+    filename: str
+    content_type: str
+    file_size: int
+    storage_path: str
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        """Ensure datetime is serialized with UTC timezone info"""
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ContextNoteResponse(BaseModel):
+    """Context note response model"""
+
+    id: UUID
+    project_id: UUID | None
+    goal_id: UUID | None
+    task_id: UUID | None
+    content: str
+    content_type: str
+    created_at: datetime
+    updated_at: datetime
+    # Note: attachments field removed - not yet implemented
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetimes(self, value: datetime) -> str:
+        """Ensure datetime is serialized with UTC timezone info"""
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
+    model_config = ConfigDict(from_attributes=True)
