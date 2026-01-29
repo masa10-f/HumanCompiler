@@ -2,7 +2,7 @@ from datetime import datetime, UTC
 from decimal import Decimal
 from enum import Enum
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, ConfigDict, field_serializer, field_validator
 from sqlalchemy import JSON, text, UUID as SQLAlchemyUUID
@@ -1500,7 +1500,7 @@ class ContextNote(ContextNoteBase, table=True):  # type: ignore[call-arg]
 
     __tablename__ = "context_notes"
 
-    id: UUID | None = SQLField(default=None, primary_key=True)
+    id: UUID | None = SQLField(default_factory=uuid4, primary_key=True)
 
     # Owner (for RLS - no complex JOINs needed)
     user_id: UUID = SQLField(foreign_key="users.id", ondelete="CASCADE")
