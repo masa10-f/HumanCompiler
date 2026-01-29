@@ -31,7 +31,7 @@ from humancompiler_api.routers import (
     goals,
     logs,
     monitoring,
-    # notes,  # Temporarily disabled for debugging
+    notes,
     notifications,
     progress,
     projects,
@@ -292,8 +292,8 @@ app.include_router(reschedule.router, prefix="/api")
 # Issue #228: Notification/Escalation routers
 app.include_router(notifications.router, prefix="/api")
 app.include_router(websocket.router)
-# Context notes router - Temporarily disabled for debugging
-# app.include_router(notes.router, prefix="/api")
+# Context notes router
+app.include_router(notes.router, prefix="/api")
 
 
 # Health check endpoint
