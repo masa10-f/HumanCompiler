@@ -33,18 +33,17 @@ class TestAppStartup:
         assert Goal is not None
         assert Task is not None
 
-    # Context note models test disabled - migration rollback needed
-    # def test_context_note_models_importable(self):
-    #     """Verify context note models can be imported."""
-    #     from humancompiler_api.models import (
-    #         ContextNote,
-    #         ContextNoteUpdate,
-    #         ContextNoteResponse,
-    #     )
-    #
-    #     assert ContextNote is not None
-    #     assert ContextNoteUpdate is not None
-    #     assert ContextNoteResponse is not None
+    def test_context_note_models_importable(self):
+        """Verify context note models can be imported."""
+        from humancompiler_api.models import (
+            ContextNote,
+            ContextNoteUpdate,
+            ContextNoteResponse,
+        )
+
+        assert ContextNote is not None
+        assert ContextNoteUpdate is not None
+        assert ContextNoteResponse is not None
 
     def test_config_module_importable(self):
         """Verify config module can be imported."""
@@ -74,14 +73,13 @@ class TestRouterRegistration:
         route_paths = [route.path for route in app.routes]
         assert "/health" in route_paths
 
-    # Notes routes test disabled - migration rollback needed
-    # def test_notes_routes_registered(self):
-    #     """Verify notes routes are registered."""
-    #     from humancompiler_api.main import app
-    #
-    #     route_paths = [route.path for route in app.routes]
-    #
-    #     # Notes routes should be registered
-    #     assert any("/api/notes/projects" in path for path in route_paths)
-    #     assert any("/api/notes/goals" in path for path in route_paths)
-    #     assert any("/api/notes/tasks" in path for path in route_paths)
+    def test_notes_routes_registered(self):
+        """Verify notes routes are registered."""
+        from humancompiler_api.main import app
+
+        route_paths = [route.path for route in app.routes]
+
+        # Notes routes should be registered
+        assert any("/api/notes/projects" in path for path in route_paths)
+        assert any("/api/notes/goals" in path for path in route_paths)
+        assert any("/api/notes/tasks" in path for path in route_paths)

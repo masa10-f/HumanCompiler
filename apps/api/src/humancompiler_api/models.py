@@ -1502,6 +1502,9 @@ class ContextNote(ContextNoteBase, table=True):  # type: ignore[call-arg]
 
     id: UUID | None = SQLField(default=None, primary_key=True)
 
+    # Owner (for RLS - no complex JOINs needed)
+    user_id: UUID = SQLField(foreign_key="users.id", ondelete="CASCADE")
+
     # Target entity (exactly one must be set)
     project_id: UUID | None = SQLField(
         default=None, foreign_key="projects.id", ondelete="CASCADE"

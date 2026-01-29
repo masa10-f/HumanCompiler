@@ -93,6 +93,7 @@ def verify_task_ownership(session: Session, task_id: UUID, user_id: str) -> Task
 
 def get_or_create_note(
     session: Session,
+    user_id: str,
     project_id: UUID | None = None,
     goal_id: UUID | None = None,
     task_id: UUID | None = None,
@@ -113,8 +114,9 @@ def get_or_create_note(
     note = session.exec(query).first()
 
     if not note:
-        # Create new note
+        # Create new note with user_id for RLS
         note = ContextNote(
+            user_id=UUID(user_id),
             project_id=project_id,
             goal_id=goal_id,
             task_id=task_id,
@@ -144,7 +146,7 @@ async def get_project_note(
 ) -> ContextNoteResponse:
     """Get or create a note for a project"""
     verify_project_ownership(session, project_id, current_user.user_id)
-    note = get_or_create_note(session, project_id=project_id)
+    note = get_or_create_note(session, current_user.user_id, project_id=project_id)
     return ContextNoteResponse.model_validate(note)
 
 
@@ -164,7 +166,7 @@ async def update_project_note(
 ) -> ContextNoteResponse:
     """Update a project's note (creates if doesn't exist)"""
     verify_project_ownership(session, project_id, current_user.user_id)
-    note = get_or_create_note(session, project_id=project_id)
+    note = get_or_create_note(session, current_user.user_id, project_id=project_id)
 
     # Update fields
     update_data = note_data.model_dump(exclude_unset=True)
@@ -196,7 +198,7 @@ async def get_goal_note(
 ) -> ContextNoteResponse:
     """Get or create a note for a goal"""
     verify_goal_ownership(session, goal_id, current_user.user_id)
-    note = get_or_create_note(session, goal_id=goal_id)
+    note = get_or_create_note(session, current_user.user_id, goal_id=goal_id)
     return ContextNoteResponse.model_validate(note)
 
 
@@ -216,7 +218,7 @@ async def update_goal_note(
 ) -> ContextNoteResponse:
     """Update a goal's note (creates if doesn't exist)"""
     verify_goal_ownership(session, goal_id, current_user.user_id)
-    note = get_or_create_note(session, goal_id=goal_id)
+    note = get_or_create_note(session, current_user.user_id, goal_id=goal_id)
 
     # Update fields
     update_data = note_data.model_dump(exclude_unset=True)
@@ -248,7 +250,7 @@ async def get_task_note(
 ) -> ContextNoteResponse:
     """Get or create a note for a task"""
     verify_task_ownership(session, task_id, current_user.user_id)
-    note = get_or_create_note(session, task_id=task_id)
+    note = get_or_create_note(session, current_user.user_id, task_id=task_id)
     return ContextNoteResponse.model_validate(note)
 
 
@@ -268,7 +270,7 @@ async def update_task_note(
 ) -> ContextNoteResponse:
     """Update a task's note (creates if doesn't exist)"""
     verify_task_ownership(session, task_id, current_user.user_id)
-    note = get_or_create_note(session, task_id=task_id)
+    note = get_or_create_note(session, current_user.user_id, task_id=task_id)
 
     # Update fields
     update_data = note_data.model_dump(exclude_unset=True)
