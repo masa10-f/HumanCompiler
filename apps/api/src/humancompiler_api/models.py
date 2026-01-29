@@ -1520,8 +1520,7 @@ class ContextNote(ContextNoteBase, table=True):  # type: ignore[call-arg]
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
-    # Relationships
-    attachments: list["NoteAttachment"] = Relationship(back_populates="note")
+    # Note: attachments relationship removed - note_attachments table not yet implemented
 
 
 class NoteAttachmentBase(SQLModel):
@@ -1595,7 +1594,7 @@ class ContextNoteResponse(BaseModel):
     content_type: str
     created_at: datetime
     updated_at: datetime
-    attachments: list[NoteAttachmentResponse] = Field(default_factory=list)
+    # Note: attachments field removed - not yet implemented
 
     @field_serializer("created_at", "updated_at")
     def serialize_datetimes(self, value: datetime) -> str:
