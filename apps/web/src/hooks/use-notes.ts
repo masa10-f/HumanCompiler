@@ -1,15 +1,18 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { notesApi } from '@/lib/api';
 import { log } from '@/lib/logger';
 import { handleHookError } from './utils/hook-error-handler';
 import type { ContextNote, ContextNoteUpdate, NoteEntityType } from '@/types/context-note';
+
+const DEBOUNCE_MS = 500;
 
 export interface UseNoteReturn {
   note: ContextNote | null;
   loading: boolean;
   error: string | null;
   saving: boolean;
-  updateNote: (data: ContextNoteUpdate) => Promise<void>;
+  updateNote: (data: ContextNoteUpdate) => void;
+  updateNoteImmediate: (data: ContextNoteUpdate) => Promise<void>;
   refetch: () => Promise<void>;
 }
 
@@ -29,6 +32,8 @@ export function useNote({ entityType, entityId }: UseNoteConfig): UseNoteReturn 
   const [saving, setSaving] = useState(false);
 
   const hookName = `useNote:${entityType}`;
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const latestContentRef = useRef<string | null>(null);
 
   const fetchNote = useCallback(async () => {
     if (!entityId) return;
@@ -66,7 +71,7 @@ export function useNote({ entityType, entityId }: UseNoteConfig): UseNoteReturn 
     }
   }, [entityType, entityId, hookName]);
 
-  const updateNote = useCallback(
+  const updateNoteImmediate = useCallback(
     async (data: ContextNoteUpdate) => {
       if (!entityId) return;
 
@@ -90,15 +95,19 @@ export function useNote({ entityType, entityId }: UseNoteConfig): UseNoteReturn 
             throw new Error(`Invalid entity type: ${entityType}`);
         }
 
-        log.component(hookName, 'save_success', { noteId: updated.id });
-        setNote(updated);
+        // Only update state if this is the latest content
+        if (latestContentRef.current === null || latestContentRef.current === data.content) {
+          log.component(hookName, 'save_success', { noteId: updated.id });
+          setNote(updated);
+        } else {
+          log.component(hookName, 'save_skipped_stale', { noteId: updated.id });
+        }
       } catch (err) {
-        const errorMessage = handleHookError(err, hookName, 'update note', {
+        handleHookError(err, hookName, 'update note', {
           entityType,
           entityId,
         });
-        setError(errorMessage);
-        throw err;
+        setError('Failed to save note. Please try again.');
       } finally {
         setSaving(false);
       }
@@ -106,9 +115,43 @@ export function useNote({ entityType, entityId }: UseNoteConfig): UseNoteReturn 
     [entityType, entityId, hookName]
   );
 
+  const updateNote = useCallback(
+    (data: ContextNoteUpdate) => {
+      if (!entityId) return;
+
+      // Track latest content to prevent stale updates
+      latestContentRef.current = data.content ?? null;
+
+      // Optimistically update local state
+      setNote((prev) => prev ? { ...prev, content: data.content ?? prev.content } : prev);
+
+      // Clear existing debounce timer
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+
+      // Set new debounce timer
+      debounceTimerRef.current = setTimeout(() => {
+        updateNoteImmediate(data).catch(() => {
+          // Error already handled in updateNoteImmediate
+        });
+      }, DEBOUNCE_MS);
+    },
+    [entityId, updateNoteImmediate]
+  );
+
   useEffect(() => {
     fetchNote();
   }, [fetchNote]);
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
   return {
     note,
@@ -116,6 +159,7 @@ export function useNote({ entityType, entityId }: UseNoteConfig): UseNoteReturn 
     error,
     saving,
     updateNote,
+    updateNoteImmediate,
     refetch: fetchNote,
   };
 }

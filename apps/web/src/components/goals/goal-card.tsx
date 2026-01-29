@@ -71,11 +71,11 @@ export const GoalCard = memo(function GoalCard({
           </div>
 
           <div className="flex gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
-            <Link href={`/projects/${goal.project_id}/goals/${goal.id}/notes`}>
-              <Button variant="outline" size="sm" title="Notes">
+            <Button variant="outline" size="sm" title="Notes" asChild>
+              <Link href={`/projects/${goal.project_id}/goals/${goal.id}/notes`}>
                 <FileText className="h-4 w-4" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
             <GoalEditDialog goal={goal}>
               <Button variant="outline" size="sm" className="flex-1">
                 編集

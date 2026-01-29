@@ -16,12 +16,12 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
       <div className="flex items-center justify-between mb-2">
         <h1 className="text-3xl font-bold">{project.title}</h1>
         <div className="flex items-center gap-2">
-          <Link href={`/projects/${project.id}/notes`}>
-            <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/projects/${project.id}/notes`}>
               <FileText className="h-4 w-4 mr-2" />
               Notes
-            </Button>
-          </Link>
+            </Link>
+          </Button>
           <ProjectStatusDropdown project={project} />
         </div>
       </div>

@@ -8,6 +8,7 @@ from datetime import datetime, UTC
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from humancompiler_api.auth import AuthUser, get_current_user
@@ -98,7 +99,11 @@ def get_or_create_note(
     goal_id: UUID | None = None,
     task_id: UUID | None = None,
 ) -> ContextNote:
-    """Get existing note or create a new one"""
+    """Get existing note or create a new one.
+
+    Handles concurrent creation race conditions by catching IntegrityError
+    and retrying the select query.
+    """
     # Build query based on entity type
     query = select(ContextNote)
 
@@ -123,9 +128,22 @@ def get_or_create_note(
             content="",
             content_type="markdown",
         )
-        session.add(note)
-        session.commit()
-        session.refresh(note)
+        try:
+            session.add(note)
+            session.commit()
+            session.refresh(note)
+        except IntegrityError:
+            # Race condition: another request created the note simultaneously
+            # Rollback and fetch the existing note
+            session.rollback()
+            note = session.exec(query).first()
+            if not note:
+                # Should not happen, but handle gracefully
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to create or retrieve note",
+                )
+            logger.info("Handled concurrent note creation race condition")
 
     return note
 
