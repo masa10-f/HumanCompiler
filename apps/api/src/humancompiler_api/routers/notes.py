@@ -8,17 +8,14 @@ from datetime import datetime, UTC
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 
 from humancompiler_api.auth import AuthUser, get_current_user
 from humancompiler_api.database import db
 from humancompiler_api.models import (
     ContextNote,
-    ContextNoteCreate,
     ContextNoteUpdate,
     ContextNoteResponse,
-    NoteAttachmentResponse,
     ErrorResponse,
     Project,
     Goal,
@@ -38,7 +35,7 @@ def get_session() -> Generator[Session, None, None]:
 
 # Helper functions to verify ownership
 def verify_project_ownership(
-    session: Session, project_id: UUID, user_id: UUID
+    session: Session, project_id: UUID, user_id: str
 ) -> Project:
     """Verify that the user owns the project"""
     project = session.get(Project, project_id)
@@ -46,7 +43,8 @@ def verify_project_ownership(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
         )
-    if project.owner_id != user_id:
+    # Convert user_id string to UUID for comparison
+    if str(project.owner_id) != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to access this project",
@@ -54,7 +52,7 @@ def verify_project_ownership(
     return project
 
 
-def verify_goal_ownership(session: Session, goal_id: UUID, user_id: UUID) -> Goal:
+def verify_goal_ownership(session: Session, goal_id: UUID, user_id: str) -> Goal:
     """Verify that the user owns the goal (via project)"""
     goal = session.get(Goal, goal_id)
     if not goal:
@@ -62,7 +60,8 @@ def verify_goal_ownership(session: Session, goal_id: UUID, user_id: UUID) -> Goa
             status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found"
         )
     project = session.get(Project, goal.project_id)
-    if not project or project.owner_id != user_id:
+    # Convert owner_id to string for comparison
+    if not project or str(project.owner_id) != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to access this goal",
@@ -70,7 +69,7 @@ def verify_goal_ownership(session: Session, goal_id: UUID, user_id: UUID) -> Goa
     return goal
 
 
-def verify_task_ownership(session: Session, task_id: UUID, user_id: UUID) -> Task:
+def verify_task_ownership(session: Session, task_id: UUID, user_id: str) -> Task:
     """Verify that the user owns the task (via goal/project)"""
     task = session.get(Task, task_id)
     if not task:
@@ -83,7 +82,8 @@ def verify_task_ownership(session: Session, task_id: UUID, user_id: UUID) -> Tas
             status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found"
         )
     project = session.get(Project, goal.project_id)
-    if not project or project.owner_id != user_id:
+    # Convert owner_id to string for comparison
+    if not project or str(project.owner_id) != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to access this task",
@@ -99,7 +99,7 @@ def get_or_create_note(
 ) -> ContextNote:
     """Get existing note or create a new one"""
     # Build query based on entity type
-    query = select(ContextNote).options(selectinload(ContextNote.attachments))
+    query = select(ContextNote)
 
     if project_id:
         query = query.where(ContextNote.project_id == project_id)
