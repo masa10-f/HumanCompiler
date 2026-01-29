@@ -1543,8 +1543,8 @@ class NoteAttachment(NoteAttachmentBase, table=True):  # type: ignore[call-arg]
     # Timestamps
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
-    # Relationships
-    note: ContextNote = Relationship(back_populates="attachments")
+    # Note: Relationship removed - note_attachments table not yet implemented
+    # note: ContextNote = Relationship(back_populates="attachments")
 
 
 # Context Notes API Models
