@@ -177,14 +177,14 @@ export function QuickTaskList({
 
       {/* Delete Confirmation */}
       <ConfirmationModal
-        open={!!deletingTask}
+        isOpen={!!deletingTask}
         onClose={() => setDeletingTask(null)}
         onConfirm={handleDeleteConfirm}
         title="クイックタスクの削除"
         description={`「${deletingTask?.title}」を削除しますか？この操作は取り消せません。`}
         confirmText="削除"
-        confirmVariant="destructive"
-        isLoading={isDeleting}
+        variant="destructive"
+        loading={isDeleting}
       />
     </>
   );
