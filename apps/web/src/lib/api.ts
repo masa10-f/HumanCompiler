@@ -73,6 +73,13 @@ import type {
   ContextNote,
   ContextNoteUpdate
 } from '@/types/context-note';
+import type {
+  QuickTask,
+  QuickTaskCreate,
+  QuickTaskUpdate,
+  QuickTaskConvertRequest
+} from '@/types/quick-task';
+import type { TaskStatus } from '@/types/task';
 
 // Helper function to ensure HTTPS protocol
 const ensureHttps = (url: string): string => {
@@ -1039,6 +1046,105 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
+
+  // === Quick Tasks API methods ===
+
+  /**
+   * Fetches all quick tasks (unclassified tasks) for the authenticated user.
+   *
+   * @param skip - Pagination offset (default: 0)
+   * @param limit - Maximum results (default: 50)
+   * @param sortOptions - Sorting configuration
+   * @param status - Optional status filter
+   * @returns Array of QuickTask objects
+   */
+  async getQuickTasks(
+    skip: number = 0,
+    limit: number = 50,
+    sortOptions?: SortOptions,
+    status?: TaskStatus
+  ): Promise<QuickTask[]> {
+    const params = new URLSearchParams({
+      skip: skip.toString(),
+      limit: limit.toString(),
+    });
+
+    if (sortOptions?.sortBy) {
+      params.set('sort_by', sortOptions.sortBy);
+    }
+    if (sortOptions?.sortOrder) {
+      params.set('sort_order', sortOptions.sortOrder);
+    }
+    if (status) {
+      params.set('status', status);
+    }
+
+    return this.request<QuickTask[]>(`/api/quick-tasks/?${params.toString()}`);
+  }
+
+  /**
+   * Get a specific quick task by ID.
+   *
+   * @param taskId - The quick task UUID
+   * @returns The QuickTask object
+   */
+  async getQuickTask(taskId: string): Promise<QuickTask> {
+    return this.request<QuickTask>(`/api/quick-tasks/${taskId}/`);
+  }
+
+  /**
+   * Create a new quick task (unclassified task).
+   *
+   * @param taskData - Quick task creation data
+   * @returns The created QuickTask object
+   */
+  async createQuickTask(taskData: QuickTaskCreate): Promise<QuickTask> {
+    return this.request<QuickTask>('/api/quick-tasks/', {
+      method: 'POST',
+      body: JSON.stringify(taskData),
+    });
+  }
+
+  /**
+   * Update a quick task.
+   *
+   * @param taskId - The quick task UUID
+   * @param taskData - Quick task update data
+   * @returns The updated QuickTask object
+   */
+  async updateQuickTask(taskId: string, taskData: QuickTaskUpdate): Promise<QuickTask> {
+    return this.request<QuickTask>(`/api/quick-tasks/${taskId}/`, {
+      method: 'PUT',
+      body: JSON.stringify(taskData),
+    });
+  }
+
+  /**
+   * Delete a quick task.
+   *
+   * @param taskId - The quick task UUID
+   */
+  async deleteQuickTask(taskId: string): Promise<void> {
+    return this.request<void>(`/api/quick-tasks/${taskId}/`, {
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * Convert a quick task to a regular task by assigning it to a goal.
+   * The quick task will be deleted and a new regular task will be created.
+   *
+   * @param taskId - The quick task UUID to convert
+   * @param goalId - The target goal UUID
+   * @returns The newly created Task object
+   */
+  async convertQuickTaskToTask(taskId: string, goalId: string): Promise<Task> {
+    const convertData: QuickTaskConvertRequest = { goal_id: goalId };
+    return this.request<Task>(`/api/quick-tasks/${taskId}/convert`, {
+      method: 'POST',
+      body: JSON.stringify(convertData),
+    });
+  }
 }
 
 export const apiClient = new ApiClient();
@@ -1234,6 +1340,20 @@ export const notesApi = {
   getTaskNote: (taskId: string) => apiClient.getTaskNote(taskId),
   updateTaskNote: (taskId: string, data: ContextNoteUpdate) =>
     apiClient.updateTaskNote(taskId, data),
+};
+
+/**
+ * Quick Tasks API convenience wrapper.
+ * Provides methods for managing unclassified tasks that don't belong to any project/goal.
+ */
+export const quickTasksApi = {
+  getAll: (skip?: number, limit?: number, sortOptions?: SortOptions, status?: TaskStatus) =>
+    apiClient.getQuickTasks(skip, limit, sortOptions, status),
+  getById: (taskId: string) => apiClient.getQuickTask(taskId),
+  create: (taskData: QuickTaskCreate) => apiClient.createQuickTask(taskData),
+  update: (taskId: string, taskData: QuickTaskUpdate) => apiClient.updateQuickTask(taskId, taskData),
+  delete: (taskId: string) => apiClient.deleteQuickTask(taskId),
+  convertToTask: (taskId: string, goalId: string) => apiClient.convertQuickTaskToTask(taskId, goalId),
 };
 
 // === Helper functions ===

@@ -40,7 +40,8 @@ from humancompiler_api.models import (
     GoalStatus,
     WorkType,
 )
-from humancompiler_api.services import goal_service, task_service
+from humancompiler_api.services import goal_service, task_service, quick_task_service
+from humancompiler_api.models import QuickTask
 from uuid import UUID
 from sqlalchemy.exc import SQLAlchemyError, DatabaseError
 
@@ -1085,6 +1086,31 @@ def map_slot_kind(kind_str: str) -> SlotKind:
     return mapping.get(kind_str.lower(), SlotKind.LIGHT_WORK)
 
 
+def quick_task_to_scheduler_task(quick_task: QuickTask) -> SchedulerTask:
+    """Convert a QuickTask to a SchedulerTask for scheduling.
+
+    QuickTasks are unclassified tasks that don't belong to any project/goal.
+    They are converted to SchedulerTask with:
+    - ID prefixed with "quick_" for identification
+    - No goal_id or project_id (None)
+    - No dependencies
+    """
+    task_kind = map_task_kind_from_work_type(quick_task.work_type)
+
+    return SchedulerTask(
+        id=f"quick_{quick_task.id}",  # Prefix to identify as quick task
+        title=quick_task.title,
+        estimate_hours=float(quick_task.estimate_hours),
+        priority=quick_task.priority,
+        due_date=quick_task.due_date,
+        kind=task_kind,
+        goal_id=None,  # Quick tasks have no goal
+        is_weekly_recurring=False,
+        actual_hours=0.0,  # Quick tasks don't have logs yet
+        project_id=None,  # Quick tasks have no project
+    )
+
+
 @router.post("/daily", response_model=DailyScheduleResponse)
 async def create_daily_schedule(
     request: DailyScheduleRequest,
@@ -1122,9 +1148,23 @@ async def create_daily_schedule(
             session, user_id, task_source, request.date
         )
 
-        logger.info(f"Fetched {len(db_tasks)} total tasks from database")
+        # Also fetch quick tasks (unclassified tasks) for all_tasks source
+        quick_tasks = []
+        if task_source.type == "all_tasks":
+            quick_tasks = quick_task_service.get_active_quick_tasks(session, user_id)
+            # Filter out completed/cancelled quick tasks
+            quick_tasks = [
+                qt
+                for qt in quick_tasks
+                if qt.status not in [TaskStatus.COMPLETED, TaskStatus.CANCELLED]
+            ]
+            logger.info(f"Fetched {len(quick_tasks)} active quick tasks")
 
-        if not db_tasks:
+        logger.info(
+            f"Fetched {len(db_tasks)} regular tasks + {len(quick_tasks)} quick tasks from database"
+        )
+
+        if not db_tasks and not quick_tasks:
             return DailyScheduleResponse(
                 success=True,
                 date=request.date,
@@ -1229,7 +1269,28 @@ async def create_daily_schedule(
             )
 
         logger.info(f"Filtered out {filtered_count} completed/cancelled tasks")
-        logger.info(f"Converted {len(scheduler_tasks)} tasks for scheduling")
+
+        # Process quick tasks (unclassified tasks)
+        for quick_task in quick_tasks:
+            scheduler_task = quick_task_to_scheduler_task(quick_task)
+            scheduler_tasks.append(scheduler_task)
+
+            # Store task info for response (use "quick_" prefixed ID)
+            quick_task_id = f"quick_{quick_task.id}"
+            task_info_map[quick_task_id] = TaskInfo(
+                id=quick_task_id,
+                title=quick_task.title,
+                estimate_hours=float(quick_task.estimate_hours),
+                priority=quick_task.priority,
+                kind=map_task_kind_from_work_type(quick_task.work_type).value,
+                due_date=quick_task.due_date,
+                goal_id=None,  # Quick tasks have no goal
+                project_id=None,  # Quick tasks have no project
+            )
+
+        logger.info(
+            f"Converted {len(scheduler_tasks)} total tasks for scheduling (including {len(quick_tasks)} quick tasks)"
+        )
 
         # Validate ownership of assigned projects and weekly tasks (skip in test environment)
         try:
