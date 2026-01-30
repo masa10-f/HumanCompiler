@@ -1152,7 +1152,9 @@ async def create_daily_schedule(
         quick_tasks = []
         if task_source.type == "all_tasks":
             try:
-                quick_tasks = quick_task_service.get_active_quick_tasks(session, user_id)
+                quick_tasks = quick_task_service.get_active_quick_tasks(
+                    session, user_id
+                )
                 # Filter out completed/cancelled quick tasks
                 quick_tasks = [
                     qt
