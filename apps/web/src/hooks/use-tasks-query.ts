@@ -136,6 +136,8 @@ export function useUpdateTask() {
 /**
  * Mutation hook for deleting a task.
  * Removes from cache and invalidates task lists on success.
+ * Cache invalidation is delayed to allow dialog close animation to complete,
+ * preventing UI freeze from Radix UI cleanup issues.
  *
  * @returns UseMutationResult with mutateAsync function
  */
@@ -147,19 +149,29 @@ export function useDeleteTask() {
     onSuccess: (_, taskId) => {
       // Get the task from cache to know which goal to invalidate
       const cachedTask = queryClient.getQueryData<Task>(taskKeys.detail(taskId))
+      const goalId = cachedTask?.goal_id
 
-      // Remove task from cache
+      // Remove task from cache immediately
       queryClient.removeQueries({ queryKey: taskKeys.detail(taskId) })
 
-      // Invalidate tasks for the goal if we know the goal ID
-      if (cachedTask?.goal_id) {
-        queryClient.invalidateQueries({
-          queryKey: taskKeys.byGoal(cachedTask.goal_id)
-        })
-      } else {
-        // Fallback: invalidate all task lists
-        queryClient.invalidateQueries({ queryKey: taskKeys.lists() })
-      }
+      // Delay cache invalidation to allow dialog close animation to complete
+      // This prevents Radix UI dialog cleanup issues that cause UI freeze
+      setTimeout(() => {
+        // Force reset body styles in case Radix UI dialog cleanup failed
+        if (typeof document !== 'undefined') {
+          document.body.style.pointerEvents = ''
+          document.body.style.overflow = ''
+        }
+
+        if (goalId) {
+          queryClient.invalidateQueries({
+            queryKey: taskKeys.byGoal(goalId)
+          })
+        } else {
+          // Fallback: invalidate all task lists
+          queryClient.invalidateQueries({ queryKey: taskKeys.lists() })
+        }
+      }, 300)
     },
   })
 }

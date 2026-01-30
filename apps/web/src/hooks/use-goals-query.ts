@@ -108,6 +108,8 @@ export function useUpdateGoal() {
 /**
  * Mutation hook for deleting a goal.
  * Removes from cache and invalidates goal lists on success.
+ * Cache invalidation is delayed to allow dialog close animation to complete,
+ * preventing UI freeze from Radix UI cleanup issues.
  *
  * @returns UseMutationResult with mutateAsync function
  */
@@ -119,19 +121,29 @@ export function useDeleteGoal() {
     onSuccess: (_, goalId) => {
       // Get the goal from cache to know which project to invalidate
       const cachedGoal = queryClient.getQueryData<Goal>(goalKeys.detail(goalId))
+      const projectId = cachedGoal?.project_id
 
-      // Remove goal from cache
+      // Remove goal from cache immediately
       queryClient.removeQueries({ queryKey: goalKeys.detail(goalId) })
 
-      // Invalidate goals for the project if we know the project ID
-      if (cachedGoal?.project_id) {
-        queryClient.invalidateQueries({
-          queryKey: goalKeys.byProject(cachedGoal.project_id)
-        })
-      } else {
-        // Fallback: invalidate all goal lists
-        queryClient.invalidateQueries({ queryKey: goalKeys.lists() })
-      }
+      // Delay cache invalidation to allow dialog close animation to complete
+      // This prevents Radix UI dialog cleanup issues that cause UI freeze
+      setTimeout(() => {
+        // Force reset body styles in case Radix UI dialog cleanup failed
+        if (typeof document !== 'undefined') {
+          document.body.style.pointerEvents = ''
+          document.body.style.overflow = ''
+        }
+
+        if (projectId) {
+          queryClient.invalidateQueries({
+            queryKey: goalKeys.byProject(projectId)
+          })
+        } else {
+          // Fallback: invalidate all goal lists
+          queryClient.invalidateQueries({ queryKey: goalKeys.lists() })
+        }
+      }, 300)
     },
   })
 }
