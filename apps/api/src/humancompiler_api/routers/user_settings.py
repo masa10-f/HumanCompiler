@@ -15,6 +15,7 @@ from humancompiler_api.models import (
     UserSettingsCreate,
     UserSettingsResponse,
     UserSettingsUpdate,
+    EmailNotificationSettingsUpdate,
 )
 
 router = APIRouter(prefix="/api/user", tags=["user-settings"])
@@ -132,6 +133,12 @@ async def get_user_settings(
             has_api_key=False,
             created_at=default_timestamp,
             updated_at=default_timestamp,
+            # Email notification defaults
+            email_notifications_enabled=False,
+            email_deadline_reminder_hours=24,
+            email_overdue_alerts_enabled=True,
+            email_daily_digest_enabled=False,
+            email_daily_digest_hour=9,
         )
 
     # Convert to response model
@@ -143,6 +150,12 @@ async def get_user_settings(
         has_api_key=bool(settings.openai_api_key_encrypted),
         created_at=settings.created_at,
         updated_at=settings.updated_at,
+        # Email notification settings
+        email_notifications_enabled=settings.email_notifications_enabled,
+        email_deadline_reminder_hours=settings.email_deadline_reminder_hours,
+        email_overdue_alerts_enabled=settings.email_overdue_alerts_enabled,
+        email_daily_digest_enabled=settings.email_daily_digest_enabled,
+        email_daily_digest_hour=settings.email_daily_digest_hour,
     )
 
 
@@ -204,6 +217,12 @@ async def create_user_settings(
         has_api_key=True,
         created_at=settings.created_at,
         updated_at=settings.updated_at,
+        # Email notification settings
+        email_notifications_enabled=settings.email_notifications_enabled,
+        email_deadline_reminder_hours=settings.email_deadline_reminder_hours,
+        email_overdue_alerts_enabled=settings.email_overdue_alerts_enabled,
+        email_daily_digest_enabled=settings.email_daily_digest_enabled,
+        email_daily_digest_hour=settings.email_daily_digest_hour,
     )
 
 
@@ -253,6 +272,12 @@ async def update_user_settings(
         has_api_key=bool(settings.openai_api_key_encrypted),
         created_at=settings.created_at,
         updated_at=settings.updated_at,
+        # Email notification settings
+        email_notifications_enabled=settings.email_notifications_enabled,
+        email_deadline_reminder_hours=settings.email_deadline_reminder_hours,
+        email_overdue_alerts_enabled=settings.email_overdue_alerts_enabled,
+        email_daily_digest_enabled=settings.email_daily_digest_enabled,
+        email_daily_digest_hour=settings.email_daily_digest_hour,
     )
 
 
@@ -274,3 +299,55 @@ async def delete_openai_key(
     settings.ai_features_enabled = False
 
     session.commit()
+
+
+@router.put("/settings/email-notifications", response_model=UserSettingsResponse)
+async def update_email_notification_settings(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    settings_data: EmailNotificationSettingsUpdate,
+    session: Annotated[Session, Depends(get_session)],
+) -> UserSettingsResponse:
+    """Update email notification settings (Issue #261)."""
+    # Get existing settings
+    statement = select(UserSettings).where(UserSettings.user_id == user_id)
+    settings = session.exec(statement).one_or_none()
+
+    if not settings:
+        # Create new settings with default values
+        settings = UserSettings(user_id=user_id)
+        session.add(settings)
+
+    # Update email notification fields if provided
+    if settings_data.email_notifications_enabled is not None:
+        settings.email_notifications_enabled = settings_data.email_notifications_enabled
+
+    if settings_data.email_deadline_reminder_hours is not None:
+        settings.email_deadline_reminder_hours = settings_data.email_deadline_reminder_hours
+
+    if settings_data.email_overdue_alerts_enabled is not None:
+        settings.email_overdue_alerts_enabled = settings_data.email_overdue_alerts_enabled
+
+    if settings_data.email_daily_digest_enabled is not None:
+        settings.email_daily_digest_enabled = settings_data.email_daily_digest_enabled
+
+    if settings_data.email_daily_digest_hour is not None:
+        settings.email_daily_digest_hour = settings_data.email_daily_digest_hour
+
+    session.commit()
+    session.refresh(settings)
+
+    return UserSettingsResponse(
+        id=settings.id,
+        user_id=settings.user_id,
+        openai_model=settings.openai_model,
+        ai_features_enabled=settings.ai_features_enabled,
+        has_api_key=bool(settings.openai_api_key_encrypted),
+        created_at=settings.created_at,
+        updated_at=settings.updated_at,
+        # Email notification settings
+        email_notifications_enabled=settings.email_notifications_enabled,
+        email_deadline_reminder_hours=settings.email_deadline_reminder_hours,
+        email_overdue_alerts_enabled=settings.email_overdue_alerts_enabled,
+        email_daily_digest_enabled=settings.email_daily_digest_enabled,
+        email_daily_digest_hour=settings.email_daily_digest_hour,
+    )

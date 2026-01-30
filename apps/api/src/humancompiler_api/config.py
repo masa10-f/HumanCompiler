@@ -68,6 +68,20 @@ class Settings(BaseSettings):
         description="Allowed CORS origins - supports dynamic Vercel deployments",
     )
 
+    # Email Configuration (Resend)
+    resend_api_key: str | None = Field(
+        default=None,
+        description="Resend API key for email notifications",
+    )
+    email_from: str = Field(
+        default="HumanCompiler <noreply@example.com>",
+        description="From address for email notifications",
+    )
+    email_notifications_enabled: bool = Field(
+        default=False,
+        description="Global flag to enable/disable email notifications",
+    )
+
     @field_validator("supabase_url")
     @classmethod
     def validate_supabase_url(cls, v: str) -> str:
@@ -261,6 +275,10 @@ except Exception as e:
     settings.slow_query_threshold_ms = 100
     settings.max_query_stats = 1000
     settings.admin_user_ids = []
+    # Email settings
+    settings.resend_api_key = None
+    settings.email_from = "HumanCompiler <noreply@example.com>"
+    settings.email_notifications_enabled = False
 
 
 # Production security check
