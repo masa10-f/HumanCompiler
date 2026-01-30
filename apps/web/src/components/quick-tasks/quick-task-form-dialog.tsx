@@ -53,13 +53,28 @@ const quickTaskFormSchema = z.object({
 type QuickTaskFormData = z.infer<typeof quickTaskFormSchema>;
 
 interface QuickTaskFormDialogProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   task?: QuickTask;
   onSuccess?: (task: QuickTask) => void;
+  /** Controlled open state */
+  open?: boolean;
+  /** Callback when open state changes */
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function QuickTaskFormDialog({ children, task, onSuccess }: QuickTaskFormDialogProps) {
-  const [open, setOpen] = useState(false);
+export function QuickTaskFormDialog({
+  children,
+  task,
+  onSuccess,
+  open: controlledOpen,
+  onOpenChange,
+}: QuickTaskFormDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+
+  // Use controlled or uncontrolled mode
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = isControlled ? (onOpenChange ?? (() => {})) : setInternalOpen;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isEditing = !!task;
 
@@ -166,9 +181,11 @@ export function QuickTaskFormDialog({ children, task, onSuccess }: QuickTaskForm
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {children}
-      </DialogTrigger>
+      {children && (
+        <DialogTrigger asChild>
+          {children}
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>

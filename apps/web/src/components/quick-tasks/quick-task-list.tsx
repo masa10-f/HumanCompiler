@@ -166,14 +166,14 @@ export function QuickTaskList({
       </Card>
 
       {/* Edit Dialog */}
-      {editingTask && (
-        <QuickTaskFormDialog
-          task={editingTask}
-          onSuccess={handleTaskUpdated}
-        >
-          <span style={{ display: 'none' }} />
-        </QuickTaskFormDialog>
-      )}
+      <QuickTaskFormDialog
+        task={editingTask ?? undefined}
+        open={!!editingTask}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setEditingTask(null);
+        }}
+        onSuccess={handleTaskUpdated}
+      />
 
       {/* Delete Confirmation */}
       <ConfirmationModal
