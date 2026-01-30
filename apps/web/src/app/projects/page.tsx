@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { AppHeader } from '@/components/layout/app-header';
+import { QuickTaskList } from '@/components/quick-tasks';
 import { log } from '@/lib/logger';
 import { Project, ProjectStatus } from '@/types/project';
 import {
@@ -474,6 +475,11 @@ export default function ProjectsPage() {
             ))}
           </div>
         )}
+
+        {/* Quick Tasks Section */}
+        <div className="mt-8">
+          <QuickTaskList />
+        </div>
 
         {/* Edit Dialog */}
         <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>

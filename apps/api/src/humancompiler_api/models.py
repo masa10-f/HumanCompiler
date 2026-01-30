@@ -145,6 +145,14 @@ ALLOWED_SORT_FIELDS = {
     "Task": {"status", "title", "created_at", "updated_at", "priority"},
     "WeeklyRecurringTask": {"title", "created_at", "updated_at"},
     "Log": {"created_at", "updated_at"},
+    "QuickTask": {
+        "status",
+        "title",
+        "created_at",
+        "updated_at",
+        "priority",
+        "due_date",
+    },
 }
 
 # Status priority configurations for consistent sorting
@@ -182,6 +190,7 @@ class User(UserBase, table=True):  # type: ignore[call-arg]
     settings: "UserSettings" = Relationship(back_populates="user")
     work_sessions: list["WorkSession"] = Relationship(back_populates="user")
     push_subscriptions: list["PushSubscription"] = Relationship(back_populates="user")
+    quick_tasks: list["QuickTask"] = Relationship(back_populates="owner")
 
 
 class ProjectBase(SQLModel):
@@ -304,6 +313,50 @@ class Task(TaskBase, table=True):  # type: ignore[call-arg]
         sa_relationship_kwargs={"foreign_keys": "TaskDependency.depends_on_task_id"},
     )
     work_sessions: list["WorkSession"] = Relationship(back_populates="task")
+
+
+class QuickTaskBase(SQLModel):
+    """Base quick task model for unclassified tasks not belonging to any project"""
+
+    title: str = SQLField(min_length=1, max_length=200)
+    description: str | None = SQLField(default=None, max_length=1000)
+    estimate_hours: Decimal = SQLField(
+        default=Decimal("0.5"), gt=0, max_digits=5, decimal_places=2
+    )
+    due_date: datetime | None = SQLField(default=None)
+    status: TaskStatus = SQLField(
+        default=TaskStatus.PENDING,
+        sa_column=Column(
+            SQLEnum(TaskStatus, values_callable=lambda x: [e.value for e in x])
+        ),
+    )
+    work_type: WorkType = SQLField(
+        default=WorkType.LIGHT_WORK,
+        sa_column=Column(
+            SQLEnum(WorkType, values_callable=lambda x: [e.value for e in x])
+        ),
+        description="Work type classification for scheduling optimization",
+    )
+    priority: int = SQLField(
+        default=3,
+        ge=1,
+        le=5,
+        description="Task priority level (1=highest, 5=lowest)",
+    )
+
+
+class QuickTask(QuickTaskBase, table=True):  # type: ignore[call-arg]
+    """Quick task database model for unclassified tasks"""
+
+    __tablename__ = "quick_tasks"
+
+    id: UUID | None = SQLField(default=None, primary_key=True)
+    owner_id: UUID = SQLField(foreign_key="users.id", index=True)
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+
+    # Relationships
+    owner: "User" = Relationship(back_populates="quick_tasks")
 
 
 class GoalDependencyBase(SQLModel):
@@ -842,6 +895,62 @@ class TaskSummary(BaseModel):
     status: TaskStatus
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class QuickTaskCreate(QuickTaskBase):
+    """Quick task creation request - no goal_id required"""
+
+    pass
+
+
+class QuickTaskUpdate(BaseModel):
+    """Quick task update request"""
+
+    title: str | None = Field(None, min_length=1, max_length=200)
+    description: str | None = Field(None, max_length=1000)
+    estimate_hours: Decimal | None = Field(None, gt=0)
+    due_date: datetime | None = None
+    status: TaskStatus | None = None
+    work_type: WorkType | None = None
+    priority: int | None = Field(None, ge=1, le=5)
+
+
+class QuickTaskResponse(QuickTaskBase):
+    """Quick task response model"""
+
+    id: UUID
+    owner_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("estimate_hours")
+    def serialize_estimate_hours(self, value: Decimal) -> float:
+        """Convert Decimal to float for JSON serialization"""
+        return float(value)
+
+    @field_serializer("due_date")
+    def serialize_due_date(self, value: datetime | None) -> str | None:
+        """Serialize due_date with timezone info"""
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetimes(self, value: datetime) -> str:
+        """Ensure datetime is serialized with UTC timezone info"""
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
+
+class QuickTaskConvertRequest(BaseModel):
+    """Request to convert a quick task to a regular task"""
+
+    goal_id: UUID = Field(..., description="Target goal ID to move the task to")
 
 
 class ScheduleCreate(ScheduleBase):

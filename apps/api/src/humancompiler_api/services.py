@@ -46,6 +46,10 @@ from humancompiler_api.models import (
     ContinueReason,
     SortBy,
     SortOrder,
+    QuickTask,
+    QuickTaskCreate,
+    QuickTaskUpdate,
+    TaskStatus,
 )
 from core.cache import cached, invalidate_cache
 
@@ -1565,6 +1569,184 @@ class WorkSessionService(
         return work_session
 
 
+class QuickTaskService(BaseService[QuickTask, QuickTaskCreate, QuickTaskUpdate]):
+    """QuickTask service for unclassified tasks not belonging to any project"""
+
+    def __init__(
+        self,
+        goal_service_instance: GoalService | None = None,
+        task_service_instance: TaskService | None = None,
+    ):
+        super().__init__(QuickTask)
+        self._goal_service = goal_service_instance
+        self._task_service = task_service_instance
+
+    @property
+    def goal_service(self) -> GoalService:
+        if self._goal_service is None:
+            self._goal_service = GoalService()
+        return self._goal_service
+
+    @property
+    def task_service(self) -> TaskService:
+        if self._task_service is None:
+            self._task_service = TaskService()
+        return self._task_service
+
+    def _create_instance(
+        self, data: QuickTaskCreate, user_id: str | UUID, **kwargs
+    ) -> QuickTask:
+        """Create a new quick task instance"""
+        return QuickTask(
+            owner_id=user_id,
+            title=data.title,
+            description=data.description,
+            estimate_hours=data.estimate_hours,
+            due_date=data.due_date,
+            status=data.status,
+            work_type=data.work_type,
+            priority=data.priority,
+        )
+
+    def _get_user_filter(self, user_id: str | UUID):
+        """Get filter for quick task ownership"""
+        return QuickTask.owner_id == user_id
+
+    @cached(cache_type="short", key_prefix="quick_tasks_list")
+    def get_quick_tasks(
+        self,
+        session: Session,
+        owner_id: str | UUID,
+        skip: int = 0,
+        limit: int = 100,
+        sort_by: SortBy = SortBy.CREATED_AT,
+        sort_order: SortOrder = SortOrder.DESC,
+        status: TaskStatus | None = None,
+    ) -> list[QuickTask]:
+        """Get quick tasks for specific owner with optional filters and sorting"""
+        filters = {}
+        if status is not None:
+            filters["status"] = status
+
+        return self.get_all(
+            session,
+            owner_id,
+            skip,
+            limit,
+            sort_by=sort_by.value,
+            sort_order=sort_order.value,
+            **filters,
+        )
+
+    @cached(cache_type="medium", key_prefix="quick_task_detail")
+    def get_quick_task(
+        self, session: Session, task_id: str | UUID, owner_id: str | UUID
+    ) -> QuickTask | None:
+        """Get quick task by ID for specific owner"""
+        return self.get_by_id(session, task_id, owner_id)
+
+    def create_quick_task(
+        self, session: Session, task_data: QuickTaskCreate, owner_id: str | UUID
+    ) -> QuickTask:
+        """Create a new quick task"""
+        result = self.create(session, task_data, owner_id)
+        # Invalidate cache after creation
+        invalidate_cache("short", f"quick_tasks_list:{owner_id}")
+        return result
+
+    def update_quick_task(
+        self,
+        session: Session,
+        task_id: str | UUID,
+        owner_id: str | UUID,
+        task_data: QuickTaskUpdate,
+    ) -> QuickTask:
+        """Update quick task"""
+        result = self.update(session, task_id, task_data, owner_id)
+        # Invalidate cache after update
+        invalidate_cache("short", f"quick_tasks_list:{owner_id}")
+        invalidate_cache("medium", f"quick_task_detail:{task_id}:{owner_id}")
+        return result
+
+    def delete_quick_task(
+        self, session: Session, task_id: str | UUID, owner_id: str | UUID
+    ) -> bool:
+        """Delete quick task"""
+        result = self.delete(session, task_id, owner_id)
+        # Invalidate cache after deletion
+        invalidate_cache("short", f"quick_tasks_list:{owner_id}")
+        invalidate_cache("medium", f"quick_task_detail:{task_id}:{owner_id}")
+        return result
+
+    def convert_to_task(
+        self,
+        session: Session,
+        quick_task_id: str | UUID,
+        goal_id: str | UUID,
+        owner_id: str | UUID,
+    ) -> Task:
+        """Convert a quick task to a regular task by assigning it to a goal
+
+        Args:
+            session: Database session
+            quick_task_id: ID of the quick task to convert
+            goal_id: Target goal ID to move the task to
+            owner_id: Owner ID for validation
+
+        Returns:
+            The newly created Task
+
+        Raises:
+            HTTPException: If quick task or goal not found
+        """
+        # Get the quick task
+        quick_task = self.get_quick_task(session, quick_task_id, owner_id)
+        if not quick_task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Quick task not found",
+            )
+
+        # Verify goal ownership
+        goal = self.goal_service.get_goal(session, goal_id, owner_id)
+        if not goal:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Goal not found",
+            )
+
+        # Create a new regular task with the quick task's data
+        task_data = TaskCreate(
+            title=quick_task.title,
+            description=quick_task.description,
+            estimate_hours=quick_task.estimate_hours,
+            due_date=quick_task.due_date,
+            work_type=quick_task.work_type,
+            priority=quick_task.priority,
+            goal_id=goal_id,
+        )
+        new_task = self.task_service.create_task(session, task_data, owner_id)
+
+        # Delete the quick task
+        self.delete_quick_task(session, quick_task_id, owner_id)
+
+        return new_task
+
+    def get_active_quick_tasks(
+        self,
+        session: Session,
+        owner_id: str | UUID,
+    ) -> list[QuickTask]:
+        """Get all active (non-completed, non-cancelled) quick tasks for scheduling"""
+        return self.get_quick_tasks(
+            session,
+            owner_id,
+            limit=1000,  # Get all active tasks
+            sort_by=SortBy.PRIORITY,
+            sort_order=SortOrder.ASC,
+        )
+
+
 # Create service instances for use in routers
 project_service = ProjectService()
 goal_service = GoalService()
@@ -1572,3 +1754,4 @@ task_service = TaskService()
 log_service = LogService()
 weekly_recurring_task_service = WeeklyRecurringTaskService()
 work_session_service = WorkSessionService()
+quick_task_service = QuickTaskService()

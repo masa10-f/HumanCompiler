@@ -14,6 +14,7 @@ import Link from 'next/link'
 import type { DailySchedule } from '@/types/api-responses'
 import { TimelineOverview } from '@/components/timeline/timeline-overview'
 import { TimelineErrorBoundary } from '@/components/timeline/timeline-error-boundary'
+import { QuickTaskList } from '@/components/quick-tasks'
 import { useTimelineOverview } from '@/hooks/use-timeline'
 import { getSlotKindLabel } from '@/constants/schedule'
 import { getJSTDateString, getJSTDate } from '@/lib/date-utils'
@@ -138,6 +139,11 @@ export default function DashboardPage() {
               <CardDescription>プロジェクト進捗の可視化</CardDescription>
             </CardHeader>
           </Card>
+        </div>
+
+        {/* Quick Tasks Section */}
+        <div className="mb-8">
+          <QuickTaskList limit={5} />
         </div>
 
         {/* Today's Schedule */}
