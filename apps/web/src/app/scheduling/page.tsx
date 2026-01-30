@@ -35,7 +35,7 @@ import {
 } from 'lucide-react';
 import { AppHeader } from '@/components/layout/app-header';
 import { toast } from '@/hooks/use-toast';
-import { schedulingApi, projectsApi, tasksApi } from '@/lib/api';
+import { schedulingApi, projectsApi, tasksApi, quickTasksApi } from '@/lib/api';
 import { getSlotKindLabel, getSlotKindColor } from '@/constants/schedule';
 import { DroppableSlot, TaskPool, DraggableTask } from '@/components/scheduling';
 import type {
@@ -176,6 +176,27 @@ export default function SchedulingPage() {
               logger.error(`Failed to load tasks for project ${project.id}`, err instanceof Error ? err : new Error(String(err)));
             }
           }
+
+          // Also load quick tasks (unclassified tasks)
+          try {
+            const quickTasks = await quickTasksApi.getAll();
+            const filteredQuickTasks = quickTasks
+              .filter(qt => qt.status !== 'completed' && qt.status !== 'cancelled')
+              .map(qt => ({
+                id: `quick_${qt.id}`,  // Prefix to match backend convention
+                title: `📥 ${qt.title}`,  // Mark as quick task
+                estimate_hours: Number(qt.estimate_hours) || 0.5,
+                priority: qt.priority || 3,
+                kind: qt.work_type || 'light_work',
+                due_date: qt.due_date ?? undefined,
+                goal_id: undefined,
+                project_id: undefined,
+              }));
+            allTasks.push(...(filteredQuickTasks as TaskInfo[]));
+          } catch (err) {
+            logger.error('Failed to load quick tasks', err instanceof Error ? err : new Error(String(err)));
+          }
+
           tasks = allTasks;
         }
 
