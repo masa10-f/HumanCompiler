@@ -143,7 +143,7 @@ export default function DashboardPage() {
 
         {/* Quick Tasks Section */}
         <div className="mb-8">
-          <QuickTaskList limit={10} />
+          <QuickTaskList limit={5} />
         </div>
 
         {/* Today's Schedule */}
