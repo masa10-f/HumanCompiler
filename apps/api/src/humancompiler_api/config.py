@@ -62,9 +62,9 @@ class Settings(BaseSettings):
     )
 
     # CORS Configuration
-    # Allow Vercel deployments and local development
+    # Allow Vercel deployments, custom domain, and local development
     cors_origins: list[str] | str = Field(
-        default="https://*.vercel.app,http://localhost:3000,http://localhost:3001",
+        default="https://*.vercel.app,https://human-compiler.rityo-lab.com,http://localhost:3000,http://localhost:3001",
         description="Allowed CORS origins - supports dynamic Vercel deployments",
     )
 
