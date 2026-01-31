@@ -684,6 +684,28 @@ class UserSettingsBase(SQLModel):
     openai_model: str = SQLField(default="gpt-5", max_length=50)
     ai_features_enabled: bool = SQLField(default=False)
 
+    # Email notification settings (Issue #261)
+    email_notifications_enabled: bool = SQLField(
+        default=False,
+        description="Enable email notifications for task deadlines",
+    )
+    email_deadline_reminder_hours: int = SQLField(
+        default=24,
+        description="Hours before deadline to send reminder email (e.g., 24, 48, 72)",
+    )
+    email_overdue_alerts_enabled: bool = SQLField(
+        default=True,
+        description="Send alerts when tasks become overdue",
+    )
+    email_daily_digest_enabled: bool = SQLField(
+        default=False,
+        description="Send daily digest of upcoming task deadlines",
+    )
+    email_daily_digest_hour: int = SQLField(
+        default=9,
+        description="Hour of day (0-23) to send daily digest (in user's timezone)",
+    )
+
 
 class UserSettings(UserSettingsBase, table=True):  # type: ignore[call-arg]
     """User settings database model"""
@@ -705,6 +727,57 @@ class UserSettings(UserSettingsBase, table=True):  # type: ignore[call-arg]
 
     # Relationships
     user: User = Relationship(back_populates="settings")
+
+
+# Email Notification Models (Issue #261)
+class EmailNotificationType(str, Enum):
+    """Type of email notification"""
+
+    DEADLINE_REMINDER = "deadline_reminder"
+    OVERDUE_ALERT = "overdue_alert"
+    DAILY_DIGEST = "daily_digest"
+
+
+class EmailNotificationStatus(str, Enum):
+    """Status of email notification"""
+
+    PENDING = "pending"
+    SENT = "sent"
+    FAILED = "failed"
+
+
+class EmailNotificationLogBase(SQLModel):
+    """Base email notification log model"""
+
+    notification_type: EmailNotificationType = SQLField(
+        sa_column=Column(
+            SQLEnum(
+                EmailNotificationType, values_callable=lambda x: [e.value for e in x]
+            )
+        )
+    )
+    status: EmailNotificationStatus = SQLField(
+        default=EmailNotificationStatus.PENDING,
+        sa_column=Column(
+            SQLEnum(
+                EmailNotificationStatus, values_callable=lambda x: [e.value for e in x]
+            )
+        ),
+    )
+    error_message: str | None = SQLField(default=None, max_length=500)
+
+
+class EmailNotificationLog(EmailNotificationLogBase, table=True):  # type: ignore[call-arg]
+    """Email notification log for tracking sent emails and preventing duplicates"""
+
+    __tablename__ = "email_notification_logs"
+
+    id: UUID | None = SQLField(default=None, primary_key=True)
+    user_id: UUID = SQLField(foreign_key="users.id", index=True)
+    task_id: UUID | None = SQLField(default=None, index=True)
+    quick_task_id: UUID | None = SQLField(default=None, index=True)
+    sent_at: datetime | None = SQLField(default=None)
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
 
 # Reschedule Models (Issue #227)
@@ -1221,6 +1294,12 @@ class UserSettingsResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     has_api_key: bool = Field(description="Whether API key is configured")
+    # Email notification settings (Issue #261)
+    email_notifications_enabled: bool = False
+    email_deadline_reminder_hours: int = 24
+    email_overdue_alerts_enabled: bool = True
+    email_daily_digest_enabled: bool = False
+    email_daily_digest_hour: int = 9
 
     @field_serializer("created_at", "updated_at")
     def serialize_datetimes(self, value: datetime) -> str:
@@ -1232,7 +1311,15 @@ class UserSettingsResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    model_config = ConfigDict(from_attributes=True)
+
+class EmailNotificationSettingsUpdate(BaseModel):
+    """Email notification settings update request (Issue #261)"""
+
+    email_notifications_enabled: bool | None = None
+    email_deadline_reminder_hours: int | None = Field(None, ge=1, le=168)
+    email_overdue_alerts_enabled: bool | None = None
+    email_daily_digest_enabled: bool | None = None
+    email_daily_digest_hour: int | None = Field(None, ge=0, le=23)
 
 
 class TaskDependencyCreate(BaseModel):

@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Eye, EyeOff, Key, AlertCircle, CheckCircle, Download, Upload, Database } from "lucide-react"
+import { Eye, EyeOff, Key, AlertCircle, CheckCircle, Download, Upload, Database, Mail, Bell } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
 import { AppHeader } from "@/components/layout/app-header"
 import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { supabase } from "@/lib/supabase"
@@ -51,6 +52,13 @@ export default function SettingsPage() {
   const [exportLoading, setExportLoading] = useState(false)
   const [importLoading, setImportLoading] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
+  // Email notification settings (Issue #261)
+  const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(false)
+  const [emailDeadlineReminderHours, setEmailDeadlineReminderHours] = useState(24)
+  const [emailOverdueAlertsEnabled, setEmailOverdueAlertsEnabled] = useState(true)
+  const [emailDailyDigestEnabled, setEmailDailyDigestEnabled] = useState(false)
+  const [emailDailyDigestHour, setEmailDailyDigestHour] = useState(9)
+  const [emailSettingsLoading, setEmailSettingsLoading] = useState(false)
   const [exportInfo, setExportInfo] = useState<{
     current_data_summary: {
       projects: number
@@ -145,7 +153,12 @@ export default function SettingsPage() {
         const data = await response.json()
         setHasApiKey(data.has_api_key)
         setOpenaiModel(data.openai_model)
-
+        // Email notification settings (Issue #261)
+        setEmailNotificationsEnabled(data.email_notifications_enabled ?? false)
+        setEmailDeadlineReminderHours(data.email_deadline_reminder_hours ?? 24)
+        setEmailOverdueAlertsEnabled(data.email_overdue_alerts_enabled ?? true)
+        setEmailDailyDigestEnabled(data.email_daily_digest_enabled ?? false)
+        setEmailDailyDigestHour(data.email_daily_digest_hour ?? 9)
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
@@ -291,6 +304,49 @@ export default function SettingsPage() {
       setError("An error occurred while deleting the API key")
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Email notification settings handler (Issue #261)
+  const handleSaveEmailSettings = async () => {
+    setEmailSettingsLoading(true)
+    setError("")
+    setSuccess("")
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (!user || !session?.access_token) {
+        router.push("/login")
+        return
+      }
+
+      const response = await secureFetch('/api/user/settings/email-notifications', {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          email_notifications_enabled: emailNotificationsEnabled,
+          email_deadline_reminder_hours: emailDeadlineReminderHours,
+          email_overdue_alerts_enabled: emailOverdueAlertsEnabled,
+          email_daily_digest_enabled: emailDailyDigestEnabled,
+          email_daily_digest_hour: emailDailyDigestHour,
+        }),
+      })
+
+      if (response.ok) {
+        setSuccess("メール通知設定を保存しました")
+      } else {
+        const data = await response.json()
+        setError(data.detail || "メール通知設定の保存に失敗しました")
+      }
+    } catch {
+      setError("メール通知設定の保存中にエラーが発生しました")
+    } finally {
+      setEmailSettingsLoading(false)
     }
   }
 
@@ -701,6 +757,152 @@ export default function SettingsPage() {
               <li>• インポート可能なファイルサイズは最大10MBです</li>
               <li>• エクスポートは5回/分、インポートは3回/分の制限があります</li>
               <li>• ファイルはJSONフォーマットのみサポートしています</li>
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Email Notification Settings Card (Issue #261) */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Mail className="h-5 w-5" />
+            メール通知設定
+          </CardTitle>
+          <CardDescription>
+            タスク期限のメール通知を設定します
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="email-notifications" className="text-base">メール通知を有効にする</Label>
+              <p className="text-sm text-muted-foreground">
+                タスクの期限に関するメール通知を受け取ります
+              </p>
+            </div>
+            <Switch
+              id="email-notifications"
+              checked={emailNotificationsEnabled}
+              onCheckedChange={setEmailNotificationsEnabled}
+            />
+          </div>
+
+          {emailNotificationsEnabled && (
+            <>
+              <div className="space-y-4 pt-4 border-t">
+                <div className="space-y-2">
+                  <Label htmlFor="reminder-hours">期限前通知タイミング</Label>
+                  <Select
+                    value={String(emailDeadlineReminderHours)}
+                    onValueChange={(v) => setEmailDeadlineReminderHours(Number(v))}
+                  >
+                    <SelectTrigger id="reminder-hours">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1時間前</SelectItem>
+                      <SelectItem value="3">3時間前</SelectItem>
+                      <SelectItem value="6">6時間前</SelectItem>
+                      <SelectItem value="12">12時間前</SelectItem>
+                      <SelectItem value="24">24時間前（1日前）</SelectItem>
+                      <SelectItem value="48">48時間前（2日前）</SelectItem>
+                      <SelectItem value="72">72時間前（3日前）</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-muted-foreground">
+                    タスク期限のどのくらい前に通知メールを送信するか設定します
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="overdue-alerts" className="text-base">期限超過アラート</Label>
+                    <p className="text-sm text-muted-foreground">
+                      タスクが期限を超過した場合に通知を受け取ります
+                    </p>
+                  </div>
+                  <Switch
+                    id="overdue-alerts"
+                    checked={emailOverdueAlertsEnabled}
+                    onCheckedChange={setEmailOverdueAlertsEnabled}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="daily-digest" className="text-base">デイリーダイジェスト</Label>
+                    <p className="text-sm text-muted-foreground">
+                      毎日の期限タスクサマリーをメールで受け取ります
+                    </p>
+                  </div>
+                  <Switch
+                    id="daily-digest"
+                    checked={emailDailyDigestEnabled}
+                    onCheckedChange={setEmailDailyDigestEnabled}
+                  />
+                </div>
+
+                {emailDailyDigestEnabled && (
+                  <div className="space-y-2 pl-4">
+                    <Label htmlFor="digest-hour">ダイジェスト送信時間</Label>
+                    <Select
+                      value={String(emailDailyDigestHour)}
+                      onValueChange={(v) => setEmailDailyDigestHour(Number(v))}
+                    >
+                      <SelectTrigger id="digest-hour" className="w-[180px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 24 }, (_, i) => (
+                          <SelectItem key={i} value={String(i)}>
+                            {i.toString().padStart(2, '0')}:00
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              <Button
+                onClick={handleSaveEmailSettings}
+                disabled={emailSettingsLoading}
+                className="w-full sm:w-auto"
+              >
+                {emailSettingsLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                    保存中...
+                  </>
+                ) : (
+                  <>
+                    <Bell className="h-4 w-4 mr-2" />
+                    通知設定を保存
+                  </>
+                )}
+              </Button>
+            </>
+          )}
+
+          {!emailNotificationsEnabled && (
+            <Button
+              onClick={handleSaveEmailSettings}
+              disabled={emailSettingsLoading}
+              variant="outline"
+              className="w-full sm:w-auto"
+            >
+              {emailSettingsLoading ? "保存中..." : "設定を保存"}
+            </Button>
+          )}
+
+          <div className="pt-4 border-t">
+            <h4 className="font-semibold mb-2">メール通知について</h4>
+            <ul className="text-sm text-muted-foreground space-y-1">
+              <li>• 通知メールはアカウントに登録されたメールアドレスに送信されます</li>
+              <li>• 期限前通知は設定した時間より前にタスクがある場合に送信されます</li>
+              <li>• 同じタスクに対して1日に複数回通知されることはありません</li>
+              <li>• デイリーダイジェストは当日期限のタスク一覧を送信します</li>
             </ul>
           </div>
         </CardContent>

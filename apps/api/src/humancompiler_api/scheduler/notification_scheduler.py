@@ -1,10 +1,10 @@
 """
-Notification Scheduler using APScheduler (Issue #228)
+Notification Scheduler using APScheduler (Issue #228, #261)
 
-Manages scheduled notification jobs for checkout reminders:
-- Polls for sessions needing notifications every 30 seconds
-- Sends notifications via WebSocket and Web Push
-- Marks sessions as unresponsive when threshold is exceeded
+Manages scheduled notification jobs:
+- Checkout reminders: Polls every 30 seconds for WebSocket/Web Push
+- Task deadline emails: Polls every 5 minutes for email notifications (Issue #261)
+- Daily digest emails: Runs daily at configured hour (Issue #261)
 
 Note: For MVP, we use a polling approach rather than scheduling individual
 jobs per session. This is simpler and works well for single-instance deployments.
@@ -16,14 +16,29 @@ from datetime import datetime, timedelta, UTC
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.memory import MemoryJobStore
-from sqlmodel import Session
+from sqlalchemy.orm import selectinload
+from sqlmodel import Session, select
 
 from humancompiler_api.database import db
 from humancompiler_api.notification_service import (
     NotificationService,
     UNRESPONSIVE_THRESHOLD_MINUTES,
 )
-from humancompiler_api.models import NotificationLevel
+from humancompiler_api.models import (
+    NotificationLevel,
+    Task,
+    QuickTask,
+    User,
+    UserSettings,
+    EmailNotificationLog,
+    EmailNotificationType,
+    EmailNotificationStatus,
+    TaskStatus,
+    Goal,
+    Project,
+)
+from humancompiler_api.email_service import get_email_service
+from humancompiler_api.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +122,301 @@ async def check_and_send_notifications():
         logger.error(f"Error in notification check: {e}")
 
 
+async def check_and_send_deadline_emails():
+    """
+    Check tasks with upcoming deadlines and send email notifications.
+    This runs every 5 minutes to check for tasks needing deadline reminders.
+    (Issue #261)
+    """
+    logger.debug("Running deadline email check...")
+
+    # Skip if email notifications are globally disabled
+    if not settings.email_notifications_enabled:
+        logger.debug("Email notifications are globally disabled")
+        return
+
+    email_service = get_email_service()
+    if not email_service.is_enabled:
+        logger.debug("Email service is not enabled")
+        return
+
+    try:
+        with Session(db.get_engine()) as session:
+            now = datetime.now(UTC)
+
+            # Get all users with email notifications enabled
+            users_stmt = (
+                select(User, UserSettings)
+                .join(UserSettings, User.id == UserSettings.user_id)
+                .where(UserSettings.email_notifications_enabled == True)  # noqa: E712
+            )
+            users_with_settings = session.exec(users_stmt).all()
+
+            if not users_with_settings:
+                logger.debug("No users have email notifications enabled")
+                return
+
+            for user, user_settings in users_with_settings:
+                try:
+                    await _process_user_deadline_notifications(
+                        session, user, user_settings, now, email_service
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Error processing deadline notifications for user {user.id}: {e}"
+                    )
+
+    except Exception as e:
+        logger.error(f"Error in deadline email check: {e}")
+
+
+async def _process_user_deadline_notifications(
+    session: Session,
+    user: User,
+    user_settings: UserSettings,
+    now: datetime,
+    email_service,
+) -> None:
+    """Process deadline notifications for a single user"""
+    reminder_hours = user_settings.email_deadline_reminder_hours
+    reminder_threshold = now + timedelta(hours=reminder_hours)
+
+    # Get regular tasks with due dates in the reminder window
+    tasks_stmt = (
+        select(Task)
+        .join(Goal, Task.goal_id == Goal.id)
+        .join(Project, Goal.project_id == Project.id)
+        .where(
+            Project.owner_id == user.id,
+            Task.due_date.isnot(None),
+            Task.due_date <= reminder_threshold,  # type: ignore[operator]
+            Task.due_date > now,  # type: ignore[operator]
+            Task.status.in_([TaskStatus.PENDING, TaskStatus.IN_PROGRESS]),
+        )
+        .options(selectinload(Task.goal).selectinload(Goal.project))
+    )
+    tasks = session.exec(tasks_stmt).all()
+
+    # Get quick tasks with due dates in the reminder window
+    quick_tasks_stmt = select(QuickTask).where(
+        QuickTask.owner_id == user.id,
+        QuickTask.due_date.isnot(None),
+        QuickTask.due_date <= reminder_threshold,  # type: ignore[operator]
+        QuickTask.due_date > now,  # type: ignore[operator]
+        QuickTask.status.in_([TaskStatus.PENDING, TaskStatus.IN_PROGRESS]),
+    )
+    quick_tasks = session.exec(quick_tasks_stmt).all()
+
+    # Send deadline reminder emails
+    for task in tasks:
+        await _send_task_deadline_email(
+            session, user, task, now, email_service, is_quick_task=False
+        )
+
+    for quick_task in quick_tasks:
+        await _send_task_deadline_email(
+            session, user, quick_task, now, email_service, is_quick_task=True
+        )
+
+    # Check for overdue tasks if enabled
+    if user_settings.email_overdue_alerts_enabled:
+        await _process_overdue_notifications(session, user, now, email_service)
+
+
+async def _send_task_deadline_email(
+    session: Session,
+    user: User,
+    task: Task | QuickTask,
+    now: datetime,
+    email_service,
+    is_quick_task: bool,
+) -> None:
+    """Send a deadline reminder email for a task if not already sent"""
+    # Guard: ensure due_date is not None (should be filtered by query, but for type safety)
+    if task.due_date is None:
+        return
+
+    task_id = task.id
+    notification_type = EmailNotificationType.DEADLINE_REMINDER
+
+    # Check if we already sent a notification for this task today
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    existing_log_stmt = select(EmailNotificationLog).where(
+        EmailNotificationLog.user_id == user.id,
+        (
+            EmailNotificationLog.quick_task_id == task_id
+            if is_quick_task
+            else EmailNotificationLog.task_id == task_id
+        ),
+        EmailNotificationLog.notification_type == notification_type,
+        EmailNotificationLog.created_at >= today_start,  # type: ignore[operator]
+        EmailNotificationLog.status == EmailNotificationStatus.SENT,
+    )
+    existing_log = session.exec(existing_log_stmt).first()
+
+    if existing_log:
+        logger.debug(f"Already sent deadline reminder for task {task_id} today")
+        return
+
+    # Calculate hours until due (due_date is guaranteed non-None by guard clause)
+    hours_until_due = int((task.due_date - now).total_seconds() / 3600)
+
+    # Get context info
+    project_title = None
+    goal_title = None
+    if not is_quick_task and hasattr(task, "goal") and task.goal:
+        goal_title = task.goal.title
+        if task.goal.project:
+            project_title = task.goal.project.title
+
+    # Send email
+    success = email_service.send_deadline_reminder(
+        to_email=user.email,
+        task_title=task.title,
+        task_id=task_id,
+        due_date=task.due_date,
+        hours_until_due=hours_until_due,
+        project_title=project_title,
+        goal_title=goal_title,
+    )
+
+    # Log the notification
+    log_entry = EmailNotificationLog(
+        user_id=user.id,
+        task_id=None if is_quick_task else task_id,
+        quick_task_id=task_id if is_quick_task else None,
+        notification_type=notification_type,
+        status=EmailNotificationStatus.SENT
+        if success
+        else EmailNotificationStatus.FAILED,
+        sent_at=now if success else None,
+        error_message=None if success else "Failed to send email",
+    )
+    session.add(log_entry)
+    session.commit()
+
+    if success:
+        logger.info(f"Sent deadline reminder for task {task_id} to {user.email}")
+
+
+async def _process_overdue_notifications(
+    session: Session,
+    user: User,
+    now: datetime,
+    email_service,
+) -> None:
+    """Process overdue task notifications for a user"""
+    # Get overdue regular tasks
+    overdue_tasks_stmt = (
+        select(Task)
+        .join(Goal, Task.goal_id == Goal.id)
+        .join(Project, Goal.project_id == Project.id)
+        .where(
+            Project.owner_id == user.id,
+            Task.due_date.isnot(None),
+            Task.due_date < now,  # type: ignore[operator]
+            Task.status.in_([TaskStatus.PENDING, TaskStatus.IN_PROGRESS]),
+        )
+        .options(selectinload(Task.goal).selectinload(Goal.project))
+    )
+    overdue_tasks = session.exec(overdue_tasks_stmt).all()
+
+    # Get overdue quick tasks
+    overdue_quick_tasks_stmt = select(QuickTask).where(
+        QuickTask.owner_id == user.id,
+        QuickTask.due_date.isnot(None),
+        QuickTask.due_date < now,  # type: ignore[operator]
+        QuickTask.status.in_([TaskStatus.PENDING, TaskStatus.IN_PROGRESS]),
+    )
+    overdue_quick_tasks = session.exec(overdue_quick_tasks_stmt).all()
+
+    for task in overdue_tasks:
+        await _send_overdue_email(
+            session, user, task, now, email_service, is_quick_task=False
+        )
+
+    for quick_task in overdue_quick_tasks:
+        await _send_overdue_email(
+            session, user, quick_task, now, email_service, is_quick_task=True
+        )
+
+
+async def _send_overdue_email(
+    session: Session,
+    user: User,
+    task: Task | QuickTask,
+    now: datetime,
+    email_service,
+    is_quick_task: bool,
+) -> None:
+    """Send an overdue alert email for a task if not already sent"""
+    # Guard: ensure due_date is not None (should be filtered by query, but for type safety)
+    if task.due_date is None:
+        return
+
+    task_id = task.id
+    notification_type = EmailNotificationType.OVERDUE_ALERT
+
+    # Check if we already sent an overdue notification for this task today
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    existing_log_stmt = select(EmailNotificationLog).where(
+        EmailNotificationLog.user_id == user.id,
+        (
+            EmailNotificationLog.quick_task_id == task_id
+            if is_quick_task
+            else EmailNotificationLog.task_id == task_id
+        ),
+        EmailNotificationLog.notification_type == notification_type,
+        EmailNotificationLog.created_at >= today_start,  # type: ignore[operator]
+        EmailNotificationLog.status == EmailNotificationStatus.SENT,
+    )
+    existing_log = session.exec(existing_log_stmt).first()
+
+    if existing_log:
+        logger.debug(f"Already sent overdue alert for task {task_id} today")
+        return
+
+    # Calculate hours overdue (due_date is guaranteed non-None by guard clause)
+    hours_overdue = int((now - task.due_date).total_seconds() / 3600)
+
+    # Get context info
+    project_title = None
+    goal_title = None
+    if not is_quick_task and hasattr(task, "goal") and task.goal:
+        goal_title = task.goal.title
+        if task.goal.project:
+            project_title = task.goal.project.title
+
+    # Send email
+    success = email_service.send_overdue_alert(
+        to_email=user.email,
+        task_title=task.title,
+        task_id=task_id,
+        due_date=task.due_date,
+        hours_overdue=hours_overdue,
+        project_title=project_title,
+        goal_title=goal_title,
+    )
+
+    # Log the notification
+    log_entry = EmailNotificationLog(
+        user_id=user.id,
+        task_id=None if is_quick_task else task_id,
+        quick_task_id=task_id if is_quick_task else None,
+        notification_type=notification_type,
+        status=EmailNotificationStatus.SENT
+        if success
+        else EmailNotificationStatus.FAILED,
+        sent_at=now if success else None,
+        error_message=None if success else "Failed to send email",
+    )
+    session.add(log_entry)
+    session.commit()
+
+    if success:
+        logger.info(f"Sent overdue alert for task {task_id} to {user.email}")
+
+
 def start_notification_scheduler():
     """Start the notification scheduler"""
     scheduler = get_scheduler()
@@ -125,8 +435,21 @@ def start_notification_scheduler():
         replace_existing=True,
     )
 
+    # Add the deadline email check job to run every 5 minutes (Issue #261)
+    scheduler.add_job(
+        check_and_send_deadline_emails,
+        "interval",
+        minutes=5,
+        id="deadline_email_check",
+        name="Check and send deadline email notifications",
+        replace_existing=True,
+    )
+
     scheduler.start()
-    logger.info("Notification scheduler started (checking every 30 seconds)")
+    logger.info(
+        "Notification scheduler started "
+        "(checkout notifications: 30s, deadline emails: 5min)"
+    )
 
 
 def stop_notification_scheduler():
