@@ -102,6 +102,8 @@ export function useUpdateProject() {
 /**
  * Mutation hook for deleting a project.
  * Removes from cache and invalidates project lists on success.
+ * Cache invalidation is delayed to allow dialog close animation to complete,
+ * preventing UI freeze from Radix UI cleanup issues.
  *
  * @returns UseMutationResult with mutateAsync function
  */
@@ -111,11 +113,20 @@ export function useDeleteProject() {
   return useMutation({
     mutationFn: (projectId: string) => projectsApi.delete(projectId),
     onSuccess: (_, projectId) => {
-      // Remove project from cache
+      // Remove project from cache immediately
       queryClient.removeQueries({ queryKey: projectKeys.detail(projectId) })
 
-      // Invalidate project lists
-      queryClient.invalidateQueries({ queryKey: projectKeys.lists() })
+      // Delay cache invalidation to allow dialog close animation to complete
+      // This prevents Radix UI dialog cleanup issues that cause UI freeze
+      setTimeout(() => {
+        // Force reset body styles in case Radix UI dialog cleanup failed
+        if (typeof document !== 'undefined') {
+          document.body.style.pointerEvents = ''
+          document.body.style.overflow = ''
+        }
+
+        queryClient.invalidateQueries({ queryKey: projectKeys.lists() })
+      }, 300)
     },
   })
 }

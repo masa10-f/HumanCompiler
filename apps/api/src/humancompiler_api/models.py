@@ -218,7 +218,10 @@ class Project(ProjectBase, table=True):  # type: ignore[call-arg]
 
     # Relationships
     owner: User = Relationship(back_populates="projects")
-    goals: list["Goal"] = Relationship(back_populates="project")
+    goals: list["Goal"] = Relationship(
+        back_populates="project",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
 
 
 class GoalBase(SQLModel):
@@ -247,14 +250,23 @@ class Goal(GoalBase, table=True):  # type: ignore[call-arg]
 
     # Relationships
     project: Project = Relationship(back_populates="goals")
-    tasks: list["Task"] = Relationship(back_populates="goal")
+    tasks: list["Task"] = Relationship(
+        back_populates="goal",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
     dependencies: list["GoalDependency"] = Relationship(
         back_populates="goal",
-        sa_relationship_kwargs={"foreign_keys": "GoalDependency.goal_id"},
+        sa_relationship_kwargs={
+            "foreign_keys": "GoalDependency.goal_id",
+            "cascade": "all, delete-orphan",
+        },
     )
     dependent_goals: list["GoalDependency"] = Relationship(
         back_populates="depends_on_goal",
-        sa_relationship_kwargs={"foreign_keys": "GoalDependency.depends_on_goal_id"},
+        sa_relationship_kwargs={
+            "foreign_keys": "GoalDependency.depends_on_goal_id",
+            "cascade": "all, delete-orphan",
+        },
     )
 
 
@@ -303,16 +315,28 @@ class Task(TaskBase, table=True):  # type: ignore[call-arg]
 
     # Relationships
     goal: Goal = Relationship(back_populates="tasks")
-    logs: list["Log"] = Relationship(back_populates="task")
+    logs: list["Log"] = Relationship(
+        back_populates="task",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
     dependencies: list["TaskDependency"] = Relationship(
         back_populates="task",
-        sa_relationship_kwargs={"foreign_keys": "TaskDependency.task_id"},
+        sa_relationship_kwargs={
+            "foreign_keys": "TaskDependency.task_id",
+            "cascade": "all, delete-orphan",
+        },
     )
     dependent_tasks: list["TaskDependency"] = Relationship(
         back_populates="depends_on_task",
-        sa_relationship_kwargs={"foreign_keys": "TaskDependency.depends_on_task_id"},
+        sa_relationship_kwargs={
+            "foreign_keys": "TaskDependency.depends_on_task_id",
+            "cascade": "all, delete-orphan",
+        },
     )
-    work_sessions: list["WorkSession"] = Relationship(back_populates="task")
+    work_sessions: list["WorkSession"] = Relationship(
+        back_populates="task",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
 
 
 class QuickTaskBase(SQLModel):
