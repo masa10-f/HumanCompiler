@@ -322,10 +322,14 @@ async def update_email_notification_settings(
         settings.email_notifications_enabled = settings_data.email_notifications_enabled
 
     if settings_data.email_deadline_reminder_hours is not None:
-        settings.email_deadline_reminder_hours = settings_data.email_deadline_reminder_hours
+        settings.email_deadline_reminder_hours = (
+            settings_data.email_deadline_reminder_hours
+        )
 
     if settings_data.email_overdue_alerts_enabled is not None:
-        settings.email_overdue_alerts_enabled = settings_data.email_overdue_alerts_enabled
+        settings.email_overdue_alerts_enabled = (
+            settings_data.email_overdue_alerts_enabled
+        )
 
     if settings_data.email_daily_digest_enabled is not None:
         settings.email_daily_digest_enabled = settings_data.email_daily_digest_enabled

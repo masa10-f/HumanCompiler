@@ -239,7 +239,7 @@ class EmailService:
         <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
             <h2 style="margin-top: 0; color: #495057; font-size: 20px;">{task_title}</h2>
 
-            {f'<p style="color: #6c757d; font-size: 14px; margin-bottom: 15px;">📁 {context_path}</p>' if context_path else ''}
+            {f'<p style="color: #6c757d; font-size: 14px; margin-bottom: 15px;">📁 {context_path}</p>' if context_path else ""}
 
             <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
                 <p style="margin: 0; font-weight: bold; color: #856404;">
@@ -277,13 +277,19 @@ class EmailService:
                 due_str = str(due_date) if due_date else "未設定"
 
             priority = task.get("priority", 3)
-            priority_color = {1: "#dc3545", 2: "#fd7e14", 3: "#ffc107", 4: "#20c997", 5: "#6c757d"}.get(priority, "#6c757d")
+            priority_color = {
+                1: "#dc3545",
+                2: "#fd7e14",
+                3: "#ffc107",
+                4: "#20c997",
+                5: "#6c757d",
+            }.get(priority, "#6c757d")
 
             task_items += f"""
             <tr>
                 <td style="padding: 12px; border-bottom: 1px solid #e9ecef;">
                     <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: {priority_color}; margin-right: 8px;"></span>
-                    {task.get('title', 'Untitled')}
+                    {task.get("title", "Untitled")}
                 </td>
                 <td style="padding: 12px; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d;">
                     {due_str}
@@ -356,7 +362,7 @@ class EmailService:
         <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
             <h2 style="margin-top: 0; color: #495057; font-size: 20px;">{task_title}</h2>
 
-            {f'<p style="color: #6c757d; font-size: 14px; margin-bottom: 15px;">📁 {context_path}</p>' if context_path else ''}
+            {f'<p style="color: #6c757d; font-size: 14px; margin-bottom: 15px;">📁 {context_path}</p>' if context_path else ""}
 
             <div style="background: #f8d7da; border-left: 4px solid #dc3545; padding: 15px; margin: 20px 0;">
                 <p style="margin: 0; font-weight: bold; color: #721c24;">

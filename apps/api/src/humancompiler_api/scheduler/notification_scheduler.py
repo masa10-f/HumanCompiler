@@ -189,8 +189,8 @@ async def _process_user_deadline_notifications(
         .where(
             Project.owner_id == user.id,
             Task.due_date.isnot(None),
-            Task.due_date <= reminder_threshold,
-            Task.due_date > now,
+            Task.due_date <= reminder_threshold,  # type: ignore[operator]
+            Task.due_date > now,  # type: ignore[operator]
             Task.status.in_([TaskStatus.PENDING, TaskStatus.IN_PROGRESS]),
         )
         .options(selectinload(Task.goal).selectinload(Goal.project))
@@ -201,8 +201,8 @@ async def _process_user_deadline_notifications(
     quick_tasks_stmt = select(QuickTask).where(
         QuickTask.owner_id == user.id,
         QuickTask.due_date.isnot(None),
-        QuickTask.due_date <= reminder_threshold,
-        QuickTask.due_date > now,
+        QuickTask.due_date <= reminder_threshold,  # type: ignore[operator]
+        QuickTask.due_date > now,  # type: ignore[operator]
         QuickTask.status.in_([TaskStatus.PENDING, TaskStatus.IN_PROGRESS]),
     )
     quick_tasks = session.exec(quick_tasks_stmt).all()
@@ -232,6 +232,10 @@ async def _send_task_deadline_email(
     is_quick_task: bool,
 ) -> None:
     """Send a deadline reminder email for a task if not already sent"""
+    # Guard: ensure due_date is not None (should be filtered by query, but for type safety)
+    if task.due_date is None:
+        return
+
     task_id = task.id
     notification_type = EmailNotificationType.DEADLINE_REMINDER
 
@@ -245,7 +249,7 @@ async def _send_task_deadline_email(
             else EmailNotificationLog.task_id == task_id
         ),
         EmailNotificationLog.notification_type == notification_type,
-        EmailNotificationLog.created_at >= today_start,
+        EmailNotificationLog.created_at >= today_start,  # type: ignore[operator]
         EmailNotificationLog.status == EmailNotificationStatus.SENT,
     )
     existing_log = session.exec(existing_log_stmt).first()
@@ -254,7 +258,7 @@ async def _send_task_deadline_email(
         logger.debug(f"Already sent deadline reminder for task {task_id} today")
         return
 
-    # Calculate hours until due
+    # Calculate hours until due (due_date is guaranteed non-None by guard clause)
     hours_until_due = int((task.due_date - now).total_seconds() / 3600)
 
     # Get context info
@@ -282,7 +286,9 @@ async def _send_task_deadline_email(
         task_id=None if is_quick_task else task_id,
         quick_task_id=task_id if is_quick_task else None,
         notification_type=notification_type,
-        status=EmailNotificationStatus.SENT if success else EmailNotificationStatus.FAILED,
+        status=EmailNotificationStatus.SENT
+        if success
+        else EmailNotificationStatus.FAILED,
         sent_at=now if success else None,
         error_message=None if success else "Failed to send email",
     )
@@ -308,7 +314,7 @@ async def _process_overdue_notifications(
         .where(
             Project.owner_id == user.id,
             Task.due_date.isnot(None),
-            Task.due_date < now,
+            Task.due_date < now,  # type: ignore[operator]
             Task.status.in_([TaskStatus.PENDING, TaskStatus.IN_PROGRESS]),
         )
         .options(selectinload(Task.goal).selectinload(Goal.project))
@@ -319,16 +325,20 @@ async def _process_overdue_notifications(
     overdue_quick_tasks_stmt = select(QuickTask).where(
         QuickTask.owner_id == user.id,
         QuickTask.due_date.isnot(None),
-        QuickTask.due_date < now,
+        QuickTask.due_date < now,  # type: ignore[operator]
         QuickTask.status.in_([TaskStatus.PENDING, TaskStatus.IN_PROGRESS]),
     )
     overdue_quick_tasks = session.exec(overdue_quick_tasks_stmt).all()
 
     for task in overdue_tasks:
-        await _send_overdue_email(session, user, task, now, email_service, is_quick_task=False)
+        await _send_overdue_email(
+            session, user, task, now, email_service, is_quick_task=False
+        )
 
     for quick_task in overdue_quick_tasks:
-        await _send_overdue_email(session, user, quick_task, now, email_service, is_quick_task=True)
+        await _send_overdue_email(
+            session, user, quick_task, now, email_service, is_quick_task=True
+        )
 
 
 async def _send_overdue_email(
@@ -340,6 +350,10 @@ async def _send_overdue_email(
     is_quick_task: bool,
 ) -> None:
     """Send an overdue alert email for a task if not already sent"""
+    # Guard: ensure due_date is not None (should be filtered by query, but for type safety)
+    if task.due_date is None:
+        return
+
     task_id = task.id
     notification_type = EmailNotificationType.OVERDUE_ALERT
 
@@ -353,7 +367,7 @@ async def _send_overdue_email(
             else EmailNotificationLog.task_id == task_id
         ),
         EmailNotificationLog.notification_type == notification_type,
-        EmailNotificationLog.created_at >= today_start,
+        EmailNotificationLog.created_at >= today_start,  # type: ignore[operator]
         EmailNotificationLog.status == EmailNotificationStatus.SENT,
     )
     existing_log = session.exec(existing_log_stmt).first()
@@ -362,7 +376,7 @@ async def _send_overdue_email(
         logger.debug(f"Already sent overdue alert for task {task_id} today")
         return
 
-    # Calculate hours overdue
+    # Calculate hours overdue (due_date is guaranteed non-None by guard clause)
     hours_overdue = int((now - task.due_date).total_seconds() / 3600)
 
     # Get context info
@@ -390,7 +404,9 @@ async def _send_overdue_email(
         task_id=None if is_quick_task else task_id,
         quick_task_id=task_id if is_quick_task else None,
         notification_type=notification_type,
-        status=EmailNotificationStatus.SENT if success else EmailNotificationStatus.FAILED,
+        status=EmailNotificationStatus.SENT
+        if success
+        else EmailNotificationStatus.FAILED,
         sent_at=now if success else None,
         error_message=None if success else "Failed to send email",
     )
