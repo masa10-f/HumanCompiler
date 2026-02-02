@@ -35,7 +35,7 @@ import {
 } from 'lucide-react';
 import { AppHeader } from '@/components/layout/app-header';
 import { toast } from '@/hooks/use-toast';
-import { schedulingApi, projectsApi, tasksApi, quickTasksApi } from '@/lib/api';
+import { schedulingApi, projectsApi, tasksApi, quickTasksApi, slotTemplatesApi } from '@/lib/api';
 import { getSlotKindLabel, getSlotKindColor } from '@/constants/schedule';
 import { DroppableSlot, TaskPool, DraggableTask } from '@/components/scheduling';
 import type {
@@ -46,9 +46,10 @@ import type {
   TaskInfo,
   FixedAssignment,
   WeeklyScheduleOption,
+  DayOfWeekTemplates,
 } from '@/types/ai-planning';
 import type { Project } from '@/types/project';
-import { getJSTDateString } from '@/lib/date-utils';
+import { getJSTDateString, getIsoDayOfWeek } from '@/lib/date-utils';
 import { logger } from '@/lib/logger';
 
 interface ManualAssignment {
@@ -80,6 +81,9 @@ export default function SchedulingPage() {
   // Available tasks for scheduling
   const [availableTasks, setAvailableTasks] = useState<TaskInfo[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+
+  // Slot templates
+  const [templatesByDay, setTemplatesByDay] = useState<DayOfWeekTemplates[]>([]);
 
   // Manual assignments (user-defined fixed assignments)
   const [manualAssignments, setManualAssignments] = useState<ManualAssignment[]>([]);
@@ -128,6 +132,40 @@ export default function SchedulingPage() {
 
     loadInitialData();
   }, [user]);
+
+  // Load slot templates
+  useEffect(() => {
+    const loadTemplates = async () => {
+      if (!user) return;
+
+      try {
+        const templates = await slotTemplatesApi.getByDay();
+        setTemplatesByDay(templates);
+      } catch (error) {
+        logger.error('Failed to load slot templates', error instanceof Error ? error : new Error(String(error)), { component: 'SchedulingPage' });
+        toast({
+          title: 'テンプレート読み込みエラー',
+          description: 'スロットテンプレートの読み込みに失敗しました。デフォルトテンプレートは適用されません。',
+          variant: 'destructive',
+        });
+      }
+    };
+
+    loadTemplates();
+  }, [user]);
+
+  // Apply default template when date changes
+  useEffect(() => {
+    if (!user || templatesByDay.length === 0) return;
+
+    const isoDayOfWeek = getIsoDayOfWeek(selectedDate);
+    const dayData = templatesByDay.find(d => d.day_of_week === isoDayOfWeek);
+    if (dayData?.default_template) {
+      setTimeSlots(dayData.default_template.slots);
+      setManualAssignments([]);
+      setScheduleResult(null);
+    }
+  }, [user, selectedDate, templatesByDay]);
 
   // Load available tasks when task source changes
   useEffect(() => {
@@ -530,6 +568,51 @@ export default function SchedulingPage() {
                   <Plus className="h-4 w-4 mr-1" />
                   スロット追加
                 </Button>
+
+                {/* Template selector */}
+                {(() => {
+                  const isoDayOfWeek = getIsoDayOfWeek(selectedDate);
+                  const dayData = templatesByDay.find(d => d.day_of_week === isoDayOfWeek);
+                  const templates = dayData?.templates || [];
+
+                  if (templates.length > 0) {
+                    return (
+                      <Select
+                        onValueChange={(templateId) => {
+                          const template = templates.find(t => t.id === templateId);
+                          if (template) {
+                            setTimeSlots(template.slots);
+                            setManualAssignments([]);
+                            setScheduleResult(null);
+                            toast({
+                              title: 'テンプレート適用',
+                              description: `「${template.name}」を適用しました`,
+                            });
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="w-[180px] h-9">
+                          <SelectValue placeholder="テンプレートを選択" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {templates.map((template) => (
+                            <SelectItem key={template.id} value={template.id}>
+                              {template.name}
+                              {template.is_default && ' (デフォルト)'}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    );
+                  }
+                  return null;
+                })()}
+
+                <Link href="/scheduling/settings">
+                  <Button variant="ghost" size="sm" className="h-9">
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </Link>
               </div>
             </CardContent>
           </Card>

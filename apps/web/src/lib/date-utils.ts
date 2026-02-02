@@ -190,3 +190,41 @@ export function getJSTISOString(): string {
   // Return as ISO string but replace Z with +09:00 to indicate JST
   return jstTime.toISOString().replace('Z', '+09:00')
 }
+
+/**
+ * Convert JavaScript day of week to ISO 8601 day of week
+ *
+ * JavaScript: 0=Sunday, 1=Monday, ..., 6=Saturday
+ * ISO 8601:   0=Monday, 1=Tuesday, ..., 6=Sunday
+ *
+ * @param jsDayOfWeek - JavaScript Date.getDay() value (0-6, Sunday=0)
+ * @returns ISO 8601 day of week (0-6, Monday=0)
+ *
+ * @example
+ * convertJsDayToIsoDayOfWeek(0) // 6 (Sunday)
+ * convertJsDayToIsoDayOfWeek(1) // 0 (Monday)
+ * convertJsDayToIsoDayOfWeek(6) // 5 (Saturday)
+ */
+export function convertJsDayToIsoDayOfWeek(jsDayOfWeek: number): number {
+  if (jsDayOfWeek < 0 || jsDayOfWeek > 6) {
+    throw new Error(`Invalid JavaScript day of week: ${jsDayOfWeek}. Expected 0-6.`)
+  }
+  return jsDayOfWeek === 0 ? 6 : jsDayOfWeek - 1
+}
+
+/**
+ * Get ISO 8601 day of week from a date string (YYYY-MM-DD)
+ *
+ * @param dateString - Date string in YYYY-MM-DD format
+ * @returns ISO 8601 day of week (0=Monday, 6=Sunday)
+ *
+ * @example
+ * getIsoDayOfWeek("2026-02-02") // Returns day of week for that date
+ */
+export function getIsoDayOfWeek(dateString: string): number {
+  const date = new Date(dateString)
+  if (isNaN(date.getTime())) {
+    throw new Error(`Invalid date string: ${dateString}`)
+  }
+  return convertJsDayToIsoDayOfWeek(date.getDay())
+}

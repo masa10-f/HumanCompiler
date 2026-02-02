@@ -60,3 +60,44 @@ export const getSlotKindColor = (slotKind: string): string => {
 export const isValidSlotKind = (value: string): value is SlotKind => {
   return value in slotKindLabels;
 };
+
+/**
+ * Day of week labels (0=Monday, 6=Sunday, following ISO 8601)
+ */
+export const dayOfWeekLabels: Record<number, string> = {
+  0: '月曜日',
+  1: '火曜日',
+  2: '水曜日',
+  3: '木曜日',
+  4: '金曜日',
+  5: '土曜日',
+  6: '日曜日',
+} as const;
+
+export const dayOfWeekShortLabels: Record<number, string> = {
+  0: '月',
+  1: '火',
+  2: '水',
+  3: '木',
+  4: '金',
+  5: '土',
+  6: '日',
+} as const;
+
+/**
+ * Get the day of week label
+ * @param dayOfWeek - Day index (0=Monday, 6=Sunday)
+ * @returns The Japanese label for the day
+ */
+export const getDayOfWeekLabel = (dayOfWeek: number): string => {
+  return dayOfWeekLabels[dayOfWeek] || '不明';
+};
+
+/**
+ * Get the short day of week label
+ * @param dayOfWeek - Day index (0=Monday, 6=Sunday)
+ * @returns The short Japanese label for the day
+ */
+export const getDayOfWeekShortLabel = (dayOfWeek: number): string => {
+  return dayOfWeekShortLabels[dayOfWeek] || '?';
+};
