@@ -317,66 +317,13 @@ export default function SlotTemplatesSettingsPage() {
     }));
   };
 
-  // Slot editor component
-  const SlotEditor = ({ slot, index, onUpdate, onRemove }: {
-    slot: EditingSlot;
-    index: number;
-    onUpdate: (index: number, field: keyof EditingSlot, value: string) => void;
-    onRemove: (index: number) => void;
-  }) => (
-    <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/30">
-      <span className="text-sm text-muted-foreground w-6">{index + 1}.</span>
-      <div className="flex-1 grid grid-cols-3 gap-2">
-        <div>
-          <Label className="text-xs text-muted-foreground">開始</Label>
-          <Input
-            type="time"
-            value={slot.start}
-            onChange={(e) => onUpdate(index, 'start', e.target.value)}
-            className="h-8"
-          />
-        </div>
-        <div>
-          <Label className="text-xs text-muted-foreground">終了</Label>
-          <Input
-            type="time"
-            value={slot.end}
-            onChange={(e) => onUpdate(index, 'end', e.target.value)}
-            className="h-8"
-          />
-        </div>
-        <div>
-          <Label className="text-xs text-muted-foreground">種別</Label>
-          <Select
-            value={slot.kind}
-            onValueChange={(value) => onUpdate(index, 'kind', value)}
-          >
-            <SelectTrigger className="h-8">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(slotKindLabels).map(([key, label]) => (
-                <SelectItem key={key} value={key}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 text-destructive hover:text-destructive"
-        onClick={() => onRemove(index)}
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
-    </div>
+  // Get templates for selected day
+  const currentDayTemplates = templatesByDay.find(
+    (d) => d.day_of_week === parseInt(selectedDay, 10)
   );
 
-  // Template form dialog content
-  const TemplateFormContent = () => (
+  // Form content JSX (inlined to avoid re-mount issues)
+  const formContent = (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
@@ -431,13 +378,55 @@ export default function SlotTemplatesSettingsPage() {
         </div>
         <div className="space-y-2 max-h-60 overflow-y-auto">
           {formData.slots.map((slot, index) => (
-            <SlotEditor
-              key={index}
-              slot={slot}
-              index={index}
-              onUpdate={updateSlot}
-              onRemove={removeSlot}
-            />
+            <div key={index} className="flex items-center gap-2 p-3 border rounded-lg bg-muted/30">
+              <span className="text-sm text-muted-foreground w-6">{index + 1}.</span>
+              <div className="flex-1 grid grid-cols-3 gap-2">
+                <div>
+                  <Label className="text-xs text-muted-foreground">開始</Label>
+                  <Input
+                    type="time"
+                    value={slot.start}
+                    onChange={(e) => updateSlot(index, 'start', e.target.value)}
+                    className="h-8"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">終了</Label>
+                  <Input
+                    type="time"
+                    value={slot.end}
+                    onChange={(e) => updateSlot(index, 'end', e.target.value)}
+                    className="h-8"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">種別</Label>
+                  <Select
+                    value={slot.kind}
+                    onValueChange={(value) => updateSlot(index, 'kind', value)}
+                  >
+                    <SelectTrigger className="h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(slotKindLabels).map(([key, label]) => (
+                        <SelectItem key={key} value={key}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-destructive hover:text-destructive"
+                onClick={() => removeSlot(index)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
           ))}
           {formData.slots.length === 0 && (
             <div className="text-center py-4 text-muted-foreground text-sm">
@@ -447,11 +436,6 @@ export default function SlotTemplatesSettingsPage() {
         </div>
       </div>
     </div>
-  );
-
-  // Get templates for selected day
-  const currentDayTemplates = templatesByDay.find(
-    (d) => d.day_of_week === parseInt(selectedDay, 10)
   );
 
   if (authLoading || !user) {
@@ -625,7 +609,7 @@ export default function SlotTemplatesSettingsPage() {
               新しいスロットテンプレートを作成します
             </DialogDescription>
           </DialogHeader>
-          <TemplateFormContent />
+          {formContent}
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
               キャンセル
@@ -647,7 +631,7 @@ export default function SlotTemplatesSettingsPage() {
               スロットテンプレートを編集します
             </DialogDescription>
           </DialogHeader>
-          <TemplateFormContent />
+          {formContent}
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
               キャンセル
