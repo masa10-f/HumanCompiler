@@ -3,12 +3,15 @@
 import { useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { useProjectPageState } from '@/hooks/use-project-page-state'
+import { useProjectNote } from '@/hooks/use-notes'
 import { AppHeader } from '@/components/layout/app-header'
 import { ProjectHeader } from '@/components/projects/project-header'
 import { ProjectProgressCard } from '@/components/progress/progress-card'
 import { GoalList } from '@/components/goals/goal-list'
+import { ContextNoteEditor } from '@/components/notes/context-note-editor'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ArrowLeft, FileText, Loader2, AlertCircle } from 'lucide-react'
 
 export default function ProjectDetailPage() {
   const params = useParams()
@@ -28,6 +31,15 @@ export default function ProjectDetailPage() {
     isInitializing,
     shouldRedirect,
   } = useProjectPageState(id)
+
+  const {
+    note: projectNote,
+    loading: noteLoading,
+    saving: noteSaving,
+    error: noteError,
+    updateNote,
+    refetch: refetchNote,
+  } = useProjectNote(id)
 
   useEffect(() => {
     if (shouldRedirect) {
@@ -95,6 +107,40 @@ export default function ProjectDetailPage() {
             <ProjectProgressCard progress={projectProgress} />
           </div>
         )}
+
+        {/* Project Notes Section */}
+        <div className="mb-8">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <FileText className="h-5 w-5" />
+                プロジェクトノート
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {noteLoading ? (
+                <div className="flex items-center justify-center h-32">
+                  <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                </div>
+              ) : noteError ? (
+                <div className="flex flex-col items-center justify-center h-32 text-center">
+                  <AlertCircle className="h-6 w-6 text-red-500 mb-2" />
+                  <p className="text-sm text-red-600 mb-2">ノートの読み込みに失敗しました</p>
+                  <Button variant="outline" size="sm" onClick={() => refetchNote()}>
+                    再試行
+                  </Button>
+                </div>
+              ) : (
+                <ContextNoteEditor
+                  content={projectNote?.content || ''}
+                  onUpdate={(content) => updateNote({ content })}
+                  saving={noteSaving}
+                  placeholder="プロジェクトに関するメモや背景情報を記録..."
+                />
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Goals Section */}
         <GoalList
