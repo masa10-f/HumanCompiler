@@ -226,7 +226,7 @@ class RescheduleService:
             RescheduleSuggestion if changes are needed, None otherwise
         """
         user_id = work_session.user_id
-        is_manual = getattr(work_session, "is_manual_execution", False)
+        is_manual = work_session.is_manual_execution or False
 
         # Get today's schedule
         schedule = self.get_today_schedule(session, user_id)
@@ -331,30 +331,30 @@ class RescheduleService:
         This calculates the impact on scheduled tasks.
 
         The logic:
-        1. Calculate actual work duration (excluding paused time)
+        1. Calculate execution time window (start to end)
         2. Find which scheduled slots overlap with the execution time
-        3. Push affected tasks later or remove them if they can't fit
+        3. Push affected tasks later sequentially, accounting for full slot durations
         """
-        # Calculate actual work duration in minutes
+        # Validate session has ended
         if not work_session.ended_at or not work_session.started_at:
             return slots
 
-        total_seconds = (
+        # Calculate total execution duration (wall clock time, not work time)
+        # Schedule impact is based on elapsed time, not work time
+        total_execution_seconds = (
             work_session.ended_at - work_session.started_at
         ).total_seconds()
-        paused_seconds = work_session.total_paused_seconds or 0
-        actual_work_seconds = max(0, total_seconds - paused_seconds)
-        actual_work_minutes = int(actual_work_seconds / 60)
+        total_execution_minutes = int(total_execution_seconds / 60)
 
-        if actual_work_minutes <= 0:
+        if total_execution_minutes <= 0:
             return slots
 
-        # Parse slot times and identify affected slots
         execution_start = work_session.started_at
         execution_end = work_session.ended_at
 
         proposed: list[dict[str, Any]] = []
-        cumulative_delay_minutes = 0
+        # Track the next available start time for scheduling pushed tasks
+        next_available_time = execution_end
 
         for slot in slots:
             slot_start_str = slot.get("start_time", "")
@@ -373,49 +373,56 @@ class RescheduleService:
                 proposed.append(slot.copy())
                 continue
 
+            # Calculate slot duration for later use
+            slot_duration = slot_end_dt - slot_start_dt
+
             # Check if this slot overlaps with execution time
             if slot_end_dt <= execution_start:
-                # Slot was before execution - keep as-is
+                # Slot ended before execution started - keep as-is
                 proposed.append(slot.copy())
             elif slot_start_dt >= execution_end:
-                # Slot is after execution - may need to push back
-                if cumulative_delay_minutes > 0:
+                # Slot starts after execution ended
+                # Check if it needs to be pushed back due to earlier overlapping slots
+                if next_available_time > slot_start_dt:
                     # Push this slot back
                     new_slot = slot.copy()
-                    new_start = slot_start_dt + timedelta(
-                        minutes=cumulative_delay_minutes
-                    )
-                    new_end = slot_end_dt + timedelta(minutes=cumulative_delay_minutes)
+                    delay = next_available_time - slot_start_dt
+                    new_start = slot_start_dt + delay
+                    new_end = slot_end_dt + delay
                     new_slot["start_time"] = new_start.strftime("%H:%M")
                     new_slot["slot_end"] = new_end.strftime("%H:%M")
                     proposed.append(new_slot)
+                    # Update next available time
+                    next_available_time = new_end
                 else:
+                    # No push needed
                     proposed.append(slot.copy())
+                    # Update next available time to end of this slot
+                    next_available_time = max(next_available_time, slot_end_dt)
             else:
                 # Slot overlaps with execution - this task was "interrupted"
-                # Calculate overlap duration
-                overlap_start = max(slot_start_dt, execution_start)
-                overlap_end = min(slot_end_dt, execution_end)
-                overlap_minutes = int(
-                    (overlap_end - overlap_start).total_seconds() / 60
-                )
-
-                # Add to cumulative delay
-                cumulative_delay_minutes += overlap_minutes
-
-                # Keep the slot but mark it as pushed
+                # Schedule this slot to start after execution ends (or after previous pushed slot)
                 new_slot = slot.copy()
-                new_start = execution_end
-                slot_duration = slot_end_dt - slot_start_dt
+                new_start = max(execution_end, next_available_time)
                 new_end = new_start + slot_duration
                 new_slot["start_time"] = new_start.strftime("%H:%M")
                 new_slot["slot_end"] = new_end.strftime("%H:%M")
                 proposed.append(new_slot)
+                # Update next available time to end of this pushed slot
+                next_available_time = new_end
 
         return proposed
 
     def _parse_time_to_datetime(self, time_str: str, date: Any) -> datetime | None:
-        """Parse a time string (HH:MM) to a datetime on the given date"""
+        """Parse a time string (HH:MM) to a datetime on the given date.
+
+        Args:
+            time_str: Time string in HH:MM format
+            date: Date object to use for year/month/day
+
+        Returns:
+            datetime object or None if parsing fails
+        """
         if not time_str:
             return None
 
@@ -425,6 +432,13 @@ class RescheduleService:
                 return None
             hours = int(parts[0])
             minutes = int(parts[1])
+
+            # Validate time ranges
+            if not (0 <= hours <= 23):
+                return None
+            if not (0 <= minutes <= 59):
+                return None
+
             return datetime(
                 year=date.year,
                 month=date.month,
@@ -433,7 +447,7 @@ class RescheduleService:
                 minute=minutes,
                 tzinfo=UTC,
             )
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, AttributeError):
             return None
 
     def _build_task_lookup(

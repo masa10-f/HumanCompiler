@@ -26,7 +26,6 @@ import {
 import { Clock, Search, FolderOpen, AlertCircle } from 'lucide-react';
 import { projectsApi, tasksApi } from '@/lib/api';
 import type { Project } from '@/types/project';
-import type { Task } from '@/types/task';
 
 interface ManualTaskSelectDialogProps {
   open: boolean;
@@ -61,16 +60,15 @@ export function ManualTaskSelectDialog({
 
   // Fetch tasks for selected project (or all projects)
   const { data: tasks = [], isLoading: tasksLoading } = useQuery({
-    queryKey: ['tasks', 'manual-select', selectedProjectId],
+    queryKey: ['tasks', 'manual-select', selectedProjectId, projects.map(p => p.id).join(',')],
     queryFn: async () => {
       if (selectedProjectId === 'all') {
-        // Fetch tasks from all projects
-        const allTasks: Task[] = [];
-        for (const project of projects) {
-          const projectTasks = await tasksApi.getByProject(project.id, 0, 100);
-          allTasks.push(...projectTasks);
-        }
-        return allTasks;
+        // Fetch tasks from all projects in parallel using Promise.all
+        const taskPromises = projects.map((project) =>
+          tasksApi.getByProject(project.id, 0, 100)
+        );
+        const taskResults = await Promise.all(taskPromises);
+        return taskResults.flat();
       } else {
         return tasksApi.getByProject(selectedProjectId, 0, 100);
       }
