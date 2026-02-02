@@ -1882,9 +1882,15 @@ class SlotTemplateService(
             ]
             del update_data["slots"]
 
-        # If setting as default, unset other defaults for the same day
-        if update_data.get("is_default"):
-            target_day = update_data.get("day_of_week", template.day_of_week)
+        # Handle default template logic
+        new_day_of_week = update_data.get("day_of_week")
+        is_becoming_default = update_data.get("is_default")
+
+        # If explicitly setting as default OR moving an already-default template to a new day
+        if is_becoming_default or (new_day_of_week is not None and template.is_default):
+            target_day = (
+                new_day_of_week if new_day_of_week is not None else template.day_of_week
+            )
             self._unset_default_for_day(
                 session, user_id_validated, target_day, exclude_id=template_id
             )

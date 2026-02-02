@@ -4,7 +4,14 @@ from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, ConfigDict, field_serializer, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 from sqlalchemy import JSON, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
 from sqlmodel import Column, Relationship, SQLModel
@@ -1892,6 +1899,17 @@ class TimeSlotSchema(BaseModel):
         None, ge=0, description="Slot capacity in hours"
     )
     assigned_project_id: str | None = Field(None, description="Assigned project ID")
+
+    @model_validator(mode="after")
+    def validate_start_before_end(self) -> "TimeSlotSchema":
+        """Validate that start time is before end time"""
+        start_parts = self.start.split(":")
+        end_parts = self.end.split(":")
+        start_minutes = int(start_parts[0]) * 60 + int(start_parts[1])
+        end_minutes = int(end_parts[0]) * 60 + int(end_parts[1])
+        if start_minutes >= end_minutes:
+            raise ValueError("Start time must be before end time")
+        return self
 
 
 class SlotTemplateCreate(BaseModel):

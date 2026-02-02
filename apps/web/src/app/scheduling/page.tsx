@@ -143,6 +143,11 @@ export default function SchedulingPage() {
         setTemplatesByDay(templates);
       } catch (error) {
         logger.error('Failed to load slot templates', error instanceof Error ? error : new Error(String(error)), { component: 'SchedulingPage' });
+        toast({
+          title: 'テンプレート読み込みエラー',
+          description: 'スロットテンプレートの読み込みに失敗しました。デフォルトテンプレートは適用されません。',
+          variant: 'destructive',
+        });
       }
     };
 
