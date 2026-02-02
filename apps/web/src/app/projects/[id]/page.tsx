@@ -11,7 +11,7 @@ import { GoalList } from '@/components/goals/goal-list'
 import { ContextNoteEditor } from '@/components/notes/context-note-editor'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ArrowLeft, FileText, Loader2 } from 'lucide-react'
+import { ArrowLeft, FileText, Loader2, AlertCircle } from 'lucide-react'
 
 export default function ProjectDetailPage() {
   const params = useParams()
@@ -36,8 +36,9 @@ export default function ProjectDetailPage() {
     note: projectNote,
     loading: noteLoading,
     saving: noteSaving,
+    error: noteError,
     updateNote,
-    updateNoteImmediate,
+    refetch: refetchNote,
   } = useProjectNote(id)
 
   useEffect(() => {
@@ -121,11 +122,18 @@ export default function ProjectDetailPage() {
                 <div className="flex items-center justify-center h-32">
                   <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
                 </div>
+              ) : noteError ? (
+                <div className="flex flex-col items-center justify-center h-32 text-center">
+                  <AlertCircle className="h-6 w-6 text-red-500 mb-2" />
+                  <p className="text-sm text-red-600 mb-2">ノートの読み込みに失敗しました</p>
+                  <Button variant="outline" size="sm" onClick={() => refetchNote()}>
+                    再試行
+                  </Button>
+                </div>
               ) : (
                 <ContextNoteEditor
                   content={projectNote?.content || ''}
                   onUpdate={(content) => updateNote({ content })}
-                  onSave={() => updateNoteImmediate({ content: projectNote?.content || '' })}
                   saving={noteSaving}
                   placeholder="プロジェクトに関するメモや背景情報を記録..."
                 />

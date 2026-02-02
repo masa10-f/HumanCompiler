@@ -23,7 +23,7 @@ import { TaskDeleteDialog } from '@/components/tasks/task-delete-dialog';
 import { TaskLogsMemoPanel } from '@/components/tasks/task-logs-memo-panel';
 import { LogFormDialog } from '@/components/logs/log-form-dialog';
 import { ContextNoteEditor } from '@/components/notes/context-note-editor';
-import { ArrowLeft, Plus, Clock, Calendar, GitBranch, FileText, Loader2 } from 'lucide-react';
+import { ArrowLeft, Plus, Clock, Calendar, GitBranch, FileText, Loader2, AlertCircle } from 'lucide-react';
 import { taskStatusLabels, taskStatusColors, workTypeLabels, workTypeColors, taskPriorityLabels, taskPriorityColors } from '@/types/task';
 import type { TaskStatus, Task } from '@/types/task';
 import { log } from '@/lib/logger';
@@ -114,8 +114,9 @@ export default function GoalDetailPage() {
     note: goalNote,
     loading: noteLoading,
     saving: noteSaving,
+    error: noteError,
     updateNote,
-    updateNoteImmediate,
+    refetch: refetchNote,
   } = useGoalNote(goalId);
 
   // Get goal progress data for actual work hours
@@ -309,11 +310,18 @@ export default function GoalDetailPage() {
               <div className="flex items-center justify-center h-32">
                 <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
               </div>
+            ) : noteError ? (
+              <div className="flex flex-col items-center justify-center h-32 text-center">
+                <AlertCircle className="h-6 w-6 text-red-500 mb-2" />
+                <p className="text-sm text-red-600 mb-2">ノートの読み込みに失敗しました</p>
+                <Button variant="outline" size="sm" onClick={() => refetchNote()}>
+                  再試行
+                </Button>
+              </div>
             ) : (
               <ContextNoteEditor
                 content={goalNote?.content || ''}
                 onUpdate={(content) => updateNote({ content })}
-                onSave={() => updateNoteImmediate({ content: goalNote?.content || '' })}
                 saving={noteSaving}
                 placeholder="ゴールに関するメモや背景情報を記録..."
               />
