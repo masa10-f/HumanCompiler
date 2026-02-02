@@ -36,7 +36,7 @@ import {
 import { AppHeader } from '@/components/layout/app-header';
 import { toast } from '@/hooks/use-toast';
 import { schedulingApi, projectsApi, tasksApi, quickTasksApi, slotTemplatesApi } from '@/lib/api';
-import { getSlotKindLabel, getSlotKindColor, getDayOfWeekLabel } from '@/constants/schedule';
+import { getSlotKindLabel, getSlotKindColor } from '@/constants/schedule';
 import { DroppableSlot, TaskPool, DraggableTask } from '@/components/scheduling';
 import type {
   ScheduleRequest,
@@ -46,7 +46,6 @@ import type {
   TaskInfo,
   FixedAssignment,
   WeeklyScheduleOption,
-  SlotTemplate,
   DayOfWeekTemplates,
 } from '@/types/ai-planning';
 import type { Project } from '@/types/project';
@@ -85,7 +84,6 @@ export default function SchedulingPage() {
 
   // Slot templates
   const [templatesByDay, setTemplatesByDay] = useState<DayOfWeekTemplates[]>([]);
-  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
 
   // Manual assignments (user-defined fixed assignments)
   const [manualAssignments, setManualAssignments] = useState<ManualAssignment[]>([]);
@@ -141,13 +139,10 @@ export default function SchedulingPage() {
       if (!user) return;
 
       try {
-        setIsLoadingTemplates(true);
         const templates = await slotTemplatesApi.getByDay();
         setTemplatesByDay(templates);
       } catch (error) {
         logger.error('Failed to load slot templates', error instanceof Error ? error : new Error(String(error)), { component: 'SchedulingPage' });
-      } finally {
-        setIsLoadingTemplates(false);
       }
     };
 

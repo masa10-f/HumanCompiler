@@ -36,7 +36,6 @@ import {
   Trash2,
   Edit,
   Star,
-  Save,
   Loader2,
   Copy,
 } from 'lucide-react';
@@ -56,7 +55,6 @@ import type {
   SlotTemplateCreate,
   SlotTemplateUpdate,
   DayOfWeekTemplates,
-  TimeSlot,
 } from '@/types/ai-planning';
 import { logger } from '@/lib/logger';
 
