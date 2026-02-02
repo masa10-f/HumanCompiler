@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useTasksByGoal } from '@/hooks/use-tasks-query';
 import { useGoal } from '@/hooks/use-goals-query';
 import { useProject } from '@/hooks/use-project-query';
+import { useGoalNote } from '@/hooks/use-notes';
 import { useQuery } from '@tanstack/react-query';
 import { progressApi } from '@/lib/api';
 import { useTaskActualMinutes } from '@/hooks/use-logs-query';
@@ -21,7 +22,8 @@ import { TaskEditDialog } from '@/components/tasks/task-edit-dialog';
 import { TaskDeleteDialog } from '@/components/tasks/task-delete-dialog';
 import { TaskLogsMemoPanel } from '@/components/tasks/task-logs-memo-panel';
 import { LogFormDialog } from '@/components/logs/log-form-dialog';
-import { ArrowLeft, Plus, Clock, Calendar, GitBranch } from 'lucide-react';
+import { ContextNoteEditor } from '@/components/notes/context-note-editor';
+import { ArrowLeft, Plus, Clock, Calendar, GitBranch, FileText, Loader2 } from 'lucide-react';
 import { taskStatusLabels, taskStatusColors, workTypeLabels, workTypeColors, taskPriorityLabels, taskPriorityColors } from '@/types/task';
 import type { TaskStatus, Task } from '@/types/task';
 import { log } from '@/lib/logger';
@@ -107,6 +109,14 @@ export default function GoalDetailPage() {
     error: projectError,
     refetch: refetchProject
   } = useProject(id);
+
+  const {
+    note: goalNote,
+    loading: noteLoading,
+    saving: noteSaving,
+    updateNote,
+    updateNoteImmediate,
+  } = useGoalNote(goalId);
 
   // Get goal progress data for actual work hours
   const { data: goalProgress } = useQuery({
@@ -283,6 +293,33 @@ export default function GoalDetailPage() {
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      {/* Goal Notes Section */}
+      <div className="mb-8">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <FileText className="h-5 w-5" />
+              ゴールノート
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {noteLoading ? (
+              <div className="flex items-center justify-center h-32">
+                <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+              </div>
+            ) : (
+              <ContextNoteEditor
+                content={goalNote?.content || ''}
+                onUpdate={(content) => updateNote({ content })}
+                onSave={() => updateNoteImmediate({ content: goalNote?.content || '' })}
+                saving={noteSaving}
+                placeholder="ゴールに関するメモや背景情報を記録..."
+              />
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Tasks Section */}
