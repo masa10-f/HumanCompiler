@@ -382,7 +382,9 @@ class RescheduleService:
                 if cumulative_delay_minutes > 0:
                     # Push this slot back
                     new_slot = slot.copy()
-                    new_start = slot_start_dt + timedelta(minutes=cumulative_delay_minutes)
+                    new_start = slot_start_dt + timedelta(
+                        minutes=cumulative_delay_minutes
+                    )
                     new_end = slot_end_dt + timedelta(minutes=cumulative_delay_minutes)
                     new_slot["start_time"] = new_start.strftime("%H:%M")
                     new_slot["slot_end"] = new_end.strftime("%H:%M")
@@ -412,9 +414,7 @@ class RescheduleService:
 
         return proposed
 
-    def _parse_time_to_datetime(
-        self, time_str: str, date: Any
-    ) -> datetime | None:
+    def _parse_time_to_datetime(self, time_str: str, date: Any) -> datetime | None:
         """Parse a time string (HH:MM) to a datetime on the given date"""
         if not time_str:
             return None
