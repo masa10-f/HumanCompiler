@@ -49,10 +49,10 @@ def test_user(test_session):
 def sample_weekly_recurring_task_data():
     """Sample weekly recurring task data for testing."""
     return {
-        "title": "週次振り返り会議",
-        "description": "チームの週次振り返り会議",
+        "title": "週次レビュー",
+        "description": "チームの週次レビュー",
         "estimate_hours": 2.0,
-        "category": TaskCategory.MEETING,
+        "category": TaskCategory.REVIEW,
         "is_active": True,
     }
 
@@ -67,10 +67,10 @@ def test_create_weekly_recurring_task(
         test_session, task_data, test_user.id
     )
 
-    assert task.title == "週次振り返り会議"
-    assert task.description == "チームの週次振り返り会議"
+    assert task.title == "週次レビュー"
+    assert task.description == "チームの週次レビュー"
     assert task.estimate_hours == Decimal("2.0")
-    assert task.category == TaskCategory.MEETING
+    assert task.category == TaskCategory.REVIEW
     assert task.is_active is True
     assert task.user_id == test_user.id
     assert task.id is not None
@@ -111,12 +111,12 @@ def test_get_weekly_recurring_tasks(
 def test_get_weekly_recurring_tasks_with_filters(test_session: Session, test_user):
     """Test getting weekly recurring tasks with filters."""
     # Create tasks with different categories and statuses
-    active_meeting_task = weekly_recurring_task_service.create_weekly_recurring_task(
+    active_admin_task = weekly_recurring_task_service.create_weekly_recurring_task(
         test_session,
         WeeklyRecurringTaskCreate(
-            title="週次会議",
+            title="事務作業",
             estimate_hours=1.5,
-            category=TaskCategory.MEETING,
+            category=TaskCategory.ADMIN,
             is_active=True,
         ),
         test_user.id,
@@ -134,11 +134,11 @@ def test_get_weekly_recurring_tasks_with_filters(test_session: Session, test_use
     )
 
     # Filter by category
-    meeting_tasks = weekly_recurring_task_service.get_weekly_recurring_tasks(
-        test_session, test_user.id, category=TaskCategory.MEETING
+    admin_tasks = weekly_recurring_task_service.get_weekly_recurring_tasks(
+        test_session, test_user.id, category=TaskCategory.ADMIN
     )
-    assert len(meeting_tasks) >= 1
-    assert all(task.category == TaskCategory.MEETING for task in meeting_tasks)
+    assert len(admin_tasks) >= 1
+    assert all(task.category == TaskCategory.ADMIN for task in admin_tasks)
 
     # Filter by active status
     active_tasks = weekly_recurring_task_service.get_weekly_recurring_tasks(
@@ -311,10 +311,10 @@ def test_weekly_recurring_task_filter_by_category(
     """Test filtering weekly recurring tasks by category."""
 
     # Create tasks with different categories
-    meeting_task = {
-        "title": "会議",
+    admin_task = {
+        "title": "事務作業",
         "estimate_hours": 1.0,
-        "category": TaskCategory.MEETING,
+        "category": TaskCategory.ADMIN,
         "is_active": True,
     }
 
@@ -327,7 +327,7 @@ def test_weekly_recurring_task_filter_by_category(
 
     # Create both tasks
     response = client.post(
-        "/api/weekly-recurring-tasks/", json=meeting_task, headers=auth_headers
+        "/api/weekly-recurring-tasks/", json=admin_task, headers=auth_headers
     )
     assert response.status_code == 201
 
@@ -336,15 +336,15 @@ def test_weekly_recurring_task_filter_by_category(
     )
     assert response.status_code == 201
 
-    # Filter by meeting category
+    # Filter by admin category
     response = client.get(
-        "/api/weekly-recurring-tasks/?category=meeting", headers=auth_headers
+        "/api/weekly-recurring-tasks/?category=admin", headers=auth_headers
     )
 
     assert response.status_code == 200
     tasks = response.json()
     assert len(tasks) >= 1
-    assert all(task["category"] == TaskCategory.MEETING for task in tasks)
+    assert all(task["category"] == TaskCategory.ADMIN for task in tasks)
 
     # Filter by study category
     response = client.get(
