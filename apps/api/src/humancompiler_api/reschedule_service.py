@@ -6,7 +6,7 @@ based on checkout data (actual work time vs estimates).
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, UTC
+from datetime import date as date_type, datetime, timedelta, UTC
 from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
@@ -413,12 +413,14 @@ class RescheduleService:
 
         return proposed
 
-    def _parse_time_to_datetime(self, time_str: str, date: Any) -> datetime | None:
+    def _parse_time_to_datetime(
+        self, time_str: str, target_date: date_type
+    ) -> datetime | None:
         """Parse a time string (HH:MM) to a datetime on the given date.
 
         Args:
             time_str: Time string in HH:MM format
-            date: Date object to use for year/month/day
+            target_date: Date object to use for year/month/day
 
         Returns:
             datetime object or None if parsing fails
@@ -440,9 +442,9 @@ class RescheduleService:
                 return None
 
             return datetime(
-                year=date.year,
-                month=date.month,
-                day=date.day,
+                year=target_date.year,
+                month=target_date.month,
+                day=target_date.day,
                 hour=hours,
                 minute=minutes,
                 tzinfo=UTC,

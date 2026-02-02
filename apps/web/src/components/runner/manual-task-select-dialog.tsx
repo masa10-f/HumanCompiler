@@ -203,16 +203,8 @@ export function ManualTaskSelectDialog({
                 {filteredTasks.map((task) => (
                   <div
                     key={task.id}
-                    role="button"
-                    tabIndex={0}
-                    className="flex items-start space-x-3 rounded-lg border p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                    className="flex items-start space-x-3 rounded-lg border p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2"
                     onClick={() => setSelectedTaskId(task.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelectedTaskId(task.id);
-                      }
-                    }}
                   >
                     <RadioGroupItem value={task.id} id={task.id} className="mt-1" />
                     <div className="flex-1 min-w-0">
