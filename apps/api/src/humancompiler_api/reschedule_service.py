@@ -226,6 +226,7 @@ class RescheduleService:
             RescheduleSuggestion if changes are needed, None otherwise
         """
         user_id = work_session.user_id
+        is_manual = getattr(work_session, "is_manual_execution", False)
 
         # Get today's schedule
         schedule = self.get_today_schedule(session, user_id)
@@ -251,14 +252,30 @@ class RescheduleService:
         # Get task titles for better diff display
         task_lookup = self._build_task_lookup(session, task_ids)
 
+        # Also add the manual task to lookup if it's a manual execution
+        if is_manual:
+            manual_task = session.get(Task, work_session.task_id)
+            if manual_task:
+                task_lookup[str(work_session.task_id)] = manual_task.title
+
         # Calculate the impact of the checkout
         original_schedule = [a.copy() for a in assignments]
-        proposed_schedule = self._compute_proposed_schedule(
-            slots=assignments,
-            completed_task_id=str(work_session.task_id),
-            remaining_estimate_hours=remaining_estimate_hours,
-            decision=decision,
-        )
+
+        if is_manual:
+            # Manual execution: calculate impact of interruption
+            proposed_schedule = self._compute_proposed_schedule_for_manual_execution(
+                session=session,
+                slots=assignments,
+                work_session=work_session,
+            )
+        else:
+            # Normal execution: existing logic
+            proposed_schedule = self._compute_proposed_schedule(
+                slots=assignments,
+                completed_task_id=str(work_session.task_id),
+                remaining_estimate_hours=remaining_estimate_hours,
+                decision=decision,
+            )
 
         # Compute diff
         diff = self.compute_schedule_diff(
@@ -275,11 +292,18 @@ class RescheduleService:
         today = datetime.now(UTC).date()
         expires_at = datetime.combine(today, datetime.max.time()).replace(tzinfo=UTC)
 
+        # Determine trigger type based on manual execution flag
+        trigger_type = (
+            RescheduleTriggerType.MANUAL_CHECKOUT
+            if is_manual
+            else RescheduleTriggerType.CHECKOUT
+        )
+
         # Create the suggestion
         suggestion = RescheduleSuggestion(
             user_id=user_id,
             work_session_id=work_session.id,
-            trigger_type=RescheduleTriggerType.CHECKOUT,
+            trigger_type=trigger_type,
             trigger_decision=decision.value,
             original_schedule_json={"assignments": original_schedule},
             proposed_schedule_json={"assignments": proposed_schedule},
@@ -293,6 +317,124 @@ class RescheduleService:
         session.refresh(suggestion)
 
         return suggestion
+
+    def _compute_proposed_schedule_for_manual_execution(
+        self,
+        session: Session,
+        slots: list[dict[str, Any]],
+        work_session: WorkSession,
+    ) -> list[dict[str, Any]]:
+        """
+        Compute proposed schedule after a manual task execution.
+
+        Manual execution = task not in today's schedule was executed.
+        This calculates the impact on scheduled tasks.
+
+        The logic:
+        1. Calculate actual work duration (excluding paused time)
+        2. Find which scheduled slots overlap with the execution time
+        3. Push affected tasks later or remove them if they can't fit
+        """
+        # Calculate actual work duration in minutes
+        if not work_session.ended_at or not work_session.started_at:
+            return slots
+
+        total_seconds = (
+            work_session.ended_at - work_session.started_at
+        ).total_seconds()
+        paused_seconds = work_session.total_paused_seconds or 0
+        actual_work_seconds = max(0, total_seconds - paused_seconds)
+        actual_work_minutes = int(actual_work_seconds / 60)
+
+        if actual_work_minutes <= 0:
+            return slots
+
+        # Parse slot times and identify affected slots
+        execution_start = work_session.started_at
+        execution_end = work_session.ended_at
+
+        proposed: list[dict[str, Any]] = []
+        cumulative_delay_minutes = 0
+
+        for slot in slots:
+            slot_start_str = slot.get("start_time", "")
+            slot_end_str = slot.get("slot_end", "")
+
+            # Parse slot times (format: "HH:MM")
+            slot_start_dt = self._parse_time_to_datetime(
+                slot_start_str, execution_start.date()
+            )
+            slot_end_dt = self._parse_time_to_datetime(
+                slot_end_str, execution_start.date()
+            )
+
+            if not slot_start_dt or not slot_end_dt:
+                # Can't parse time, keep as-is
+                proposed.append(slot.copy())
+                continue
+
+            # Check if this slot overlaps with execution time
+            if slot_end_dt <= execution_start:
+                # Slot was before execution - keep as-is
+                proposed.append(slot.copy())
+            elif slot_start_dt >= execution_end:
+                # Slot is after execution - may need to push back
+                if cumulative_delay_minutes > 0:
+                    # Push this slot back
+                    new_slot = slot.copy()
+                    new_start = slot_start_dt + timedelta(minutes=cumulative_delay_minutes)
+                    new_end = slot_end_dt + timedelta(minutes=cumulative_delay_minutes)
+                    new_slot["start_time"] = new_start.strftime("%H:%M")
+                    new_slot["slot_end"] = new_end.strftime("%H:%M")
+                    proposed.append(new_slot)
+                else:
+                    proposed.append(slot.copy())
+            else:
+                # Slot overlaps with execution - this task was "interrupted"
+                # Calculate overlap duration
+                overlap_start = max(slot_start_dt, execution_start)
+                overlap_end = min(slot_end_dt, execution_end)
+                overlap_minutes = int(
+                    (overlap_end - overlap_start).total_seconds() / 60
+                )
+
+                # Add to cumulative delay
+                cumulative_delay_minutes += overlap_minutes
+
+                # Keep the slot but mark it as pushed
+                new_slot = slot.copy()
+                new_start = execution_end
+                slot_duration = slot_end_dt - slot_start_dt
+                new_end = new_start + slot_duration
+                new_slot["start_time"] = new_start.strftime("%H:%M")
+                new_slot["slot_end"] = new_end.strftime("%H:%M")
+                proposed.append(new_slot)
+
+        return proposed
+
+    def _parse_time_to_datetime(
+        self, time_str: str, date: Any
+    ) -> datetime | None:
+        """Parse a time string (HH:MM) to a datetime on the given date"""
+        if not time_str:
+            return None
+
+        try:
+            parts = time_str.split(":")
+            if len(parts) != 2:
+                return None
+            hours = int(parts[0])
+            minutes = int(parts[1])
+            return datetime(
+                year=date.year,
+                month=date.month,
+                day=date.day,
+                hour=hours,
+                minute=minutes,
+                tzinfo=UTC,
+            )
+        except (ValueError, TypeError):
+            return None
 
     def _build_task_lookup(
         self, session: Session, task_ids: list[str]

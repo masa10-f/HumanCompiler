@@ -1116,6 +1116,7 @@ class WorkSessionService(
             task_id=data.task_id,
             planned_checkout_at=data.planned_checkout_at,
             planned_outcome=data.planned_outcome,
+            is_manual_execution=data.is_manual_execution,
         )
 
     def _get_user_filter(self, user_id: str | UUID):

@@ -44,6 +44,7 @@ export function RescheduleSuggestionCard({
 
   const diff = suggestion.diff;
   const isPending = suggestion.status === 'pending';
+  const isManualCheckout = suggestion.trigger_type === 'manual_checkout';
 
   if (!diff || !diff.has_significant_changes) {
     return null;
@@ -66,7 +67,9 @@ export function RescheduleSuggestionCard({
             <CardTitle className="text-lg">スケジュール調整の提案</CardTitle>
           </div>
           <CardDescription>
-            チェックアウトに基づいて、本日のスケジュールを調整できます
+            {isManualCheckout
+              ? '手動で選択したタスクの実行により、本日のスケジュールに影響が発生しました'
+              : 'チェックアウトに基づいて、本日のスケジュールを調整できます'}
           </CardDescription>
         </CardHeader>
 

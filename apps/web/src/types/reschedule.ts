@@ -12,7 +12,7 @@ export type RescheduleSuggestionStatus = 'pending' | 'accepted' | 'rejected' | '
 /**
  * Trigger type for reschedule suggestion
  */
-export type RescheduleTriggerType = 'checkout' | 'overdue_recovery';
+export type RescheduleTriggerType = 'checkout' | 'manual_checkout' | 'overdue_recovery';
 
 /**
  * Type of change in the schedule diff

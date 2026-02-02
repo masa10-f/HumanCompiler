@@ -216,12 +216,14 @@ export function useRunner(): UseRunnerReturn {
   const startSession = async (
     taskId: string,
     plannedCheckoutAt: string,
-    plannedOutcome?: string
+    plannedOutcome?: string,
+    isManualExecution?: boolean
   ): Promise<void> => {
     await startMutation.mutateAsync({
       task_id: taskId,
       planned_checkout_at: plannedCheckoutAt,
       planned_outcome: plannedOutcome,
+      is_manual_execution: isManualExecution,
     });
   };
 

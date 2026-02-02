@@ -58,6 +58,9 @@ export interface WorkSession {
   notification_checkout_sent?: boolean;
   marked_unresponsive_at?: string | null;
 
+  // Manual execution flag (task not in today's schedule)
+  is_manual_execution?: boolean;
+
   // Optional task relation for unresponsive dialog
   task?: Task;
 }
@@ -69,6 +72,7 @@ export interface WorkSessionStartRequest {
   task_id: string;
   planned_checkout_at: string;
   planned_outcome?: string;
+  is_manual_execution?: boolean;
 }
 
 /**
