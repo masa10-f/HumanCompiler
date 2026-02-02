@@ -1761,7 +1761,7 @@ class SlotTemplate(SlotTemplateBase, table=True):  # type: ignore[call-arg]
 
     __tablename__ = "slot_templates"
 
-    id: UUID | None = SQLField(default=None, primary_key=True)
+    id: UUID = SQLField(default_factory=uuid4, primary_key=True)
     user_id: UUID = SQLField(foreign_key="users.id", index=True)
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
