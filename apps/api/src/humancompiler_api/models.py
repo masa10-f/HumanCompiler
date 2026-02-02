@@ -1735,7 +1735,9 @@ class SlotTemplateBase(SQLModel):
     """Base slot template model for day-of-week slot presets"""
 
     name: str = SQLField(min_length=1, max_length=100)
-    day_of_week: int = SQLField(ge=0, le=6, description="Day of week (0=Monday, 6=Sunday)")
+    day_of_week: int = SQLField(
+        ge=0, le=6, description="Day of week (0=Monday, 6=Sunday)"
+    )
     slots_json: list[dict[str, Any]] = SQLField(
         sa_column=Column(JSON),
         default_factory=list,
@@ -1886,7 +1888,9 @@ class TimeSlotSchema(BaseModel):
     start: str = Field(..., pattern=r"^\d{2}:\d{2}$", description="Start time (HH:mm)")
     end: str = Field(..., pattern=r"^\d{2}:\d{2}$", description="End time (HH:mm)")
     kind: str = Field(..., description="Slot kind (study, focused_work, light_work)")
-    capacity_hours: float | None = Field(None, ge=0, description="Slot capacity in hours")
+    capacity_hours: float | None = Field(
+        None, ge=0, description="Slot capacity in hours"
+    )
     assigned_project_id: str | None = Field(None, description="Assigned project ID")
 
 
@@ -1894,7 +1898,9 @@ class SlotTemplateCreate(BaseModel):
     """Slot template creation request"""
 
     name: str = Field(..., min_length=1, max_length=100)
-    day_of_week: int = Field(..., ge=0, le=6, description="Day of week (0=Monday, 6=Sunday)")
+    day_of_week: int = Field(
+        ..., ge=0, le=6, description="Day of week (0=Monday, 6=Sunday)"
+    )
     slots: list[TimeSlotSchema] = Field(default_factory=list)
     is_default: bool = Field(default=False)
 

@@ -1751,10 +1751,20 @@ class QuickTaskService(BaseService[QuickTask, QuickTaskCreate, QuickTaskUpdate])
         )
 
 
-class SlotTemplateService(BaseService[SlotTemplate, SlotTemplateCreate, SlotTemplateUpdate]):
+class SlotTemplateService(
+    BaseService[SlotTemplate, SlotTemplateCreate, SlotTemplateUpdate]
+):
     """Slot template service for day-of-week slot presets"""
 
-    DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    DAY_NAMES = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ]
 
     def __init__(self):
         super().__init__(SlotTemplate)
@@ -1836,7 +1846,9 @@ class SlotTemplateService(BaseService[SlotTemplate, SlotTemplateCreate, SlotTemp
 
         # If this template is set as default, unset any existing default for the same day
         if template_data.is_default:
-            self._unset_default_for_day(session, user_id_validated, template_data.day_of_week)
+            self._unset_default_for_day(
+                session, user_id_validated, template_data.day_of_week
+            )
 
         template = self._create_instance(template_data, user_id_validated)
         session.add(template)
@@ -1864,13 +1876,18 @@ class SlotTemplateService(BaseService[SlotTemplate, SlotTemplateCreate, SlotTemp
 
         # Handle slots separately (convert to JSON)
         if "slots" in update_data and update_data["slots"] is not None:
-            template.slots_json = [slot.model_dump() if hasattr(slot, 'model_dump') else slot for slot in update_data["slots"]]
+            template.slots_json = [
+                slot.model_dump() if hasattr(slot, "model_dump") else slot
+                for slot in update_data["slots"]
+            ]
             del update_data["slots"]
 
         # If setting as default, unset other defaults for the same day
         if update_data.get("is_default"):
             target_day = update_data.get("day_of_week", template.day_of_week)
-            self._unset_default_for_day(session, user_id_validated, target_day, exclude_id=template_id)
+            self._unset_default_for_day(
+                session, user_id_validated, target_day, exclude_id=template_id
+            )
 
         for field, value in update_data.items():
             setattr(template, field, value)
@@ -1937,15 +1954,15 @@ class SlotTemplateService(BaseService[SlotTemplate, SlotTemplateCreate, SlotTemp
         result = []
         for day in range(7):
             day_templates = by_day.get(day, [])
-            default_template = next(
-                (t for t in day_templates if t.is_default), None
+            default_template = next((t for t in day_templates if t.is_default), None)
+            result.append(
+                {
+                    "day_of_week": day,
+                    "day_name": self.DAY_NAMES[day],
+                    "templates": day_templates,
+                    "default_template": default_template,
+                }
             )
-            result.append({
-                "day_of_week": day,
-                "day_name": self.DAY_NAMES[day],
-                "templates": day_templates,
-                "default_template": default_template,
-            })
         return result
 
 

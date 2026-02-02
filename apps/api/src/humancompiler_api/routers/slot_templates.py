@@ -105,13 +105,20 @@ async def get_templates_by_day(
     )
     result = []
     for day_data in grouped:
-        result.append(DayOfWeekTemplatesResponse(
-            day_of_week=day_data["day_of_week"],
-            day_name=day_data["day_name"],
-            templates=[SlotTemplateResponse.from_db_model(t) for t in day_data["templates"]],
-            default_template=SlotTemplateResponse.from_db_model(day_data["default_template"])
-            if day_data["default_template"] else None,
-        ))
+        result.append(
+            DayOfWeekTemplatesResponse(
+                day_of_week=day_data["day_of_week"],
+                day_name=day_data["day_name"],
+                templates=[
+                    SlotTemplateResponse.from_db_model(t) for t in day_data["templates"]
+                ],
+                default_template=SlotTemplateResponse.from_db_model(
+                    day_data["default_template"]
+                )
+                if day_data["default_template"]
+                else None,
+            )
+        )
     return result
 
 
