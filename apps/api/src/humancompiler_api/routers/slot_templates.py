@@ -5,6 +5,7 @@ Provides CRUD endpoints for managing day-of-week slot presets.
 Users can create templates for each day of the week with custom time slots.
 """
 
+import logging
 from collections.abc import Generator
 from typing import Annotated
 from uuid import UUID
@@ -23,6 +24,8 @@ from humancompiler_api.models import (
     DayOfWeekTemplatesResponse,
 )
 from humancompiler_api.services import slot_template_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/slot-templates", tags=["slot-templates"])
 
@@ -50,10 +53,26 @@ async def create_slot_template(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> SlotTemplateResponse:
     """Create a new slot template for a day of week"""
-    template = slot_template_service.create_slot_template(
-        session, template_data, current_user.user_id
-    )
-    return SlotTemplateResponse.from_db_model(template)
+    try:
+        logger.info(
+            f"Creating slot template: name={template_data.name}, "
+            f"day_of_week={template_data.day_of_week}, "
+            f"slots_count={len(template_data.slots)}, "
+            f"user_id={current_user.user_id}"
+        )
+        template = slot_template_service.create_slot_template(
+            session, template_data, current_user.user_id
+        )
+        logger.info(f"Slot template created successfully: id={template.id}")
+        return SlotTemplateResponse.from_db_model(template)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to create slot template: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create slot template: {str(e)}",
+        )
 
 
 @router.get(
