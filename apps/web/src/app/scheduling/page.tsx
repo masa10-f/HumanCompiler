@@ -49,7 +49,7 @@ import type {
   DayOfWeekTemplates,
 } from '@/types/ai-planning';
 import type { Project } from '@/types/project';
-import { getJSTDateString } from '@/lib/date-utils';
+import { getJSTDateString, getIsoDayOfWeek } from '@/lib/date-utils';
 import { logger } from '@/lib/logger';
 
 interface ManualAssignment {
@@ -158,12 +158,7 @@ export default function SchedulingPage() {
   useEffect(() => {
     if (!user || templatesByDay.length === 0) return;
 
-    // Get the day of week from selected date (JavaScript: 0=Sunday, need to convert to ISO: 0=Monday)
-    const date = new Date(selectedDate);
-    const jsDayOfWeek = date.getDay();
-    // Convert: Sunday(0)->6, Monday(1)->0, Tuesday(2)->1, etc.
-    const isoDayOfWeek = jsDayOfWeek === 0 ? 6 : jsDayOfWeek - 1;
-
+    const isoDayOfWeek = getIsoDayOfWeek(selectedDate);
     const dayData = templatesByDay.find(d => d.day_of_week === isoDayOfWeek);
     if (dayData?.default_template) {
       setTimeSlots(dayData.default_template.slots);
@@ -576,9 +571,7 @@ export default function SchedulingPage() {
 
                 {/* Template selector */}
                 {(() => {
-                  const date = new Date(selectedDate);
-                  const jsDayOfWeek = date.getDay();
-                  const isoDayOfWeek = jsDayOfWeek === 0 ? 6 : jsDayOfWeek - 1;
+                  const isoDayOfWeek = getIsoDayOfWeek(selectedDate);
                   const dayData = templatesByDay.find(d => d.day_of_week === isoDayOfWeek);
                   const templates = dayData?.templates || [];
 
