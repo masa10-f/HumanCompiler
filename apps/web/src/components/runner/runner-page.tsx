@@ -5,18 +5,20 @@ import { useRunner } from '@/hooks/use-runner';
 import { useReschedule } from '@/hooks/use-reschedule';
 import { AppHeader } from '@/components/layout/app-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { SessionDisplay } from './session-display';
 import { CountdownTimer } from './countdown-timer';
 import { ActionButtons } from './action-buttons';
 import { TaskSwitcher } from './task-switcher';
 import { StartSessionDialog } from './start-session-dialog';
+import { ManualTaskSelectDialog } from './manual-task-select-dialog';
 import { CheckoutDialog } from './checkout-dialog';
 import { PauseDialog } from './pause-dialog';
 import { ResumeDialog } from './resume-dialog';
 import { NotificationBanner } from './notification-banner';
 import { RescheduleSuggestionCard } from './reschedule-suggestion-card';
 import { useState } from 'react';
-import { Play, AlertCircle, Pause } from 'lucide-react';
+import { Play, AlertCircle, Pause, FolderOpen, Calendar } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { formatDuration } from '@/types/runner';
 import type { RescheduleSuggestion } from '@/types/reschedule';
@@ -50,6 +52,7 @@ export function RunnerPage() {
   } = useRunner();
 
   const [startDialogOpen, setStartDialogOpen] = useState(false);
+  const [manualTaskDialogOpen, setManualTaskDialogOpen] = useState(false);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [pauseDialogOpen, setPauseDialogOpen] = useState(false);
   const [resumeDialogOpen, setResumeDialogOpen] = useState(false);
@@ -237,10 +240,31 @@ export function RunnerPage() {
                 <CardTitle className="text-lg">タスクを開始</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Action buttons for starting session */}
+                <div className="flex gap-3">
+                  <Button
+                    onClick={() => setStartDialogOpen(true)}
+                    disabled={!hasSchedule}
+                    className="flex-1"
+                    variant="default"
+                  >
+                    <Calendar className="h-4 w-4 mr-2" />
+                    スケジュールから選択
+                  </Button>
+                  <Button
+                    onClick={() => setManualTaskDialogOpen(true)}
+                    className="flex-1"
+                    variant="outline"
+                  >
+                    <FolderOpen className="h-4 w-4 mr-2" />
+                    手動でタスクを選択
+                  </Button>
+                </div>
+
                 {hasSchedule ? (
                   <>
                     <p className="text-sm text-muted-foreground">
-                      本日のスケジュールからタスクを選択して作業を開始します。
+                      本日のスケジュールからタスクを選択するか、手動でタスクを選択して作業を開始できます。
                     </p>
                     <TaskSwitcher
                       candidates={nextCandidates}
@@ -250,7 +274,7 @@ export function RunnerPage() {
                   </>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    スケジュールがないため、タスクを開始できません。
+                    本日のスケジュールがありません。「手動でタスクを選択」からタスクを選んで作業を開始できます。
                   </p>
                 )}
               </CardContent>
@@ -266,8 +290,22 @@ export function RunnerPage() {
           isStarting={isStarting}
           onStart={async (taskId, plannedCheckoutAt, plannedOutcome) => {
             try {
-              await startSession(taskId, plannedCheckoutAt, plannedOutcome);
+              await startSession(taskId, plannedCheckoutAt, plannedOutcome, false);
               setStartDialogOpen(false);
+            } catch (error) {
+              console.error('Start session failed:', error);
+            }
+          }}
+        />
+
+        <ManualTaskSelectDialog
+          open={manualTaskDialogOpen}
+          onOpenChange={setManualTaskDialogOpen}
+          isStarting={isStarting}
+          onStart={async (taskId, plannedCheckoutAt, plannedOutcome, isManualExecution) => {
+            try {
+              await startSession(taskId, plannedCheckoutAt, plannedOutcome, isManualExecution);
+              setManualTaskDialogOpen(false);
             } catch (error) {
               console.error('Start session failed:', error);
             }

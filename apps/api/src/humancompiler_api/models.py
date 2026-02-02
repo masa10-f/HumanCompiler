@@ -135,6 +135,7 @@ class RescheduleTriggerType(str, Enum):
     """Trigger type for reschedule suggestion"""
 
     CHECKOUT = "checkout"
+    MANUAL_CHECKOUT = "manual_checkout"
     OVERDUE_RECOVERY = "overdue_recovery"
 
 
@@ -631,6 +632,9 @@ class WorkSession(WorkSessionBase, table=True):  # type: ignore[call-arg]
 
     # Unresponsive session tracking (Issue #228)
     marked_unresponsive_at: datetime | None = SQLField(default=None)
+
+    # Manual execution flag (for tasks not in today's schedule)
+    is_manual_execution: bool = SQLField(default=False)
 
     # Timestamps
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
@@ -1168,6 +1172,10 @@ class WorkSessionStartRequest(BaseModel):
     task_id: UUID
     planned_checkout_at: datetime
     planned_outcome: str | None = Field(None, max_length=500)
+    is_manual_execution: bool = Field(
+        default=False,
+        description="True if the task was manually selected (not from today's schedule)",
+    )
 
 
 class WorkSessionCheckoutRequest(BaseModel):
@@ -1233,6 +1241,8 @@ class WorkSessionResponse(WorkSessionBase):
     last_snooze_at: datetime | None = None
     # Unresponsive tracking (Issue #228)
     marked_unresponsive_at: datetime | None = None
+    # Manual execution flag
+    is_manual_execution: bool = False
     created_at: datetime
     updated_at: datetime
     # Optional task info for history display (Issue #236)

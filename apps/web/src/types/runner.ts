@@ -77,7 +77,8 @@ export interface UseRunnerReturn {
   startSession: (
     taskId: string,
     plannedCheckoutAt: string,
-    plannedOutcome?: string
+    plannedOutcome?: string,
+    isManualExecution?: boolean
   ) => Promise<void>;
   checkout: (decision: SessionDecision, options?: CheckoutOptions) => Promise<RescheduleSuggestion | null>;
   pauseSession: () => Promise<void>;
