@@ -40,6 +40,7 @@ from humancompiler_api.routers import (
     reschedule,
     scheduler,
     simple_backup_api,
+    slot_templates,
     task_dependencies,
     tasks,
     timeline,
@@ -282,6 +283,8 @@ app.include_router(notifications.router, prefix="/api")
 app.include_router(websocket.router)
 # Context notes router
 app.include_router(notes.router, prefix="/api")
+# Slot templates router
+app.include_router(slot_templates.router, prefix="/api")
 
 
 # Health check endpoint

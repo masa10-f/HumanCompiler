@@ -50,6 +50,9 @@ from humancompiler_api.models import (
     QuickTaskCreate,
     QuickTaskUpdate,
     TaskStatus,
+    SlotTemplate,
+    SlotTemplateCreate,
+    SlotTemplateUpdate,
 )
 from core.cache import cached, invalidate_cache
 
@@ -1748,6 +1751,204 @@ class QuickTaskService(BaseService[QuickTask, QuickTaskCreate, QuickTaskUpdate])
         )
 
 
+class SlotTemplateService(BaseService[SlotTemplate, SlotTemplateCreate, SlotTemplateUpdate]):
+    """Slot template service for day-of-week slot presets"""
+
+    DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+    def __init__(self):
+        super().__init__(SlotTemplate)
+
+    def _create_instance(
+        self, data: SlotTemplateCreate, user_id: str | UUID, **kwargs
+    ) -> SlotTemplate:
+        """Create a new slot template instance"""
+        return SlotTemplate(
+            user_id=user_id,
+            name=data.name,
+            day_of_week=data.day_of_week,
+            slots_json=[slot.model_dump() for slot in data.slots],
+            is_default=data.is_default,
+        )
+
+    def _get_user_filter(self, user_id: str | UUID):
+        """Get filter for slot template ownership"""
+        return SlotTemplate.user_id == user_id
+
+    def get_slot_templates(
+        self,
+        session: Session,
+        user_id: str | UUID,
+        day_of_week: int | None = None,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> list[SlotTemplate]:
+        """Get slot templates for specific user with optional day filter"""
+        user_id_validated = validate_uuid(user_id, "user_id")
+        statement = select(SlotTemplate).where(
+            SlotTemplate.user_id == user_id_validated,
+        )
+
+        if day_of_week is not None:
+            statement = statement.where(SlotTemplate.day_of_week == day_of_week)
+
+        statement = (
+            statement.order_by(SlotTemplate.day_of_week, SlotTemplate.name)
+            .offset(skip)
+            .limit(limit)
+        )
+
+        return list(session.exec(statement).all())
+
+    def get_slot_template(
+        self, session: Session, template_id: str | UUID, user_id: str | UUID
+    ) -> SlotTemplate | None:
+        """Get slot template by ID for specific user"""
+        template = session.exec(
+            select(SlotTemplate).where(
+                SlotTemplate.id == template_id,
+                SlotTemplate.user_id == user_id,
+            )
+        ).first()
+        return template
+
+    def get_default_template_for_day(
+        self, session: Session, user_id: str | UUID, day_of_week: int
+    ) -> SlotTemplate | None:
+        """Get the default template for a specific day of week"""
+        user_id_validated = validate_uuid(user_id, "user_id")
+        return session.exec(
+            select(SlotTemplate).where(
+                SlotTemplate.user_id == user_id_validated,
+                SlotTemplate.day_of_week == day_of_week,
+                SlotTemplate.is_default == True,  # noqa: E712
+            )
+        ).first()
+
+    def create_slot_template(
+        self,
+        session: Session,
+        template_data: SlotTemplateCreate,
+        user_id: str | UUID,
+    ) -> SlotTemplate:
+        """Create a new slot template"""
+        user_id_validated = validate_uuid(user_id, "user_id")
+
+        # If this template is set as default, unset any existing default for the same day
+        if template_data.is_default:
+            self._unset_default_for_day(session, user_id_validated, template_data.day_of_week)
+
+        template = self._create_instance(template_data, user_id_validated)
+        session.add(template)
+        session.commit()
+        session.refresh(template)
+        return template
+
+    def update_slot_template(
+        self,
+        session: Session,
+        template_id: str | UUID,
+        user_id: str | UUID,
+        template_data: SlotTemplateUpdate,
+    ) -> SlotTemplate:
+        """Update slot template"""
+        user_id_validated = validate_uuid(user_id, "user_id")
+        template = self.get_slot_template(session, template_id, user_id_validated)
+        if not template:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Slot template not found",
+            )
+
+        update_data = template_data.model_dump(exclude_unset=True)
+
+        # Handle slots separately (convert to JSON)
+        if "slots" in update_data and update_data["slots"] is not None:
+            template.slots_json = [slot.model_dump() if hasattr(slot, 'model_dump') else slot for slot in update_data["slots"]]
+            del update_data["slots"]
+
+        # If setting as default, unset other defaults for the same day
+        if update_data.get("is_default"):
+            target_day = update_data.get("day_of_week", template.day_of_week)
+            self._unset_default_for_day(session, user_id_validated, target_day, exclude_id=template_id)
+
+        for field, value in update_data.items():
+            setattr(template, field, value)
+
+        template.updated_at = datetime.now(UTC)
+        session.add(template)
+        session.commit()
+        session.refresh(template)
+        return template
+
+    def delete_slot_template(
+        self, session: Session, template_id: str | UUID, user_id: str | UUID
+    ) -> bool:
+        """Delete slot template"""
+        user_id_validated = validate_uuid(user_id, "user_id")
+        template = self.get_slot_template(session, template_id, user_id_validated)
+        if not template:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Slot template not found",
+            )
+
+        session.delete(template)
+        session.commit()
+        return True
+
+    def _unset_default_for_day(
+        self,
+        session: Session,
+        user_id: UUID,
+        day_of_week: int,
+        exclude_id: str | UUID | None = None,
+    ) -> None:
+        """Unset default flag for all templates of a specific day"""
+        statement = select(SlotTemplate).where(
+            SlotTemplate.user_id == user_id,
+            SlotTemplate.day_of_week == day_of_week,
+            SlotTemplate.is_default == True,  # noqa: E712
+        )
+        if exclude_id:
+            statement = statement.where(SlotTemplate.id != exclude_id)
+
+        templates = session.exec(statement).all()
+        for template in templates:
+            template.is_default = False
+            template.updated_at = datetime.now(UTC)
+            session.add(template)
+
+    def get_all_templates_grouped_by_day(
+        self, session: Session, user_id: str | UUID
+    ) -> list[dict]:
+        """Get all templates grouped by day of week"""
+        user_id_validated = validate_uuid(user_id, "user_id")
+        templates = self.get_slot_templates(session, user_id_validated, limit=1000)
+
+        # Group by day of week
+        by_day: dict[int, list[SlotTemplate]] = {}
+        for template in templates:
+            if template.day_of_week not in by_day:
+                by_day[template.day_of_week] = []
+            by_day[template.day_of_week].append(template)
+
+        # Build response for all days
+        result = []
+        for day in range(7):
+            day_templates = by_day.get(day, [])
+            default_template = next(
+                (t for t in day_templates if t.is_default), None
+            )
+            result.append({
+                "day_of_week": day,
+                "day_name": self.DAY_NAMES[day],
+                "templates": day_templates,
+                "default_template": default_template,
+            })
+        return result
+
+
 # Create service instances for use in routers
 project_service = ProjectService()
 goal_service = GoalService()
@@ -1756,3 +1957,4 @@ log_service = LogService()
 weekly_recurring_task_service = WeeklyRecurringTaskService()
 work_session_service = WorkSessionService()
 quick_task_service = QuickTaskService()
+slot_template_service = SlotTemplateService()

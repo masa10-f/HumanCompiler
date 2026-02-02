@@ -387,3 +387,68 @@ export interface WeeklyScheduleOption {
   /** 表示タイトル */
   title: string;
 }
+
+/**
+ * スロットテンプレート
+ * @description 曜日ごとのスロットプリセット
+ */
+export interface SlotTemplate {
+  /** テンプレートID */
+  id: string;
+  /** ユーザーID */
+  user_id: string;
+  /** テンプレート名 */
+  name: string;
+  /** 曜日 (0=月曜日, 6=日曜日) */
+  day_of_week: number;
+  /** スロット一覧 */
+  slots: TimeSlot[];
+  /** デフォルトテンプレートかどうか */
+  is_default: boolean;
+  /** 作成日時 */
+  created_at: string;
+  /** 更新日時 */
+  updated_at: string;
+}
+
+/**
+ * スロットテンプレート作成リクエスト
+ */
+export interface SlotTemplateCreate {
+  /** テンプレート名 */
+  name: string;
+  /** 曜日 (0=月曜日, 6=日曜日) */
+  day_of_week: number;
+  /** スロット一覧 */
+  slots: TimeSlot[];
+  /** デフォルトテンプレートとして設定するか */
+  is_default?: boolean;
+}
+
+/**
+ * スロットテンプレート更新リクエスト
+ */
+export interface SlotTemplateUpdate {
+  /** テンプレート名 */
+  name?: string;
+  /** 曜日 (0=月曜日, 6=日曜日) */
+  day_of_week?: number;
+  /** スロット一覧 */
+  slots?: TimeSlot[];
+  /** デフォルトテンプレートとして設定するか */
+  is_default?: boolean;
+}
+
+/**
+ * 曜日別テンプレートレスポンス
+ */
+export interface DayOfWeekTemplates {
+  /** 曜日 (0=月曜日, 6=日曜日) */
+  day_of_week: number;
+  /** 曜日名 */
+  day_name: string;
+  /** テンプレート一覧 */
+  templates: SlotTemplate[];
+  /** デフォルトテンプレート */
+  default_template: SlotTemplate | null;
+}
