@@ -64,7 +64,12 @@ export const getApiEndpoint = (): string => {
       return ''; // Relative URL for production to leverage Vercel rewrites
     }
 
-    // Preview domains
+    // Production custom domain
+    if (hostname === 'human-compiler.rityo-lab.com') {
+      return appConfig.api.endpoints.production;
+    }
+
+    // Preview domains (Vercel preview, other custom domains)
     if (hostname.includes('humancompiler') || hostname.includes('human-compiler')) {
       return appConfig.api.endpoints.preview;
     }
