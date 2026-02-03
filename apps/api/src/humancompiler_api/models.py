@@ -48,7 +48,6 @@ class GoalStatus(str, Enum):
 class TaskCategory(str, Enum):
     """Weekly recurring task category enum"""
 
-    MEETING = "meeting"
     STUDY = "study"
     EXERCISE = "exercise"
     HOBBY = "hobby"
@@ -1894,9 +1893,7 @@ class TimeSlotSchema(BaseModel):
 
     start: str = Field(..., pattern=r"^\d{2}:\d{2}$", description="Start time (HH:mm)")
     end: str = Field(..., pattern=r"^\d{2}:\d{2}$", description="End time (HH:mm)")
-    kind: str = Field(
-        ..., description="Slot kind (study, focused_work, light_work, meeting)"
-    )
+    kind: str = Field(..., description="Slot kind (study, focused_work, light_work)")
     capacity_hours: float | None = Field(
         None, ge=0, description="Slot capacity in hours"
     )

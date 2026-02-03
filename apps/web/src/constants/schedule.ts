@@ -4,20 +4,18 @@
 
 import { logger } from '@/lib/logger'
 
-export type SlotKind = 'study' | 'focused_work' | 'light_work' | 'meeting';
+export type SlotKind = 'study' | 'focused_work' | 'light_work';
 
 export const slotKindLabels: Record<SlotKind, string> = {
   study: '学習',
   focused_work: '集中作業',
   light_work: '軽作業',
-  meeting: '会議',
 } as const;
 
 export const slotKindColors: Record<SlotKind, string> = {
   study: 'bg-blue-100 text-blue-800',
   focused_work: 'bg-purple-100 text-purple-800',
   light_work: 'bg-green-100 text-green-800',
-  meeting: 'bg-orange-100 text-orange-800',
 } as const;
 
 /**
@@ -29,8 +27,8 @@ export const getSlotKindLabel = (slotKind: string): string => {
   const typedSlotKind = slotKind as SlotKind;
 
   if (!(slotKind in slotKindLabels)) {
-    logger.warn('Unknown slot kind, using fallback to meeting', { slotKind }, { component: 'schedule' });
-    return slotKindLabels.meeting;
+    logger.warn('Unknown slot kind, using fallback to light_work', { slotKind }, { component: 'schedule' });
+    return slotKindLabels.light_work;
   }
 
   return slotKindLabels[typedSlotKind];
@@ -45,8 +43,8 @@ export const getSlotKindColor = (slotKind: string): string => {
   const typedSlotKind = slotKind as SlotKind;
 
   if (!(slotKind in slotKindColors)) {
-    logger.warn('Unknown slot kind, using fallback to meeting', { slotKind }, { component: 'schedule' });
-    return slotKindColors.meeting;
+    logger.warn('Unknown slot kind, using fallback to light_work', { slotKind }, { component: 'schedule' });
+    return slotKindColors.light_work;
   }
 
   return slotKindColors[typedSlotKind];

@@ -187,7 +187,7 @@ export interface TimeSlot {
   /** 終了時刻 (HH:mm形式) */
   end: string;
   /** スロット種別（作業タイプ） */
-  kind: 'study' | 'focused_work' | 'light_work' | 'meeting';
+  kind: 'study' | 'focused_work' | 'light_work';
   /** スロットのキャパシティ（時間単位） */
   capacity_hours?: number;
   /** 割り当てプロジェクトID（スロット単位での割り当て） */
