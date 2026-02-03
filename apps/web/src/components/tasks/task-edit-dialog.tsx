@@ -227,7 +227,7 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>ステータス *</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="ステータスを選択" />
