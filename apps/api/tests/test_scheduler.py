@@ -121,8 +121,14 @@ class TestSchedulerAPI:
 
         # Mock goal data
         mock_goal = MagicMock()
+        mock_goal.id = goal_id
         mock_goal.project_id = project_id
         mock_get_goal.return_value = mock_goal
+
+        # Mock session.exec for batch goal query (N+1 fix)
+        mock_exec_result = MagicMock()
+        mock_exec_result.all.return_value = [mock_goal]
+        mock_sess.exec.return_value = mock_exec_result
 
         request_data = {
             "date": "2025-06-23",
@@ -368,8 +374,14 @@ class TestSchedulerAPI:
 
         # Mock goal data
         mock_goal = MagicMock()
+        mock_goal.id = goal_id
         mock_goal.project_id = project_id
         mock_get_goal.return_value = mock_goal
+
+        # Mock session.exec for batch goal query (N+1 fix)
+        mock_exec_result = MagicMock()
+        mock_exec_result.all.return_value = [mock_goal]
+        mock_sess.exec.return_value = mock_exec_result
 
         request_data = {
             "date": "2025-06-23",
@@ -416,8 +428,14 @@ class TestSchedulerAPI:
 
         # Mock goal data
         mock_goal = MagicMock()
+        mock_goal.id = goal_id
         mock_goal.project_id = project_id
         mock_get_goal.return_value = mock_goal
+
+        # Mock session.exec for batch goal query (N+1 fix)
+        mock_exec_result = MagicMock()
+        mock_exec_result.all.return_value = [mock_goal]
+        mock_sess.exec.return_value = mock_exec_result
 
         request_data = {
             "date": "2025-06-23",
@@ -585,13 +603,25 @@ class TestSchedulerAPI:
         mock_project.id = project_id
         mock_project.owner_id = mock_auth
 
-        # Configure session.exec to return appropriate results for ownership validation
+        # Mock goal for batch query (N+1 fix)
+        mock_goal = MagicMock(spec=Goal)
+        mock_goal.id = goal_id
+        mock_goal.project_id = project_id
+        mock_get_goal.return_value = mock_goal
+
+        # Configure session.exec to return appropriate results for ownership validation and batch goals
         def mock_exec(query):
             mock_result = MagicMock()
-            if "projects" in str(query).lower():
+            query_str = str(query).lower()
+            if "projects" in query_str:
                 mock_result.first.return_value = mock_project
+            elif "goal" in query_str:
+                # Return goals for batch goal query (N+1 fix)
+                mock_result.all.return_value = [mock_goal]
+                mock_result.first.return_value = mock_goal
             else:
                 mock_result.first.return_value = None
+                mock_result.all.return_value = []
             return mock_result
 
         mock_sess.exec = mock_exec
@@ -617,12 +647,6 @@ class TestSchedulerAPI:
         }
 
         mock_get_tasks.return_value = [mock_task]
-
-        # Mock goal
-        mock_goal = MagicMock(spec=Goal)
-        mock_goal.id = goal_id
-        mock_goal.project_id = project_id
-        mock_get_goal.return_value = mock_goal
 
         # Mock _get_task_actual_hours to return empty dict
         with patch(

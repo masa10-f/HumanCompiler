@@ -1188,6 +1188,20 @@ async def create_daily_schedule(
         actual_hours_map = _get_task_actual_hours(session, all_task_ids)
         logger.info(f"Retrieved actual hours for {len(actual_hours_map)} tasks")
 
+        # Pre-fetch all goals in one query to avoid N+1 problem
+        goal_ids = [
+            db_task.goal_id
+            for db_task in db_tasks
+            if hasattr(db_task, "goal_id") and db_task.goal_id
+        ]
+        goals_map: dict[str, Goal] = {}
+        if goal_ids:
+            goals = session.exec(
+                select(Goal).where(Goal.id.in_(goal_ids))
+            ).all()
+            goals_map = {str(g.id): g for g in goals}
+            logger.info(f"Pre-fetched {len(goals_map)} goals for tasks")
+
         # Convert database tasks to scheduler tasks
         scheduler_tasks = []
         task_info_map = {}
@@ -1214,6 +1228,7 @@ async def create_daily_schedule(
             )
 
             # Get goal to access project_id (only for regular tasks)
+            # Use pre-fetched goals_map instead of individual DB queries (N+1 fix)
             project_id = None
             goal_id_str = None
             if (
@@ -1221,7 +1236,7 @@ async def create_daily_schedule(
                 and hasattr(db_task, "goal_id")
                 and db_task.goal_id
             ):
-                goal = goal_service.get_goal(session, db_task.goal_id, user_id)
+                goal = goals_map.get(str(db_task.goal_id))
                 project_id = str(goal.project_id) if goal else None
                 goal_id_str = str(db_task.goal_id)
 
@@ -1837,13 +1852,24 @@ async def _apply_project_allocation_filtering(
     try:
         from humancompiler_api.models import Goal
 
-        # Group tasks by project
+        # Pre-fetch all goals in one query to avoid N+1 problem
+        goal_ids = [task.goal_id for task in tasks if task.goal_id]
+        goals_map: dict[str, Goal] = {}
+        if goal_ids:
+            goals = session.exec(
+                select(Goal).where(Goal.id.in_(goal_ids))
+            ).all()
+            goals_map = {str(g.id): g for g in goals}
+
+        # Group tasks by project using pre-fetched goals
         tasks_by_project: dict[str, list[Task]] = {}
+        task_project_map: dict[str, str] = {}  # task_id -> project_id for logging
         for task in tasks:
-            # Get the goal to find the project
-            goal = session.get(Goal, task.goal_id)
+            # Get the goal from pre-fetched map
+            goal = goals_map.get(str(task.goal_id)) if task.goal_id else None
             if goal:
                 project_id = str(goal.project_id)
+                task_project_map[str(task.id)] = project_id
                 if project_id not in tasks_by_project:
                     tasks_by_project[project_id] = []
                 tasks_by_project[project_id].append(task)
@@ -1881,9 +1907,14 @@ async def _apply_project_allocation_filtering(
                     selected_tasks.append(task)
                     current_hours += task.remaining_hours
 
+            # Use pre-fetched task_project_map for logging instead of N+1 queries
+            tasks_in_project = len([
+                t for t in selected_tasks
+                if task_project_map.get(str(t.id)) == project_id
+            ])
             logger.info(
                 f"Project {project_id}: allocated {allocation_percent}%, "
-                f"selected {len([t for t in selected_tasks if (goal := session.get(Goal, t.goal_id)) and str(goal.project_id) == project_id])} tasks, "
+                f"selected {tasks_in_project} tasks, "
                 f"{current_hours:.1f} hours"
             )
 
@@ -2014,23 +2045,29 @@ async def _get_tasks_from_weekly_schedule(
         if not task_ids:
             return []
 
-        # Get the actual task objects from database
+        # Get the actual task objects from database in a single query (N+1 fix)
         from uuid import UUID
 
-        tasks = []
-
-        # Process regular tasks from selected_tasks
+        # Convert string IDs to UUIDs, filtering out invalid ones
+        valid_uuids = []
         for task_id in task_ids:
             try:
-                task_uuid = UUID(task_id)
-                task = session.get(Task, task_uuid)
-                if task:
-                    tasks.append(task)
-                else:
-                    logger.warning(f"Task ID {task_id} not found")
+                valid_uuids.append(UUID(task_id))
             except ValueError:
                 logger.warning(f"Invalid UUID format for task ID: {task_id}")
-                continue
+
+        # Fetch all tasks in one query instead of N+1 queries
+        tasks = []
+        if valid_uuids:
+            tasks = list(session.exec(
+                select(Task).where(Task.id.in_(valid_uuids))
+            ).all())
+            # Log missing tasks
+            found_ids = {str(t.id) for t in tasks}
+            for task_id in task_ids:
+                if task_id not in found_ids:
+                    logger.warning(f"Task ID {task_id} not found")
+            logger.info(f"Fetched {len(tasks)} tasks in single query from {len(valid_uuids)} IDs")
 
         # Apply project allocation filtering if configured in schedule_json
         if (
