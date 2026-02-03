@@ -106,6 +106,8 @@ export function useCreateTask() {
 /**
  * Mutation hook for updating a task.
  * Updates cache and invalidates task lists on success.
+ * Cache invalidation is delayed to allow dialog close animation to complete,
+ * preventing UI freeze from Radix UI cleanup issues.
  *
  * @returns UseMutationResult with mutateAsync function
  */
@@ -116,19 +118,29 @@ export function useUpdateTask() {
     mutationFn: ({ id, data }: { id: string; data: TaskUpdate }) =>
       tasksApi.update(id, data),
     onSuccess: (updatedTask: Task) => {
-      // Update the cached task
+      // Update the cached task immediately
       queryClient.setQueryData(
         taskKeys.detail(updatedTask.id),
         updatedTask
       )
 
-      // Invalidate tasks for the goal to reflect changes in list view
-      queryClient.invalidateQueries({
-        queryKey: taskKeys.byGoal(updatedTask.goal_id)
-      })
+      // Delay cache invalidation to allow dialog close animation to complete
+      // This prevents Radix UI dialog cleanup issues that cause UI freeze
+      setTimeout(() => {
+        // Force reset body styles in case Radix UI dialog cleanup failed
+        if (typeof document !== 'undefined') {
+          document.body.style.pointerEvents = ''
+          document.body.style.overflow = ''
+        }
 
-      // Invalidate task lists as well
-      queryClient.invalidateQueries({ queryKey: taskKeys.lists() })
+        // Invalidate tasks for the goal to reflect changes in list view
+        queryClient.invalidateQueries({
+          queryKey: taskKeys.byGoal(updatedTask.goal_id)
+        })
+
+        // Invalidate task lists as well
+        queryClient.invalidateQueries({ queryKey: taskKeys.lists() })
+      }, 300)
     },
   })
 }
