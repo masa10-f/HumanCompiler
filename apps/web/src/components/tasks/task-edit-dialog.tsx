@@ -233,7 +233,7 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
                         <SelectValue placeholder="ステータスを選択" />
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent>
+                    <SelectContent modal={false}>
                       {Object.entries(taskStatusLabels).map(([value, label]) => (
                         <SelectItem key={value} value={value}>
                           {label}
@@ -260,7 +260,7 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
                         <SelectValue placeholder="作業種別を選択" />
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent>
+                    <SelectContent modal={false}>
                       <SelectItem value="light_work">軽作業</SelectItem>
                       <SelectItem value="study">学習</SelectItem>
                       <SelectItem value="focused_work">集中作業</SelectItem>
@@ -285,7 +285,7 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
                         <SelectValue placeholder="優先度を選択" />
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent>
+                    <SelectContent modal={false}>
                       <SelectItem value="1">最高</SelectItem>
                       <SelectItem value="2">高</SelectItem>
                       <SelectItem value="3">中</SelectItem>
