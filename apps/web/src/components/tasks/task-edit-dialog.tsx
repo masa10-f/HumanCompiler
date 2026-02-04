@@ -227,13 +227,13 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>ステータス *</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value} modal={false}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="ステータスを選択" />
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent modal={false}>
+                    <SelectContent>
                       {Object.entries(taskStatusLabels).map(([value, label]) => (
                         <SelectItem key={value} value={value}>
                           {label}
@@ -254,13 +254,14 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
                   <Select
                     onValueChange={field.onChange}
                     value={field.value}
+                    modal={false}
                   >
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="作業種別を選択" />
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent modal={false}>
+                    <SelectContent>
                       <SelectItem value="light_work">軽作業</SelectItem>
                       <SelectItem value="study">学習</SelectItem>
                       <SelectItem value="focused_work">集中作業</SelectItem>
@@ -279,13 +280,14 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
                   <Select
                     onValueChange={(value) => field.onChange(parseInt(value))}
                     value={field.value?.toString()}
+                    modal={false}
                   >
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="優先度を選択" />
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent modal={false}>
+                    <SelectContent>
                       <SelectItem value="1">最高</SelectItem>
                       <SelectItem value="2">高</SelectItem>
                       <SelectItem value="3">中</SelectItem>
