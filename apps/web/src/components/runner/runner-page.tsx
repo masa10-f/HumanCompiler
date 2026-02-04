@@ -10,6 +10,7 @@ import { SessionDisplay } from './session-display';
 import { CountdownTimer } from './countdown-timer';
 import { ActionButtons } from './action-buttons';
 import { TaskSwitcher } from './task-switcher';
+import { TaskNotesSection } from './task-notes-section';
 import { StartSessionDialog } from './start-session-dialog';
 import { ManualTaskSelectDialog } from './manual-task-select-dialog';
 import { CheckoutDialog } from './checkout-dialog';
@@ -180,6 +181,9 @@ export function RunnerPage() {
               project={sessionDetails.project}
               isOverdue={isOverdue}
             />
+
+            {/* Task notes */}
+            <TaskNotesSection taskId={sessionDetails.task.id} />
 
             {/* Countdown timer */}
             <CountdownTimer
