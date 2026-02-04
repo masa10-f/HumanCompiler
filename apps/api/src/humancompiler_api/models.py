@@ -1,6 +1,6 @@
 from datetime import datetime, UTC
 from decimal import Decimal
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -18,7 +18,7 @@ from sqlmodel import Column, Relationship, SQLModel
 from sqlmodel import Field as SQLField
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     """Task status enum"""
 
     PENDING = "pending"
@@ -27,7 +27,7 @@ class TaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class ProjectStatus(str, Enum):
+class ProjectStatus(StrEnum):
     """Project status enum"""
 
     PENDING = "pending"
@@ -36,7 +36,7 @@ class ProjectStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class GoalStatus(str, Enum):
+class GoalStatus(StrEnum):
     """Goal status enum"""
 
     PENDING = "pending"
@@ -45,7 +45,7 @@ class GoalStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class TaskCategory(str, Enum):
+class TaskCategory(StrEnum):
     """Weekly recurring task category enum"""
 
     MEETING = "meeting"
@@ -58,7 +58,7 @@ class TaskCategory(str, Enum):
     OTHER = "other"
 
 
-class WorkType(str, Enum):
+class WorkType(StrEnum):
     """Work type classification for tasks"""
 
     LIGHT_WORK = "light_work"
@@ -66,7 +66,7 @@ class WorkType(str, Enum):
     FOCUSED_WORK = "focused_work"
 
 
-class SortBy(str, Enum):
+class SortBy(StrEnum):
     """Sort field options for list endpoints"""
 
     STATUS = "status"
@@ -76,14 +76,14 @@ class SortBy(str, Enum):
     PRIORITY = "priority"
 
 
-class SortOrder(str, Enum):
+class SortOrder(StrEnum):
     """Sort order options"""
 
     ASC = "asc"
     DESC = "desc"
 
 
-class CheckoutType(str, Enum):
+class CheckoutType(StrEnum):
     """Checkout type for work sessions"""
 
     MANUAL = "manual"
@@ -92,7 +92,7 @@ class CheckoutType(str, Enum):
     INTERRUPTED = "interrupted"
 
 
-class SessionDecision(str, Enum):
+class SessionDecision(StrEnum):
     """Decision made at session checkout"""
 
     CONTINUE = "continue"
@@ -101,7 +101,7 @@ class SessionDecision(str, Enum):
     COMPLETE = "complete"
 
 
-class ContinueReason(str, Enum):
+class ContinueReason(StrEnum):
     """Reason for continuing a session"""
 
     GOOD_STOPPING_POINT = "good_stopping_point"
@@ -113,7 +113,7 @@ class ContinueReason(str, Enum):
     OTHER = "other"
 
 
-class NotificationLevel(str, Enum):
+class NotificationLevel(StrEnum):
     """Notification urgency level for checkout reminders"""
 
     LIGHT = "light"  # 5 min before: gentle reminder
@@ -121,7 +121,7 @@ class NotificationLevel(str, Enum):
     OVERDUE = "overdue"  # Past due: critical
 
 
-class DeviceType(str, Enum):
+class DeviceType(StrEnum):
     """Device type for push subscriptions"""
 
     DESKTOP = "desktop"
@@ -129,7 +129,7 @@ class DeviceType(str, Enum):
     TABLET = "tablet"
 
 
-class RescheduleSuggestionStatus(str, Enum):
+class RescheduleSuggestionStatus(StrEnum):
     """Status of a reschedule suggestion"""
 
     PENDING = "pending"
@@ -138,7 +138,7 @@ class RescheduleSuggestionStatus(str, Enum):
     EXPIRED = "expired"
 
 
-class RescheduleTriggerType(str, Enum):
+class RescheduleTriggerType(StrEnum):
     """Trigger type for reschedule suggestion"""
 
     CHECKOUT = "checkout"
@@ -742,7 +742,7 @@ class UserSettings(UserSettingsBase, table=True):  # type: ignore[call-arg]
 
 
 # Email Notification Models (Issue #261)
-class EmailNotificationType(str, Enum):
+class EmailNotificationType(StrEnum):
     """Type of email notification"""
 
     DEADLINE_REMINDER = "deadline_reminder"
@@ -750,7 +750,7 @@ class EmailNotificationType(str, Enum):
     DAILY_DIGEST = "daily_digest"
 
 
-class EmailNotificationStatus(str, Enum):
+class EmailNotificationStatus(StrEnum):
     """Status of email notification"""
 
     PENDING = "pending"
@@ -1718,7 +1718,7 @@ class WorkSessionWithRescheduleResponse(BaseModel):
 
 
 # Context Notes Models (Issue #258)
-class ContentType(str, Enum):
+class ContentType(StrEnum):
     """Content type for context notes"""
 
     MARKDOWN = "markdown"
