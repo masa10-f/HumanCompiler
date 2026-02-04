@@ -227,7 +227,7 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>ステータス *</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value} modal={false}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="ステータスを選択" />
@@ -254,7 +254,6 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
                   <Select
                     onValueChange={field.onChange}
                     value={field.value}
-                    modal={false}
                   >
                     <FormControl>
                       <SelectTrigger>
@@ -280,7 +279,6 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
                   <Select
                     onValueChange={(value) => field.onChange(parseInt(value))}
                     value={field.value?.toString()}
-                    modal={false}
                   >
                     <FormControl>
                       <SelectTrigger>
