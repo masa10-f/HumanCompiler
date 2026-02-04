@@ -91,19 +91,12 @@ class TestSchedulerAPI:
         assert data["date"] == "2025-06-23"
 
     @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
-    @patch("humancompiler_api.routers.scheduler.db.get_session")
     @patch("humancompiler_api.routers.scheduler.task_service.get_tasks_by_project")
     def test_create_daily_schedule_by_project(
-        self, mock_get_tasks, mock_session, mock_get_goal, mock_auth
+        self, mock_get_tasks, mock_get_goal, mock_auth
     ):
         """Test daily schedule creation filtered by project."""
-        # Mock session as generator
-        mock_sess = MagicMock()
-
-        def session_generator():
-            yield mock_sess
-
-        mock_session.return_value = session_generator()
+        from humancompiler_api.database import db
 
         # Mock task data with valid UUIDs
         project_id = str(uuid4())
@@ -125,24 +118,34 @@ class TestSchedulerAPI:
         mock_goal.project_id = project_id
         mock_get_goal.return_value = mock_goal
 
-        # Mock session.exec for batch goal query (N+1 fix)
+        # Create mock session with exec method for batch goal query (N+1 fix)
+        mock_sess = MagicMock()
         mock_exec_result = MagicMock()
         mock_exec_result.all.return_value = [mock_goal]
         mock_sess.exec.return_value = mock_exec_result
 
-        request_data = {
-            "date": "2025-06-23",
-            "project_id": project_id,
-            "time_slots": [{"start": "14:00", "end": "16:00", "kind": "light_work"}],
-        }
+        def mock_get_session():
+            yield mock_sess
 
-        response = client.post("/api/schedule/daily", json=request_data)
+        app.dependency_overrides[db.get_session] = mock_get_session
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True or data["success"] is False  # Either is valid
-        assert isinstance(data["assignments"], list)
-        assert isinstance(data["unscheduled_tasks"], list)
+        try:
+            request_data = {
+                "date": "2025-06-23",
+                "project_id": project_id,
+                "time_slots": [{"start": "14:00", "end": "16:00", "kind": "light_work"}],
+            }
+
+            response = client.post("/api/schedule/daily", json=request_data)
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True or data["success"] is False  # Either is valid
+            assert isinstance(data["assignments"], list)
+            assert isinstance(data["unscheduled_tasks"], list)
+        finally:
+            if db.get_session in app.dependency_overrides:
+                del app.dependency_overrides[db.get_session]
 
     @patch("humancompiler_api.routers.scheduler.db.get_session")
     @patch("humancompiler_api.routers.scheduler.task_service.get_all_user_tasks")
@@ -344,19 +347,12 @@ class TestSchedulerAPI:
             assert mock_task_completed.id not in task_ids
 
     @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
-    @patch("humancompiler_api.routers.scheduler.db.get_session")
     @patch("humancompiler_api.routers.scheduler.task_service.get_tasks_by_project")
     def test_create_daily_schedule_with_task_source_project(
-        self, mock_get_tasks, mock_session, mock_get_goal, mock_auth
+        self, mock_get_tasks, mock_get_goal, mock_auth
     ):
         """Test daily schedule creation with new task_source field for project."""
-        # Mock session as generator
-        mock_sess = MagicMock()
-
-        def session_generator():
-            yield mock_sess
-
-        mock_session.return_value = session_generator()
+        from humancompiler_api.database import db
 
         # Mock task data
         project_id = str(uuid4())
@@ -378,39 +374,42 @@ class TestSchedulerAPI:
         mock_goal.project_id = project_id
         mock_get_goal.return_value = mock_goal
 
-        # Mock session.exec for batch goal query (N+1 fix)
+        # Create mock session with exec method for batch goal query (N+1 fix)
+        mock_sess = MagicMock()
         mock_exec_result = MagicMock()
         mock_exec_result.all.return_value = [mock_goal]
         mock_sess.exec.return_value = mock_exec_result
 
-        request_data = {
-            "date": "2025-06-23",
-            "task_source": {"type": "project", "project_id": project_id},
-            "time_slots": [{"start": "14:00", "end": "16:00", "kind": "light_work"}],
-        }
+        def mock_get_session():
+            yield mock_sess
 
-        response = client.post("/api/schedule/daily", json=request_data)
+        app.dependency_overrides[db.get_session] = mock_get_session
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True or data["success"] is False  # Either is valid
-        assert isinstance(data["assignments"], list)
-        assert isinstance(data["unscheduled_tasks"], list)
+        try:
+            request_data = {
+                "date": "2025-06-23",
+                "task_source": {"type": "project", "project_id": project_id},
+                "time_slots": [{"start": "14:00", "end": "16:00", "kind": "light_work"}],
+            }
+
+            response = client.post("/api/schedule/daily", json=request_data)
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True or data["success"] is False  # Either is valid
+            assert isinstance(data["assignments"], list)
+            assert isinstance(data["unscheduled_tasks"], list)
+        finally:
+            if db.get_session in app.dependency_overrides:
+                del app.dependency_overrides[db.get_session]
 
     @patch("humancompiler_api.routers.scheduler._get_tasks_from_weekly_schedule")
     @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
-    @patch("humancompiler_api.routers.scheduler.db.get_session")
     def test_create_daily_schedule_with_task_source_weekly_schedule(
-        self, mock_session, mock_get_goal, mock_get_weekly_tasks, mock_auth
+        self, mock_get_goal, mock_get_weekly_tasks, mock_auth
     ):
         """Test daily schedule creation with new task_source field for weekly schedule."""
-        # Mock session as generator
-        mock_sess = MagicMock()
-
-        def session_generator():
-            yield mock_sess
-
-        mock_session.return_value = session_generator()
+        from humancompiler_api.database import db
 
         # Mock weekly schedule task
         goal_id = str(uuid4())
@@ -432,27 +431,37 @@ class TestSchedulerAPI:
         mock_goal.project_id = project_id
         mock_get_goal.return_value = mock_goal
 
-        # Mock session.exec for batch goal query (N+1 fix)
+        # Create mock session with exec method for batch goal query (N+1 fix)
+        mock_sess = MagicMock()
         mock_exec_result = MagicMock()
         mock_exec_result.all.return_value = [mock_goal]
         mock_sess.exec.return_value = mock_exec_result
 
-        request_data = {
-            "date": "2025-06-23",
-            "task_source": {
-                "type": "weekly_schedule",
-                "weekly_schedule_date": "2025-06-23",
-            },
-            "time_slots": [{"start": "09:00", "end": "12:00", "kind": "study"}],
-        }
+        def mock_get_session():
+            yield mock_sess
 
-        response = client.post("/api/schedule/daily", json=request_data)
+        app.dependency_overrides[db.get_session] = mock_get_session
 
-        assert response.status_code == 200
-        data = response.json()
-        assert "success" in data
-        assert "assignments" in data
-        assert "unscheduled_tasks" in data
+        try:
+            request_data = {
+                "date": "2025-06-23",
+                "task_source": {
+                    "type": "weekly_schedule",
+                    "weekly_schedule_date": "2025-06-23",
+                },
+                "time_slots": [{"start": "09:00", "end": "12:00", "kind": "study"}],
+            }
+
+            response = client.post("/api/schedule/daily", json=request_data)
+
+            assert response.status_code == 200
+            data = response.json()
+            assert "success" in data
+            assert "assignments" in data
+            assert "unscheduled_tasks" in data
+        finally:
+            if db.get_session in app.dependency_overrides:
+                del app.dependency_overrides[db.get_session]
 
     def test_get_weekly_schedule_options(self, mock_auth):
         """Test getting weekly schedule options."""
@@ -577,19 +586,15 @@ class TestSchedulerAPI:
                 del app.dependency_overrides[db.get_session]
 
     @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
-    @patch("humancompiler_api.routers.scheduler.db.get_session")
     @patch("humancompiler_api.routers.scheduler.task_service.get_all_user_tasks")
     def test_create_daily_schedule_with_slot_assignment(
-        self, mock_get_tasks, mock_session, mock_get_goal, mock_auth
+        self, mock_get_tasks, mock_get_goal, mock_auth
     ):
         """Test daily schedule creation with slot-level project assignment."""
         from humancompiler_api.models import Task, Goal
+        from humancompiler_api.database import db
         from decimal import Decimal
         from uuid import uuid4
-
-        # Mock session
-        mock_sess = MagicMock()
-        mock_session.return_value.__enter__.return_value = mock_sess
 
         # Create mock task
         task_id = uuid4()
@@ -609,6 +614,9 @@ class TestSchedulerAPI:
         mock_goal.project_id = project_id
         mock_get_goal.return_value = mock_goal
 
+        # Create mock session with exec method
+        mock_sess = MagicMock()
+
         # Configure session.exec to return appropriate results for ownership validation and batch goals
         def mock_exec(query):
             mock_result = MagicMock()
@@ -625,6 +633,11 @@ class TestSchedulerAPI:
             return mock_result
 
         mock_sess.exec = mock_exec
+
+        def mock_get_session():
+            yield mock_sess
+
+        app.dependency_overrides[db.get_session] = mock_get_session
 
         mock_task = MagicMock(spec=Task)
         mock_task.id = task_id
