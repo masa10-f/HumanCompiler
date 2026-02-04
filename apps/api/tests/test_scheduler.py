@@ -133,14 +133,18 @@ class TestSchedulerAPI:
             request_data = {
                 "date": "2025-06-23",
                 "project_id": project_id,
-                "time_slots": [{"start": "14:00", "end": "16:00", "kind": "light_work"}],
+                "time_slots": [
+                    {"start": "14:00", "end": "16:00", "kind": "light_work"}
+                ],
             }
 
             response = client.post("/api/schedule/daily", json=request_data)
 
             assert response.status_code == 200
             data = response.json()
-            assert data["success"] is True or data["success"] is False  # Either is valid
+            assert (
+                data["success"] is True or data["success"] is False
+            )  # Either is valid
             assert isinstance(data["assignments"], list)
             assert isinstance(data["unscheduled_tasks"], list)
         finally:
@@ -389,14 +393,18 @@ class TestSchedulerAPI:
             request_data = {
                 "date": "2025-06-23",
                 "task_source": {"type": "project", "project_id": project_id},
-                "time_slots": [{"start": "14:00", "end": "16:00", "kind": "light_work"}],
+                "time_slots": [
+                    {"start": "14:00", "end": "16:00", "kind": "light_work"}
+                ],
             }
 
             response = client.post("/api/schedule/daily", json=request_data)
 
             assert response.status_code == 200
             data = response.json()
-            assert data["success"] is True or data["success"] is False  # Either is valid
+            assert (
+                data["success"] is True or data["success"] is False
+            )  # Either is valid
             assert isinstance(data["assignments"], list)
             assert isinstance(data["unscheduled_tasks"], list)
         finally:

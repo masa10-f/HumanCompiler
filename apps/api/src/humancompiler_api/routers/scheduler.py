@@ -1196,9 +1196,7 @@ async def create_daily_schedule(
         ]
         goals_map: dict[str, Goal] = {}
         if goal_ids:
-            goals = session.exec(
-                select(Goal).where(Goal.id.in_(goal_ids))
-            ).all()
+            goals = session.exec(select(Goal).where(Goal.id.in_(goal_ids))).all()
             goals_map = {str(g.id): g for g in goals}
             logger.info(f"Pre-fetched {len(goals_map)} goals for tasks")
 
@@ -1856,9 +1854,7 @@ async def _apply_project_allocation_filtering(
         goal_ids = [task.goal_id for task in tasks if task.goal_id]
         goals_map: dict[str, Goal] = {}
         if goal_ids:
-            goals = session.exec(
-                select(Goal).where(Goal.id.in_(goal_ids))
-            ).all()
+            goals = session.exec(select(Goal).where(Goal.id.in_(goal_ids))).all()
             goals_map = {str(g.id): g for g in goals}
 
         # Group tasks by project using pre-fetched goals
@@ -1908,10 +1904,13 @@ async def _apply_project_allocation_filtering(
                     current_hours += task.remaining_hours
 
             # Use pre-fetched task_project_map for logging instead of N+1 queries
-            tasks_in_project = len([
-                t for t in selected_tasks
-                if task_project_map.get(str(t.id)) == project_id
-            ])
+            tasks_in_project = len(
+                [
+                    t
+                    for t in selected_tasks
+                    if task_project_map.get(str(t.id)) == project_id
+                ]
+            )
             logger.info(
                 f"Project {project_id}: allocated {allocation_percent}%, "
                 f"selected {tasks_in_project} tasks, "
@@ -2059,15 +2058,17 @@ async def _get_tasks_from_weekly_schedule(
         # Fetch all tasks in one query instead of N+1 queries
         tasks = []
         if valid_uuids:
-            tasks = list(session.exec(
-                select(Task).where(Task.id.in_(valid_uuids))
-            ).all())
+            tasks = list(
+                session.exec(select(Task).where(Task.id.in_(valid_uuids))).all()
+            )
             # Log missing tasks
             found_ids = {str(t.id) for t in tasks}
             for task_id in task_ids:
                 if task_id not in found_ids:
                     logger.warning(f"Task ID {task_id} not found")
-            logger.info(f"Fetched {len(tasks)} tasks in single query from {len(valid_uuids)} IDs")
+            logger.info(
+                f"Fetched {len(tasks)} tasks in single query from {len(valid_uuids)} IDs"
+            )
 
         # Apply project allocation filtering if configured in schedule_json
         if (
