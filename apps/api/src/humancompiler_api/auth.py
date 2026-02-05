@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 from collections import defaultdict
 
@@ -18,6 +19,13 @@ logger = logging.getLogger(__name__)
 _auth_attempts: dict[str, list] = defaultdict(list)
 MAX_AUTH_ATTEMPTS = 5
 RATE_LIMIT_WINDOW = 300  # 5 minutes
+
+# In-memory cache of known user IDs to skip DB check on every request.
+# This eliminates the stale connection issue caused by ensure_user_exists()
+# creating independent Session(engine) on every authenticated request.
+# Cache is cleared on server restart; users are re-verified on first request.
+_known_users: set[str] = set()
+_known_users_lock = threading.Lock()
 
 # Security scheme
 security = HTTPBearer()
@@ -57,9 +65,15 @@ def _check_rate_limit(client_ip: str) -> None:
 
 async def ensure_user_exists(user_id: str, email: str) -> None:
     """
-    Ensure user exists in public.users table
-    Create if not exists
+    Ensure user exists in public.users table.
+    Uses in-memory cache to skip DB check for already-known users,
+    preventing stale connection hangs from independent Session(engine) creation.
     """
+    # Fast path: user already verified during this server lifetime
+    if user_id in _known_users:
+        logger.debug(f"✅ User known from cache: {user_id}")
+        return
+
     try:
         from sqlmodel import Session
 
@@ -72,13 +86,17 @@ async def ensure_user_exists(user_id: str, email: str) -> None:
 
                 if existing_user:
                     logger.debug(f"✅ User already exists in database: {user_id}")
+                    with _known_users_lock:
+                        _known_users.add(user_id)
                     return
 
                 # Create user if not exists
                 user_data = UserCreate(email=email)
-                new_user = UserService.create_user(session, user_data, user_id)
+                UserService.create_user(session, user_data, user_id)
                 session.commit()
                 logger.info(f"✅ Created new user in database: {user_id} ({email})")
+                with _known_users_lock:
+                    _known_users.add(user_id)
 
             except Exception as service_error:
                 # If UserService fails, try direct model creation
@@ -95,6 +113,8 @@ async def ensure_user_exists(user_id: str, email: str) -> None:
                 existing_user = session.get(User, UUID(user_id))
                 if existing_user:
                     logger.debug(f"✅ User already exists (direct check): {user_id}")
+                    with _known_users_lock:
+                        _known_users.add(user_id)
                     return
 
                 # Create user directly
@@ -107,6 +127,8 @@ async def ensure_user_exists(user_id: str, email: str) -> None:
                 session.add(new_user)
                 session.commit()
                 logger.info(f"✅ Created user via direct model: {user_id} ({email})")
+                with _known_users_lock:
+                    _known_users.add(user_id)
 
     except Exception as e:
         logger.error(f"❌ Failed to ensure user exists: {type(e).__name__}: {e}")
