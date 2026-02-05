@@ -816,7 +816,7 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         task_map: dict[UUID, Task] = {}
         if depends_on_ids:
             tasks = session.exec(select(Task).where(Task.id.in_(depends_on_ids))).all()
-            task_map = {t.id: t for t in tasks}
+            task_map = {UUID(str(t.id)): t for t in tasks}
 
         # Group by task_id and attach depends_on_task
         result: dict[str, list[TaskDependency]] = {str(tid): [] for tid in task_ids}
