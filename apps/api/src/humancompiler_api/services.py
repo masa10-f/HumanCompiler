@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import selectinload
-from sqlmodel import Session, delete, func, select
+from sqlmodel import Session, and_, delete, func, select
 
 from humancompiler_api.base_service import BaseService
 from humancompiler_api.common.error_handlers import validate_uuid
@@ -467,9 +467,13 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
             select(GoalDependency).where(GoalDependency.goal_id == goal_id)
         ).all()
 
-        # Load the depends_on_goal for each dependency
-        for dep in dependencies:
-            dep.depends_on_goal = session.get(Goal, dep.depends_on_goal_id)
+        # Batch-load all depends_on goals in a single query
+        depends_on_ids = [dep.depends_on_goal_id for dep in dependencies]
+        if depends_on_ids:
+            goals = session.exec(select(Goal).where(Goal.id.in_(depends_on_ids))).all()
+            goal_map = {goal.id: goal for goal in goals}
+            for dep in dependencies:
+                dep.depends_on_goal = goal_map.get(dep.depends_on_goal_id)
 
         return dependencies
 
@@ -527,13 +531,11 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         )
 
     def _get_user_filter(self, user_id: str | UUID):
-        """Get filter for task ownership through goal and project"""
+        """Get filter for task ownership through goal and project using JOIN"""
         return Task.goal_id.in_(
-            select(Goal.id).where(
-                Goal.project_id.in_(
-                    select(Project.id).where(Project.owner_id == user_id)
-                )
-            )
+            select(Goal.id)
+            .join(Project, Goal.project_id == Project.id)
+            .where(Project.owner_id == user_id)
         )
 
     def create_task(
@@ -784,11 +786,45 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             select(TaskDependency).where(TaskDependency.task_id == task_id)
         ).all()
 
-        # Load the depends_on_task for each dependency
-        for dep in dependencies:
-            dep.depends_on_task = session.get(Task, dep.depends_on_task_id)
+        # Batch-load all depends_on tasks in a single query
+        depends_on_ids = [dep.depends_on_task_id for dep in dependencies]
+        if depends_on_ids:
+            tasks = session.exec(select(Task).where(Task.id.in_(depends_on_ids))).all()
+            task_map = {t.id: t for t in tasks}
+            for dep in dependencies:
+                dep.depends_on_task = task_map.get(dep.depends_on_task_id)
 
         return dependencies
+
+    def get_task_dependencies_batch(
+        self, session: Session, task_ids: list[str | UUID], owner_id: str | UUID
+    ) -> dict[str, list[TaskDependency]]:
+        """Get dependencies for multiple tasks in a single batch query.
+
+        Returns a dict mapping task_id (str) to list of TaskDependency objects.
+        """
+        if not task_ids:
+            return {}
+
+        # Fetch all dependencies for all tasks in one query
+        all_deps = session.exec(
+            select(TaskDependency).where(TaskDependency.task_id.in_(task_ids))
+        ).all()
+
+        # Batch-load all depends_on tasks in a single query
+        depends_on_ids = [dep.depends_on_task_id for dep in all_deps]
+        task_map: dict[UUID, Task] = {}
+        if depends_on_ids:
+            tasks = session.exec(select(Task).where(Task.id.in_(depends_on_ids))).all()
+            task_map = {t.id: t for t in tasks}
+
+        # Group by task_id and attach depends_on_task
+        result: dict[str, list[TaskDependency]] = {str(tid): [] for tid in task_ids}
+        for dep in all_deps:
+            dep.depends_on_task = task_map.get(dep.depends_on_task_id)
+            result[str(dep.task_id)].append(dep)
+
+        return result
 
     def delete_task_dependency(
         self,
@@ -836,17 +872,12 @@ class LogService(BaseService[Log, LogCreate, LogUpdate]):
         )
 
     def _get_user_filter(self, user_id: str | UUID):
-        """Get filter for log ownership through task, goal and project"""
+        """Get filter for log ownership through task, goal and project using JOINs"""
         return Log.task_id.in_(
-            select(Task.id).where(
-                Task.goal_id.in_(
-                    select(Goal.id).where(
-                        Goal.project_id.in_(
-                            select(Project.id).where(Project.owner_id == user_id)
-                        )
-                    )
-                )
-            )
+            select(Task.id)
+            .join(Goal, Task.goal_id == Goal.id)
+            .join(Project, Goal.project_id == Project.id)
+            .where(Project.owner_id == user_id)
         )
 
     def create_log(

@@ -75,20 +75,16 @@ def setup_connection_listeners(engine: Engine) -> None:
         dbapi_connection: Any, connection_record: Any
     ) -> None:
         """Set PostgreSQL search path for security"""
-        # Check if this is PostgreSQL
-        if hasattr(dbapi_connection, "execute"):
+        # Detect PostgreSQL by driver module name instead of executing a query
+        driver_module = type(dbapi_connection).__module__
+        is_postgresql = "psycopg" in driver_module or "pg8000" in driver_module
+        if is_postgresql:
             try:
                 cursor = dbapi_connection.cursor()
-                # Test if this is PostgreSQL by trying a PG-specific query
-                cursor.execute("SELECT version()")
-                version = cursor.fetchone()[0]
-                if "PostgreSQL" in version:
-                    # Set search path to public schema only
-                    cursor.execute("SET search_path TO public")
-                    logger.debug("PostgreSQL search path configured")
+                cursor.execute("SET search_path TO public")
                 cursor.close()
+                logger.debug("PostgreSQL search path configured")
             except Exception as e:
-                # Not PostgreSQL or error setting search path
                 logger.debug(f"Failed to set PostgreSQL search path: {e}")
 
     logger.info("Database connection listeners configured")
