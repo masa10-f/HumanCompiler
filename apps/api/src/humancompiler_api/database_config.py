@@ -71,10 +71,15 @@ def setup_connection_listeners(engine: Engine) -> None:
                 logger.debug(f"Failed to set SQLite pragmas: {e}")
 
     @event.listens_for(Pool, "connect")
-    def set_postgresql_search_path(
+    def configure_postgresql_connection(
         dbapi_connection: Any, connection_record: Any
     ) -> None:
-        """Set PostgreSQL search path for security"""
+        """Configure PostgreSQL connection settings after establishment.
+
+        Sets search_path and statement_timeout here (not in connect_args
+        'options') because Supabase's Supavisor in transaction pooling mode
+        rejects session-level parameters in the startup packet.
+        """
         # Detect PostgreSQL by driver module name instead of executing a query
         driver_module = type(dbapi_connection).__module__
         is_postgresql = "psycopg" in driver_module or "pg8000" in driver_module
@@ -82,9 +87,10 @@ def setup_connection_listeners(engine: Engine) -> None:
             try:
                 cursor = dbapi_connection.cursor()
                 cursor.execute("SET search_path TO public")
+                cursor.execute("SET statement_timeout = '30s'")
                 cursor.close()
-                logger.debug("PostgreSQL search path configured")
+                logger.debug("PostgreSQL search path and statement_timeout configured")
             except Exception as e:
-                logger.debug(f"Failed to set PostgreSQL search path: {e}")
+                logger.debug(f"Failed to configure PostgreSQL connection: {e}")
 
     logger.info("Database connection listeners configured")

@@ -78,16 +78,18 @@ class Database:
             # Use the database URL as-is from environment
             database_url = settings.database_url
 
-            # Connection args for PostgreSQL: timeouts, keepalives, and optional SSL
+            # Connection args for PostgreSQL: timeouts, keepalives, and optional SSL.
+            # NOTE: Do NOT use 'options' parameter (e.g. -c statement_timeout=...)
+            # here — Supabase's Supavisor in transaction pooling mode rejects
+            # session-level parameters in the startup packet, closing the
+            # connection immediately. Set statement_timeout via pool event
+            # listener in database_config.py instead.
             connect_args = {}
             if "postgresql" in database_url:
                 import os
 
                 # Prevent hanging on stale/half-open connections
                 connect_args["connect_timeout"] = PG_CONNECT_TIMEOUT
-                connect_args["options"] = (
-                    f"-c statement_timeout={PG_STATEMENT_TIMEOUT_MS}"
-                )
 
                 # TCP keepalives: detect dead connections within ~25s
                 # instead of default TCP timeout of 120-180s.
@@ -158,41 +160,57 @@ class Database:
             logger.info("✅ SQLModel engine initialized with optimized configuration")
         return self._engine
 
-    def warm_pool(self, max_retries: int = 3, retry_delay: float = 2.0) -> bool:
+    def _try_connect(self) -> None:
+        """Execute a single test connection (runs in a thread for timeout)."""
+        from sqlalchemy import text
+
+        engine = self.get_engine()
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+            conn.commit()
+
+    def warm_pool(
+        self,
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
+        per_attempt_timeout: float = 10.0,
+    ) -> bool:
         """
         Pre-warm the connection pool by establishing and validating a connection.
 
         This triggers SQLAlchemy's dialect initialization (first_connect event)
-        during startup rather than on the first user request. If Supabase's
-        pooler hands out a dead backend connection, we retry here instead of
-        failing a user request.
+        during startup rather than on the first user request. Each attempt has
+        a strict thread-level timeout to prevent blocking server startup.
 
         Returns True if warm-up succeeded, False otherwise.
         """
+        import concurrent.futures
         import time as _time
 
-        from sqlalchemy import text
-
-        engine = self.get_engine()
         for attempt in range(1, max_retries + 1):
             try:
-                with engine.connect() as conn:
-                    conn.execute(text("SELECT 1"))
-                    conn.commit()
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(self._try_connect)
+                    future.result(timeout=per_attempt_timeout)
                 logger.info(
                     f"✅ Connection pool warmed up successfully (attempt {attempt})"
                 )
                 return True
+            except concurrent.futures.TimeoutError:
+                logger.warning(
+                    f"⚠️ Pool warm-up attempt {attempt}/{max_retries} timed out "
+                    f"after {per_attempt_timeout}s"
+                )
             except Exception as e:
                 logger.warning(
                     f"⚠️ Pool warm-up attempt {attempt}/{max_retries} failed: "
                     f"{type(e).__name__}: {e}"
                 )
-                if attempt < max_retries:
-                    _time.sleep(retry_delay)
-                    retry_delay *= 2  # Exponential backoff
-                    # Dispose stale connections so next attempt gets a fresh one
-                    engine.dispose()
+            # Dispose stale connections so next attempt gets a fresh one
+            if attempt < max_retries:
+                self.get_engine().dispose()
+                _time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
         logger.error("❌ Connection pool warm-up failed after all retries")
         return False
 
