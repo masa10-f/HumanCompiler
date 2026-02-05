@@ -71,13 +71,14 @@ class Database:
             # Use the database URL as-is from environment
             database_url = settings.database_url
 
-            # Connection args - configure SSL for PostgreSQL production connections
+            # Connection args - configure SSL for PostgreSQL if DB_SSLMODE is set
             connect_args = {}
             if "postgresql" in database_url:
                 import os
 
-                sslmode = os.getenv("DB_SSLMODE", "require")
-                connect_args["sslmode"] = sslmode
+                sslmode = os.getenv("DB_SSLMODE")
+                if sslmode:
+                    connect_args["sslmode"] = sslmode
 
             # Configure pool settings with environment variable overrides
             import os
