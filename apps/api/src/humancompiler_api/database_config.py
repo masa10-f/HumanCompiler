@@ -103,6 +103,10 @@ def setup_connection_listeners(engine: Engine) -> None:
         only when a new physical connection is created) is not sufficient.
         The 'checkout' event fires every time a connection is handed out
         from the pool, ensuring statement_timeout is always active.
+
+        If the SET fails (dead connection), we invalidate the record so
+        the pool replaces it on the next checkout rather than handing
+        out a broken connection.
         """
         driver_module = type(dbapi_connection).__module__
         is_postgresql = "psycopg" in driver_module or "pg8000" in driver_module
@@ -112,6 +116,11 @@ def setup_connection_listeners(engine: Engine) -> None:
                 cursor.execute("SET statement_timeout = '30s'")
                 cursor.close()
             except Exception as e:
-                logger.debug(f"Failed to set statement_timeout on checkout: {e}")
+                logger.warning(
+                    f"Dead connection detected on checkout, invalidating: "
+                    f"{type(e).__name__}: {e}"
+                )
+                connection_record.invalidate(e)
+                raise
 
     logger.info("Database connection listeners configured")

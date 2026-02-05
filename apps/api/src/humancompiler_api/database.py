@@ -25,10 +25,10 @@ MAX_OVERFLOW_MIN = 0
 MAX_OVERFLOW_MAX = 100
 
 POOL_TIMEOUT_DEFAULT = 30
-# Recycle connections every 5 minutes to prevent stale connections.
-# Supabase/PgBouncer kills idle connections after ~5 min; recycling proactively
-# avoids the pool_pre_ping hanging on half-open TCP connections.
-POOL_RECYCLE_DEFAULT = 300
+# Recycle connections before Supavisor's ~60s client_idle_timeout kills them.
+# Connections older than this are discarded on checkout and replaced with
+# fresh ones, preventing InterfaceError("connection already closed") errors.
+POOL_RECYCLE_DEFAULT = 55
 
 # Connection-level timeouts for PostgreSQL (seconds)
 PG_CONNECT_TIMEOUT = 5
@@ -137,15 +137,14 @@ class Database:
                 pool_timeout=pool_timeout,  # Configurable timeout
                 pool_reset_on_return="commit",  # Reset connections on return for consistency
                 connect_args=connect_args,
-                # Enable query result caching for better performance
+                # Enable query result caching for better performance.
+                # NOTE: Do NOT set isolation_level here — PostgreSQL defaults
+                # to READ_COMMITTED already, and explicitly setting it forces a
+                # psycopg2 set_isolation_level() C-call on every Connection.__init__,
+                # which fails on stale connections (InterfaceError) because it runs
+                # AFTER pool_pre_ping, outside the pool's invalidation retry loop.
                 execution_options={
                     "compiled_cache": {},
-                    # Only set isolation_level for PostgreSQL, skip for SQLite
-                    **(
-                        {"isolation_level": "READ_COMMITTED"}
-                        if "postgresql" in database_url
-                        else {}
-                    ),
                 },
             )
 
