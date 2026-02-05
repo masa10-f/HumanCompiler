@@ -16,11 +16,11 @@ configure_database_extensions()
 logger = logging.getLogger(__name__)
 
 # Database pool configuration constants
-POOL_SIZE_DEFAULT = 5
+POOL_SIZE_DEFAULT = 10
 POOL_SIZE_MIN = 1
 POOL_SIZE_MAX = 50
 
-MAX_OVERFLOW_DEFAULT = 10
+MAX_OVERFLOW_DEFAULT = 20
 MAX_OVERFLOW_MIN = 0
 MAX_OVERFLOW_MAX = 100
 
