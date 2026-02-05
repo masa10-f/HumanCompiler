@@ -25,7 +25,14 @@ MAX_OVERFLOW_MIN = 0
 MAX_OVERFLOW_MAX = 100
 
 POOL_TIMEOUT_DEFAULT = 30
-POOL_RECYCLE_DEFAULT = 3600
+# Recycle connections every 5 minutes to prevent stale connections.
+# Supabase/PgBouncer kills idle connections after ~5 min; recycling proactively
+# avoids the pool_pre_ping hanging on half-open TCP connections.
+POOL_RECYCLE_DEFAULT = 300
+
+# Connection-level timeouts for PostgreSQL (seconds)
+PG_CONNECT_TIMEOUT = 5
+PG_STATEMENT_TIMEOUT_MS = 30000  # 30 seconds
 
 
 class Database:
@@ -71,10 +78,27 @@ class Database:
             # Use the database URL as-is from environment
             database_url = settings.database_url
 
-            # Connection args - configure SSL for PostgreSQL if DB_SSLMODE is set
+            # Connection args for PostgreSQL: timeouts, keepalives, and optional SSL
             connect_args = {}
             if "postgresql" in database_url:
                 import os
+
+                # Prevent hanging on stale/half-open connections
+                connect_args["connect_timeout"] = PG_CONNECT_TIMEOUT
+                connect_args["options"] = (
+                    f"-c statement_timeout={PG_STATEMENT_TIMEOUT_MS}"
+                )
+
+                # TCP keepalives: detect dead connections within ~25s
+                # instead of default TCP timeout of 120-180s.
+                # Critical for Supabase/PgBouncer which silently drops
+                # idle connections after ~5 min.
+                connect_args["keepalives"] = 1
+                connect_args["keepalives_idle"] = 10  # Probe after 10s idle
+                connect_args["keepalives_interval"] = 5  # Probe every 5s
+                connect_args["keepalives_count"] = 3  # Fail after 3 missed
+                # Linux-specific: hard upper bound on unacknowledged data
+                connect_args["tcp_user_timeout"] = 10000  # 10s in ms
 
                 sslmode = os.getenv("DB_SSLMODE")
                 if sslmode:
