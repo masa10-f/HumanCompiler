@@ -86,6 +86,16 @@ async def lifespan(app: FastAPI):
             performance_monitor.setup_listeners(engine)
             logger.info("✅ Performance monitoring enabled")
 
+            # Pre-warm connection pool to trigger dialect initialization
+            # (select pg_catalog.version()) during startup with retries,
+            # instead of failing on the first user request.
+            if db.warm_pool(max_retries=3, retry_delay=2.0):
+                logger.info("✅ Connection pool pre-warmed")
+            else:
+                logger.warning(
+                    "⚠️ Connection pool warm-up failed — first request may be slow"
+                )
+
             # Simple backup system (ローカル定期バックアップはcronで実行)
             logger.info(
                 "💡 バックアップ設定は docs/dev/local-backup-guide.md を参照してください"

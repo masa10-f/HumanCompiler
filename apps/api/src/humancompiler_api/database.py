@@ -158,6 +158,44 @@ class Database:
             logger.info("✅ SQLModel engine initialized with optimized configuration")
         return self._engine
 
+    def warm_pool(self, max_retries: int = 3, retry_delay: float = 2.0) -> bool:
+        """
+        Pre-warm the connection pool by establishing and validating a connection.
+
+        This triggers SQLAlchemy's dialect initialization (first_connect event)
+        during startup rather than on the first user request. If Supabase's
+        pooler hands out a dead backend connection, we retry here instead of
+        failing a user request.
+
+        Returns True if warm-up succeeded, False otherwise.
+        """
+        import time as _time
+
+        from sqlalchemy import text
+
+        engine = self.get_engine()
+        for attempt in range(1, max_retries + 1):
+            try:
+                with engine.connect() as conn:
+                    conn.execute(text("SELECT 1"))
+                    conn.commit()
+                logger.info(
+                    f"✅ Connection pool warmed up successfully (attempt {attempt})"
+                )
+                return True
+            except Exception as e:
+                logger.warning(
+                    f"⚠️ Pool warm-up attempt {attempt}/{max_retries} failed: "
+                    f"{type(e).__name__}: {e}"
+                )
+                if attempt < max_retries:
+                    _time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                    # Dispose stale connections so next attempt gets a fresh one
+                    engine.dispose()
+        logger.error("❌ Connection pool warm-up failed after all retries")
+        return False
+
     def get_session(self) -> Generator[Session, None, None]:
         """Get database session"""
         engine = self.get_engine()
