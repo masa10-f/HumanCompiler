@@ -455,17 +455,26 @@ class RescheduleService:
     def _build_task_lookup(
         self, session: Session, task_ids: list[str]
     ) -> dict[str, str]:
-        """Build a mapping of task_id to task_title"""
+        """Build a mapping of task_id to task_title using a single batch query"""
         lookup: dict[str, str] = {}
+        if not task_ids:
+            return lookup
 
+        # Convert to UUIDs, skipping invalid ones
+        valid_uuids: list[UUID] = []
         for task_id in task_ids:
             try:
-                task_uuid = UUID(task_id)
-                task = session.get(Task, task_uuid)
-                if task:
-                    lookup[task_id] = task.title
+                valid_uuids.append(UUID(task_id))
             except (ValueError, TypeError):
                 continue
+
+        if not valid_uuids:
+            return lookup
+
+        # Single batch query instead of N individual queries
+        tasks = session.exec(select(Task).where(Task.id.in_(valid_uuids))).all()
+        for task in tasks:
+            lookup[str(task.id)] = task.title
 
         return lookup
 

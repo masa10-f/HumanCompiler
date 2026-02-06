@@ -5,6 +5,7 @@
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
@@ -84,6 +85,16 @@ async def lifespan(app: FastAPI):
             engine = db.get_engine()
             performance_monitor.setup_listeners(engine)
             logger.info("✅ Performance monitoring enabled")
+
+            # Pre-warm connection pool to trigger dialect initialization
+            # (select pg_catalog.version()) during startup with retries,
+            # instead of failing on the first user request.
+            if db.warm_pool(max_retries=3, retry_delay=2.0):
+                logger.info("✅ Connection pool pre-warmed")
+            else:
+                logger.warning(
+                    "⚠️ Connection pool warm-up failed — first request may be slow"
+                )
 
             # Simple backup system (ローカル定期バックアップはcronで実行)
             logger.info(
@@ -175,9 +186,14 @@ def is_origin_allowed(origin: str) -> bool:
     return False
 
 
-# Custom CORS middleware for dynamic Vercel domains
+# Slow request threshold in seconds
+SLOW_REQUEST_THRESHOLD = 1.0
+
+
+# Custom CORS middleware for dynamic Vercel domains + request timing
 @app.middleware("http")
 async def cors_middleware(request, call_next):
+    perf_logger = logging.getLogger("humancompiler.perf")
     origin = request.headers.get("origin")
 
     # Handle preflight requests first
@@ -196,9 +212,14 @@ async def cors_middleware(request, call_next):
             preflight_response.headers["Access-Control-Max-Age"] = "86400"
             return preflight_response
 
+    # Start timing
+    start_time = time.monotonic()
+
     # Wrap call_next in try-catch to ensure CORS headers are always added
+    status_code = 500
     try:
         response = await call_next(request)
+        status_code = response.status_code
     except Exception as e:
         # Create error response with CORS headers
         from fastapi import HTTPException
@@ -209,6 +230,7 @@ async def cors_middleware(request, call_next):
         # Preserve original status code for HTTPException
         if isinstance(e, HTTPException):
             logger.warning(f"HTTP {e.status_code} error: {e.detail}")
+            status_code = e.status_code
             response = JSONResponse(
                 status_code=e.status_code,
                 content={"detail": e.detail, "error_code": None},
@@ -228,6 +250,19 @@ async def cors_middleware(request, call_next):
                     "debug_message": str(e) if str(e) else "No details available",
                 },
             )
+
+    # Log request timing
+    duration = time.monotonic() - start_time
+    method = request.method
+    path = request.url.path
+
+    if duration >= SLOW_REQUEST_THRESHOLD:
+        perf_logger.warning("SLOW %s %s %d %.3fs", method, path, status_code, duration)
+    else:
+        perf_logger.info("%s %s %d %.3fs", method, path, status_code, duration)
+
+    # Add timing header for client-side observability
+    response.headers["X-Response-Time"] = f"{duration:.3f}s"
 
     # Always add CORS headers for allowed origins
     if origin and is_origin_allowed(origin):

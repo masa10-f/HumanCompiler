@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 from collections import defaultdict
 
@@ -18,6 +19,13 @@ logger = logging.getLogger(__name__)
 _auth_attempts: dict[str, list] = defaultdict(list)
 MAX_AUTH_ATTEMPTS = 5
 RATE_LIMIT_WINDOW = 300  # 5 minutes
+
+# In-memory cache of known user IDs to skip DB check on every request.
+# This eliminates the stale connection issue caused by ensure_user_exists()
+# creating independent Session(engine) on every authenticated request.
+# Cache is cleared on server restart; users are re-verified on first request.
+_known_users: set[str] = set()
+_known_users_lock = threading.Lock()
 
 # Security scheme
 security = HTTPBearer()
@@ -55,62 +63,98 @@ def _check_rate_limit(client_ip: str) -> None:
     attempts.append(now)
 
 
+def _ensure_user_exists_sync(user_id: str, email: str) -> None:
+    """
+    Synchronous DB check/create for user existence.
+    Runs in a thread to avoid blocking the event loop.
+    """
+    from sqlmodel import Session
+
+    engine = db.get_engine()
+
+    with Session(engine) as session:
+        try:
+            existing_user = UserService.get_user(session, user_id)
+
+            if existing_user:
+                logger.debug(f"✅ User already exists in database: {user_id}")
+                with _known_users_lock:
+                    _known_users.add(user_id)
+                return
+
+            # Create user if not exists
+            user_data = UserCreate(email=email)
+            UserService.create_user(session, user_data, user_id)
+            session.commit()
+            logger.info(f"✅ Created new user in database: {user_id} ({email})")
+            with _known_users_lock:
+                _known_users.add(user_id)
+
+        except Exception as service_error:
+            # If UserService fails, try direct model creation
+            logger.warning(
+                f"UserService failed, trying direct creation: {service_error}"
+            )
+            session.rollback()
+
+            from datetime import UTC, datetime
+            from uuid import UUID
+
+            from humancompiler_api.models import User
+
+            # Check if user exists directly
+            existing_user = session.get(User, UUID(user_id))
+            if existing_user:
+                logger.debug(f"✅ User already exists (direct check): {user_id}")
+                with _known_users_lock:
+                    _known_users.add(user_id)
+                return
+
+            # Create user directly
+            new_user = User(
+                id=UUID(user_id),
+                email=email,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+            session.add(new_user)
+            session.commit()
+            logger.info(f"✅ Created user via direct model: {user_id} ({email})")
+            with _known_users_lock:
+                _known_users.add(user_id)
+
+
+# Timeout for ensure_user_exists DB operations (seconds).
+# Bounds the worst-case hang when a stale connection is encountered.
+_ENSURE_USER_TIMEOUT = 10.0
+
+
 async def ensure_user_exists(user_id: str, email: str) -> None:
     """
-    Ensure user exists in public.users table
-    Create if not exists
+    Ensure user exists in public.users table.
+    Uses in-memory cache to skip DB check for already-known users,
+    preventing stale connection hangs from independent Session(engine) creation.
+    DB operations are run in a thread with a timeout to bound worst-case latency.
     """
+    # Fast path: user already verified during this server lifetime
+    if user_id in _known_users:
+        logger.debug(f"✅ User known from cache: {user_id}")
+        return
+
+    import asyncio
+
     try:
-        from sqlmodel import Session
-
-        engine = db.get_engine()
-
-        with Session(engine) as session:
-            # Check if user exists
-            try:
-                existing_user = UserService.get_user(session, user_id)
-
-                if existing_user:
-                    logger.debug(f"✅ User already exists in database: {user_id}")
-                    return
-
-                # Create user if not exists
-                user_data = UserCreate(email=email)
-                new_user = UserService.create_user(session, user_data, user_id)
-                session.commit()
-                logger.info(f"✅ Created new user in database: {user_id} ({email})")
-
-            except Exception as service_error:
-                # If UserService fails, try direct model creation
-                logger.warning(
-                    f"UserService failed, trying direct creation: {service_error}"
-                )
-                session.rollback()
-
-                from humancompiler_api.models import User
-                from uuid import UUID
-                from datetime import datetime, UTC
-
-                # Check if user exists directly
-                existing_user = session.get(User, UUID(user_id))
-                if existing_user:
-                    logger.debug(f"✅ User already exists (direct check): {user_id}")
-                    return
-
-                # Create user directly
-                new_user = User(
-                    id=UUID(user_id),
-                    email=email,
-                    created_at=datetime.now(UTC),
-                    updated_at=datetime.now(UTC),
-                )
-                session.add(new_user)
-                session.commit()
-                logger.info(f"✅ Created user via direct model: {user_id} ({email})")
-
+        await asyncio.wait_for(
+            asyncio.to_thread(_ensure_user_exists_sync, user_id, email),
+            timeout=_ENSURE_USER_TIMEOUT,
+        )
+    except TimeoutError:
+        logger.error(
+            f"❌ ensure_user_exists timed out after {_ENSURE_USER_TIMEOUT}s "
+            f"for user {user_id} — likely a stale DB connection"
+        )
     except Exception as e:
         logger.error(f"❌ Failed to ensure user exists: {type(e).__name__}: {e}")
-        # Don't raise exception - user creation failure shouldn't block authentication
         import traceback
 
         logger.debug(f"Traceback: {traceback.format_exc()}")

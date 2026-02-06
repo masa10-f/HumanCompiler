@@ -110,21 +110,21 @@ async def get_tasks_by_goal(
     tasks = task_service.get_tasks_by_goal(
         session, goal_id, current_user.user_id, skip, limit, sort_by, sort_order
     )
+    if not tasks:
+        return []
+
+    # Batch-load all dependencies for all tasks in 2 queries (deps + depends_on tasks)
+    task_ids = [task.id for task in tasks]
+    deps_by_task = task_service.get_task_dependencies_batch(
+        session, task_ids, current_user.user_id
+    )
+
     task_responses = []
-    logger.debug(f"Processing {len(tasks)} tasks for goal {goal_id}")
-
-    for i, task in enumerate(tasks):
-        logger.debug(f"Processing task {i + 1}/{len(tasks)}: {task.id} - {task.title}")
-
-        # Create task response with dependencies
+    for task in tasks:
         task_response = TaskResponse.model_validate(task)
 
-        # Get dependencies for this task
-        dependencies = task_service.get_task_dependencies(
-            session, task.id, current_user.user_id
-        )
-
-        # Convert to response format and populate depends_on_task info
+        # Use pre-loaded dependencies
+        dependencies = deps_by_task.get(str(task.id), [])
         dependency_responses = []
         for dep in dependencies:
             dep_response = TaskDependencyResponse.model_validate(dep)
@@ -135,15 +135,8 @@ async def get_tasks_by_goal(
             dependency_responses.append(dep_response)
 
         task_response.dependencies = dependency_responses
-
-        logger.debug(
-            f"Task {task.id} loaded with {len(task_response.dependencies)} dependencies"
-        )
-
         task_responses.append(task_response)
-        logger.debug(f"Task {task.id} added to response (total: {len(task_responses)})")
 
-    logger.debug(f"Returning {len(task_responses)} task responses")
     return task_responses
 
 
