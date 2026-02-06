@@ -187,20 +187,24 @@ class Database:
         import time as _time
 
         for attempt in range(1, max_retries + 1):
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
             try:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(self._try_connect)
-                    future.result(timeout=per_attempt_timeout)
+                future = executor.submit(self._try_connect)
+                future.result(timeout=per_attempt_timeout)
                 logger.info(
                     f"✅ Connection pool warmed up successfully (attempt {attempt})"
                 )
+                executor.shutdown(wait=False)
                 return True
             except concurrent.futures.TimeoutError:
+                # Don't wait for the stuck thread — shutdown immediately
+                executor.shutdown(wait=False, cancel_futures=True)
                 logger.warning(
                     f"⚠️ Pool warm-up attempt {attempt}/{max_retries} timed out "
                     f"after {per_attempt_timeout}s"
                 )
             except Exception as e:
+                executor.shutdown(wait=False)
                 logger.warning(
                     f"⚠️ Pool warm-up attempt {attempt}/{max_retries} failed: "
                     f"{type(e).__name__}: {e}"
