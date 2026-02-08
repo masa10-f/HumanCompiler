@@ -391,7 +391,6 @@ export default function AIPlanningPage() {
 
   const getCategoryColor = (category: string) => {
     const colors: Record<string, string> = {
-      meeting: 'bg-blue-100 text-blue-800',
       study: 'bg-green-100 text-green-800',
       exercise: 'bg-orange-100 text-orange-800',
       hobby: 'bg-purple-100 text-purple-800',
