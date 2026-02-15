@@ -70,10 +70,8 @@ export default function SettingsPage() {
   } | null>(null)
 
   const getAuthContext = async () => {
-    const [{ data: { user } }, { data: { session } }] = await Promise.all([
-      supabase.auth.getUser(),
-      supabase.auth.getSession(),
-    ])
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession()
 
     return { user, session }
   }
