@@ -157,7 +157,7 @@ export default function AIPlanningPage() {
       setLoadingSchedules(false);
       setLoadingWeeklyTasks(false);
     }
-  }, [hasApiKey, toast]);
+  }, [hasApiKey]);
 
   useEffect(() => {
     if (!checkingApiKey && hasApiKey === true) {
