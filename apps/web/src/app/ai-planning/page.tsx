@@ -118,6 +118,53 @@ export default function AIPlanningPage() {
   const [weeklyTaskDialogOpen, setWeeklyTaskDialogOpen] = useState(false);
   const [editingWeeklyTask, setEditingWeeklyTask] = useState<WeeklyRecurringTask | null>(null);
 
+  const preloadAiPlanningData = useCallback(async () => {
+    if (hasApiKey !== true) return;
+
+    setLoadingSchedules(true);
+    setLoadingWeeklyTasks(true);
+
+    try {
+      const [schedulesResult, weeklyTasksResult] = await Promise.allSettled([
+        weeklyScheduleApi.getAll(),
+        weeklyRecurringTasksApi.getAll(),
+      ]);
+
+      if (schedulesResult.status === 'fulfilled') {
+        setSavedSchedules(schedulesResult.value);
+      } else {
+        toast({
+          title: '保存済み週間スケジュールの取得に失敗しました',
+          description: schedulesResult.reason instanceof Error
+            ? schedulesResult.reason.message
+            : '不明なエラーが発生しました',
+          variant: 'destructive',
+        });
+      }
+
+      if (weeklyTasksResult.status === 'fulfilled') {
+        setWeeklyTasks(weeklyTasksResult.value);
+      } else {
+        toast({
+          title: 'エラー',
+          description: weeklyTasksResult.reason instanceof Error
+            ? weeklyTasksResult.reason.message
+            : '週課の取得に失敗しました',
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setLoadingSchedules(false);
+      setLoadingWeeklyTasks(false);
+    }
+  }, [hasApiKey, toast]);
+
+  useEffect(() => {
+    if (!checkingApiKey && hasApiKey === true) {
+      void preloadAiPlanningData();
+    }
+  }, [checkingApiKey, hasApiKey, preloadAiPlanningData]);
+
   if (authLoading || !user) {
     return (
       <div className="flex items-center justify-center min-h-screen">

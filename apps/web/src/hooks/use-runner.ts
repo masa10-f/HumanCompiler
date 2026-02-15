@@ -21,6 +21,8 @@ import { useCountdown } from './use-countdown';
 import { useNotifications } from './use-notifications';
 import { schedulingApi, tasksApi, goalsApi, projectsApi, workSessionsApi } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
+import type { Goal } from '@/types/goal';
+import type { Project } from '@/types/project';
 import type { SessionDecision } from '@/types/work-session';
 import type { RescheduleSuggestion } from '@/types/reschedule';
 import type {
@@ -87,17 +89,32 @@ export function useRunner(): UseRunnerReturn {
 
       try {
         const task = await tasksApi.getById(session.task_id);
-        let goal = null;
-        let project = null;
+        let goal: Goal | null = null;
+        let project: Project | null = null;
 
         if (task.goal_id) {
-          try {
-            goal = await goalsApi.getById(task.goal_id);
-            if (goal?.project_id) {
-              project = await projectsApi.getById(goal.project_id);
+          const cachedGoal = queryClient.getQueryData<Goal>(queryKeys.goals.detail(task.goal_id));
+          if (cachedGoal) {
+            goal = cachedGoal;
+          } else {
+            try {
+              goal = await goalsApi.getById(task.goal_id);
+            } catch {
+              // Goal not found, continue without goal/project
             }
-          } catch {
-            // Goal or project not found, continue without
+          }
+
+          if (goal?.project_id) {
+            const cachedProject = queryClient.getQueryData<Project>(queryKeys.projects.detail(goal.project_id));
+            if (cachedProject) {
+              project = cachedProject;
+            } else {
+              try {
+                project = await projectsApi.getById(goal.project_id);
+              } catch {
+                // Project not found, continue without project
+              }
+            }
           }
         }
 

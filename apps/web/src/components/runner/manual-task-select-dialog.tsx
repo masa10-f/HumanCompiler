@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/select';
 import { Clock, Search, FolderOpen, AlertCircle } from 'lucide-react';
 import { projectsApi, tasksApi } from '@/lib/api';
+import { log } from '@/lib/logger';
 import type { Project } from '@/types/project';
 
 interface ManualTaskSelectDialogProps {
@@ -63,12 +64,25 @@ export function ManualTaskSelectDialog({
     queryKey: ['tasks', 'manual-select', selectedProjectId, projects.map(p => p.id).join(',')],
     queryFn: async () => {
       if (selectedProjectId === 'all') {
-        // Fetch tasks from all projects in parallel using Promise.all
+        // Fetch tasks from all projects in parallel.
+        // Ignore failures for individual projects and return other projects' tasks.
         const taskPromises = projects.map((project) =>
           tasksApi.getByProject(project.id, 0, 100)
         );
-        const taskResults = await Promise.all(taskPromises);
-        return taskResults.flat();
+        const taskResults = await Promise.allSettled(taskPromises);
+        return taskResults.flatMap((result, index) => {
+          if (result.status === 'fulfilled') {
+            return result.value;
+          }
+
+          log.error(
+            `Failed to load tasks for project ${projects[index]?.id}`,
+            result.reason instanceof Error ? result.reason : new Error(String(result.reason)),
+            { component: 'ManualTaskSelectDialog' }
+          );
+
+          return [];
+        });
       } else {
         return tasksApi.getByProject(selectedProjectId, 0, 100);
       }
