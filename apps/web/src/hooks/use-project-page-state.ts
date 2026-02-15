@@ -75,7 +75,7 @@ export function useProjectPageState(projectId: string): ProjectPageState {
   const { data: projectProgress } = useQuery({
     queryKey: ['progress', 'project', projectId],
     queryFn: () => progressApi.getProject(projectId),
-    enabled: !!project,
+    enabled: !!projectId,
   })
 
   const isInitializing = authLoading || !user

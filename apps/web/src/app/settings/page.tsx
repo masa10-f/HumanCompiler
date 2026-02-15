@@ -69,6 +69,13 @@ export default function SettingsPage() {
     }
   } | null>(null)
 
+  const getAuthContext = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession()
+
+    return { user, session }
+  }
+
   useEffect(() => {
     // Create AbortController for cleanup
     abortControllerRef.current = new AbortController()
@@ -134,8 +141,7 @@ export default function SettingsPage() {
 
   const fetchUserSettings = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const { data: { session } } = await supabase.auth.getSession()
+      const { user, session } = await getAuthContext()
 
       if (!user || !session?.access_token) {
         router.push("/login")
@@ -187,8 +193,7 @@ export default function SettingsPage() {
     setSuccess("")
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const { data: { session } } = await supabase.auth.getSession()
+      const { user, session } = await getAuthContext()
 
       if (!user || !session?.access_token) {
         router.push("/login")
@@ -233,8 +238,7 @@ export default function SettingsPage() {
     setSuccess("")
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const { data: { session } } = await supabase.auth.getSession()
+      const { user, session } = await getAuthContext()
 
       if (!user || !session?.access_token) {
         router.push("/login")
@@ -278,8 +282,7 @@ export default function SettingsPage() {
     setSuccess("")
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const { data: { session } } = await supabase.auth.getSession()
+      const { user, session } = await getAuthContext()
 
       if (!user || !session?.access_token) {
         router.push("/login")
@@ -314,8 +317,7 @@ export default function SettingsPage() {
     setSuccess("")
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const { data: { session } } = await supabase.auth.getSession()
+      const { user, session } = await getAuthContext()
 
       if (!user || !session?.access_token) {
         router.push("/login")
@@ -352,8 +354,7 @@ export default function SettingsPage() {
 
   const fetchExportInfo = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const { data: { session } } = await supabase.auth.getSession()
+      const { user, session } = await getAuthContext()
 
       if (!user || !session?.access_token) {
         return
@@ -384,8 +385,7 @@ export default function SettingsPage() {
     setSuccess("")
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const { data: { session } } = await supabase.auth.getSession()
+      const { user, session } = await getAuthContext()
 
       if (!user || !session?.access_token) {
         router.push("/login")
@@ -431,8 +431,7 @@ export default function SettingsPage() {
     setSuccess("")
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      const { data: { session } } = await supabase.auth.getSession()
+      const { user, session } = await getAuthContext()
 
       if (!user || !session?.access_token) {
         router.push("/login")
