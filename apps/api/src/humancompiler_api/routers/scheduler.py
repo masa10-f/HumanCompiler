@@ -1247,7 +1247,9 @@ async def create_daily_schedule(
                 id=task_id_str,
                 title=db_task.title,
                 estimate_hours=estimate_hours,
-                priority=3,  # Default priority - could be enhanced
+                # TODO(human-scheduler): pass db_task.priority instead of the
+                # default once the adapter contract is covered by tests.
+                priority=3,
                 due_date=getattr(db_task, "due_date", None),
                 kind=task_kind,
                 goal_id=goal_id_str,
@@ -1281,6 +1283,8 @@ async def create_daily_schedule(
                 id=str(db_task.id),  # Convert UUID to string
                 title=db_task.title,
                 estimate_hours=remaining_hours,  # Now shows remaining hours instead of estimate
+                # TODO(human-scheduler): keep this in sync with the priority
+                # sent to the optimizer when regular task priority is enabled.
                 priority=3,
                 kind=task_kind.value,
                 due_date=getattr(db_task, "due_date", None),
