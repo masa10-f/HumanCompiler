@@ -33,7 +33,6 @@ from humancompiler_api.models import (
     Task,
     Goal,
     Project,
-    WeeklyRecurringTask,
     TaskDependency,
     GoalDependency,
     TaskStatus,
@@ -1189,11 +1188,7 @@ async def create_daily_schedule(
         logger.info(f"Retrieved actual hours for {len(actual_hours_map)} tasks")
 
         # Pre-fetch all goals in one query to avoid N+1 problem
-        goal_ids = [
-            db_task.goal_id
-            for db_task in db_tasks
-            if hasattr(db_task, "goal_id") and db_task.goal_id
-        ]
+        goal_ids = [db_task.goal_id for db_task in db_tasks if db_task.goal_id]
         goals_map: dict[str, Goal] = {}
         if goal_ids:
             goals = session.exec(select(Goal).where(Goal.id.in_(goal_ids))).all()
@@ -1206,34 +1201,24 @@ async def create_daily_schedule(
         filtered_count = 0
 
         for db_task in db_tasks:
-            # Check if this is a weekly recurring task
-            is_weekly_recurring = getattr(db_task, "is_weekly_recurring", False)
-            # Only schedule pending or in-progress tasks (weekly recurring tasks are always schedulable)
-            if not is_weekly_recurring and db_task.status in ["completed", "cancelled"]:
+            # Only schedule pending or in-progress regular tasks.
+            if db_task.status in ["completed", "cancelled"]:
                 filtered_count += 1
                 logger.debug(
                     f"Skipping task {db_task.id} with status: {db_task.status}"
                 )
                 continue
 
-            # Determine task kind from work_type field or fallback to title analysis
-            if hasattr(db_task, "work_type") and db_task.work_type:
-                task_kind = map_task_kind_from_work_type(db_task.work_type)
-            else:
-                task_kind = map_task_kind(db_task.title)
+            task_kind = map_task_kind_from_work_type(db_task.work_type)
             logger.debug(
-                f"Including task {db_task.id}: {db_task.title}, status: {getattr(db_task, 'status', 'weekly_recurring')}, kind: {task_kind}"
+                f"Including task {db_task.id}: {db_task.title}, status: {db_task.status}, kind: {task_kind}"
             )
 
             # Get goal to access project_id (only for regular tasks)
             # Use pre-fetched goals_map instead of individual DB queries (N+1 fix)
             project_id = None
             goal_id_str = None
-            if (
-                not is_weekly_recurring
-                and hasattr(db_task, "goal_id")
-                and db_task.goal_id
-            ):
+            if db_task.goal_id:
                 goal = goals_map.get(str(db_task.goal_id))
                 project_id = str(goal.project_id) if goal else None
                 goal_id_str = str(db_task.goal_id)
@@ -1242,25 +1227,24 @@ async def create_daily_schedule(
             task_id_str = str(db_task.id)
             actual_hours = actual_hours_map.get(task_id_str, 0.0)
             estimate_hours = float(db_task.estimate_hours)
+            task_priority = db_task.priority
 
             scheduler_task = SchedulerTask(
                 id=task_id_str,
                 title=db_task.title,
                 estimate_hours=estimate_hours,
-                # TODO(human-scheduler): pass db_task.priority instead of the
-                # default once the adapter contract is covered by tests.
-                priority=3,
-                due_date=getattr(db_task, "due_date", None),
+                priority=task_priority,
+                due_date=db_task.due_date,
                 kind=task_kind,
                 goal_id=goal_id_str,
-                is_weekly_recurring=is_weekly_recurring,
+                is_weekly_recurring=False,
                 actual_hours=actual_hours,  # Set actual hours from logs
                 project_id=project_id,  # Set project_id for slot assignment constraints
             )
 
             # Log task scheduling information including remaining hours
             remaining_hours = scheduler_task.remaining_hours
-            if remaining_hours <= 0 and not is_weekly_recurring:
+            if remaining_hours <= 0:
                 logger.info(
                     f"Task {task_id_str} '{db_task.title}' has no remaining hours "
                     f"(estimate: {estimate_hours}h, actual: {actual_hours}h)"
@@ -1283,11 +1267,9 @@ async def create_daily_schedule(
                 id=str(db_task.id),  # Convert UUID to string
                 title=db_task.title,
                 estimate_hours=remaining_hours,  # Now shows remaining hours instead of estimate
-                # TODO(human-scheduler): keep this in sync with the priority
-                # sent to the optimizer when regular task priority is enabled.
-                priority=3,
+                priority=task_priority,
                 kind=task_kind.value,
-                due_date=getattr(db_task, "due_date", None),
+                due_date=db_task.due_date,
                 goal_id=goal_id_str,
                 project_id=project_id,
             )
