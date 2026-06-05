@@ -3,6 +3,7 @@ Tests for scheduler API endpoints.
 """
 
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -11,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from humancompiler_api.auth import get_current_user_id
 from humancompiler_api.main import app
+from humancompiler_api.models import WorkType
 
 client = TestClient(app)
 
@@ -66,6 +68,8 @@ class TestSchedulerAPI:
         mock_task.status = "pending"
         mock_task.due_date = None
         mock_task.goal_id = goal_id
+        mock_task.priority = 3
+        mock_task.work_type = WorkType.FOCUSED_WORK
         mock_get_tasks.return_value = [mock_task]
 
         # Mock goal data
@@ -110,6 +114,8 @@ class TestSchedulerAPI:
         mock_task.status = "in_progress"
         mock_task.due_date = datetime(2025, 6, 25)
         mock_task.goal_id = goal_id
+        mock_task.priority = 3
+        mock_task.work_type = WorkType.LIGHT_WORK
         mock_get_tasks.return_value = [mock_task]
 
         # Mock goal data
@@ -316,6 +322,8 @@ class TestSchedulerAPI:
         mock_task_pending.estimate_hours = 1.0
         mock_task_pending.due_date = None
         mock_task_pending.goal_id = goal_id
+        mock_task_pending.priority = 2
+        mock_task_pending.work_type = WorkType.LIGHT_WORK
 
         mock_task_completed = MagicMock()
         mock_task_completed.id = str(uuid4())
@@ -324,6 +332,8 @@ class TestSchedulerAPI:
         mock_task_completed.estimate_hours = 2.0
         mock_task_completed.due_date = None
         mock_task_completed.goal_id = goal_id
+        mock_task_completed.priority = 1
+        mock_task_completed.work_type = WorkType.LIGHT_WORK
 
         # Mock goal data
         mock_goal = MagicMock()
@@ -370,6 +380,8 @@ class TestSchedulerAPI:
         mock_task.status = "in_progress"
         mock_task.due_date = None
         mock_task.goal_id = goal_id
+        mock_task.priority = 3
+        mock_task.work_type = WorkType.LIGHT_WORK
         mock_get_tasks.return_value = [mock_task]
 
         # Mock goal data
@@ -431,6 +443,8 @@ class TestSchedulerAPI:
         mock_task.status = "pending"
         mock_task.due_date = None
         mock_task.goal_id = goal_id
+        mock_task.priority = 3
+        mock_task.work_type = WorkType.STUDY
         mock_get_weekly_tasks.return_value = [mock_task]
 
         # Mock goal data
@@ -593,6 +607,114 @@ class TestSchedulerAPI:
             if db.get_session in app.dependency_overrides:
                 del app.dependency_overrides[db.get_session]
 
+    @patch("humancompiler_api.routers.scheduler.optimize_schedule")
+    @patch(
+        "humancompiler_api.routers.scheduler._get_task_actual_hours",
+        return_value={},
+    )
+    @patch(
+        "humancompiler_api.routers.scheduler.quick_task_service.get_active_quick_tasks",
+        return_value=[],
+    )
+    @patch("humancompiler_api.routers.scheduler.task_service.get_all_user_tasks")
+    def test_create_daily_schedule_uses_regular_task_priority(
+        self,
+        mock_get_all_tasks,
+        _mock_get_quick_tasks,
+        _mock_get_actual_hours,
+        mock_optimize_schedule,
+        mock_auth,
+    ):
+        """Regular task priority should reach optimizer input and API task info."""
+        from humancompiler_api.database import db
+        from humancompiler_api.routers.scheduler import ScheduleResult
+
+        high_priority_goal_id = uuid4()
+        low_priority_goal_id = uuid4()
+        high_priority_task_id = uuid4()
+        low_priority_task_id = uuid4()
+        project_id = uuid4()
+
+        high_priority_task = SimpleNamespace(
+            id=high_priority_task_id,
+            title="High priority task",
+            estimate_hours=1.0,
+            status="pending",
+            due_date=None,
+            goal_id=high_priority_goal_id,
+            work_type=WorkType.FOCUSED_WORK,
+            priority=1,
+        )
+        low_priority_task = SimpleNamespace(
+            id=low_priority_task_id,
+            title="Low priority task",
+            estimate_hours=1.0,
+            status="pending",
+            due_date=None,
+            goal_id=low_priority_goal_id,
+            work_type=WorkType.FOCUSED_WORK,
+            priority=5,
+        )
+        mock_get_all_tasks.return_value = [high_priority_task, low_priority_task]
+
+        mock_goals = [
+            SimpleNamespace(id=high_priority_goal_id, project_id=project_id),
+            SimpleNamespace(id=low_priority_goal_id, project_id=project_id),
+        ]
+        mock_sess = MagicMock()
+        mock_sess.exec.return_value.all.return_value = mock_goals
+
+        def mock_get_session():
+            yield mock_sess
+
+        app.dependency_overrides[db.get_session] = mock_get_session
+
+        mock_optimize_schedule.return_value = ScheduleResult(
+            success=True,
+            assignments=[],
+            unscheduled_tasks=[
+                str(high_priority_task_id),
+                str(low_priority_task_id),
+            ],
+            total_scheduled_hours=0.0,
+            optimization_status="OPTIMAL",
+            solve_time_seconds=0.1,
+            objective_value=0.0,
+        )
+
+        try:
+            response = client.post(
+                "/api/schedule/daily",
+                json={
+                    "date": "2025-06-23",
+                    "task_source": {"type": "all_tasks"},
+                    "time_slots": [
+                        {
+                            "start": "09:00",
+                            "end": "12:00",
+                            "kind": "focused_work",
+                        }
+                    ],
+                },
+            )
+        finally:
+            if db.get_session in app.dependency_overrides:
+                del app.dependency_overrides[db.get_session]
+
+        assert response.status_code == 200
+
+        scheduled_tasks = mock_optimize_schedule.call_args.args[0]
+        priorities_by_id = {task.id: task.priority for task in scheduled_tasks}
+        assert priorities_by_id[str(high_priority_task_id)] == 1
+        assert priorities_by_id[str(low_priority_task_id)] == 5
+
+        data = response.json()
+        unscheduled_priorities = {
+            task["id"]: task["priority"] for task in data["unscheduled_tasks"]
+        }
+        assert unscheduled_priorities[str(high_priority_task_id)] == 1
+        assert unscheduled_priorities[str(low_priority_task_id)] == 5
+
     @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
     @patch("humancompiler_api.routers.scheduler.task_service.get_all_user_tasks")
     def test_create_daily_schedule_with_slot_assignment(
@@ -653,18 +775,19 @@ class TestSchedulerAPI:
         mock_task.estimate_hours = Decimal("2.0")
         mock_task.status = "pending"
         mock_task.goal_id = goal_id
-        mock_task.work_type = "focused_work"
+        mock_task.work_type = WorkType.FOCUSED_WORK
         mock_task.due_date = None
-        # Mock the hasattr/getattr calls properly
+        mock_task.priority = 3
+        # Keep the mock task shape aligned with the real Task model.
         mock_task.__dict__ = {
             "id": task_id,
             "title": "Test Task",
             "estimate_hours": Decimal("2.0"),
             "status": "pending",
             "goal_id": goal_id,
-            "work_type": "focused_work",
+            "work_type": WorkType.FOCUSED_WORK,
             "due_date": None,
-            "is_weekly_recurring": False,
+            "priority": 3,
         }
 
         mock_get_tasks.return_value = [mock_task]
