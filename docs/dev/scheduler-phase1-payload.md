@@ -142,8 +142,9 @@ task_dependencies:
 
 ## Current Gaps For Later Phases
 
-- Regular task priority is still hardcoded to `3` before the daily optimizer.
-  Quick tasks already pass their real priority.
+- Regular task priority is passed through to the daily optimizer and appears in
+  unscheduled task response data. Quick tasks continue to pass their real
+  priority.
 - The current daily API does not expose unscheduled reasons, score breakdowns,
   or constraint violations.
 - Current assignments are slot-shaped. Multiple tasks in one slot can still

@@ -39,9 +39,10 @@ priority, kind, due date, goal ID, and project ID.
 - Daily scheduling currently returns slot assignments rather than true timeline
   blocks. Multiple tasks assigned to the same slot can share the same
   `start_time`.
-- Regular task priority is not passed through to the daily optimizer yet. The
-  adapter currently uses priority `3` for regular tasks while quick tasks pass
-  their real priority.
+- Regular task priority is now passed through to the daily optimizer and to
+  unscheduled task response data. The remaining priority work is manual app
+  validation that same-condition priority `1` tasks are favored over priority
+  `5` tasks.
 - Deadline scoring is task-level for the target date and does not yet strongly
   explain why a task was placed earlier or later within the day.
 - The daily response does not include unscheduled reasons or score breakdowns.
