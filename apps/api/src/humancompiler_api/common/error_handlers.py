@@ -66,10 +66,12 @@ class ExternalServiceError(ServiceError):
 
 async def service_exception_handler(request: Request, exc: ServiceError):
     """Handle service-layer exceptions with HTTP status codes."""
-    status_code = status.HTTP_400_BAD_REQUEST
+    status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
 
     if isinstance(exc, ResourceNotFoundError):
         status_code = status.HTTP_404_NOT_FOUND
+    elif isinstance(exc, ValidationError):
+        status_code = status.HTTP_400_BAD_REQUEST
     elif isinstance(exc, AuthorizationError):
         status_code = status.HTTP_403_FORBIDDEN
     elif isinstance(exc, ExternalServiceError):
