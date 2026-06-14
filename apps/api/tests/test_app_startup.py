@@ -57,8 +57,8 @@ class TestRouterRegistration:
 
     @staticmethod
     def _route_paths(app):
-        """Return registered route paths, ignoring non-route app entries."""
-        return [route.path for route in app.routes if hasattr(route, "path")]
+        """Return registered HTTP paths from the generated OpenAPI schema."""
+        return list(app.openapi()["paths"].keys())
 
     def test_core_api_routes_registered(self):
         """Verify core API routes are registered."""
