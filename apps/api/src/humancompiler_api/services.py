@@ -54,7 +54,6 @@ from humancompiler_api.models import (
     SlotTemplateCreate,
     SlotTemplateUpdate,
 )
-from core.cache import cached, invalidate_cache
 
 
 class UserService:
@@ -127,7 +126,6 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
         """Get filter for project ownership"""
         return Project.owner_id == user_id
 
-    @cached(cache_type="short", key_prefix="projects_list")
     def get_projects(
         self,
         session: Session,
@@ -147,7 +145,6 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
             sort_order=sort_order.value,
         )
 
-    @cached(cache_type="medium", key_prefix="project_detail")
     def get_project(
         self, session: Session, project_id: str | UUID, owner_id: str | UUID
     ) -> Project | None:
@@ -158,10 +155,7 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
         self, session: Session, project_data: ProjectCreate, owner_id: str | UUID
     ) -> Project:
         """Create a new project"""
-        result = self.create(session, project_data, owner_id)
-        # Invalidate cache after creation
-        invalidate_cache("short", f"projects_list:{owner_id}")
-        return result
+        return self.create(session, project_data, owner_id)
 
     def update_project(
         self,
@@ -171,11 +165,7 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
         project_data: ProjectUpdate,
     ) -> Project:
         """Update project"""
-        result = self.update(session, project_id, project_data, owner_id)
-        # Invalidate cache after update
-        invalidate_cache("short", f"projects_list:{owner_id}")
-        invalidate_cache("medium", f"project_detail:{project_id}:{owner_id}")
-        return result
+        return self.update(session, project_id, project_data, owner_id)
 
     def delete_project(
         self, session: Session, project_id: str | UUID, owner_id: str | UUID
@@ -254,10 +244,6 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate]):
         session.delete(project)
         session.commit()
 
-        # Invalidate cache after deletion
-        invalidate_cache("short", f"projects_list:{project.owner_id}")
-        invalidate_cache("medium", f"project_detail:{project_id}")
-
         return True
 
 
@@ -297,14 +283,12 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
             )
         return self.create(session, goal_data, owner_id)
 
-    @cached(cache_type="medium", key_prefix="goal_detail")
     def get_goal(
         self, session: Session, goal_id: str | UUID, owner_id: str | UUID
     ) -> Goal | None:
         """Get goal by ID for specific owner"""
         return self.get_by_id(session, goal_id, owner_id)
 
-    @cached(cache_type="short", key_prefix="goals_by_project")
     def get_goals_by_project(
         self,
         session: Session,
@@ -351,12 +335,7 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
         if goal_data.status is not None and goal_data.status != current_goal.status:
             self._validate_status_transition(current_goal.status, goal_data.status)
 
-        result = self.update(session, goal_id, goal_data, owner_id)
-        # Invalidate caches that might contain this goal's data
-        invalidate_cache("short", "goals_list")
-        invalidate_cache("short", "goals_by_project")
-        invalidate_cache("medium", "goal_detail")
-        return result
+        return self.update(session, goal_id, goal_data, owner_id)
 
     def _validate_status_transition(
         self, current_status: GoalStatus, new_status: GoalStatus
@@ -390,12 +369,7 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
         self, session: Session, goal_id: str | UUID, owner_id: str | UUID
     ) -> bool:
         """Delete goal"""
-        result = self.delete(session, goal_id, owner_id)
-        # Invalidate caches that might contain this goal's data
-        invalidate_cache("short", "goals_list")
-        invalidate_cache("short", "goals_by_project")
-        invalidate_cache("medium", "goal_detail")
-        return result
+        return self.delete(session, goal_id, owner_id)
 
     def add_goal_dependency(
         self,
@@ -446,9 +420,6 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
         session.add(dependency)
         session.commit()
         session.refresh(dependency)
-
-        # Invalidate goal cache
-        invalidate_cache("medium", "goal_detail")
 
         return dependency
 
@@ -501,9 +472,6 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
         session.delete(dependency)
         session.commit()
 
-        # Invalidate goal cache
-        invalidate_cache("medium", "goal_detail")
-
         return True
 
 
@@ -550,14 +518,12 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             )
         return self.create(session, task_data, owner_id)
 
-    @cached(cache_type="medium", key_prefix="task_detail")
     def get_task(
         self, session: Session, task_id: str | UUID, owner_id: str | UUID
     ) -> Task | None:
         """Get task by ID for specific owner"""
         return self.get_by_id(session, task_id, owner_id)
 
-    @cached(cache_type="short", key_prefix="tasks_by_goal")
     def get_tasks_by_goal(
         self,
         session: Session,
@@ -585,7 +551,6 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             goal_id=goal_id,
         )
 
-    @cached(cache_type="short", key_prefix="tasks_by_project")
     def get_tasks_by_project(
         self,
         session: Session,
@@ -651,13 +616,7 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         task_data: TaskUpdate,
     ) -> Task:
         """Update task"""
-        result = self.update(session, task_id, task_data, owner_id)
-        # Invalidate caches that might contain this task's data
-        invalidate_cache("short", "tasks_list")
-        invalidate_cache("short", "tasks_by_goal")
-        invalidate_cache("short", "tasks_by_project")
-        invalidate_cache("medium", "task_detail")
-        return result
+        return self.update(session, task_id, task_data, owner_id)
 
     def delete_task(
         self, session: Session, task_id: str | UUID, owner_id: str | UUID
@@ -698,12 +657,6 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             # Finally delete the task itself
             session.delete(task)
             session.commit()
-
-            # Invalidate caches that might contain this task's data
-            invalidate_cache("short", "tasks_list")
-            invalidate_cache("short", "tasks_by_goal")
-            invalidate_cache("short", "tasks_by_project")
-            invalidate_cache("medium", "task_detail")
 
             return True
 
@@ -765,9 +718,6 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         session.add(dependency)
         session.commit()
         session.refresh(dependency)
-
-        # Invalidate task cache
-        invalidate_cache("medium", "task_detail")
 
         return dependency
 
@@ -850,9 +800,6 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         session.delete(dependency)
         session.commit()
 
-        # Invalidate task cache
-        invalidate_cache("medium", "task_detail")
-
         return True
 
 
@@ -892,14 +839,12 @@ class LogService(BaseService[Log, LogCreate, LogUpdate]):
             )
         return self.create(session, log_data, owner_id)
 
-    @cached(cache_type="medium", key_prefix="log_detail")
     def get_log(
         self, session: Session, log_id: str | UUID, owner_id: str | UUID
     ) -> Log | None:
         """Get log by ID for specific owner"""
         return self.get_by_id(session, log_id, owner_id)
 
-    @cached(cache_type="short", key_prefix="logs_by_task")
     def get_logs_by_task(
         self,
         session: Session,
@@ -978,21 +923,13 @@ class LogService(BaseService[Log, LogCreate, LogUpdate]):
         log_data: LogUpdate,
     ) -> Log:
         """Update log"""
-        result = self.update(session, log_id, log_data, owner_id)
-        # Invalidate caches that might contain this log's data
-        invalidate_cache("short", "logs_by_task")
-        invalidate_cache("medium", "log_detail")
-        return result
+        return self.update(session, log_id, log_data, owner_id)
 
     def delete_log(
         self, session: Session, log_id: str | UUID, owner_id: str | UUID
     ) -> bool:
         """Delete log"""
-        result = self.delete(session, log_id, owner_id)
-        # Invalidate caches that might contain this log's data
-        invalidate_cache("short", "logs_by_task")
-        invalidate_cache("medium", "log_detail")
-        return result
+        return self.delete(session, log_id, owner_id)
 
 
 class WeeklyRecurringTaskService(
@@ -1022,7 +959,6 @@ class WeeklyRecurringTaskService(
         """Get filter for weekly recurring task ownership"""
         return WeeklyRecurringTask.user_id == user_id
 
-    @cached(cache_type="short", key_prefix="weekly_recurring_tasks_list")
     def get_weekly_recurring_tasks(
         self,
         session: Session,
@@ -1073,10 +1009,7 @@ class WeeklyRecurringTaskService(
         user_id: str | UUID,
     ) -> WeeklyRecurringTask:
         """Create a new weekly recurring task"""
-        result = self.create(session, task_data, user_id)
-        # Invalidate cache after creation
-        invalidate_cache("short", f"weekly_recurring_tasks_list:{user_id}")
-        return result
+        return self.create(session, task_data, user_id)
 
     def update_weekly_recurring_task(
         self,
@@ -1086,11 +1019,7 @@ class WeeklyRecurringTaskService(
         task_data: WeeklyRecurringTaskUpdate,
     ) -> WeeklyRecurringTask:
         """Update weekly recurring task"""
-        result = self.update(session, task_id, task_data, user_id)
-        # Invalidate cache after update
-        invalidate_cache("short", f"weekly_recurring_tasks_list:{user_id}")
-        invalidate_cache("medium", f"weekly_recurring_task_detail:{task_id}:{user_id}")
-        return result
+        return self.update(session, task_id, task_data, user_id)
 
     def delete_weekly_recurring_task(
         self, session: Session, task_id: str | UUID, user_id: str | UUID
@@ -1109,9 +1038,6 @@ class WeeklyRecurringTaskService(
         session.add(task)
         session.commit()
 
-        # Invalidate cache after deletion
-        invalidate_cache("short", f"weekly_recurring_tasks_list:{user_id}")
-        invalidate_cache("medium", f"weekly_recurring_task_detail:{task_id}:{user_id}")
         return True
 
 
@@ -1337,12 +1263,6 @@ class WorkSessionService(
             task.updated_at = ended_at
             session.add(task)
             session.flush()
-
-            # Keep cache invalidation consistent with TaskService.update_task
-            invalidate_cache("short", "tasks_list")
-            invalidate_cache("short", "tasks_by_goal")
-            invalidate_cache("short", "tasks_by_project")
-            invalidate_cache("medium", "task_detail")
 
         session.commit()
         session.refresh(current_session)
@@ -1647,7 +1567,6 @@ class QuickTaskService(BaseService[QuickTask, QuickTaskCreate, QuickTaskUpdate])
         """Get filter for quick task ownership"""
         return QuickTask.owner_id == user_id
 
-    @cached(cache_type="short", key_prefix="quick_tasks_list")
     def get_quick_tasks(
         self,
         session: Session,
@@ -1673,7 +1592,6 @@ class QuickTaskService(BaseService[QuickTask, QuickTaskCreate, QuickTaskUpdate])
             **filters,
         )
 
-    @cached(cache_type="medium", key_prefix="quick_task_detail")
     def get_quick_task(
         self, session: Session, task_id: str | UUID, owner_id: str | UUID
     ) -> QuickTask | None:
@@ -1684,10 +1602,7 @@ class QuickTaskService(BaseService[QuickTask, QuickTaskCreate, QuickTaskUpdate])
         self, session: Session, task_data: QuickTaskCreate, owner_id: str | UUID
     ) -> QuickTask:
         """Create a new quick task"""
-        result = self.create(session, task_data, owner_id)
-        # Invalidate cache after creation
-        invalidate_cache("short", f"quick_tasks_list:{owner_id}")
-        return result
+        return self.create(session, task_data, owner_id)
 
     def update_quick_task(
         self,
@@ -1697,21 +1612,13 @@ class QuickTaskService(BaseService[QuickTask, QuickTaskCreate, QuickTaskUpdate])
         task_data: QuickTaskUpdate,
     ) -> QuickTask:
         """Update quick task"""
-        result = self.update(session, task_id, task_data, owner_id)
-        # Invalidate cache after update
-        invalidate_cache("short", f"quick_tasks_list:{owner_id}")
-        invalidate_cache("medium", f"quick_task_detail:{task_id}:{owner_id}")
-        return result
+        return self.update(session, task_id, task_data, owner_id)
 
     def delete_quick_task(
         self, session: Session, task_id: str | UUID, owner_id: str | UUID
     ) -> bool:
         """Delete quick task"""
-        result = self.delete(session, task_id, owner_id)
-        # Invalidate cache after deletion
-        invalidate_cache("short", f"quick_tasks_list:{owner_id}")
-        invalidate_cache("medium", f"quick_task_detail:{task_id}:{owner_id}")
-        return result
+        return self.delete(session, task_id, owner_id)
 
     def convert_to_task(
         self,
