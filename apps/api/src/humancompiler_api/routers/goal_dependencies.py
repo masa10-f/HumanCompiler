@@ -157,12 +157,12 @@ def _has_circular_dependency(
         if current_goal_id == goal_id:
             return True
 
-        # Get dependent goals (with caching)
+        # Get this goal's prerequisites (with caching)
         if current_goal_id not in dependency_cache:
             dependent_goals = list(
                 db.exec(
-                    select(GoalDependency.goal_id).where(
-                        GoalDependency.depends_on_goal_id == current_goal_id
+                    select(GoalDependency.depends_on_goal_id).where(
+                        GoalDependency.goal_id == current_goal_id
                     )
                 ).all()
             )
@@ -170,7 +170,7 @@ def _has_circular_dependency(
         else:
             dependent_goals = dependency_cache[current_goal_id]
 
-        # Add unvisited dependent goals to queue
+        # Add unvisited prerequisites to queue
         for dependent_goal_id in dependent_goals:
             if dependent_goal_id not in visited:
                 visited.add(dependent_goal_id)

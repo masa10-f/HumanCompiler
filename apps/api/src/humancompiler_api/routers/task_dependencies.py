@@ -151,18 +151,18 @@ def _has_circular_dependency(
         if current_task_id == task_id:
             return True
 
-        # Get dependent tasks (with caching)
+        # Get this task's prerequisites (with caching)
         if current_task_id not in dependency_cache:
             dependent_tasks = db.exec(
-                select(TaskDependency.task_id).where(
-                    TaskDependency.depends_on_task_id == current_task_id
+                select(TaskDependency.depends_on_task_id).where(
+                    TaskDependency.task_id == current_task_id
                 )
             ).all()
             dependency_cache[current_task_id] = dependent_tasks
         else:
             dependent_tasks = dependency_cache[current_task_id]
 
-        # Add unvisited dependent tasks to queue
+        # Add unvisited prerequisites to queue
         for dependent_task_id in dependent_tasks:
             if dependent_task_id not in visited:
                 visited.add(dependent_task_id)
