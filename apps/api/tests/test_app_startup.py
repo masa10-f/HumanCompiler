@@ -55,11 +55,16 @@ class TestAppStartup:
 class TestRouterRegistration:
     """Tests for verifying router registration in the app."""
 
+    @staticmethod
+    def _route_paths(app):
+        """Return registered HTTP paths from the generated OpenAPI schema."""
+        return list(app.openapi()["paths"].keys())
+
     def test_core_api_routes_registered(self):
         """Verify core API routes are registered."""
         from humancompiler_api.main import app
 
-        route_paths = [route.path for route in app.routes]
+        route_paths = self._route_paths(app)
 
         # Check core routes exist
         assert any("/api/projects" in path for path in route_paths)
@@ -70,14 +75,14 @@ class TestRouterRegistration:
         """Verify health check endpoint is registered."""
         from humancompiler_api.main import app
 
-        route_paths = [route.path for route in app.routes]
+        route_paths = self._route_paths(app)
         assert "/health" in route_paths
 
     def test_notes_routes_registered(self):
         """Verify notes routes are registered."""
         from humancompiler_api.main import app
 
-        route_paths = [route.path for route in app.routes]
+        route_paths = self._route_paths(app)
 
         # Notes routes should be registered
         assert any("/api/notes/projects" in path for path in route_paths)

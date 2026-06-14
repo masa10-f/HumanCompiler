@@ -2,7 +2,7 @@ import logging
 from collections.abc import Generator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlmodel import Session
 
 from humancompiler_api.auth import AuthUser, get_current_user
@@ -177,15 +177,6 @@ async def get_task(
 ) -> TaskResponse:
     """Get specific task"""
     task = task_service.get_task(session, task_id, current_user.user_id)
-    if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=ErrorResponse.create(
-                code="RESOURCE_NOT_FOUND",
-                message="Task not found",
-                details={"task_id": task_id},
-            ).model_dump(),
-        )
     # Get dependencies for the task
     task_response = TaskResponse.model_validate(task)
     dependencies = task_service.get_task_dependencies(
