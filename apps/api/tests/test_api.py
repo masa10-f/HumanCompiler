@@ -1,4 +1,5 @@
 from unittest.mock import Mock, patch
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -139,3 +140,47 @@ def test_delete_task_endpoint_invalid_uuid():
 
     # Should return 422 for invalid UUID format or auth error
     assert response.status_code in [401, 403, 422, 400, 500]
+
+
+def test_missing_task_endpoints_return_404(session):
+    """Missing tasks should use the service not-found handler, not 500."""
+    from humancompiler_api.auth import AuthUser, get_current_user
+    from humancompiler_api.routers.tasks import get_session
+
+    def override_session():
+        yield session
+
+    def override_user():
+        return AuthUser(
+            user_id="12345678-1234-1234-1234-123456789012",
+            email="test@example.com",
+        )
+
+    original_user_override = app.dependency_overrides.get(get_current_user)
+    original_session_override = app.dependency_overrides.get(get_session)
+    app.dependency_overrides[get_current_user] = override_user
+    app.dependency_overrides[get_session] = override_session
+
+    try:
+        fake_task_id = str(uuid4())
+        responses = [
+            client.get(f"/api/tasks/{fake_task_id}"),
+            client.put(f"/api/tasks/{fake_task_id}", json={"title": "Updated title"}),
+            client.delete(f"/api/tasks/{fake_task_id}"),
+        ]
+    finally:
+        if original_user_override is None:
+            app.dependency_overrides.pop(get_current_user, None)
+        else:
+            app.dependency_overrides[get_current_user] = original_user_override
+
+        if original_session_override is None:
+            app.dependency_overrides.pop(get_session, None)
+        else:
+            app.dependency_overrides[get_session] = original_session_override
+
+    for response in responses:
+        assert response.status_code == 404
+        data = response.json()
+        assert data["detail"] != "Internal server error"
+        assert data["error_code"] == "RESOURCE_NOT_FOUND"

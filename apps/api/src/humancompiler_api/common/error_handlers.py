@@ -7,8 +7,16 @@ from collections.abc import Callable
 from typing import Any, TypeVar
 from uuid import UUID
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, Request, status
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
+
+from humancompiler_api.exceptions import (
+    HumanCompilerException,
+    ResourceNotFoundError as ApiResourceNotFoundError,
+    ValidationError as ApiValidationError,
+)
 from humancompiler_api.models import ErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -16,29 +24,28 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-class ServiceError(Exception):
+class ServiceError(HumanCompilerException):
     """Base exception for service-layer errors"""
 
     def __init__(self, message: str, error_code: str | None = None):
-        self.message = message
-        self.error_code = error_code
-        super().__init__(self.message)
+        super().__init__(message, error_code)
 
 
-class ResourceNotFoundError(ServiceError):
+class ResourceNotFoundError(ApiResourceNotFoundError, ServiceError):
     """Raised when a requested resource is not found"""
 
     def __init__(self, resource_type: str, resource_id: str | UUID):
-        message = f"{resource_type} with ID {resource_id} not found"
-        super().__init__(message, "RESOURCE_NOT_FOUND")
+        self.resource_type = resource_type
+        self.resource_id = str(resource_id)
+        super().__init__(resource_type, self.resource_id)
 
 
-class ValidationError(ServiceError):
+class ValidationError(ApiValidationError, ServiceError):
     """Raised when validation fails"""
 
     def __init__(self, message: str, field: str | None = None):
         self.field = field
-        super().__init__(message, "VALIDATION_ERROR")
+        super().__init__(message, field)
 
 
 class AuthorizationError(ServiceError):
@@ -55,6 +62,27 @@ class ExternalServiceError(ServiceError):
     def __init__(self, service_name: str, message: str):
         full_message = f"{service_name} service error: {message}"
         super().__init__(full_message, "EXTERNAL_SERVICE_ERROR")
+
+
+async def service_exception_handler(request: Request, exc: ServiceError):
+    """Handle service-layer exceptions with HTTP status codes."""
+    status_code = status.HTTP_400_BAD_REQUEST
+
+    if isinstance(exc, ResourceNotFoundError):
+        status_code = status.HTTP_404_NOT_FOUND
+    elif isinstance(exc, AuthorizationError):
+        status_code = status.HTTP_403_FORBIDDEN
+    elif isinstance(exc, ExternalServiceError):
+        status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "detail": exc.message,
+            "error_code": exc.error_code,
+            "path": str(request.url),
+        },
+    )
 
 
 def handle_service_error(error: Exception) -> HTTPException:
@@ -111,20 +139,22 @@ def safe_execute(
         result = operation()
         session.commit()
         return result
+    except HumanCompilerException:
+        if rollback_on_error:
+            session.rollback()
+        raise
+    except IntegrityError as e:
+        if rollback_on_error:
+            session.rollback()
+
+        logger.error(f"Database operation failed: {e}")
+        raise ValidationError("Database constraint violation") from e
     except Exception as e:
         if rollback_on_error:
             session.rollback()
 
-        # Log the error
         logger.error(f"Database operation failed: {e}")
-
-        # Re-raise as service error
-        if "not found" in str(e).lower():
-            raise ResourceNotFoundError("Resource", "unknown") from e
-        elif "constraint" in str(e).lower():
-            raise ValidationError("Database constraint violation") from e
-        else:
-            raise ServiceError(f"Database operation failed: {str(e)}") from e
+        raise ServiceError(f"Database operation failed: {str(e)}") from e
 
 
 def validate_uuid(value: str | UUID, name: str) -> UUID:

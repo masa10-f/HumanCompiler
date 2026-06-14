@@ -14,6 +14,10 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
 from humancompiler_api.config import settings
+from humancompiler_api.common.error_handlers import (
+    ServiceError,
+    service_exception_handler,
+)
 from humancompiler_api.database import db
 from humancompiler_api.performance_monitor import performance_monitor
 from humancompiler_api.rate_limiter import configure_rate_limiting, limiter
@@ -287,6 +291,7 @@ configure_rate_limiting(app)
 app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(ValidationError, pydantic_validation_exception_handler)
+app.add_exception_handler(ServiceError, service_exception_handler)
 app.add_exception_handler(HumanCompilerException, humancompiler_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 
