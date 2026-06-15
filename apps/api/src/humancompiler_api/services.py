@@ -936,7 +936,8 @@ class LogService(BaseService[Log, LogCreate, LogUpdate]):
             .where(and_(Project.owner_id == owner_id, Task.id.in_(task_ids)))
         )
         valid_tasks = session.exec(task_query).all()
-        valid_task_ids = {str(task.id) for task in valid_tasks}
+        valid_task_ids = [task.id for task in valid_tasks]
+        valid_task_id_strings = {str(task_id) for task_id in valid_task_ids}
 
         # Initialize result with empty lists for all requested tasks
         for task_id in task_ids:
@@ -946,13 +947,26 @@ class LogService(BaseService[Log, LogCreate, LogUpdate]):
         if not valid_task_ids:
             return result
 
-        # Fetch all logs for valid tasks in a single query
+        row_number = (
+            func.row_number()
+            .over(partition_by=Log.task_id, order_by=Log.created_at.desc())
+            .label("row_number")
+        )
+        ranked_logs = (
+            select(Log.id.label("log_id"), row_number)
+            .where(Log.task_id.in_(valid_task_ids))
+            .subquery()
+        )
+
+        # Fetch each task's requested page in a single query.
         logs_query = (
             select(Log)
-            .where(Log.task_id.in_(valid_task_ids))
-            .order_by(Log.created_at.desc())
-            .offset(skip)
-            .limit(limit * len(valid_task_ids))  # Adjust limit for multiple tasks
+            .join(ranked_logs, Log.id == ranked_logs.c.log_id)
+            .where(
+                ranked_logs.c.row_number > skip,
+                ranked_logs.c.row_number <= skip + limit,
+            )
+            .order_by(Log.task_id, Log.created_at.desc())
         )
 
         all_logs = session.exec(logs_query).all()
@@ -960,10 +974,8 @@ class LogService(BaseService[Log, LogCreate, LogUpdate]):
         # Group logs by task_id
         for log in all_logs:
             task_id_str = str(log.task_id)
-            if task_id_str in result:
-                # Respect per-task limit
-                if len(result[task_id_str]) < limit:
-                    result[task_id_str].append(log)
+            if task_id_str in valid_task_id_strings:
+                result[task_id_str].append(log)
 
         return result
 

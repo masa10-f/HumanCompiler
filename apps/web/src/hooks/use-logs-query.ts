@@ -75,9 +75,12 @@ export function useCreateLog() {
   return useMutation({
     mutationFn: (logData: LogCreate) => logsApi.create(logData),
     onSuccess: (newLog: Log) => {
-      // Invalidate log caches, including batch queries used by goal detail.
+      // Invalidate log list caches, including batch queries used by goal detail.
       queryClient.invalidateQueries({
-        queryKey: logKeys.all
+        queryKey: logKeys.lists()
+      })
+      queryClient.invalidateQueries({
+        queryKey: logKeys.batches()
       })
 
       // Invalidate logs for the specific task
@@ -116,9 +119,12 @@ export function useUpdateLog() {
         updatedLog
       )
 
-      // Invalidate log caches, including batch queries used by goal detail.
+      // Invalidate log list caches, including batch queries used by goal detail.
       queryClient.invalidateQueries({
-        queryKey: logKeys.all
+        queryKey: logKeys.lists()
+      })
+      queryClient.invalidateQueries({
+        queryKey: logKeys.batches()
       })
 
       // Invalidate logs for the task to reflect changes in list view
@@ -150,13 +156,16 @@ export function useDeleteLog() {
       // Remove log from cache
       queryClient.removeQueries({ queryKey: logKeys.detail(logId) })
 
+      // Invalidate log list caches, including batch queries used by goal detail.
+      queryClient.invalidateQueries({
+        queryKey: logKeys.lists()
+      })
+      queryClient.invalidateQueries({
+        queryKey: logKeys.batches()
+      })
+
       // Invalidate logs for the task if we know the task ID
       if (cachedLog?.task_id) {
-        // Invalidate log caches, including batch queries used by goal detail.
-        queryClient.invalidateQueries({
-          queryKey: logKeys.all
-        })
-
         queryClient.invalidateQueries({
           queryKey: logKeys.byTask(cachedLog.task_id)
         })

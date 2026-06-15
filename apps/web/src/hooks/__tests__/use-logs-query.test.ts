@@ -35,6 +35,7 @@ jest.mock('@/lib/query-keys', () => ({
       details: () => ['logs', 'detail'],
       detail: (id: string) => ['logs', 'detail', id],
       byTask: (taskId: string) => ['logs', 'task', taskId],
+      batches: () => ['logs', 'batch'],
       batch: (taskIds: string[], skip = 0, limit = 50) => ['logs', 'batch', { skip, limit }, ...[...taskIds].sort()],
     },
     progress: {
@@ -232,6 +233,7 @@ describe('useCreateLog', () => {
     mockCreate.mockResolvedValue(newLog)
 
     const { result, queryClient } = renderHookWithClient(() => useCreateLog())
+    const setQueryDataSpy = jest.spyOn(queryClient, 'setQueryData')
 
     await act(async () => {
       await result.current.mutateAsync({
@@ -240,8 +242,7 @@ describe('useCreateLog', () => {
       })
     })
 
-    const cachedLog = queryClient.getQueryData(logKeys.detail('cached-log'))
-    expect(cachedLog).toEqual(newLog)
+    expect(setQueryDataSpy).toHaveBeenCalledWith(logKeys.detail('cached-log'), newLog)
   })
 })
 
@@ -356,6 +357,9 @@ describe('useDeleteLog', () => {
 
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: logKeys.lists(),
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: logKeys.batches(),
     })
   })
 })
