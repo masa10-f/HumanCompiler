@@ -118,54 +118,43 @@ async def delete_task_dependency(
 
 
 def _has_circular_dependency(
-    db: Session, task_id: UUID, depends_on_task_id: UUID, max_depth: int = 100
+    db: Session, task_id: UUID, depends_on_task_id: UUID
 ) -> bool:
     """
     Check if adding a dependency would create a circular dependency.
-    Uses iterative BFS approach for better performance and depth limiting.
+    Uses iterative BFS approach with visited nodes to handle existing cycles.
     """
     from collections import deque
 
     # Use BFS to detect cycles more efficiently
-    queue = deque([(depends_on_task_id, 0)])  # (task_id, depth)
+    queue = deque([depends_on_task_id])
     visited = {depends_on_task_id}
 
     # Cache queries for better performance
     dependency_cache = {}
 
     while queue:
-        current_task_id, depth = queue.popleft()
-
-        # Depth limit to prevent infinite loops in corrupted data
-        if depth >= max_depth:
-            # Log warning about deep dependency chain
-            from humancompiler_api.logger import logger
-
-            logger.warning(
-                f"Dependency chain depth limit reached: {max_depth}",
-                extra={"task_id": str(task_id), "depends_on": str(depends_on_task_id)},
-            )
-            return False  # Assume no cycle if we hit depth limit
+        current_task_id = queue.popleft()
 
         # Check if we've found a cycle
         if current_task_id == task_id:
             return True
 
-        # Get dependent tasks (with caching)
+        # Get this task's prerequisites (with caching)
         if current_task_id not in dependency_cache:
             dependent_tasks = db.exec(
-                select(TaskDependency.task_id).where(
-                    TaskDependency.depends_on_task_id == current_task_id
+                select(TaskDependency.depends_on_task_id).where(
+                    TaskDependency.task_id == current_task_id
                 )
             ).all()
             dependency_cache[current_task_id] = dependent_tasks
         else:
             dependent_tasks = dependency_cache[current_task_id]
 
-        # Add unvisited dependent tasks to queue
+        # Add unvisited prerequisites to queue
         for dependent_task_id in dependent_tasks:
             if dependent_task_id not in visited:
                 visited.add(dependent_task_id)
-                queue.append((dependent_task_id, depth + 1))
+                queue.append(dependent_task_id)
 
     return False

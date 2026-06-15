@@ -2,6 +2,7 @@
 Refactored services using base service class
 """
 
+from collections import deque
 from datetime import datetime, UTC
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
@@ -54,6 +55,35 @@ from humancompiler_api.models import (
     SlotTemplateCreate,
     SlotTemplateUpdate,
 )
+
+
+def _dependency_path_exists(
+    session: Session,
+    node_id_column,
+    depends_on_id_column,
+    from_node_id: str | UUID,
+    to_node_id: str | UUID,
+) -> bool:
+    """Return True when from_node_id already depends on to_node_id."""
+    start_id = UUID(str(from_node_id))
+    target_id = UUID(str(to_node_id))
+    queue: deque[UUID] = deque([start_id])
+    visited = {start_id}
+
+    while queue:
+        current_id = queue.popleft()
+        if current_id == target_id:
+            return True
+
+        next_ids = session.exec(
+            select(depends_on_id_column).where(node_id_column == current_id)
+        ).all()
+        for next_id in next_ids:
+            if next_id not in visited:
+                visited.add(next_id)
+                queue.append(next_id)
+
+    return False
 
 
 class UserService:
@@ -394,10 +424,21 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
             )
 
         # Check for circular dependency
-        if goal_id == depends_on_goal_id:
+        if UUID(str(goal_id)) == UUID(str(depends_on_goal_id)):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Goal cannot depend on itself",
+            )
+        if _dependency_path_exists(
+            session,
+            GoalDependency.goal_id,
+            GoalDependency.depends_on_goal_id,
+            depends_on_goal_id,
+            goal_id,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Creating this dependency would create a circular dependency",
             )
 
         # Check if dependency already exists
@@ -690,10 +731,21 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             )
 
         # Check for circular dependency
-        if task_id == depends_on_task_id:
+        if UUID(str(task_id)) == UUID(str(depends_on_task_id)):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Task cannot depend on itself",
+            )
+        if _dependency_path_exists(
+            session,
+            TaskDependency.task_id,
+            TaskDependency.depends_on_task_id,
+            depends_on_task_id,
+            task_id,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Creating this dependency would create a circular dependency",
             )
 
         # Check if dependency already exists
