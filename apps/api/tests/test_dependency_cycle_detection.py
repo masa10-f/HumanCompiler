@@ -4,7 +4,14 @@ import pytest
 from fastapi import HTTPException
 from sqlmodel import Session
 
-from humancompiler_api.models import Goal, GoalDependency, Project, Task, User
+from humancompiler_api.models import (
+    Goal,
+    GoalDependency,
+    Project,
+    Task,
+    TaskDependency,
+    User,
+)
 from humancompiler_api.services import GoalService, TaskService
 
 
@@ -98,6 +105,31 @@ class TestTaskDependencyCycleDetection:
 
         _assert_circular_dependency_rejected(exc_info)
 
+    def test_rejects_task_cycle_after_long_dependency_chain(
+        self, session: Session, dependency_graph_data
+    ):
+        user, goals, _ = dependency_graph_data
+        tasks = [
+            _create_task(session, goals[0].id, f"Long Chain Task {index}")
+            for index in range(102)
+        ]
+        for index in range(len(tasks) - 1):
+            session.add(
+                TaskDependency(
+                    id=uuid4(),
+                    task_id=tasks[index].id,
+                    depends_on_task_id=tasks[index + 1].id,
+                )
+            )
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc_info:
+            TaskService().add_task_dependency(
+                session, tasks[-1].id, tasks[0].id, user.id
+            )
+
+        _assert_circular_dependency_rejected(exc_info)
+
 
 class TestGoalDependencyCycleDetection:
     def test_rejects_two_goal_cycle(self, session: Session, dependency_graph_data):
@@ -130,5 +162,30 @@ class TestGoalDependencyCycleDetection:
 
         with pytest.raises(HTTPException) as exc_info:
             service.add_goal_dependency(session, goal_c.id, goal_a.id, user.id)
+
+        _assert_circular_dependency_rejected(exc_info)
+
+    def test_rejects_goal_cycle_after_long_dependency_chain(
+        self, session: Session, dependency_graph_data
+    ):
+        user, goals, _ = dependency_graph_data
+        chain_goals = [
+            _create_goal(session, goals[0].project_id, f"Long Chain Goal {index}")
+            for index in range(102)
+        ]
+        for index in range(len(chain_goals) - 1):
+            session.add(
+                GoalDependency(
+                    id=uuid4(),
+                    goal_id=chain_goals[index].id,
+                    depends_on_goal_id=chain_goals[index + 1].id,
+                )
+            )
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc_info:
+            GoalService().add_goal_dependency(
+                session, chain_goals[-1].id, chain_goals[0].id, user.id
+            )
 
         _assert_circular_dependency_rejected(exc_info)

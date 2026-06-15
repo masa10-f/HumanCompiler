@@ -63,21 +63,17 @@ def _dependency_path_exists(
     depends_on_id_column,
     from_node_id: str | UUID,
     to_node_id: str | UUID,
-    max_depth: int = 100,
 ) -> bool:
     """Return True when from_node_id already depends on to_node_id."""
     start_id = UUID(str(from_node_id))
     target_id = UUID(str(to_node_id))
-    queue: deque[tuple[UUID, int]] = deque([(start_id, 0)])
+    queue: deque[UUID] = deque([start_id])
     visited = {start_id}
 
     while queue:
-        current_id, depth = queue.popleft()
+        current_id = queue.popleft()
         if current_id == target_id:
             return True
-
-        if depth >= max_depth:
-            return False
 
         next_ids = session.exec(
             select(depends_on_id_column).where(node_id_column == current_id)
@@ -85,7 +81,7 @@ def _dependency_path_exists(
         for next_id in next_ids:
             if next_id not in visited:
                 visited.add(next_id)
-                queue.append((next_id, depth + 1))
+                queue.append(next_id)
 
     return False
 
