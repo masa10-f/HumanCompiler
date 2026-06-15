@@ -55,11 +55,11 @@ export function useWorkSessionHistory(skip = 0, limit = 20) {
  * @param skip - Pagination offset
  * @param limit - Maximum results
  */
-export function useWorkSessionsByTask(taskId: string, skip = 0, limit = 20) {
+export function useWorkSessionsByTask(taskId: string, skip = 0, limit = 20, enabled = true) {
   return useQuery({
     queryKey: queryKeys.workSessions.byTask(taskId, skip, limit),
     queryFn: () => workSessionsApi.getByTask(taskId, skip, limit),
-    enabled: !!taskId,
+    enabled: !!taskId && enabled,
     staleTime: 5 * 60 * 1000,
   });
 }

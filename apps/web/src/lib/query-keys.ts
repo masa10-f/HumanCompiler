@@ -42,7 +42,7 @@ export const queryKeys = {
     details: () => [...queryKeys.logs.all, 'detail'] as const,
     detail: (id: string) => [...queryKeys.logs.details(), id] as const,
     byTask: (taskId: string) => [...queryKeys.logs.all, 'task', taskId] as const,
-    batch: (taskIds: string[]) => ['logs', 'batch', ...taskIds.sort()] as const,
+    batch: (taskIds: string[], skip = 0, limit = 50) => ['logs', 'batch', { skip, limit }, ...[...taskIds].sort()] as const,
   },
 
   // Progress keys

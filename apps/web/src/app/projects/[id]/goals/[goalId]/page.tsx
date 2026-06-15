@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
@@ -10,7 +10,7 @@ import { useProject } from '@/hooks/use-project-query';
 import { useGoalNote } from '@/hooks/use-notes';
 import { useQuery } from '@tanstack/react-query';
 import { progressApi } from '@/lib/api';
-import { useTaskActualMinutes } from '@/hooks/use-logs-query';
+import { useBatchLogsQuery } from '@/hooks/use-logs-query';
 import { useUpdateTask } from '@/hooks/use-tasks-query';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -28,18 +28,6 @@ import { taskStatusLabels, taskStatusColors, workTypeLabels, workTypeColors, tas
 import type { TaskStatus, Task } from '@/types/task';
 import { log } from '@/lib/logger';
 import { AppHeader } from '@/components/layout/app-header';
-
-// Component to display actual time for a task
-function TaskActualTime({ taskId }: { taskId: string }) {
-  const { totalHours } = useTaskActualMinutes(taskId);
-
-  return (
-    <div className="flex items-center gap-1">
-      <Clock className="h-3 w-3 text-green-600" />
-      {totalHours.toFixed(1)}h
-    </div>
-  );
-}
 
 // Component for inline status editing
 function TaskStatusSelect({ task }: { task: Task }) {
@@ -125,6 +113,23 @@ export default function GoalDetailPage() {
     queryFn: () => progressApi.getGoal(goalId),
     enabled: !!goal,
   });
+
+  const taskIds = useMemo(() => tasks.map(task => task.id), [tasks]);
+  const {
+    data: logsByTask = {},
+    isLoading: logsLoading,
+    error: logsError,
+  } = useBatchLogsQuery(taskIds);
+
+  const taskActualMinutesById = useMemo(() => {
+    return Object.fromEntries(
+      taskIds.map(taskId => {
+        const logs = logsByTask[taskId] || [];
+        const totalMinutes = logs.reduce((sum, logEntry) => sum + (logEntry.actual_minutes || 0), 0);
+        return [taskId, totalMinutes];
+      })
+    );
+  }, [taskIds, logsByTask]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -462,7 +467,10 @@ export default function GoalDetailPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <TaskActualTime taskId={task.id} />
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3 text-green-600" />
+                            {((taskActualMinutesById[task.id] || 0) / 60).toFixed(1)}h
+                          </div>
                         </TableCell>
                         <TableCell>
                           {task.due_date ? (
@@ -505,7 +513,12 @@ export default function GoalDetailPage() {
                       </TableRow>
                       <TableRow>
                         <TableCell colSpan={10} className="p-0">
-                          <TaskLogsMemoPanel task={task} />
+                          <TaskLogsMemoPanel
+                            task={task}
+                            logs={logsByTask[task.id] || []}
+                            logsLoading={logsLoading}
+                            logsError={logsError}
+                          />
                         </TableCell>
                       </TableRow>
                     </React.Fragment>

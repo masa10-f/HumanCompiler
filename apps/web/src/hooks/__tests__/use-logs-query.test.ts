@@ -8,7 +8,7 @@ import type { Log, LogCreate, LogUpdate } from '@/types/log'
 
 // Mock the API
 const mockGetByTask = jest.fn<Promise<Log[]>, [string, number?, number?]>()
-const mockGetBatch = jest.fn<Promise<Record<string, Log[]>>, [string[]]>()
+const mockGetBatch = jest.fn<Promise<Record<string, Log[]>>, [string[], number?, number?]>()
 const mockGetById = jest.fn<Promise<Log>, [string]>()
 const mockCreate = jest.fn<Promise<Log>, [LogCreate]>()
 const mockUpdate = jest.fn<Promise<Log>, [string, LogUpdate]>()
@@ -17,7 +17,7 @@ const mockDelete = jest.fn<Promise<void>, [string]>()
 jest.mock('@/lib/api', () => ({
   logsApi: {
     getByTask: (...args: [string, number?, number?]) => mockGetByTask(...args),
-    getBatch: (taskIds: string[]) => mockGetBatch(taskIds),
+    getBatch: (taskIds: string[], skip?: number, limit?: number) => mockGetBatch(taskIds, skip, limit),
     getById: (id: string) => mockGetById(id),
     create: (data: LogCreate) => mockCreate(data),
     update: (id: string, data: LogUpdate) => mockUpdate(id, data),
@@ -35,7 +35,7 @@ jest.mock('@/lib/query-keys', () => ({
       details: () => ['logs', 'detail'],
       detail: (id: string) => ['logs', 'detail', id],
       byTask: (taskId: string) => ['logs', 'task', taskId],
-      batch: (taskIds: string[]) => ['logs', 'batch', ...taskIds.sort()],
+      batch: (taskIds: string[], skip = 0, limit = 50) => ['logs', 'batch', { skip, limit }, ...[...taskIds].sort()],
     },
     progress: {
       all: ['progress'],
@@ -124,8 +124,20 @@ describe('useBatchLogsQuery', () => {
       expect(result.current.isSuccess).toBe(true)
     })
 
-    expect(mockGetBatch).toHaveBeenCalledWith(['task-1', 'task-2'])
+    expect(mockGetBatch).toHaveBeenCalledWith(['task-1', 'task-2'], 0, 50)
     expect(result.current.data).toEqual(batchResult)
+  })
+
+  it('should support pagination', async () => {
+    mockGetBatch.mockResolvedValue({})
+
+    const { result } = renderHookWithClient(() => useBatchLogsQuery(['task-1'], 10, 25))
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+
+    expect(mockGetBatch).toHaveBeenCalledWith(['task-1'], 10, 25)
   })
 
   it('should be disabled when taskIds is empty', async () => {
