@@ -34,12 +34,12 @@ export function useLogsByTask(taskId: string, skip = 0, limit = 50) {
  * @param taskIds - Array of task UUIDs to fetch logs for
  * @returns UseQueryResult with logs grouped by task
  */
-export function useBatchLogsQuery(taskIds: string[]) {
+export function useBatchLogsQuery(taskIds: string[], skip = 0, limit = 50) {
   return useQuery({
-    queryKey: queryKeys.logs.batch(taskIds),
+    queryKey: queryKeys.logs.batch(taskIds, skip, limit),
     queryFn: async () => {
       // Use the new batch API endpoint for efficient fetching
-      return await logsApi.getBatch(taskIds);
+      return await logsApi.getBatch(taskIds, skip, limit);
     },
     enabled: taskIds.length > 0,
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -75,6 +75,14 @@ export function useCreateLog() {
   return useMutation({
     mutationFn: (logData: LogCreate) => logsApi.create(logData),
     onSuccess: (newLog: Log) => {
+      // Invalidate log list caches, including batch queries used by goal detail.
+      queryClient.invalidateQueries({
+        queryKey: logKeys.lists()
+      })
+      queryClient.invalidateQueries({
+        queryKey: logKeys.batches()
+      })
+
       // Invalidate logs for the specific task
       queryClient.invalidateQueries({
         queryKey: logKeys.byTask(newLog.task_id)
@@ -111,6 +119,14 @@ export function useUpdateLog() {
         updatedLog
       )
 
+      // Invalidate log list caches, including batch queries used by goal detail.
+      queryClient.invalidateQueries({
+        queryKey: logKeys.lists()
+      })
+      queryClient.invalidateQueries({
+        queryKey: logKeys.batches()
+      })
+
       // Invalidate logs for the task to reflect changes in list view
       queryClient.invalidateQueries({
         queryKey: logKeys.byTask(updatedLog.task_id)
@@ -139,6 +155,14 @@ export function useDeleteLog() {
 
       // Remove log from cache
       queryClient.removeQueries({ queryKey: logKeys.detail(logId) })
+
+      // Invalidate log list caches, including batch queries used by goal detail.
+      queryClient.invalidateQueries({
+        queryKey: logKeys.lists()
+      })
+      queryClient.invalidateQueries({
+        queryKey: logKeys.batches()
+      })
 
       // Invalidate logs for the task if we know the task ID
       if (cachedLog?.task_id) {
