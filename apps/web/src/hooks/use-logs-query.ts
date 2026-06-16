@@ -8,6 +8,17 @@ import { queryKeys } from '@/lib/query-keys'
  * Re-exported from centralized query keys for backward compatibility.
  */
 export const logKeys = queryKeys.logs
+const LOG_BATCH_TASK_CHUNK_SIZE = 50
+
+const chunkTaskIds = (taskIds: string[], chunkSize: number) => {
+  const chunks: string[][] = []
+
+  for (let index = 0; index < taskIds.length; index += chunkSize) {
+    chunks.push(taskIds.slice(index, index + chunkSize))
+  }
+
+  return chunks
+}
 
 /**
  * Fetches logs for a specific task with pagination.
@@ -38,8 +49,14 @@ export function useBatchLogsQuery(taskIds: string[], skip = 0, limit = 50) {
   return useQuery({
     queryKey: queryKeys.logs.batch(taskIds, skip, limit),
     queryFn: async () => {
-      // Use the new batch API endpoint for efficient fetching
-      return await logsApi.getBatch(taskIds, skip, limit);
+      const chunks = chunkTaskIds(taskIds, LOG_BATCH_TASK_CHUNK_SIZE);
+      const batchResults = await Promise.all(
+        chunks.map(chunk => logsApi.getBatch(chunk, skip, limit))
+      );
+
+      return batchResults.reduce<Record<string, Log[]>>((mergedLogs, batchLogs) => {
+        return { ...mergedLogs, ...batchLogs };
+      }, {});
     },
     enabled: taskIds.length > 0,
     staleTime: 5 * 60 * 1000, // 5 minutes

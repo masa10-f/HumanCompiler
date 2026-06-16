@@ -102,7 +102,7 @@ async def get_tasks_by_goal(
     session: Annotated[Session, Depends(get_session)],
     current_user: Annotated[AuthUser, Depends(get_current_user)],
     skip: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
     sort_by: Annotated[SortBy, Query()] = SortBy.STATUS,
     sort_order: Annotated[SortOrder, Query()] = SortOrder.ASC,
 ) -> list[TaskResponse]:
@@ -152,7 +152,7 @@ async def get_tasks_by_project(
     session: Annotated[Session, Depends(get_session)],
     current_user: Annotated[AuthUser, Depends(get_current_user)],
     skip: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
     sort_by: Annotated[SortBy, Query()] = SortBy.STATUS,
     sort_order: Annotated[SortOrder, Query()] = SortOrder.ASC,
 ) -> list[TaskResponse]:

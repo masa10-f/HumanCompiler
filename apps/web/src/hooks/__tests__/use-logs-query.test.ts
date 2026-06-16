@@ -141,6 +141,27 @@ describe('useBatchLogsQuery', () => {
     expect(mockGetBatch).toHaveBeenCalledWith(['task-1'], 10, 25)
   })
 
+  it('should chunk large task id lists to keep batch URLs bounded', async () => {
+    const taskIds = Array.from({ length: 120 }, (_, index) => `task-${index + 1}`)
+    mockGetBatch.mockImplementation(async (ids) => {
+      return Object.fromEntries(
+        ids.map(taskId => [taskId, createMockLogs(1, { task_id: taskId })])
+      )
+    })
+
+    const { result } = renderHookWithClient(() => useBatchLogsQuery(taskIds))
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+
+    expect(mockGetBatch).toHaveBeenCalledTimes(3)
+    expect(mockGetBatch).toHaveBeenNthCalledWith(1, taskIds.slice(0, 50), 0, 50)
+    expect(mockGetBatch).toHaveBeenNthCalledWith(2, taskIds.slice(50, 100), 0, 50)
+    expect(mockGetBatch).toHaveBeenNthCalledWith(3, taskIds.slice(100), 0, 50)
+    expect(Object.keys(result.current.data || {})).toHaveLength(120)
+  })
+
   it('should be disabled when taskIds is empty', async () => {
     const { result } = renderHookWithClient(() => useBatchLogsQuery([]))
 

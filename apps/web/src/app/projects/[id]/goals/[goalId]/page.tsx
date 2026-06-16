@@ -1,22 +1,22 @@
 'use client';
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
-import { useTasksByGoal } from '@/hooks/use-tasks-query';
+import { useAllTasksByGoal, useUpdateTask } from '@/hooks/use-tasks-query';
 import { useGoal } from '@/hooks/use-goals-query';
 import { useProject } from '@/hooks/use-project-query';
 import { useGoalNote } from '@/hooks/use-notes';
 import { useQuery } from '@tanstack/react-query';
 import { progressApi } from '@/lib/api';
 import { useBatchLogsQuery } from '@/hooks/use-logs-query';
-import { useUpdateTask } from '@/hooks/use-tasks-query';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { SortDropdown } from '@/components/ui/sort-dropdown';
 import { TaskFormDialog } from '@/components/tasks/task-form-dialog';
 import { TaskEditDialog } from '@/components/tasks/task-edit-dialog';
 import { TaskDeleteDialog } from '@/components/tasks/task-delete-dialog';
@@ -26,6 +26,8 @@ import { ContextNoteEditor } from '@/components/notes/context-note-editor';
 import { ArrowLeft, Plus, Clock, Calendar, GitBranch, FileText, Loader2, AlertCircle } from 'lucide-react';
 import { taskStatusLabels, taskStatusColors, workTypeLabels, workTypeColors, taskPriorityLabels, taskPriorityColors } from '@/types/task';
 import type { TaskStatus, Task } from '@/types/task';
+import { SortBy, SortOrder } from '@/types/sort';
+import type { SortOptions } from '@/types/sort';
 import { log } from '@/lib/logger';
 import { AppHeader } from '@/components/layout/app-header';
 
@@ -76,13 +78,17 @@ export default function GoalDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const goalId = params.goalId as string;
+  const [taskSortOptions, setTaskSortOptions] = useState<SortOptions>({
+    sortBy: SortBy.STATUS,
+    sortOrder: SortOrder.ASC,
+  });
 
   const {
     data: tasks = [],
     isLoading: tasksLoading,
     error: tasksError,
     refetch: refetchTasks
-  } = useTasksByGoal(goalId);
+  } = useAllTasksByGoal(goalId, taskSortOptions);
 
   const {
     data: goal,
@@ -337,17 +343,30 @@ export default function GoalDetailPage() {
 
       {/* Tasks Section */}
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-2xl font-bold">タスク一覧</h2>
             <p className="text-gray-600 mt-2">このゴールのタスクを管理します。</p>
           </div>
-          <TaskFormDialog goalId={goalId}>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              新規タスク作成
-            </Button>
-          </TaskFormDialog>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <SortDropdown
+              currentSort={taskSortOptions}
+              onSortChange={setTaskSortOptions}
+              sortFields={[
+                { value: SortBy.STATUS, label: 'ステータス' },
+                { value: SortBy.PRIORITY, label: '優先度' },
+                { value: SortBy.TITLE, label: 'タスク名' },
+                { value: SortBy.CREATED_AT, label: '作成日' },
+                { value: SortBy.UPDATED_AT, label: '更新日' },
+              ]}
+            />
+            <TaskFormDialog goalId={goalId}>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                新規タスク作成
+              </Button>
+            </TaskFormDialog>
+          </div>
         </div>
 
         {tasksLoading ? (
