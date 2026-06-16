@@ -640,6 +640,8 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             # Default ordering
             statement = statement.order_by(Task.created_at.desc())
 
+        statement = statement.order_by(Task.id.asc())
+
         statement = statement.offset(skip).limit(limit)
         return list(session.exec(statement).all())
 

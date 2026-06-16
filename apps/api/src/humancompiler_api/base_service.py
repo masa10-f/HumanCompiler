@@ -128,6 +128,9 @@ class BaseService(ABC, Generic[T, CreateT, UpdateT]):
             if hasattr(self.model, "created_at"):
                 statement = statement.order_by(self.model.created_at.desc())
 
+        if hasattr(self.model, "id"):
+            statement = statement.order_by(self.model.id.asc())
+
         statement = statement.offset(skip).limit(limit)
         return list(session.exec(statement).all())
 
