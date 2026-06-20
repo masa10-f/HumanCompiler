@@ -194,12 +194,11 @@ export default function SchedulingPage() {
         } else if (taskSource.type === 'all_tasks') {
           // Load tasks from all projects
           const allTasks: TaskInfo[] = [];
-          for (const project of projects) {
-            try {
-              const projectTasks = await tasksApi.getByProject(project.id);
-              const filtered = projectTasks
-                .filter(t => t.status !== 'completed' && t.status !== 'cancelled')
-                .map(t => ({
+          const taskFetches = projects.map((project) =>
+            tasksApi.getByProject(project.id).then((projectTasks) =>
+              projectTasks
+                .filter((t) => t.status !== 'completed' && t.status !== 'cancelled')
+                .map((t) => ({
                   id: t.id,
                   title: t.title,
                   estimate_hours: Number(t.estimate_hours) || 1,
@@ -208,31 +207,52 @@ export default function SchedulingPage() {
                   due_date: t.due_date ?? undefined,
                   goal_id: t.goal_id,
                   project_id: project.id,
-                }));
-              allTasks.push(...(filtered as TaskInfo[]));
-            } catch (err) {
-              logger.error(`Failed to load tasks for project ${project.id}`, err instanceof Error ? err : new Error(String(err)));
-            }
-          }
+                }))
+            )
+          );
 
-          // Also load quick tasks (unclassified tasks)
-          try {
-            const quickTasks = await quickTasksApi.getAll();
-            const filteredQuickTasks = quickTasks
-              .filter(qt => qt.status !== 'completed' && qt.status !== 'cancelled')
-              .map(qt => ({
-                id: `quick_${qt.id}`,  // Prefix to match backend convention
-                title: `📥 ${qt.title}`,  // Mark as quick task
+          const quickTasksPromise = quickTasksApi.getAll().then((quickTasks) =>
+            quickTasks
+              .filter((qt) => qt.status !== 'completed' && qt.status !== 'cancelled')
+              .map((qt) => ({
+                id: `quick_${qt.id}`, // Prefix to match backend convention
+                title: `📥 ${qt.title}`, // Mark as quick task
                 estimate_hours: Number(qt.estimate_hours) || 0.5,
                 priority: qt.priority || 3,
                 kind: qt.work_type || 'light_work',
                 due_date: qt.due_date ?? undefined,
                 goal_id: undefined,
                 project_id: undefined,
-              }));
-            allTasks.push(...(filteredQuickTasks as TaskInfo[]));
-          } catch (err) {
-            logger.error('Failed to load quick tasks', err instanceof Error ? err : new Error(String(err)));
+              }))
+          );
+
+          const [projectTaskResults, quickTasksResult] = await Promise.all([
+            Promise.allSettled(taskFetches),
+            quickTasksPromise
+              .then<PromiseSettledResult<TaskInfo[]>>((value) => ({ status: 'fulfilled', value }))
+              .catch<PromiseSettledResult<TaskInfo[]>>((reason) => ({ status: 'rejected', reason })),
+          ]);
+
+          projectTaskResults.forEach((result, index) => {
+            if (result.status === 'fulfilled') {
+              allTasks.push(...(result.value as TaskInfo[]));
+            } else {
+              logger.error(
+                `Failed to load tasks for project ${projects[index]?.id}`,
+                result.reason instanceof Error ? result.reason : new Error(String(result.reason))
+              );
+            }
+          });
+
+          if (quickTasksResult.status === 'fulfilled') {
+            allTasks.push(...(quickTasksResult.value as TaskInfo[]));
+          } else {
+            logger.error(
+              'Failed to load quick tasks',
+              quickTasksResult.reason instanceof Error
+                ? quickTasksResult.reason
+                : new Error(String(quickTasksResult.reason))
+            );
           }
 
           tasks = allTasks;

@@ -85,6 +85,8 @@ import type {
 } from '@/types/quick-task';
 import type { TaskStatus } from '@/types/task';
 
+export const DEFAULT_TASK_PAGE_LIMIT = 100;
+
 // Helper function to ensure HTTPS protocol
 const ensureHttps = (url: string): string => {
   if (!url) return url;
@@ -375,11 +377,11 @@ class ApiClient {
    *
    * @param goalId - The goal UUID
    * @param skip - Pagination offset (default: 0)
-   * @param limit - Maximum results (default: 20)
+   * @param limit - Maximum results (default: 100)
    * @param sortOptions - Sorting configuration
    * @returns Array of Task objects
    */
-  async getTasksByGoal(goalId: string, skip: number = 0, limit: number = 20, sortOptions?: SortOptions): Promise<Task[]> {
+  async getTasksByGoal(goalId: string, skip: number = 0, limit: number = DEFAULT_TASK_PAGE_LIMIT, sortOptions?: SortOptions): Promise<Task[]> {
     const params = new URLSearchParams({
       skip: skip.toString(),
       limit: limit.toString(),
@@ -395,7 +397,7 @@ class ApiClient {
     return this.request<Task[]>(`/api/tasks/goal/${goalId}?${params.toString()}`);
   }
 
-  async getTasksByProject(projectId: string, skip: number = 0, limit: number = 20, sortOptions?: SortOptions): Promise<Task[]> {
+  async getTasksByProject(projectId: string, skip: number = 0, limit: number = DEFAULT_TASK_PAGE_LIMIT, sortOptions?: SortOptions): Promise<Task[]> {
     const params = new URLSearchParams({
       skip: skip.toString(),
       limit: limit.toString(),

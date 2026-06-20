@@ -16,16 +16,23 @@ configure_database_extensions()
 logger = logging.getLogger(__name__)
 
 # Database pool configuration constants
-POOL_SIZE_DEFAULT = 5
+POOL_SIZE_DEFAULT = 10
 POOL_SIZE_MIN = 1
 POOL_SIZE_MAX = 50
 
-MAX_OVERFLOW_DEFAULT = 10
+MAX_OVERFLOW_DEFAULT = 20
 MAX_OVERFLOW_MIN = 0
 MAX_OVERFLOW_MAX = 100
 
 POOL_TIMEOUT_DEFAULT = 30
-POOL_RECYCLE_DEFAULT = 3600
+# Recycle connections before Supavisor's ~60s client_idle_timeout kills them.
+# Connections older than this are discarded on checkout and replaced with
+# fresh ones, preventing InterfaceError("connection already closed") errors.
+POOL_RECYCLE_DEFAULT = 55
+
+# Connection-level timeouts for PostgreSQL (seconds)
+PG_CONNECT_TIMEOUT = 5
+PG_STATEMENT_TIMEOUT_MS = 30000  # 30 seconds
 
 
 class Database:
@@ -71,8 +78,33 @@ class Database:
             # Use the database URL as-is from environment
             database_url = settings.database_url
 
-            # Minimal connection args for PostgreSQL
+            # Connection args for PostgreSQL: timeouts, keepalives, and optional SSL.
+            # NOTE: Do NOT use 'options' parameter (e.g. -c statement_timeout=...)
+            # here — Supabase's Supavisor in transaction pooling mode rejects
+            # session-level parameters in the startup packet, closing the
+            # connection immediately. Set statement_timeout via pool event
+            # listener in database_config.py instead.
             connect_args = {}
+            if "postgresql" in database_url:
+                import os
+
+                # Prevent hanging on stale/half-open connections
+                connect_args["connect_timeout"] = PG_CONNECT_TIMEOUT
+
+                # TCP keepalives: detect dead connections within ~25s
+                # instead of default TCP timeout of 120-180s.
+                # Critical for Supabase/PgBouncer which silently drops
+                # idle connections after ~5 min.
+                connect_args["keepalives"] = 1
+                connect_args["keepalives_idle"] = 10  # Probe after 10s idle
+                connect_args["keepalives_interval"] = 5  # Probe every 5s
+                connect_args["keepalives_count"] = 3  # Fail after 3 missed
+                # Linux-specific: hard upper bound on unacknowledged data
+                connect_args["tcp_user_timeout"] = 10000  # 10s in ms
+
+                sslmode = os.getenv("DB_SSLMODE")
+                if sslmode:
+                    connect_args["sslmode"] = sslmode
 
             # Configure pool settings with environment variable overrides
             import os
@@ -105,15 +137,14 @@ class Database:
                 pool_timeout=pool_timeout,  # Configurable timeout
                 pool_reset_on_return="commit",  # Reset connections on return for consistency
                 connect_args=connect_args,
-                # Enable query result caching for better performance
+                # Enable query result caching for better performance.
+                # NOTE: Do NOT set isolation_level here — PostgreSQL defaults
+                # to READ_COMMITTED already, and explicitly setting it forces a
+                # psycopg2 set_isolation_level() C-call on every Connection.__init__,
+                # which fails on stale connections (InterfaceError) because it runs
+                # AFTER pool_pre_ping, outside the pool's invalidation retry loop.
                 execution_options={
                     "compiled_cache": {},
-                    # Only set isolation_level for PostgreSQL, skip for SQLite
-                    **(
-                        {"isolation_level": "READ_COMMITTED"}
-                        if "postgresql" in database_url
-                        else {}
-                    ),
                 },
             )
 
@@ -127,6 +158,64 @@ class Database:
 
             logger.info("✅ SQLModel engine initialized with optimized configuration")
         return self._engine
+
+    def _try_connect(self) -> None:
+        """Execute a single test connection (runs in a thread for timeout)."""
+        from sqlalchemy import text
+
+        engine = self.get_engine()
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+            conn.commit()
+
+    def warm_pool(
+        self,
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
+        per_attempt_timeout: float = 10.0,
+    ) -> bool:
+        """
+        Pre-warm the connection pool by establishing and validating a connection.
+
+        This triggers SQLAlchemy's dialect initialization (first_connect event)
+        during startup rather than on the first user request. Each attempt has
+        a strict thread-level timeout to prevent blocking server startup.
+
+        Returns True if warm-up succeeded, False otherwise.
+        """
+        import concurrent.futures
+        import time as _time
+
+        for attempt in range(1, max_retries + 1):
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            try:
+                future = executor.submit(self._try_connect)
+                future.result(timeout=per_attempt_timeout)
+                logger.info(
+                    f"✅ Connection pool warmed up successfully (attempt {attempt})"
+                )
+                executor.shutdown(wait=False)
+                return True
+            except concurrent.futures.TimeoutError:
+                # Don't wait for the stuck thread — shutdown immediately
+                executor.shutdown(wait=False, cancel_futures=True)
+                logger.warning(
+                    f"⚠️ Pool warm-up attempt {attempt}/{max_retries} timed out "
+                    f"after {per_attempt_timeout}s"
+                )
+            except Exception as e:
+                executor.shutdown(wait=False)
+                logger.warning(
+                    f"⚠️ Pool warm-up attempt {attempt}/{max_retries} failed: "
+                    f"{type(e).__name__}: {e}"
+                )
+            # Dispose stale connections so next attempt gets a fresh one
+            if attempt < max_retries:
+                self.get_engine().dispose()
+                _time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+        logger.error("❌ Connection pool warm-up failed after all retries")
+        return False
 
     def get_session(self) -> Generator[Session, None, None]:
         """Get database session"""

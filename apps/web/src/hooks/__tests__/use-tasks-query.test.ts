@@ -5,6 +5,7 @@ import { act, waitFor } from '@testing-library/react'
 import { createMockTask, createMockTasks, resetIdCounter } from './helpers/mock-factories'
 import { renderHookWithClient } from './helpers/test-utils'
 import type { Task, TaskCreate, TaskUpdate } from '@/types/task'
+import { SortBy, SortOrder } from '@/types/sort'
 import type { SortOptions } from '@/types/sort'
 
 // Mock the API
@@ -16,6 +17,7 @@ const mockUpdate = jest.fn<Promise<Task>, [string, TaskUpdate]>()
 const mockDelete = jest.fn<Promise<void>, [string]>()
 
 jest.mock('@/lib/api', () => ({
+  DEFAULT_TASK_PAGE_LIMIT: 100,
   tasksApi: {
     getByGoal: (...args: [string, number?, number?, SortOptions?]) => mockGetByGoal(...args),
     getByProject: (...args: [string, number?, number?, SortOptions?]) => mockGetByProject(...args),
@@ -28,6 +30,7 @@ jest.mock('@/lib/api', () => ({
 
 // Import after mocks
 import {
+  useAllTasksByGoal,
   useTasksByGoal,
   useTasksByProject,
   useTask,
@@ -70,7 +73,7 @@ describe('useTasksByGoal', () => {
       expect(result.current.isSuccess).toBe(true)
     })
 
-    expect(mockGetByGoal).toHaveBeenCalledWith('goal-1', 0, 50, undefined)
+    expect(mockGetByGoal).toHaveBeenCalledWith('goal-1', 0, 100, undefined)
     expect(result.current.data).toHaveLength(5)
   })
 
@@ -78,19 +81,66 @@ describe('useTasksByGoal', () => {
     const mockTasks = createMockTasks(3)
     mockGetByGoal.mockResolvedValue(mockTasks)
 
-    const sortOptions: SortOptions = { sortBy: 'priority', sortOrder: 'asc' }
+    const sortOptions: SortOptions = { sortBy: SortBy.PRIORITY, sortOrder: SortOrder.ASC }
 
-    const { result } = renderHookWithClient(() => useTasksByGoal('goal-1', 0, 50, sortOptions))
+    const { result } = renderHookWithClient(() => useTasksByGoal('goal-1', 0, 100, sortOptions))
 
     await waitFor(() => {
       expect(result.current.isSuccess).toBe(true)
     })
 
-    expect(mockGetByGoal).toHaveBeenCalledWith('goal-1', 0, 50, sortOptions)
+    expect(mockGetByGoal).toHaveBeenCalledWith('goal-1', 0, 100, sortOptions)
   })
 
   it('should be disabled when goalId is falsy', async () => {
     const { result } = renderHookWithClient(() => useTasksByGoal(''))
+
+    expect(result.current.isPending).toBe(true)
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(mockGetByGoal).not.toHaveBeenCalled()
+  })
+})
+
+describe('useAllTasksByGoal', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    resetIdCounter()
+  })
+
+  it('should fetch a single page when fewer than the task page limit exist', async () => {
+    const mockTasks = createMockTasks(60, { goal_id: 'goal-1' })
+    mockGetByGoal.mockResolvedValueOnce(mockTasks)
+
+    const { result } = renderHookWithClient(() => useAllTasksByGoal('goal-1'))
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+
+    expect(mockGetByGoal).toHaveBeenCalledTimes(1)
+    expect(mockGetByGoal).toHaveBeenCalledWith('goal-1', 0, 100, undefined)
+    expect(result.current.data).toHaveLength(60)
+  })
+
+  it('should keep fetching pages until the final partial page', async () => {
+    const firstPage = createMockTasks(100, { goal_id: 'goal-1' })
+    const secondPage = createMockTasks(50, { goal_id: 'goal-1' })
+    mockGetByGoal.mockResolvedValueOnce(firstPage).mockResolvedValueOnce(secondPage)
+
+    const sortOptions: SortOptions = { sortBy: SortBy.CREATED_AT, sortOrder: SortOrder.DESC }
+    const { result } = renderHookWithClient(() => useAllTasksByGoal('goal-1', sortOptions))
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+
+    expect(mockGetByGoal).toHaveBeenNthCalledWith(1, 'goal-1', 0, 100, sortOptions)
+    expect(mockGetByGoal).toHaveBeenNthCalledWith(2, 'goal-1', 100, 100, sortOptions)
+    expect(result.current.data).toHaveLength(150)
+  })
+
+  it('should be disabled when goalId is falsy', async () => {
+    const { result } = renderHookWithClient(() => useAllTasksByGoal(''))
 
     expect(result.current.isPending).toBe(true)
     expect(result.current.fetchStatus).toBe('idle')
@@ -114,7 +164,7 @@ describe('useTasksByProject', () => {
       expect(result.current.isSuccess).toBe(true)
     })
 
-    expect(mockGetByProject).toHaveBeenCalledWith('proj-1', 0, 50, undefined)
+    expect(mockGetByProject).toHaveBeenCalledWith('proj-1', 0, 100, undefined)
     expect(result.current.data).toHaveLength(8)
   })
 
@@ -270,8 +320,13 @@ describe('useUpdateTask', () => {
 
 describe('useDeleteTask', () => {
   beforeEach(() => {
+    jest.useFakeTimers()
     jest.clearAllMocks()
     resetIdCounter()
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
   })
 
   it('should remove from cache', async () => {
@@ -312,6 +367,10 @@ describe('useDeleteTask', () => {
       await result.current.mutateAsync('task-1')
     })
 
+    act(() => {
+      jest.advanceTimersByTime(300)
+    })
+
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: taskKeys.byGoal('goal-1'),
     })
@@ -327,6 +386,10 @@ describe('useDeleteTask', () => {
 
     await act(async () => {
       await result.current.mutateAsync('unknown-task')
+    })
+
+    act(() => {
+      jest.advanceTimersByTime(300)
     })
 
     expect(invalidateSpy).toHaveBeenCalledWith({

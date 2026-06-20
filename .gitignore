@@ -199,3 +199,4 @@ static/uploads/
 
 # custom
 AGENTS.md
+tmp/*

@@ -28,7 +28,7 @@ jobs:
       - name: 🐍 Set up Python 3.13
         uses: actions/setup-python@v4
         with:
-          python-version: '3.13'
+          python-version: '3.11'
           cache: 'pip'
 
       - name: 📦 Install dependencies
@@ -112,7 +112,7 @@ jobs:
       - name: 🐍 Set up Python for migrations
         uses: actions/setup-python@v4
         with:
-          python-version: '3.13'
+          python-version: '3.11'
 
       - name: 📦 Install migration dependencies
         working-directory: ./apps/api
@@ -198,7 +198,7 @@ jobs:
       - name: 🐍 Set up Python for migrations
         uses: actions/setup-python@v4
         with:
-          python-version: '3.13'
+          python-version: '3.11'
 
       - name: 📦 Install migration dependencies
         working-directory: ./apps/api

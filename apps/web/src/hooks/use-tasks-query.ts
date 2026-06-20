@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { tasksApi } from '@/lib/api'
+import { DEFAULT_TASK_PAGE_LIMIT, tasksApi } from '@/lib/api'
 import type { Task, TaskCreate, TaskUpdate } from '@/types/task'
 import type { SortOptions } from '@/types/sort'
 
@@ -22,15 +22,48 @@ export const taskKeys = {
  *
  * @param goalId - The goal UUID to fetch tasks for
  * @param skip - Number of records to skip (default: 0)
- * @param limit - Maximum records to return (default: 50)
+ * @param limit - Maximum records to return (default: 100)
  * @param sortOptions - Optional sorting configuration
  * @returns UseQueryResult with task array
  */
-export function useTasksByGoal(goalId: string, skip = 0, limit = 50, sortOptions?: SortOptions) {
+export function useTasksByGoal(goalId: string, skip = 0, limit = DEFAULT_TASK_PAGE_LIMIT, sortOptions?: SortOptions) {
   const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
   return useQuery({
-    queryKey: [...taskKeys.byGoal(goalId), sortKey],
+    queryKey: [...taskKeys.byGoal(goalId), 'page', skip, limit, sortKey],
     queryFn: () => tasksApi.getByGoal(goalId, skip, limit, sortOptions),
+    enabled: !!goalId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+  })
+}
+
+/**
+ * Fetches every task for a goal by walking the paginated API.
+ *
+ * @param goalId - The goal UUID to fetch tasks for
+ * @param sortOptions - Optional sorting configuration
+ * @returns UseQueryResult with the complete task array
+ */
+export function useAllTasksByGoal(goalId: string, sortOptions?: SortOptions) {
+  const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
+
+  return useQuery({
+    queryKey: [...taskKeys.byGoal(goalId), 'all', DEFAULT_TASK_PAGE_LIMIT, sortKey],
+    queryFn: async () => {
+      const tasks: Task[] = [];
+      let skip = 0;
+
+      while (true) {
+        const page = await tasksApi.getByGoal(goalId, skip, DEFAULT_TASK_PAGE_LIMIT, sortOptions);
+        tasks.push(...page);
+
+        if (page.length < DEFAULT_TASK_PAGE_LIMIT) {
+          return tasks;
+        }
+
+        skip += DEFAULT_TASK_PAGE_LIMIT;
+      }
+    },
     enabled: !!goalId,
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
@@ -42,14 +75,14 @@ export function useTasksByGoal(goalId: string, skip = 0, limit = 50, sortOptions
  *
  * @param projectId - The project UUID to fetch tasks for
  * @param skip - Number of records to skip (default: 0)
- * @param limit - Maximum records to return (default: 50)
+ * @param limit - Maximum records to return (default: 100)
  * @param sortOptions - Optional sorting configuration
  * @returns UseQueryResult with task array
  */
-export function useTasksByProject(projectId: string, skip = 0, limit = 50, sortOptions?: SortOptions) {
+export function useTasksByProject(projectId: string, skip = 0, limit = DEFAULT_TASK_PAGE_LIMIT, sortOptions?: SortOptions) {
   const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
   return useQuery({
-    queryKey: [...taskKeys.byProject(projectId), sortKey],
+    queryKey: [...taskKeys.byProject(projectId), 'page', skip, limit, sortKey],
     queryFn: () => tasksApi.getByProject(projectId, skip, limit, sortOptions),
     enabled: !!projectId,
     staleTime: 5 * 60 * 1000, // 5 minutes

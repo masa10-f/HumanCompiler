@@ -121,48 +121,33 @@ async def delete_goal_dependency(
 
 
 def _has_circular_dependency(
-    db: Session, goal_id: UUID, depends_on_goal_id: UUID, max_depth: int = 100
+    db: Session, goal_id: UUID, depends_on_goal_id: UUID
 ) -> bool:
     """
     Check if adding a dependency would create a circular dependency.
-    Uses iterative BFS approach for better performance and depth limiting.
+    Uses iterative BFS approach with visited nodes to handle existing cycles.
     """
 
     # Use BFS to detect cycles more efficiently
-    queue: deque[tuple[UUID, int]] = deque(
-        [(depends_on_goal_id, 0)]
-    )  # (goal_id, depth)
+    queue: deque[UUID] = deque([depends_on_goal_id])
     visited: set[UUID] = {depends_on_goal_id}
 
     # Cache queries for better performance
     dependency_cache: dict[UUID, list[UUID]] = {}
 
     while queue:
-        current_goal_id, depth = queue.popleft()
-
-        # Depth limit to prevent infinite loops in corrupted data
-        if depth >= max_depth:
-            # Log warning about deep dependency chain
-            import logging
-
-            logger = logging.getLogger(__name__)
-
-            logger.warning(
-                f"Goal dependency chain depth limit reached: {max_depth}",
-                extra={"goal_id": str(goal_id), "depends_on": str(depends_on_goal_id)},
-            )
-            return False  # Assume no cycle if we hit depth limit
+        current_goal_id = queue.popleft()
 
         # Check if we've found a cycle
         if current_goal_id == goal_id:
             return True
 
-        # Get dependent goals (with caching)
+        # Get this goal's prerequisites (with caching)
         if current_goal_id not in dependency_cache:
             dependent_goals = list(
                 db.exec(
-                    select(GoalDependency.goal_id).where(
-                        GoalDependency.depends_on_goal_id == current_goal_id
+                    select(GoalDependency.depends_on_goal_id).where(
+                        GoalDependency.goal_id == current_goal_id
                     )
                 ).all()
             )
@@ -170,10 +155,10 @@ def _has_circular_dependency(
         else:
             dependent_goals = dependency_cache[current_goal_id]
 
-        # Add unvisited dependent goals to queue
+        # Add unvisited prerequisites to queue
         for dependent_goal_id in dependent_goals:
             if dependent_goal_id not in visited:
                 visited.add(dependent_goal_id)
-                queue.append((dependent_goal_id, depth + 1))
+                queue.append(dependent_goal_id)
 
     return False

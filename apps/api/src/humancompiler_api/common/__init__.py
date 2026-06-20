@@ -11,6 +11,7 @@ from .error_handlers import (
     check_resource_ownership,
     handle_service_error,
     safe_execute,
+    service_exception_handler,
     validate_uuid,
 )
 
@@ -22,6 +23,7 @@ __all__ = [
     "ExternalServiceError",
     "handle_service_error",
     "safe_execute",
+    "service_exception_handler",
     "validate_uuid",
     "check_resource_ownership",
 ]

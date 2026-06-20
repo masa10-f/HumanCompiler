@@ -71,24 +71,56 @@ def setup_connection_listeners(engine: Engine) -> None:
                 logger.debug(f"Failed to set SQLite pragmas: {e}")
 
     @event.listens_for(Pool, "connect")
-    def set_postgresql_search_path(
+    def configure_postgresql_connection(
         dbapi_connection: Any, connection_record: Any
     ) -> None:
-        """Set PostgreSQL search path for security"""
-        # Check if this is PostgreSQL
-        if hasattr(dbapi_connection, "execute"):
+        """Configure PostgreSQL connection settings after establishment.
+
+        Sets search_path here (not in connect_args 'options') because
+        Supabase's Supavisor in transaction pooling mode rejects
+        session-level parameters in the startup packet.
+        """
+        # Detect PostgreSQL by driver module name instead of executing a query
+        driver_module = type(dbapi_connection).__module__
+        is_postgresql = "psycopg" in driver_module or "pg8000" in driver_module
+        if is_postgresql:
             try:
                 cursor = dbapi_connection.cursor()
-                # Test if this is PostgreSQL by trying a PG-specific query
-                cursor.execute("SELECT version()")
-                version = cursor.fetchone()[0]
-                if "PostgreSQL" in version:
-                    # Set search path to public schema only
-                    cursor.execute("SET search_path TO public")
-                    logger.debug("PostgreSQL search path configured")
+                cursor.execute("SET search_path TO public")
+                cursor.close()
+                logger.debug("PostgreSQL search path configured")
+            except Exception as e:
+                logger.debug(f"Failed to configure PostgreSQL connection: {e}")
+
+    @event.listens_for(engine, "checkout")
+    def set_statement_timeout_on_checkout(
+        dbapi_connection: Any, connection_record: Any, connection_proxy: Any
+    ) -> None:
+        """Apply statement_timeout on every connection checkout.
+
+        Supavisor in transaction pooling mode resets session-level SET
+        commands between transactions, so the 'connect' event (which fires
+        only when a new physical connection is created) is not sufficient.
+        The 'checkout' event fires every time a connection is handed out
+        from the pool, ensuring statement_timeout is always active.
+
+        If the SET fails (dead connection), we invalidate the record so
+        the pool replaces it on the next checkout rather than handing
+        out a broken connection.
+        """
+        driver_module = type(dbapi_connection).__module__
+        is_postgresql = "psycopg" in driver_module or "pg8000" in driver_module
+        if is_postgresql:
+            try:
+                cursor = dbapi_connection.cursor()
+                cursor.execute("SET statement_timeout = '30s'")
                 cursor.close()
             except Exception as e:
-                # Not PostgreSQL or error setting search path
-                logger.debug(f"Failed to set PostgreSQL search path: {e}")
+                logger.warning(
+                    f"Dead connection detected on checkout, invalidating: "
+                    f"{type(e).__name__}: {e}"
+                )
+                connection_record.invalidate(e)
+                raise
 
     logger.info("Database connection listeners configured")

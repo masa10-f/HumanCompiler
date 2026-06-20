@@ -9,7 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session, select
+from sqlmodel import Session, and_, select
 
 from humancompiler_api.auth import AuthUser, get_current_user
 from humancompiler_api.database import db
@@ -54,42 +54,46 @@ def verify_project_ownership(
 
 
 def verify_goal_ownership(session: Session, goal_id: UUID, user_id: str) -> Goal:
-    """Verify that the user owns the goal (via project)"""
-    goal = session.get(Goal, goal_id)
-    if not goal:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found"
-        )
-    project = session.get(Project, goal.project_id)
-    # Convert owner_id to string for comparison
-    if not project or str(project.owner_id) != user_id:
+    """Verify that the user owns the goal (via project) using a single JOIN query"""
+    result = session.exec(
+        select(Goal)
+        .join(Project, Goal.project_id == Project.id)
+        .where(and_(Goal.id == goal_id, Project.owner_id == user_id))
+    ).first()
+    if not result:
+        # Determine whether goal doesn't exist or user lacks access
+        goal_exists = session.get(Goal, goal_id)
+        if not goal_exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found"
+            )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to access this goal",
         )
-    return goal
+    return result
 
 
 def verify_task_ownership(session: Session, task_id: UUID, user_id: str) -> Task:
-    """Verify that the user owns the task (via goal/project)"""
-    task = session.get(Task, task_id)
-    if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
-        )
-    goal = session.get(Goal, task.goal_id)
-    if not goal:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found"
-        )
-    project = session.get(Project, goal.project_id)
-    # Convert owner_id to string for comparison
-    if not project or str(project.owner_id) != user_id:
+    """Verify that the user owns the task (via goal/project) using a single JOIN query"""
+    result = session.exec(
+        select(Task)
+        .join(Goal, Task.goal_id == Goal.id)
+        .join(Project, Goal.project_id == Project.id)
+        .where(and_(Task.id == task_id, Project.owner_id == user_id))
+    ).first()
+    if not result:
+        # Determine whether task doesn't exist or user lacks access
+        task_exists = session.get(Task, task_id)
+        if not task_exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+            )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to access this task",
         )
-    return task
+    return result
 
 
 def get_or_create_note(

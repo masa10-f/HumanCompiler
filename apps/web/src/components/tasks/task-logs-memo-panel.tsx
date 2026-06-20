@@ -8,7 +8,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ChevronDown, ChevronRight, Clock, MessageSquare, Edit, Save, X, Trash2, Timer, Pencil } from 'lucide-react';
-import { useLogsByTask } from '@/hooks/use-logs-query';
 import { useUpdateTask } from '@/hooks/use-tasks-query';
 import { useWorkSessionsByTask } from '@/hooks/use-work-sessions';
 import { SessionKptEditDialog } from '@/components/runner/session-kpt-edit-dialog';
@@ -23,9 +22,13 @@ import { log } from '@/lib/logger';
 import { formatJSTDateTime } from '@/lib/date-utils';
 import { LogEditDialog } from '@/components/logs/log-edit-dialog';
 import { LogDeleteDialog } from '@/components/logs/log-delete-dialog';
+import type { Log } from '@/types/log';
 
 interface TaskLogsMemoPanelProps {
   task: Task;
+  logs: Log[];
+  logsLoading?: boolean;
+  logsError?: Error | null;
 }
 
 /**
@@ -44,14 +47,19 @@ function calculateSessionWorkMinutes(session: WorkSession): number {
   return 0;
 }
 
-export function TaskLogsMemoPanel({ task }: TaskLogsMemoPanelProps) {
+export function TaskLogsMemoPanel({
+  task,
+  logs,
+  logsLoading = false,
+  logsError = null,
+}: TaskLogsMemoPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isMemoEditing, setIsMemoEditing] = useState(false);
   const [memoText, setMemoText] = useState(task.memo || '');
   const [editSession, setEditSession] = useState<WorkSession | null>(null);
 
-  const { data: logs = [], isLoading: logsLoading, error: logsError } = useLogsByTask(task.id);
-  const { data: sessions = [], isLoading: sessionsLoading } = useWorkSessionsByTask(task.id);
+  const { data: sessions = [], isLoading: sessionsLoading } = useWorkSessionsByTask(task.id, 0, 20, isOpen);
+  const hasSessionSummary = isOpen || sessions.length > 0;
   const updateTaskMutation = useUpdateTask();
   const { toast } = useToast();
 
@@ -124,7 +132,7 @@ export function TaskLogsMemoPanel({ task }: TaskLogsMemoPanelProps) {
             <div className="flex items-center gap-1">
               <Timer className="h-4 w-4 text-purple-600" />
               <span className="text-sm font-medium">
-                セッション ({sessions.length}件, {(totalSessionTime / 60).toFixed(1)}h)
+                セッション{hasSessionSummary ? ` (${sessions.length}件, ${(totalSessionTime / 60).toFixed(1)}h)` : ''}
               </span>
             </div>
             <div className="flex items-center gap-1">
