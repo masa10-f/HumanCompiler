@@ -49,6 +49,7 @@ from humancompiler_api.routers import (
     task_dependencies,
     tasks,
     timeline,
+    triage,
     users,
     user_settings,
     websocket,
@@ -325,6 +326,8 @@ app.include_router(websocket.router)
 app.include_router(notes.router, prefix="/api")
 # Slot templates router
 app.include_router(slot_templates.router, prefix="/api")
+# Capacity triage router
+app.include_router(triage.router, prefix="/api")
 
 
 # Health check endpoint

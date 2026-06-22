@@ -17,6 +17,7 @@ All database migrations are managed through SQL files and the MigrationManager. 
 - `007_add_work_sessions.sql` - Work sessions tracking
 - `008_add_priority_column.sql` - Task priority column
 - `009_add_project_status.sql` - Project status column
+- `022_add_capacity_triage.sql` - Capacity settings and task triage review runs
 - `enable_rls_security.sql` - Row Level Security policies (manual application)
 
 ## Data Loss Prevention Policy

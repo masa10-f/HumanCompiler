@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 
 // Icons
-import { TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play, Timer } from 'lucide-react'
+import { TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play, Timer, ListChecks } from 'lucide-react'
 
 // Hooks
 import { useAuth } from '@/hooks/use-auth'
@@ -21,7 +21,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { logger } from '@/lib/logger'
 
 interface AppHeaderProps {
-  currentPage?: 'dashboard' | 'projects' | 'ai-planning' | 'scheduling' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner'
+  currentPage?: 'dashboard' | 'projects' | 'ai-planning' | 'triage' | 'scheduling' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner'
 }
 
 const NAVIGATION_ITEMS = [
@@ -29,6 +29,7 @@ const NAVIGATION_ITEMS = [
   { id: 'runner', label: 'Runner', path: '/runner', icon: Play },
   { id: 'projects', label: 'プロジェクト', path: '/projects', icon: FolderOpen },
   { id: 'ai-planning', label: '週次計画', path: '/ai-planning', icon: Calendar },
+  { id: 'triage', label: 'トリアージ', path: '/triage', icon: ListChecks },
   { id: 'scheduling', label: '日次計画', path: '/scheduling', icon: Clock },
   { id: 'schedule-history', label: 'スケジュール履歴', path: '/schedule-history', icon: History },
   { id: 'work-session-history', label: 'セッション履歴', path: '/work-session-history', icon: Timer },

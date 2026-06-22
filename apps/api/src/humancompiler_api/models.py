@@ -146,6 +146,35 @@ class RescheduleTriggerType(StrEnum):
     OVERDUE_RECOVERY = "overdue_recovery"
 
 
+class TriageRunSource(StrEnum):
+    """Source that created a triage run"""
+
+    MANUAL = "manual"
+    SCHEDULED = "scheduled"
+
+
+class TriageRunStatus(StrEnum):
+    """Lifecycle status for a triage run"""
+
+    READY = "ready"
+    APPLIED = "applied"
+    PARTIALLY_APPLIED = "partially_applied"
+
+
+class TriageRecommendation(StrEnum):
+    """Available triage actions for a task"""
+
+    KEEP = "keep"
+    CANCEL = "cancel"
+
+
+class TriageTaskType(StrEnum):
+    """Task source types supported by triage"""
+
+    TASK = "task"
+    QUICK_TASK = "quick_task"
+
+
 # Model-specific allowed sort fields for validation
 ALLOWED_SORT_FIELDS = {
     "Project": {"status", "title", "created_at", "updated_at"},
@@ -1340,6 +1369,161 @@ class EmailNotificationSettingsUpdate(BaseModel):
     email_daily_digest_hour: int | None = Field(None, ge=0, le=23)
 
 
+class TriageCapacitySettingsUpdate(BaseModel):
+    """Capacity settings update request for task triage."""
+
+    weekly_capacity_hours: Decimal = Field(default=Decimal("40.00"), gt=0)
+    meeting_buffer_hours: Decimal = Field(default=Decimal("5.00"), ge=0)
+    project_allocations: dict[str, int] = Field(default_factory=dict)
+    inbox_allocation_percent: int = Field(default=0, ge=0, le=100)
+    work_type_caps: dict[str, float] = Field(default_factory=dict)
+    cadence_days: int = Field(default=7, ge=1, le=365)
+    auto_generate_enabled: bool = False
+    use_ai_rank_adjustment: bool = False
+
+
+class TriageCapacitySettingsResponse(BaseModel):
+    """Capacity settings response for task triage."""
+
+    id: UUID
+    user_id: UUID
+    weekly_capacity_hours: Decimal
+    meeting_buffer_hours: Decimal
+    project_allocations: dict[str, int]
+    inbox_allocation_percent: int
+    work_type_caps: dict[str, float]
+    cadence_days: int
+    auto_generate_enabled: bool
+    use_ai_rank_adjustment: bool
+    last_auto_triage_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer(
+        "weekly_capacity_hours",
+        "meeting_buffer_hours",
+    )
+    def serialize_decimal_hours(self, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer("created_at", "updated_at", "last_auto_triage_at")
+    def serialize_triage_datetimes(self, value: datetime | None) -> str | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TriageRunCreateRequest(BaseModel):
+    """Request to generate a triage run immediately."""
+
+    use_ai_rank_adjustment: bool | None = None
+
+
+class TriageItemOverrideRequest(BaseModel):
+    """Request to override a triage item recommendation."""
+
+    user_override: TriageRecommendation | None = None
+
+
+class TriageApplyRequest(BaseModel):
+    """Request to apply selected triage cancellations."""
+
+    item_ids: list[UUID] | None = None
+
+
+class TriageApplyResponse(BaseModel):
+    """Result of applying triage cancellations."""
+
+    success: bool
+    run_id: UUID
+    applied_count: int
+    skipped_count: int
+    failed_count: int
+    errors: list[str] = Field(default_factory=list)
+
+
+class TriageItemResponse(BaseModel):
+    """Response model for a triage recommendation item."""
+
+    id: UUID
+    run_id: UUID
+    task_id: UUID | None
+    quick_task_id: UUID | None
+    item_type: TriageTaskType
+    title: str
+    description: str | None
+    project_id: UUID | None
+    project_title: str | None
+    goal_id: UUID | None
+    goal_title: str | None
+    status_at_generation: TaskStatus
+    priority: int
+    work_type: WorkType
+    estimate_hours: Decimal
+    remaining_hours: Decimal
+    due_date: datetime | None
+    bucket_key: str
+    bucket_title: str
+    deterministic_score: Decimal
+    ai_score_delta: Decimal
+    ai_reason: str | None
+    final_score: Decimal
+    reason_codes: list[str]
+    task_snapshot: dict[str, Any]
+    recommendation: TriageRecommendation
+    user_override: TriageRecommendation | None
+    applied_action: TriageRecommendation | None
+    applied_at: datetime | None
+    apply_error: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer(
+        "estimate_hours",
+        "remaining_hours",
+        "deterministic_score",
+        "ai_score_delta",
+        "final_score",
+    )
+    def serialize_triage_decimals(self, value: Decimal) -> float:
+        return float(value)
+
+    @field_serializer("due_date", "created_at", "updated_at", "applied_at")
+    def serialize_triage_item_datetimes(self, value: datetime | None) -> str | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TriageRunResponse(BaseModel):
+    """Response model for a triage run and its items."""
+
+    id: UUID
+    user_id: UUID
+    source: TriageRunSource
+    status: TriageRunStatus
+    summary: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+    items: list[TriageItemResponse] = Field(default_factory=list)
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_triage_run_datetimes(self, value: datetime) -> str:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TaskDependencyCreate(BaseModel):
     """Task dependency creation request"""
 
@@ -1768,6 +1952,107 @@ class SlotTemplate(SlotTemplateBase, table=True):  # type: ignore[call-arg]
 
     # Relationships
     user: "User" = Relationship(back_populates="slot_templates")
+
+
+class TriageCapacitySettings(SQLModel, table=True):  # type: ignore[call-arg]
+    """Per-user capacity settings for task triage."""
+
+    __tablename__ = "triage_capacity_settings"
+
+    id: UUID | None = SQLField(default_factory=uuid4, primary_key=True)
+    user_id: UUID = SQLField(foreign_key="users.id", unique=True, index=True)
+    weekly_capacity_hours: Decimal = SQLField(
+        default=Decimal("40.00"), gt=0, max_digits=5, decimal_places=2
+    )
+    meeting_buffer_hours: Decimal = SQLField(
+        default=Decimal("5.00"), ge=0, max_digits=5, decimal_places=2
+    )
+    project_allocations_json: dict[str, Any] = SQLField(
+        sa_column=Column(JSON), default_factory=dict
+    )
+    inbox_allocation_percent: int = SQLField(default=0, ge=0, le=100)
+    work_type_caps_json: dict[str, Any] = SQLField(
+        sa_column=Column(JSON), default_factory=dict
+    )
+    cadence_days: int = SQLField(default=7, ge=1, le=365)
+    auto_generate_enabled: bool = SQLField(default=False)
+    use_ai_rank_adjustment: bool = SQLField(default=False)
+    last_auto_triage_at: datetime | None = SQLField(default=None)
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+
+
+class TaskTriageRun(SQLModel, table=True):  # type: ignore[call-arg]
+    """A generated triage review batch."""
+
+    __tablename__ = "task_triage_runs"
+
+    id: UUID | None = SQLField(default_factory=uuid4, primary_key=True)
+    user_id: UUID = SQLField(foreign_key="users.id", index=True)
+    source: TriageRunSource = SQLField(default=TriageRunSource.MANUAL, max_length=20)
+    status: TriageRunStatus = SQLField(default=TriageRunStatus.READY, max_length=30)
+    summary_json: dict[str, Any] = SQLField(
+        sa_column=Column(JSON), default_factory=dict
+    )
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+
+    items: list["TaskTriageItem"] = Relationship(
+        back_populates="run",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+
+
+class TaskTriageItem(SQLModel, table=True):  # type: ignore[call-arg]
+    """A single task recommendation within a triage run."""
+
+    __tablename__ = "task_triage_items"
+
+    id: UUID | None = SQLField(default_factory=uuid4, primary_key=True)
+    run_id: UUID = SQLField(foreign_key="task_triage_runs.id", index=True)
+    task_id: UUID | None = SQLField(default=None, foreign_key="tasks.id", index=True)
+    quick_task_id: UUID | None = SQLField(
+        default=None, foreign_key="quick_tasks.id", index=True
+    )
+    item_type: TriageTaskType = SQLField(default=TriageTaskType.TASK, max_length=20)
+
+    title: str = SQLField(max_length=200)
+    description: str | None = SQLField(default=None, max_length=1000)
+    project_id: UUID | None = SQLField(default=None, foreign_key="projects.id")
+    project_title: str | None = SQLField(default=None, max_length=200)
+    goal_id: UUID | None = SQLField(default=None, foreign_key="goals.id")
+    goal_title: str | None = SQLField(default=None, max_length=200)
+    status_at_generation: TaskStatus = SQLField(default=TaskStatus.PENDING)
+    priority: int = SQLField(default=3, ge=1, le=5)
+    work_type: WorkType = SQLField(default=WorkType.LIGHT_WORK)
+    estimate_hours: Decimal = SQLField(default=Decimal("0.00"), ge=0)
+    remaining_hours: Decimal = SQLField(default=Decimal("0.00"), ge=0)
+    due_date: datetime | None = SQLField(default=None)
+
+    bucket_key: str = SQLField(max_length=120)
+    bucket_title: str = SQLField(max_length=200)
+    deterministic_score: Decimal = SQLField(default=Decimal("0.00"))
+    ai_score_delta: Decimal = SQLField(default=Decimal("0.00"))
+    ai_reason: str | None = SQLField(default=None, max_length=1000)
+    final_score: Decimal = SQLField(default=Decimal("0.00"))
+    reason_codes_json: list[str] = SQLField(
+        sa_column=Column(JSON), default_factory=list
+    )
+    task_snapshot_json: dict[str, Any] = SQLField(
+        sa_column=Column(JSON), default_factory=dict
+    )
+
+    recommendation: TriageRecommendation = SQLField(
+        default=TriageRecommendation.KEEP, max_length=20
+    )
+    user_override: TriageRecommendation | None = SQLField(default=None, max_length=20)
+    applied_action: TriageRecommendation | None = SQLField(default=None, max_length=20)
+    applied_at: datetime | None = SQLField(default=None)
+    apply_error: str | None = SQLField(default=None, max_length=1000)
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+
+    run: TaskTriageRun = Relationship(back_populates="items")
 
 
 class ContextNoteBase(SQLModel):

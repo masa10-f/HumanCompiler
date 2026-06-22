@@ -83,6 +83,15 @@ import type {
   QuickTaskUpdate,
   QuickTaskConvertRequest
 } from '@/types/quick-task';
+import type {
+  TriageApplyRequest,
+  TriageApplyResponse,
+  TriageCapacitySettings,
+  TriageCapacitySettingsUpdate,
+  TriageItemOverrideRequest,
+  TriageRun,
+  TriageRunCreateRequest
+} from '@/types/triage';
 import type { TaskStatus } from '@/types/task';
 
 export const DEFAULT_TASK_PAGE_LIMIT = 100;
@@ -528,6 +537,52 @@ class ApiClient {
 
   async testAIIntegration(): Promise<TestAIIntegrationResponse> {
     return this.request<TestAIIntegrationResponse>('/api/ai/weekly-plan/test');
+  }
+
+  // === Capacity Triage API methods ===
+
+  async getTriageSettings(): Promise<TriageCapacitySettings> {
+    return this.request<TriageCapacitySettings>('/api/triage/settings');
+  }
+
+  async updateTriageSettings(settings: TriageCapacitySettingsUpdate): Promise<TriageCapacitySettings> {
+    return this.request<TriageCapacitySettings>('/api/triage/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+  }
+
+  async createTriageRun(request: TriageRunCreateRequest = {}): Promise<TriageRun> {
+    return this.request<TriageRun>('/api/triage/runs', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async getLatestTriageRun(): Promise<TriageRun | null> {
+    return this.request<TriageRun | null>('/api/triage/runs/latest');
+  }
+
+  async getTriageRun(runId: string): Promise<TriageRun> {
+    return this.request<TriageRun>(`/api/triage/runs/${runId}`);
+  }
+
+  async overrideTriageItem(
+    runId: string,
+    itemId: string,
+    request: TriageItemOverrideRequest
+  ): Promise<TriageRun> {
+    return this.request<TriageRun>(`/api/triage/runs/${runId}/items/${itemId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async applyTriageRun(runId: string, request: TriageApplyRequest): Promise<TriageApplyResponse> {
+    return this.request<TriageApplyResponse>(`/api/triage/runs/${runId}/apply`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
   }
 
   // === Scheduling API methods ===
@@ -1309,6 +1364,23 @@ export const aiPlanningApi = {
   analyzeWorkload: (projectIds?: string[]) => apiClient.analyzeWorkload(projectIds),
   suggestPriorities: (projectId?: string) => apiClient.suggestTaskPriorities(projectId),
   testIntegration: () => apiClient.testAIIntegration(),
+};
+
+/**
+ * Capacity triage API convenience wrapper.
+ * Provides methods for capacity settings, review runs, overrides, and apply.
+ */
+export const triageApi = {
+  getSettings: () => apiClient.getTriageSettings(),
+  updateSettings: (settings: TriageCapacitySettingsUpdate) =>
+    apiClient.updateTriageSettings(settings),
+  createRun: (request?: TriageRunCreateRequest) => apiClient.createTriageRun(request),
+  getLatestRun: () => apiClient.getLatestTriageRun(),
+  getRun: (runId: string) => apiClient.getTriageRun(runId),
+  overrideItem: (runId: string, itemId: string, request: TriageItemOverrideRequest) =>
+    apiClient.overrideTriageItem(runId, itemId, request),
+  applyRun: (runId: string, request: TriageApplyRequest) =>
+    apiClient.applyTriageRun(runId, request),
 };
 
 /**

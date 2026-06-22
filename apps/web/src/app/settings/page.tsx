@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Eye, EyeOff, Key, AlertCircle, CheckCircle, Download, Upload, Database, Mail, Bell } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { AppHeader } from "@/components/layout/app-header"
+import { TriageSettingsCard } from "@/components/triage/triage-settings-card"
 import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { supabase } from "@/lib/supabase"
 import { log } from "@/lib/logger"
@@ -64,8 +65,12 @@ export default function SettingsPage() {
       projects: number
       goals: number
       tasks: number
+      quick_tasks?: number
       schedules: number
       weekly_schedules: number
+      triage_capacity_settings?: number
+      task_triage_runs?: number
+      task_triage_items?: number
     }
   } | null>(null)
 
@@ -634,6 +639,9 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      <div className="mt-6">
+        <TriageSettingsCard />
+      </div>
 
       <Card className="mt-6">
         <CardHeader>
@@ -649,7 +657,7 @@ export default function SettingsPage() {
           {exportInfo && (
             <div className="p-4 bg-muted rounded-lg">
               <h4 className="font-semibold mb-2">現在のデータ</h4>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                 <div>
                   <div className="font-medium">{exportInfo.current_data_summary.projects}</div>
                   <div className="text-muted-foreground">プロジェクト</div>
@@ -663,12 +671,20 @@ export default function SettingsPage() {
                   <div className="text-muted-foreground">タスク</div>
                 </div>
                 <div>
+                  <div className="font-medium">{exportInfo.current_data_summary.quick_tasks ?? 0}</div>
+                  <div className="text-muted-foreground">Quick Tasks</div>
+                </div>
+                <div>
                   <div className="font-medium">{exportInfo.current_data_summary.schedules}</div>
                   <div className="text-muted-foreground">スケジュール</div>
                 </div>
                 <div>
                   <div className="font-medium">{exportInfo.current_data_summary.weekly_schedules}</div>
                   <div className="text-muted-foreground">週次スケジュール</div>
+                </div>
+                <div>
+                  <div className="font-medium">{exportInfo.current_data_summary.task_triage_runs ?? 0}</div>
+                  <div className="text-muted-foreground">トリアージ</div>
                 </div>
               </div>
             </div>
