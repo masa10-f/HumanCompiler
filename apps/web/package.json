@@ -6,7 +6,7 @@
   "author": "Masato Fukushima <masa1063fuk@gmail.com>",
   "packageManager": "pnpm@9.0.0",
   "engines": {
-    "node": ">=18.20.7 <19",
+    "node": "20.x",
     "pnpm": "9.x"
   },
   "scripts": {
