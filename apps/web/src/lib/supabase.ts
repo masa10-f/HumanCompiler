@@ -13,12 +13,8 @@ logger.debug('Supabase client initialization', {
 if (!supabaseUrl || !supabaseAnonKey) {
   const errorMessage = `Missing Supabase environment variables: URL=${!supabaseUrl ? 'missing' : 'present'}, KEY=${!supabaseAnonKey ? 'missing' : 'present'}`
 
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error(`${errorMessage}. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.`);
-  } else {
-    logger.error(errorMessage, { component: 'supabase' });
-    logger.warn('Using fallback values for development/build time', { component: 'supabase' });
-  }
+  logger.error(errorMessage, { component: 'supabase' });
+  logger.warn('Using fallback Supabase values for static build/rendering', { component: 'supabase' });
 }
 
 // Create Supabase client for client-side operations
