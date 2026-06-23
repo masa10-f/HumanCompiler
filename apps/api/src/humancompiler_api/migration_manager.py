@@ -329,10 +329,17 @@ class MigrationManager:
 
         for schema in schemas:
             try:
-                if inspector.has_table(table_name, schema=schema):
-                    return True
-            except Exception:
-                continue
+                table_exists = inspector.has_table(table_name, schema=schema)
+            except Exception as exc:
+                logger.debug(
+                    "Could not inspect table %s in schema %s: %s",
+                    table_name,
+                    schema,
+                    exc,
+                )
+                table_exists = False
+            if table_exists:
+                return True
         return False
 
     def _has_column(self, table_name: str, column_name: str) -> bool:
@@ -346,8 +353,14 @@ class MigrationManager:
         for schema in schemas:
             try:
                 columns = inspector.get_columns(table_name, schema=schema)
-            except Exception:
-                continue
+            except Exception as exc:
+                logger.debug(
+                    "Could not inspect columns for table %s in schema %s: %s",
+                    table_name,
+                    schema,
+                    exc,
+                )
+                columns = []
             if any(column["name"] == column_name for column in columns):
                 return True
         return False
