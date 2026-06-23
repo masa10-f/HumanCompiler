@@ -88,6 +88,36 @@ def test_triage_settings_and_run_endpoints(session: Session):
         clear_overrides()
 
 
+def test_triage_run_endpoint_accepts_missing_body(session: Session):
+    user, project, _task = seed_router_data(session)
+    install_overrides(session, user.id)
+
+    try:
+        settings_response = client.put(
+            "/api/triage/settings",
+            json={
+                "weekly_capacity_hours": 2,
+                "meeting_buffer_hours": 0,
+                "project_allocations": {str(project.id): 100},
+                "inbox_allocation_percent": 0,
+                "work_type_caps": {},
+                "cadence_days": 7,
+                "auto_generate_enabled": False,
+                "use_ai_rank_adjustment": False,
+            },
+        )
+        assert settings_response.status_code == 200
+
+        run_response = client.post("/api/triage/runs")
+
+        assert run_response.status_code == 200
+        run_json = run_response.json()
+        assert run_json["source"] == "manual"
+        assert run_json["summary"]["total_items"] == 1
+    finally:
+        clear_overrides()
+
+
 def test_triage_apply_endpoint_cancels_task(session: Session):
     user, project, task = seed_router_data(session)
     install_overrides(session, user.id)

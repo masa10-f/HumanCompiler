@@ -76,7 +76,7 @@ export default function TriagePage() {
     setError('');
     setSuccess('');
     try {
-      const newRun = await triageApi.createRun({});
+      const newRun = await triageApi.createRun();
       setRun(newRun);
       setSuccess('トリアージ候補を生成しました');
     } catch (err) {

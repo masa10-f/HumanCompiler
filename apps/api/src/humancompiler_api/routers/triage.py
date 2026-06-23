@@ -43,11 +43,12 @@ async def update_triage_settings(
 
 @router.post("/runs", response_model=TriageRunResponse)
 async def create_triage_run(
-    request: TriageRunCreateRequest,
+    request: TriageRunCreateRequest | None = None,
     user_id: UUID = Depends(get_current_user_id),
     session: Session = Depends(get_session),
 ) -> TriageRunResponse:
     """Generate a manual triage run."""
+    request = request or TriageRunCreateRequest()
     return triage_service.create_run(
         session,
         user_id,

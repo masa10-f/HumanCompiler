@@ -161,4 +161,24 @@ describe('triageApi', () => {
       })
     )
   })
+
+  it('creates a manual run without requiring a request body', async () => {
+    const run: Partial<TriageRun> = {
+      id: 'run-1',
+      source: 'manual',
+      status: 'ready',
+      items: [],
+    }
+    mockFetchWithFallback.mockResolvedValueOnce(mockJsonResponse(run))
+
+    await triageApi.createRun()
+
+    expect(mockFetchWithFallback).toHaveBeenCalledWith(
+      '/api/triage/runs',
+      expect.objectContaining({
+        method: 'POST',
+      })
+    )
+    expect(mockFetchWithFallback.mock.calls[0]?.[1]).not.toHaveProperty('body')
+  })
 })

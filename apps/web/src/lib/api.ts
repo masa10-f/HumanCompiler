@@ -552,10 +552,15 @@ class ApiClient {
     });
   }
 
-  async createTriageRun(request: TriageRunCreateRequest = {}): Promise<TriageRun> {
-    return this.request<TriageRun>('/api/triage/runs', {
+  async createTriageRun(request?: TriageRunCreateRequest): Promise<TriageRun> {
+    const options: RequestInit = {
       method: 'POST',
-      body: JSON.stringify(request),
+    };
+    if (request !== undefined) {
+      options.body = JSON.stringify(request);
+    }
+    return this.request<TriageRun>('/api/triage/runs', {
+      ...options,
     });
   }
 
