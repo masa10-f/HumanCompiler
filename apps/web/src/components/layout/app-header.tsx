@@ -10,9 +10,16 @@ import Image from 'next/image'
 // UI components
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 // Icons
-import { TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play, Timer } from 'lucide-react'
+import { TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play, Timer, ListChecks, MoreHorizontal } from 'lucide-react'
 
 // Hooks
 import { useAuth } from '@/hooks/use-auth'
@@ -21,7 +28,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { logger } from '@/lib/logger'
 
 interface AppHeaderProps {
-  currentPage?: 'dashboard' | 'projects' | 'ai-planning' | 'scheduling' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner'
+  currentPage?: 'dashboard' | 'projects' | 'ai-planning' | 'triage' | 'scheduling' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner'
 }
 
 const NAVIGATION_ITEMS = [
@@ -29,12 +36,29 @@ const NAVIGATION_ITEMS = [
   { id: 'runner', label: 'Runner', path: '/runner', icon: Play },
   { id: 'projects', label: 'プロジェクト', path: '/projects', icon: FolderOpen },
   { id: 'ai-planning', label: '週次計画', path: '/ai-planning', icon: Calendar },
+  { id: 'triage', label: 'トリアージ', path: '/triage', icon: ListChecks },
   { id: 'scheduling', label: '日次計画', path: '/scheduling', icon: Clock },
   { id: 'schedule-history', label: 'スケジュール履歴', path: '/schedule-history', icon: History },
   { id: 'work-session-history', label: 'セッション履歴', path: '/work-session-history', icon: Timer },
   { id: 'timeline', label: 'タイムライン', path: '/timeline', icon: TrendingUp },
   { id: 'settings', label: '設定', path: '/settings', icon: Settings },
 ] as const
+
+const PRIMARY_NAVIGATION_IDS = new Set([
+  'dashboard',
+  'runner',
+  'projects',
+  'ai-planning',
+  'triage',
+])
+
+const PRIMARY_NAVIGATION_ITEMS = NAVIGATION_ITEMS.filter((item) =>
+  PRIMARY_NAVIGATION_IDS.has(item.id)
+)
+
+const SECONDARY_NAVIGATION_ITEMS = NAVIGATION_ITEMS.filter(
+  (item) => !PRIMARY_NAVIGATION_IDS.has(item.id) && item.id !== 'settings'
+)
 
 export function AppHeader({ currentPage }: AppHeaderProps) {
   const router = useRouter()
@@ -60,9 +84,9 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
   return (
     <header className="bg-card/95 backdrop-blur-sm shadow-md border-b border-border/60 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          <div className="flex items-center space-x-8">
-            <div className="flex items-center space-x-3">
+        <div className="flex justify-between items-center h-16 gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-4">
+            <div className="flex shrink-0 items-center space-x-3">
               <Image
                 src="/logo.png"
                 alt="HumanCompiler Logo"
@@ -70,13 +94,13 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                 height={32}
                 className="rounded-lg shadow-sm"
               />
-              <h1 className="text-xl font-bold text-foreground bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+              <h1 className="hidden text-xl font-bold text-foreground bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent sm:block">
                 HumanCompiler
               </h1>
             </div>
             {/* Desktop Navigation */}
-            <nav className="hidden lg:flex space-x-1">
-              {NAVIGATION_ITEMS.map((item) => (
+            <nav className="hidden min-w-0 flex-1 items-center gap-1 lg:flex">
+              {PRIMARY_NAVIGATION_ITEMS.map((item) => (
                 <Button
                   key={item.id}
                   variant="ghost"
@@ -88,6 +112,38 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                   <span className="hidden xl:inline">{item.label}</span>
                 </Button>
               ))}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className={`${SECONDARY_NAVIGATION_ITEMS.some((item) => item.id === currentPage) || currentPage === 'settings' ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"} px-2 xl:px-3`}
+                    title="その他"
+                  >
+                    <MoreHorizontal className="h-4 w-4 xl:mr-2" />
+                    <span className="hidden xl:inline">その他</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  {SECONDARY_NAVIGATION_ITEMS.map((item) => (
+                    <DropdownMenuItem
+                      key={item.id}
+                      className={currentPage === item.id ? "bg-primary/10 text-primary font-medium" : ""}
+                      onClick={() => router.push(item.path)}
+                    >
+                      <item.icon className="mr-2 h-4 w-4" />
+                      {item.label}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className={currentPage === 'settings' ? "bg-primary/10 text-primary font-medium" : ""}
+                    onClick={() => router.push('/settings')}
+                  >
+                    <Settings className="mr-2 h-4 w-4" />
+                    設定
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </nav>
 
             {/* Mobile Navigation */}
@@ -142,7 +198,7 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
               </Dialog>
             </div>
           </div>
-          <div className="hidden lg:flex items-center space-x-2 xl:space-x-4">
+          <div className="hidden shrink-0 lg:flex items-center space-x-2 xl:space-x-4">
             {user?.email && (
               <span className="hidden xl:inline text-sm text-muted-foreground px-3 py-1.5 bg-muted/50 rounded-full truncate max-w-[200px]">
                 {user.email}

@@ -109,27 +109,9 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-      - name: 🐍 Set up Python for migrations
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: 📦 Install migration dependencies
-        working-directory: ./apps/api
+      - name: ⏭️ Skip database migrations
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: 🔄 Run database migrations
-        working-directory: ./apps/api
-        run: |
-          python migrate.py apply || echo "⚠️ Migration failed or no pending migrations"
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL_PREVIEW || secrets.DATABASE_URL }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          PYTHONPATH: "src"
+          echo "Database migrations are manual and must be run by the repository owner."
 
       - name: 🚀 Deploy to Preview
         working-directory: ./apps/api
@@ -195,27 +177,9 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-      - name: 🐍 Set up Python for migrations
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: 📦 Install migration dependencies
-        working-directory: ./apps/api
+      - name: ⏭️ Skip database migrations
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: 🔄 Run database migrations
-        working-directory: ./apps/api
-        run: |
-          python migrate.py apply || echo "⚠️ Migration failed or no pending migrations"
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          PYTHONPATH: "src"
+          echo "Database migrations are manual and must be run by the repository owner."
 
       - name: 🚀 Deploy to Production
         working-directory: ./apps/api

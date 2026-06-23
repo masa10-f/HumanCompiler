@@ -98,6 +98,24 @@ def test_cors_headers():
     assert response.status_code in [200, 405]  # OPTIONS may not be explicitly handled
 
 
+def test_cors_preflight_allows_patch():
+    """PATCH endpoints need preflight support for triage overrides."""
+    path = (
+        "/api/triage/runs/12345678-1234-4234-9234-123456789012"
+        "/items/12345678-1234-4234-9234-123456789013"
+    )
+    response = client.options(
+        path,
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "PATCH",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "PATCH" in response.headers["Access-Control-Allow-Methods"]
+
+
 def test_api_error_format():
     """Test API error response format"""
     response = client.get("/api/projects/nonexistent")

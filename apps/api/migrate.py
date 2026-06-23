@@ -41,6 +41,14 @@ Examples:
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose logging"
     )
+    parser.add_argument(
+        "--baseline-existing",
+        action="store_true",
+        help=(
+            "When schema_migrations is empty but legacy tables already exist, "
+            "record detected existing migrations before applying pending ones"
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -55,6 +63,14 @@ Examples:
 
     try:
         if args.command == "apply":
+            if args.baseline_existing:
+                print("🧭 Checking for existing untracked schema...")
+                baselined = manager.baseline_existing_schema()
+                if baselined:
+                    print(f"✅ Baselined {len(baselined)} existing migration(s)")
+                else:
+                    print("ℹ️ No existing schema baseline needed")
+
             print("🚀 Applying pending migrations...")
             applied, failed = manager.apply_all_pending()
 

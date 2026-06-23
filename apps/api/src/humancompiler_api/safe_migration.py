@@ -25,10 +25,14 @@ from humancompiler_api.models import (
     Schedule,
     WeeklySchedule,
     WeeklyRecurringTask,
+    QuickTask,
     Log,
     UserSettings,
     GoalDependency,
     TaskDependency,
+    TriageCapacitySettings,
+    TaskTriageRun,
+    TaskTriageItem,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,6 +80,12 @@ class DataBackupManager:
                 tasks = session.exec(select(Task)).all()
                 backup_data["tasks"] = [task.model_dump() for task in tasks]
 
+                # Backup quick tasks
+                quick_tasks = session.exec(select(QuickTask)).all()
+                backup_data["quick_tasks"] = [
+                    quick_task.model_dump() for quick_task in quick_tasks
+                ]
+
                 # Backup schedules
                 schedules = session.exec(select(Schedule)).all()
                 backup_data["schedules"] = [
@@ -102,6 +112,20 @@ class DataBackupManager:
                 user_settings = session.exec(select(UserSettings)).all()
                 backup_data["user_settings"] = [us.model_dump() for us in user_settings]
 
+                # Backup capacity triage data
+                triage_settings = session.exec(select(TriageCapacitySettings)).all()
+                backup_data["triage_capacity_settings"] = [
+                    row.model_dump() for row in triage_settings
+                ]
+                triage_runs = session.exec(select(TaskTriageRun)).all()
+                backup_data["task_triage_runs"] = [
+                    row.model_dump() for row in triage_runs
+                ]
+                triage_items = session.exec(select(TaskTriageItem)).all()
+                backup_data["task_triage_items"] = [
+                    row.model_dump() for row in triage_items
+                ]
+
                 # Backup goal dependencies
                 goal_dependencies = session.exec(select(GoalDependency)).all()
                 backup_data["goal_dependencies"] = [
@@ -123,6 +147,7 @@ class DataBackupManager:
                         "projects": len(backup_data["projects"]),
                         "goals": len(backup_data["goals"]),
                         "tasks": len(backup_data["tasks"]),
+                        "quick_tasks": len(backup_data["quick_tasks"]),
                         "schedules": len(backup_data["schedules"]),
                         "weekly_schedules": len(backup_data["weekly_schedules"]),
                         "weekly_recurring_tasks": len(
@@ -130,6 +155,11 @@ class DataBackupManager:
                         ),
                         "logs": len(backup_data["logs"]),
                         "user_settings": len(backup_data["user_settings"]),
+                        "triage_capacity_settings": len(
+                            backup_data["triage_capacity_settings"]
+                        ),
+                        "task_triage_runs": len(backup_data["task_triage_runs"]),
+                        "task_triage_items": len(backup_data["task_triage_items"]),
                         "goal_dependencies": len(backup_data["goal_dependencies"]),
                         "task_dependencies": len(backup_data["task_dependencies"]),
                     },
@@ -258,6 +288,14 @@ class DataBackupManager:
                 # Get task IDs for related data
                 task_ids = [t.id for t in tasks]
 
+                # Backup user's quick tasks
+                quick_tasks = session.exec(
+                    select(QuickTask).where(QuickTask.owner_id == user_id)
+                ).all()
+                backup_data["quick_tasks"] = [
+                    quick_task.model_dump() for quick_task in quick_tasks
+                ]
+
                 # Backup user's schedules
                 schedules = session.exec(
                     select(Schedule).where(Schedule.user_id == user_id)
@@ -298,6 +336,33 @@ class DataBackupManager:
                 ).all()
                 backup_data["user_settings"] = [us.model_dump() for us in user_settings]
 
+                # Backup user's capacity triage data
+                triage_settings = session.exec(
+                    select(TriageCapacitySettings).where(
+                        TriageCapacitySettings.user_id == user_id
+                    )
+                ).all()
+                backup_data["triage_capacity_settings"] = [
+                    row.model_dump() for row in triage_settings
+                ]
+                triage_runs = session.exec(
+                    select(TaskTriageRun).where(TaskTriageRun.user_id == user_id)
+                ).all()
+                backup_data["task_triage_runs"] = [
+                    row.model_dump() for row in triage_runs
+                ]
+                triage_run_ids = [row.id for row in triage_runs]
+                triage_items = []
+                if triage_run_ids:
+                    triage_items = session.exec(
+                        select(TaskTriageItem).where(
+                            TaskTriageItem.run_id.in_(triage_run_ids)
+                        )
+                    ).all()
+                backup_data["task_triage_items"] = [
+                    row.model_dump() for row in triage_items
+                ]
+
                 # Backup user's API usage logs
 
                 # Backup goal dependencies for user's goals
@@ -337,6 +402,7 @@ class DataBackupManager:
                         "projects": len(backup_data["projects"]),
                         "goals": len(backup_data["goals"]),
                         "tasks": len(backup_data["tasks"]),
+                        "quick_tasks": len(backup_data["quick_tasks"]),
                         "schedules": len(backup_data["schedules"]),
                         "weekly_schedules": len(backup_data["weekly_schedules"]),
                         "weekly_recurring_tasks": len(
@@ -344,6 +410,11 @@ class DataBackupManager:
                         ),
                         "logs": len(backup_data["logs"]),
                         "user_settings": len(backup_data["user_settings"]),
+                        "triage_capacity_settings": len(
+                            backup_data["triage_capacity_settings"]
+                        ),
+                        "task_triage_runs": len(backup_data["task_triage_runs"]),
+                        "task_triage_items": len(backup_data["task_triage_items"]),
                         "goal_dependencies": len(backup_data["goal_dependencies"]),
                         "task_dependencies": len(backup_data["task_dependencies"]),
                     },
@@ -391,6 +462,8 @@ class DataBackupManager:
                 project_id_map = {}
                 goal_id_map = {}
                 task_id_map = {}
+                quick_task_id_map = {}
+                triage_run_id_map = {}
 
                 # Import projects with new IDs
                 for project_data in backup_data.get("projects", []):
@@ -431,6 +504,18 @@ class DataBackupManager:
                     if task_data["goal_id"]:  # Only add if goal exists
                         task = Task(**task_data)
                         session.add(task)
+
+                # Import quick tasks with new IDs and updated user reference
+                for quick_task_data in backup_data.get("quick_tasks", []):
+                    old_quick_task_id = quick_task_data["id"]
+                    new_quick_task_id = str(uuid.uuid4())
+                    quick_task_id_map[old_quick_task_id] = new_quick_task_id
+
+                    quick_task_data["id"] = new_quick_task_id
+                    quick_task_data["owner_id"] = target_user_id
+
+                    quick_task = QuickTask(**quick_task_data)
+                    session.add(quick_task)
 
                 # Import schedules with new IDs and updated user reference
                 for schedule_data in backup_data.get("schedules", []):
@@ -480,6 +565,64 @@ class DataBackupManager:
                     if not existing_us:
                         user_settings = UserSettings(**us_data)
                         session.add(user_settings)
+
+                # Import triage capacity settings (skip if already exists)
+                for triage_settings_data in backup_data.get(
+                    "triage_capacity_settings", []
+                ):
+                    triage_settings_data["id"] = str(uuid.uuid4())
+                    triage_settings_data["user_id"] = target_user_id
+
+                    existing_triage_settings = session.exec(
+                        select(TriageCapacitySettings).where(
+                            TriageCapacitySettings.user_id == target_user_id
+                        )
+                    ).first()
+                    if not existing_triage_settings:
+                        triage_settings = TriageCapacitySettings(**triage_settings_data)
+                        session.add(triage_settings)
+
+                # Import triage runs and items with updated references
+                for run_data in backup_data.get("task_triage_runs", []):
+                    old_run_id = run_data["id"]
+                    new_run_id = str(uuid.uuid4())
+                    triage_run_id_map[old_run_id] = new_run_id
+                    run_data["id"] = new_run_id
+                    run_data["user_id"] = target_user_id
+                    triage_run = TaskTriageRun(**run_data)
+                    session.add(triage_run)
+
+                for item_data in backup_data.get("task_triage_items", []):
+                    item_data["id"] = str(uuid.uuid4())
+                    item_data["run_id"] = triage_run_id_map.get(item_data["run_id"])
+                    if not item_data["run_id"]:
+                        continue
+
+                    if item_data.get("task_id"):
+                        item_data["task_id"] = task_id_map.get(item_data["task_id"])
+                    if item_data.get("quick_task_id"):
+                        item_data["quick_task_id"] = quick_task_id_map.get(
+                            item_data["quick_task_id"]
+                        )
+
+                    if item_data.get("item_type") == "task" and not item_data.get(
+                        "task_id"
+                    ):
+                        continue
+                    if item_data.get("item_type") == "quick_task" and not item_data.get(
+                        "quick_task_id"
+                    ):
+                        continue
+
+                    if item_data.get("project_id"):
+                        item_data["project_id"] = project_id_map.get(
+                            item_data["project_id"]
+                        )
+                    if item_data.get("goal_id"):
+                        item_data["goal_id"] = goal_id_map.get(item_data["goal_id"])
+
+                    triage_item = TaskTriageItem(**item_data)
+                    session.add(triage_item)
 
                 # Import goal dependencies with updated references
                 for gd_data in backup_data.get("goal_dependencies", []):

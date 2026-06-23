@@ -170,6 +170,26 @@ async def check_and_send_deadline_emails():
         logger.error(f"Error in deadline email check: {e}")
 
 
+async def generate_due_triage_suggestions():
+    """
+    Generate due capacity triage suggestions.
+
+    This job intentionally never applies cancellations. It only creates review
+    batches for users who opted into automatic suggestion generation.
+    """
+    logger.debug("Running capacity triage suggestion check...")
+
+    try:
+        from humancompiler_api.triage import triage_service
+
+        with Session(db.get_engine()) as session:
+            generated_count = triage_service.generate_due_scheduled_runs(session)
+            if generated_count:
+                logger.info("Generated %s scheduled triage runs", generated_count)
+    except Exception as e:
+        logger.error(f"Error in capacity triage suggestion check: {e}")
+
+
 async def _process_user_deadline_notifications(
     session: Session,
     user: User,
@@ -445,10 +465,21 @@ def start_notification_scheduler():
         replace_existing=True,
     )
 
+    # Add capacity triage suggestion generation to run hourly. This only creates
+    # review runs; it never applies cancellation decisions automatically.
+    scheduler.add_job(
+        generate_due_triage_suggestions,
+        "interval",
+        hours=1,
+        id="capacity_triage_suggestion_check",
+        name="Generate due capacity triage suggestions",
+        replace_existing=True,
+    )
+
     scheduler.start()
     logger.info(
         "Notification scheduler started "
-        "(checkout notifications: 30s, deadline emails: 5min)"
+        "(checkout notifications: 30s, deadline emails: 5min, triage suggestions: 1h)"
     )
 
 

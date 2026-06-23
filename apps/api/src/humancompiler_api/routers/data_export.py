@@ -167,6 +167,7 @@ async def import_user_data(
                 "projects": total_records.get("projects", 0),
                 "goals": total_records.get("goals", 0),
                 "tasks": total_records.get("tasks", 0),
+                "quick_tasks": total_records.get("quick_tasks", 0),
                 "schedules": total_records.get("schedules", 0),
                 "weekly_schedules": total_records.get("weekly_schedules", 0),
                 "weekly_recurring_tasks": total_records.get(
@@ -174,6 +175,11 @@ async def import_user_data(
                 ),
                 "logs": total_records.get("logs", 0),
                 "user_settings": total_records.get("user_settings", 0),
+                "triage_capacity_settings": total_records.get(
+                    "triage_capacity_settings", 0
+                ),
+                "task_triage_runs": total_records.get("task_triage_runs", 0),
+                "task_triage_items": total_records.get("task_triage_items", 0),
                 "goal_dependencies": total_records.get("goal_dependencies", 0),
                 "task_dependencies": total_records.get("task_dependencies", 0),
             }
@@ -233,8 +239,12 @@ async def get_export_info(
             Project,
             Goal,
             Task,
+            QuickTask,
             Schedule,
             WeeklySchedule,
+            TriageCapacitySettings,
+            TaskTriageRun,
+            TaskTriageItem,
         )
 
         with db_session:
@@ -286,6 +296,12 @@ async def get_export_info(
             else:
                 tasks_count = 0
 
+            quick_tasks_count = len(
+                db_session.exec(
+                    select(QuickTask).where(QuickTask.owner_id == current_user.user_id)
+                ).all()
+            )
+
             # Count schedules
             schedules_count = len(
                 db_session.exec(
@@ -302,15 +318,43 @@ async def get_export_info(
                 ).all()
             )
 
+            triage_settings_count = len(
+                db_session.exec(
+                    select(TriageCapacitySettings).where(
+                        TriageCapacitySettings.user_id == current_user.user_id
+                    )
+                ).all()
+            )
+            triage_runs = db_session.exec(
+                select(TaskTriageRun).where(
+                    TaskTriageRun.user_id == current_user.user_id
+                )
+            ).all()
+            triage_runs_count = len(triage_runs)
+            triage_run_ids = [run.id for run in triage_runs]
+            triage_items_count = (
+                len(
+                    db_session.exec(
+                        select(TaskTriageItem).where(
+                            col(TaskTriageItem.run_id).in_(triage_run_ids)
+                        )
+                    ).all()
+                )
+                if triage_run_ids
+                else 0
+            )
+
         info = {
             "export_feature": {
                 "description": "Export all your TaskAgent data as a JSON backup file",
                 "supported_data": [
                     "Projects and goals",
                     "Tasks and task dependencies",
+                    "Quick tasks",
                     "Schedules and weekly schedules",
                     "Weekly recurring tasks",
                     "Task logs and progress data",
+                    "Capacity triage settings and history",
                     "User settings",
                     "API usage history",
                 ],
@@ -331,8 +375,12 @@ async def get_export_info(
                 "projects": projects_count,
                 "goals": goals_count,
                 "tasks": tasks_count,
+                "quick_tasks": quick_tasks_count,
                 "schedules": schedules_count,
                 "weekly_schedules": weekly_schedules_count,
+                "triage_capacity_settings": triage_settings_count,
+                "task_triage_runs": triage_runs_count,
+                "task_triage_items": triage_items_count,
             },
             "security": {
                 "authentication": "Required - only authenticated users can export/import their own data",
