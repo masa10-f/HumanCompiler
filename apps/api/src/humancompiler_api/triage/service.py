@@ -50,7 +50,7 @@ INBOX_BUCKET_TITLE = "Inbox"
 AI_DELTA_MIN = Decimal("-15.00")
 AI_DELTA_MAX = Decimal("15.00")
 ACTIVE_STATUSES = [TaskStatus.PENDING, TaskStatus.IN_PROGRESS]
-UNDATED_REGULAR_TASK_SPREAD_WEEKS = 12
+TRIAGE_CAPACITY_HORIZON_WEEKS = 12
 
 
 @dataclass
@@ -1087,10 +1087,10 @@ class TriageService:
         if due_date is None:
             return CapacityLoad(
                 hours=self._decimal(
-                    remaining_hours / Decimal(UNDATED_REGULAR_TASK_SPREAD_WEEKS)
+                    remaining_hours / Decimal(TRIAGE_CAPACITY_HORIZON_WEEKS)
                 ),
-                reason_code=f"undated_spread_{UNDATED_REGULAR_TASK_SPREAD_WEEKS}_weeks",
-                spread_weeks=UNDATED_REGULAR_TASK_SPREAD_WEEKS,
+                reason_code=f"undated_spread_{TRIAGE_CAPACITY_HORIZON_WEEKS}_weeks",
+                spread_weeks=TRIAGE_CAPACITY_HORIZON_WEEKS,
             )
 
         due = due_date
@@ -1110,10 +1110,15 @@ class TriageService:
                 spread_weeks=1,
             )
 
-        spread_weeks = max(1, (days_until_due + 6) // 7)
+        spread_weeks = min(
+            TRIAGE_CAPACITY_HORIZON_WEEKS,
+            max(1, (days_until_due + 6) // 7),
+        )
         return CapacityLoad(
             hours=self._decimal(remaining_hours / Decimal(spread_weeks)),
-            reason_code="spread_to_due_date_capacity_load",
+            reason_code="spread_to_triage_horizon_capacity_load"
+            if spread_weeks == TRIAGE_CAPACITY_HORIZON_WEEKS
+            else "spread_to_due_date_capacity_load",
             spread_weeks=spread_weeks,
         )
 

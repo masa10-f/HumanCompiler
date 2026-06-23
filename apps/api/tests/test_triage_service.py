@@ -201,6 +201,31 @@ def test_long_term_tasks_use_weekly_capacity_load(session: Session, triage_user)
     assert run.summary["total_remaining_hours"] == 40.0
 
 
+def test_tasks_beyond_twelve_weeks_use_twelve_week_load(session: Session, triage_user):
+    user = triage_user["user"]
+    project = triage_user["project"]
+    goal = triage_user["goal"]
+    task = add_task(
+        session,
+        goal.id,
+        "Longer than horizon",
+        "48.00",
+        priority=3,
+        due_date=datetime.now(UTC) + timedelta(days=180),
+    )
+    save_settings(session, user.id, {project.id: 100}, capacity=5)
+
+    run = triage_service.create_run(session, user.id)
+    item = next(item for item in run.items if item.task_id == task.id)
+
+    assert item.recommendation == TriageRecommendation.KEEP
+    assert item.capacity_load_hours == Decimal("4.00")
+    assert item.task_snapshot["capacity_load_spread_weeks"] == 12
+    assert item.task_snapshot["capacity_load_reason"] == (
+        "spread_to_triage_horizon_capacity_load"
+    )
+
+
 def test_triage_enums_persist_lowercase_values(session: Session, triage_user):
     user = triage_user["user"]
     project = triage_user["project"]
