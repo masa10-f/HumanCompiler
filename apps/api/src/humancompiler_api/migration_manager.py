@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlmodel import Session, create_engine
 
 from humancompiler_api.config import settings
@@ -64,6 +64,59 @@ class MigrationManager:
             if line.strip().startswith("-- Description:"):
                 return line.replace("-- Description:", "").strip()
         return ""
+
+    def _migration_number(self, version: str) -> int | None:
+        """Extract the leading numeric migration version."""
+        prefix = version.split("_", 1)[0]
+        try:
+            return int(prefix)
+        except ValueError:
+            return None
+
+    def _numbered_migration_files(self) -> list[Path]:
+        """Return numbered migration files in stable application order."""
+        if not self.migrations_dir.exists():
+            logger.warning(f"Migrations directory {self.migrations_dir} does not exist")
+            return []
+        return sorted(
+            [
+                f
+                for f in self.migrations_dir.glob("*.sql")
+                if not f.name.endswith("_rollback.sql")
+                and self._is_numbered_migration(f.name)
+            ]
+        )
+
+    def _record_migration(
+        self,
+        session: Session,
+        version: str,
+        checksum: str,
+        description: str,
+        execution_time_ms: int,
+    ) -> bool:
+        """Record a migration if it has not already been tracked."""
+        existing = session.execute(
+            text("SELECT 1 FROM schema_migrations WHERE version = :version"),
+            {"version": version},
+        ).first()
+        if existing:
+            return False
+
+        insert_sql = """
+        INSERT INTO schema_migrations (version, execution_time_ms, checksum, description)
+        VALUES (:version, :execution_time_ms, :checksum, :description)
+        """
+        session.execute(
+            text(insert_sql),
+            {
+                "version": version,
+                "execution_time_ms": execution_time_ms,
+                "checksum": checksum,
+                "description": description,
+            },
+        )
+        return True
 
     def _split_sql_statements(self, sql_content: str) -> list[str]:
         """
@@ -183,20 +236,7 @@ class MigrationManager:
 
     def get_pending_migrations(self) -> list[tuple[str, Path]]:
         """Get list of pending migrations to apply"""
-        if not self.migrations_dir.exists():
-            logger.warning(f"Migrations directory {self.migrations_dir} does not exist")
-            return []
-
-        # Get all numbered migration files (NNN_*.sql format)
-        # This excludes manual migrations like enable_rls_security.sql
-        migration_files = sorted(
-            [
-                f
-                for f in self.migrations_dir.glob("*.sql")
-                if not f.name.endswith("_rollback.sql")
-                and self._is_numbered_migration(f.name)
-            ]
-        )
+        migration_files = self._numbered_migration_files()
 
         # Get applied migrations
         with Session(self.engine) as session:
@@ -225,6 +265,7 @@ class MigrationManager:
             # Apply migration
             start_time = datetime.now()
             with Session(self.engine) as session:
+                self._ensure_migrations_table(session)
                 # Use transaction to ensure atomicity
                 with session.begin():
                     # Execute migration statements using a more robust approach
@@ -239,19 +280,12 @@ class MigrationManager:
                         (datetime.now() - start_time).total_seconds() * 1000
                     )
 
-                    # Record migration - this is now part of the same transaction
-                    insert_sql = """
-                    INSERT INTO schema_migrations (version, execution_time_ms, checksum, description)
-                    VALUES (:version, :execution_time_ms, :checksum, :description)
-                    """
-                    session.exec(
-                        text(insert_sql),
-                        {
-                            "version": version,
-                            "execution_time_ms": execution_time_ms,
-                            "checksum": checksum,
-                            "description": description,
-                        },
+                    self._record_migration(
+                        session=session,
+                        version=version,
+                        checksum=checksum,
+                        description=description,
+                        execution_time_ms=execution_time_ms,
                     )
 
             logger.info(
@@ -285,6 +319,127 @@ class MigrationManager:
 
         return applied, failed
 
+    def _has_table(self, table_name: str) -> bool:
+        """Check whether a table exists, supporting PostgreSQL and SQLite tests."""
+        inspector = inspect(self.engine)
+        dialect = self.engine.dialect.name if self.engine else ""
+        schemas: tuple[str | None, ...] = ("public", None)
+        if dialect == "sqlite":
+            schemas = (None,)
+
+        for schema in schemas:
+            try:
+                if inspector.has_table(table_name, schema=schema):
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _has_column(self, table_name: str, column_name: str) -> bool:
+        """Check whether a column exists, supporting PostgreSQL and SQLite tests."""
+        inspector = inspect(self.engine)
+        dialect = self.engine.dialect.name if self.engine else ""
+        schemas: tuple[str | None, ...] = ("public", None)
+        if dialect == "sqlite":
+            schemas = (None,)
+
+        for schema in schemas:
+            try:
+                columns = inspector.get_columns(table_name, schema=schema)
+            except Exception:
+                continue
+            if any(column["name"] == column_name for column in columns):
+                return True
+        return False
+
+    def _detect_existing_schema_baseline_number(self) -> int | None:
+        """Infer the newest already-present migration for legacy untracked DBs."""
+        milestones: list[tuple[int, bool]] = [
+            (21, self._has_table("slot_templates")),
+            (20, self._has_column("work_sessions", "is_manual_execution")),
+            (19, self._has_table("email_notification_logs")),
+            (18, self._has_table("quick_tasks")),
+            (17, self._has_table("context_notes")),
+            (
+                15,
+                self._has_table("reschedule_suggestions")
+                and self._has_table("reschedule_decisions"),
+            ),
+            (14, self._has_column("work_sessions", "total_paused_seconds")),
+            (11, self._has_column("work_sessions", "snooze_count")),
+            (10, self._has_table("push_subscriptions")),
+            (9, self._has_column("projects", "status")),
+            (8, self._has_column("tasks", "priority")),
+            (7, self._has_table("work_sessions")),
+            (5, self._has_table("weekly_schedules")),
+            (4, self._has_table("task_dependencies")),
+            (2, self._has_table("user_settings")),
+            (
+                1,
+                self._has_table("projects")
+                and self._has_table("goals")
+                and self._has_table("tasks"),
+            ),
+        ]
+
+        for migration_number, exists in milestones:
+            if exists:
+                return migration_number
+        return None
+
+    def baseline_existing_schema(self) -> list[str]:
+        """Record already-present legacy schema migrations without executing them.
+
+        Earlier deployments created and evolved the production schema manually, so
+        some databases have the expected tables but an empty schema_migrations table.
+        This method makes that state explicit before applying new migrations.
+        """
+        migration_files = self._numbered_migration_files()
+        if not migration_files:
+            return []
+
+        with Session(self.engine) as session:
+            self._ensure_migrations_table(session)
+            applied = set(self._get_applied_migrations(session))
+            if applied:
+                logger.info(
+                    "Schema migrations already tracked; skipping existing schema baseline"
+                )
+                return []
+
+            baseline_number = self._detect_existing_schema_baseline_number()
+            if baseline_number is None:
+                logger.info("No existing schema baseline detected")
+                return []
+
+            baselined_versions: list[str] = []
+            for file_path in migration_files:
+                version = file_path.stem
+                migration_number = self._migration_number(version)
+                if migration_number is None or migration_number > baseline_number:
+                    continue
+
+                content = file_path.read_text()
+                checksum = self._calculate_checksum(content)
+                description = self._extract_description(content)
+                if self._record_migration(
+                    session=session,
+                    version=version,
+                    checksum=checksum,
+                    description=f"Baseline existing schema: {description}",
+                    execution_time_ms=0,
+                ):
+                    baselined_versions.append(version)
+
+            session.commit()
+            if baselined_versions:
+                logger.warning(
+                    "Baselined %s existing migration(s) through numeric version %s",
+                    len(baselined_versions),
+                    baseline_number,
+                )
+            return baselined_versions
+
     def rollback_migration(self, version: str) -> bool:
         """Rollback a specific migration"""
         rollback_file = self.migrations_dir / f"{version}_rollback.sql"
@@ -308,10 +463,10 @@ class MigrationManager:
                             session.exec(text(statement))
 
                     # Remove migration record within the same transaction
-                    delete_sql = (
-                        "DELETE FROM schema_migrations WHERE version = :version"
+                    session.execute(
+                        text("DELETE FROM schema_migrations WHERE version = :version"),
+                        {"version": version},
                     )
-                    session.exec(text(delete_sql), {"version": version})
 
             logger.info(f"✅ Migration {version} rolled back successfully")
             return True

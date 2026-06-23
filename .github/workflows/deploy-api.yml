@@ -123,7 +123,7 @@ jobs:
       - name: 🔄 Run database migrations
         working-directory: ./apps/api
         run: |
-          python migrate.py apply || echo "⚠️ Migration failed or no pending migrations"
+          python migrate.py apply --baseline-existing
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_PREVIEW || secrets.DATABASE_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -209,7 +209,7 @@ jobs:
       - name: 🔄 Run database migrations
         working-directory: ./apps/api
         run: |
-          python migrate.py apply || echo "⚠️ Migration failed or no pending migrations"
+          python migrate.py apply --baseline-existing
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
