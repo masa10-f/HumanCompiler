@@ -211,7 +211,7 @@ async def cors_middleware(request, call_next):
             preflight_response.headers["Access-Control-Allow-Origin"] = origin
             preflight_response.headers["Access-Control-Allow-Credentials"] = "true"
             preflight_response.headers["Access-Control-Allow-Methods"] = (
-                "GET, POST, PUT, DELETE, OPTIONS"
+                "GET, POST, PUT, PATCH, DELETE, OPTIONS"
             )
             preflight_response.headers["Access-Control-Allow-Headers"] = "*"
             preflight_response.headers["Access-Control-Max-Age"] = "86400"
@@ -274,7 +274,7 @@ async def cors_middleware(request, call_next):
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
         response.headers["Access-Control-Allow-Methods"] = (
-            "GET, POST, PUT, DELETE, OPTIONS"
+            "GET, POST, PUT, PATCH, DELETE, OPTIONS"
         )
         response.headers["Access-Control-Allow-Headers"] = "*"
         response.headers["Access-Control-Max-Age"] = "86400"

@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -27,6 +28,7 @@ def seed_router_data(session: Session):
         goal_id=goal.id,
         title="Router Task",
         estimate_hours=Decimal("4.00"),
+        due_date=datetime.now(UTC) + timedelta(days=2),
         status=TaskStatus.PENDING,
         work_type=WorkType.FOCUSED_WORK,
         priority=5,

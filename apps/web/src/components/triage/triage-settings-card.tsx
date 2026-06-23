@@ -114,7 +114,7 @@ export function TriageSettingsCard() {
       return;
     }
     if (meetingBufferHours >= weeklyCapacityHours) {
-      setError('バッファ時間は週間キャパシティより小さくしてください');
+      setError('バッファ時間は週あたり処理量より小さくしてください');
       return;
     }
 
@@ -157,7 +157,7 @@ export function TriageSettingsCard() {
           キャパシティトリアージ
         </CardTitle>
         <CardDescription>
-          週ごとの処理可能量とプロジェクト別配分を設定します
+          週あたりの処理可能量とプロジェクト別配分を設定します
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -181,7 +181,7 @@ export function TriageSettingsCard() {
           <>
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
-                <Label htmlFor="triage-weekly-capacity">週間キャパシティ</Label>
+                <Label htmlFor="triage-weekly-capacity">週あたり処理量</Label>
                 <Input
                   id="triage-weekly-capacity"
                   type="number"

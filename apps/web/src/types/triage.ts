@@ -49,6 +49,7 @@ export interface TriageItem {
   work_type: WorkType;
   estimate_hours: number;
   remaining_hours: number;
+  capacity_load_hours: number;
   due_date: string | null;
   bucket_key: string;
   bucket_title: string;
@@ -76,6 +77,10 @@ export interface TriageRun {
     weekly_capacity_hours?: number;
     meeting_buffer_hours?: number;
     effective_capacity_hours?: number;
+    total_capacity_load_hours?: number;
+    kept_capacity_load_hours?: number;
+    cancel_candidate_capacity_load_hours?: number;
+    capacity_overflow_hours?: number;
     total_remaining_hours?: number;
     kept_hours?: number;
     cancel_candidate_hours?: number;
@@ -88,6 +93,9 @@ export interface TriageRun {
       total_hours: number;
       kept_hours: number;
       cancel_hours: number;
+      total_capacity_load_hours?: number;
+      kept_capacity_load_hours?: number;
+      cancel_capacity_load_hours?: number;
       total_items: number;
       cancel_items: number;
     }>;

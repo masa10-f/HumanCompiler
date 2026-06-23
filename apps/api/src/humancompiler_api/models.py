@@ -1465,6 +1465,7 @@ class TriageItemResponse(BaseModel):
     work_type: WorkType
     estimate_hours: Decimal
     remaining_hours: Decimal
+    capacity_load_hours: Decimal
     due_date: datetime | None
     bucket_key: str
     bucket_title: str
@@ -1485,6 +1486,7 @@ class TriageItemResponse(BaseModel):
     @field_serializer(
         "estimate_hours",
         "remaining_hours",
+        "capacity_load_hours",
         "deterministic_score",
         "ai_score_delta",
         "final_score",

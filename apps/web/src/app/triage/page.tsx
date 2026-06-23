@@ -29,6 +29,7 @@ const effectiveAction = (item: TriageItem): TriageRecommendation =>
   item.user_override || item.recommendation;
 
 const formatHours = (value: number | undefined) => `${(value || 0).toFixed(1)}h`;
+const capacityLoad = (item: TriageItem) => item.capacity_load_hours ?? item.remaining_hours;
 
 export default function TriagePage() {
   const { user, loading: authLoading } = useAuth();
@@ -134,6 +135,7 @@ export default function TriagePage() {
           <TableHead>タスク</TableHead>
           <TableHead>分類</TableHead>
           <TableHead>残り</TableHead>
+          <TableHead>週負荷</TableHead>
           <TableHead>優先度</TableHead>
           <TableHead>スコア</TableHead>
           <TableHead>判断</TableHead>
@@ -178,6 +180,7 @@ export default function TriagePage() {
                 </div>
               </TableCell>
               <TableCell>{formatHours(item.remaining_hours)}</TableCell>
+              <TableCell>{formatHours(capacityLoad(item))}</TableCell>
               <TableCell>{taskPriorityLabels[item.priority] || item.priority}</TableCell>
               <TableCell>
                 <div>{item.final_score.toFixed(1)}</div>
@@ -226,7 +229,7 @@ export default function TriagePage() {
         })}
         {items.length === 0 && (
           <TableRow>
-            <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+            <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">
               対象はありません
             </TableCell>
           </TableRow>
@@ -315,7 +318,7 @@ export default function TriagePage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">実効キャパシティ</CardTitle>
+                  <CardTitle className="text-sm font-medium">週あたり実効処理量</CardTitle>
                 </CardHeader>
                 <CardContent className="text-2xl font-bold">
                   {formatHours(run.summary.effective_capacity_hours)}
@@ -323,26 +326,43 @@ export default function TriagePage() {
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">残り総量</CardTitle>
+                  <CardTitle className="text-sm font-medium">必要な週あたり負荷</CardTitle>
                 </CardHeader>
-                <CardContent className="text-2xl font-bold">
-                  {formatHours(run.summary.total_remaining_hours)}
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {formatHours(run.summary.total_capacity_load_hours ?? run.summary.total_remaining_hours)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    残作業 {formatHours(run.summary.total_remaining_hours)}
+                  </div>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">残す量</CardTitle>
+                  <CardTitle className="text-sm font-medium">残す週あたり負荷</CardTitle>
                 </CardHeader>
-                <CardContent className="text-2xl font-bold">
-                  {formatHours(run.summary.kept_hours)}
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {formatHours(run.summary.kept_capacity_load_hours ?? run.summary.kept_hours)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    残作業 {formatHours(run.summary.kept_hours)}
+                  </div>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">外す候補</CardTitle>
+                  <CardTitle className="text-sm font-medium">外す候補の週負荷</CardTitle>
                 </CardHeader>
-                <CardContent className="text-2xl font-bold">
-                  {formatHours(run.summary.cancel_candidate_hours)}
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {formatHours(
+                      run.summary.cancel_candidate_capacity_load_hours ?? run.summary.cancel_candidate_hours
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    残作業 {formatHours(run.summary.cancel_candidate_hours)}
+                  </div>
                 </CardContent>
               </Card>
             </div>

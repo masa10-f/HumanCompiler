@@ -80,6 +80,7 @@ def add_task(
     estimate_hours: str,
     priority: int,
     status: TaskStatus = TaskStatus.PENDING,
+    due_date: datetime | None = None,
 ):
     task = Task(
         id=uuid4(),
@@ -87,7 +88,9 @@ def add_task(
         title=title,
         description=None,
         estimate_hours=Decimal(estimate_hours),
-        due_date=datetime.now(UTC) + timedelta(days=10),
+        due_date=due_date
+        if due_date is not None
+        else datetime.now(UTC) + timedelta(days=10),
         status=status,
         work_type=WorkType.FOCUSED_WORK,
         priority=priority,
@@ -144,9 +147,16 @@ def test_capacity_selection_recommends_overflow_cancel(session: Session, triage_
     goal = triage_user["goal"]
     other_goal = triage_user["other_goal"]
 
-    keep_task = add_task(session, goal.id, "Keep me", "4.00", priority=1)
-    cancel_task = add_task(session, goal.id, "Overflow", "4.00", priority=5)
-    other_task = add_task(session, other_goal.id, "Other", "4.00", priority=2)
+    due_soon = datetime.now(UTC) + timedelta(days=2)
+    keep_task = add_task(
+        session, goal.id, "Keep me", "4.00", priority=1, due_date=due_soon
+    )
+    cancel_task = add_task(
+        session, goal.id, "Overflow", "4.00", priority=5, due_date=due_soon
+    )
+    other_task = add_task(
+        session, other_goal.id, "Other", "4.00", priority=2, due_date=due_soon
+    )
     quick_task = add_quick_task(session, user.id, "Inbox overflow", "2.00", priority=1)
     save_settings(
         session,
@@ -166,6 +176,29 @@ def test_capacity_selection_recommends_overflow_cancel(session: Session, triage_
     assert recommendations[other_task.id] == TriageRecommendation.KEEP
     assert recommendations[quick_task.id] == TriageRecommendation.CANCEL
     assert run.summary["cancel_candidate_items"] == 2
+
+
+def test_long_term_tasks_use_weekly_capacity_load(session: Session, triage_user):
+    user = triage_user["user"]
+    project = triage_user["project"]
+    goal = triage_user["goal"]
+    task = add_task(
+        session,
+        goal.id,
+        "Long horizon",
+        "40.00",
+        priority=3,
+        due_date=datetime.now(UTC) + timedelta(days=70),
+    )
+    save_settings(session, user.id, {project.id: 100}, capacity=5)
+
+    run = triage_service.create_run(session, user.id)
+    item = next(item for item in run.items if item.task_id == task.id)
+
+    assert item.recommendation == TriageRecommendation.KEEP
+    assert item.capacity_load_hours == Decimal("4.00")
+    assert run.summary["total_capacity_load_hours"] == 4.0
+    assert run.summary["total_remaining_hours"] == 40.0
 
 
 def test_triage_enums_persist_lowercase_values(session: Session, triage_user):
@@ -207,7 +240,7 @@ def test_ai_adjustment_can_change_capacity_order(session: Session, triage_user):
     goal = triage_user["goal"]
     first_task = add_task(session, goal.id, "Normally first", "4.00", priority=2)
     boosted_task = add_task(session, goal.id, "Boosted", "4.00", priority=3)
-    save_settings(session, user.id, {project.id: 100}, capacity=4)
+    save_settings(session, user.id, {project.id: 100}, capacity=2)
 
     settings = triage_service.get_or_create_settings(session, user.id)
     candidates = triage_service.collect_candidates(session, user.id)

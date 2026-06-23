@@ -50,6 +50,7 @@ INBOX_BUCKET_TITLE = "Inbox"
 AI_DELTA_MIN = Decimal("-15.00")
 AI_DELTA_MAX = Decimal("15.00")
 ACTIVE_STATUSES = [TaskStatus.PENDING, TaskStatus.IN_PROGRESS]
+UNDATED_REGULAR_TASK_SPREAD_WEEKS = 12
 
 
 @dataclass
@@ -71,6 +72,7 @@ class TriageCandidate:
     work_type: WorkType
     estimate_hours: Decimal
     remaining_hours: Decimal
+    capacity_load_hours: Decimal
     due_date: datetime | None
     bucket_key: str
     bucket_title: str
@@ -85,6 +87,15 @@ class AiAdjustment:
 
     delta: Decimal
     reason: str | None
+
+
+@dataclass
+class CapacityLoad:
+    """Weekly load a candidate contributes to triage capacity."""
+
+    hours: Decimal
+    reason_code: str
+    spread_weeks: int
 
 
 class TriageService:
@@ -231,12 +242,18 @@ class TriageService:
                 Decimal("0.00"),
                 self._decimal(estimate - actual_hours.get(task_id, Decimal("0.00"))),
             )
+            capacity_load = self._capacity_load_hours(
+                remaining,
+                task.due_date,
+                TriageTaskType.TASK,
+            )
             score, reasons = self._score_candidate(
                 status=task.status,
                 priority=task.priority,
                 remaining_hours=remaining,
                 due_date=task.due_date,
             )
+            reasons.append(capacity_load.reason_code)
             candidates.append(
                 TriageCandidate(
                     identifier=f"task:{task_id}",
@@ -254,12 +271,13 @@ class TriageService:
                     work_type=task.work_type,
                     estimate_hours=estimate,
                     remaining_hours=remaining,
+                    capacity_load_hours=capacity_load.hours,
                     due_date=task.due_date,
                     bucket_key=f"project:{project.id}",
                     bucket_title=project.title,
                     deterministic_score=score,
                     reason_codes=reasons,
-                    snapshot=self._snapshot_task(task),
+                    snapshot=self._snapshot_task(task, remaining, capacity_load),
                 )
             )
 
@@ -272,12 +290,18 @@ class TriageService:
         for quick_task in quick_tasks:
             quick_task_id = UUID(str(quick_task.id))
             remaining = self._decimal(quick_task.estimate_hours)
+            capacity_load = self._capacity_load_hours(
+                remaining,
+                quick_task.due_date,
+                TriageTaskType.QUICK_TASK,
+            )
             score, reasons = self._score_candidate(
                 status=quick_task.status,
                 priority=quick_task.priority,
                 remaining_hours=remaining,
                 due_date=quick_task.due_date,
             )
+            reasons.append(capacity_load.reason_code)
             candidates.append(
                 TriageCandidate(
                     identifier=f"quick_task:{quick_task_id}",
@@ -295,12 +319,15 @@ class TriageService:
                     work_type=quick_task.work_type,
                     estimate_hours=self._decimal(quick_task.estimate_hours),
                     remaining_hours=remaining,
+                    capacity_load_hours=capacity_load.hours,
                     due_date=quick_task.due_date,
                     bucket_key=INBOX_BUCKET_KEY,
                     bucket_title=INBOX_BUCKET_TITLE,
                     deterministic_score=score,
                     reason_codes=reasons,
-                    snapshot=self._snapshot_quick_task(quick_task),
+                    snapshot=self._snapshot_quick_task(
+                        quick_task, remaining, capacity_load
+                    ),
                 )
             )
 
@@ -480,7 +507,7 @@ class TriageService:
         if data.meeting_buffer_hours >= data.weekly_capacity_hours:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Meeting buffer must be smaller than weekly capacity",
+                detail="Meeting buffer must be smaller than weekly throughput",
             )
         for key, value in data.work_type_caps.items():
             if key not in {work_type.value for work_type in WorkType}:
@@ -612,6 +639,7 @@ class TriageService:
                     "project": candidate.project_title or INBOX_BUCKET_TITLE,
                     "priority": candidate.priority,
                     "remaining_hours": float(candidate.remaining_hours),
+                    "capacity_load_hours": float(candidate.capacity_load_hours),
                     "due_date": candidate.due_date.isoformat()
                     if candidate.due_date
                     else None,
@@ -716,14 +744,14 @@ class TriageService:
 
         for candidate in sorted(
             candidates,
-            key=lambda item: (final_score(item), -float(item.remaining_hours)),
+            key=lambda item: (final_score(item), -float(item.capacity_load_hours)),
             reverse=True,
         ):
             ai_adjustment = ai_adjustments.get(
                 candidate.identifier, AiAdjustment(Decimal("0.00"), None)
             )
             reasons = list(candidate.reason_codes)
-            hours = candidate.remaining_hours
+            hours = candidate.capacity_load_hours
             bucket_available = bucket_remaining.get(
                 candidate.bucket_key, Decimal("0.00")
             )
@@ -820,6 +848,26 @@ class TriageService:
             ),
             Decimal("0.00"),
         )
+        total_capacity_load = sum(
+            (candidate.capacity_load_hours for candidate, *_ in selected_items),
+            Decimal("0.00"),
+        )
+        kept_capacity_load = sum(
+            (
+                candidate.capacity_load_hours
+                for candidate, recommendation, *_ in selected_items
+                if recommendation == TriageRecommendation.KEEP
+            ),
+            Decimal("0.00"),
+        )
+        cancel_capacity_load = sum(
+            (
+                candidate.capacity_load_hours
+                for candidate, recommendation, *_ in selected_items
+                if recommendation == TriageRecommendation.CANCEL
+            ),
+            Decimal("0.00"),
+        )
         effective_capacity = max(
             Decimal("0.00"),
             self._decimal(
@@ -835,29 +883,48 @@ class TriageService:
                     "total_hours": 0.0,
                     "kept_hours": 0.0,
                     "cancel_hours": 0.0,
+                    "total_capacity_load_hours": 0.0,
+                    "kept_capacity_load_hours": 0.0,
+                    "cancel_capacity_load_hours": 0.0,
                     "total_items": 0,
                     "cancel_items": 0,
                 },
             )
             hours = float(candidate.remaining_hours)
+            capacity_load_hours = float(candidate.capacity_load_hours)
             bucket["total_hours"] += hours
+            bucket["total_capacity_load_hours"] += capacity_load_hours
             bucket["total_items"] += 1
             if recommendation == TriageRecommendation.CANCEL:
                 bucket["cancel_hours"] += hours
+                bucket["cancel_capacity_load_hours"] += capacity_load_hours
                 bucket["cancel_items"] += 1
             else:
                 bucket["kept_hours"] += hours
+                bucket["kept_capacity_load_hours"] += capacity_load_hours
 
         return {
             "weekly_capacity_hours": float(settings.weekly_capacity_hours),
             "meeting_buffer_hours": float(settings.meeting_buffer_hours),
             "effective_capacity_hours": float(effective_capacity),
+            "total_capacity_load_hours": float(self._decimal(total_capacity_load)),
+            "kept_capacity_load_hours": float(self._decimal(kept_capacity_load)),
+            "cancel_candidate_capacity_load_hours": float(
+                self._decimal(cancel_capacity_load)
+            ),
             "total_remaining_hours": float(self._decimal(total_remaining)),
             "kept_hours": float(self._decimal(kept_hours)),
             "cancel_candidate_hours": float(self._decimal(cancel_hours)),
             "overflow_hours": float(
                 max(
-                    Decimal("0.00"), self._decimal(total_remaining - effective_capacity)
+                    Decimal("0.00"),
+                    self._decimal(total_capacity_load - effective_capacity),
+                )
+            ),
+            "capacity_overflow_hours": float(
+                max(
+                    Decimal("0.00"),
+                    self._decimal(total_capacity_load - effective_capacity),
                 )
             ),
             "total_items": len(selected_items),
@@ -970,6 +1037,15 @@ class TriageService:
             work_type=item.work_type,
             estimate_hours=item.estimate_hours,
             remaining_hours=item.remaining_hours,
+            capacity_load_hours=self._decimal(
+                Decimal(
+                    str(
+                        (item.task_snapshot_json or {}).get(
+                            "capacity_load_hours", item.remaining_hours
+                        )
+                    )
+                )
+            ),
             due_date=item.due_date,
             bucket_key=item.bucket_key,
             bucket_title=item.bucket_title,
@@ -988,12 +1064,71 @@ class TriageService:
             updated_at=item.updated_at,
         )
 
-    def _snapshot_task(self, task: Task) -> dict[str, Any]:
+    def _capacity_load_hours(
+        self,
+        remaining_hours: Decimal,
+        due_date: datetime | None,
+        item_type: TriageTaskType,
+    ) -> CapacityLoad:
+        if remaining_hours <= Decimal("0.00"):
+            return CapacityLoad(
+                hours=Decimal("0.00"),
+                reason_code="no_remaining_capacity_load",
+                spread_weeks=1,
+            )
+
+        if item_type == TriageTaskType.QUICK_TASK:
+            return CapacityLoad(
+                hours=remaining_hours,
+                reason_code="quick_task_full_capacity_load",
+                spread_weeks=1,
+            )
+
+        if due_date is None:
+            return CapacityLoad(
+                hours=self._decimal(
+                    remaining_hours / Decimal(UNDATED_REGULAR_TASK_SPREAD_WEEKS)
+                ),
+                reason_code=f"undated_spread_{UNDATED_REGULAR_TASK_SPREAD_WEEKS}_weeks",
+                spread_weeks=UNDATED_REGULAR_TASK_SPREAD_WEEKS,
+            )
+
+        due = due_date
+        if due.tzinfo is None:
+            due = due.replace(tzinfo=UTC)
+        days_until_due = (due.date() - datetime.now(UTC).date()).days
+        if days_until_due < 0:
+            return CapacityLoad(
+                hours=remaining_hours,
+                reason_code="overdue_full_capacity_load",
+                spread_weeks=1,
+            )
+        if days_until_due <= 7:
+            return CapacityLoad(
+                hours=remaining_hours,
+                reason_code="due_within_7_days_full_capacity_load",
+                spread_weeks=1,
+            )
+
+        spread_weeks = max(1, (days_until_due + 6) // 7)
+        return CapacityLoad(
+            hours=self._decimal(remaining_hours / Decimal(spread_weeks)),
+            reason_code="spread_to_due_date_capacity_load",
+            spread_weeks=spread_weeks,
+        )
+
+    def _snapshot_task(
+        self, task: Task, remaining_hours: Decimal, capacity_load: CapacityLoad
+    ) -> dict[str, Any]:
         return {
             "id": str(task.id),
             "title": task.title,
             "description": task.description,
             "estimate_hours": float(task.estimate_hours),
+            "remaining_hours": float(remaining_hours),
+            "capacity_load_hours": float(capacity_load.hours),
+            "capacity_load_reason": capacity_load.reason_code,
+            "capacity_load_spread_weeks": capacity_load.spread_weeks,
             "due_date": task.due_date.isoformat() if task.due_date else None,
             "status": task.status,
             "priority": task.priority,
@@ -1001,12 +1136,18 @@ class TriageService:
             "goal_id": str(task.goal_id),
         }
 
-    def _snapshot_quick_task(self, task: QuickTask) -> dict[str, Any]:
+    def _snapshot_quick_task(
+        self, task: QuickTask, remaining_hours: Decimal, capacity_load: CapacityLoad
+    ) -> dict[str, Any]:
         return {
             "id": str(task.id),
             "title": task.title,
             "description": task.description,
             "estimate_hours": float(task.estimate_hours),
+            "remaining_hours": float(remaining_hours),
+            "capacity_load_hours": float(capacity_load.hours),
+            "capacity_load_reason": capacity_load.reason_code,
+            "capacity_load_spread_weeks": capacity_load.spread_weeks,
             "due_date": task.due_date.isoformat() if task.due_date else None,
             "status": task.status,
             "priority": task.priority,
