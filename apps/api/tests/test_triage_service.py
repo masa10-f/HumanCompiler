@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import text
 from sqlmodel import Session, select
 
 from humancompiler_api.models import (
@@ -165,6 +166,31 @@ def test_capacity_selection_recommends_overflow_cancel(session: Session, triage_
     assert recommendations[other_task.id] == TriageRecommendation.KEEP
     assert recommendations[quick_task.id] == TriageRecommendation.CANCEL
     assert run.summary["cancel_candidate_items"] == 2
+
+
+def test_triage_enums_persist_lowercase_values(session: Session, triage_user):
+    user = triage_user["user"]
+    project = triage_user["project"]
+    goal = triage_user["goal"]
+    add_task(session, goal.id, "Persisted enum task", "2.00", priority=1)
+    save_settings(session, user.id, {project.id: 100}, capacity=4)
+
+    run = triage_service.create_run(session, user.id)
+
+    run_row = session.exec(
+        text("SELECT source, status FROM task_triage_runs LIMIT 1")
+    ).one()
+    item_row = session.exec(
+        text(
+            "SELECT item_type, status_at_generation, work_type, recommendation, "
+            "user_override, applied_action FROM task_triage_items LIMIT 1"
+        )
+    ).one()
+
+    assert run_row == ("manual", "ready")
+    assert item_row == ("task", "pending", "focused_work", "keep", None, None)
+    assert run.source == "manual"
+    assert run.status == "ready"
 
 
 def test_ai_delta_is_clipped():

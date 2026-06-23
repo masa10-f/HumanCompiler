@@ -1989,8 +1989,20 @@ class TaskTriageRun(SQLModel, table=True):  # type: ignore[call-arg]
 
     id: UUID | None = SQLField(default_factory=uuid4, primary_key=True)
     user_id: UUID = SQLField(foreign_key="users.id", index=True)
-    source: TriageRunSource = SQLField(default=TriageRunSource.MANUAL, max_length=20)
-    status: TriageRunStatus = SQLField(default=TriageRunStatus.READY, max_length=30)
+    source: TriageRunSource = SQLField(
+        default=TriageRunSource.MANUAL,
+        sa_column=Column(
+            SQLEnum(TriageRunSource, values_callable=lambda x: [e.value for e in x]),
+            nullable=False,
+        ),
+    )
+    status: TriageRunStatus = SQLField(
+        default=TriageRunStatus.READY,
+        sa_column=Column(
+            SQLEnum(TriageRunStatus, values_callable=lambda x: [e.value for e in x]),
+            nullable=False,
+        ),
+    )
     summary_json: dict[str, Any] = SQLField(
         sa_column=Column(JSON), default_factory=dict
     )
@@ -2014,7 +2026,13 @@ class TaskTriageItem(SQLModel, table=True):  # type: ignore[call-arg]
     quick_task_id: UUID | None = SQLField(
         default=None, foreign_key="quick_tasks.id", index=True
     )
-    item_type: TriageTaskType = SQLField(default=TriageTaskType.TASK, max_length=20)
+    item_type: TriageTaskType = SQLField(
+        default=TriageTaskType.TASK,
+        sa_column=Column(
+            SQLEnum(TriageTaskType, values_callable=lambda x: [e.value for e in x]),
+            nullable=False,
+        ),
+    )
 
     title: str = SQLField(max_length=200)
     description: str | None = SQLField(default=None, max_length=1000)
@@ -2022,9 +2040,21 @@ class TaskTriageItem(SQLModel, table=True):  # type: ignore[call-arg]
     project_title: str | None = SQLField(default=None, max_length=200)
     goal_id: UUID | None = SQLField(default=None, foreign_key="goals.id")
     goal_title: str | None = SQLField(default=None, max_length=200)
-    status_at_generation: TaskStatus = SQLField(default=TaskStatus.PENDING)
+    status_at_generation: TaskStatus = SQLField(
+        default=TaskStatus.PENDING,
+        sa_column=Column(
+            SQLEnum(TaskStatus, values_callable=lambda x: [e.value for e in x]),
+            nullable=False,
+        ),
+    )
     priority: int = SQLField(default=3, ge=1, le=5)
-    work_type: WorkType = SQLField(default=WorkType.LIGHT_WORK)
+    work_type: WorkType = SQLField(
+        default=WorkType.LIGHT_WORK,
+        sa_column=Column(
+            SQLEnum(WorkType, values_callable=lambda x: [e.value for e in x]),
+            nullable=False,
+        ),
+    )
     estimate_hours: Decimal = SQLField(default=Decimal("0.00"), ge=0)
     remaining_hours: Decimal = SQLField(default=Decimal("0.00"), ge=0)
     due_date: datetime | None = SQLField(default=None)
@@ -2043,10 +2073,32 @@ class TaskTriageItem(SQLModel, table=True):  # type: ignore[call-arg]
     )
 
     recommendation: TriageRecommendation = SQLField(
-        default=TriageRecommendation.KEEP, max_length=20
+        default=TriageRecommendation.KEEP,
+        sa_column=Column(
+            SQLEnum(
+                TriageRecommendation, values_callable=lambda x: [e.value for e in x]
+            ),
+            nullable=False,
+        ),
     )
-    user_override: TriageRecommendation | None = SQLField(default=None, max_length=20)
-    applied_action: TriageRecommendation | None = SQLField(default=None, max_length=20)
+    user_override: TriageRecommendation | None = SQLField(
+        default=None,
+        sa_column=Column(
+            SQLEnum(
+                TriageRecommendation, values_callable=lambda x: [e.value for e in x]
+            ),
+            nullable=True,
+        ),
+    )
+    applied_action: TriageRecommendation | None = SQLField(
+        default=None,
+        sa_column=Column(
+            SQLEnum(
+                TriageRecommendation, values_callable=lambda x: [e.value for e in x]
+            ),
+            nullable=True,
+        ),
+    )
     applied_at: datetime | None = SQLField(default=None)
     apply_error: str | None = SQLField(default=None, max_length=1000)
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
