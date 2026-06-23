@@ -2,9 +2,31 @@
 -- Date: 2026-06-22
 -- Description: Store user capacity settings, generated triage runs, and item audit history.
 
+DO $$
+BEGIN
+    IF to_regclass('public.users') IS NULL THEN
+        RAISE EXCEPTION 'Required table public.users is missing. Apply earlier migrations before 022_add_capacity_triage.sql.';
+    END IF;
+    IF to_regclass('public.projects') IS NULL THEN
+        RAISE EXCEPTION 'Required table public.projects is missing. Apply earlier migrations before 022_add_capacity_triage.sql.';
+    END IF;
+    IF to_regclass('public.goals') IS NULL THEN
+        RAISE EXCEPTION 'Required table public.goals is missing. Apply earlier migrations before 022_add_capacity_triage.sql.';
+    END IF;
+    IF to_regclass('public.tasks') IS NULL THEN
+        RAISE EXCEPTION 'Required table public.tasks is missing. Apply earlier migrations before 022_add_capacity_triage.sql.';
+    END IF;
+    IF to_regclass('public.quick_tasks') IS NULL THEN
+        RAISE EXCEPTION 'Required table public.quick_tasks is missing. Apply 018_add_quick_tasks.sql before 022_add_capacity_triage.sql.';
+    END IF;
+    IF to_regprocedure('public.update_updated_at_column()') IS NULL THEN
+        RAISE EXCEPTION 'Required function public.update_updated_at_column() is missing. Apply earlier migrations before 022_add_capacity_triage.sql.';
+    END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS public.triage_capacity_settings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL UNIQUE REFERENCES public.users(id) ON DELETE CASCADE,
     weekly_capacity_hours DECIMAL(5,2) NOT NULL DEFAULT 40.00 CHECK (weekly_capacity_hours > 0),
     meeting_buffer_hours DECIMAL(5,2) NOT NULL DEFAULT 5.00 CHECK (meeting_buffer_hours >= 0),
     project_allocations_json JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -20,7 +42,7 @@ CREATE TABLE IF NOT EXISTS public.triage_capacity_settings (
 
 CREATE TABLE IF NOT EXISTS public.task_triage_runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'scheduled')),
     status TEXT NOT NULL DEFAULT 'ready' CHECK (status IN ('ready', 'applied', 'partially_applied')),
     summary_json JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -30,15 +52,15 @@ CREATE TABLE IF NOT EXISTS public.task_triage_runs (
 
 CREATE TABLE IF NOT EXISTS public.task_triage_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    run_id UUID NOT NULL REFERENCES task_triage_runs(id) ON DELETE CASCADE,
-    task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
-    quick_task_id UUID REFERENCES quick_tasks(id) ON DELETE SET NULL,
+    run_id UUID NOT NULL REFERENCES public.task_triage_runs(id) ON DELETE CASCADE,
+    task_id UUID REFERENCES public.tasks(id) ON DELETE SET NULL,
+    quick_task_id UUID REFERENCES public.quick_tasks(id) ON DELETE SET NULL,
     item_type TEXT NOT NULL CHECK (item_type IN ('task', 'quick_task')),
     title TEXT NOT NULL CHECK (length(title) <= 200),
     description TEXT CHECK (length(description) <= 1000),
-    project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+    project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL,
     project_title TEXT CHECK (length(project_title) <= 200),
-    goal_id UUID REFERENCES goals(id) ON DELETE SET NULL,
+    goal_id UUID REFERENCES public.goals(id) ON DELETE SET NULL,
     goal_title TEXT CHECK (length(goal_title) <= 200),
     status_at_generation TEXT NOT NULL CHECK (status_at_generation IN ('pending', 'in_progress', 'completed', 'cancelled')),
     priority INTEGER NOT NULL DEFAULT 3 CHECK (priority >= 1 AND priority <= 5),
