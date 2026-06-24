@@ -98,7 +98,7 @@ export default function DashboardPage() {
 
           <Card
             className="cursor-pointer hover:shadow-md transition-shadow"
-            onClick={() => router.push('/ai-planning')}
+            onClick={() => router.push('/scheduling/weekly')}
           >
             <CardHeader className="text-center pb-4">
               <Brain className="h-8 w-8 text-purple-600 mx-auto mb-2" />
@@ -109,7 +109,7 @@ export default function DashboardPage() {
 
           <Card
             className="cursor-pointer hover:shadow-md transition-shadow"
-            onClick={() => router.push('/scheduling')}
+            onClick={() => router.push('/scheduling/daily')}
           >
             <CardHeader className="text-center pb-4">
               <Settings className="h-8 w-8 text-green-600 mx-auto mb-2" />
@@ -120,7 +120,7 @@ export default function DashboardPage() {
 
           <Card
             className="cursor-pointer hover:shadow-md transition-shadow"
-            onClick={() => router.push('/schedule-history')}
+            onClick={() => router.push('/scheduling/history')}
           >
             <CardHeader className="text-center pb-4">
               <History className="h-8 w-8 text-orange-600 mx-auto mb-2" />
@@ -173,7 +173,7 @@ export default function DashboardPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => router.push('/schedule-history')}
+                      onClick={() => router.push('/scheduling/history')}
                       className="flex items-center gap-1"
                     >
                       <History className="h-3 w-3" />
@@ -182,7 +182,7 @@ export default function DashboardPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => router.push('/scheduling')}
+                      onClick={() => router.push('/scheduling/daily')}
                     >
                       スケジュール編集
                     </Button>

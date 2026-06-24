@@ -111,9 +111,23 @@ export interface DailySchedule {
  */
 export interface TestSchedulerResponse {
   /** 成功したかどうか */
-  success: boolean;
+  success?: boolean;
+  /** ステータス */
+  status?: string;
   /** 結果メッセージ */
   message: string;
+  /** Scheduler backend package */
+  backend_package?: string;
+  /** Scheduler backend version */
+  backend_version?: string;
+  /** 実装名 */
+  implementation?: string;
+  /** 割り当て件数 */
+  test_assignments?: string;
+  /** 最適化ステータス */
+  optimization_status?: string;
+  /** 解決時間 */
+  solve_time_seconds?: string;
   /** テスト結果詳細（成功時） */
   test_result?: {
     /** 割り当てられたタスク数 */

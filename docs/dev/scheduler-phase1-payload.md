@@ -1,9 +1,10 @@
 # Scheduler Phase 1 Payload Notes
 
-Phase 1 keeps HumanCompiler runtime behavior unchanged. This document records
-the payload that HumanCompiler can already send today, and the equivalent shape
-expected by the external `Scheduler` repository's experimental Human daily
-fixtures.
+Phase 1 originally kept HumanCompiler runtime behavior unchanged. HumanCompiler
+now uses the PyPI package `humancompiler-scheduler` for daily scheduling while
+preserving the public API response shape. This document records the payload that
+HumanCompiler sends today and the equivalent Scheduler Human daily fixture
+shape.
 
 ## Current Daily Schedule Request
 
@@ -35,6 +36,10 @@ fixtures.
     }
   ],
   "preferences": {},
+  "solver_config": {
+    "kind_match_score": 8,
+    "project_switch_penalty": 4
+  },
   "fixed_assignments": [
     {
       "task_id": "task-standup-notes",
@@ -142,12 +147,10 @@ task_dependencies:
 
 ## Current Gaps For Later Phases
 
-- Regular task priority is passed through to the daily optimizer and appears in
-  unscheduled task response data. Quick tasks continue to pass their real
-  priority.
+- Weekly task selection has not moved to `humancompiler-scheduler` yet because
+  version `0.1.0` only exposes Human daily scheduling contracts.
 - The current daily API does not expose unscheduled reasons, score breakdowns,
   or constraint violations.
-- Current assignments are slot-shaped. Multiple tasks in one slot can still
-  share the same `start_time`.
-- Phase 1 does not import the external package into HumanCompiler and does not
-  change persisted schedule data.
+- Daily assignments now come from Scheduler timeline blocks, so tasks within
+  the same slot receive sequential start times.
+- Persisted schedule data keeps the existing `plan_json` shape.

@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 // Icons
-import { TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play, Timer, ListChecks, MoreHorizontal } from 'lucide-react'
+import { TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play, Timer, ListChecks, MoreHorizontal, ChevronDown, CalendarDays, SlidersHorizontal, LayoutTemplate } from 'lucide-react'
 
 // Hooks
 import { useAuth } from '@/hooks/use-auth'
@@ -28,27 +28,34 @@ import { useAuth } from '@/hooks/use-auth'
 import { logger } from '@/lib/logger'
 
 interface AppHeaderProps {
-  currentPage?: 'dashboard' | 'projects' | 'ai-planning' | 'triage' | 'scheduling' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner'
+  currentPage?: 'dashboard' | 'projects' | 'ai-planning' | 'triage' | 'scheduling' | 'scheduling-daily' | 'scheduling-settings' | 'scheduler-tuning' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner'
 }
 
 const NAVIGATION_ITEMS = [
   { id: 'dashboard', label: 'ダッシュボード', path: '/dashboard', icon: Home },
   { id: 'runner', label: 'Runner', path: '/runner', icon: Play },
   { id: 'projects', label: 'プロジェクト', path: '/projects', icon: FolderOpen },
-  { id: 'ai-planning', label: '週次計画', path: '/ai-planning', icon: Calendar },
+  { id: 'scheduling', label: 'スケジューリング', path: '/scheduling', icon: Calendar },
   { id: 'triage', label: 'トリアージ', path: '/triage', icon: ListChecks },
-  { id: 'scheduling', label: '日次計画', path: '/scheduling', icon: Clock },
-  { id: 'schedule-history', label: 'スケジュール履歴', path: '/schedule-history', icon: History },
   { id: 'work-session-history', label: 'セッション履歴', path: '/work-session-history', icon: Timer },
   { id: 'timeline', label: 'タイムライン', path: '/timeline', icon: TrendingUp },
   { id: 'settings', label: '設定', path: '/settings', icon: Settings },
+] as const
+
+const SCHEDULING_NAVIGATION_ITEMS = [
+  { id: 'scheduling', label: '概要', path: '/scheduling', icon: Calendar },
+  { id: 'scheduling-daily', label: '日次計画', path: '/scheduling/daily', icon: Clock },
+  { id: 'ai-planning', label: '週次計画', path: '/scheduling/weekly', icon: CalendarDays },
+  { id: 'scheduler-tuning', label: 'Scheduler調整', path: '/scheduling/tuning', icon: SlidersHorizontal },
+  { id: 'scheduling-settings', label: 'テンプレート', path: '/scheduling/settings', icon: LayoutTemplate },
+  { id: 'schedule-history', label: 'スケジュール履歴', path: '/scheduling/history', icon: History },
 ] as const
 
 const PRIMARY_NAVIGATION_IDS = new Set([
   'dashboard',
   'runner',
   'projects',
-  'ai-planning',
+  'scheduling',
   'triage',
 ])
 
@@ -58,6 +65,10 @@ const PRIMARY_NAVIGATION_ITEMS = NAVIGATION_ITEMS.filter((item) =>
 
 const SECONDARY_NAVIGATION_ITEMS = NAVIGATION_ITEMS.filter(
   (item) => !PRIMARY_NAVIGATION_IDS.has(item.id) && item.id !== 'settings'
+)
+
+const SCHEDULING_NAVIGATION_IDS = new Set(
+  SCHEDULING_NAVIGATION_ITEMS.map((item) => item.id)
 )
 
 export function AppHeader({ currentPage }: AppHeaderProps) {
@@ -70,6 +81,10 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
       ? "bg-primary/10 text-primary font-medium border-b-2 border-primary rounded-none"
       : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
   }
+
+  const isSchedulingActive = Boolean(
+    currentPage && SCHEDULING_NAVIGATION_IDS.has(currentPage as typeof SCHEDULING_NAVIGATION_ITEMS[number]['id'])
+  )
 
   const handleNavigation = (path: string) => {
     try {
@@ -100,18 +115,50 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
             </div>
             {/* Desktop Navigation */}
             <nav className="hidden min-w-0 flex-1 items-center gap-1 lg:flex">
-              {PRIMARY_NAVIGATION_ITEMS.map((item) => (
-                <Button
-                  key={item.id}
-                  variant="ghost"
-                  onClick={() => router.push(item.path)}
-                  className={`${getPageClass(item.id)} px-2 xl:px-3`}
-                  title={item.label}
-                >
-                  <item.icon className="h-4 w-4 xl:mr-2" />
-                  <span className="hidden xl:inline">{item.label}</span>
-                </Button>
-              ))}
+              {PRIMARY_NAVIGATION_ITEMS.map((item) => {
+                if (item.id === 'scheduling') {
+                  return (
+                    <DropdownMenu key={item.id}>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          className={`${isSchedulingActive ? "bg-primary/10 text-primary font-medium border-b-2 border-primary rounded-none" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"} px-2 xl:px-3`}
+                          title={item.label}
+                        >
+                          <item.icon className="h-4 w-4 xl:mr-2" />
+                          <span className="hidden xl:inline">{item.label}</span>
+                          <ChevronDown className="ml-1 hidden h-3 w-3 xl:inline" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-56">
+                        {SCHEDULING_NAVIGATION_ITEMS.map((child) => (
+                          <DropdownMenuItem
+                            key={child.id}
+                            className={currentPage === child.id ? "bg-primary/10 text-primary font-medium" : ""}
+                            onClick={() => router.push(child.path)}
+                          >
+                            <child.icon className="mr-2 h-4 w-4" />
+                            {child.label}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )
+                }
+
+                return (
+                  <Button
+                    key={item.id}
+                    variant="ghost"
+                    onClick={() => router.push(item.path)}
+                    className={`${getPageClass(item.id)} px-2 xl:px-3`}
+                    title={item.label}
+                  >
+                    <item.icon className="h-4 w-4 xl:mr-2" />
+                    <span className="hidden xl:inline">{item.label}</span>
+                  </Button>
+                )
+              })}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -168,17 +215,47 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                     </DialogTitle>
                   </DialogHeader>
                   <div className="mt-6 space-y-2">
-                    {NAVIGATION_ITEMS.map((item) => (
-                      <Button
-                        key={item.id}
-                        variant={currentPage === item.id ? "secondary" : "ghost"}
-                        className="w-full justify-start"
-                        onClick={() => handleNavigation(item.path)}
-                      >
-                        <item.icon className="h-4 w-4 mr-3" />
-                        {item.label}
-                      </Button>
-                    ))}
+                    {NAVIGATION_ITEMS.map((item) => {
+                      if (item.id === 'scheduling') {
+                        return (
+                          <div key={item.id} className="space-y-1">
+                            <Button
+                              variant={isSchedulingActive ? "secondary" : "ghost"}
+                              className="w-full justify-start"
+                              onClick={() => handleNavigation(item.path)}
+                            >
+                              <item.icon className="h-4 w-4 mr-3" />
+                              {item.label}
+                            </Button>
+                            <div className="ml-4 space-y-1 border-l border-border pl-3">
+                              {SCHEDULING_NAVIGATION_ITEMS.map((child) => (
+                                <Button
+                                  key={child.id}
+                                  variant={currentPage === child.id ? "secondary" : "ghost"}
+                                  className="w-full justify-start text-sm"
+                                  onClick={() => handleNavigation(child.path)}
+                                >
+                                  <child.icon className="h-4 w-4 mr-3" />
+                                  {child.label}
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      }
+
+                      return (
+                        <Button
+                          key={item.id}
+                          variant={currentPage === item.id ? "secondary" : "ghost"}
+                          className="w-full justify-start"
+                          onClick={() => handleNavigation(item.path)}
+                        >
+                          <item.icon className="h-4 w-4 mr-3" />
+                          {item.label}
+                        </Button>
+                      )
+                    })}
                   </div>
                   <div className="mt-6 border-t border-border/60 pt-4">
                     {user?.email && (

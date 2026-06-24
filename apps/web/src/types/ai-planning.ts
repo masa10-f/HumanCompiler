@@ -224,8 +224,46 @@ export interface ScheduleRequest {
   use_weekly_schedule?: boolean;
   /** その他の設定 */
   preferences?: Record<string, unknown>;
+  /** Scheduler solver parameter overrides */
+  solver_config?: SchedulerSolverConfig;
   /** ユーザーが手動で配置した固定割り当て */
   fixed_assignments?: FixedAssignment[];
+}
+
+export interface SchedulerSolverConfig {
+  kind_match_score?: number;
+  kind_mismatch_score?: number;
+  priority_score_base?: number;
+  deadline_soon_days?: number;
+  deadline_score?: number;
+  overdue_score?: number;
+  fixed_assignment_score?: number;
+  dependency_unlock_score?: number;
+  project_switch_penalty?: number;
+  project_switch_reset_gap_minutes?: number;
+  long_continuous_threshold_minutes?: number;
+  long_continuous_penalty?: number;
+  break_reset_gap_minutes?: number;
+  small_gap_minutes?: number;
+  small_gap_fill_score?: number;
+}
+
+export interface SchedulerConfigControl {
+  key: keyof SchedulerSolverConfig;
+  label: string;
+  group: string;
+  min: number;
+  max: number;
+  step: number;
+  visibility: 'essential' | 'tuning' | 'expert';
+  help: string;
+}
+
+export interface SchedulerTuningConfig {
+  backend_package: string;
+  backend_version: string;
+  defaults: Required<SchedulerSolverConfig>;
+  schema: SchedulerConfigControl[];
 }
 
 /**

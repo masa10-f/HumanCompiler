@@ -448,12 +448,12 @@ export default function SlotTemplatesSettingsPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <AppHeader />
+      <AppHeader currentPage="scheduling-settings" />
 
       <main className="container mx-auto px-4 py-6">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">
-          <Link href="/scheduling">
+          <Link href="/scheduling/daily">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4 mr-2" />
               戻る

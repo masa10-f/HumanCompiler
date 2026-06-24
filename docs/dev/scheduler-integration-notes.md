@@ -9,9 +9,9 @@ HumanCompiler currently has two scheduler-related layers:
   data, maps database models to optimizer inputs, applies ownership checks, and
   converts solver results back to API responses used by the web app.
 
-The external `Scheduler` repository should grow a HumanCompiler-oriented
-experimental API first. HumanCompiler should continue to keep database models
-behind adapter code and pass only plain scheduling inputs into that package.
+The external `Scheduler` repository now provides the PyPI package
+`humancompiler-scheduler`. HumanCompiler keeps database models behind adapter
+code and passes only plain scheduling inputs into that package.
 
 ## Daily API Shape To Preserve
 
@@ -47,9 +47,15 @@ priority, kind, due date, goal ID, and project ID.
   explain why a task was placed earlier or later within the day.
 - The daily response does not include unscheduled reasons or score breakdowns.
 
-## Phase 0 Boundary
+## Runtime Boundary
 
-For the first integration phase, HumanCompiler should not import the external
-`Scheduler` package. The immediate goal is to document the boundary and keep
-the current API stable while the external package develops fixtures, review
-commands, and a more human-like daily planning model.
+Daily scheduling imports `humancompiler_scheduler.human` and maps existing API
+task/slot request data into `HumanDailyFixture`. `POST /api/schedule/daily`
+keeps the existing response shape for the web app, while the backend uses
+Scheduler's timeline daily solver and accepts optional `solver_config`
+overrides.
+
+Weekly task selection still uses the existing HumanCompiler weekly optimizer
+because `humancompiler-scheduler==0.1.0` does not yet expose a weekly selection
+API. Keep the weekly adapter isolated so it can move once Scheduler publishes a
+weekly contract.

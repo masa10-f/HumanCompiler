@@ -3,7 +3,10 @@ Scheduler API endpoints for task scheduling optimization.
 """
 
 import logging
-from datetime import datetime, time, UTC, timedelta
+import math
+from dataclasses import fields
+from datetime import UTC, date, datetime, time, timedelta
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 from uuid import uuid4
 
@@ -12,14 +15,23 @@ from pydantic import BaseModel, Field, field_validator, ConfigDict, field_serial
 from sqlmodel import Session, select, cast, String
 
 from humancompiler_optimizer.daily import (
-    DailySolverConfig,
+    Assignment,
     FixedAssignment,
     ScheduleResult,
     SchedulerTask,
     SlotKind,
     TaskKind,
     TimeSlot,
-    optimize_daily_schedule,
+)
+from humancompiler_scheduler.human import (
+    HumanDailyFixture,
+    HumanDailySolverConfig,
+    HumanFixedAssignment,
+    HumanTask,
+    HumanTimeSlot,
+    HumanWorkKind,
+    human_daily_solver_config_from_dict,
+    plan_daily_schedule,
 )
 
 from humancompiler_api.auth import get_current_user_id
@@ -44,9 +56,209 @@ from humancompiler_api.models import QuickTask
 from uuid import UUID
 from sqlalchemy.exc import SQLAlchemyError, DatabaseError
 
-# OR-Tools CP-SAT scheduler implementation
+# humancompiler-scheduler package integration
 logger = logging.getLogger(__name__)
-logger.info("Using OR-Tools CP-SAT constraint solver for scheduling optimization")
+logger.info("Using humancompiler-scheduler package for daily scheduling optimization")
+
+
+SCHEDULER_CONFIG_CONTROLS: tuple[dict[str, Any], ...] = (
+    {
+        "key": "kind_match_score",
+        "label": "作業種別一致",
+        "group": "適合",
+        "min": 0,
+        "max": 30,
+        "step": 1,
+        "visibility": "essential",
+        "help": "タスク種別とスロット種別が一致したときの加点",
+    },
+    {
+        "key": "kind_mismatch_score",
+        "label": "作業種別不一致",
+        "group": "適合",
+        "min": 0,
+        "max": 30,
+        "step": 1,
+        "visibility": "tuning",
+        "help": "一致しないスロットにも置ける場合の基礎点",
+    },
+    {
+        "key": "priority_score_base",
+        "label": "優先度ベース",
+        "group": "優先度",
+        "min": 1,
+        "max": 20,
+        "step": 1,
+        "visibility": "essential",
+        "help": "優先度番号をスコアへ変換するときの基準値",
+    },
+    {
+        "key": "deadline_soon_days",
+        "label": "期限接近期日",
+        "group": "優先度",
+        "min": 0,
+        "max": 14,
+        "step": 1,
+        "visibility": "tuning",
+        "help": "期限ボーナスを付ける日数",
+    },
+    {
+        "key": "deadline_score",
+        "label": "期限スコア",
+        "group": "優先度",
+        "min": 0,
+        "max": 30,
+        "step": 1,
+        "visibility": "essential",
+        "help": "期限が近いタスクへの加点",
+    },
+    {
+        "key": "overdue_score",
+        "label": "期限超過スコア",
+        "group": "優先度",
+        "min": 0,
+        "max": 80,
+        "step": 1,
+        "visibility": "tuning",
+        "help": "期限を過ぎたタスクへの加点",
+    },
+    {
+        "key": "fixed_assignment_score",
+        "label": "固定配置",
+        "group": "制約ヒント",
+        "min": 0,
+        "max": 200,
+        "step": 1,
+        "visibility": "expert",
+        "help": "手動配置されたタスクへの加点",
+    },
+    {
+        "key": "dependency_unlock_score",
+        "label": "依存解除",
+        "group": "制約ヒント",
+        "min": 0,
+        "max": 30,
+        "step": 1,
+        "visibility": "tuning",
+        "help": "後続タスクを進められる前提タスクへの加点",
+    },
+    {
+        "key": "project_switch_penalty",
+        "label": "プロジェクト切替",
+        "group": "流れ",
+        "min": 0,
+        "max": 30,
+        "step": 1,
+        "visibility": "essential",
+        "help": "短い間隔でプロジェクトが切り替わるときの減点",
+    },
+    {
+        "key": "project_switch_reset_gap_minutes",
+        "label": "切替リセット間隔",
+        "group": "流れ",
+        "min": 0,
+        "max": 180,
+        "step": 5,
+        "visibility": "expert",
+        "help": "切替ペナルティをリセットする休憩時間",
+    },
+    {
+        "key": "long_continuous_threshold_minutes",
+        "label": "連続作業しきい値",
+        "group": "流れ",
+        "min": 0,
+        "max": 360,
+        "step": 5,
+        "visibility": "tuning",
+        "help": "長時間連続作業とみなす分数",
+    },
+    {
+        "key": "long_continuous_penalty",
+        "label": "連続作業ペナルティ",
+        "group": "流れ",
+        "min": 0,
+        "max": 40,
+        "step": 1,
+        "visibility": "tuning",
+        "help": "長時間連続作業への減点",
+    },
+    {
+        "key": "break_reset_gap_minutes",
+        "label": "休憩リセット間隔",
+        "group": "流れ",
+        "min": 0,
+        "max": 180,
+        "step": 5,
+        "visibility": "expert",
+        "help": "連続作業カウントをリセットする休憩時間",
+    },
+    {
+        "key": "small_gap_minutes",
+        "label": "小さな空き時間",
+        "group": "詰め方",
+        "min": 0,
+        "max": 120,
+        "step": 5,
+        "visibility": "expert",
+        "help": "埋める価値が高い残り時間の幅",
+    },
+    {
+        "key": "small_gap_fill_score",
+        "label": "空き時間充填",
+        "group": "詰め方",
+        "min": 0,
+        "max": 30,
+        "step": 1,
+        "visibility": "tuning",
+        "help": "小さな空き時間を埋める配置への加点",
+    },
+)
+
+
+class SchedulerSolverConfigInput(BaseModel):
+    """Optional Human daily solver config override."""
+
+    kind_match_score: int | None = Field(None, ge=0, le=30)
+    kind_mismatch_score: int | None = Field(None, ge=0, le=30)
+    priority_score_base: int | None = Field(None, ge=1, le=20)
+    deadline_soon_days: int | None = Field(None, ge=0, le=14)
+    deadline_score: int | None = Field(None, ge=0, le=30)
+    overdue_score: int | None = Field(None, ge=0, le=80)
+    fixed_assignment_score: int | None = Field(None, ge=0, le=200)
+    dependency_unlock_score: int | None = Field(None, ge=0, le=30)
+    project_switch_penalty: int | None = Field(None, ge=0, le=30)
+    project_switch_reset_gap_minutes: int | None = Field(None, ge=0, le=180)
+    long_continuous_threshold_minutes: int | None = Field(None, ge=0, le=360)
+    long_continuous_penalty: int | None = Field(None, ge=0, le=40)
+    break_reset_gap_minutes: int | None = Field(None, ge=0, le=180)
+    small_gap_minutes: int | None = Field(None, ge=0, le=120)
+    small_gap_fill_score: int | None = Field(None, ge=0, le=30)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class SchedulerConfigControl(BaseModel):
+    """UI control metadata for a scheduler solver parameter."""
+
+    key: str
+    label: str
+    group: str
+    min: int
+    max: int
+    step: int
+    visibility: str
+    help: str
+
+
+class SchedulerTuningConfigResponse(BaseModel):
+    """Default scheduler tuning payload for the web UI."""
+
+    backend_package: str
+    backend_version: str
+    defaults: dict[str, int]
+    config_schema: list[SchedulerConfigControl] = Field(alias="schema")
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 def _get_task_actual_hours(session: Session, task_ids: list[str]) -> dict[str, float]:
@@ -239,6 +451,164 @@ def _get_goal_dependencies(
     except Exception as e:
         logger.error(f"Unexpected error getting goal dependencies: {e}")
         return {}
+
+
+def _scheduler_package_version() -> str:
+    try:
+        return version("humancompiler-scheduler")
+    except PackageNotFoundError:
+        return "unknown"
+
+
+def _human_solver_config_to_dict(config: HumanDailySolverConfig) -> dict[str, int]:
+    return {field.name: int(getattr(config, field.name)) for field in fields(config)}
+
+
+def _coerce_human_solver_config(
+    config: SchedulerSolverConfigInput | HumanDailySolverConfig | dict[str, Any] | None,
+) -> HumanDailySolverConfig:
+    if isinstance(config, HumanDailySolverConfig):
+        return config
+
+    defaults = _human_solver_config_to_dict(HumanDailySolverConfig())
+    if config is None:
+        return HumanDailySolverConfig()
+
+    if isinstance(config, SchedulerSolverConfigInput):
+        overrides = config.model_dump(exclude_none=True)
+    else:
+        overrides = {key: value for key, value in config.items() if value is not None}
+    return human_daily_solver_config_from_dict({**defaults, **overrides})
+
+
+def _to_human_work_kind(kind: TaskKind | SlotKind | str) -> HumanWorkKind:
+    raw_value = kind.value if hasattr(kind, "value") else str(kind)
+    mapping = {
+        "light_work": HumanWorkKind.LIGHT_WORK,
+        "focused_work": HumanWorkKind.FOCUSED_WORK,
+        "study": HumanWorkKind.STUDY,
+    }
+    return mapping.get(raw_value, HumanWorkKind.LIGHT_WORK)
+
+
+def _hours_to_minutes(value: float | None) -> int | None:
+    if value is None:
+        return None
+    return max(0, int(math.ceil(float(value) * 60)))
+
+
+def _clamp_priority(priority: int | None) -> int:
+    if priority is None:
+        return 3
+    return min(5, max(1, int(priority)))
+
+
+def _task_source_for_scheduler(task: SchedulerTask) -> str:
+    if task.is_weekly_recurring:
+        return "weekly_recurring_task"
+    if task.id.startswith("quick_"):
+        return "quick_task"
+    return "task"
+
+
+def _build_scheduler_task_dependencies(
+    tasks: list[SchedulerTask],
+    task_dependencies: dict[str, list[str]],
+    goal_dependencies: dict[str, list[str]],
+) -> dict[str, list[str]]:
+    task_ids = {task.id for task in tasks}
+    merged: dict[str, set[str]] = {
+        task_id: {dep_id for dep_id in deps if dep_id in task_ids}
+        for task_id, deps in task_dependencies.items()
+        if task_id in task_ids
+    }
+
+    goal_to_task_ids: dict[str, list[str]] = {}
+    for task in tasks:
+        if task.goal_id and not task.is_weekly_recurring:
+            goal_to_task_ids.setdefault(task.goal_id, []).append(task.id)
+
+    for goal_id, prerequisite_goal_ids in goal_dependencies.items():
+        dependent_task_ids = goal_to_task_ids.get(goal_id, [])
+        if not dependent_task_ids:
+            continue
+        prerequisite_task_ids: list[str] = []
+        for prerequisite_goal_id in prerequisite_goal_ids:
+            prerequisite_task_ids.extend(goal_to_task_ids.get(prerequisite_goal_id, []))
+        if not prerequisite_task_ids:
+            continue
+        for task_id in dependent_task_ids:
+            merged.setdefault(task_id, set()).update(prerequisite_task_ids)
+
+    return {
+        task_id: sorted(prerequisite_ids)
+        for task_id, prerequisite_ids in merged.items()
+        if prerequisite_ids
+    }
+
+
+def _build_human_daily_fixture(
+    *,
+    tasks: list[SchedulerTask],
+    time_slots: list[TimeSlot],
+    schedule_date: date,
+    task_dependencies: dict[str, list[str]],
+    goal_dependencies: dict[str, list[str]],
+    fixed_assignments: list[FixedAssignment] | None,
+    solver_config: SchedulerSolverConfigInput
+    | HumanDailySolverConfig
+    | dict[str, Any]
+    | None,
+) -> HumanDailyFixture:
+    human_tasks = [
+        HumanTask(
+            id=task.id,
+            title=task.title,
+            remaining_minutes=_hours_to_minutes(task.remaining_hours) or 0,
+            priority=_clamp_priority(task.priority),
+            work_kind=_to_human_work_kind(task.kind),
+            due_at=task.due_date,
+            project_id=task.project_id,
+            goal_id=task.goal_id,
+            source=_task_source_for_scheduler(task),
+        )
+        for task in tasks
+    ]
+
+    human_slots = [
+        HumanTimeSlot(
+            index=index,
+            start=slot.start,
+            end=slot.end,
+            work_kind=_to_human_work_kind(slot.kind),
+            capacity_minutes=_hours_to_minutes(slot.capacity_hours),
+            assigned_project_id=slot.assigned_project_id,
+        )
+        for index, slot in enumerate(time_slots)
+    ]
+
+    human_fixed_assignments = [
+        HumanFixedAssignment(
+            task_id=assignment.task_id,
+            slot_index=assignment.slot_index,
+            duration_minutes=_hours_to_minutes(assignment.duration_hours),
+        )
+        for assignment in (fixed_assignments or [])
+    ]
+
+    return HumanDailyFixture(
+        date=schedule_date,
+        tasks=human_tasks,
+        time_slots=human_slots,
+        fixed_assignments=human_fixed_assignments,
+        task_dependencies=_build_scheduler_task_dependencies(
+            tasks,
+            task_dependencies,
+            goal_dependencies,
+        ),
+        solver_config=_coerce_human_solver_config(solver_config),
+        metadata={"backend": "humancompiler-scheduler"},
+    )
 
 
 def _batch_check_task_completion_status(
@@ -673,9 +1043,13 @@ def optimize_schedule(
     session: Session | None = None,
     user_id: str | UUID | None = None,
     fixed_assignments: list[FixedAssignment] | None = None,
+    solver_config: SchedulerSolverConfigInput
+    | HumanDailySolverConfig
+    | dict[str, Any]
+    | None = None,
 ) -> ScheduleResult:
     """
-    OR-Tools CP-SAT constraint solver implementation for task scheduling optimization.
+    humancompiler-scheduler implementation for task scheduling optimization.
 
     Optimizes task assignment considering:
     - Time constraints: Task duration fits in time slots
@@ -823,21 +1197,22 @@ def optimize_schedule(
             schedule_date = None
     elif isinstance(date, datetime):
         schedule_date = date
+    if schedule_date is None:
+        schedule_date = datetime.now()
 
     try:
-        solver_result = optimize_daily_schedule(
-            tasks,
-            time_slots,
-            date=schedule_date,
+        fixture = _build_human_daily_fixture(
+            tasks=tasks,
+            time_slots=time_slots,
+            schedule_date=schedule_date.date(),
             task_dependencies=task_dependencies,
             goal_dependencies=goal_dependencies,
-            config=DailySolverConfig(
-                max_time_in_seconds=5.0, log_search_progress=False
-            ),
             fixed_assignments=fixed_assignments,
+            solver_config=solver_config,
         )
+        report = plan_daily_schedule(fixture)
     except Exception as e:
-        logger.error(f"OR-Tools solver failed with exception: {e}")
+        logger.error(f"humancompiler-scheduler failed with exception: {e}")
         return ScheduleResult(
             success=False,
             assignments=[],
@@ -849,20 +1224,37 @@ def optimize_schedule(
             objective_value=0.0,
         )
 
-    unscheduled_tasks = list(solver_result.unscheduled_tasks)
+    unscheduled_tasks = list(report.plan.unscheduled_task_ids)
     if session and unscheduled_due_to_dependencies:
         unscheduled_tasks.extend(unscheduled_due_to_dependencies)
+
+    # Reuse the legacy response dataclass so the rest of the API can stay stable
+    # while the backend moves to humancompiler-scheduler.
+    assignments = [
+        Assignment(
+            task_id=block.task_id,
+            slot_index=block.slot_index,
+            start_time=block.start,
+            duration_hours=block.duration_minutes / 60.0,
+            is_fixed=block.is_fixed,
+        )
+        for block in report.plan.blocks
+    ]
+    objective_value = float(sum(score.total for score in report.score_breakdown))
 
     # Use wall-clock time from start (includes dependency filtering) rather than
     # solver_result.solve_time_seconds (solver-only time) to reflect total API latency.
     return ScheduleResult(
-        success=solver_result.success,
-        assignments=solver_result.assignments,
+        success=not report.violations,
+        assignments=assignments,
         unscheduled_tasks=unscheduled_tasks,
-        total_scheduled_hours=solver_result.total_scheduled_hours,
-        optimization_status=solver_result.optimization_status,
+        total_scheduled_hours=sum(
+            block.duration_minutes for block in report.plan.blocks
+        )
+        / 60.0,
+        optimization_status=report.plan.status.upper(),
         solve_time_seconds=time_module.time() - start_time,
-        objective_value=solver_result.objective_value,
+        objective_value=objective_value,
     )
 
 
@@ -871,6 +1263,24 @@ def optimize_schedule(
 
 logger.setLevel(logging.DEBUG)
 router = APIRouter(prefix="/schedule", tags=["scheduling"])
+
+
+@router.get("/tuning/config", response_model=SchedulerTuningConfigResponse)
+async def get_scheduler_tuning_config():
+    """Return default solver parameters and UI schema for scheduler tuning."""
+    default_config = HumanDailySolverConfig()
+    control_by_key = {item["key"]: item for item in SCHEDULER_CONFIG_CONTROLS}
+    schema = [
+        SchedulerConfigControl(**control_by_key[field.name])
+        for field in fields(HumanDailySolverConfig)
+        if field.name in control_by_key
+    ]
+    return SchedulerTuningConfigResponse(
+        backend_package="humancompiler-scheduler",
+        backend_version=_scheduler_package_version(),
+        defaults=_human_solver_config_to_dict(default_config),
+        config_schema=schema,
+    )
 
 
 class TimeSlotInput(BaseModel):
@@ -967,6 +1377,10 @@ class DailyScheduleRequest(BaseModel):
     time_slots: list[TimeSlotInput] = Field(..., description="Available time slots")
     preferences: dict[str, Any] = Field(
         default_factory=dict, description="Scheduling preferences"
+    )
+    solver_config: SchedulerSolverConfigInput | None = Field(
+        None,
+        description="Optional humancompiler-scheduler solver parameter overrides",
     )
     # User-defined fixed assignments for manual task scheduling
     fixed_assignments: list[FixedAssignmentInput] = Field(
@@ -1117,12 +1531,12 @@ async def create_daily_schedule(
     session: Session = Depends(db.get_session),
 ):
     """
-    Create optimal daily schedule for tasks using OR-Tools CP-SAT solver.
+    Create optimal daily schedule for tasks using humancompiler-scheduler.
 
     This endpoint:
     1. Fetches user's tasks (optionally filtered by project/goal)
     2. Converts time slots to scheduler format
-    3. Runs OR-Tools optimization
+    3. Runs humancompiler-scheduler daily planning
     4. Returns optimized schedule with assignments
     """
     try:
@@ -1364,6 +1778,7 @@ async def create_daily_schedule(
             session,
             user_id,
             fixed_assignments=scheduler_fixed_assignments,
+            solver_config=request.solver_config,
         )
 
         # Process results
@@ -1442,9 +1857,9 @@ async def create_daily_schedule(
 
 @router.get("/test", response_model=dict[str, str])
 async def test_scheduler():
-    """Test endpoint to verify OR-Tools CP-SAT scheduler integration."""
+    """Test endpoint to verify humancompiler-scheduler integration."""
     try:
-        # Test CP-SAT solver with simple scenario
+        # Test scheduler backend with a simple scenario.
         test_tasks = [
             SchedulerTask(
                 id="test_1",
@@ -1484,19 +1899,20 @@ async def test_scheduler():
 
         return {
             "status": "success",
-            "message": "OR-Tools CP-SAT scheduler working correctly",
+            "message": "humancompiler-scheduler backend working correctly",
             "test_assignments": str(len(result.assignments)),
             "optimization_status": result.optimization_status,
             "solve_time_seconds": str(result.solve_time_seconds),
-            "ortools_available": "True",
-            "implementation": "cp_sat",
+            "backend_package": "humancompiler-scheduler",
+            "backend_version": _scheduler_package_version(),
+            "implementation": "timeline_greedy",
         }
     except Exception as e:
         return {
             "status": "error",
-            "message": f"CP-SAT scheduler test failed: {str(e)}",
-            "ortools_available": "False",
-            "implementation": "cp_sat",
+            "message": f"humancompiler-scheduler test failed: {str(e)}",
+            "backend_package": "humancompiler-scheduler",
+            "implementation": "timeline_greedy",
         }
 
 

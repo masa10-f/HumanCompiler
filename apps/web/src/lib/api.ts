@@ -42,6 +42,7 @@ import type {
   PrioritySuggestions,
   ScheduleRequest,
   ScheduleResult,
+  SchedulerTuningConfig,
   SavedWeeklySchedule,
   SlotTemplate,
   SlotTemplateCreate,
@@ -626,6 +627,10 @@ class ApiClient {
 
   async testScheduler(): Promise<TestSchedulerResponse> {
     return this.request<TestSchedulerResponse>('/api/schedule/test');
+  }
+
+  async getSchedulerTuningConfig(): Promise<SchedulerTuningConfig> {
+    return this.request<SchedulerTuningConfig>('/api/schedule/tuning/config');
   }
 
   async getWeeklyScheduleOptions(): Promise<import('@/types/ai-planning').WeeklyScheduleOption[]> {
@@ -1398,6 +1403,7 @@ export const schedulingApi = {
   getByDate: (date: string) => apiClient.getDailySchedule(date),
   list: (skip?: number, limit?: number) => apiClient.listDailySchedules(skip, limit),
   test: () => apiClient.testScheduler(),
+  getTuningConfig: () => apiClient.getSchedulerTuningConfig(),
   getWeeklyScheduleOptions: () => apiClient.getWeeklyScheduleOptions(),
 };
 

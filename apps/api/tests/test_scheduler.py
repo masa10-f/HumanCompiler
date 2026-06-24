@@ -40,7 +40,19 @@ class TestSchedulerAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
-        assert "OR-Tools CP-SAT scheduler working correctly" in data["message"]
+        assert "humancompiler-scheduler backend working correctly" in data["message"]
+        assert data["backend_package"] == "humancompiler-scheduler"
+
+    def test_scheduler_tuning_config_endpoint(self):
+        """Test scheduler tuning config endpoint."""
+        response = client.get("/api/schedule/tuning/config")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["backend_package"] == "humancompiler-scheduler"
+        assert data["backend_version"]
+        assert data["defaults"]["kind_match_score"] >= 0
+        assert any(item["key"] == "project_switch_penalty" for item in data["schema"])
 
     @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
     @patch("humancompiler_api.routers.scheduler.db.get_session")
