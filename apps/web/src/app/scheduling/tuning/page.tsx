@@ -256,35 +256,50 @@ export default function SchedulerTuningPage() {
                   {groupedControls.map(([group, controls]) => (
                     <div key={group} className="space-y-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
                       <h2 className="text-sm font-semibold text-muted-foreground">{group}</h2>
-                      {controls.map((control) => (
-                        <div key={control.key} className="space-y-2">
-                          <div className="flex items-center justify-between gap-3">
-                            <Label className="text-sm">{control.label}</Label>
-                            <Input
-                              type="number"
+                      {controls.map((control) => {
+                        const controlId = `scheduler-control-${control.key}`;
+                        const helpId = `${controlId}-help`;
+
+                        return (
+                          <div key={control.key} className="space-y-2">
+                            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_96px] sm:items-start">
+                              <div className="min-w-0">
+                                <Label htmlFor={controlId} className="text-sm">
+                                  {control.label}
+                                </Label>
+                                <p id={helpId} className="mt-1 text-xs leading-5 text-muted-foreground">
+                                  {control.help}
+                                </p>
+                              </div>
+                              <Input
+                                id={controlId}
+                                aria-describedby={helpId}
+                                type="number"
+                                min={control.min}
+                                max={control.max}
+                                step={control.step}
+                                value={config[control.key]}
+                                onChange={(event) =>
+                                  updateConfigValue(control.key, Number(event.target.value))
+                                }
+                                className="h-8 w-full sm:w-24 sm:justify-self-end"
+                              />
+                            </div>
+                            <Slider
+                              aria-label={`${control.label}を調整`}
                               min={control.min}
                               max={control.max}
                               step={control.step}
-                              value={config[control.key]}
-                              onChange={(event) =>
-                                updateConfigValue(control.key, Number(event.target.value))
-                              }
-                              className="h-8 w-24"
+                              value={[config[control.key]]}
+                              onValueChange={([value]) => {
+                                if (value !== undefined) {
+                                  updateConfigValue(control.key, value);
+                                }
+                              }}
                             />
                           </div>
-                          <Slider
-                            min={control.min}
-                            max={control.max}
-                            step={control.step}
-                            value={[config[control.key]]}
-                            onValueChange={([value]) => {
-                              if (value !== undefined) {
-                                updateConfigValue(control.key, value);
-                              }
-                            }}
-                          />
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ))}
                 </CardContent>
