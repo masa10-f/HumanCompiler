@@ -1279,7 +1279,7 @@ async def get_scheduler_tuning_config():
         backend_package="humancompiler-scheduler",
         backend_version=_scheduler_package_version(),
         defaults=_human_solver_config_to_dict(default_config),
-        config_schema=schema,
+        schema=schema,
     )
 
 
