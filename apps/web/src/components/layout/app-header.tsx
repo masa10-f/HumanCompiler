@@ -98,9 +98,9 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
 
   return (
     <header className="bg-card/95 backdrop-blur-sm shadow-md border-b border-border/60 sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16 gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-4">
+      <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16 gap-2 xl:gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden xl:gap-4">
             <div className="flex shrink-0 items-center space-x-3">
               <Image
                 src="/logo.png"
@@ -114,7 +114,7 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
               </h1>
             </div>
             {/* Desktop Navigation */}
-            <nav className="hidden min-w-0 flex-1 items-center gap-1 lg:flex">
+            <nav className="hidden min-w-0 flex-1 items-center gap-1 overflow-hidden lg:flex">
               {PRIMARY_NAVIGATION_ITEMS.map((item) => {
                 if (item.id === 'scheduling') {
                   return (
@@ -122,7 +122,7 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                       <DropdownMenuTrigger asChild>
                         <Button
                           variant="ghost"
-                          className={`${isSchedulingActive ? "bg-primary/10 text-primary font-medium border-b-2 border-primary rounded-none" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"} px-2 xl:px-3`}
+                          className={`${isSchedulingActive ? "bg-primary/10 text-primary font-medium border-b-2 border-primary rounded-none" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"} shrink-0 whitespace-nowrap px-2 xl:px-3`}
                           title={item.label}
                         >
                           <item.icon className="h-4 w-4 xl:mr-2" />
@@ -151,7 +151,7 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                     key={item.id}
                     variant="ghost"
                     onClick={() => router.push(item.path)}
-                    className={`${getPageClass(item.id)} px-2 xl:px-3`}
+                    className={`${getPageClass(item.id)} shrink-0 whitespace-nowrap px-2 xl:px-3`}
                     title={item.label}
                   >
                     <item.icon className="h-4 w-4 xl:mr-2" />
@@ -163,7 +163,7 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
-                    className={`${SECONDARY_NAVIGATION_ITEMS.some((item) => item.id === currentPage) || currentPage === 'settings' ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"} px-2 xl:px-3`}
+                    className={`${SECONDARY_NAVIGATION_ITEMS.some((item) => item.id === currentPage) || currentPage === 'settings' ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"} shrink-0 whitespace-nowrap px-2 xl:px-3`}
                     title="その他"
                   >
                     <MoreHorizontal className="h-4 w-4 xl:mr-2" />
@@ -275,9 +275,9 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
               </Dialog>
             </div>
           </div>
-          <div className="hidden shrink-0 lg:flex items-center space-x-2 xl:space-x-4">
+          <div className="hidden shrink-0 lg:flex items-center gap-2 xl:gap-3">
             {user?.email && (
-              <span className="hidden xl:inline text-sm text-muted-foreground px-3 py-1.5 bg-muted/50 rounded-full truncate max-w-[200px]">
+              <span className="hidden max-w-[220px] truncate rounded-full bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground 2xl:inline-block">
                 {user.email}
               </span>
             )}
