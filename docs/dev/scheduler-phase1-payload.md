@@ -38,6 +38,9 @@ shape.
   "preferences": {},
   "solver_config": {
     "kind_match_score": 8,
+    "min_block_minutes": 15,
+    "block_granularity_minutes": 15,
+    "max_candidate_block_minutes": 180,
     "project_switch_penalty": 4
   },
   "fixed_assignments": [
@@ -105,6 +108,13 @@ tasks:
 task_dependencies:
   task-proposal:
     - task-research
+
+solver_config:
+  kind_match_score: 8
+  min_block_minutes: 15
+  block_granularity_minutes: 15
+  max_candidate_block_minutes: 180
+  project_switch_penalty: 4
 ```
 
 ## Input Mapping
@@ -123,12 +133,15 @@ task_dependencies:
 | quick task ID | `tasks[].id` | Prefix with `quick_`, matching current API adapter behavior. |
 | task title | `tasks[].title` | Safe to anonymize for exported fixtures later. |
 | estimate minus actual logged hours | `tasks[].remaining_minutes` | Current API already computes remaining hours for regular tasks. |
-| `Task.priority` / `QuickTask.priority` | `tasks[].priority` | Quick task priority is already passed. Regular task priority is still a known gap in the current adapter. |
+| `Task.priority` / `QuickTask.priority` | `tasks[].priority` | Both regular tasks and quick tasks are clamped into Scheduler's 1-5 range. |
 | `work_type` | `tasks[].work_kind` | Falls back to title-based kind inference only when regular tasks lack `work_type`. |
 | `due_date` | `tasks[].due_at` | Use ISO datetime when present. |
 | task goal | `tasks[].goal_id` | Regular tasks only. |
 | goal project | `tasks[].project_id` | Derived from the task goal for regular tasks. |
 | task dependencies | `task_dependencies` | Map dependent task ID to prerequisite task IDs. |
+| `solver_config.min_block_minutes` | `solver_config.min_block_minutes` | v0.2.0 block generation parameter, forwarded when supported by the installed package. |
+| `solver_config.block_granularity_minutes` | `solver_config.block_granularity_minutes` | v0.2.0 block generation parameter, forwarded when supported by the installed package. |
+| `solver_config.max_candidate_block_minutes` | `solver_config.max_candidate_block_minutes` | v0.2.0 block generation parameter, forwarded when supported by the installed package. |
 
 ## Output Mapping
 
@@ -148,7 +161,8 @@ task_dependencies:
 ## Current Gaps For Later Phases
 
 - Weekly task selection has not moved to `humancompiler-scheduler` yet because
-  version `0.1.0` only exposes Human daily scheduling contracts.
+  the current local v0.2.0 contract only exposes Human daily scheduling
+  contracts.
 - The current daily API does not expose unscheduled reasons, score breakdowns,
   or constraint violations.
 - Daily assignments now come from Scheduler timeline blocks, so tasks within

@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from humancompiler_api.auth import get_current_user_id
 from humancompiler_api.main import app
 from humancompiler_api.models import WorkType
+from humancompiler_api.routers.scheduler import SCHEDULER_CONFIG_CONTROLS
 
 client = TestClient(app)
 
@@ -53,6 +54,22 @@ class TestSchedulerAPI:
         assert data["backend_version"]
         assert data["defaults"]["kind_match_score"] >= 0
         assert any(item["key"] == "project_switch_penalty" for item in data["schema"])
+        assert set(data["defaults"]) == {item["key"] for item in data["schema"]}
+
+        control_keys = {item["key"] for item in SCHEDULER_CONFIG_CONTROLS}
+        assert {
+            "min_block_minutes",
+            "block_granularity_minutes",
+            "max_candidate_block_minutes",
+        }.issubset(control_keys)
+
+        schema_keys = {item["key"] for item in data["schema"]}
+        if "min_block_minutes" in data["defaults"]:
+            assert {
+                "min_block_minutes",
+                "block_granularity_minutes",
+                "max_candidate_block_minutes",
+            }.issubset(schema_keys)
 
     @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
     @patch("humancompiler_api.routers.scheduler.db.get_session")
@@ -94,6 +111,11 @@ class TestSchedulerAPI:
             "date": "2025-06-23",
             "goal_id": goal_id,
             "time_slots": [{"start": "09:00", "end": "12:00", "kind": "focused_work"}],
+            "solver_config": {
+                "min_block_minutes": 15,
+                "block_granularity_minutes": 15,
+                "max_candidate_block_minutes": 90,
+            },
         }
 
         # No need for auth header since we're using dependency override
@@ -226,6 +248,22 @@ class TestSchedulerAPI:
         response = client.post("/api/schedule/daily", json=request_data)
 
         assert response.status_code == 422  # Validation error
+
+    def test_create_daily_schedule_invalid_block_config(self, mock_auth):
+        """Test daily schedule rejects inconsistent scheduler block config."""
+        request_data = {
+            "date": "2025-06-23",
+            "goal_id": str(uuid4()),
+            "time_slots": [{"start": "09:00", "end": "12:00", "kind": "focused_work"}],
+            "solver_config": {
+                "min_block_minutes": 30,
+                "max_candidate_block_minutes": 15,
+            },
+        }
+
+        response = client.post("/api/schedule/daily", json=request_data)
+
+        assert response.status_code == 422
 
     def test_create_daily_schedule_empty_time_slots(self, mock_auth):
         """Test schedule creation with empty time slots."""

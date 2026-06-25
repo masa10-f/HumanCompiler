@@ -34,11 +34,13 @@ and `is_fixed`.
 Each unscheduled task should continue including ID, title, remaining estimate,
 priority, kind, due date, goal ID, and project ID.
 
-## Current Gaps
+## Current State And Gaps
 
-- Daily scheduling currently returns slot assignments rather than true timeline
-  blocks. Multiple tasks assigned to the same slot can share the same
-  `start_time`.
+- Daily scheduling now adapts HumanCompiler data into Scheduler's Human daily
+  fixture and uses the timeline daily solver through `plan_daily_schedule`.
+- The API still returns the existing assignment-shaped response so the web app
+  contract stays stable, but each assignment is backed by Scheduler timeline
+  blocks with concrete `start_time` and duration.
 - Regular task priority is now passed through to the daily optimizer and to
   unscheduled task response data. The remaining priority work is manual app
   validation that same-condition priority `1` tasks are favored over priority
@@ -56,6 +58,13 @@ Scheduler's timeline daily solver and accepts optional `solver_config`
 overrides.
 
 Weekly task selection still uses the existing HumanCompiler weekly optimizer
-because `humancompiler-scheduler==0.1.0` does not yet expose a weekly selection
-API. Keep the weekly adapter isolated so it can move once Scheduler publishes a
-weekly contract.
+because the local Scheduler v0.2.0 daily contract still does not expose a
+weekly selection API. Keep the weekly adapter isolated so it can move once
+Scheduler publishes a weekly contract.
+
+The scheduler tuning endpoint derives its defaults and visible controls from
+the installed `HumanDailySolverConfig`. This lets the backend run on the current
+published package while automatically surfacing v0.2.0 block-generation
+parameters (`min_block_minutes`, `block_granularity_minutes`, and
+`max_candidate_block_minutes`) once that package version is installed on the
+server.

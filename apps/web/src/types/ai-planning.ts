@@ -239,6 +239,9 @@ export interface SchedulerSolverConfig {
   overdue_score?: number;
   fixed_assignment_score?: number;
   dependency_unlock_score?: number;
+  min_block_minutes?: number;
+  block_granularity_minutes?: number;
+  max_candidate_block_minutes?: number;
   project_switch_penalty?: number;
   project_switch_reset_gap_minutes?: number;
   long_continuous_threshold_minutes?: number;
@@ -262,7 +265,7 @@ export interface SchedulerConfigControl {
 export interface SchedulerTuningConfig {
   backend_package: string;
   backend_version: string;
-  defaults: Required<SchedulerSolverConfig>;
+  defaults: SchedulerSolverConfig;
   schema: SchedulerConfigControl[];
 }
 

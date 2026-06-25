@@ -6,12 +6,20 @@ import logging
 import math
 from dataclasses import fields
 from datetime import UTC, date, datetime, time, timedelta
+from enum import Enum
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field, field_validator, ConfigDict, field_serializer
+from pydantic import (
+    BaseModel,
+    Field,
+    field_validator,
+    ConfigDict,
+    field_serializer,
+    model_validator,
+)
 from sqlmodel import Session, select, cast, String
 
 from humancompiler_optimizer.daily import (
@@ -143,6 +151,36 @@ SCHEDULER_CONFIG_CONTROLS: tuple[dict[str, Any], ...] = (
         "help": "後続タスクを進められる前提タスクへの加点",
     },
     {
+        "key": "min_block_minutes",
+        "label": "最小ブロック",
+        "group": "詰め方",
+        "min": 1,
+        "max": 120,
+        "step": 5,
+        "visibility": "essential",
+        "help": "自動生成される作業ブロックの最小分数",
+    },
+    {
+        "key": "block_granularity_minutes",
+        "label": "ブロック粒度",
+        "group": "詰め方",
+        "min": 1,
+        "max": 60,
+        "step": 5,
+        "visibility": "tuning",
+        "help": "候補ブロック時間を増減させる分単位の刻み幅",
+    },
+    {
+        "key": "max_candidate_block_minutes",
+        "label": "最大候補ブロック",
+        "group": "詰め方",
+        "min": 15,
+        "max": 480,
+        "step": 15,
+        "visibility": "essential",
+        "help": "1回の配置候補として検討する最大ブロック分数",
+    },
+    {
         "key": "project_switch_penalty",
         "label": "プロジェクト切替",
         "group": "流れ",
@@ -226,6 +264,9 @@ class SchedulerSolverConfigInput(BaseModel):
     overdue_score: int | None = Field(None, ge=0, le=80)
     fixed_assignment_score: int | None = Field(None, ge=0, le=200)
     dependency_unlock_score: int | None = Field(None, ge=0, le=30)
+    min_block_minutes: int | None = Field(None, ge=1, le=120)
+    block_granularity_minutes: int | None = Field(None, ge=1, le=60)
+    max_candidate_block_minutes: int | None = Field(None, ge=1, le=480)
     project_switch_penalty: int | None = Field(None, ge=0, le=30)
     project_switch_reset_gap_minutes: int | None = Field(None, ge=0, le=180)
     long_continuous_threshold_minutes: int | None = Field(None, ge=0, le=360)
@@ -235,6 +276,18 @@ class SchedulerSolverConfigInput(BaseModel):
     small_gap_fill_score: int | None = Field(None, ge=0, le=30)
 
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def validate_block_candidate_settings(self) -> "SchedulerSolverConfigInput":
+        min_block = self.min_block_minutes if self.min_block_minutes is not None else 15
+        if (
+            self.max_candidate_block_minutes is not None
+            and self.max_candidate_block_minutes < min_block
+        ):
+            raise ValueError(
+                "max_candidate_block_minutes must be at least min_block_minutes"
+            )
+        return self
 
 
 class SchedulerConfigControl(BaseModel):
@@ -482,7 +535,7 @@ def _coerce_human_solver_config(
 
 
 def _to_human_work_kind(kind: TaskKind | SlotKind | str) -> HumanWorkKind:
-    raw_value = kind.value if hasattr(kind, "value") else str(kind)
+    raw_value = kind.value if isinstance(kind, Enum) else str(kind)
     mapping = {
         "light_work": HumanWorkKind.LIGHT_WORK,
         "focused_work": HumanWorkKind.FOCUSED_WORK,

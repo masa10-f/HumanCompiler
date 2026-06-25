@@ -59,9 +59,9 @@ const slotKindOptions: Array<{ value: SlotKind; label: string }> = [
 ];
 
 function mergeConfig(
-  defaults: Required<SchedulerSolverConfig>,
+  defaults: SchedulerSolverConfig,
   saved?: SchedulerSolverConfig
-): Required<SchedulerSolverConfig> {
+): SchedulerSolverConfig {
   return { ...defaults, ...(saved ?? {}) };
 }
 
@@ -69,7 +69,7 @@ export default function SchedulerTuningPage() {
   const { user, loading: authLoading } = useAuth();
 
   const [tuningConfig, setTuningConfig] = useState<SchedulerTuningConfig | null>(null);
-  const [config, setConfig] = useState<Required<SchedulerSolverConfig> | null>(null);
+  const [config, setConfig] = useState<SchedulerSolverConfig | null>(null);
   const [visibility, setVisibility] = useState<Visibility>('essential');
   const [selectedDate, setSelectedDate] = useState(() => getJSTDateString());
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>(defaultSlots);
@@ -259,6 +259,8 @@ export default function SchedulerTuningPage() {
                       {controls.map((control) => {
                         const controlId = `scheduler-control-${control.key}`;
                         const helpId = `${controlId}-help`;
+                        const controlValue =
+                          config[control.key] ?? tuningConfig?.defaults[control.key] ?? control.min;
 
                         return (
                           <div key={control.key} className="space-y-2">
@@ -278,10 +280,8 @@ export default function SchedulerTuningPage() {
                                 min={control.min}
                                 max={control.max}
                                 step={control.step}
-                                value={config[control.key]}
-                                onChange={(event) =>
-                                  updateConfigValue(control.key, Number(event.target.value))
-                                }
+                                value={controlValue}
+                                onChange={(event) => updateConfigValue(control.key, Number(event.target.value))}
                                 className="h-8 w-full sm:w-24 sm:justify-self-end"
                               />
                             </div>
@@ -290,7 +290,7 @@ export default function SchedulerTuningPage() {
                               min={control.min}
                               max={control.max}
                               step={control.step}
-                              value={[config[control.key]]}
+                              value={[controlValue]}
                               onValueChange={([value]) => {
                                 if (value !== undefined) {
                                   updateConfigValue(control.key, value);
