@@ -98,14 +98,25 @@ jobs:
           # Use preview database if available, otherwise fallback to production DB
           DATABASE_URL_VALUE="${{ secrets.DATABASE_URL_PREVIEW || secrets.DATABASE_URL }}"
 
-          flyctl secrets set \
-            DATABASE_URL="$DATABASE_URL_VALUE" \
-            OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
-            SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
-            SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
-            SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-            ENCRYPTION_SALT="${{ secrets.ENCRYPTION_SALT }}" \
-            --app humancompiler-api-masa-preview
+          for attempt in 1 2 3; do
+            if flyctl secrets set \
+              DATABASE_URL="$DATABASE_URL_VALUE" \
+              OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+              SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
+              SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
+              SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+              ENCRYPTION_SALT="${{ secrets.ENCRYPTION_SALT }}" \
+              --app humancompiler-api-masa-preview; then
+              break
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "Failed to set Fly.io preview secrets after $attempt attempts"
+              exit 1
+            fi
+
+            sleep $((attempt * 20))
+          done
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
@@ -166,14 +177,25 @@ jobs:
       - name: 🔧 Set Production secrets
         working-directory: ./apps/api
         run: |
-          flyctl secrets set \
-            DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-            OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
-            SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
-            SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
-            SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-            ENCRYPTION_SALT="${{ secrets.ENCRYPTION_SALT }}" \
-            --app humancompiler-api-masa
+          for attempt in 1 2 3; do
+            if flyctl secrets set \
+              DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+              OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+              SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
+              SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
+              SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+              ENCRYPTION_SALT="${{ secrets.ENCRYPTION_SALT }}" \
+              --app humancompiler-api-masa; then
+              break
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "Failed to set Fly.io production secrets after $attempt attempts"
+              exit 1
+            fi
+
+            sleep $((attempt * 20))
+          done
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
