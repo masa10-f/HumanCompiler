@@ -99,7 +99,7 @@ jobs:
           DATABASE_URL_VALUE="${{ secrets.DATABASE_URL_PREVIEW || secrets.DATABASE_URL }}"
 
           for attempt in 1 2 3; do
-            if flyctl secrets set \
+            if timeout 60s flyctl secrets set \
               DATABASE_URL="$DATABASE_URL_VALUE" \
               OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
               SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
@@ -178,7 +178,7 @@ jobs:
         working-directory: ./apps/api
         run: |
           for attempt in 1 2 3; do
-            if flyctl secrets set \
+            if timeout 60s flyctl secrets set \
               DATABASE_URL="${{ secrets.DATABASE_URL }}" \
               OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
               SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
