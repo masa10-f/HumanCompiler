@@ -58,13 +58,11 @@ Scheduler's timeline daily solver and accepts optional `solver_config`
 overrides.
 
 Weekly task selection still uses the existing HumanCompiler weekly optimizer
-because the local Scheduler v0.2.0 daily contract still does not expose a
-weekly selection API. Keep the weekly adapter isolated so it can move once
-Scheduler publishes a weekly contract.
+because `humancompiler-scheduler>=0.2.0` does not expose a weekly selection API.
+Keep the weekly adapter isolated so it can move once Scheduler publishes a
+weekly contract.
 
 The scheduler tuning endpoint derives its defaults and visible controls from
-the installed `HumanDailySolverConfig`. This lets the backend run on the current
-published package while automatically surfacing v0.2.0 block-generation
-parameters (`min_block_minutes`, `block_granularity_minutes`, and
-`max_candidate_block_minutes`) once that package version is installed on the
-server.
+the installed `HumanDailySolverConfig`. With `humancompiler-scheduler>=0.2.0`,
+the tuning UI includes the block-generation parameters `min_block_minutes`,
+`block_granularity_minutes`, and `max_candidate_block_minutes`.

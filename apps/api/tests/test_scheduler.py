@@ -63,13 +63,13 @@ class TestSchedulerAPI:
             "max_candidate_block_minutes",
         }.issubset(control_keys)
 
-        schema_keys = {item["key"] for item in data["schema"]}
-        if "min_block_minutes" in data["defaults"]:
-            assert {
-                "min_block_minutes",
-                "block_granularity_minutes",
-                "max_candidate_block_minutes",
-            }.issubset(schema_keys)
+        block_config_keys = {
+            "min_block_minutes",
+            "block_granularity_minutes",
+            "max_candidate_block_minutes",
+        }
+        assert block_config_keys.issubset(data["defaults"])
+        assert block_config_keys.issubset({item["key"] for item in data["schema"]})
 
     @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
     @patch("humancompiler_api.routers.scheduler.db.get_session")

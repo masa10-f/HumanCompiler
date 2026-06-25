@@ -555,7 +555,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=41.0.0" },
     { name = "fastapi", specifier = ">=0.104.0" },
     { name = "httpx", specifier = ">=0.25.0" },
-    { name = "humancompiler-scheduler", specifier = ">=0.1.0" },
+    { name = "humancompiler-scheduler", specifier = ">=0.2.0" },
     { name = "langgraph", specifier = ">=0.1.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.5.0" },
     { name = "openai", specifier = ">=1.30.0" },
@@ -579,14 +579,14 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "humancompiler-scheduler"
-version = "0.1.0"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/03/4b/8cc5094dcbd730e45986096814bf56df24faca408a4fe8c73e7b48413a63/humancompiler_scheduler-0.1.0.tar.gz", hash = "sha256:e686e18c2d9ef74f8ca04a76f0e93ca731f56b5bd0b7c5ac63caf4074c6a9d49", size = 150514, upload-time = "2026-06-23T03:36:16.837Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/de/42/6e0fb4d850059fee76068f7d03e3cf9c823058ba6cbb20ed12a149d6ae6b/humancompiler_scheduler-0.2.0.tar.gz", hash = "sha256:cfac903aeac702bcd6060d7340b095e50b035127def0c01d4b7d53bed85a86c5", size = 154169, upload-time = "2026-06-25T22:28:44.938Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/03/bb/d877f8f25d1166fefb26d75fa27beb7cfa24becce62cad418478f8e0885b/humancompiler_scheduler-0.1.0-py3-none-any.whl", hash = "sha256:2c0dac702c3309bd8b439ce96680f4dc973bd8f73f644d3f383a9df238323e2e", size = 27474, upload-time = "2026-06-23T03:36:15.447Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/7e/92f581442494f43b6a580ef5ed08b2896fd36daa6ace938382c65166aaf2/humancompiler_scheduler-0.2.0-py3-none-any.whl", hash = "sha256:02fe5b41575f91670e37e64d4f1920bfe69001ffb72a22067b3dc48e27cc1c36", size = 28647, upload-time = "2026-06-25T22:28:43.519Z" },
 ]
 
 [[package]]

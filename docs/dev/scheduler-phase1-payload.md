@@ -139,9 +139,9 @@ solver_config:
 | task goal | `tasks[].goal_id` | Regular tasks only. |
 | goal project | `tasks[].project_id` | Derived from the task goal for regular tasks. |
 | task dependencies | `task_dependencies` | Map dependent task ID to prerequisite task IDs. |
-| `solver_config.min_block_minutes` | `solver_config.min_block_minutes` | v0.2.0 block generation parameter, forwarded when supported by the installed package. |
-| `solver_config.block_granularity_minutes` | `solver_config.block_granularity_minutes` | v0.2.0 block generation parameter, forwarded when supported by the installed package. |
-| `solver_config.max_candidate_block_minutes` | `solver_config.max_candidate_block_minutes` | v0.2.0 block generation parameter, forwarded when supported by the installed package. |
+| `solver_config.min_block_minutes` | `solver_config.min_block_minutes` | v0.2.0 block generation parameter. |
+| `solver_config.block_granularity_minutes` | `solver_config.block_granularity_minutes` | v0.2.0 block generation parameter. |
+| `solver_config.max_candidate_block_minutes` | `solver_config.max_candidate_block_minutes` | v0.2.0 block generation parameter. |
 
 ## Output Mapping
 
@@ -161,7 +161,7 @@ solver_config:
 ## Current Gaps For Later Phases
 
 - Weekly task selection has not moved to `humancompiler-scheduler` yet because
-  the current local v0.2.0 contract only exposes Human daily scheduling
+  `humancompiler-scheduler>=0.2.0` only exposes Human daily scheduling
   contracts.
 - The current daily API does not expose unscheduled reasons, score breakdowns,
   or constraint violations.
