@@ -550,6 +550,18 @@ def _hours_to_minutes(value: float | None) -> int | None:
     return max(0, int(math.ceil(float(value) * 60)))
 
 
+def _time_to_minutes(value: time) -> int:
+    return value.hour * 60 + value.minute
+
+
+def _time_slot_capacity_minutes(slot: TimeSlot) -> int:
+    slot_duration = max(0, _time_to_minutes(slot.end) - _time_to_minutes(slot.start))
+    if slot.capacity_hours is None:
+        return slot_duration
+    capacity_minutes = _hours_to_minutes(slot.capacity_hours) or 0
+    return min(capacity_minutes, slot_duration)
+
+
 def _clamp_priority(priority: int | None) -> int:
     if priority is None:
         return 3
@@ -600,6 +612,42 @@ def _build_scheduler_task_dependencies(
     }
 
 
+def _build_human_fixed_assignments(
+    *,
+    fixed_assignments: list[FixedAssignment] | None,
+    task_remaining_minutes: dict[str, int],
+    slot_capacity_minutes: dict[int, int],
+) -> list[HumanFixedAssignment]:
+    human_fixed_assignments: list[HumanFixedAssignment] = []
+    reserved_slot_minutes = dict.fromkeys(slot_capacity_minutes, 0)
+
+    for assignment in fixed_assignments or []:
+        duration_minutes = _hours_to_minutes(assignment.duration_hours)
+        if duration_minutes is None:
+            remaining_minutes = task_remaining_minutes.get(assignment.task_id)
+            available_slot_minutes = slot_capacity_minutes.get(assignment.slot_index)
+            if remaining_minutes is not None and available_slot_minutes is not None:
+                reserved_minutes = reserved_slot_minutes.get(assignment.slot_index, 0)
+                duration_minutes = min(
+                    remaining_minutes,
+                    max(0, available_slot_minutes - reserved_minutes),
+                )
+
+        human_fixed_assignments.append(
+            HumanFixedAssignment(
+                task_id=assignment.task_id,
+                slot_index=assignment.slot_index,
+                duration_minutes=duration_minutes,
+            )
+        )
+        if duration_minutes is not None:
+            reserved_slot_minutes[assignment.slot_index] = (
+                reserved_slot_minutes.get(assignment.slot_index, 0) + duration_minutes
+            )
+
+    return human_fixed_assignments
+
+
 def _build_human_daily_fixture(
     *,
     tasks: list[SchedulerTask],
@@ -613,11 +661,14 @@ def _build_human_daily_fixture(
     | dict[str, Any]
     | None,
 ) -> HumanDailyFixture:
+    task_remaining_minutes = {
+        task.id: _hours_to_minutes(task.remaining_hours) or 0 for task in tasks
+    }
     human_tasks = [
         HumanTask(
             id=task.id,
             title=task.title,
-            remaining_minutes=_hours_to_minutes(task.remaining_hours) or 0,
+            remaining_minutes=task_remaining_minutes[task.id],
             priority=_clamp_priority(task.priority),
             work_kind=_to_human_work_kind(task.kind),
             due_at=task.due_date,
@@ -640,14 +691,14 @@ def _build_human_daily_fixture(
         for index, slot in enumerate(time_slots)
     ]
 
-    human_fixed_assignments = [
-        HumanFixedAssignment(
-            task_id=assignment.task_id,
-            slot_index=assignment.slot_index,
-            duration_minutes=_hours_to_minutes(assignment.duration_hours),
-        )
-        for assignment in (fixed_assignments or [])
-    ]
+    human_fixed_assignments = _build_human_fixed_assignments(
+        fixed_assignments=fixed_assignments,
+        task_remaining_minutes=task_remaining_minutes,
+        slot_capacity_minutes={
+            index: _time_slot_capacity_minutes(slot)
+            for index, slot in enumerate(time_slots)
+        },
+    )
 
     return HumanDailyFixture(
         date=schedule_date,
