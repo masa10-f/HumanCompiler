@@ -30,6 +30,8 @@ import { SortBy, SortOrder } from '@/types/sort';
 import type { SortOptions } from '@/types/sort';
 import { log } from '@/lib/logger';
 import { AppHeader } from '@/components/layout/app-header';
+import { toast } from '@/hooks/use-toast';
+import { getStatusUpdateError } from '@/lib/status-error-handler';
 
 // Component for inline status editing
 function TaskStatusSelect({ task }: { task: Task }) {
@@ -46,6 +48,13 @@ function TaskStatusSelect({ task }: { task: Task }) {
         component: 'TaskStatusSelect',
         taskId: task.id,
         newStatus
+      });
+
+      const { title, message } = getStatusUpdateError(error as Error, 'task');
+      toast({
+        title,
+        description: message,
+        variant: 'destructive',
       });
     }
   };

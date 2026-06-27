@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useProject } from '@/hooks/use-project-query';
 import { useGoal } from '@/hooks/use-goals-query';
 import { useTask } from '@/hooks/use-tasks-query';
@@ -22,6 +22,7 @@ import {
   Circle,
   Timer,
   XCircle,
+  AlertCircle,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -42,12 +43,23 @@ export default function TaskDetailPage() {
   const { isAuthenticated, loading: authLoading } = useAuth();
   const { data: project, isLoading: projectLoading } = useProject(projectId);
   const { data: goal, isLoading: goalLoading } = useGoal(goalId);
-  const { data: task, isLoading: taskLoading } = useTask(taskId);
+  const {
+    data: task,
+    isLoading: taskLoading,
+    error: taskError,
+    refetch: refetchTask,
+  } = useTask(taskId);
   const { note, loading: noteLoading, saving, updateNote } = useTaskNote(taskId);
 
   const [activeTab, setActiveTab] = useState('notes');
 
   const isLoading = authLoading || projectLoading || goalLoading || taskLoading;
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/login');
+    }
+  }, [authLoading, isAuthenticated, router]);
 
   if (isLoading) {
     return (
@@ -60,8 +72,46 @@ export default function TaskDetailPage() {
     );
   }
 
-  if (!isAuthenticated || !task) {
-    return null;
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <AppHeader currentPage="projects" />
+        <div className="flex items-center justify-center min-h-[calc(100vh-64px)]">
+          <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+        </div>
+      </div>
+    );
+  }
+
+  if (taskError || !task) {
+    const taskErrorMessage =
+      taskError instanceof Error ? taskError.message : 'タスクが見つかりません';
+
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <AppHeader currentPage="projects" />
+        <div className="container mx-auto py-8 px-4 max-w-4xl">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-8 shadow-sm text-center">
+            <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              タスクを読み込めませんでした
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              {taskErrorMessage}
+            </p>
+            <div className="flex flex-wrap gap-2 justify-center">
+              <Button onClick={() => refetchTask()}>再試行</Button>
+              <Button
+                variant="outline"
+                onClick={() => router.push(`/projects/${projectId}/goals/${goalId}`)}
+              >
+                ゴールに戻る
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const statusInfo = statusConfig[task.status as keyof typeof statusConfig] || statusConfig.pending;
