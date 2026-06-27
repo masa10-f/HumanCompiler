@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Clock, Trash2, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DraggableTask } from './DraggableTask';
+import { getSlotKindLabel, getSlotKindPanelStyle, slotKindLabels } from '@/constants/schedule';
 import type { TimeSlot, TaskInfo } from '@/types/ai-planning';
 import type { Project } from '@/types/project';
 
@@ -57,28 +58,20 @@ export function DroppableSlot({
   );
   const remainingHours = duration - assignedHours;
 
-  const kindColors: Record<string, { bg: string; border: string; text: string }> = {
-    study: { bg: 'bg-blue-50', border: 'border-blue-300', text: 'text-blue-700' },
-    focused_work: { bg: 'bg-purple-50', border: 'border-purple-300', text: 'text-purple-700' },
-    light_work: { bg: 'bg-green-50', border: 'border-green-300', text: 'text-green-700' },
-  };
-
-  const kindLabels: Record<string, string> = {
-    study: '学習',
-    focused_work: '集中作業',
-    light_work: '軽作業',
-  };
-
-  const colors = kindColors[slot.kind] || { bg: 'bg-gray-50', border: 'border-gray-300', text: 'text-gray-700' };
+  const isMeetingSlot = slot.kind === 'meeting';
+  const colors = getSlotKindPanelStyle(slot.kind);
 
   // Check if the dragged task can be dropped here (kind matching)
-  const canDrop = active?.data?.current?.task?.kind === slot.kind ||
-                  !active?.data?.current?.task?.kind ||
-                  remainingHours >= (active?.data?.current?.task?.estimate_hours ?? 0);
+  const canDrop = !isMeetingSlot && (
+    active?.data?.current?.task?.kind === slot.kind ||
+    !active?.data?.current?.task?.kind ||
+    remainingHours >= (active?.data?.current?.task?.estimate_hours ?? 0)
+  );
 
   return (
     <div
       ref={setNodeRef}
+      aria-disabled={isMeetingSlot}
       className={cn(
         'rounded-xl border-2 transition-all duration-200 overflow-hidden',
         colors.border,
@@ -94,7 +87,7 @@ export function DroppableSlot({
               スロット {slotIndex + 1}
             </span>
             <Badge variant="outline" className={cn('text-xs', colors.text)}>
-              {kindLabels[slot.kind]}
+              {getSlotKindLabel(slot.kind)}
             </Badge>
           </div>
           <Button
@@ -137,9 +130,11 @@ export function DroppableSlot({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="study">学習</SelectItem>
-                <SelectItem value="focused_work">集中作業</SelectItem>
-                <SelectItem value="light_work">軽作業</SelectItem>
+                {Object.entries(slotKindLabels).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

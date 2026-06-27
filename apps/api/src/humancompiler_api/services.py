@@ -1781,7 +1781,7 @@ class SlotTemplateService(
             user_id=user_id,
             name=data.name,
             day_of_week=data.day_of_week,
-            slots_json=[slot.model_dump() for slot in data.slots],
+            slots_json=[slot.model_dump(mode="json") for slot in data.slots],
             is_default=data.is_default,
         )
 
@@ -1876,15 +1876,16 @@ class SlotTemplateService(
                 detail="Slot template not found",
             )
 
-        update_data = template_data.model_dump(exclude_unset=True)
+        update_data = template_data.model_dump(exclude_unset=True, exclude={"slots"})
 
         # Handle slots separately (convert to JSON)
-        if "slots" in update_data and update_data["slots"] is not None:
+        if (
+            "slots" in template_data.model_fields_set
+            and template_data.slots is not None
+        ):
             template.slots_json = [
-                slot.model_dump() if hasattr(slot, "model_dump") else slot
-                for slot in update_data["slots"]
+                slot.model_dump(mode="json") for slot in template_data.slots
             ]
-            del update_data["slots"]
 
         # Handle default template logic
         new_day_of_week = update_data.get("day_of_week")

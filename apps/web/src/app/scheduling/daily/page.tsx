@@ -37,8 +37,9 @@ import {
 import { AppHeader } from '@/components/layout/app-header';
 import { toast } from '@/hooks/use-toast';
 import { schedulingApi, projectsApi, tasksApi, quickTasksApi, slotTemplatesApi } from '@/lib/api';
-import { getSlotKindLabel, getSlotKindColor } from '@/constants/schedule';
+import { getSlotKindLabel, getSlotKindColor, slotKinds } from '@/constants/schedule';
 import { DroppableSlot, TaskPool, DraggableTask } from '@/components/scheduling';
+import type { SlotKind } from '@/constants/schedule';
 import type {
   ScheduleRequest,
   ScheduleResult,
@@ -67,9 +68,9 @@ export default function SchedulingPage() {
   const [selectedDate, setSelectedDate] = useState(() => getJSTDateString());
 
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([
-    { start: '09:00', end: '12:00', kind: 'focused_work' },
-    { start: '13:00', end: '17:00', kind: 'study' },
-    { start: '19:00', end: '21:00', kind: 'light_work' },
+    { start: '09:00', end: '12:00', kind: slotKinds.focused_work },
+    { start: '13:00', end: '17:00', kind: slotKinds.study },
+    { start: '19:00', end: '21:00', kind: slotKinds.light_work },
   ]);
 
   const [isOptimizing, setIsOptimizing] = useState(false);
@@ -337,6 +338,16 @@ export default function SchedulingPage() {
     // Dropping on a slot
     if (overId.startsWith('slot-')) {
       const slotIndex = parseInt(overId.replace('slot-', ''), 10);
+      const targetSlot = timeSlots[slotIndex];
+
+      if (targetSlot?.kind === 'meeting') {
+        toast({
+          title: '配置できません',
+          description: '会議枠にはタスクを配置できません',
+          variant: 'destructive',
+        });
+        return;
+      }
 
       // Remove from any previous slot
       setManualAssignments(prev => {
@@ -344,21 +355,25 @@ export default function SchedulingPage() {
         return [...filtered, { taskId, slotIndex }];
       });
     }
-  }, []);
+  }, [timeSlots]);
 
   // Slot management
   const addTimeSlot = () => {
     setTimeSlots(prev => [...prev, {
       start: '09:00',
       end: '12:00',
-      kind: 'light_work'
+      kind: slotKinds.light_work
     }]);
   };
 
   const updateTimeSlot = (index: number, field: keyof TimeSlot, value: string | number | undefined) => {
     setTimeSlots(prev => prev.map((slot, i) =>
-      i === index ? { ...slot, [field]: value } : slot
+      i === index ? { ...slot, [field]: field === 'kind' ? value as SlotKind : value } : slot
     ));
+    if (field === 'kind' && value === 'meeting') {
+      setManualAssignments(prev => prev.filter(a => a.slotIndex !== index));
+    }
+    setScheduleResult(null);
   };
 
   const removeTimeSlot = (index: number) => {
