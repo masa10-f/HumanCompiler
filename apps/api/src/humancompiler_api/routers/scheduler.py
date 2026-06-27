@@ -602,16 +602,21 @@ def _build_human_fixed_assignments(
     reserved_slot_minutes = dict.fromkeys(slot_capacity_minutes, 0)
 
     for assignment in fixed_assignments or []:
+        if (
+            assignment.task_id not in task_remaining_minutes
+            or assignment.slot_index not in slot_capacity_minutes
+        ):
+            continue
+
         duration_minutes = _hours_to_minutes(assignment.duration_hours)
         if duration_minutes is None:
-            remaining_minutes = task_remaining_minutes.get(assignment.task_id)
-            available_slot_minutes = slot_capacity_minutes.get(assignment.slot_index)
-            if remaining_minutes is not None and available_slot_minutes is not None:
-                reserved_minutes = reserved_slot_minutes.get(assignment.slot_index, 0)
-                duration_minutes = min(
-                    remaining_minutes,
-                    max(0, available_slot_minutes - reserved_minutes),
-                )
+            remaining_minutes = task_remaining_minutes[assignment.task_id]
+            available_slot_minutes = slot_capacity_minutes[assignment.slot_index]
+            reserved_minutes = reserved_slot_minutes.get(assignment.slot_index, 0)
+            duration_minutes = min(
+                remaining_minutes,
+                max(0, available_slot_minutes - reserved_minutes),
+            )
 
         human_fixed_assignments.append(
             HumanFixedAssignment(

@@ -406,6 +406,30 @@ class TestSchedulerAPI:
         assert assignment.duration_hours == pytest.approx(2.0)
         assert assignment.is_fixed is True
 
+    def test_stale_fixed_assignments_are_skipped(self):
+        """Fixed assignments for filtered tasks or missing slots should be ignored."""
+        from humancompiler_api.routers.scheduler import _build_human_fixed_assignments
+        from humancompiler_optimizer.daily import FixedAssignment
+
+        assignments = _build_human_fixed_assignments(
+            fixed_assignments=[
+                FixedAssignment(task_id="missing-task", slot_index=0),
+                FixedAssignment(task_id="fixed-task", slot_index=99),
+                FixedAssignment(
+                    task_id="missing-task", slot_index=99, duration_hours=1.0
+                ),
+                FixedAssignment(task_id="fixed-task", slot_index=0, duration_hours=0.5),
+            ],
+            task_remaining_minutes={"fixed-task": 120},
+            slot_capacity_minutes={0: 120},
+        )
+
+        assert len(assignments) == 1
+        assignment = assignments[0]
+        assert assignment.task_id == "fixed-task"
+        assert assignment.slot_index == 0
+        assert assignment.duration_minutes == 30
+
     def test_create_daily_schedule_empty_time_slots(self, mock_auth):
         """Test schedule creation with empty time slots."""
         request_data = {"date": "2025-06-23", "goal_id": str(uuid4()), "time_slots": []}
