@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { log } from '@/lib/logger';
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -28,8 +27,6 @@ export function TaskDeleteDialog({ task, children }: TaskDeleteDialogProps) {
   const deleteTaskMutation = useDeleteTask();
 
   const handleDelete = async () => {
-    setOpen(false);
-
     try {
       await deleteTaskMutation.mutateAsync(task.id);
 
@@ -37,6 +34,8 @@ export function TaskDeleteDialog({ task, children }: TaskDeleteDialogProps) {
         title: 'タスクを削除しました',
         description: `「${task.title}」が正常に削除されました。`,
       });
+
+      setOpen(false);
     } catch (error) {
       log.error('Failed to delete task', error, { component: 'TaskDeleteDialog', taskId: task.id, action: 'deleteTask' });
 
@@ -64,15 +63,13 @@ export function TaskDeleteDialog({ task, children }: TaskDeleteDialogProps) {
           <AlertDialogCancel disabled={deleteTaskMutation.isPending}>
             キャンセル
           </AlertDialogCancel>
-          <AlertDialogAction asChild>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={deleteTaskMutation.isPending}
-            >
-              {deleteTaskMutation.isPending ? '削除中...' : '削除'}
-            </Button>
-          </AlertDialogAction>
+          <Button
+            variant="destructive"
+            onClick={handleDelete}
+            disabled={deleteTaskMutation.isPending}
+          >
+            {deleteTaskMutation.isPending ? '削除中...' : '削除'}
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
