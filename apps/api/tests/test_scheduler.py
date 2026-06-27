@@ -55,8 +55,12 @@ class TestSchedulerAPI:
         assert data["defaults"]["kind_match_score"] >= 0
         assert any(item["key"] == "project_switch_penalty" for item in data["schema"])
         assert set(data["defaults"]) == {item["key"] for item in data["schema"]}
+        assert "fixed_assignment_score" not in data["defaults"]
+        assert "dependency_unlock_score" not in data["defaults"]
 
         control_keys = {item["key"] for item in SCHEDULER_CONFIG_CONTROLS}
+        assert "fixed_assignment_score" not in control_keys
+        assert "dependency_unlock_score" not in control_keys
         assert {
             "min_block_minutes",
             "block_granularity_minutes",

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   CalendarDays,
   CalendarRange,
@@ -27,7 +27,7 @@ const schedulingItems = [
     action: '開く',
   },
   {
-    title: 'Scheduler調整',
+    title: 'スケジュール調整',
     path: '/scheduling/tuning',
     icon: SlidersHorizontal,
     action: '調整',
@@ -47,7 +47,6 @@ const schedulingItems = [
 ];
 
 export default function SchedulingHomePage() {
-  const router = useRouter();
   const { user, loading: authLoading } = useAuth();
 
   if (authLoading || !user) {
@@ -69,9 +68,11 @@ export default function SchedulingHomePage() {
               日次・週次・調整・履歴
             </p>
           </div>
-          <Button onClick={() => router.push('/scheduling/daily')}>
-            <CalendarDays className="mr-2 h-4 w-4" />
-            日次を作成
+          <Button asChild>
+            <Link href="/scheduling/daily">
+              <CalendarDays className="mr-2 h-4 w-4" />
+              日次を作成
+            </Link>
           </Button>
         </div>
 
@@ -87,11 +88,13 @@ export default function SchedulingHomePage() {
               <CardContent>
                 <Button
                   variant="outline"
+                  asChild
                   className="w-full justify-between"
-                  onClick={() => router.push(item.path)}
                 >
-                  {item.action}
-                  <item.icon className="h-4 w-4" />
+                  <Link href={item.path}>
+                    {item.action}
+                    <item.icon className="h-4 w-4" />
+                  </Link>
                 </Button>
               </CardContent>
             </Card>

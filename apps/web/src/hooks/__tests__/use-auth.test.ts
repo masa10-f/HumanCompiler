@@ -2,6 +2,7 @@
  * @jest-environment jsdom
  */
 import { renderHook, act, waitFor } from '@testing-library/react'
+import React from 'react'
 
 // Mock dependencies before importing the hook
 const mockPush = jest.fn()
@@ -39,6 +40,7 @@ jest.mock('@/lib/supabase', () => ({
 }))
 
 // Import after mocks
+import { AuthProvider } from '@/components/auth-provider'
 import { useAuth } from '../use-auth'
 
 describe('useAuth', () => {
@@ -123,6 +125,24 @@ describe('useAuth', () => {
       })
 
       expect(result.current.user).toBeNull()
+    })
+
+    it('should reuse AuthProvider state without fetching a second session', async () => {
+      const wrapper = ({ children }: { children: React.ReactNode }) =>
+        React.createElement(AuthProvider, null, children)
+
+      const { result } = renderHook(() => useAuth(), { wrapper })
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false)
+      })
+
+      expect(result.current.user).toEqual({
+        id: 'user-123',
+        email: 'test@example.com',
+      })
+      expect(mockGetSession).toHaveBeenCalledTimes(1)
+      expect(mockOnAuthStateChange).toHaveBeenCalledTimes(1)
     })
   })
 

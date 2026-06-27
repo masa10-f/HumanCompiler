@@ -131,26 +131,6 @@ SCHEDULER_CONFIG_CONTROLS: tuple[dict[str, Any], ...] = (
         "help": "期限を過ぎたタスクへの加点",
     },
     {
-        "key": "fixed_assignment_score",
-        "label": "固定配置",
-        "group": "制約ヒント",
-        "min": 0,
-        "max": 200,
-        "step": 1,
-        "visibility": "expert",
-        "help": "手動配置されたタスクへの加点",
-    },
-    {
-        "key": "dependency_unlock_score",
-        "label": "依存解除",
-        "group": "制約ヒント",
-        "min": 0,
-        "max": 30,
-        "step": 1,
-        "visibility": "tuning",
-        "help": "後続タスクを進められる前提タスクへの加点",
-    },
-    {
         "key": "min_block_minutes",
         "label": "最小ブロック",
         "group": "詰め方",
@@ -304,7 +284,7 @@ class SchedulerConfigControl(BaseModel):
 
 
 class SchedulerTuningConfigResponse(BaseModel):
-    """Default scheduler tuning payload for the web UI."""
+    """Default user-tunable scheduler payload for the web UI."""
 
     backend_package: str
     backend_version: str
@@ -1371,7 +1351,7 @@ router = APIRouter(prefix="/schedule", tags=["scheduling"])
 
 @router.get("/tuning/config", response_model=SchedulerTuningConfigResponse)
 async def get_scheduler_tuning_config():
-    """Return default solver parameters and UI schema for scheduler tuning."""
+    """Return default user-facing solver settings and UI schema."""
     default_config = HumanDailySolverConfig()
     control_by_key = {item["key"]: item for item in SCHEDULER_CONFIG_CONTROLS}
     schema = [
@@ -1379,10 +1359,15 @@ async def get_scheduler_tuning_config():
         for field in fields(HumanDailySolverConfig)
         if field.name in control_by_key
     ]
+    schema_keys = {control.key for control in schema}
     return SchedulerTuningConfigResponse(
         backend_package="humancompiler-scheduler",
         backend_version=_scheduler_package_version(),
-        defaults=_human_solver_config_to_dict(default_config),
+        defaults={
+            key: value
+            for key, value in _human_solver_config_to_dict(default_config).items()
+            if key in schema_keys
+        },
         schema=schema,
     )
 

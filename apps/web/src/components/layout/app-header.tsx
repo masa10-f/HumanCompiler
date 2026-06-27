@@ -4,8 +4,8 @@
 import { useState } from 'react'
 
 // Next.js imports
-import { useRouter } from 'next/navigation'
 import Image from 'next/image'
+import Link from 'next/link'
 
 // UI components
 import { Button } from '@/components/ui/button'
@@ -23,9 +23,6 @@ import { TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings,
 
 // Hooks
 import { useAuth } from '@/hooks/use-auth'
-
-// Utils
-import { logger } from '@/lib/logger'
 
 interface AppHeaderProps {
   currentPage?: 'dashboard' | 'projects' | 'ai-planning' | 'triage' | 'scheduling' | 'scheduling-daily' | 'scheduling-settings' | 'scheduler-tuning' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner'
@@ -46,7 +43,7 @@ const SCHEDULING_NAVIGATION_ITEMS = [
   { id: 'scheduling', label: '概要', path: '/scheduling', icon: Calendar },
   { id: 'scheduling-daily', label: '日次計画', path: '/scheduling/daily', icon: Clock },
   { id: 'ai-planning', label: '週次計画', path: '/scheduling/weekly', icon: CalendarDays },
-  { id: 'scheduler-tuning', label: 'Scheduler調整', path: '/scheduling/tuning', icon: SlidersHorizontal },
+  { id: 'scheduler-tuning', label: '調整', path: '/scheduling/tuning', icon: SlidersHorizontal },
   { id: 'scheduling-settings', label: 'テンプレート', path: '/scheduling/settings', icon: LayoutTemplate },
   { id: 'schedule-history', label: 'スケジュール履歴', path: '/scheduling/history', icon: History },
 ] as const
@@ -72,7 +69,6 @@ const SCHEDULING_NAVIGATION_IDS = new Set(
 )
 
 export function AppHeader({ currentPage }: AppHeaderProps) {
-  const router = useRouter()
   const { user, signOut } = useAuth()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
@@ -85,16 +81,6 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
   const isSchedulingActive = Boolean(
     currentPage && SCHEDULING_NAVIGATION_IDS.has(currentPage as typeof SCHEDULING_NAVIGATION_ITEMS[number]['id'])
   )
-
-  const handleNavigation = (path: string) => {
-    try {
-      router.push(path)
-      setIsDialogOpen(false)
-    } catch (error) {
-      logger.error('Navigation failed', error instanceof Error ? error : new Error(String(error)), { component: 'AppHeader' })
-      // ユーザーに通知する場合はtoastなどを使用
-    }
-  }
 
   return (
     <header className="bg-card/95 backdrop-blur-sm shadow-md border-b border-border/60 sticky top-0 z-50">
@@ -134,11 +120,13 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                         {SCHEDULING_NAVIGATION_ITEMS.map((child) => (
                           <DropdownMenuItem
                             key={child.id}
+                            asChild
                             className={currentPage === child.id ? "bg-primary/10 text-primary font-medium" : ""}
-                            onClick={() => router.push(child.path)}
                           >
-                            <child.icon className="mr-2 h-4 w-4" />
-                            {child.label}
+                            <Link href={child.path}>
+                              <child.icon className="mr-2 h-4 w-4" />
+                              {child.label}
+                            </Link>
                           </DropdownMenuItem>
                         ))}
                       </DropdownMenuContent>
@@ -150,12 +138,14 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                   <Button
                     key={item.id}
                     variant="ghost"
-                    onClick={() => router.push(item.path)}
+                    asChild
                     className={`${getPageClass(item.id)} shrink-0 whitespace-nowrap px-2 xl:px-3`}
                     title={item.label}
                   >
-                    <item.icon className="h-4 w-4 xl:mr-2" />
-                    <span className="hidden xl:inline">{item.label}</span>
+                    <Link href={item.path}>
+                      <item.icon className="h-4 w-4 xl:mr-2" />
+                      <span className="hidden xl:inline">{item.label}</span>
+                    </Link>
                   </Button>
                 )
               })}
@@ -174,20 +164,24 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                   {SECONDARY_NAVIGATION_ITEMS.map((item) => (
                     <DropdownMenuItem
                       key={item.id}
+                      asChild
                       className={currentPage === item.id ? "bg-primary/10 text-primary font-medium" : ""}
-                      onClick={() => router.push(item.path)}
                     >
-                      <item.icon className="mr-2 h-4 w-4" />
-                      {item.label}
+                      <Link href={item.path}>
+                        <item.icon className="mr-2 h-4 w-4" />
+                        {item.label}
+                      </Link>
                     </DropdownMenuItem>
                   ))}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
+                    asChild
                     className={currentPage === 'settings' ? "bg-primary/10 text-primary font-medium" : ""}
-                    onClick={() => router.push('/settings')}
                   >
-                    <Settings className="mr-2 h-4 w-4" />
-                    設定
+                    <Link href="/settings">
+                      <Settings className="mr-2 h-4 w-4" />
+                      設定
+                    </Link>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -221,22 +215,26 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                           <div key={item.id} className="space-y-1">
                             <Button
                               variant={isSchedulingActive ? "secondary" : "ghost"}
+                              asChild
                               className="w-full justify-start"
-                              onClick={() => handleNavigation(item.path)}
                             >
-                              <item.icon className="h-4 w-4 mr-3" />
-                              {item.label}
+                              <Link href={item.path} onClick={() => setIsDialogOpen(false)}>
+                                <item.icon className="h-4 w-4 mr-3" />
+                                {item.label}
+                              </Link>
                             </Button>
                             <div className="ml-4 space-y-1 border-l border-border pl-3">
                               {SCHEDULING_NAVIGATION_ITEMS.map((child) => (
                                 <Button
                                   key={child.id}
                                   variant={currentPage === child.id ? "secondary" : "ghost"}
+                                  asChild
                                   className="w-full justify-start text-sm"
-                                  onClick={() => handleNavigation(child.path)}
                                 >
-                                  <child.icon className="h-4 w-4 mr-3" />
-                                  {child.label}
+                                  <Link href={child.path} onClick={() => setIsDialogOpen(false)}>
+                                    <child.icon className="h-4 w-4 mr-3" />
+                                    {child.label}
+                                  </Link>
                                 </Button>
                               ))}
                             </div>
@@ -248,11 +246,13 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                         <Button
                           key={item.id}
                           variant={currentPage === item.id ? "secondary" : "ghost"}
+                          asChild
                           className="w-full justify-start"
-                          onClick={() => handleNavigation(item.path)}
                         >
-                          <item.icon className="h-4 w-4 mr-3" />
-                          {item.label}
+                          <Link href={item.path} onClick={() => setIsDialogOpen(false)}>
+                            <item.icon className="h-4 w-4 mr-3" />
+                            {item.label}
+                          </Link>
                         </Button>
                       )
                     })}

@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import type { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { toast } from '@/hooks/use-toast'
+import { useOptionalAuthContext } from '@/components/auth-provider'
 
 /**
  * Authentication hook for Supabase auth integration.
@@ -21,20 +22,24 @@ import { toast } from '@/hooks/use-toast'
  * ```
  */
 export function useAuth() {
-  const [user, setUser] = useState<User | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
-  const [loading, setLoading] = useState(true)
+  const providerAuth = useOptionalAuthContext()
+  const [localUser, setLocalUser] = useState<User | null>(null)
+  const [localSession, setLocalSession] = useState<Session | null>(null)
+  const [localLoading, setLocalLoading] = useState(true)
+  const [isSigningOut, setIsSigningOut] = useState(false)
   const [initialLoad, setInitialLoad] = useState(true)
   const router = useRouter()
   const pathname = usePathname()
 
   useEffect(() => {
+    if (providerAuth) return
+
     // Get initial session
     const getInitialSession = async () => {
       const { data: { session } } = await supabase.auth.getSession()
-      setUser(session?.user ?? null)
-      setSession(session)
-      setLoading(false)
+      setLocalUser(session?.user ?? null)
+      setLocalSession(session)
+      setLocalLoading(false)
       setInitialLoad(false)
     }
 
@@ -43,9 +48,9 @@ export function useAuth() {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        setUser(session?.user ?? null)
-        setSession(session)
-        setLoading(false)
+        setLocalUser(session?.user ?? null)
+        setLocalSession(session)
+        setLocalLoading(false)
 
         // Only redirect on actual sign in/out events, not on session restoration
         if (event === 'SIGNED_IN' && !initialLoad) {
@@ -69,13 +74,20 @@ export function useAuth() {
     )
 
     return () => subscription.unsubscribe()
-  }, [router, initialLoad, pathname])
+  }, [providerAuth, router, initialLoad, pathname])
 
   const signOut = async () => {
     try {
-      setLoading(true)
+      setIsSigningOut(true)
       const { error } = await supabase.auth.signOut()
       if (error) throw error
+      if (providerAuth) {
+        toast({
+          title: 'ログアウトしました',
+          description: 'またのご利用をお待ちしております。',
+        })
+        router.push('/')
+      }
     } catch (error: unknown) {
       toast({
         title: 'エラー',
@@ -83,9 +95,13 @@ export function useAuth() {
         variant: 'destructive',
       })
     } finally {
-      setLoading(false)
+      setIsSigningOut(false)
     }
   }
+
+  const user = providerAuth?.user ?? localUser
+  const session = providerAuth?.session ?? localSession
+  const loading = (providerAuth?.loading ?? localLoading) || isSigningOut
 
   return {
     user,

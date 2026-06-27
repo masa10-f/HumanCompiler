@@ -62,7 +62,9 @@ because `humancompiler-scheduler>=0.2.0` does not expose a weekly selection API.
 Keep the weekly adapter isolated so it can move once Scheduler publishes a
 weekly contract.
 
-The scheduler tuning endpoint derives its defaults and visible controls from
-the installed `HumanDailySolverConfig`. With `humancompiler-scheduler>=0.2.0`,
-the tuning UI includes the block-generation parameters `min_block_minutes`,
+The scheduler tuning endpoint returns only user-tunable defaults and visible
+controls. Internal or misleading solver fields such as fixed-assignment and
+dependency-unlock scores are intentionally not exposed to the web UI. With
+`humancompiler-scheduler>=0.2.0`, the preference UI maps user-facing choices to
+block-generation parameters such as `min_block_minutes`,
 `block_granularity_minutes`, and `max_candidate_block_minutes`.

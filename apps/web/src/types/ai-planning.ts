@@ -237,8 +237,6 @@ export interface SchedulerSolverConfig {
   deadline_soon_days?: number;
   deadline_score?: number;
   overdue_score?: number;
-  fixed_assignment_score?: number;
-  dependency_unlock_score?: number;
   min_block_minutes?: number;
   block_granularity_minutes?: number;
   max_candidate_block_minutes?: number;

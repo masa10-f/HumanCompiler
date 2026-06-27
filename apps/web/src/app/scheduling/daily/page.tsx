@@ -497,7 +497,7 @@ export default function SchedulingPage() {
                   </Badge>
                 )}
                 <Link href="/scheduling/tuning">
-                  <Button variant="outline" size="sm" title="Scheduler調整">
+                  <Button variant="outline" size="sm" title="スケジュール調整">
                     <SlidersHorizontal className="h-4 w-4" />
                   </Button>
                 </Link>
