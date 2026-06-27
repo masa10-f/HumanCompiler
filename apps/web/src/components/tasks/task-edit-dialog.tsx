@@ -73,7 +73,7 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
     defaultValues: {
       title: task.title,
       description: task.description || '',
-      estimate_hours: typeof task.estimate_hours === 'string' ? parseFloat(task.estimate_hours) : task.estimate_hours,
+      estimate_hours: task.estimate_hours,
       due_date: task.due_date?.split('T')[0] || '',
       status: task.status,
       work_type: task.work_type || 'light_work',
@@ -86,7 +86,7 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
     form.reset({
       title: task.title,
       description: task.description || '',
-      estimate_hours: typeof task.estimate_hours === 'string' ? parseFloat(task.estimate_hours) : task.estimate_hours,
+      estimate_hours: task.estimate_hours,
       due_date: task.due_date?.split('T')[0] || '',
       status: task.status,
       work_type: task.work_type || 'light_work',

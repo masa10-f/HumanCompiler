@@ -97,6 +97,30 @@ import type { TaskStatus } from '@/types/task';
 
 export const DEFAULT_TASK_PAGE_LIMIT = 100;
 
+type RawTask = Omit<Task, 'estimate_hours'> & {
+  estimate_hours: number | string | null | undefined;
+};
+
+const normalizeEstimateHours = (estimateHours: RawTask['estimate_hours']): number => {
+  if (typeof estimateHours === 'number') {
+    return Number.isFinite(estimateHours) ? estimateHours : 0;
+  }
+
+  if (typeof estimateHours === 'string') {
+    const parsed = Number.parseFloat(estimateHours);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
+};
+
+const normalizeTask = (task: RawTask): Task => ({
+  ...task,
+  estimate_hours: normalizeEstimateHours(task.estimate_hours),
+});
+
+const normalizeTasks = (tasks: RawTask[]): Task[] => tasks.map(normalizeTask);
+
 // Helper function to ensure HTTPS protocol
 const ensureHttps = (url: string): string => {
   if (!url) return url;
@@ -404,7 +428,8 @@ class ApiClient {
       params.set('sort_order', sortOptions.sortOrder);
     }
 
-    return this.request<Task[]>(`/api/tasks/goal/${goalId}?${params.toString()}`);
+    const tasks = await this.request<RawTask[]>(`/api/tasks/goal/${goalId}?${params.toString()}`);
+    return normalizeTasks(tasks);
   }
 
   async getTasksByProject(projectId: string, skip: number = 0, limit: number = DEFAULT_TASK_PAGE_LIMIT, sortOptions?: SortOptions): Promise<Task[]> {
@@ -420,25 +445,29 @@ class ApiClient {
       params.set('sort_order', sortOptions.sortOrder);
     }
 
-    return this.request<Task[]>(`/api/tasks/project/${projectId}?${params.toString()}`);
+    const tasks = await this.request<RawTask[]>(`/api/tasks/project/${projectId}?${params.toString()}`);
+    return normalizeTasks(tasks);
   }
 
   async getTask(taskId: string): Promise<Task> {
-    return this.request<Task>(`/api/tasks/${taskId}/`);
+    const task = await this.request<RawTask>(`/api/tasks/${taskId}/`);
+    return normalizeTask(task);
   }
 
   async createTask(taskData: TaskCreate): Promise<Task> {
-    return this.request<Task>('/api/tasks/', {
+    const task = await this.request<RawTask>('/api/tasks/', {
       method: 'POST',
       body: JSON.stringify(taskData),
     });
+    return normalizeTask(task);
   }
 
   async updateTask(taskId: string, taskData: TaskUpdate): Promise<Task> {
-    return this.request<Task>(`/api/tasks/${taskId}/`, {
+    const task = await this.request<RawTask>(`/api/tasks/${taskId}/`, {
       method: 'PUT',
       body: JSON.stringify(taskData),
     });
+    return normalizeTask(task);
   }
 
   async deleteTask(taskId: string): Promise<void> {
@@ -1211,10 +1240,11 @@ class ApiClient {
    */
   async convertQuickTaskToTask(taskId: string, goalId: string): Promise<Task> {
     const convertData: QuickTaskConvertRequest = { goal_id: goalId };
-    return this.request<Task>(`/api/quick-tasks/${taskId}/convert`, {
+    const task = await this.request<RawTask>(`/api/quick-tasks/${taskId}/convert`, {
       method: 'POST',
       body: JSON.stringify(convertData),
     });
+    return normalizeTask(task);
   }
 
   // === Slot Template Methods ===
