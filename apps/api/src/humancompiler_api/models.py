@@ -66,6 +66,15 @@ class WorkType(StrEnum):
     FOCUSED_WORK = "focused_work"
 
 
+class SlotKind(StrEnum):
+    """Time slot kind for scheduling."""
+
+    LIGHT_WORK = "light_work"
+    STUDY = "study"
+    FOCUSED_WORK = "focused_work"
+    MEETING = "meeting"
+
+
 class SortBy(StrEnum):
     """Sort field options for list endpoints"""
 
@@ -2233,13 +2242,22 @@ class TimeSlotSchema(BaseModel):
 
     start: str = Field(..., pattern=r"^\d{2}:\d{2}$", description="Start time (HH:mm)")
     end: str = Field(..., pattern=r"^\d{2}:\d{2}$", description="End time (HH:mm)")
-    kind: str = Field(
+    kind: SlotKind = Field(
         ..., description="Slot kind (study, focused_work, light_work, meeting)"
     )
     capacity_hours: float | None = Field(
         None, ge=0, description="Slot capacity in hours"
     )
     assigned_project_id: str | None = Field(None, description="Assigned project ID")
+
+    @field_validator("start", "end")
+    @classmethod
+    def validate_time_value(cls, value: str) -> str:
+        """Validate HH:mm values are within a single calendar day."""
+        hour, minute = map(int, value.split(":"))
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError("Time must be between 00:00 and 23:59")
+        return value
 
     @model_validator(mode="after")
     def validate_start_before_end(self) -> "TimeSlotSchema":
@@ -2280,7 +2298,7 @@ class SlotTemplateResponse(BaseModel):
     user_id: UUID
     name: str
     day_of_week: int
-    slots: list[dict[str, Any]]
+    slots: list[TimeSlotSchema]
     is_default: bool
     created_at: datetime
     updated_at: datetime
@@ -2302,7 +2320,7 @@ class SlotTemplateResponse(BaseModel):
             user_id=template.user_id,
             name=template.name,
             day_of_week=template.day_of_week,
-            slots=template.slots_json,
+            slots=[TimeSlotSchema.model_validate(slot) for slot in template.slots_json],
             is_default=template.is_default,
             created_at=template.created_at,
             updated_at=template.updated_at,

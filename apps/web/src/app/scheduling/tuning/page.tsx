@@ -35,6 +35,8 @@ import {
   saveSchedulerSolverConfig,
 } from '@/lib/scheduler-config';
 import { cn } from '@/lib/utils';
+import { slotKinds } from '@/constants/schedule';
+import type { SlotKind } from '@/constants/schedule';
 import type {
   ScheduleResult,
   SchedulerSolverConfig,
@@ -42,7 +44,7 @@ import type {
   TimeSlot,
 } from '@/types/ai-planning';
 
-type SlotKind = 'focused_work' | 'study' | 'light_work';
+type SchedulableSlotKind = Exclude<SlotKind, 'meeting'>;
 
 type PreferenceState = {
   blockLength: 'short' | 'balanced' | 'long';
@@ -71,9 +73,9 @@ type PreferenceControl = {
 };
 
 const defaultSlots: TimeSlot[] = [
-  { start: '09:00', end: '12:00', kind: 'focused_work' },
-  { start: '13:00', end: '17:00', kind: 'study' },
-  { start: '19:00', end: '21:00', kind: 'light_work' },
+  { start: '09:00', end: '12:00', kind: slotKinds.focused_work },
+  { start: '13:00', end: '17:00', kind: slotKinds.study },
+  { start: '19:00', end: '21:00', kind: slotKinds.light_work },
 ];
 
 const defaultPreferences: PreferenceState = {
@@ -144,7 +146,7 @@ const preferenceControls: PreferenceControl[] = [
   },
 ];
 
-const slotKindOptions: Array<{ value: SlotKind; label: string }> = [
+const slotKindOptions: Array<{ value: SchedulableSlotKind; label: string }> = [
   { value: 'focused_work', label: '集中作業' },
   { value: 'study', label: '学習' },
   { value: 'light_work', label: '軽作業' },
@@ -580,7 +582,7 @@ export default function SchedulerTuningPage() {
                       />
                       <Select
                         value={slot.kind}
-                        onValueChange={(value) => updateSlot(index, { kind: value as SlotKind })}
+                        onValueChange={(value) => updateSlot(index, { kind: value as SchedulableSlotKind })}
                       >
                         <SelectTrigger aria-label={`${index + 1}枠目の作業種別`}>
                           <SelectValue />

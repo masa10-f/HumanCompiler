@@ -27,7 +27,7 @@ from humancompiler_optimizer.daily import (
     FixedAssignment,
     ScheduleResult,
     SchedulerTask,
-    SlotKind,
+    SlotKind as OptimizerSlotKind,
     TaskKind,
     TimeSlot,
 )
@@ -57,6 +57,7 @@ from humancompiler_api.models import (
     GoalDependency,
     TaskStatus,
     GoalStatus,
+    SlotKind,
     WorkType,
 )
 from humancompiler_api.services import goal_service, task_service, quick_task_service
@@ -514,7 +515,9 @@ def _coerce_human_solver_config(
     return human_daily_solver_config_from_dict({**defaults, **overrides})
 
 
-def _to_human_work_kind(kind: TaskKind | SlotKind | str) -> HumanWorkKind:
+def _to_human_work_kind(
+    kind: TaskKind | OptimizerSlotKind | SlotKind | str,
+) -> HumanWorkKind:
     raw_value = kind.value if isinstance(kind, Enum) else str(kind)
     mapping = {
         "light_work": HumanWorkKind.LIGHT_WORK,
@@ -1382,8 +1385,9 @@ class TimeSlotInput(BaseModel):
 
     start: str = Field(..., description="Start time in HH:MM format")
     end: str = Field(..., description="End time in HH:MM format")
-    kind: str = Field(
-        "light_work", description="Slot type: light_work, focused_work, study"
+    kind: SlotKind = Field(
+        SlotKind.LIGHT_WORK,
+        description="Slot type: light_work, focused_work, study, meeting",
     )
     capacity_hours: float | None = Field(
         None, description="Maximum hours for this slot"
@@ -1407,13 +1411,15 @@ class TimeSlotInput(BaseModel):
         except (ValueError, TypeError):
             raise ValueError("Time must be in HH:MM format")
 
-    @field_validator("kind")
-    @classmethod
-    def validate_kind(cls, v):
-        valid_kinds = ["light_work", "focused_work", "study"]
-        if v.lower() not in valid_kinds:
-            raise ValueError(f"Kind must be one of: {valid_kinds}")
-        return v.lower()
+    @model_validator(mode="after")
+    def validate_start_before_end(self) -> "TimeSlotInput":
+        start_parts = self.start.split(":")
+        end_parts = self.end.split(":")
+        start_minutes = int(start_parts[0]) * 60 + int(start_parts[1])
+        end_minutes = int(end_parts[0]) * 60 + int(end_parts[1])
+        if start_minutes >= end_minutes:
+            raise ValueError("Start time must be before end time")
+        return self
 
 
 class TaskSource(BaseModel):
@@ -1583,14 +1589,22 @@ def map_task_kind(status: str) -> TaskKind:
     return TaskKind.LIGHT_WORK  # Default
 
 
-def map_slot_kind(kind_str: str) -> SlotKind:
-    """Map input slot kind to scheduler SlotKind."""
+def map_slot_kind(kind: SlotKind | str) -> OptimizerSlotKind:
+    """Map API slot kind to optimizer slot kind."""
+    try:
+        slot_kind = kind if isinstance(kind, SlotKind) else SlotKind(str(kind))
+    except ValueError as exc:
+        raise ValueError(f"Unsupported slot kind: {kind}") from exc
+
+    if slot_kind == SlotKind.MEETING:
+        return OptimizerSlotKind.LIGHT_WORK
+
     mapping = {
-        "light_work": SlotKind.LIGHT_WORK,
-        "focused_work": SlotKind.FOCUSED_WORK,
-        "study": SlotKind.STUDY,
+        SlotKind.LIGHT_WORK: OptimizerSlotKind.LIGHT_WORK,
+        SlotKind.FOCUSED_WORK: OptimizerSlotKind.FOCUSED_WORK,
+        SlotKind.STUDY: OptimizerSlotKind.STUDY,
     }
-    return mapping.get(kind_str.lower(), SlotKind.LIGHT_WORK)
+    return mapping[slot_kind]
 
 
 def quick_task_to_scheduler_task(quick_task: QuickTask) -> SchedulerTask:
@@ -1828,6 +1842,12 @@ async def create_daily_schedule(
             logger.warning(f"Skipping ownership validation due to database error: {e}")
             pass
 
+        meeting_slot_indexes = {
+            index
+            for index, slot_input in enumerate(request.time_slots)
+            if slot_input.kind == SlotKind.MEETING
+        }
+
         # Convert time slots
         scheduler_slots = []
         for slot_input in request.time_slots:
@@ -1844,7 +1864,9 @@ async def create_daily_schedule(
                 start=start_time,
                 end=end_time,
                 kind=slot_kind,
-                capacity_hours=slot_input.capacity_hours,
+                capacity_hours=0.0
+                if slot_input.kind == SlotKind.MEETING
+                else slot_input.capacity_hours,
                 assigned_project_id=slot_input.assigned_project_id,
             )
             scheduler_slots.append(time_slot)
@@ -1852,6 +1874,11 @@ async def create_daily_schedule(
         # Convert fixed assignments
         scheduler_fixed_assignments = []
         for fa in request.fixed_assignments:
+            if fa.slot_index in meeting_slot_indexes:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Fixed assignments cannot target meeting slots",
+                )
             scheduler_fixed_assignments.append(
                 FixedAssignment(
                     task_id=fa.task_id,
@@ -1919,6 +1946,9 @@ async def create_daily_schedule(
         )
         return response
 
+    except HTTPException:
+        raise
+
     except ValidationError as e:
         logger.error(f"Validation error in schedule creation: {e}")
         raise HTTPException(
@@ -1977,13 +2007,13 @@ async def test_scheduler():
             TimeSlot(
                 start=time(9, 0),
                 end=time(11, 0),
-                kind=SlotKind.FOCUSED_WORK,
+                kind=OptimizerSlotKind.FOCUSED_WORK,
                 capacity_hours=2.0,
             ),
             TimeSlot(
                 start=time(14, 0),
                 end=time(15, 0),
-                kind=SlotKind.LIGHT_WORK,
+                kind=OptimizerSlotKind.LIGHT_WORK,
                 capacity_hours=1.0,
             ),
         ]

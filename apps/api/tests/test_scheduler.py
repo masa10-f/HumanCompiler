@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from humancompiler_api.auth import get_current_user_id
 from humancompiler_api.main import app
-from humancompiler_api.models import WorkType
+from humancompiler_api.models import SlotKind, WorkType
 from humancompiler_api.routers.scheduler import SCHEDULER_CONFIG_CONTROLS
 
 client = TestClient(app)
@@ -445,7 +445,10 @@ class TestSchedulerAPI:
         # Valid time slot
         valid_slot = TimeSlotInput(start="09:00", end="12:00", kind="focused_work")
         assert valid_slot.start == "09:00"
-        assert valid_slot.kind == "focused_work"
+        assert valid_slot.kind == SlotKind.FOCUSED_WORK
+
+        meeting_slot = TimeSlotInput(start="12:00", end="13:00", kind="meeting")
+        assert meeting_slot.kind == SlotKind.MEETING
 
         # Invalid time format
         with pytest.raises(ValueError):
@@ -458,6 +461,10 @@ class TestSchedulerAPI:
         # Invalid kind
         with pytest.raises(ValueError):
             TimeSlotInput(start="09:00", end="12:00", kind="invalid_kind")
+
+        # Invalid time range
+        with pytest.raises(ValueError):
+            TimeSlotInput(start="12:00", end="09:00", kind="focused_work")
 
     def test_task_kind_mapping(self):
         """Test task kind mapping function."""
@@ -472,13 +479,111 @@ class TestSchedulerAPI:
 
     def test_slot_kind_mapping(self):
         """Test slot kind mapping function."""
-        from humancompiler_api.routers.scheduler import SlotKind, map_slot_kind
+        from humancompiler_api.routers.scheduler import map_slot_kind
+        from humancompiler_optimizer.daily import SlotKind as OptimizerSlotKind
 
         # Test mapping
-        assert map_slot_kind("focused_work") == SlotKind.FOCUSED_WORK
-        assert map_slot_kind("light_work") == SlotKind.LIGHT_WORK  # Case insensitive
-        assert map_slot_kind("study") == SlotKind.STUDY
-        assert map_slot_kind("unknown") == SlotKind.LIGHT_WORK  # Default
+        assert map_slot_kind("focused_work") == OptimizerSlotKind.FOCUSED_WORK
+        assert map_slot_kind("light_work") == OptimizerSlotKind.LIGHT_WORK
+        assert map_slot_kind("study") == OptimizerSlotKind.STUDY
+        assert map_slot_kind("meeting") == OptimizerSlotKind.LIGHT_WORK
+        with pytest.raises(ValueError):
+            map_slot_kind("unknown")
+
+    def test_zero_capacity_slot_does_not_receive_assignments(self):
+        """Meeting slots are represented to the solver as zero-capacity slots."""
+        from datetime import time
+
+        from humancompiler_api.routers.scheduler import optimize_schedule
+        from humancompiler_optimizer.daily import (
+            SchedulerTask,
+            SlotKind as OptimizerSlotKind,
+            TaskKind,
+            TimeSlot,
+        )
+
+        result = optimize_schedule(
+            tasks=[
+                SchedulerTask(
+                    id="task-1",
+                    title="Task",
+                    estimate_hours=1.0,
+                    priority=1,
+                    kind=TaskKind.FOCUSED_WORK,
+                )
+            ],
+            time_slots=[
+                TimeSlot(
+                    start=time(12, 0),
+                    end=time(13, 0),
+                    kind=OptimizerSlotKind.LIGHT_WORK,
+                    capacity_hours=0.0,
+                )
+            ],
+            date=datetime(2025, 6, 23),
+        )
+
+        assert result.assignments == []
+        assert result.unscheduled_tasks == ["task-1"]
+
+    @patch("humancompiler_api.routers.scheduler._get_task_actual_hours")
+    @patch("humancompiler_api.routers.scheduler._get_tasks_by_source")
+    @patch(
+        "humancompiler_api.routers.scheduler.quick_task_service.get_active_quick_tasks"
+    )
+    def test_create_daily_schedule_rejects_fixed_assignment_to_meeting_slot(
+        self, mock_quick_tasks, mock_get_tasks_by_source, mock_actual_hours, mock_auth
+    ):
+        """Fixed assignments cannot target blocked meeting slots."""
+        from humancompiler_api.database import db
+
+        goal_id = str(uuid4())
+        project_id = str(uuid4())
+
+        mock_task = MagicMock()
+        mock_task.id = "task-1"
+        mock_task.title = "Pinned Task"
+        mock_task.estimate_hours = 1.0
+        mock_task.status = "pending"
+        mock_task.due_date = None
+        mock_task.goal_id = goal_id
+        mock_task.priority = 1
+        mock_task.work_type = WorkType.FOCUSED_WORK
+        mock_get_tasks_by_source.return_value = [mock_task]
+        mock_quick_tasks.return_value = []
+        mock_actual_hours.return_value = {}
+
+        mock_goal = MagicMock()
+        mock_goal.id = goal_id
+        mock_goal.project_id = project_id
+
+        mock_sess = MagicMock()
+        mock_exec_result = MagicMock()
+        mock_exec_result.all.return_value = [mock_goal]
+        mock_sess.exec.return_value = mock_exec_result
+
+        def mock_get_session():
+            yield mock_sess
+
+        app.dependency_overrides[db.get_session] = mock_get_session
+
+        try:
+            response = client.post(
+                "/api/schedule/daily",
+                json={
+                    "date": "2025-06-23",
+                    "time_slots": [
+                        {"start": "12:00", "end": "13:00", "kind": "meeting"}
+                    ],
+                    "fixed_assignments": [{"task_id": "task-1", "slot_index": 0}],
+                },
+            )
+        finally:
+            if db.get_session in app.dependency_overrides:
+                del app.dependency_overrides[db.get_session]
+
+        assert response.status_code == 400
+        assert "meeting slots" in response.json()["detail"]
 
     @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
     @patch("humancompiler_api.routers.scheduler.db.get_session")

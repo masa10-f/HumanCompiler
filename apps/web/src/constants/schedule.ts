@@ -6,6 +6,13 @@ import { logger } from '@/lib/logger'
 
 export type SlotKind = 'study' | 'focused_work' | 'light_work' | 'meeting';
 
+export const slotKinds: Record<SlotKind, SlotKind> = {
+  study: 'study',
+  focused_work: 'focused_work',
+  light_work: 'light_work',
+  meeting: 'meeting',
+} as const;
+
 export const slotKindLabels: Record<SlotKind, string> = {
   study: '学習',
   focused_work: '集中作業',
@@ -18,6 +25,13 @@ export const slotKindColors: Record<SlotKind, string> = {
   focused_work: 'bg-purple-100 text-purple-800',
   light_work: 'bg-green-100 text-green-800',
   meeting: 'bg-orange-100 text-orange-800',
+} as const;
+
+export const slotKindPanelStyles: Record<SlotKind, { bg: string; border: string; text: string }> = {
+  study: { bg: 'bg-blue-50', border: 'border-blue-300', text: 'text-blue-700' },
+  focused_work: { bg: 'bg-purple-50', border: 'border-purple-300', text: 'text-purple-700' },
+  light_work: { bg: 'bg-green-50', border: 'border-green-300', text: 'text-green-700' },
+  meeting: { bg: 'bg-orange-50', border: 'border-orange-300', text: 'text-orange-700' },
 } as const;
 
 /**
@@ -50,6 +64,19 @@ export const getSlotKindColor = (slotKind: string): string => {
   }
 
   return slotKindColors[typedSlotKind];
+};
+
+export const getSlotKindPanelStyle = (
+  slotKind: string,
+): { bg: string; border: string; text: string } => {
+  const typedSlotKind = slotKind as SlotKind;
+
+  if (!(slotKind in slotKindPanelStyles)) {
+    logger.warn('Unknown slot kind, using fallback to meeting', { slotKind }, { component: 'schedule' });
+    return slotKindPanelStyles.meeting;
+  }
+
+  return slotKindPanelStyles[typedSlotKind];
 };
 
 /**

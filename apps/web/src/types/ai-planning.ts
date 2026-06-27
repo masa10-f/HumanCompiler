@@ -3,6 +3,9 @@
  * @description AI支援による週次計画・スケジュール最適化に使用する型を定義
  */
 
+import type { SlotKind } from '@/constants/schedule';
+import type { WorkType } from './task';
+
 /**
  * 週次計画リクエスト
  * @description AI週次計画生成時のパラメータ
@@ -187,7 +190,7 @@ export interface TimeSlot {
   /** 終了時刻 (HH:mm形式) */
   end: string;
   /** スロット種別（作業タイプ） */
-  kind: 'study' | 'focused_work' | 'light_work' | 'meeting';
+  kind: SlotKind;
   /** スロットのキャパシティ（時間単位） */
   capacity_hours?: number;
   /** 割り当てプロジェクトID（スロット単位での割り当て） */
@@ -291,7 +294,7 @@ export interface TaskAssignment {
   /** スロット終了時刻 */
   slot_end: string;
   /** スロット種別 */
-  slot_kind: string;
+  slot_kind: SlotKind;
   /** ユーザーによる固定割り当てかどうか */
   is_fixed?: boolean;
 }
@@ -310,7 +313,7 @@ export interface TaskInfo {
   /** 優先度 */
   priority: number;
   /** 作業種別 */
-  kind: string;
+  kind: WorkType;
   /** 期限日 */
   due_date?: string;
   /** 所属ゴールID */

@@ -48,8 +48,8 @@ import {
   getSlotKindColor,
   getDayOfWeekLabel,
   getDayOfWeekShortLabel,
-  type SlotKind,
 } from '@/constants/schedule';
+import type { SlotKind } from '@/constants/schedule';
 import type {
   SlotTemplate,
   SlotTemplateCreate,
