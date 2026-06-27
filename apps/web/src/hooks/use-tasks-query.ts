@@ -210,8 +210,6 @@ export function useUpdateTask() {
 /**
  * Mutation hook for deleting a task.
  * Removes from cache and invalidates task collections on success.
- * Cache invalidation is delayed to allow dialog close animation to complete,
- * preventing UI freeze from Radix UI cleanup issues.
  *
  * @returns UseMutationResult with mutateAsync function
  */
@@ -228,17 +226,7 @@ export function useDeleteTask() {
       // Remove task from cache immediately
       queryClient.removeQueries({ queryKey: taskKeys.detail(taskId) })
 
-      // Delay cache invalidation to allow dialog close animation to complete
-      // This prevents Radix UI dialog cleanup issues that cause UI freeze
-      setTimeout(() => {
-        // Force reset body styles in case Radix UI dialog cleanup failed
-        if (typeof document !== 'undefined') {
-          document.body.style.pointerEvents = ''
-          document.body.style.overflow = ''
-        }
-
-        invalidateTaskCollections(queryClient, goalId)
-      }, 300)
+      invalidateTaskCollections(queryClient, goalId)
     },
   })
 }

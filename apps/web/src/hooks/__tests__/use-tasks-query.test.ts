@@ -340,13 +340,8 @@ describe('useUpdateTask', () => {
 
 describe('useDeleteTask', () => {
   beforeEach(() => {
-    jest.useFakeTimers()
     jest.clearAllMocks()
     resetIdCounter()
-  })
-
-  afterEach(() => {
-    jest.useRealTimers()
   })
 
   it('should remove from cache', async () => {
@@ -387,10 +382,6 @@ describe('useDeleteTask', () => {
       await result.current.mutateAsync('task-1')
     })
 
-    act(() => {
-      jest.advanceTimersByTime(300)
-    })
-
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: taskKeys.byGoal('goal-1'),
     })
@@ -406,10 +397,6 @@ describe('useDeleteTask', () => {
 
     await act(async () => {
       await result.current.mutateAsync('unknown-task')
-    })
-
-    act(() => {
-      jest.advanceTimersByTime(300)
     })
 
     expect(invalidateSpy).toHaveBeenCalledWith({ predicate: expect.any(Function) })

@@ -3,13 +3,16 @@
 import { useState } from 'react';
 import { log } from '@/lib/logger';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { useDeleteTask } from '@/hooks/use-tasks-query';
 import { toast } from '@/hooks/use-toast';
@@ -25,6 +28,8 @@ export function TaskDeleteDialog({ task, children }: TaskDeleteDialogProps) {
   const deleteTaskMutation = useDeleteTask();
 
   const handleDelete = async () => {
+    setOpen(false);
+
     try {
       await deleteTaskMutation.mutateAsync(task.id);
 
@@ -32,8 +37,6 @@ export function TaskDeleteDialog({ task, children }: TaskDeleteDialogProps) {
         title: 'タスクを削除しました',
         description: `「${task.title}」が正常に削除されました。`,
       });
-
-      setOpen(false);
     } catch (error) {
       log.error('Failed to delete task', error, { component: 'TaskDeleteDialog', taskId: task.id, action: 'deleteTask' });
 
@@ -46,35 +49,32 @@ export function TaskDeleteDialog({ task, children }: TaskDeleteDialogProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <AlertDialogTrigger asChild>
         {children}
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>タスクの削除</DialogTitle>
-          <DialogDescription>
+      </AlertDialogTrigger>
+      <AlertDialogContent className="sm:max-w-[425px]">
+        <AlertDialogHeader>
+          <AlertDialogTitle>タスクの削除</AlertDialogTitle>
+          <AlertDialogDescription>
             本当に「{task.title}」を削除しますか？この操作は取り消せません。
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex justify-end space-x-2 pt-4">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setOpen(false)}
-            disabled={deleteTaskMutation.isPending}
-          >
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deleteTaskMutation.isPending}>
             キャンセル
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={handleDelete}
-            disabled={deleteTaskMutation.isPending}
-          >
-            {deleteTaskMutation.isPending ? '削除中...' : '削除'}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+          </AlertDialogCancel>
+          <AlertDialogAction asChild>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleteTaskMutation.isPending}
+            >
+              {deleteTaskMutation.isPending ? '削除中...' : '削除'}
+            </Button>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
