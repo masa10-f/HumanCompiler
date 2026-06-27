@@ -311,12 +311,6 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
             <TaskDependenciesManager
               task={task}
               availableTasks={availableTasks}
-              onDependencyAdded={() => {
-                // Optionally refresh task data
-              }}
-              onDependencyRemoved={() => {
-                // Optionally refresh task data
-              }}
             />
           </TabsContent>
 

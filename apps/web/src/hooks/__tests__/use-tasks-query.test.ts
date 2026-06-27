@@ -2,9 +2,10 @@
  * @jest-environment jsdom
  */
 import { act, waitFor } from '@testing-library/react'
+import { QueryClient } from '@tanstack/react-query'
 import { createMockTask, createMockTasks, resetIdCounter } from './helpers/mock-factories'
 import { renderHookWithClient } from './helpers/test-utils'
-import type { Task, TaskCreate, TaskUpdate } from '@/types/task'
+import type { Task, TaskCreate, TaskDependency, TaskUpdate } from '@/types/task'
 import { SortBy, SortOrder } from '@/types/sort'
 import type { SortOptions } from '@/types/sort'
 
@@ -15,6 +16,22 @@ const mockGetById = jest.fn<Promise<Task>, [string]>()
 const mockCreate = jest.fn<Promise<Task>, [TaskCreate]>()
 const mockUpdate = jest.fn<Promise<Task>, [string, TaskUpdate]>()
 const mockDelete = jest.fn<Promise<void>, [string]>()
+const mockAddDependency = jest.fn<Promise<TaskDependency>, [string, string]>()
+const mockDeleteDependency = jest.fn<Promise<void>, [string, string]>()
+
+const createPersistentQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+        gcTime: Infinity,
+        staleTime: 0,
+      },
+      mutations: {
+        retry: false,
+      },
+    },
+  })
 
 jest.mock('@/lib/api', () => ({
   DEFAULT_TASK_PAGE_LIMIT: 100,
@@ -25,6 +42,8 @@ jest.mock('@/lib/api', () => ({
     create: (data: TaskCreate) => mockCreate(data),
     update: (id: string, data: TaskUpdate) => mockUpdate(id, data),
     delete: (id: string) => mockDelete(id),
+    addDependency: (taskId: string, dependsOnTaskId: string) => mockAddDependency(taskId, dependsOnTaskId),
+    deleteDependency: (taskId: string, dependencyId: string) => mockDeleteDependency(taskId, dependencyId),
   },
 }))
 
@@ -37,6 +56,8 @@ import {
   useCreateTask,
   useUpdateTask,
   useDeleteTask,
+  useAddTaskDependency,
+  useDeleteTaskDependency,
   taskKeys,
 } from '../use-tasks-query'
 
@@ -51,7 +72,6 @@ describe('taskKeys', () => {
 
   it('should generate correct keys for details', () => {
     expect(taskKeys.all).toEqual(['tasks'])
-    expect(taskKeys.lists()).toEqual(['tasks', 'list'])
     expect(taskKeys.details()).toEqual(['tasks', 'detail'])
     expect(taskKeys.detail('task-1')).toEqual(['tasks', 'detail', 'task-1'])
   })
@@ -234,7 +254,7 @@ describe('useCreateTask', () => {
     })
   })
 
-  it('should invalidate task lists', async () => {
+  it('should invalidate project task queries', async () => {
     const newTask = createMockTask({ id: 'new-task', goal_id: 'goal-1' })
     mockCreate.mockResolvedValue(newTask)
 
@@ -250,7 +270,7 @@ describe('useCreateTask', () => {
       })
     })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: taskKeys.lists() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ predicate: expect.any(Function) })
   })
 
   it('should add task to cache', async () => {
@@ -283,7 +303,7 @@ describe('useUpdateTask', () => {
     resetIdCounter()
   })
 
-  it('should update cache and invalidate lists', async () => {
+  it('should update cache and invalidate goal and project task queries', async () => {
     const updatedTask = createMockTask({ id: 'task-1', title: 'Updated', goal_id: 'goal-1' })
     mockUpdate.mockResolvedValue(updatedTask)
 
@@ -314,7 +334,7 @@ describe('useUpdateTask', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: taskKeys.byGoal('goal-1'),
     })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: taskKeys.lists() })
+    expect(invalidateSpy).toHaveBeenCalledWith({ predicate: expect.any(Function) })
   })
 })
 
@@ -376,7 +396,7 @@ describe('useDeleteTask', () => {
     })
   })
 
-  it('should fallback to invalidate all lists if goalId unknown', async () => {
+  it('should fallback to invalidate all goal and project task queries if goalId unknown', async () => {
     mockDelete.mockResolvedValue(undefined)
 
     const { result, queryClient } = renderHookWithClient(() => useDeleteTask())
@@ -392,8 +412,106 @@ describe('useDeleteTask', () => {
       jest.advanceTimersByTime(300)
     })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: taskKeys.lists(),
+    expect(invalidateSpy).toHaveBeenCalledWith({ predicate: expect.any(Function) })
+  })
+})
+
+describe('useAddTaskDependency', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    resetIdCounter()
+  })
+
+  it('should add dependency to task caches and invalidate task collections', async () => {
+    const task = createMockTask({ id: 'task-1', goal_id: 'goal-1', dependencies: [] })
+    const dependsOnTask = createMockTask({ id: 'task-2', title: 'Dependency task', status: 'pending' })
+    const dependency: TaskDependency = {
+      id: 'dep-1',
+      task_id: 'task-1',
+      depends_on_task_id: 'task-2',
+      created_at: '2025-01-01T00:00:00Z',
+      depends_on_task: null,
+    }
+    mockAddDependency.mockResolvedValue(dependency)
+
+    const queryClient = createPersistentQueryClient()
+    const { result } = renderHookWithClient(
+      () => useAddTaskDependency(task, [dependsOnTask]),
+      { queryClient }
+    )
+
+    queryClient.setQueryData(taskKeys.detail('task-1'), task)
+    queryClient.setQueryData([...taskKeys.byGoal('goal-1'), 'page', 0, 100, 'default'], [task])
+    queryClient.setQueryData([...taskKeys.byProject('project-1'), 'page', 0, 100, 'default'], [task])
+
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries')
+
+    await act(async () => {
+      await result.current.mutateAsync('task-2')
     })
+
+    expect(mockAddDependency).toHaveBeenCalledWith('task-1', 'task-2')
+    expect(queryClient.getQueryData<Task>(taskKeys.detail('task-1'))?.dependencies).toEqual([
+      {
+        ...dependency,
+        depends_on_task: {
+          id: 'task-2',
+          title: 'Dependency task',
+          status: 'pending',
+        },
+      },
+    ])
+    expect(queryClient.getQueryData<Task[]>([...taskKeys.byGoal('goal-1'), 'page', 0, 100, 'default'])?.[0].dependencies).toHaveLength(1)
+    expect(queryClient.getQueryData<Task[]>([...taskKeys.byProject('project-1'), 'page', 0, 100, 'default'])?.[0].dependencies).toHaveLength(1)
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: taskKeys.detail('task-1') })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: taskKeys.byGoal('goal-1') })
+    expect(invalidateSpy).toHaveBeenCalledWith({ predicate: expect.any(Function) })
+  })
+})
+
+describe('useDeleteTaskDependency', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    resetIdCounter()
+  })
+
+  it('should remove dependency from task caches and invalidate task collections', async () => {
+    const dependency: TaskDependency = {
+      id: 'dep-1',
+      task_id: 'task-1',
+      depends_on_task_id: 'task-2',
+      created_at: '2025-01-01T00:00:00Z',
+      depends_on_task: {
+        id: 'task-2',
+        title: 'Dependency task',
+        status: 'pending',
+      },
+    }
+    const task = createMockTask({ id: 'task-1', goal_id: 'goal-1', dependencies: [dependency] })
+    mockDeleteDependency.mockResolvedValue(undefined)
+
+    const queryClient = createPersistentQueryClient()
+    const { result } = renderHookWithClient(
+      () => useDeleteTaskDependency(task),
+      { queryClient }
+    )
+
+    queryClient.setQueryData(taskKeys.detail('task-1'), task)
+    queryClient.setQueryData([...taskKeys.byGoal('goal-1'), 'page', 0, 100, 'default'], [task])
+    queryClient.setQueryData([...taskKeys.byProject('project-1'), 'page', 0, 100, 'default'], [task])
+
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries')
+
+    await act(async () => {
+      await result.current.mutateAsync('dep-1')
+    })
+
+    expect(mockDeleteDependency).toHaveBeenCalledWith('task-1', 'dep-1')
+    expect(queryClient.getQueryData<Task>(taskKeys.detail('task-1'))?.dependencies).toEqual([])
+    expect(queryClient.getQueryData<Task[]>([...taskKeys.byGoal('goal-1'), 'page', 0, 100, 'default'])?.[0].dependencies).toEqual([])
+    expect(queryClient.getQueryData<Task[]>([...taskKeys.byProject('project-1'), 'page', 0, 100, 'default'])?.[0].dependencies).toEqual([])
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: taskKeys.detail('task-1') })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: taskKeys.byGoal('goal-1') })
+    expect(invalidateSpy).toHaveBeenCalledWith({ predicate: expect.any(Function) })
   })
 })

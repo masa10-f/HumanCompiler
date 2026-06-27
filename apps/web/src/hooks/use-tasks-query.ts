@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { DEFAULT_TASK_PAGE_LIMIT, tasksApi } from '@/lib/api'
-import type { Task, TaskCreate, TaskUpdate } from '@/types/task'
+import type { QueryClient, Query } from '@tanstack/react-query'
+import type { Task, TaskCreate, TaskUpdate, TaskDependency } from '@/types/task'
 import type { SortOptions } from '@/types/sort'
 
 /**
@@ -9,12 +10,64 @@ import type { SortOptions } from '@/types/sort'
  */
 export const taskKeys = {
   all: ['tasks'] as const,
-  lists: () => [...taskKeys.all, 'list'] as const,
-  list: (filters: string) => [...taskKeys.lists(), { filters }] as const,
   details: () => [...taskKeys.all, 'detail'] as const,
   detail: (id: string) => [...taskKeys.details(), id] as const,
   byGoal: (goalId: string) => [...taskKeys.all, 'goal', goalId] as const,
   byProject: (projectId: string) => [...taskKeys.all, 'project', projectId] as const,
+}
+
+const isTaskGoalQuery = (query: Query) =>
+  query.queryKey[0] === taskKeys.all[0] && query.queryKey[1] === 'goal'
+
+const isTaskProjectQuery = (query: Query) =>
+  query.queryKey[0] === taskKeys.all[0] && query.queryKey[1] === 'project'
+
+const invalidateTaskCollections = (queryClient: QueryClient, goalId?: string) => {
+  if (goalId) {
+    queryClient.invalidateQueries({ queryKey: taskKeys.byGoal(goalId) })
+  } else {
+    queryClient.invalidateQueries({ predicate: isTaskGoalQuery })
+  }
+
+  queryClient.invalidateQueries({ predicate: isTaskProjectQuery })
+}
+
+const updateTaskInList = (
+  data: unknown,
+  taskId: string,
+  updateTask: (task: Task) => Task
+) => {
+  if (!Array.isArray(data)) {
+    return data
+  }
+
+  return data.map((task) => {
+    if (!task || typeof task !== 'object' || (task as Task).id !== taskId) {
+      return task
+    }
+
+    return updateTask(task as Task)
+  })
+}
+
+const updateTaskCaches = (
+  queryClient: QueryClient,
+  task: Task,
+  updateTask: (task: Task) => Task
+) => {
+  queryClient.setQueryData<Task>(taskKeys.detail(task.id), (cachedTask) =>
+    updateTask(cachedTask ?? task)
+  )
+
+  queryClient.setQueriesData(
+    { queryKey: taskKeys.byGoal(task.goal_id) },
+    (data) => updateTaskInList(data, task.id, updateTask)
+  )
+
+  queryClient.setQueriesData(
+    { predicate: isTaskProjectQuery },
+    (data) => updateTaskInList(data, task.id, updateTask)
+  )
 }
 
 /**
@@ -118,14 +171,7 @@ export function useCreateTask() {
   return useMutation({
     mutationFn: (taskData: TaskCreate) => tasksApi.create(taskData),
     onSuccess: (newTask: Task) => {
-      // Invalidate tasks for the specific goal
-      queryClient.invalidateQueries({
-        queryKey: taskKeys.byGoal(newTask.goal_id)
-      })
-
-      // Invalidate tasks for the project if we have project_id
-      // Note: We need to get the goal to know the project_id
-      queryClient.invalidateQueries({ queryKey: taskKeys.lists() })
+      invalidateTaskCollections(queryClient, newTask.goal_id)
 
       // Add the new task to cache
       queryClient.setQueryData(
@@ -138,7 +184,7 @@ export function useCreateTask() {
 
 /**
  * Mutation hook for updating a task.
- * Updates cache and invalidates task lists on success.
+ * Updates cache and invalidates task collections on success.
  *
  * @returns UseMutationResult with mutateAsync function
  */
@@ -155,20 +201,15 @@ export function useUpdateTask() {
         updatedTask
       )
 
-      // Invalidate tasks for the goal to reflect changes in list view
-      queryClient.invalidateQueries({
-        queryKey: taskKeys.byGoal(updatedTask.goal_id)
-      })
-
-      // Invalidate task lists as well
-      queryClient.invalidateQueries({ queryKey: taskKeys.lists() })
+      // Invalidate task collections to reflect changes in goal and project views.
+      invalidateTaskCollections(queryClient, updatedTask.goal_id)
     },
   })
 }
 
 /**
  * Mutation hook for deleting a task.
- * Removes from cache and invalidates task lists on success.
+ * Removes from cache and invalidates task collections on success.
  * Cache invalidation is delayed to allow dialog close animation to complete,
  * preventing UI freeze from Radix UI cleanup issues.
  *
@@ -196,15 +237,69 @@ export function useDeleteTask() {
           document.body.style.overflow = ''
         }
 
-        if (goalId) {
-          queryClient.invalidateQueries({
-            queryKey: taskKeys.byGoal(goalId)
-          })
-        } else {
-          // Fallback: invalidate all task lists
-          queryClient.invalidateQueries({ queryKey: taskKeys.lists() })
-        }
+        invalidateTaskCollections(queryClient, goalId)
       }, 300)
+    },
+  })
+}
+
+/**
+ * Mutation hook for adding a dependency to a task.
+ * Keeps task detail/collection caches fresh and invalidates goal/project task views.
+ */
+export function useAddTaskDependency(task: Task, availableTasks: Task[] = []) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (dependsOnTaskId: string) => tasksApi.addDependency(task.id, dependsOnTaskId),
+    onSuccess: (dependency: TaskDependency, dependsOnTaskId) => {
+      const dependsOnTask = availableTasks.find((availableTask) => availableTask.id === dependsOnTaskId)
+      const hydratedDependency: TaskDependency = {
+        ...dependency,
+        depends_on_task: dependency.depends_on_task ?? (dependsOnTask
+          ? {
+              id: dependsOnTask.id,
+              title: dependsOnTask.title,
+              status: dependsOnTask.status,
+            }
+          : null),
+      }
+
+      updateTaskCaches(queryClient, task, (cachedTask) => ({
+        ...cachedTask,
+        dependencies: [
+          ...(cachedTask.dependencies ?? []).filter(
+            (existingDependency) => existingDependency.id !== hydratedDependency.id
+          ),
+          hydratedDependency,
+        ],
+      }))
+
+      queryClient.invalidateQueries({ queryKey: taskKeys.detail(task.id) })
+      invalidateTaskCollections(queryClient, task.goal_id)
+    },
+  })
+}
+
+/**
+ * Mutation hook for deleting a dependency from a task.
+ * Keeps task detail/collection caches fresh and invalidates goal/project task views.
+ */
+export function useDeleteTaskDependency(task: Task) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (dependencyId: string) => tasksApi.deleteDependency(task.id, dependencyId),
+    onSuccess: (_, dependencyId) => {
+      updateTaskCaches(queryClient, task, (cachedTask) => ({
+        ...cachedTask,
+        dependencies: (cachedTask.dependencies ?? []).filter(
+          (dependency) => dependency.id !== dependencyId
+        ),
+      }))
+
+      queryClient.invalidateQueries({ queryKey: taskKeys.detail(task.id) })
+      invalidateTaskCollections(queryClient, task.goal_id)
     },
   })
 }

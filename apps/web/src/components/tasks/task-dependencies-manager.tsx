@@ -12,9 +12,9 @@ import {
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { tasksApi } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
-import type { Task, TaskDependency } from '@/types/task';
+import { useAddTaskDependency, useDeleteTaskDependency } from '@/hooks/use-tasks-query';
+import type { Task } from '@/types/task';
 
 interface TaskDependenciesManagerProps {
   task: Task;
@@ -29,10 +29,10 @@ export function TaskDependenciesManager({
   onDependencyAdded,
   onDependencyRemoved,
 }: TaskDependenciesManagerProps) {
-  const [dependencies, setDependencies] = useState<TaskDependency[]>(task.dependencies || []);
   const [selectedTaskId, setSelectedTaskId] = useState<string>('');
-  const [isAdding, setIsAdding] = useState(false);
-  const [isRemoving, setIsRemoving] = useState<string | null>(null);
+  const dependencies = task.dependencies || [];
+  const addDependencyMutation = useAddTaskDependency(task, availableTasks);
+  const deleteDependencyMutation = useDeleteTaskDependency(task);
 
   // Filter out tasks that cannot be dependencies
   const selectableTasks = availableTasks.filter(t => {
@@ -46,17 +46,9 @@ export function TaskDependenciesManager({
   const handleAddDependency = async () => {
     if (!selectedTaskId) return;
 
-    setIsAdding(true);
+    const dependsOnTask = availableTasks.find(t => t.id === selectedTaskId);
     try {
-      const newDependency = await tasksApi.addDependency(task.id, selectedTaskId);
-
-      // Find the task details for the new dependency
-      const dependsOnTask = availableTasks.find(t => t.id === selectedTaskId);
-      if (dependsOnTask) {
-        newDependency.depends_on_task = dependsOnTask;
-      }
-
-      setDependencies([...dependencies, newDependency]);
+      await addDependencyMutation.mutateAsync(selectedTaskId);
       setSelectedTaskId('');
       toast({
         title: '依存関係を追加しました',
@@ -69,16 +61,12 @@ export function TaskDependenciesManager({
         description: '依存関係の追加に失敗しました。',
         variant: 'destructive',
       });
-    } finally {
-      setIsAdding(false);
     }
   };
 
   const handleRemoveDependency = async (dependencyId: string) => {
-    setIsRemoving(dependencyId);
     try {
-      await tasksApi.deleteDependency(task.id, dependencyId);
-      setDependencies(dependencies.filter(d => d.id !== dependencyId));
+      await deleteDependencyMutation.mutateAsync(dependencyId);
       toast({
         title: '依存関係を削除しました',
       });
@@ -89,8 +77,6 @@ export function TaskDependenciesManager({
         description: '依存関係の削除に失敗しました。',
         variant: 'destructive',
       });
-    } finally {
-      setIsRemoving(null);
     }
   };
 
@@ -126,7 +112,10 @@ export function TaskDependenciesManager({
                   size="sm"
                   variant="ghost"
                   onClick={() => handleRemoveDependency(dep.id)}
-                  disabled={isRemoving === dep.id}
+                  disabled={
+                    deleteDependencyMutation.isPending &&
+                    deleteDependencyMutation.variables === dep.id
+                  }
                 >
                   <X className="h-4 w-4" />
                 </Button>
@@ -140,7 +129,7 @@ export function TaskDependenciesManager({
         <Select
           value={selectedTaskId}
           onValueChange={setSelectedTaskId}
-          disabled={isAdding || selectableTasks.length === 0}
+          disabled={addDependencyMutation.isPending || selectableTasks.length === 0}
         >
           <SelectTrigger className="flex-1">
             <SelectValue placeholder="依存タスクを選択..." />
@@ -156,7 +145,7 @@ export function TaskDependenciesManager({
         <Button
           size="sm"
           onClick={handleAddDependency}
-          disabled={!selectedTaskId || isAdding}
+          disabled={!selectedTaskId || addDependencyMutation.isPending}
         >
           <Plus className="h-4 w-4 mr-1" />
           追加
