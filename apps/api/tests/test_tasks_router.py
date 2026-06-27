@@ -13,6 +13,22 @@ from humancompiler_api.models import Task, TaskCreate, TaskDependency
 from humancompiler_api.routers import tasks
 
 
+def test_create_task_keeps_no_slash_route_out_of_schema():
+    create_routes = [
+        route
+        for route in tasks.router.routes
+        if getattr(route, "endpoint", None) is tasks.create_task
+        and "POST" in getattr(route, "methods", set())
+    ]
+
+    routes_by_path = {route.path: route for route in create_routes}
+
+    assert "/tasks/" in routes_by_path
+    assert "/tasks" in routes_by_path
+    assert routes_by_path["/tasks/"].include_in_schema is True
+    assert routes_by_path["/tasks"].include_in_schema is False
+
+
 @pytest.mark.asyncio
 async def test_create_task_logs_only_task_id_and_user_id(monkeypatch, caplog):
     """Task creation logs should not include user-authored task content."""

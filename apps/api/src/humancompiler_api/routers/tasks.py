@@ -71,6 +71,15 @@ def build_task_responses_with_dependencies(
         404: {"model": ErrorResponse, "description": "Goal not found"},
     },
 )
+@router.post(
+    "",
+    response_model=TaskResponse,
+    status_code=status.HTTP_201_CREATED,
+    include_in_schema=False,
+    responses={
+        404: {"model": ErrorResponse, "description": "Goal not found"},
+    },
+)
 async def create_task(
     task_data: TaskCreate,
     session: Annotated[Session, Depends(get_session)],
