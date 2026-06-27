@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { log } from '@/lib/logger';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import {
   Dialog,
   DialogContent,
@@ -34,22 +33,12 @@ import {
 import { useCreateTask } from '@/hooks/use-tasks-query';
 import { toast } from '@/hooks/use-toast';
 import { roundToDecimals, parseFloatSafe } from '@/lib/number-utils';
-
-const taskFormSchema = z.object({
-  title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
-  description: z.string().max(500, '500文字以内で入力してください').optional(),
-  estimate_hours: z.number()
-    .min(0.01, '0.01時間以上で入力してください')
-    .max(999.99, '999.99時間以内で入力してください')
-    .refine((val) => Number((val * 100).toFixed()) / 100 === val, {
-      message: '小数点以下は2桁以内で入力してください'
-    }),
-  due_date: z.string().optional(),
-  work_type: z.enum(['light_work', 'study', 'focused_work']).optional(),
-  priority: z.number().int().min(1, '1以上で入力してください').max(5, '5以下で入力してください').optional(),
-});
-
-type TaskFormData = z.infer<typeof taskFormSchema>;
+import {
+  TASK_ESTIMATE_HOURS_MAX,
+  TASK_ESTIMATE_HOURS_MIN,
+  taskCreateFormSchema,
+  type TaskCreateFormData,
+} from '@/lib/validations/task';
 
 interface TaskFormDialogProps {
   goalId: string;
@@ -60,8 +49,8 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
   const [open, setOpen] = useState(false);
   const createTaskMutation = useCreateTask();
 
-  const form = useForm<TaskFormData>({
-    resolver: zodResolver(taskFormSchema),
+  const form = useForm<TaskCreateFormData>({
+    resolver: zodResolver(taskCreateFormSchema),
     defaultValues: {
       title: '',
       description: '',
@@ -72,7 +61,7 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
     },
   });
 
-  const onSubmit = async (data: TaskFormData) => {
+  const onSubmit = async (data: TaskCreateFormData) => {
     try {
       const taskData = {
         title: data.title,
@@ -163,8 +152,8 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
                     <Input
                       type="number"
                       step="0.01"
-                      min="0.01"
-                      max="999.99"
+                      min={TASK_ESTIMATE_HOURS_MIN}
+                      max={TASK_ESTIMATE_HOURS_MAX}
                       placeholder="1.00"
                       {...field}
                       onChange={(e) => {
