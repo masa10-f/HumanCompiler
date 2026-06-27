@@ -1010,7 +1010,7 @@ class TaskUpdate(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = Field(None, max_length=1000)
     memo: str | None = Field(None, max_length=2000)
-    estimate_hours: Decimal | None = Field(None, gt=0)
+    estimate_hours: Decimal | None = Field(None, gt=0, max_digits=5, decimal_places=2)
     due_date: datetime | None = None
     status: TaskStatus | None = None
     work_type: WorkType | None = None

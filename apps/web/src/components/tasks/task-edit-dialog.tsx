@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { log } from '@/lib/logger';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import {
   Dialog,
   DialogContent,
@@ -40,23 +39,12 @@ import { SessionHistory } from '@/components/runner/session-history';
 import type { Task } from '@/types/task';
 import { roundToDecimals, parseFloatSafe } from '@/lib/number-utils';
 import { buildTaskEditUpdatePayload } from './task-edit-payload';
-
-const taskFormSchema = z.object({
-  title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
-  description: z.string().max(500, '500文字以内で入力してください').optional(),
-  estimate_hours: z.number()
-    .min(0.01, '0.01時間以上で入力してください')
-    .max(999.99, '999.99時間以内で入力してください')
-    .refine((val) => Number((val * 100).toFixed()) / 100 === val, {
-      message: '小数点以下は2桁以内で入力してください'
-    }),
-  due_date: z.string().optional(),
-  status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']),
-  work_type: z.enum(['light_work', 'study', 'focused_work']).optional(),
-  priority: z.number().int().min(1, '1以上で入力してください').max(5, '5以下で入力してください').optional(),
-});
-
-type TaskFormData = z.infer<typeof taskFormSchema>;
+import {
+  TASK_ESTIMATE_HOURS_MAX,
+  TASK_ESTIMATE_HOURS_MIN,
+  taskEditFormSchema,
+  type TaskEditFormData,
+} from '@/lib/validations/task';
 
 interface TaskEditDialogProps {
   task: Task;
@@ -68,8 +56,8 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
   const [open, setOpen] = useState(false);
   const updateTaskMutation = useUpdateTask();
 
-  const form = useForm<TaskFormData>({
-    resolver: zodResolver(taskFormSchema),
+  const form = useForm<TaskEditFormData>({
+    resolver: zodResolver(taskEditFormSchema),
     defaultValues: {
       title: task.title,
       description: task.description || '',
@@ -94,7 +82,7 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
     });
   }, [task, form]);
 
-  const onSubmit = async (data: TaskFormData) => {
+  const onSubmit = async (data: TaskEditFormData) => {
     try {
       await updateTaskMutation.mutateAsync({
         id: task.id,
@@ -183,8 +171,8 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
                     <Input
                       type="number"
                       step="0.01"
-                      min="0.01"
-                      max="999.99"
+                      min={TASK_ESTIMATE_HOURS_MIN}
+                      max={TASK_ESTIMATE_HOURS_MAX}
                       placeholder="1.00"
                       {...field}
                       onChange={(e) => {

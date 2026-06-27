@@ -23,6 +23,7 @@ import { formatJSTDateTime } from '@/lib/date-utils';
 import { LogEditDialog } from '@/components/logs/log-edit-dialog';
 import { LogDeleteDialog } from '@/components/logs/log-delete-dialog';
 import type { Log } from '@/types/log';
+import { TASK_MEMO_MAX_LENGTH, taskMemoSchema } from '@/lib/validations/task';
 
 interface TaskLogsMemoPanelProps {
   task: Task;
@@ -62,6 +63,9 @@ export function TaskLogsMemoPanel({
   const hasSessionSummary = isOpen || sessions.length > 0;
   const updateTaskMutation = useUpdateTask();
   const { toast } = useToast();
+  const memoLength = memoText.length;
+  const memoValidation = taskMemoSchema.safeParse(memoText);
+  const memoCounterId = `task-${task.id}-memo-counter`;
 
   // Performance optimization: memoize total log time calculation
   const totalLogTime = useMemo(() =>
@@ -76,6 +80,15 @@ export function TaskLogsMemoPanel({
   );
 
   const handleSaveMemo = async () => {
+    if (!memoValidation.success) {
+      toast({
+        variant: "destructive",
+        title: "メモを保存できません",
+        description: memoValidation.error.issues[0]?.message ?? "入力内容を確認してください。",
+      });
+      return;
+    }
+
     try {
       await updateTaskMutation.mutateAsync({
         id: task.id,
@@ -175,12 +188,20 @@ export function TaskLogsMemoPanel({
                     onChange={(e) => setMemoText(e.target.value)}
                     placeholder="タスクに関するメモを入力してください..."
                     className="min-h-[80px]"
+                    maxLength={TASK_MEMO_MAX_LENGTH}
+                    aria-describedby={memoCounterId}
                   />
+                  <div
+                    id={memoCounterId}
+                    className={`text-xs text-right ${memoValidation.success ? 'text-gray-500' : 'text-red-600'}`}
+                  >
+                    {memoLength}/{TASK_MEMO_MAX_LENGTH}
+                  </div>
                   <div className="flex gap-2">
                     <Button
                       size="sm"
                       onClick={handleSaveMemo}
-                      disabled={updateTaskMutation.isPending}
+                      disabled={updateTaskMutation.isPending || !memoValidation.success}
                     >
                       <Save className="h-4 w-4 mr-1" />
                       保存
