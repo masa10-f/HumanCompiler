@@ -39,6 +39,7 @@ import { TaskDependenciesManager } from './task-dependencies-manager';
 import { SessionHistory } from '@/components/runner/session-history';
 import type { Task } from '@/types/task';
 import { roundToDecimals, parseFloatSafe } from '@/lib/number-utils';
+import { buildTaskEditUpdatePayload } from './task-edit-payload';
 
 const taskFormSchema = z.object({
   title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
@@ -97,15 +98,7 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
     try {
       await updateTaskMutation.mutateAsync({
         id: task.id,
-        data: {
-          title: data.title,
-          description: data.description || undefined,
-          estimate_hours: data.estimate_hours,
-          due_date: data.due_date || undefined,
-          status: data.status,
-          work_type: data.work_type || 'light_work',
-          priority: data.priority || 3,
-        }
+        data: buildTaskEditUpdatePayload(data),
       });
 
       toast({
