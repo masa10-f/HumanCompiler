@@ -27,9 +27,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Note: Using mock scheduler implementation for containerized deployments
-# The scheduler package has been removed; a mock implementation is now provided in 'src/humancompiler_api/routers/scheduler.py'
-# This mock exposes the same interface as the original scheduler for compatibility
+# Daily scheduling uses the PyPI package humancompiler-scheduler, installed
+# through requirements.txt above. The API router keeps the existing response
+# contract while adapting database objects to that package.
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash appuser && \

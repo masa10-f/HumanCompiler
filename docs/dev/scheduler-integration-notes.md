@@ -9,9 +9,9 @@ HumanCompiler currently has two scheduler-related layers:
   data, maps database models to optimizer inputs, applies ownership checks, and
   converts solver results back to API responses used by the web app.
 
-The external `Scheduler` repository should grow a HumanCompiler-oriented
-experimental API first. HumanCompiler should continue to keep database models
-behind adapter code and pass only plain scheduling inputs into that package.
+The external `Scheduler` repository now provides the PyPI package
+`humancompiler-scheduler`. HumanCompiler keeps database models behind adapter
+code and passes only plain scheduling inputs into that package.
 
 ## Daily API Shape To Preserve
 
@@ -34,11 +34,13 @@ and `is_fixed`.
 Each unscheduled task should continue including ID, title, remaining estimate,
 priority, kind, due date, goal ID, and project ID.
 
-## Current Gaps
+## Current State And Gaps
 
-- Daily scheduling currently returns slot assignments rather than true timeline
-  blocks. Multiple tasks assigned to the same slot can share the same
-  `start_time`.
+- Daily scheduling now adapts HumanCompiler data into Scheduler's Human daily
+  fixture and uses the timeline daily solver through `plan_daily_schedule`.
+- The API still returns the existing assignment-shaped response so the web app
+  contract stays stable, but each assignment is backed by Scheduler timeline
+  blocks with concrete `start_time` and duration.
 - Regular task priority is now passed through to the daily optimizer and to
   unscheduled task response data. The remaining priority work is manual app
   validation that same-condition priority `1` tasks are favored over priority
@@ -47,9 +49,22 @@ priority, kind, due date, goal ID, and project ID.
   explain why a task was placed earlier or later within the day.
 - The daily response does not include unscheduled reasons or score breakdowns.
 
-## Phase 0 Boundary
+## Runtime Boundary
 
-For the first integration phase, HumanCompiler should not import the external
-`Scheduler` package. The immediate goal is to document the boundary and keep
-the current API stable while the external package develops fixtures, review
-commands, and a more human-like daily planning model.
+Daily scheduling imports `humancompiler_scheduler.human` and maps existing API
+task/slot request data into `HumanDailyFixture`. `POST /api/schedule/daily`
+keeps the existing response shape for the web app, while the backend uses
+Scheduler's timeline daily solver and accepts optional `solver_config`
+overrides.
+
+Weekly task selection still uses the existing HumanCompiler weekly optimizer
+because `humancompiler-scheduler>=0.2.0` does not expose a weekly selection API.
+Keep the weekly adapter isolated so it can move once Scheduler publishes a
+weekly contract.
+
+The scheduler tuning endpoint returns only user-tunable defaults and visible
+controls. Internal or misleading solver fields such as fixed-assignment and
+dependency-unlock scores are intentionally not exposed to the web UI. With
+`humancompiler-scheduler>=0.2.0`, the preference UI maps user-facing choices to
+block-generation parameters such as `min_block_minutes`,
+`block_granularity_minutes`, and `max_candidate_block_minutes`.

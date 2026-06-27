@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from humancompiler_api.auth import get_current_user_id
 from humancompiler_api.main import app
 from humancompiler_api.models import WorkType
+from humancompiler_api.routers.scheduler import SCHEDULER_CONFIG_CONTROLS
 
 client = TestClient(app)
 
@@ -40,7 +41,39 @@ class TestSchedulerAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
-        assert "OR-Tools CP-SAT scheduler working correctly" in data["message"]
+        assert "humancompiler-scheduler backend working correctly" in data["message"]
+        assert data["backend_package"] == "humancompiler-scheduler"
+
+    def test_scheduler_tuning_config_endpoint(self):
+        """Test scheduler tuning config endpoint."""
+        response = client.get("/api/schedule/tuning/config")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["backend_package"] == "humancompiler-scheduler"
+        assert data["backend_version"]
+        assert data["defaults"]["kind_match_score"] >= 0
+        assert any(item["key"] == "project_switch_penalty" for item in data["schema"])
+        assert set(data["defaults"]) == {item["key"] for item in data["schema"]}
+        assert "fixed_assignment_score" not in data["defaults"]
+        assert "dependency_unlock_score" not in data["defaults"]
+
+        control_keys = {item["key"] for item in SCHEDULER_CONFIG_CONTROLS}
+        assert "fixed_assignment_score" not in control_keys
+        assert "dependency_unlock_score" not in control_keys
+        assert {
+            "min_block_minutes",
+            "block_granularity_minutes",
+            "max_candidate_block_minutes",
+        }.issubset(control_keys)
+
+        block_config_keys = {
+            "min_block_minutes",
+            "block_granularity_minutes",
+            "max_candidate_block_minutes",
+        }
+        assert block_config_keys.issubset(data["defaults"])
+        assert block_config_keys.issubset({item["key"] for item in data["schema"]})
 
     @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
     @patch("humancompiler_api.routers.scheduler.db.get_session")
@@ -82,6 +115,11 @@ class TestSchedulerAPI:
             "date": "2025-06-23",
             "goal_id": goal_id,
             "time_slots": [{"start": "09:00", "end": "12:00", "kind": "focused_work"}],
+            "solver_config": {
+                "min_block_minutes": 15,
+                "block_granularity_minutes": 15,
+                "max_candidate_block_minutes": 90,
+            },
         }
 
         # No need for auth header since we're using dependency override
@@ -214,6 +252,183 @@ class TestSchedulerAPI:
         response = client.post("/api/schedule/daily", json=request_data)
 
         assert response.status_code == 422  # Validation error
+
+    def test_create_daily_schedule_invalid_block_config(self, mock_auth):
+        """Test daily schedule rejects inconsistent scheduler block config."""
+        request_data = {
+            "date": "2025-06-23",
+            "goal_id": str(uuid4()),
+            "time_slots": [{"start": "09:00", "end": "12:00", "kind": "focused_work"}],
+            "solver_config": {
+                "min_block_minutes": 30,
+                "max_candidate_block_minutes": 15,
+            },
+        }
+
+        response = client.post("/api/schedule/daily", json=request_data)
+
+        assert response.status_code == 422
+
+    def test_optimize_schedule_splits_long_task_into_available_slot(self):
+        """Long tasks can be partially scheduled into shorter available slots."""
+        from datetime import time
+
+        from humancompiler_api.routers.scheduler import optimize_schedule
+        from humancompiler_optimizer.daily import (
+            SchedulerTask,
+            SlotKind,
+            TaskKind,
+            TimeSlot,
+        )
+
+        result = optimize_schedule(
+            tasks=[
+                SchedulerTask(
+                    id="long-task",
+                    title="Long task",
+                    estimate_hours=4.0,
+                    priority=1,
+                    kind=TaskKind.FOCUSED_WORK,
+                )
+            ],
+            time_slots=[
+                TimeSlot(
+                    start=time(9, 0),
+                    end=time(11, 0),
+                    kind=SlotKind.FOCUSED_WORK,
+                )
+            ],
+            date=datetime(2025, 6, 23),
+            solver_config={
+                "max_candidate_block_minutes": 90,
+                "block_granularity_minutes": 15,
+            },
+        )
+
+        assert result.success is True
+        assert result.unscheduled_tasks == []
+        assert result.total_scheduled_hours == pytest.approx(2.0)
+        assert {assignment.task_id for assignment in result.assignments} == {
+            "long-task"
+        }
+        assert {assignment.slot_index for assignment in result.assignments} == {0}
+
+    def test_omitted_fixed_assignment_duration_uses_remaining_time(self):
+        """Omitted fixed duration should not be limited by candidate block size."""
+        from datetime import time
+
+        from humancompiler_api.routers.scheduler import optimize_schedule
+        from humancompiler_optimizer.daily import (
+            FixedAssignment,
+            SchedulerTask,
+            SlotKind,
+            TaskKind,
+            TimeSlot,
+        )
+
+        result = optimize_schedule(
+            tasks=[
+                SchedulerTask(
+                    id="fixed-task",
+                    title="Pinned task",
+                    estimate_hours=4.0,
+                    priority=1,
+                    kind=TaskKind.FOCUSED_WORK,
+                )
+            ],
+            time_slots=[
+                TimeSlot(
+                    start=time(9, 0),
+                    end=time(13, 0),
+                    kind=SlotKind.FOCUSED_WORK,
+                )
+            ],
+            date=datetime(2025, 6, 23),
+            fixed_assignments=[FixedAssignment(task_id="fixed-task", slot_index=0)],
+            solver_config={
+                "max_candidate_block_minutes": 90,
+                "block_granularity_minutes": 15,
+            },
+        )
+
+        assert result.success is True
+        assert result.unscheduled_tasks == []
+        assert len(result.assignments) == 1
+        assignment = result.assignments[0]
+        assert assignment.task_id == "fixed-task"
+        assert assignment.slot_index == 0
+        assert assignment.duration_hours == pytest.approx(4.0)
+        assert assignment.is_fixed is True
+
+    def test_omitted_fixed_assignment_duration_caps_to_slot_capacity(self):
+        """Omitted fixed duration keeps legacy behavior when the task is too long."""
+        from datetime import time
+
+        from humancompiler_api.routers.scheduler import optimize_schedule
+        from humancompiler_optimizer.daily import (
+            FixedAssignment,
+            SchedulerTask,
+            SlotKind,
+            TaskKind,
+            TimeSlot,
+        )
+
+        result = optimize_schedule(
+            tasks=[
+                SchedulerTask(
+                    id="fixed-task",
+                    title="Pinned task",
+                    estimate_hours=4.0,
+                    priority=1,
+                    kind=TaskKind.FOCUSED_WORK,
+                )
+            ],
+            time_slots=[
+                TimeSlot(
+                    start=time(9, 0),
+                    end=time(11, 0),
+                    kind=SlotKind.FOCUSED_WORK,
+                )
+            ],
+            date=datetime(2025, 6, 23),
+            fixed_assignments=[FixedAssignment(task_id="fixed-task", slot_index=0)],
+            solver_config={
+                "max_candidate_block_minutes": 90,
+                "block_granularity_minutes": 15,
+            },
+        )
+
+        assert result.success is True
+        assert result.unscheduled_tasks == []
+        assert len(result.assignments) == 1
+        assignment = result.assignments[0]
+        assert assignment.task_id == "fixed-task"
+        assert assignment.duration_hours == pytest.approx(2.0)
+        assert assignment.is_fixed is True
+
+    def test_stale_fixed_assignments_are_skipped(self):
+        """Fixed assignments for filtered tasks or missing slots should be ignored."""
+        from humancompiler_api.routers.scheduler import _build_human_fixed_assignments
+        from humancompiler_optimizer.daily import FixedAssignment
+
+        assignments = _build_human_fixed_assignments(
+            fixed_assignments=[
+                FixedAssignment(task_id="missing-task", slot_index=0),
+                FixedAssignment(task_id="fixed-task", slot_index=99),
+                FixedAssignment(
+                    task_id="missing-task", slot_index=99, duration_hours=1.0
+                ),
+                FixedAssignment(task_id="fixed-task", slot_index=0, duration_hours=0.5),
+            ],
+            task_remaining_minutes={"fixed-task": 120},
+            slot_capacity_minutes={0: 120},
+        )
+
+        assert len(assignments) == 1
+        assignment = assignments[0]
+        assert assignment.task_id == "fixed-task"
+        assert assignment.slot_index == 0
+        assert assignment.duration_minutes == 30
 
     def test_create_daily_schedule_empty_time_slots(self, mock_auth):
         """Test schedule creation with empty time slots."""

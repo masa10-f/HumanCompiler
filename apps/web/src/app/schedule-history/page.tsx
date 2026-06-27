@@ -160,7 +160,7 @@ export default function ScheduleHistoryPage() {
                   : 'まだスケジュールが保存されていません。日次計画ページで最適化結果を保存してみましょう。'
                 }
               </p>
-              <Button onClick={() => router.push('/scheduling')}>
+              <Button onClick={() => router.push('/scheduling/daily')}>
                 日次計画ページへ
               </Button>
             </div>
