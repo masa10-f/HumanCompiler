@@ -146,6 +146,28 @@ export default function GoalDetailPage() {
     );
   }, [taskIds, logsByTask]);
 
+  const { completedTasks, totalEstimateHours, completedEstimateHours } = useMemo(() => {
+    return tasks.reduce(
+      (totals, task) => {
+        const estimateHours = task.estimate_hours || 0;
+
+        totals.totalEstimateHours += estimateHours;
+
+        if (task.status === 'completed') {
+          totals.completedTasks += 1;
+          totals.completedEstimateHours += estimateHours;
+        }
+
+        return totals;
+      },
+      {
+        completedTasks: 0,
+        totalEstimateHours: 0,
+        completedEstimateHours: 0,
+      }
+    );
+  }, [tasks]);
+
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login');
@@ -190,51 +212,8 @@ export default function GoalDetailPage() {
   // Return early if data is not loaded yet
   if (!goal || !project) return null;
 
-  const completedTasks = tasks.filter(task => task.status === 'completed').length;
-
-  // Debug: Log tasks data to understand the structure
-  log.debug('Tasks data for goal detail', {
-    goalId: goalId,
-    tasksData: tasks.map(t => ({
-      id: t.id,
-      title: t.title,
-      estimate_hours: t.estimate_hours,
-      type: typeof t.estimate_hours
-    }))
-  });
-
-  // Ensure estimate_hours is treated as number and fix potential string concatenation issues
-  const totalEstimateHours = tasks.reduce((sum, task) => {
-    const hours = typeof task.estimate_hours === 'string'
-      ? parseFloat(task.estimate_hours)
-      : task.estimate_hours || 0;
-    log.debug('Task hours calculation', {
-      taskTitle: task.title,
-      hours,
-      originalType: typeof task.estimate_hours,
-      goalId: goalId
-    });
-    return sum + hours;
-  }, 0);
-
-  const completedEstimateHours = tasks
-    .filter(task => task.status === 'completed')
-    .reduce((sum, task) => {
-      const hours = typeof task.estimate_hours === 'string'
-        ? parseFloat(task.estimate_hours)
-        : task.estimate_hours || 0;
-      return sum + hours;
-    }, 0);
-
   // Get actual hours from goal progress API
   const totalActualHours = goalProgress ? goalProgress.actual_minutes / 60 : 0;
-
-  log.debug('Goal detail calculated values', {
-    goalId: goalId,
-    totalEstimateHours,
-    completedEstimateHours,
-    totalActualHours
-  });
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -284,7 +263,7 @@ export default function GoalDetailPage() {
                 <div className="h-4 w-4 bg-green-600 rounded-full" />
                 <div>
                   <div className="text-2xl font-bold">{completedTasks}</div>
-                  <div className="text-xs text-gray-500">完了タスク</div>
+                  <div className="text-xs text-gray-500">完了タスク ({completedEstimateHours.toFixed(1)}h)</div>
                 </div>
               </div>
             </CardContent>
