@@ -3,21 +3,9 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
-
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -31,50 +19,85 @@ jobs:
         with:
           fetch-depth: 1
 
+      # --- Toolchain setup so Claude can actually run the project checks ---
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install backend dependencies
+        working-directory: apps/api
+        run: |
+          uv venv
+          uv pip install -e ".[dev]"
+
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
-          # Allow bots to trigger the action
+          # Allow bots (e.g. codex) to trigger the review
           allowed_bots: "*"
 
-          # Allow gh CLI commands for PR operations
-          claude_args: "--allowed-tools 'Bash(gh pr *)' 'Bash(gh api *)'"
-
-          # Prompt for automated review (no @claude mention needed)
-          prompt: |
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
-
-            Be constructive and helpful in your feedback.
-
-          # Optional: Use sticky comments to make Claude reuse the same comment on subsequent pushes to the same PR
+          # Reuse a single sticky summary comment across pushes
           use_sticky_comment: true
 
-          # Optional: Customize review based on file types
-          # prompt: |
-          #   Review this PR focusing on:
-          #   - For TypeScript files: Type safety and proper interface usage
-          #   - For API endpoints: Security, input validation, and error handling
-          #   - For React components: Performance, accessibility, and best practices
-          #   - For tests: Coverage, edge cases, and test quality
+          # Use Opus for higher-quality review, and grant the tools Claude needs:
+          # - the comment MCP tools so it can actually POST its review
+          # - gh CLI for PR context
+          # - the project check commands (frontend + backend)
+          claude_args: |
+            --model opus
+            --allowed-tools "mcp__github_comment__update_claude_comment,mcp__github_inline_comment__create_inline_comment,Bash(gh pr:*),Bash(gh api:*),Bash(cd:*),Bash(pnpm:*),Bash(uv:*),Bash(npx tsc:*),Bash(ruff:*),Bash(mypy:*),Bash(pytest:*),Bash(bandit:*)"
 
-          # Optional: Different prompts for different authors
-          # prompt: |
-          #   ${{ github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR' &&
-          #   'Welcome! Please review this PR from a first-time contributor. Be encouraging and provide detailed explanations for any suggestions.' ||
-          #   'Please provide a thorough code review focusing on our coding standards and best practices.' }}
+          prompt: |
+            You are reviewing a pull request for **HumanCompiler**, an AI-powered task
+            management app. Tech stack: Next.js 15 (App Router) + React 18 + TypeScript
+            (strict) + TailwindCSS on the frontend (apps/web), and FastAPI + SQLModel +
+            Pydantic (Python 3.11+) on the backend (apps/api). See CLAUDE.md for the full
+            project conventions.
 
-          # Optional: Add specific tools for running tests or linting via claude_args
-          # claude_args: "--allowed-tools Bash(pnpm run test) Bash(pnpm run lint) Bash(pnpm run typecheck)"
+            Review the PR diff and give focused, actionable feedback on:
+            - **Correctness & bugs** — logic errors, unhandled edge cases, race conditions.
+            - **Type safety** — strict TypeScript (no `any`), correct Pydantic/SQLModel types.
+            - **Security** — input validation, authz/RLS assumptions, secret handling,
+              injection, unsafe error exposure.
+            - **Performance** — N+1 queries, unnecessary re-renders, blocking calls.
+            - **Conventions** — project coding standards (Ruff/PEP8, ESLint, naming,
+              SPDX headers on new files) and test coverage for new behavior.
 
-          # Optional: Skip review for certain conditions
-          # if: |
-          #   !contains(github.event.pull_request.title, '[skip-review]') &&
-          #   !contains(github.event.pull_request.title, '[WIP]')
+            Run the relevant project checks on the changed areas and incorporate the
+            results into your review. Prefer fast static checks; skip anything that needs
+            external services (DB/OpenAI) since those are not configured in this job.
+            - Frontend (if apps/web changed):
+              `pnpm --filter web type-check`, `pnpm --filter web lint`
+            - Backend (if apps/api changed):
+              `cd apps/api && uv run ruff check .`, `cd apps/api && uv run mypy src`
+
+            Post your review by:
+            - Using `mcp__github_inline_comment__create_inline_comment` for specific,
+              line-level issues (cite the concern and a concrete fix).
+            - Updating the sticky summary comment via
+              `mcp__github_comment__update_claude_comment` with an overall assessment,
+              the check results you ran, and any blocking issues.
+
+            Be concise and constructive. If the PR looks good, say so clearly rather than
+            inventing nitpicks.
