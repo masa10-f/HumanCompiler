@@ -54,40 +54,9 @@ async def create_task(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> TaskResponse:
     """Create a new task"""
-    import time
-
-    start_time = time.time()
-    logger.info(
-        f"📋 Creating task for user {current_user.user_id}, goal {task_data.goal_id}"
-    )
-
-    try:
-        logger.info(
-            f"🔍 [TASKS] About to call task_service.create_task with user_id: {current_user.user_id}, goal_id: {task_data.goal_id}"
-        )
-        db_start = time.time()
-        task = task_service.create_task(session, task_data, current_user.user_id)
-        db_time = time.time() - db_start
-        logger.info(f"✅ [TASKS] Successfully created task {task.id} in {db_time:.3f}s")
-
-        response_start = time.time()
-        result = TaskResponse.model_validate(task)
-        response_time = time.time() - response_start
-
-        total_time = time.time() - start_time
-        logger.info(
-            f"✅ Created task {task.id} | DB: {db_time:.3f}s | Response: {response_time:.3f}s | Total: {total_time:.3f}s"
-        )
-
-        return result
-    except Exception as e:
-        logger.error(f"❌ [TASKS] Error creating task: {type(e).__name__}: {e}")
-        logger.error(f"❌ [TASKS] User ID was: {current_user.user_id}")
-        logger.error(f"❌ [TASKS] Task data: {task_data}")
-        import traceback
-
-        logger.error(f"❌ [TASKS] Traceback: {traceback.format_exc()}")
-        raise
+    task = task_service.create_task(session, task_data, current_user.user_id)
+    logger.info("Created task %s for user %s", task.id, current_user.user_id)
+    return TaskResponse.model_validate(task)
 
 
 @router.get(
