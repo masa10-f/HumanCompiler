@@ -3,13 +3,15 @@
 import { useState } from 'react';
 import { log } from '@/lib/logger';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { useDeleteTask } from '@/hooks/use-tasks-query';
 import { toast } from '@/hooks/use-toast';
@@ -46,26 +48,21 @@ export function TaskDeleteDialog({ task, children }: TaskDeleteDialogProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <AlertDialogTrigger asChild>
         {children}
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>タスクの削除</DialogTitle>
-          <DialogDescription>
+      </AlertDialogTrigger>
+      <AlertDialogContent className="sm:max-w-[425px]">
+        <AlertDialogHeader>
+          <AlertDialogTitle>タスクの削除</AlertDialogTitle>
+          <AlertDialogDescription>
             本当に「{task.title}」を削除しますか？この操作は取り消せません。
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex justify-end space-x-2 pt-4">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setOpen(false)}
-            disabled={deleteTaskMutation.isPending}
-          >
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deleteTaskMutation.isPending}>
             キャンセル
-          </Button>
+          </AlertDialogCancel>
           <Button
             variant="destructive"
             onClick={handleDelete}
@@ -73,8 +70,8 @@ export function TaskDeleteDialog({ task, children }: TaskDeleteDialogProps) {
           >
             {deleteTaskMutation.isPending ? '削除中...' : '削除'}
           </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
