@@ -397,8 +397,9 @@ class GoalTaskDraftService:
 
         try:
             for draft_goal in request.goals:
-                should_create_goal = (
-                    apply_all_goals or draft_goal.client_id in selected_goal_ids
+                should_create_goal = apply_all_goals or (
+                    selected_goal_ids is not None
+                    and draft_goal.client_id in selected_goal_ids
                 )
                 db_goal_id = target_goal.id if target_goal else None
 
@@ -423,7 +424,11 @@ class GoalTaskDraftService:
 
                 for draft_task in draft_goal.tasks:
                     if not (
-                        apply_all_tasks or draft_task.client_id in selected_task_ids
+                        apply_all_tasks
+                        or (
+                            selected_task_ids is not None
+                            and draft_task.client_id in selected_task_ids
+                        )
                     ):
                         continue
                     if db_goal_id is None:
@@ -438,7 +443,13 @@ class GoalTaskDraftService:
                     task_id_by_client_id[draft_task.client_id] = task.id
 
             for draft_task in request.tasks:
-                if not (apply_all_tasks or draft_task.client_id in selected_task_ids):
+                if not (
+                    apply_all_tasks
+                    or (
+                        selected_task_ids is not None
+                        and draft_task.client_id in selected_task_ids
+                    )
+                ):
                     continue
                 db_goal_id = self._resolve_goal_id_for_task(
                     session,
@@ -460,6 +471,7 @@ class GoalTaskDraftService:
                 task_id_by_client_id[draft_task.client_id] = task.id
 
             seen_dependencies: set[tuple[UUID, UUID]] = set()
+            dependency_edges: dict[UUID, set[UUID]] = {}
             for dependency in request.dependencies:
                 task_id = task_id_by_client_id.get(dependency.task_client_id)
                 depends_on_id = task_id_by_client_id.get(
@@ -470,7 +482,13 @@ class GoalTaskDraftService:
                 dependency_key = (task_id, depends_on_id)
                 if dependency_key in seen_dependencies:
                     continue
+                if self._would_create_dependency_cycle(
+                    dependency_edges, task_id, depends_on_id
+                ):
+                    warnings.append("循環する依存関係を作るAI提案をスキップしました。")
+                    continue
                 seen_dependencies.add(dependency_key)
+                dependency_edges.setdefault(task_id, set()).add(depends_on_id)
                 task_dependency = TaskDependency(
                     id=uuid4(),
                     task_id=task_id,
@@ -811,6 +829,24 @@ class GoalTaskDraftService:
             return datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
             return None
+
+    def _would_create_dependency_cycle(
+        self,
+        dependency_edges: dict[UUID, set[UUID]],
+        task_id: UUID,
+        depends_on_id: UUID,
+    ) -> bool:
+        queue = [depends_on_id]
+        visited: set[UUID] = set()
+        while queue:
+            current_id = queue.pop()
+            if current_id == task_id:
+                return True
+            if current_id in visited:
+                continue
+            visited.add(current_id)
+            queue.extend(dependency_edges.get(current_id, set()))
+        return False
 
     def _clean_text(self, value: str | None, limit: int) -> str:
         if not value:

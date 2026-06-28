@@ -6,5 +6,14 @@ ALTER TABLE user_settings
 UPDATE user_settings
 SET openai_model = 'gpt-5.5',
     updated_at = NOW()
-WHERE openai_model LIKE 'gpt-5%'
-  AND openai_model <> 'gpt-5.5';
+WHERE openai_model = 'gpt-5';
+
+UPDATE user_settings
+SET openai_model = 'gpt-5.5-mini',
+    updated_at = NOW()
+WHERE openai_model = 'gpt-5-mini';
+
+UPDATE user_settings
+SET openai_model = 'gpt-5.5-nano',
+    updated_at = NOW()
+WHERE openai_model = 'gpt-5-nano';

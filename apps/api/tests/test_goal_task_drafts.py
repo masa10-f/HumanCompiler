@@ -172,3 +172,32 @@ def test_apply_draft_deduplicates_generated_dependencies(
     assert len(response.created_dependencies) == 1
     dependencies = session.exec(select(TaskDependency)).all()
     assert len(dependencies) == 1
+
+
+def test_apply_draft_skips_generated_dependency_cycles(
+    session: Session, draft_workspace
+):
+    project = draft_workspace["project"]
+    user = draft_workspace["user"]
+    goal = draft_workspace["goal"]
+
+    request = GoalTaskDraftApplyRequest(
+        project_id=project.id,
+        mode="goal_tasks",
+        goal_id=goal.id,
+        goals=[],
+        tasks=[make_draft_task("task-1"), make_draft_task("task-2")],
+        dependencies=[
+            DraftTaskDependency(task_client_id="task-2", depends_on_client_id="task-1"),
+            DraftTaskDependency(task_client_id="task-1", depends_on_client_id="task-2"),
+        ],
+        selected_task_client_ids=["task-1", "task-2"],
+    )
+
+    response = goal_task_draft_service.apply_draft(session, user.id, request)
+
+    assert len(response.created_tasks) == 2
+    assert len(response.created_dependencies) == 1
+    assert response.warnings == ["循環する依存関係を作るAI提案をスキップしました。"]
+    dependencies = session.exec(select(TaskDependency)).all()
+    assert len(dependencies) == 1
