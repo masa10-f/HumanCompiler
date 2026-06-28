@@ -7,7 +7,16 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
-from openai import APIError, AuthenticationError, OpenAI, RateLimitError
+from fastapi import HTTPException, status
+from openai import (
+    APIConnectionError,
+    APIError,
+    APITimeoutError,
+    AuthenticationError,
+    NotFoundError,
+    OpenAI,
+    RateLimitError,
+)
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from sqlmodel import Session, select
 
@@ -127,8 +136,8 @@ class GoalTaskDraftApplyRequest(BaseModel):
     goals: list[DraftGoal] = Field(default_factory=list)
     tasks: list[DraftTask] = Field(default_factory=list)
     dependencies: list[DraftTaskDependency] = Field(default_factory=list)
-    selected_goal_client_ids: list[str] = Field(default_factory=list)
-    selected_task_client_ids: list[str] = Field(default_factory=list)
+    selected_goal_client_ids: list[str] | None = None
+    selected_task_client_ids: list[str] | None = None
     original_task_action: OriginalTaskAction = "keep"
 
 
@@ -293,16 +302,39 @@ class GoalTaskDraftService:
 
         prompt = self._build_prompt(session, request, project, target_goal, target_task)
 
+        unavailable_errors = (
+            AuthenticationError,
+            RateLimitError,
+            APIConnectionError,
+            APITimeoutError,
+            NotFoundError,
+        )
+
         try:
             payload = self._call_responses_api(client, model, prompt)
-        except (AttributeError, TypeError, APIError) as exc:
+        except unavailable_errors as exc:
+            logger.warning("OpenAI draft generation unavailable: %s", exc)
+            return self._unavailable_response(
+                request, self._openai_error_message(exc), model=model
+            )
+        except (AttributeError, TypeError, APIError, json.JSONDecodeError) as exc:
             logger.warning(
                 "Responses API failed, falling back to chat completions: %s", exc
             )
-            payload = self._call_chat_completions_api(client, model, prompt)
-        except (AuthenticationError, RateLimitError) as exc:
-            logger.warning("OpenAI draft generation unavailable: %s", exc)
-            return self._unavailable_response(request, str(exc), model=model)
+            try:
+                payload = self._call_chat_completions_api(client, model, prompt)
+            except unavailable_errors as fallback_exc:
+                logger.warning(
+                    "OpenAI chat completion fallback unavailable: %s", fallback_exc
+                )
+                return self._unavailable_response(
+                    request, self._openai_error_message(fallback_exc), model=model
+                )
+            except (APIError, json.JSONDecodeError) as fallback_exc:
+                logger.warning("OpenAI draft fallback failed: %s", fallback_exc)
+                return self._unavailable_response(
+                    request, self._openai_error_message(fallback_exc), model=model
+                )
 
         try:
             draft = GoalTaskDraftPayload.model_validate(payload)
@@ -343,10 +375,18 @@ class GoalTaskDraftService:
         if target_task and target_goal is None:
             target_goal = self._get_goal(session, target_task.goal_id, user_id)
 
-        selected_goal_ids = set(request.selected_goal_client_ids)
-        selected_task_ids = set(request.selected_task_client_ids)
-        apply_all_goals = not selected_goal_ids
-        apply_all_tasks = not selected_task_ids
+        selected_goal_ids = (
+            set(request.selected_goal_client_ids)
+            if request.selected_goal_client_ids is not None
+            else None
+        )
+        selected_task_ids = (
+            set(request.selected_task_client_ids)
+            if request.selected_task_client_ids is not None
+            else None
+        )
+        apply_all_goals = selected_goal_ids is None
+        apply_all_tasks = selected_task_ids is None
 
         created_goals: list[Goal] = []
         created_tasks: list[Task] = []
@@ -401,7 +441,12 @@ class GoalTaskDraftService:
                 if not (apply_all_tasks or draft_task.client_id in selected_task_ids):
                     continue
                 db_goal_id = self._resolve_goal_id_for_task(
-                    draft_task, target_goal, goal_id_by_client_id
+                    session,
+                    user_id,
+                    request.project_id,
+                    draft_task,
+                    target_goal,
+                    goal_id_by_client_id,
                 )
                 if db_goal_id is None:
                     warnings.append(
@@ -414,6 +459,7 @@ class GoalTaskDraftService:
                 created_tasks.append(task)
                 task_id_by_client_id[draft_task.client_id] = task.id
 
+            seen_dependencies: set[tuple[UUID, UUID]] = set()
             for dependency in request.dependencies:
                 task_id = task_id_by_client_id.get(dependency.task_client_id)
                 depends_on_id = task_id_by_client_id.get(
@@ -421,6 +467,10 @@ class GoalTaskDraftService:
                 )
                 if not task_id or not depends_on_id or task_id == depends_on_id:
                     continue
+                dependency_key = (task_id, depends_on_id)
+                if dependency_key in seen_dependencies:
+                    continue
+                seen_dependencies.add(dependency_key)
                 task_dependency = TaskDependency(
                     id=uuid4(),
                     task_id=task_id,
@@ -631,8 +681,6 @@ class GoalTaskDraftService:
             )
         ).first()
         if not project:
-            from fastapi import HTTPException, status
-
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Project not found",
@@ -646,8 +694,6 @@ class GoalTaskDraftService:
             .where(Goal.id == goal_id, Project.owner_id == UUID(str(user_id)))
         ).first()
         if not goal:
-            from fastapi import HTTPException, status
-
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Goal not found",
@@ -662,8 +708,6 @@ class GoalTaskDraftService:
             .where(Task.id == task_id, Project.owner_id == UUID(str(user_id)))
         ).first()
         if not task:
-            from fastapi import HTTPException, status
-
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Task not found",
@@ -730,6 +774,9 @@ class GoalTaskDraftService:
 
     def _resolve_goal_id_for_task(
         self,
+        session: Session,
+        user_id: str | UUID,
+        project_id: UUID,
         draft_task: DraftTask,
         target_goal: Goal | None,
         goal_id_by_client_id: dict[str, UUID],
@@ -739,10 +786,16 @@ class GoalTaskDraftService:
             and draft_task.goal_client_id in goal_id_by_client_id
         ):
             return goal_id_by_client_id[draft_task.goal_client_id]
-        if draft_task.goal_id:
-            return draft_task.goal_id
         if target_goal:
             return target_goal.id
+        if draft_task.goal_id:
+            goal = self._get_goal(session, draft_task.goal_id, user_id)
+            if goal.project_id != project_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Draft task goal_id must belong to the requested project",
+                )
+            return goal.id
         return None
 
     def _decimal_hours(self, value: float) -> Decimal:
@@ -786,6 +839,18 @@ class GoalTaskDraftService:
             dependencies=[],
             warnings=[message],
         )
+
+    def _openai_error_message(self, exc: Exception) -> str:
+        message = str(exc).strip() or type(exc).__name__
+        if isinstance(exc, AuthenticationError):
+            return "OpenAI APIキーを確認してください。認証に失敗しました。"
+        if isinstance(exc, RateLimitError):
+            return "OpenAI APIのレート制限またはクォータに達しました。少し待ってから再実行してください。"
+        if isinstance(exc, APIConnectionError | APITimeoutError):
+            return "OpenAI APIへの接続がタイムアウトしました。少し待ってから再実行してください。"
+        if isinstance(exc, NotFoundError):
+            return f"OpenAIモデルが利用できません: {message}"
+        return f"OpenAI APIでエラーが発生しました: {message}"
 
 
 goal_task_draft_service = GoalTaskDraftService()

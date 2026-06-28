@@ -141,6 +141,30 @@ const ensureHttps = (url: string): string => {
   return url;
 };
 
+type ApiRequestOptions = RequestInit & {
+  enableFallback?: boolean;
+  maxRetries?: number;
+  retryDelay?: number;
+  timeout?: number;
+};
+
+const extractApiErrorMessage = (
+  errorData: Record<string, unknown>,
+  fallback: string
+): string => {
+  const detail = errorData.detail;
+  if (typeof detail === 'string') return detail;
+  if (detail && typeof detail === 'object') {
+    const nestedDetail = detail as Record<string, unknown>;
+    if (typeof nestedDetail.message === 'string') return nestedDetail.message;
+    if (typeof nestedDetail.detail === 'string') return nestedDetail.detail;
+    if (typeof nestedDetail.error === 'string') return nestedDetail.error;
+  }
+  if (typeof errorData.message === 'string') return errorData.message;
+  if (typeof errorData.error === 'string') return errorData.error;
+  return fallback;
+};
+
 // Note: getApiBaseUrl removed - use getApiEndpoint() directly
 
 /**
@@ -197,11 +221,18 @@ class ApiClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: ApiRequestOptions = {}
   ): Promise<T> {
+    const {
+      enableFallback,
+      maxRetries,
+      retryDelay,
+      timeout,
+      ...fetchOptions
+    } = options;
     const context = {
       endpoint,
-      method: options.method || 'GET',
+      method: fetchOptions.method || 'GET',
       timestamp: new Date()
     };
 
@@ -214,14 +245,15 @@ class ApiClient {
 
       // Use enhanced fetch with fallback
       const response = await fetchWithFallback(endpoint, {
-        ...options,
+        ...fetchOptions,
         headers: {
           ...headers,
-          ...options.headers,
+          ...fetchOptions.headers,
         },
-        timeout: appConfig.api.timeout,
-        maxRetries: appConfig.api.retryAttempts,
-        retryDelay: appConfig.api.retryDelay,
+        enableFallback: enableFallback ?? true,
+        timeout: timeout ?? appConfig.api.timeout,
+        maxRetries: maxRetries ?? appConfig.api.retryAttempts,
+        retryDelay: retryDelay ?? appConfig.api.retryDelay,
       });
 
       safeLog('debug', '🔍 [ApiClient] Response received:', {
@@ -236,10 +268,10 @@ class ApiClient {
 
         try {
           errorData = await response.json();
-          errorMessage =
-            (typeof errorData.detail === 'string' ? errorData.detail : undefined) ||
-            (typeof errorData.message === 'string' ? errorData.message : undefined) ||
-            `HTTP ${response.status}: ${response.statusText}`;
+          errorMessage = extractApiErrorMessage(
+            errorData,
+            `HTTP ${response.status}: ${response.statusText}`
+          );
         } catch {
           errorMessage = `HTTP ${response.status}: ${response.statusText}`;
           errorData = { detail: errorMessage };
@@ -248,7 +280,8 @@ class ApiClient {
         const apiError = new ApiError(
           response.status,
           errorMessage,
-          { ...context, statusCode: response.status, responseData: errorData }
+          { ...context, statusCode: response.status, responseData: errorData },
+          errorMessage
         );
 
         logError(apiError, context);
@@ -579,6 +612,9 @@ class ApiClient {
     return this.request<GoalTaskDraftResponse>('/api/ai/goal-task-drafts', {
       method: 'POST',
       body: JSON.stringify(request),
+      enableFallback: false,
+      maxRetries: 1,
+      timeout: 75000,
     });
   }
 

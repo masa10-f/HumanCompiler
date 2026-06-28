@@ -73,8 +73,8 @@ export interface GoalTaskDraftApplyRequest {
   goals: DraftGoal[];
   tasks: DraftTask[];
   dependencies: DraftTaskDependency[];
-  selected_goal_client_ids: string[];
-  selected_task_client_ids: string[];
+  selected_goal_client_ids?: string[] | null;
+  selected_task_client_ids?: string[] | null;
   original_task_action?: OriginalTaskAction;
 }
 
