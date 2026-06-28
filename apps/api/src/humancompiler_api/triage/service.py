@@ -650,9 +650,10 @@ class TriageService:
                     candidates, key=lambda item: item.deterministic_score, reverse=True
                 )[:120]
             ]
-            response = client.chat.completions.create(
-                model=user_settings.openai_model or "gpt-5",
-                messages=[
+            model = user_settings.openai_model or "gpt-5.5"
+            api_params = {
+                "model": model,
+                "messages": [
                     {
                         "role": "system",
                         "content": (
@@ -684,9 +685,12 @@ class TriageService:
                         ),
                     },
                 ],
-                response_format={"type": "json_object"},
-                max_completion_tokens=900,
-            )
+                "response_format": {"type": "json_object"},
+                "max_completion_tokens": 900,
+            }
+            if model.startswith("gpt-5.5"):
+                api_params["reasoning_effort"] = "high"
+            response = client.chat.completions.create(**api_params)
             content = response.choices[0].message.content or "{}"
             payload = json.loads(content)
             valid_ids = {candidate.identifier for candidate in candidates}

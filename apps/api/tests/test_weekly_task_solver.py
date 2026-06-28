@@ -62,7 +62,7 @@ class TestWeeklyTaskSolver:
         solver = WeeklyTaskSolver()
 
         assert solver.openai_client is None
-        assert solver.model == "gpt-5"
+        assert solver.model == "gpt-5.5"
         assert solver.context_collector is not None
 
     def test_weekly_task_solver_with_custom_model(self):

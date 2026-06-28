@@ -28,12 +28,12 @@ logger = logging.getLogger(__name__)
 
 
 class OpenAIClient:
-    """OpenAI client using Responses API and Chat Completions API with GPT-5"""
+    """OpenAI client using Responses API and Chat Completions API with GPT-5.5"""
 
     def __init__(self, api_key: str | None = None, model: str | None = None):
         """Initialize OpenAI client with optional user-specific API key"""
-        # Use GPT-5 as default (latest flagship model)
-        default_model = "gpt-5"  # GPT-5 flagship model for advanced planning
+        # Use GPT-5.5 as default (latest flagship model)
+        default_model = "gpt-5.5"  # GPT-5.5 flagship model for advanced planning
 
         if api_key:
             logger.info(
@@ -357,7 +357,7 @@ class OpenAIClient:
     def _parse_responses_api_output(
         self, response, context: WeeklyPlanContext
     ) -> WeeklyPlanResponse:
-        """Parse Responses API output (GPT-5 format)"""
+        """Parse Responses API output (GPT-5.5 format)"""
         try:
             logger.info(f"Parsing Responses API output: {type(response)}")
 
@@ -481,7 +481,7 @@ class OpenAIClient:
     def _use_chat_completions_api(
         self, context: WeeklyPlanContext, planning_context: str
     ) -> WeeklyPlanResponse:
-        """Use Chat Completions API for GPT-5 weekly planning"""
+        """Use Chat Completions API for GPT-5.5 weekly planning"""
         try:
             logger.info(f"Using Chat Completions API fallback for model {self.model}")
 
@@ -508,8 +508,11 @@ class OpenAIClient:
                 "max_completion_tokens": 8000,  # Increased to avoid truncation
             }
 
-            # Add temperature for supported models (GPT-5 only supports default temperature)
-            if not self.model.startswith(("o1", "gpt-5")):
+            if self.model.startswith("gpt-5.5"):
+                api_params["reasoning_effort"] = "high"
+
+            # Add temperature for supported models.
+            if not self.model.startswith(("o1", "gpt-")):
                 api_params["temperature"] = 0.7
 
             response = self.client.chat.completions.create(**api_params)

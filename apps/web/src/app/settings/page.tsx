@@ -35,7 +35,7 @@ interface AvailableModels {
 const OPENAI_API_KEY_REGEX = /^sk-[a-zA-Z0-9-_]{20,}$/
 
 // Default model from environment or fallback
-const DEFAULT_MODEL = process.env.NEXT_PUBLIC_DEFAULT_OPENAI_MODEL || "gpt-5"
+const DEFAULT_MODEL = process.env.NEXT_PUBLIC_DEFAULT_OPENAI_MODEL || "gpt-5.5"
 
 export default function SettingsPage() {
   const router = useRouter()

@@ -23,7 +23,8 @@ import { TaskDeleteDialog } from '@/components/tasks/task-delete-dialog';
 import { TaskLogsMemoPanel } from '@/components/tasks/task-logs-memo-panel';
 import { LogFormDialog } from '@/components/logs/log-form-dialog';
 import { ContextNoteEditor } from '@/components/notes/context-note-editor';
-import { ArrowLeft, Plus, Clock, Calendar, GitBranch, FileText, Loader2, AlertCircle } from 'lucide-react';
+import { GoalTaskAssistantDialog } from '@/components/ai/goal-task-assistant-dialog';
+import { ArrowLeft, Plus, Clock, Calendar, GitBranch, FileText, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import { taskStatusLabels, taskStatusColors, workTypeLabels, workTypeColors, taskPriorityLabels, taskPriorityColors } from '@/types/task';
 import type { TaskStatus, Task } from '@/types/task';
 import { SortBy, SortOrder } from '@/types/sort';
@@ -348,6 +349,22 @@ export default function GoalDetailPage() {
                 { value: SortBy.UPDATED_AT, label: '更新日' },
               ]}
             />
+            <GoalTaskAssistantDialog
+              projectId={id}
+              goalId={goalId}
+              mode="goal_tasks"
+              title="AIでタスク案"
+              defaultMessage="ゴールノートと既存タスクをもとに、達成に必要なタスクを提案してください。重複しそうなものは避けてください。"
+              onApplied={() => {
+                refetchTasks();
+                refetchGoal();
+              }}
+            >
+              <Button variant="outline">
+                <Sparkles className="h-4 w-4 mr-2" />
+                AI提案
+              </Button>
+            </GoalTaskAssistantDialog>
             <TaskFormDialog goalId={goalId}>
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
@@ -379,12 +396,30 @@ export default function GoalDetailPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <TaskFormDialog goalId={goalId}>
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  最初のタスクを作成
-                </Button>
-              </TaskFormDialog>
+              <div className="flex flex-wrap gap-2">
+                <GoalTaskAssistantDialog
+                  projectId={id}
+                  goalId={goalId}
+                  mode="goal_tasks"
+                  title="AIでタスク案"
+                  defaultMessage="ゴールノートをもとに、最初に作るべきタスクを提案してください。"
+                  onApplied={() => {
+                    refetchTasks();
+                    refetchGoal();
+                  }}
+                >
+                  <Button variant="outline">
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    AI提案
+                  </Button>
+                </GoalTaskAssistantDialog>
+                <TaskFormDialog goalId={goalId}>
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    最初のタスクを作成
+                  </Button>
+                </TaskFormDialog>
+              </div>
             </CardContent>
           </Card>
         ) : (

@@ -94,6 +94,12 @@ import type {
   TriageRunCreateRequest
 } from '@/types/triage';
 import type { TaskStatus } from '@/types/task';
+import type {
+  GoalTaskDraftApplyRequest,
+  GoalTaskDraftApplyResponse,
+  GoalTaskDraftRequest,
+  GoalTaskDraftResponse,
+} from '@/types/ai-drafts';
 
 export const DEFAULT_TASK_PAGE_LIMIT = 100;
 
@@ -567,6 +573,20 @@ class ApiClient {
 
   async testAIIntegration(): Promise<TestAIIntegrationResponse> {
     return this.request<TestAIIntegrationResponse>('/api/ai/weekly-plan/test');
+  }
+
+  async generateGoalTaskDraft(request: GoalTaskDraftRequest): Promise<GoalTaskDraftResponse> {
+    return this.request<GoalTaskDraftResponse>('/api/ai/goal-task-drafts', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async applyGoalTaskDraft(request: GoalTaskDraftApplyRequest): Promise<GoalTaskDraftApplyResponse> {
+    return this.request<GoalTaskDraftApplyResponse>('/api/ai/apply-goal-task-draft', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
   }
 
   // === Capacity Triage API methods ===
@@ -1404,6 +1424,8 @@ export const aiPlanningApi = {
   analyzeWorkload: (projectIds?: string[]) => apiClient.analyzeWorkload(projectIds),
   suggestPriorities: (projectId?: string) => apiClient.suggestTaskPriorities(projectId),
   testIntegration: () => apiClient.testAIIntegration(),
+  generateGoalTaskDraft: (request: GoalTaskDraftRequest) => apiClient.generateGoalTaskDraft(request),
+  applyGoalTaskDraft: (request: GoalTaskDraftApplyRequest) => apiClient.applyGoalTaskDraft(request),
 };
 
 /**

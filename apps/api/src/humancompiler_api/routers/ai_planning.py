@@ -10,6 +10,13 @@ from sqlmodel import Session
 from uuid import UUID
 
 from humancompiler_api.ai import WeeklyPlanRequest, WeeklyPlanResponse
+from humancompiler_api.ai.goal_task_drafts import (
+    GoalTaskDraftApplyRequest,
+    GoalTaskDraftApplyResponse,
+    GoalTaskDraftRequest,
+    GoalTaskDraftResponse,
+    goal_task_draft_service,
+)
 from humancompiler_api.ai.planning_service import WeeklyPlanService
 from humancompiler_api.ai.weekly_task_solver import (
     WeeklyTaskSolver,
@@ -22,6 +29,72 @@ from humancompiler_api.models import ErrorResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ai", tags=["ai-planning"])
+
+
+@router.post(
+    "/goal-task-drafts",
+    response_model=GoalTaskDraftResponse,
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "Project, goal, or task not found",
+        },
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def generate_goal_task_draft(
+    request: GoalTaskDraftRequest,
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(get_session),
+) -> GoalTaskDraftResponse:
+    """Generate editable AI drafts for goals and tasks."""
+    try:
+        return goal_task_draft_service.generate_draft(session, user_id, request)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in goal/task draft generation: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse.create(
+                code="INTERNAL_SERVER_ERROR",
+                message="Internal server error during goal/task draft generation",
+                details={"error_type": type(e).__name__},
+            ).model_dump(),
+        )
+
+
+@router.post(
+    "/apply-goal-task-draft",
+    response_model=GoalTaskDraftApplyResponse,
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "Project, goal, or task not found",
+        },
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def apply_goal_task_draft(
+    request: GoalTaskDraftApplyRequest,
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(get_session),
+) -> GoalTaskDraftApplyResponse:
+    """Persist selected goal/task drafts after user review."""
+    try:
+        return goal_task_draft_service.apply_draft(session, user_id, request)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error applying goal/task draft: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse.create(
+                code="INTERNAL_SERVER_ERROR",
+                message="Internal server error during goal/task draft apply",
+                details={"error_type": type(e).__name__},
+            ).model_dump(),
+        )
 
 
 @router.post(
@@ -159,7 +232,7 @@ async def solve_weekly_tasks(
     session: Session = Depends(get_session),
 ):
     """
-    Advanced AI-powered weekly task solver using GPT-5.
+    Advanced AI-powered weekly task solver using GPT-5.5.
 
     This endpoint provides intelligent task selection and allocation optimization:
     1. Analyzes project priorities and deadline constraints

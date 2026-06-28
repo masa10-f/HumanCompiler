@@ -82,7 +82,7 @@ class OpenAIService:
         """Initialize OpenAI client with optional user-specific API key."""
         if api_key:
             self.client = OpenAI(api_key=api_key)
-            self.model = model or "gpt-5"  # Default to GPT-5
+            self.model = model or "gpt-5.5"  # Default to GPT-5.5
         elif (
             not settings.openai_api_key
             or settings.openai_api_key == "your_openai_api_key"
@@ -91,10 +91,10 @@ class OpenAIService:
                 "OpenAI API key not configured - AI features will not be available"
             )
             self.client = None
-            self.model = "gpt-5"  # GPT-5 flagship model
+            self.model = "gpt-5.5"  # GPT-5.5 flagship model
         else:
             self.client = OpenAI(api_key=settings.openai_api_key)
-            self.model = "gpt-5"  # GPT-5 flagship model
+            self.model = "gpt-5.5"  # GPT-5.5 flagship model
 
     @classmethod
     async def create_for_user(
@@ -402,8 +402,11 @@ Use the create_week_plan function to structure your response."""
                 "max_completion_tokens": 8000,  # Generous limit for complex project plans
             }
 
-            # GPT-5 models only support default temperature (1.0)
-            if not self.model.startswith("gpt-5"):
+            if self.model.startswith("gpt-5.5"):
+                api_params["reasoning_effort"] = "high"
+
+            # GPT-family models only support default temperature (1.0)
+            if not self.model.startswith("gpt-"):
                 api_params["temperature"] = 0.7
 
             response = self.client.chat.completions.create(**api_params)

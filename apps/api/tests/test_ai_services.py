@@ -87,7 +87,7 @@ def test_openai_service_initialization_no_api_key():
     with patch("humancompiler_api.ai_service.settings.openai_api_key", None):
         service = OpenAIService()
         assert service.client is None
-        assert service.model == "gpt-5"
+        assert service.model == "gpt-5.5"
 
 
 def test_openai_service_initialization_with_api_key():
