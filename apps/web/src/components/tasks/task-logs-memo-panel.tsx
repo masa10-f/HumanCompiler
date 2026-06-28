@@ -16,7 +16,6 @@ import type { WorkSession } from '@/types/work-session';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
-import { sanitizeText } from '@/lib/security';
 import type { Task } from '@/types/task';
 import { log } from '@/lib/logger';
 import { formatJSTDateTime } from '@/lib/date-utils';
@@ -220,12 +219,7 @@ export function TaskLogsMemoPanel({
               ) : (
                 <div className="text-sm text-gray-600">
                   {task.memo ? (
-                    <div
-                      className="whitespace-pre-wrap"
-                      dangerouslySetInnerHTML={{
-                        __html: sanitizeText(task.memo)
-                      }}
-                    />
+                    <div className="whitespace-pre-wrap">{task.memo}</div>
                   ) : (
                     <div className="text-gray-400">メモはまだ設定されていません</div>
                   )}
@@ -375,12 +369,9 @@ export function TaskLogsMemoPanel({
                           </span>
                         </div>
                         {logEntry.comment && (
-                          <div
-                            className="text-sm text-gray-700 whitespace-pre-wrap"
-                            dangerouslySetInnerHTML={{
-                              __html: sanitizeText(logEntry.comment)
-                            }}
-                          />
+                          <div className="text-sm text-gray-700 whitespace-pre-wrap">
+                            {logEntry.comment}
+                          </div>
                         )}
                       </div>
                       <div className="flex items-center gap-1 ml-2">

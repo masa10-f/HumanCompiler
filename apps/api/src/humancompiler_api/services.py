@@ -612,33 +612,7 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
 
         statement = select(Task).join(Goal).where(Goal.project_id == project_id)
 
-        # Add sorting logic
-        if sort_by and hasattr(Task, sort_by.value):
-            sort_column = getattr(Task, sort_by.value)
-
-            # Handle status sorting with priority order
-            if sort_by.value == "status":
-                status_order = {
-                    "pending": 1,
-                    "in_progress": 2,
-                    "completed": 3,
-                    "cancelled": 4,
-                }
-                # Use CASE statement for status priority ordering
-                from sqlalchemy import case
-
-                order_expr = case(status_order, value=sort_column)
-            else:
-                order_expr = sort_column
-
-            # Apply sort order
-            if sort_order and sort_order.value.lower() == "desc":
-                statement = statement.order_by(order_expr.desc())
-            else:
-                statement = statement.order_by(order_expr.asc())
-        else:
-            # Default ordering
-            statement = statement.order_by(Task.created_at.desc())
+        statement = self._apply_sorting(statement, sort_by.value, sort_order.value)
 
         statement = statement.order_by(Task.id.asc())
 

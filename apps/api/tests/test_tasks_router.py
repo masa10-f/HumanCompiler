@@ -7,9 +7,26 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from conftest import create_test_data
 from humancompiler_api.auth import AuthUser
-from humancompiler_api.models import Task, TaskCreate
+from humancompiler_api.models import Task, TaskCreate, TaskDependency
 from humancompiler_api.routers import tasks
+
+
+def test_create_task_keeps_no_slash_route_out_of_schema():
+    create_routes = [
+        route
+        for route in tasks.router.routes
+        if getattr(route, "endpoint", None) is tasks.create_task
+        and "POST" in getattr(route, "methods", set())
+    ]
+
+    routes_by_path = {route.path: route for route in create_routes}
+
+    assert "/tasks/" in routes_by_path
+    assert "/tasks" in routes_by_path
+    assert routes_by_path["/tasks/"].include_in_schema is True
+    assert routes_by_path["/tasks"].include_in_schema is False
 
 
 @pytest.mark.asyncio
@@ -56,3 +73,40 @@ async def test_create_task_logs_only_task_id_and_user_id(monkeypatch, caplog):
     assert "Sensitive task title" not in caplog.text
     assert "Sensitive task description" not in caplog.text
     assert "Sensitive task memo" not in caplog.text
+
+
+def test_build_task_responses_with_dependencies_batches_project_tasks(
+    session, test_user_id
+):
+    data = create_test_data(session, test_user_id)
+    goal = data["goal"]
+    blocked_task = Task(
+        id=uuid4(),
+        goal_id=goal.id,
+        title="Blocked task",
+        estimate_hours=Decimal("1.0"),
+    )
+    prerequisite_task = Task(
+        id=uuid4(),
+        goal_id=goal.id,
+        title="Prerequisite task",
+        estimate_hours=Decimal("1.0"),
+    )
+    dependency = TaskDependency(
+        id=uuid4(),
+        task_id=blocked_task.id,
+        depends_on_task_id=prerequisite_task.id,
+    )
+    session.add(blocked_task)
+    session.add(prerequisite_task)
+    session.add(dependency)
+    session.flush()
+
+    responses = tasks.build_task_responses_with_dependencies(
+        session, [blocked_task], test_user_id
+    )
+
+    assert len(responses) == 1
+    assert len(responses[0].dependencies) == 1
+    assert responses[0].dependencies[0].depends_on_task_id == prerequisite_task.id
+    assert responses[0].dependencies[0].depends_on_task.title == "Prerequisite task"

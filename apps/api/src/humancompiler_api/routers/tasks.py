@@ -1,6 +1,7 @@
 import logging
 from collections.abc import Generator
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlmodel import Session
@@ -17,6 +18,7 @@ from humancompiler_api.models import (
     TaskDependencyTaskInfo,
     SortBy,
     SortOrder,
+    Task,
 )
 from humancompiler_api.services import task_service
 
@@ -31,6 +33,36 @@ def get_session() -> Generator[Session, None, None]:
         yield session
 
 
+def build_task_responses_with_dependencies(
+    session: Session, tasks: list[Task], owner_id: str | UUID
+) -> list[TaskResponse]:
+    """Build task responses with batch-loaded dependencies."""
+    if not tasks:
+        return []
+
+    task_ids = [task.id for task in tasks]
+    deps_by_task = task_service.get_task_dependencies_batch(session, task_ids, owner_id)
+
+    task_responses = []
+    for task in tasks:
+        task_response = TaskResponse.model_validate(task)
+
+        dependencies = deps_by_task.get(str(task.id), [])
+        dependency_responses = []
+        for dep in dependencies:
+            dep_response = TaskDependencyResponse.model_validate(dep)
+            if dep.depends_on_task:
+                dep_response.depends_on_task = TaskDependencyTaskInfo.model_validate(
+                    dep.depends_on_task
+                )
+            dependency_responses.append(dep_response)
+
+        task_response.dependencies = dependency_responses
+        task_responses.append(task_response)
+
+    return task_responses
+
+
 @router.post(
     "/",
     response_model=TaskResponse,
@@ -40,10 +72,10 @@ def get_session() -> Generator[Session, None, None]:
     },
 )
 @router.post(
-    "",  # Handle requests without trailing slash
+    "",
     response_model=TaskResponse,
     status_code=status.HTTP_201_CREATED,
-    include_in_schema=False,  # Don't duplicate in OpenAPI schema
+    include_in_schema=False,
     responses={
         404: {"model": ErrorResponse, "description": "Goal not found"},
     },
@@ -79,34 +111,7 @@ async def get_tasks_by_goal(
     tasks = task_service.get_tasks_by_goal(
         session, goal_id, current_user.user_id, skip, limit, sort_by, sort_order
     )
-    if not tasks:
-        return []
-
-    # Batch-load all dependencies for all tasks in 2 queries (deps + depends_on tasks)
-    task_ids = [task.id for task in tasks]
-    deps_by_task = task_service.get_task_dependencies_batch(
-        session, task_ids, current_user.user_id
-    )
-
-    task_responses = []
-    for task in tasks:
-        task_response = TaskResponse.model_validate(task)
-
-        # Use pre-loaded dependencies
-        dependencies = deps_by_task.get(str(task.id), [])
-        dependency_responses = []
-        for dep in dependencies:
-            dep_response = TaskDependencyResponse.model_validate(dep)
-            if dep.depends_on_task:
-                dep_response.depends_on_task = TaskDependencyTaskInfo.model_validate(
-                    dep.depends_on_task
-                )
-            dependency_responses.append(dep_response)
-
-        task_response.dependencies = dependency_responses
-        task_responses.append(task_response)
-
-    return task_responses
+    return build_task_responses_with_dependencies(session, tasks, current_user.user_id)
 
 
 @router.get(
@@ -129,7 +134,7 @@ async def get_tasks_by_project(
     tasks = task_service.get_tasks_by_project(
         session, project_id, current_user.user_id, skip, limit, sort_by, sort_order
     )
-    return [TaskResponse.model_validate(task) for task in tasks]
+    return build_task_responses_with_dependencies(session, tasks, current_user.user_id)
 
 
 @router.get(
