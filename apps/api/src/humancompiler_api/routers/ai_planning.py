@@ -253,7 +253,7 @@ async def generate_weekly_plan(
                 # Continue without user-specific API key
 
         if not openai_client:
-            # Fall back to system API key or no client
+            # No server-side OpenAI API key fallback is allowed.
             openai_client = OpenAIClient()
 
         # Create weekly plan service with user's OpenAI client

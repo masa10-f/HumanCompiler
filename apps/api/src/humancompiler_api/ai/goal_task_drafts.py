@@ -20,7 +20,6 @@ from openai import (
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from sqlmodel import Session, select
 
-from humancompiler_api.config import settings
 from humancompiler_api.crypto import get_crypto_service
 from humancompiler_api.models import (
     ContextNote,
@@ -1119,15 +1118,7 @@ class GoalTaskDraftService:
             except Exception as exc:
                 logger.warning("Failed to decrypt user OpenAI API key: %s", exc)
 
-        if settings.openai_api_key and settings.openai_api_key not in {
-            "your_openai_api_key",
-            "development-key-not-available",
-        }:
-            return OpenAI(
-                api_key=settings.openai_api_key,
-                timeout=AI_DRAFT_OPENAI_TIMEOUT_SECONDS,
-            ), DEFAULT_OPENAI_MODEL
-
+        logger.warning("User OpenAI API key is not configured for AI draft generation")
         return None, model
 
     def _get_project(

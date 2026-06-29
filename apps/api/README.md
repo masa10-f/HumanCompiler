@@ -73,7 +73,6 @@ apps/api/
 FLY_API_TOKEN=your_fly_token
 DATABASE_URL=production_database_url
 DATABASE_URL_PREVIEW=preview_database_url  # Optional: if not set, uses production DB
-OPENAI_API_KEY=your_openai_key
 SUPABASE_URL=your_supabase_url
 SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_key

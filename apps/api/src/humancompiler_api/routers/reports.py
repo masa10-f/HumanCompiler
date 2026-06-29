@@ -82,7 +82,7 @@ async def generate_weekly_report(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=ErrorResponse.create(
-                code="OPENAI_API_KEY_MISSING",
+                code="USER_AI_KEY_MISSING",
                 message="OpenAI API key is not configured. Please set it in user settings.",
                 details={"user_id": str(current_user.user_id)},
             ).model_dump(),

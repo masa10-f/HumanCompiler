@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import Session, select
 from uuid import UUID
 
-from humancompiler_api.config import settings
 from humancompiler_api.crypto import get_crypto_service
 from humancompiler_api.models import Goal, Project, Task, UserSettings
 from humancompiler_api.services import goal_service, project_service, task_service
@@ -83,17 +82,11 @@ class OpenAIService:
         if api_key:
             self.client = OpenAI(api_key=api_key)
             self.model = model or "gpt-5.5"  # Default to GPT-5.5
-        elif (
-            not settings.openai_api_key
-            or settings.openai_api_key == "your_openai_api_key"
-        ):
+        else:
             logger.warning(
-                "OpenAI API key not configured - AI features will not be available"
+                "User OpenAI API key not configured - AI features will not be available"
             )
             self.client = None
-            self.model = "gpt-5.5"  # GPT-5.5 flagship model
-        else:
-            self.client = OpenAI(api_key=settings.openai_api_key)
             self.model = "gpt-5.5"  # GPT-5.5 flagship model
 
     @classmethod
@@ -127,7 +120,7 @@ class OpenAIService:
             if api_key:
                 return cls(api_key=api_key, model=user_settings.openai_model)
 
-        # Fall back to system API key or no client
+        # No server-side OpenAI API key fallback is allowed.
         return cls()
 
     @classmethod
@@ -154,7 +147,7 @@ class OpenAIService:
             if api_key:
                 return cls(api_key=api_key, model=user_settings.openai_model)
 
-        # Fall back to system API key or no client
+        # No server-side OpenAI API key fallback is allowed.
         return cls()
 
     def get_function_definitions(self) -> list[dict[str, Any]]:

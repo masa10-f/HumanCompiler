@@ -20,7 +20,6 @@ from sqlmodel import select
 
 from humancompiler_api.ai.models import WeeklyPlanContext, WeeklyPlanResponse
 from humancompiler_api.ai.task_utils import filter_valid_tasks
-from humancompiler_api.config import settings
 from humancompiler_api.crypto import get_crypto_service
 from humancompiler_api.models import UserSettings
 
@@ -41,21 +40,11 @@ class OpenAIClient:
             )
             self.client = OpenAI(api_key=api_key)
             self.model = model or default_model
-        elif (
-            not settings.openai_api_key
-            or settings.openai_api_key == "your_openai_api_key"
-            or settings.openai_api_key == "development-key-not-available"
-        ):
+        else:
             logger.warning(
-                "OpenAI API key not configured - AI features will not be available"
+                "User OpenAI API key not configured - AI features will not be available"
             )
             self.client = None
-            self.model = default_model
-        else:
-            logger.info(
-                f"Initializing OpenAI client with system API key (model: {default_model})"
-            )
-            self.client = OpenAI(api_key=settings.openai_api_key)
             self.model = default_model
 
     def is_available(self) -> bool:
@@ -92,7 +81,7 @@ class OpenAIClient:
                 logger.error(f"Error decrypting OpenAI API key for user {user_id}: {e}")
                 logger.error(f"Crypto error type: {type(e).__name__}")
 
-        # Fall back to system API key or no client
+        # No server-side OpenAI API key fallback is allowed.
         return cls()
 
     async def generate_weekly_plan(

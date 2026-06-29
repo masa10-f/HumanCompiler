@@ -401,7 +401,9 @@ class WeeklyTaskSolver:
                     # Continue without user-specific API key
 
             if not openai_client:
-                logger.info(f"Using system default OpenAI client for user {user_id}")
+                logger.info(
+                    f"No user OpenAI API key configured for user {user_id}; AI priority extraction disabled"
+                )
 
             return cls(openai_client=openai_client, model=model)
 
