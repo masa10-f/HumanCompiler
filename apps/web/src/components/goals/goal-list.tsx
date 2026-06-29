@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { GoalFormDialog } from './goal-form-dialog'
 import { GoalCard } from './goal-card'
-import { Plus } from 'lucide-react'
+import { GoalTaskAssistantDialog } from '@/components/ai/goal-task-assistant-dialog'
+import { Plus, Sparkles } from 'lucide-react'
 import type { Goal } from '@/types/goal'
 
 interface GoalListProps {
@@ -31,12 +32,26 @@ export function GoalList({
           <h2 className="text-2xl font-bold">ゴール一覧</h2>
           <p className="text-gray-600 mt-2">このプロジェクトの目標を管理します。</p>
         </div>
-        <GoalFormDialog projectId={projectId}>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            新規ゴール作成
-          </Button>
-        </GoalFormDialog>
+        <div className="flex gap-2">
+          <GoalTaskAssistantDialog
+            projectId={projectId}
+            mode="project_goals"
+            title="AIでゴール・タスク案"
+            defaultMessage="プロジェクトノートと既存のゴールをもとに、次に作るべきゴールと初期タスクを提案してください。"
+            onApplied={onRefetch}
+          >
+            <Button variant="outline">
+              <Sparkles className="h-4 w-4 mr-2" />
+              AI提案
+            </Button>
+          </GoalTaskAssistantDialog>
+          <GoalFormDialog projectId={projectId}>
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
+              新規ゴール作成
+            </Button>
+          </GoalFormDialog>
+        </div>
       </div>
 
       {isLoading ? (
@@ -61,12 +76,26 @@ export function GoalList({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <GoalFormDialog projectId={projectId}>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                最初のゴールを作成
-              </Button>
-            </GoalFormDialog>
+            <div className="flex flex-wrap gap-2">
+              <GoalTaskAssistantDialog
+                projectId={projectId}
+                mode="project_goals"
+                title="AIでゴール・タスク案"
+                defaultMessage="プロジェクトノートをもとに、最初に作るべきゴールと初期タスクを提案してください。"
+                onApplied={onRefetch}
+              >
+                <Button variant="outline">
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  AI提案
+                </Button>
+              </GoalTaskAssistantDialog>
+              <GoalFormDialog projectId={projectId}>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  最初のゴールを作成
+                </Button>
+              </GoalFormDialog>
+            </div>
           </CardContent>
         </Card>
       ) : (

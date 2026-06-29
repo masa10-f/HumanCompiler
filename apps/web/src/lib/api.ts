@@ -94,8 +94,17 @@ import type {
   TriageRunCreateRequest
 } from '@/types/triage';
 import type { TaskStatus } from '@/types/task';
+import type {
+  GoalTaskDraftApplyRequest,
+  GoalTaskDraftApplyResponse,
+  GoalTaskDraftJobResponse,
+  GoalTaskDraftJobStatusResponse,
+  GoalTaskDraftRequest,
+  GoalTaskDraftResponse,
+} from '@/types/ai-drafts';
 
 export const DEFAULT_TASK_PAGE_LIMIT = 100;
+const AI_DRAFT_REQUEST_TIMEOUT_MS = 30000;
 
 type RawTask = Omit<Task, 'estimate_hours'> & {
   estimate_hours: number | string | null | undefined;
@@ -133,6 +142,30 @@ const ensureHttps = (url: string): string => {
   }
 
   return url;
+};
+
+type ApiRequestOptions = RequestInit & {
+  enableFallback?: boolean;
+  maxRetries?: number;
+  retryDelay?: number;
+  timeout?: number;
+};
+
+const extractApiErrorMessage = (
+  errorData: Record<string, unknown>,
+  fallback: string
+): string => {
+  const detail = errorData.detail;
+  if (typeof detail === 'string') return detail;
+  if (detail && typeof detail === 'object') {
+    const nestedDetail = detail as Record<string, unknown>;
+    if (typeof nestedDetail.message === 'string') return nestedDetail.message;
+    if (typeof nestedDetail.detail === 'string') return nestedDetail.detail;
+    if (typeof nestedDetail.error === 'string') return nestedDetail.error;
+  }
+  if (typeof errorData.message === 'string') return errorData.message;
+  if (typeof errorData.error === 'string') return errorData.error;
+  return fallback;
 };
 
 // Note: getApiBaseUrl removed - use getApiEndpoint() directly
@@ -191,11 +224,18 @@ class ApiClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: ApiRequestOptions = {}
   ): Promise<T> {
+    const {
+      enableFallback,
+      maxRetries,
+      retryDelay,
+      timeout,
+      ...fetchOptions
+    } = options;
     const context = {
       endpoint,
-      method: options.method || 'GET',
+      method: fetchOptions.method || 'GET',
       timestamp: new Date()
     };
 
@@ -208,14 +248,15 @@ class ApiClient {
 
       // Use enhanced fetch with fallback
       const response = await fetchWithFallback(endpoint, {
-        ...options,
+        ...fetchOptions,
         headers: {
           ...headers,
-          ...options.headers,
+          ...fetchOptions.headers,
         },
-        timeout: appConfig.api.timeout,
-        maxRetries: appConfig.api.retryAttempts,
-        retryDelay: appConfig.api.retryDelay,
+        enableFallback: enableFallback ?? true,
+        timeout: timeout ?? appConfig.api.timeout,
+        maxRetries: maxRetries ?? appConfig.api.retryAttempts,
+        retryDelay: retryDelay ?? appConfig.api.retryDelay,
       });
 
       safeLog('debug', '🔍 [ApiClient] Response received:', {
@@ -230,10 +271,10 @@ class ApiClient {
 
         try {
           errorData = await response.json();
-          errorMessage =
-            (typeof errorData.detail === 'string' ? errorData.detail : undefined) ||
-            (typeof errorData.message === 'string' ? errorData.message : undefined) ||
-            `HTTP ${response.status}: ${response.statusText}`;
+          errorMessage = extractApiErrorMessage(
+            errorData,
+            `HTTP ${response.status}: ${response.statusText}`
+          );
         } catch {
           errorMessage = `HTTP ${response.status}: ${response.statusText}`;
           errorData = { detail: errorMessage };
@@ -242,7 +283,8 @@ class ApiClient {
         const apiError = new ApiError(
           response.status,
           errorMessage,
-          { ...context, statusCode: response.status, responseData: errorData }
+          { ...context, statusCode: response.status, responseData: errorData },
+          errorMessage
         );
 
         logError(apiError, context);
@@ -567,6 +609,44 @@ class ApiClient {
 
   async testAIIntegration(): Promise<TestAIIntegrationResponse> {
     return this.request<TestAIIntegrationResponse>('/api/ai/weekly-plan/test');
+  }
+
+  async generateGoalTaskDraft(request: GoalTaskDraftRequest): Promise<GoalTaskDraftResponse> {
+    return this.request<GoalTaskDraftResponse>('/api/ai/goal-task-drafts', {
+      method: 'POST',
+      body: JSON.stringify(request),
+      enableFallback: false,
+      maxRetries: 1,
+      timeout: AI_DRAFT_REQUEST_TIMEOUT_MS,
+    });
+  }
+
+  async startGoalTaskDraftJob(request: GoalTaskDraftRequest): Promise<GoalTaskDraftJobResponse> {
+    return this.request<GoalTaskDraftJobResponse>('/api/ai/goal-task-draft-jobs', {
+      method: 'POST',
+      body: JSON.stringify(request),
+      enableFallback: false,
+      maxRetries: 1,
+      timeout: AI_DRAFT_REQUEST_TIMEOUT_MS,
+    });
+  }
+
+  async getGoalTaskDraftJob(responseId: string): Promise<GoalTaskDraftJobStatusResponse> {
+    return this.request<GoalTaskDraftJobStatusResponse>(
+      `/api/ai/goal-task-draft-jobs/${encodeURIComponent(responseId)}`,
+      {
+        enableFallback: false,
+        maxRetries: 1,
+        timeout: AI_DRAFT_REQUEST_TIMEOUT_MS,
+      }
+    );
+  }
+
+  async applyGoalTaskDraft(request: GoalTaskDraftApplyRequest): Promise<GoalTaskDraftApplyResponse> {
+    return this.request<GoalTaskDraftApplyResponse>('/api/ai/apply-goal-task-draft', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
   }
 
   // === Capacity Triage API methods ===
@@ -1404,6 +1484,10 @@ export const aiPlanningApi = {
   analyzeWorkload: (projectIds?: string[]) => apiClient.analyzeWorkload(projectIds),
   suggestPriorities: (projectId?: string) => apiClient.suggestTaskPriorities(projectId),
   testIntegration: () => apiClient.testAIIntegration(),
+  generateGoalTaskDraft: (request: GoalTaskDraftRequest) => apiClient.generateGoalTaskDraft(request),
+  startGoalTaskDraftJob: (request: GoalTaskDraftRequest) => apiClient.startGoalTaskDraftJob(request),
+  getGoalTaskDraftJob: (responseId: string) => apiClient.getGoalTaskDraftJob(responseId),
+  applyGoalTaskDraft: (request: GoalTaskDraftApplyRequest) => apiClient.applyGoalTaskDraft(request),
 };
 
 /**

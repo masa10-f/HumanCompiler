@@ -68,7 +68,6 @@ jobs:
         env:
           # Test environment variables - use in-memory database for isolation
           DATABASE_URL: "sqlite:///:memory:"
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -101,7 +100,6 @@ jobs:
           for attempt in 1 2 3; do
             if timeout 60s flyctl secrets set \
               DATABASE_URL="$DATABASE_URL_VALUE" \
-              OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
               SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
               SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
               SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
@@ -192,7 +190,6 @@ jobs:
           for attempt in 1 2 3; do
             if timeout 60s flyctl secrets set \
               DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-              OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
               SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
               SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
               SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \

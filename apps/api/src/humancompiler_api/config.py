@@ -39,9 +39,6 @@ class Settings(BaseSettings):
     # Database Configuration
     database_url: str = Field(..., description="PostgreSQL database URL")
 
-    # OpenAI Configuration
-    openai_api_key: str = Field(..., description="OpenAI API key")
-
     # Security Configuration
     secret_key: str = Field(
         default="humancompiler-secret-key-change-in-production",
@@ -117,15 +114,6 @@ class Settings(BaseSettings):
             raise ValueError(
                 "Database URL must be a valid PostgreSQL connection string"
             )
-        return v
-
-    @field_validator("openai_api_key")
-    @classmethod
-    def validate_openai_key(cls, v: str) -> str:
-        """Validate OpenAI API key format"""
-        if not v or v.strip() == "":
-            raise ValueError("OpenAI API key cannot be empty")
-        # Remove length validation as different key formats may have different lengths
         return v
 
     @property
@@ -234,7 +222,10 @@ class Settings(BaseSettings):
         return subdomain in allowed_fly_domains
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", case_sensitive=False
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
     )
 
 
@@ -263,8 +254,6 @@ except Exception as e:
     settings.environment = "development"
     settings.cors_origins = ["http://localhost:3000", "http://localhost:3001"]
     settings.cors_origins_list = ["http://localhost:3000", "http://localhost:3001"]  # type: ignore[misc]
-    # Required attributes for fallback mode
-    settings.openai_api_key = "development-key-not-available"
     settings.database_url = "sqlite:///dev.db"
     settings.supabase_url = "https://dev.supabase.co"
     settings.supabase_anon_key = "dev-anon-key"

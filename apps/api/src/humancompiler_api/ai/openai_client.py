@@ -20,7 +20,6 @@ from sqlmodel import select
 
 from humancompiler_api.ai.models import WeeklyPlanContext, WeeklyPlanResponse
 from humancompiler_api.ai.task_utils import filter_valid_tasks
-from humancompiler_api.config import settings
 from humancompiler_api.crypto import get_crypto_service
 from humancompiler_api.models import UserSettings
 
@@ -28,12 +27,12 @@ logger = logging.getLogger(__name__)
 
 
 class OpenAIClient:
-    """OpenAI client using Responses API and Chat Completions API with GPT-5"""
+    """OpenAI client using Responses API and Chat Completions API with GPT-5.5"""
 
     def __init__(self, api_key: str | None = None, model: str | None = None):
         """Initialize OpenAI client with optional user-specific API key"""
-        # Use GPT-5 as default (latest flagship model)
-        default_model = "gpt-5"  # GPT-5 flagship model for advanced planning
+        # Use GPT-5.5 as default (latest flagship model)
+        default_model = "gpt-5.5"  # GPT-5.5 flagship model for advanced planning
 
         if api_key:
             logger.info(
@@ -41,21 +40,11 @@ class OpenAIClient:
             )
             self.client = OpenAI(api_key=api_key)
             self.model = model or default_model
-        elif (
-            not settings.openai_api_key
-            or settings.openai_api_key == "your_openai_api_key"
-            or settings.openai_api_key == "development-key-not-available"
-        ):
+        else:
             logger.warning(
-                "OpenAI API key not configured - AI features will not be available"
+                "User OpenAI API key not configured - AI features will not be available"
             )
             self.client = None
-            self.model = default_model
-        else:
-            logger.info(
-                f"Initializing OpenAI client with system API key (model: {default_model})"
-            )
-            self.client = OpenAI(api_key=settings.openai_api_key)
             self.model = default_model
 
     def is_available(self) -> bool:
@@ -92,7 +81,7 @@ class OpenAIClient:
                 logger.error(f"Error decrypting OpenAI API key for user {user_id}: {e}")
                 logger.error(f"Crypto error type: {type(e).__name__}")
 
-        # Fall back to system API key or no client
+        # No server-side OpenAI API key fallback is allowed.
         return cls()
 
     async def generate_weekly_plan(
@@ -357,7 +346,7 @@ class OpenAIClient:
     def _parse_responses_api_output(
         self, response, context: WeeklyPlanContext
     ) -> WeeklyPlanResponse:
-        """Parse Responses API output (GPT-5 format)"""
+        """Parse Responses API output (GPT-5.5 format)"""
         try:
             logger.info(f"Parsing Responses API output: {type(response)}")
 
@@ -481,7 +470,7 @@ class OpenAIClient:
     def _use_chat_completions_api(
         self, context: WeeklyPlanContext, planning_context: str
     ) -> WeeklyPlanResponse:
-        """Use Chat Completions API for GPT-5 weekly planning"""
+        """Use Chat Completions API for GPT-5.5 weekly planning"""
         try:
             logger.info(f"Using Chat Completions API fallback for model {self.model}")
 
@@ -508,8 +497,11 @@ class OpenAIClient:
                 "max_completion_tokens": 8000,  # Increased to avoid truncation
             }
 
-            # Add temperature for supported models (GPT-5 only supports default temperature)
-            if not self.model.startswith(("o1", "gpt-5")):
+            if self.model.startswith(("gpt-5.5", "gpt-5.4")):
+                api_params["reasoning_effort"] = "high"
+
+            # GPT-5.x reasoning models use the default temperature.
+            if not self.model.startswith(("o1", "gpt-5.5", "gpt-5.4")):
                 api_params["temperature"] = 0.7
 
             response = self.client.chat.completions.create(**api_params)

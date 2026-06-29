@@ -9,7 +9,6 @@ All sensitive configuration must be stored in environment variables, never hardc
 - `SUPABASE_URL` - Your Supabase project URL
 - `SUPABASE_ANON_KEY` - Supabase anonymous/public key
 - `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (keep secret!)
-- `OPENAI_API_KEY` - OpenAI API key
 - `DATABASE_URL` - PostgreSQL connection string
 
 ### Security Best Practices

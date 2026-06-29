@@ -1,5 +1,5 @@
 """
-Advanced weekly task solver using GPT-5 for optimized task selection and allocation.
+Advanced weekly task solver using GPT-5.5 for optimized task selection and allocation.
 
 This module implements an AI-powered system that goes beyond simple weekly planning
 to provide intelligent task selection, project allocation, and constraint-based optimization.
@@ -103,7 +103,9 @@ class TaskSolverResponse(BaseModel):
 class TaskPriorityExtractor:
     """Extract task priorities using OpenAI API based on user requirements."""
 
-    def __init__(self, openai_client: OpenAI | None = None, model: str = "gpt-4"):
+    def __init__(
+        self, openai_client: OpenAI | None = None, model: str = "gpt-5.4-mini"
+    ):
         """Initialize priority extractor with OpenAI client."""
         self.openai_client = openai_client
         self.model = model
@@ -145,7 +147,8 @@ class TaskPriorityExtractor:
                 ],
                 tools=[self._get_priority_extraction_tool()],
                 tool_choice="auto",
-                temperature=0.3,
+                reasoning_effort="high",
+                max_completion_tokens=1200,
             )
 
             return self._parse_priority_response(response, context)
@@ -357,14 +360,14 @@ class TaskPriorityExtractor:
 
 
 class WeeklyTaskSolver:
-    """Advanced AI-powered weekly task solver using GPT-5."""
+    """Advanced AI-powered weekly task solver using GPT-5.5."""
 
-    def __init__(self, openai_client: OpenAI | None = None, model: str = "gpt-5"):
+    def __init__(self, openai_client: OpenAI | None = None, model: str = "gpt-5.5"):
         """Initialize solver with OpenAI client."""
         self.openai_client = openai_client
-        self.model = model  # Use GPT-5 for advanced task optimization
+        self.model = model  # Use GPT-5.5 for advanced task optimization
         self.context_collector = ContextCollector()
-        self.priority_extractor = TaskPriorityExtractor(openai_client, "gpt-4")
+        self.priority_extractor = TaskPriorityExtractor(openai_client, "gpt-5.4-mini")
 
     @classmethod
     async def create_for_user(
@@ -379,7 +382,7 @@ class WeeklyTaskSolver:
             user_settings = result.scalar_one_or_none()
 
             openai_client = None
-            model = "gpt-5"  # Default to GPT-5
+            model = "gpt-5.5"  # Default to GPT-5.5
 
             if user_settings and user_settings.openai_api_key_encrypted:
                 try:
@@ -398,14 +401,16 @@ class WeeklyTaskSolver:
                     # Continue without user-specific API key
 
             if not openai_client:
-                logger.info(f"Using system default OpenAI client for user {user_id}")
+                logger.info(
+                    f"No user OpenAI API key configured for user {user_id}; AI priority extraction disabled"
+                )
 
             return cls(openai_client=openai_client, model=model)
 
         except Exception as e:
             logger.error(f"Failed to create WeeklyTaskSolver for user {user_id}: {e}")
             # Return solver without OpenAI client as fallback
-            return cls(openai_client=None, model="gpt-5")
+            return cls(openai_client=None, model="gpt-5.5")
 
     async def solve_weekly_tasks(
         self, session: Session, user_id: str, request: TaskSolverRequest
@@ -934,7 +939,7 @@ class WeeklyTaskSolver:
         constraints: WeeklyConstraints,
         project_allocations: list[ProjectAllocation],
     ) -> dict[str, Any]:
-        """Generate AI-powered task selection using GPT-5 Responses API."""
+        """Generate AI-powered task selection using GPT-5.5 Responses API."""
         try:
             solver_context = self._create_solver_context(
                 context, constraints, project_allocations
@@ -942,12 +947,13 @@ class WeeklyTaskSolver:
 
             # Try Responses API first, fallback to Chat Completions if not available
             try:
-                # Use new Responses API with GPT-5
-                # Note: GPT-5 Responses API only supports default temperature (1.0)
+                # Use new Responses API with GPT-5.5
+                # Note: GPT-family Responses API only supports default temperature (1.0)
                 response = self.openai_client.responses.create(
                     model=self.model,
                     input=solver_context,
                     tools=self._get_solver_tools_definitions(),
+                    reasoning={"effort": "high"},
                 )
             except (AttributeError, APIError) as e:
                 # Responses API not available, fallback to Chat Completions
@@ -1429,8 +1435,11 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
                 "max_completion_tokens": 2000,
             }
 
-            # GPT-5 models only support default temperature (1.0)
-            if not self.model.startswith("gpt-5"):
+            if self.model.startswith(("gpt-5.5", "gpt-5.4")):
+                api_params["reasoning_effort"] = "high"
+
+            # GPT-5.x reasoning models use the default temperature.
+            if not self.model.startswith(("gpt-5.5", "gpt-5.4")):
                 api_params["temperature"] = (
                     0.3  # Lower temperature for consistent optimization
                 )
