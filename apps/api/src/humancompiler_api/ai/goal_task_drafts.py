@@ -39,12 +39,17 @@ from humancompiler_api.models import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_OPENAI_MODEL = "gpt-5.5"
+MAX_DRAFT_OUTPUT_TOKENS = 20000
 MAX_CONTEXT_NOTE_CHARS = 6000
 MAX_CONTEXT_TASKS = 120
 MAX_CONTEXT_GOALS = 80
 
 DraftMode = Literal["project_goals", "goal_tasks", "split_task"]
 OriginalTaskAction = Literal["keep", "cancel"]
+
+
+class AIDraftGenerationError(Exception):
+    """Raised when OpenAI returns no usable draft content."""
 
 
 class DraftChatMessage(BaseModel):
@@ -259,6 +264,7 @@ SYSTEM_PROMPT = """あなたはHumanCompilerのゴール・タスク設計アシ
 - work_typeは light_work, study, focused_work のいずれかです。
 - priorityは1が最高、5が最低です。
 - 依存関係は同じ草案内のclient_idだけを参照します。
+- 各ゴール・タスクのrationaleには、プロジェクトやノートのどの文脈から必要だと判断したかを1-2文で書いてください。
 - 不明な点はwarningsかassistant_messageで明示し、勝手に確定しすぎないでください。
 """
 
@@ -317,7 +323,13 @@ class GoalTaskDraftService:
             return self._unavailable_response(
                 request, self._openai_error_message(exc), model=model
             )
-        except (AttributeError, TypeError, APIError, json.JSONDecodeError) as exc:
+        except (
+            AIDraftGenerationError,
+            AttributeError,
+            TypeError,
+            APIError,
+            json.JSONDecodeError,
+        ) as exc:
             logger.warning(
                 "Responses API failed, falling back to chat completions: %s", exc
             )
@@ -330,7 +342,11 @@ class GoalTaskDraftService:
                 return self._unavailable_response(
                     request, self._openai_error_message(fallback_exc), model=model
                 )
-            except (APIError, json.JSONDecodeError) as fallback_exc:
+            except (
+                AIDraftGenerationError,
+                APIError,
+                json.JSONDecodeError,
+            ) as fallback_exc:
                 logger.warning("OpenAI draft fallback failed: %s", fallback_exc)
                 return self._unavailable_response(
                     request, self._openai_error_message(fallback_exc), model=model
@@ -345,6 +361,20 @@ class GoalTaskDraftService:
                 "AIの提案を構造化データとして読み取れませんでした。もう一度生成してください。",
                 model=model,
             )
+
+        if not self._has_draft_items(draft):
+            message = (
+                draft.assistant_message.strip()
+                or next(
+                    (warning.strip() for warning in draft.warnings if warning.strip()),
+                    "",
+                )
+                or "AIからゴールまたはタスクの提案が返りませんでした。入力内容を少し具体化して再実行してください。"
+            )
+            logger.warning(
+                "OpenAI draft generation returned no draft items: %s", message
+            )
+            return self._unavailable_response(request, message, model=model)
 
         return GoalTaskDraftResponse(
             success=True,
@@ -553,11 +583,36 @@ class GoalTaskDraftService:
                     "strict": True,
                 }
             },
-            max_output_tokens=10000,
+            max_output_tokens=MAX_DRAFT_OUTPUT_TOKENS,
         )
+        status_value = getattr(response, "status", None)
+        if status_value == "incomplete":
+            incomplete_details = getattr(response, "incomplete_details", None)
+            reason = getattr(incomplete_details, "reason", None)
+            if reason == "max_output_tokens":
+                raise AIDraftGenerationError(
+                    "AI生成が出力上限に達しました。入力を短くするか、もう一度生成してください。"
+                )
+            if reason == "content_filter":
+                raise AIDraftGenerationError(
+                    "AI生成が安全性フィルタで途中停止しました。入力内容を調整してください。"
+                )
+            raise AIDraftGenerationError(
+                "AI生成が途中で停止しました。もう一度生成してください。"
+            )
+
+        response_error = getattr(response, "error", None)
+        if response_error:
+            message = getattr(response_error, "message", None) or str(response_error)
+            raise AIDraftGenerationError(f"AI生成に失敗しました: {message}")
+
         output_text = getattr(response, "output_text", None)
         if not output_text:
-            output_text = str(response)
+            output_text = self._collect_response_output_text(response)
+        if not output_text.strip():
+            raise AIDraftGenerationError(
+                "AIから空の応答が返りました。もう一度生成してください。"
+            )
         return json.loads(output_text)
 
     def _call_chat_completions_api(
@@ -576,15 +631,38 @@ class GoalTaskDraftService:
                 },
             ],
             "response_format": {"type": "json_object"},
-            "max_completion_tokens": 10000,
+            "max_completion_tokens": MAX_DRAFT_OUTPUT_TOKENS,
         }
         if model.startswith(("gpt-5.5", "gpt-5.4")):
             api_params["reasoning_effort"] = "high"
         if not model.startswith(("gpt-5.5", "gpt-5.4", "o1")):
             api_params["temperature"] = 0.2
         response = client.chat.completions.create(**api_params)
-        content = response.choices[0].message.content or "{}"
+        choice = response.choices[0]
+        if getattr(choice, "finish_reason", None) == "length":
+            raise AIDraftGenerationError(
+                "AI生成が出力上限に達しました。入力を短くするか、もう一度生成してください。"
+            )
+        content = choice.message.content or ""
+        if not content.strip():
+            raise AIDraftGenerationError(
+                "AIから空の応答が返りました。もう一度生成してください。"
+            )
         return json.loads(content)
+
+    def _collect_response_output_text(self, response: Any) -> str:
+        chunks: list[str] = []
+        for item in getattr(response, "output", []) or []:
+            for content in getattr(item, "content", []) or []:
+                text = getattr(content, "text", None)
+                if text:
+                    chunks.append(text)
+        return "".join(chunks)
+
+    def _has_draft_items(self, draft: GoalTaskDraftPayload) -> bool:
+        return bool(
+            draft.goals or draft.tasks or any(goal.tasks for goal in draft.goals)
+        )
 
     def _build_prompt(
         self,
@@ -886,6 +964,8 @@ class GoalTaskDraftService:
             return "OpenAI APIへの接続がタイムアウトしました。少し待ってから再実行してください。"
         if isinstance(exc, NotFoundError):
             return f"OpenAIモデルが利用できません: {message}"
+        if isinstance(exc, AIDraftGenerationError):
+            return message
         return f"OpenAI APIでエラーが発生しました: {message}"
 
 

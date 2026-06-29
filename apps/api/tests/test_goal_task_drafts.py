@@ -6,10 +6,12 @@ from fastapi import HTTPException
 from sqlmodel import Session, select
 
 from humancompiler_api.ai.goal_task_drafts import (
+    AIDraftGenerationError,
     DraftGoal,
     DraftTask,
     DraftTaskDependency,
     GoalTaskDraftApplyRequest,
+    GoalTaskDraftRequest,
     goal_task_draft_service,
 )
 from humancompiler_api.models import Goal, Project, Task, TaskDependency, User
@@ -201,3 +203,64 @@ def test_apply_draft_skips_generated_dependency_cycles(
     assert response.warnings == ["循環する依存関係を作るAI提案をスキップしました。"]
     dependencies = session.exec(select(TaskDependency)).all()
     assert len(dependencies) == 1
+
+
+def test_generate_draft_treats_empty_ai_payload_as_unavailable(
+    session: Session, draft_workspace, monkeypatch: pytest.MonkeyPatch
+):
+    project = draft_workspace["project"]
+    user = draft_workspace["user"]
+    request = GoalTaskDraftRequest(
+        project_id=project.id,
+        mode="project_goals",
+        user_message="プロジェクトノートからゴールを作って",
+    )
+
+    monkeypatch.setattr(
+        goal_task_draft_service,
+        "_create_openai_client",
+        lambda _session, _user_id: (object(), "gpt-5.5"),
+    )
+    monkeypatch.setattr(
+        goal_task_draft_service,
+        "_call_responses_api",
+        lambda _client, _model, _prompt: {
+            "assistant_message": "",
+            "goals": [],
+            "tasks": [],
+            "dependencies": [],
+            "warnings": [],
+        },
+    )
+
+    response = goal_task_draft_service.generate_draft(session, user.id, request)
+
+    assert response.success is False
+    assert response.goals == []
+    assert response.tasks == []
+    assert "提案が返りませんでした" in response.assistant_message
+
+
+def test_responses_api_reports_incomplete_due_to_output_limit():
+    class FakeIncompleteDetails:
+        reason = "max_output_tokens"
+
+    class FakeResponse:
+        status = "incomplete"
+        incomplete_details = FakeIncompleteDetails()
+        error = None
+        output_text = ""
+
+    class FakeResponses:
+        def create(self, **_kwargs):
+            return FakeResponse()
+
+    class FakeClient:
+        responses = FakeResponses()
+
+    with pytest.raises(AIDraftGenerationError) as exc_info:
+        goal_task_draft_service._call_responses_api(
+            FakeClient(), "gpt-5.5", '{"mode":"project_goals"}'
+        )
+
+    assert "出力上限" in str(exc_info.value)

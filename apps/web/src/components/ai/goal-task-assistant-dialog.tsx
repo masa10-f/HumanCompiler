@@ -124,6 +124,12 @@ export function GoalTaskAssistantDialog({
   const hasDraftItems = Boolean(
     draft && (draft.goals.length > 0 || draft.tasks.length > 0)
   );
+  const emptyDraftMessage =
+    draft && !hasDraftItems
+      ? draft.assistant_message ||
+        draft.warnings[0] ||
+        'AIからゴールまたはタスクの提案が返りませんでした。入力内容を少し具体化して再実行してください。'
+      : null;
 
   const selectAll = (nextDraft: GoalTaskDraftPayload) => {
     setSelectedGoalIds(new Set(nextDraft.goals.map((goal) => goal.client_id)));
@@ -398,6 +404,11 @@ export function GoalTaskAssistantDialog({
               </div>
             ) : (
               <div className="space-y-6">
+                {emptyDraftMessage && (
+                  <div className="flex min-h-[240px] items-center justify-center rounded-md border border-dashed px-6 text-center text-sm text-muted-foreground">
+                    {emptyDraftMessage}
+                  </div>
+                )}
                 {draft.goals.length > 0 && (
                   <section className="space-y-3">
                     <h3 className="text-sm font-semibold">ゴール案</h3>
@@ -409,6 +420,7 @@ export function GoalTaskAssistantDialog({
                             <TableHead>タイトル</TableHead>
                             <TableHead className="w-28">見積</TableHead>
                             <TableHead>説明</TableHead>
+                            <TableHead className="min-w-[260px]">理由</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -449,6 +461,15 @@ export function GoalTaskAssistantDialog({
                                   rows={2}
                                   onChange={(event) =>
                                     updateGoal(goal.client_id, 'description', event.target.value)
+                                  }
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Textarea
+                                  value={goal.rationale || ''}
+                                  rows={2}
+                                  onChange={(event) =>
+                                    updateGoal(goal.client_id, 'rationale', event.target.value)
                                   }
                                 />
                               </TableCell>
@@ -522,6 +543,7 @@ function TaskDraftTable({
               <TableHead className="w-28">優先度</TableHead>
               <TableHead className="w-36">締切</TableHead>
               <TableHead className="min-w-[260px]">説明</TableHead>
+              <TableHead className="min-w-[280px]">理由</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -609,6 +631,15 @@ function TaskDraftTable({
                     rows={2}
                     onChange={(event) =>
                       onUpdateTask(task.client_id, 'description', event.target.value)
+                    }
+                  />
+                </TableCell>
+                <TableCell>
+                  <Textarea
+                    value={task.rationale || ''}
+                    rows={2}
+                    onChange={(event) =>
+                      onUpdateTask(task.client_id, 'rationale', event.target.value)
                     }
                   />
                 </TableCell>
