@@ -102,6 +102,7 @@ import type {
 } from '@/types/ai-drafts';
 
 export const DEFAULT_TASK_PAGE_LIMIT = 100;
+const AI_DRAFT_REQUEST_TIMEOUT_MS = 180000;
 
 type RawTask = Omit<Task, 'estimate_hours'> & {
   estimate_hours: number | string | null | undefined;
@@ -614,7 +615,7 @@ class ApiClient {
       body: JSON.stringify(request),
       enableFallback: false,
       maxRetries: 1,
-      timeout: 75000,
+      timeout: AI_DRAFT_REQUEST_TIMEOUT_MS,
     });
   }
 

@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_OPENAI_MODEL = "gpt-5.5"
 MAX_DRAFT_OUTPUT_TOKENS = 20000
+AI_DRAFT_OPENAI_TIMEOUT_SECONDS = 180.0
 MAX_CONTEXT_NOTE_CHARS = 6000
 MAX_CONTEXT_TASKS = 120
 MAX_CONTEXT_GOALS = 80
@@ -753,7 +754,9 @@ class GoalTaskDraftService:
                     user_settings.openai_api_key_encrypted
                 )
                 if api_key:
-                    return OpenAI(api_key=api_key, timeout=60.0), model
+                    return OpenAI(
+                        api_key=api_key, timeout=AI_DRAFT_OPENAI_TIMEOUT_SECONDS
+                    ), model
             except Exception as exc:
                 logger.warning("Failed to decrypt user OpenAI API key: %s", exc)
 
@@ -762,7 +765,8 @@ class GoalTaskDraftService:
             "development-key-not-available",
         }:
             return OpenAI(
-                api_key=settings.openai_api_key, timeout=60.0
+                api_key=settings.openai_api_key,
+                timeout=AI_DRAFT_OPENAI_TIMEOUT_SECONDS,
             ), DEFAULT_OPENAI_MODEL
 
         return None, model
