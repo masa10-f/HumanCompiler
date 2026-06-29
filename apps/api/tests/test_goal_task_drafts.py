@@ -12,6 +12,7 @@ from humancompiler_api.ai.goal_task_drafts import (
     DraftTaskDependency,
     GoalTaskDraftApplyRequest,
     GoalTaskDraftRequest,
+    MAX_DRAFT_OUTPUT_TOKENS,
     goal_task_draft_service,
 )
 from humancompiler_api.models import Goal, Project, Task, TaskDependency, User
@@ -264,3 +265,111 @@ def test_responses_api_reports_incomplete_due_to_output_limit():
         )
 
     assert "出力上限" in str(exc_info.value)
+
+
+def test_start_draft_job_uses_background_responses_api(
+    session: Session, draft_workspace, monkeypatch: pytest.MonkeyPatch
+):
+    project = draft_workspace["project"]
+    user = draft_workspace["user"]
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        id = "resp_background_123"
+        status = "queued"
+
+    class FakeResponses:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return FakeResponse()
+
+    class FakeClient:
+        responses = FakeResponses()
+
+    monkeypatch.setattr(
+        goal_task_draft_service,
+        "_create_openai_client",
+        lambda _session, _user_id: (FakeClient(), "gpt-5.5"),
+    )
+
+    response = goal_task_draft_service.start_draft_job(
+        session,
+        user.id,
+        GoalTaskDraftRequest(
+            project_id=project.id,
+            mode="project_goals",
+            user_message="プロジェクトノートからゴールを作って",
+        ),
+    )
+
+    assert response.success is True
+    assert response.response_id == "resp_background_123"
+    assert captured["background"] is True
+    assert captured["store"] is True
+    assert captured["max_output_tokens"] == MAX_DRAFT_OUTPUT_TOKENS
+    assert captured["metadata"] == {
+        "kind": "goal_task_draft",
+        "user_id": str(user.id),
+        "project_id": str(project.id),
+        "mode": "project_goals",
+    }
+
+
+def test_get_draft_job_returns_completed_draft(
+    session: Session, draft_workspace, monkeypatch: pytest.MonkeyPatch
+):
+    user = draft_workspace["user"]
+    project = draft_workspace["project"]
+
+    class FakeResponse:
+        id = "resp_done_123"
+        status = "completed"
+        model = "gpt-5.5"
+        metadata = {
+            "kind": "goal_task_draft",
+            "user_id": str(user.id),
+            "project_id": str(project.id),
+            "mode": "project_goals",
+        }
+        error = None
+        incomplete_details = None
+        output_text = """
+        {
+          "assistant_message": "文脈から初期ゴールを提案しました。",
+          "goals": [
+            {
+              "client_id": "goal-1",
+              "title": "Generated goal",
+              "description": null,
+              "estimate_hours": 2.0,
+              "rationale": "プロジェクトの文脈に沿うためです。",
+              "confidence": 0.8,
+              "tasks": []
+            }
+          ],
+          "tasks": [],
+          "dependencies": [],
+          "warnings": []
+        }
+        """
+
+    class FakeResponses:
+        def retrieve(self, response_id, **_kwargs):
+            assert response_id == "resp_done_123"
+            return FakeResponse()
+
+    class FakeClient:
+        responses = FakeResponses()
+
+    monkeypatch.setattr(
+        goal_task_draft_service,
+        "_create_openai_client",
+        lambda _session, _user_id: (FakeClient(), "gpt-5.5"),
+    )
+
+    response = goal_task_draft_service.get_draft_job(session, user.id, "resp_done_123")
+
+    assert response.success is True
+    assert response.status == "completed"
+    assert response.draft is not None
+    assert response.draft.goals[0].rationale == "プロジェクトの文脈に沿うためです。"

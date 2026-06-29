@@ -13,6 +13,8 @@ from humancompiler_api.ai import WeeklyPlanRequest, WeeklyPlanResponse
 from humancompiler_api.ai.goal_task_drafts import (
     GoalTaskDraftApplyRequest,
     GoalTaskDraftApplyResponse,
+    GoalTaskDraftJobResponse,
+    GoalTaskDraftJobStatusResponse,
     GoalTaskDraftRequest,
     GoalTaskDraftResponse,
     goal_task_draft_service,
@@ -29,6 +31,69 @@ from humancompiler_api.models import ErrorResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ai", tags=["ai-planning"])
+
+
+@router.post(
+    "/goal-task-draft-jobs",
+    response_model=GoalTaskDraftJobResponse,
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "Project, goal, or task not found",
+        },
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def start_goal_task_draft_job(
+    request: GoalTaskDraftRequest,
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(get_session),
+) -> GoalTaskDraftJobResponse:
+    """Start a background AI draft generation job."""
+    try:
+        return goal_task_draft_service.start_draft_job(session, user_id, request)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error starting goal/task draft job: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse.create(
+                code="INTERNAL_SERVER_ERROR",
+                message="Internal server error during goal/task draft job start",
+                details={"error_type": type(e).__name__},
+            ).model_dump(),
+        )
+
+
+@router.get(
+    "/goal-task-draft-jobs/{response_id}",
+    response_model=GoalTaskDraftJobStatusResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "AI draft job not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def get_goal_task_draft_job(
+    response_id: str,
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(get_session),
+) -> GoalTaskDraftJobStatusResponse:
+    """Get the current status or result of a background AI draft generation job."""
+    try:
+        return goal_task_draft_service.get_draft_job(session, user_id, response_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error retrieving goal/task draft job: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ErrorResponse.create(
+                code="INTERNAL_SERVER_ERROR",
+                message="Internal server error during goal/task draft job retrieval",
+                details={"error_type": type(e).__name__},
+            ).model_dump(),
+        )
 
 
 @router.post(

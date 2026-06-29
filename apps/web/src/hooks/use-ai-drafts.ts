@@ -16,6 +16,13 @@ export function useGenerateGoalTaskDraft() {
   });
 }
 
+export function useStartGoalTaskDraftJob() {
+  return useMutation({
+    mutationFn: (request: GoalTaskDraftRequest) =>
+      aiPlanningApi.startGoalTaskDraftJob(request),
+  });
+}
+
 export function useApplyGoalTaskDraft() {
   const queryClient = useQueryClient();
 

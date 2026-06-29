@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, CheckCircle2, Loader2, Send, Sparkles } from 'lucide-react';
 import {
   Dialog,
@@ -30,13 +30,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useApplyGoalTaskDraft, useGenerateGoalTaskDraft } from '@/hooks/use-ai-drafts';
+import { useApplyGoalTaskDraft, useStartGoalTaskDraftJob } from '@/hooks/use-ai-drafts';
 import { toast } from '@/hooks/use-toast';
+import { aiPlanningApi } from '@/lib/api';
 import type {
   DraftGoal,
   DraftTask,
   GoalTaskDraftMode,
   GoalTaskDraftPayload,
+  GoalTaskDraftRequest,
 } from '@/types/ai-drafts';
 import type { WorkType } from '@/types/task';
 
@@ -73,6 +75,9 @@ const emptyDraft: GoalTaskDraftPayload = {
   warnings: [],
 };
 
+const AI_DRAFT_POLL_INTERVAL_MS = 2000;
+const AI_DRAFT_MAX_WAIT_MS = 10 * 60 * 1000;
+
 const getNestedTaskIds = (goal: DraftGoal) => goal.tasks.map((task) => task.client_id);
 
 const getAllTaskIds = (draft: GoalTaskDraftPayload | null) => {
@@ -87,6 +92,8 @@ const toDateInputValue = (value?: string | null) => {
   if (!value) return '';
   return value.slice(0, 10);
 };
+
+const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 export function GoalTaskAssistantDialog({
   projectId,
@@ -104,15 +111,26 @@ export function GoalTaskAssistantDialog({
   const [selectedGoalIds, setSelectedGoalIds] = useState<Set<string>>(new Set());
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [cancelOriginalTask, setCancelOriginalTask] = useState(false);
+  const [isPollingDraft, setIsPollingDraft] = useState(false);
+  const generationRunRef = useRef(0);
 
-  const generateMutation = useGenerateGoalTaskDraft();
+  const startDraftJobMutation = useStartGoalTaskDraftJob();
   const applyMutation = useApplyGoalTaskDraft();
+
+  const isGeneratingDraft = startDraftJobMutation.isPending || isPollingDraft;
 
   useEffect(() => {
     if (open && !message.trim()) {
       setMessage(defaultMessage);
     }
   }, [defaultMessage, message, open]);
+
+  useEffect(() => {
+    if (!open) {
+      generationRunRef.current += 1;
+      setIsPollingDraft(false);
+    }
+  }, [open]);
 
   const selectedCounts = useMemo(() => {
     return {
@@ -140,8 +158,16 @@ export function GoalTaskAssistantDialog({
     const trimmedMessage = message.trim();
     if (!trimmedMessage) return;
 
+    const runId = generationRunRef.current + 1;
+    generationRunRef.current = runId;
+    setIsPollingDraft(false);
+    setDraft({
+      ...emptyDraft,
+      assistant_message: 'AI提案の生成を開始しています。',
+    });
+
     try {
-      const response = await generateMutation.mutateAsync({
+      const request: GoalTaskDraftRequest = {
         project_id: projectId,
         mode,
         goal_id: goalId,
@@ -154,31 +180,79 @@ export function GoalTaskAssistantDialog({
               { role: 'assistant', content: draft.assistant_message },
             ]
           : [],
-      });
+      };
+      const job = await startDraftJobMutation.mutateAsync(request);
 
-      if (!response.success) {
+      if (!job.success || !job.response_id) {
         toast({
           title: 'AI提案を生成できませんでした',
-          description: response.assistant_message || response.warnings[0],
+          description: job.message || job.warnings[0],
           variant: 'destructive',
         });
         setDraft({
           ...emptyDraft,
-          assistant_message: response.assistant_message,
-          warnings: response.warnings,
+          assistant_message: job.message,
+          warnings: job.warnings,
         });
         return;
       }
 
-      const nextDraft: GoalTaskDraftPayload = {
-        assistant_message: response.assistant_message,
-        goals: response.goals,
-        tasks: response.tasks,
-        dependencies: response.dependencies,
-        warnings: response.warnings,
-      };
-      setDraft(nextDraft);
-      selectAll(nextDraft);
+      setIsPollingDraft(true);
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < AI_DRAFT_MAX_WAIT_MS) {
+        if (generationRunRef.current !== runId) return;
+
+        const status = await aiPlanningApi.getGoalTaskDraftJob(job.response_id);
+        if (generationRunRef.current !== runId) return;
+
+        if (status.status === 'queued' || status.status === 'in_progress') {
+          setDraft({
+            ...emptyDraft,
+            assistant_message: status.message || 'AI提案を生成中です。',
+          });
+          await sleep(AI_DRAFT_POLL_INTERVAL_MS);
+          continue;
+        }
+
+        if (status.success && status.status === 'completed' && status.draft) {
+          const response = status.draft;
+          const nextDraft: GoalTaskDraftPayload = {
+            assistant_message: response.assistant_message,
+            goals: response.goals,
+            tasks: response.tasks,
+            dependencies: response.dependencies,
+            warnings: response.warnings,
+          };
+          setDraft(nextDraft);
+          selectAll(nextDraft);
+          return;
+        }
+
+        toast({
+          title: 'AI提案を生成できませんでした',
+          description: status.message || status.warnings[0],
+          variant: 'destructive',
+        });
+        setDraft({
+          ...emptyDraft,
+          assistant_message: status.message,
+          warnings: status.warnings,
+        });
+        return;
+      }
+
+      const timeoutMessage =
+        'AI提案の生成が10分以内に完了しませんでした。入力を短くするか、もう一度生成してください。';
+      toast({
+        title: 'AI提案を生成できませんでした',
+        description: timeoutMessage,
+        variant: 'destructive',
+      });
+      setDraft({
+        ...emptyDraft,
+        assistant_message: timeoutMessage,
+        warnings: [timeoutMessage],
+      });
     } catch (error) {
       const description = error instanceof Error ? error.message : 'AI提案の生成に失敗しました。';
       toast({
@@ -186,6 +260,10 @@ export function GoalTaskAssistantDialog({
         description,
         variant: 'destructive',
       });
+    } finally {
+      if (generationRunRef.current === runId) {
+        setIsPollingDraft(false);
+      }
     }
   };
 
@@ -296,6 +374,8 @@ export function GoalTaskAssistantDialog({
   };
 
   const resetDraft = () => {
+    generationRunRef.current += 1;
+    setIsPollingDraft(false);
     setDraft(null);
     setSelectedGoalIds(new Set());
     setSelectedTaskIds(new Set());
@@ -352,17 +432,22 @@ export function GoalTaskAssistantDialog({
               <Button
                 type="button"
                 onClick={handleGenerate}
-                disabled={generateMutation.isPending || !message.trim()}
+                disabled={isGeneratingDraft || !message.trim()}
                 className="flex-1"
               >
-                {generateMutation.isPending ? (
+                {isGeneratingDraft ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <Send className="mr-2 h-4 w-4" />
                 )}
                 生成
               </Button>
-              <Button type="button" variant="outline" onClick={resetDraft} disabled={!draft}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={resetDraft}
+                disabled={!draft || isGeneratingDraft}
+              >
                 クリア
               </Button>
             </div>
@@ -386,7 +471,12 @@ export function GoalTaskAssistantDialog({
                 <Button
                   type="button"
                   onClick={handleApply}
-                  disabled={!hasDraftItems || applyMutation.isPending || selectedCounts.tasks === 0}
+                  disabled={
+                    !hasDraftItems ||
+                    isGeneratingDraft ||
+                    applyMutation.isPending ||
+                    selectedCounts.tasks === 0
+                  }
                 >
                   {applyMutation.isPending ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />

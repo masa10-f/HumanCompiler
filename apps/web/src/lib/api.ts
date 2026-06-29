@@ -97,12 +97,14 @@ import type { TaskStatus } from '@/types/task';
 import type {
   GoalTaskDraftApplyRequest,
   GoalTaskDraftApplyResponse,
+  GoalTaskDraftJobResponse,
+  GoalTaskDraftJobStatusResponse,
   GoalTaskDraftRequest,
   GoalTaskDraftResponse,
 } from '@/types/ai-drafts';
 
 export const DEFAULT_TASK_PAGE_LIMIT = 100;
-const AI_DRAFT_REQUEST_TIMEOUT_MS = 180000;
+const AI_DRAFT_REQUEST_TIMEOUT_MS = 30000;
 
 type RawTask = Omit<Task, 'estimate_hours'> & {
   estimate_hours: number | string | null | undefined;
@@ -617,6 +619,27 @@ class ApiClient {
       maxRetries: 1,
       timeout: AI_DRAFT_REQUEST_TIMEOUT_MS,
     });
+  }
+
+  async startGoalTaskDraftJob(request: GoalTaskDraftRequest): Promise<GoalTaskDraftJobResponse> {
+    return this.request<GoalTaskDraftJobResponse>('/api/ai/goal-task-draft-jobs', {
+      method: 'POST',
+      body: JSON.stringify(request),
+      enableFallback: false,
+      maxRetries: 1,
+      timeout: AI_DRAFT_REQUEST_TIMEOUT_MS,
+    });
+  }
+
+  async getGoalTaskDraftJob(responseId: string): Promise<GoalTaskDraftJobStatusResponse> {
+    return this.request<GoalTaskDraftJobStatusResponse>(
+      `/api/ai/goal-task-draft-jobs/${encodeURIComponent(responseId)}`,
+      {
+        enableFallback: false,
+        maxRetries: 1,
+        timeout: AI_DRAFT_REQUEST_TIMEOUT_MS,
+      }
+    );
   }
 
   async applyGoalTaskDraft(request: GoalTaskDraftApplyRequest): Promise<GoalTaskDraftApplyResponse> {
@@ -1462,6 +1485,8 @@ export const aiPlanningApi = {
   suggestPriorities: (projectId?: string) => apiClient.suggestTaskPriorities(projectId),
   testIntegration: () => apiClient.testAIIntegration(),
   generateGoalTaskDraft: (request: GoalTaskDraftRequest) => apiClient.generateGoalTaskDraft(request),
+  startGoalTaskDraftJob: (request: GoalTaskDraftRequest) => apiClient.startGoalTaskDraftJob(request),
+  getGoalTaskDraftJob: (responseId: string) => apiClient.getGoalTaskDraftJob(responseId),
   applyGoalTaskDraft: (request: GoalTaskDraftApplyRequest) => apiClient.applyGoalTaskDraft(request),
 };
 

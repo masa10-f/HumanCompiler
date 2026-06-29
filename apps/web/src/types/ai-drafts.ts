@@ -3,6 +3,13 @@ import type { Task, WorkType } from './task';
 
 export type GoalTaskDraftMode = 'project_goals' | 'goal_tasks' | 'split_task';
 export type OriginalTaskAction = 'keep' | 'cancel';
+export type GoalTaskDraftJobStatus =
+  | 'queued'
+  | 'in_progress'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'incomplete';
 
 export interface DraftChatMessage {
   role: 'user' | 'assistant';
@@ -63,6 +70,29 @@ export interface GoalTaskDraftResponse extends GoalTaskDraftPayload {
   mode: GoalTaskDraftMode;
   model?: string | null;
   generated_at: string;
+}
+
+export interface GoalTaskDraftJobResponse {
+  success: boolean;
+  response_id?: string | null;
+  status: GoalTaskDraftJobStatus;
+  mode: GoalTaskDraftMode;
+  model?: string | null;
+  message: string;
+  warnings: string[];
+  started_at: string;
+}
+
+export interface GoalTaskDraftJobStatusResponse {
+  success: boolean;
+  response_id: string;
+  status: GoalTaskDraftJobStatus;
+  mode?: GoalTaskDraftMode | null;
+  model?: string | null;
+  message: string;
+  draft?: GoalTaskDraftResponse | null;
+  warnings: string[];
+  checked_at: string;
 }
 
 export interface GoalTaskDraftApplyRequest {

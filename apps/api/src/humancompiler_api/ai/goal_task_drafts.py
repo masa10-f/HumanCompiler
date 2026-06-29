@@ -39,7 +39,7 @@ from humancompiler_api.models import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_OPENAI_MODEL = "gpt-5.5"
-MAX_DRAFT_OUTPUT_TOKENS = 20000
+MAX_DRAFT_OUTPUT_TOKENS = 50000
 AI_DRAFT_OPENAI_TIMEOUT_SECONDS = 180.0
 MAX_CONTEXT_NOTE_CHARS = 6000
 MAX_CONTEXT_TASKS = 120
@@ -47,6 +47,9 @@ MAX_CONTEXT_GOALS = 80
 
 DraftMode = Literal["project_goals", "goal_tasks", "split_task"]
 OriginalTaskAction = Literal["keep", "cancel"]
+DraftJobStatus = Literal[
+    "queued", "in_progress", "completed", "failed", "cancelled", "incomplete"
+]
 
 
 class AIDraftGenerationError(Exception):
@@ -129,6 +132,41 @@ class GoalTaskDraftResponse(GoalTaskDraftPayload):
 
     @field_serializer("generated_at")
     def serialize_generated_at(self, value: datetime) -> str:
+        return value.isoformat()
+
+
+class GoalTaskDraftJobResponse(BaseModel):
+    """Background OpenAI response job created for draft generation."""
+
+    success: bool
+    response_id: str | None = None
+    status: DraftJobStatus
+    mode: DraftMode
+    model: str | None = None
+    message: str = ""
+    warnings: list[str] = Field(default_factory=list)
+    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @field_serializer("started_at")
+    def serialize_started_at(self, value: datetime) -> str:
+        return value.isoformat()
+
+
+class GoalTaskDraftJobStatusResponse(BaseModel):
+    """Current status of a background AI draft generation job."""
+
+    success: bool
+    response_id: str
+    status: DraftJobStatus
+    mode: DraftMode | None = None
+    model: str | None = None
+    message: str = ""
+    draft: GoalTaskDraftResponse | None = None
+    warnings: list[str] = Field(default_factory=list)
+    checked_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @field_serializer("checked_at")
+    def serialize_checked_at(self, value: datetime) -> str:
         return value.isoformat()
 
 
@@ -272,6 +310,230 @@ SYSTEM_PROMPT = """あなたはHumanCompilerのゴール・タスク設計アシ
 
 class GoalTaskDraftService:
     """Create and apply AI-assisted goal/task drafts."""
+
+    def start_draft_job(
+        self, session: Session, user_id: str | UUID, request: GoalTaskDraftRequest
+    ) -> GoalTaskDraftJobResponse:
+        project = self._get_project(session, request.project_id, user_id)
+        target_goal = (
+            self._get_goal(session, request.goal_id, user_id)
+            if request.goal_id
+            else None
+        )
+        target_task = (
+            self._get_task(session, request.task_id, user_id)
+            if request.task_id
+            else None
+        )
+
+        if (
+            request.mode in ("goal_tasks", "split_task")
+            and not target_goal
+            and not target_task
+        ):
+            message = "対象のゴールまたはタスクを指定してください。"
+            return GoalTaskDraftJobResponse(
+                success=False,
+                status="failed",
+                mode=request.mode,
+                message=message,
+                warnings=[message],
+            )
+
+        client, model = self._create_openai_client(session, user_id)
+        if client is None:
+            message = "OpenAI APIキーが設定されていません。設定画面でAPIキーを登録してください。"
+            return GoalTaskDraftJobResponse(
+                success=False,
+                status="failed",
+                mode=request.mode,
+                model=model,
+                message=message,
+                warnings=[message],
+            )
+
+        prompt = self._build_prompt(session, request, project, target_goal, target_task)
+        metadata = self._build_response_metadata(user_id, request)
+        try:
+            response = self._create_responses_api_response(
+                client,
+                model,
+                prompt,
+                background=True,
+                metadata=metadata,
+            )
+        except (
+            AuthenticationError,
+            RateLimitError,
+            APIConnectionError,
+            APITimeoutError,
+            NotFoundError,
+            APIError,
+        ) as exc:
+            message = self._openai_error_message(exc)
+            logger.warning("OpenAI draft background job failed to start: %s", exc)
+            return GoalTaskDraftJobResponse(
+                success=False,
+                status="failed",
+                mode=request.mode,
+                model=model,
+                message=message,
+                warnings=[message],
+            )
+
+        response_id = getattr(response, "id", None)
+        status_value = self._response_status(response)
+        if not response_id:
+            message = "AI生成ジョブIDを取得できませんでした。もう一度生成してください。"
+            return GoalTaskDraftJobResponse(
+                success=False,
+                status="failed",
+                mode=request.mode,
+                model=model,
+                message=message,
+                warnings=[message],
+            )
+
+        return GoalTaskDraftJobResponse(
+            success=True,
+            response_id=response_id,
+            status=status_value,
+            mode=request.mode,
+            model=model,
+            message="AI提案の生成を開始しました。",
+        )
+
+    def get_draft_job(
+        self, session: Session, user_id: str | UUID, response_id: str
+    ) -> GoalTaskDraftJobStatusResponse:
+        client, model = self._create_openai_client(session, user_id)
+        if client is None:
+            message = "OpenAI APIキーが設定されていません。設定画面でAPIキーを登録してください。"
+            return GoalTaskDraftJobStatusResponse(
+                success=False,
+                response_id=response_id,
+                status="failed",
+                model=model,
+                message=message,
+                warnings=[message],
+            )
+
+        try:
+            response = client.responses.retrieve(response_id, timeout=30.0)
+        except (
+            AuthenticationError,
+            RateLimitError,
+            APIConnectionError,
+            APITimeoutError,
+            NotFoundError,
+            APIError,
+        ) as exc:
+            message = self._openai_error_message(exc)
+            logger.warning("OpenAI draft background job retrieval failed: %s", exc)
+            return GoalTaskDraftJobStatusResponse(
+                success=False,
+                response_id=response_id,
+                status="failed",
+                model=model,
+                message=message,
+                warnings=[message],
+            )
+
+        metadata = getattr(response, "metadata", None) or {}
+        self._validate_response_metadata(metadata, user_id)
+        mode = metadata.get("mode")
+        status_value = self._response_status(response)
+        response_model = str(getattr(response, "model", None) or model)
+
+        if status_value in ("queued", "in_progress"):
+            return GoalTaskDraftJobStatusResponse(
+                success=True,
+                response_id=response_id,
+                status=status_value,
+                mode=self._metadata_mode(mode),
+                model=response_model,
+                message="AI提案を生成中です。",
+            )
+
+        if status_value != "completed":
+            message = self._response_failure_message(response)
+            return GoalTaskDraftJobStatusResponse(
+                success=False,
+                response_id=response_id,
+                status=status_value,
+                mode=self._metadata_mode(mode),
+                model=response_model,
+                message=message,
+                warnings=[message],
+            )
+
+        request_mode = self._metadata_mode(mode)
+        try:
+            payload = self._response_to_payload(response)
+            draft = GoalTaskDraftPayload.model_validate(payload)
+        except (AIDraftGenerationError, json.JSONDecodeError) as exc:
+            message = self._openai_error_message(exc)
+            return GoalTaskDraftJobStatusResponse(
+                success=False,
+                response_id=response_id,
+                status="failed",
+                mode=request_mode,
+                model=response_model,
+                message=message,
+                warnings=[message],
+            )
+        except Exception as exc:
+            logger.error("Invalid AI draft payload from background job: %s", exc)
+            message = "AIの提案を構造化データとして読み取れませんでした。もう一度生成してください。"
+            return GoalTaskDraftJobStatusResponse(
+                success=False,
+                response_id=response_id,
+                status="failed",
+                mode=request_mode,
+                model=response_model,
+                message=message,
+                warnings=[message],
+            )
+
+        if not self._has_draft_items(draft):
+            message = (
+                draft.assistant_message.strip()
+                or next(
+                    (warning.strip() for warning in draft.warnings if warning.strip()),
+                    "",
+                )
+                or "AIからゴールまたはタスクの提案が返りませんでした。入力内容を少し具体化して再実行してください。"
+            )
+            return GoalTaskDraftJobStatusResponse(
+                success=False,
+                response_id=response_id,
+                status="failed",
+                mode=request_mode,
+                model=response_model,
+                message=message,
+                warnings=[message],
+            )
+
+        draft_response = GoalTaskDraftResponse(
+            success=True,
+            mode=request_mode,
+            model=response_model,
+            assistant_message=draft.assistant_message,
+            goals=draft.goals,
+            tasks=draft.tasks,
+            dependencies=draft.dependencies,
+            warnings=draft.warnings,
+        )
+        return GoalTaskDraftJobStatusResponse(
+            success=True,
+            response_id=response_id,
+            status="completed",
+            mode=request_mode,
+            model=response_model,
+            message="AI提案を生成しました。",
+            draft=draft_response,
+            warnings=draft.warnings,
+        )
 
     def generate_draft(
         self, session: Session, user_id: str | UUID, request: GoalTaskDraftRequest
@@ -571,10 +833,30 @@ class GoalTaskDraftService:
     def _call_responses_api(
         self, client: OpenAI, model: str, prompt: str
     ) -> dict[str, Any]:
+        response = self._create_responses_api_response(
+            client,
+            model,
+            prompt,
+            background=False,
+            metadata=None,
+        )
+        return self._response_to_payload(response)
+
+    def _create_responses_api_response(
+        self,
+        client: OpenAI,
+        model: str,
+        prompt: str,
+        background: bool,
+        metadata: dict[str, str] | None,
+    ) -> Any:
         response = client.responses.create(
             model=model,
             instructions=SYSTEM_PROMPT,
             input=prompt,
+            background=background,
+            store=True,
+            metadata=metadata,
             reasoning={"effort": "high"},
             text={
                 "format": {
@@ -586,6 +868,9 @@ class GoalTaskDraftService:
             },
             max_output_tokens=MAX_DRAFT_OUTPUT_TOKENS,
         )
+        return response
+
+    def _response_to_payload(self, response: Any) -> dict[str, Any]:
         status_value = getattr(response, "status", None)
         if status_value == "incomplete":
             incomplete_details = getattr(response, "incomplete_details", None)
@@ -615,6 +900,67 @@ class GoalTaskDraftService:
                 "AIから空の応答が返りました。もう一度生成してください。"
             )
         return json.loads(output_text)
+
+    def _response_status(self, response: Any) -> DraftJobStatus:
+        status_value = getattr(response, "status", None)
+        if status_value in {
+            "queued",
+            "in_progress",
+            "completed",
+            "failed",
+            "cancelled",
+            "incomplete",
+        }:
+            return status_value
+        return "failed"
+
+    def _response_failure_message(self, response: Any) -> str:
+        response_error = getattr(response, "error", None)
+        if response_error:
+            message = getattr(response_error, "message", None) or str(response_error)
+            return f"AI生成に失敗しました: {message}"
+        if getattr(response, "status", None) == "incomplete":
+            incomplete_details = getattr(response, "incomplete_details", None)
+            reason = getattr(incomplete_details, "reason", None)
+            if reason == "max_output_tokens":
+                return "AI生成が出力上限に達しました。入力を短くするか、もう一度生成してください。"
+            if reason == "content_filter":
+                return "AI生成が安全性フィルタで途中停止しました。入力内容を調整してください。"
+            return "AI生成が途中で停止しました。もう一度生成してください。"
+        if getattr(response, "status", None) == "cancelled":
+            return "AI生成はキャンセルされました。"
+        return "AI生成に失敗しました。もう一度生成してください。"
+
+    def _build_response_metadata(
+        self, user_id: str | UUID, request: GoalTaskDraftRequest
+    ) -> dict[str, str]:
+        metadata = {
+            "kind": "goal_task_draft",
+            "user_id": str(user_id),
+            "project_id": str(request.project_id),
+            "mode": request.mode,
+        }
+        if request.goal_id:
+            metadata["goal_id"] = str(request.goal_id)
+        if request.task_id:
+            metadata["task_id"] = str(request.task_id)
+        return metadata
+
+    def _validate_response_metadata(
+        self, metadata: dict[str, Any], user_id: str | UUID
+    ) -> None:
+        if metadata.get("kind") != "goal_task_draft" or metadata.get("user_id") != str(
+            user_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="AI draft job not found",
+            )
+
+    def _metadata_mode(self, mode: str | None) -> DraftMode:
+        if mode in ("project_goals", "goal_tasks", "split_task"):
+            return mode
+        return "project_goals"
 
     def _call_chat_completions_api(
         self, client: OpenAI, model: str, prompt: str
