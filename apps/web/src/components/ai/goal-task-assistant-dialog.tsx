@@ -203,6 +203,12 @@ export function GoalTaskAssistantDialog({
         title: 'AI提案を適用しました',
         description: `${response.created_goals.length}件のゴール、${response.created_tasks.length}件のタスクを作成しました。`,
       });
+      if (response.warnings.length > 0) {
+        toast({
+          title: '一部の提案をスキップしました',
+          description: response.warnings.join('\n'),
+        });
+      }
       setOpen(false);
       onApplied?.();
     } catch (error) {

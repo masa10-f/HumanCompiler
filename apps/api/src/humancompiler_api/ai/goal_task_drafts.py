@@ -553,7 +553,7 @@ class GoalTaskDraftService:
                     "strict": True,
                 }
             },
-            max_output_tokens=6000,
+            max_output_tokens=10000,
         )
         output_text = getattr(response, "output_text", None)
         if not output_text:
@@ -576,11 +576,11 @@ class GoalTaskDraftService:
                 },
             ],
             "response_format": {"type": "json_object"},
-            "max_completion_tokens": 6000,
+            "max_completion_tokens": 10000,
         }
         if model.startswith("gpt-5.5"):
             api_params["reasoning_effort"] = "high"
-        if not model.startswith(("gpt-", "o")):
+        if not model.startswith(("gpt-5.5", "o1")):
             api_params["temperature"] = 0.2
         response = client.chat.completions.create(**api_params)
         content = response.choices[0].message.content or "{}"

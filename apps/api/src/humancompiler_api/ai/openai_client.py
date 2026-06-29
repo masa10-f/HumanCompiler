@@ -511,8 +511,8 @@ class OpenAIClient:
             if self.model.startswith("gpt-5.5"):
                 api_params["reasoning_effort"] = "high"
 
-            # Add temperature for supported models.
-            if not self.model.startswith(("o1", "gpt-")):
+            # GPT-5.5 reasoning models use the default temperature.
+            if not self.model.startswith(("o1", "gpt-5.5")):
                 api_params["temperature"] = 0.7
 
             response = self.client.chat.completions.create(**api_params)

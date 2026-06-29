@@ -405,8 +405,8 @@ Use the create_week_plan function to structure your response."""
             if self.model.startswith("gpt-5.5"):
                 api_params["reasoning_effort"] = "high"
 
-            # GPT-family models only support default temperature (1.0)
-            if not self.model.startswith("gpt-"):
+            # GPT-5.5 reasoning models use the default temperature.
+            if not self.model.startswith("gpt-5.5"):
                 api_params["temperature"] = 0.7
 
             response = self.client.chat.completions.create(**api_params)

@@ -116,7 +116,7 @@ async def generate_weekly_plan(
     This endpoint:
     1. Collects user's projects, goals, and pending tasks
     2. Formats context data for AI consumption
-    3. Calls OpenAI GPT-4 with function calling for structured planning
+    3. Calls OpenAI GPT-5.5 with function calling for structured planning
     4. Returns optimized weekly schedule with recommendations
 
     The AI considers:

@@ -102,7 +102,7 @@ async def generate_weekly_report(
             request=request,
             user_id=str(current_user.user_id),
             openai_api_key=decrypted_api_key,
-            openai_model=user_settings.openai_model or "gpt-4o-mini",
+            openai_model=user_settings.openai_model or "gpt-5.5-mini",
         )
 
         return report

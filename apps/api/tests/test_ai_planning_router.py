@@ -412,7 +412,7 @@ async def test_test_ai_integration_success():
             "humancompiler_api.ai.prompts.get_function_definitions"
         ) as MockFunctions:
             mock_client = Mock()
-            mock_client.model = "gpt-4-1106-preview"
+            mock_client.model = "gpt-5.5"
             MockOpenAIClient.return_value = mock_client
 
             mock_functions = [{"function": {"name": "test_function"}}]
@@ -421,7 +421,7 @@ async def test_test_ai_integration_success():
             result = await test_ai_integration()
 
             assert result["status"] == "success"
-            assert result["model"] == "gpt-4-1106-preview"
+            assert result["model"] == "gpt-5.5"
             assert result["functions_available"] == 1
 
 

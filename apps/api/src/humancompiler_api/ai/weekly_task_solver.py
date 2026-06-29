@@ -103,7 +103,9 @@ class TaskSolverResponse(BaseModel):
 class TaskPriorityExtractor:
     """Extract task priorities using OpenAI API based on user requirements."""
 
-    def __init__(self, openai_client: OpenAI | None = None, model: str = "gpt-4"):
+    def __init__(
+        self, openai_client: OpenAI | None = None, model: str = "gpt-5.5-mini"
+    ):
         """Initialize priority extractor with OpenAI client."""
         self.openai_client = openai_client
         self.model = model
@@ -145,7 +147,8 @@ class TaskPriorityExtractor:
                 ],
                 tools=[self._get_priority_extraction_tool()],
                 tool_choice="auto",
-                temperature=0.3,
+                reasoning_effort="high",
+                max_completion_tokens=1200,
             )
 
             return self._parse_priority_response(response, context)
@@ -364,7 +367,7 @@ class WeeklyTaskSolver:
         self.openai_client = openai_client
         self.model = model  # Use GPT-5.5 for advanced task optimization
         self.context_collector = ContextCollector()
-        self.priority_extractor = TaskPriorityExtractor(openai_client, "gpt-4")
+        self.priority_extractor = TaskPriorityExtractor(openai_client, "gpt-5.5-mini")
 
     @classmethod
     async def create_for_user(
@@ -1433,8 +1436,8 @@ solve_weekly_tasks関数を使用して構造化された結果を返してく�
             if self.model.startswith("gpt-5.5"):
                 api_params["reasoning_effort"] = "high"
 
-            # GPT-family models only support default temperature (1.0)
-            if not self.model.startswith("gpt-"):
+            # GPT-5.5 reasoning models use the default temperature.
+            if not self.model.startswith("gpt-5.5"):
                 api_params["temperature"] = (
                     0.3  # Lower temperature for consistent optimization
                 )

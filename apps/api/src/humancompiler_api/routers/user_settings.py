@@ -43,20 +43,6 @@ AVAILABLE_MODELS = {
         "max_output": "128k tokens",
         "modalities": ["text"],
     },
-    "gpt-4o": {
-        "name": "GPT-4o",
-        "description": "汎用マルチモーダル - 実績のあるモデル",
-        "max_context": "128k tokens",
-        "max_output": "4k tokens",
-        "modalities": ["text", "image_input"],
-    },
-    "gpt-4o-mini": {
-        "name": "GPT-4o mini",
-        "description": "省コスト運用 - 軽量タスク向け",
-        "max_context": "128k tokens",
-        "max_output": "4k tokens",
-        "modalities": ["text"],
-    },
 }
 
 

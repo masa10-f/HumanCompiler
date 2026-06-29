@@ -17,3 +17,13 @@ UPDATE user_settings
 SET openai_model = 'gpt-5.5-nano',
     updated_at = NOW()
 WHERE openai_model = 'gpt-5-nano';
+
+UPDATE user_settings
+SET openai_model = 'gpt-5.5',
+    updated_at = NOW()
+WHERE openai_model = 'gpt-4o';
+
+UPDATE user_settings
+SET openai_model = 'gpt-5.5-mini',
+    updated_at = NOW()
+WHERE openai_model = 'gpt-4o-mini';
