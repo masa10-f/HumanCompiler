@@ -578,9 +578,9 @@ class GoalTaskDraftService:
             "response_format": {"type": "json_object"},
             "max_completion_tokens": 10000,
         }
-        if model.startswith("gpt-5.5"):
+        if model.startswith(("gpt-5.5", "gpt-5.4")):
             api_params["reasoning_effort"] = "high"
-        if not model.startswith(("gpt-5.5", "o1")):
+        if not model.startswith(("gpt-5.5", "gpt-5.4", "o1")):
             api_params["temperature"] = 0.2
         response = client.chat.completions.create(**api_params)
         content = response.choices[0].message.content or "{}"

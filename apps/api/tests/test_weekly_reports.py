@@ -184,7 +184,7 @@ class TestWeeklyReportGenerator:
         )
 
         result = report_generator._generate_markdown_report_with_ai(
-            "test-api-key", "2023-12-18", work_summary, [], "gpt-5.5-mini"
+            "test-api-key", "2023-12-18", work_summary, [], "gpt-5.4-mini"
         )
 
         assert result == "# Weekly Report\n\nTest content"
@@ -211,7 +211,7 @@ class TestWeeklyReportGenerator:
         )
 
         result = report_generator._generate_markdown_report_with_ai(
-            "test-api-key", "2023-12-18", work_summary, [], "gpt-5.5-mini"
+            "test-api-key", "2023-12-18", work_summary, [], "gpt-5.4-mini"
         )
 
         # Should fallback to basic markdown
@@ -248,7 +248,7 @@ class TestWeeklyReportGenerator:
         request = WeeklyReportRequest(week_start_date="2023-12-18", project_ids=None)
 
         result = report_generator.generate_weekly_report(
-            mock_session, request, "user-123", "test-api-key", "gpt-5.5-mini"
+            mock_session, request, "user-123", "test-api-key", "gpt-5.4-mini"
         )
 
         assert isinstance(result, WeeklyReportResponse)
@@ -285,7 +285,7 @@ class TestWeeklyReportGenerator:
         )
 
         result = report_generator.generate_weekly_report(
-            mock_session, request, str(sample_user.id), "test-api-key", "gpt-5.5-mini"
+            mock_session, request, str(sample_user.id), "test-api-key", "gpt-5.4-mini"
         )
 
         assert isinstance(result, WeeklyReportResponse)
@@ -365,7 +365,7 @@ class TestWeeklyReportErrorCases:
 
         with patch.object(report_generator, "logger") as mock_logger:
             result = report_generator._generate_markdown_report_with_ai(
-                "invalid-key", "2023-12-18", work_summary, [], "gpt-5.5-mini"
+                "invalid-key", "2023-12-18", work_summary, [], "gpt-5.4-mini"
             )
 
             # Should log the error and fallback to basic report
@@ -393,7 +393,7 @@ class TestWeeklyReportErrorCases:
 
         with patch.object(report_generator, "logger") as mock_logger:
             result = report_generator._generate_markdown_report_with_ai(
-                "test-key", "2023-12-18", work_summary, [], "gpt-5.5-mini"
+                "test-key", "2023-12-18", work_summary, [], "gpt-5.4-mini"
             )
 
             # Should log rate limit warning
@@ -422,13 +422,13 @@ class TestWeeklyReportErrorCases:
 
         # Test with custom model
         result = report_generator._generate_markdown_report_with_ai(
-            "test-key", "2023-12-18", work_summary, [], "gpt-5.5-nano"
+            "test-key", "2023-12-18", work_summary, [], "gpt-5.4-nano"
         )
 
         # Verify the custom model was used
         mock_client.chat.completions.create.assert_called_once()
         call_args = mock_client.chat.completions.create.call_args
-        assert call_args.kwargs["model"] == "gpt-5.5-nano"
+        assert call_args.kwargs["model"] == "gpt-5.4-nano"
         assert result == "# Custom Model Report"
 
     def test_invalid_week_start_date_format(self, report_generator):
@@ -457,7 +457,7 @@ class TestWeeklyReportErrorCases:
 
             with patch.object(report_generator, "logger") as mock_logger:
                 result = report_generator._generate_markdown_report_with_ai(
-                    "test-key", "2023-12-18", work_summary, [], "gpt-5.5-mini"
+                    "test-key", "2023-12-18", work_summary, [], "gpt-5.4-mini"
                 )
 
                 # Should log warning and use fallback

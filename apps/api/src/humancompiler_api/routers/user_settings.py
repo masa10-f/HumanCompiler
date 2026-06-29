@@ -29,16 +29,16 @@ AVAILABLE_MODELS = {
         "max_output": "128k tokens",
         "modalities": ["text", "image_input"],
     },
-    "gpt-5.5-mini": {
-        "name": "GPT-5.5 mini",
-        "description": "高速・低コストのGPT-5.5モデル - 日常的なタスク生成向け",
+    "gpt-5.4-mini": {
+        "name": "GPT-5.4 mini",
+        "description": "高速・低コストのGPT-5.4モデル - 日常的なタスク生成向け",
         "max_context": "400k tokens",
         "max_output": "128k tokens",
         "modalities": ["text", "image_input"],
     },
-    "gpt-5.5-nano": {
-        "name": "GPT-5.5 nano",
-        "description": "最小コストのGPT-5.5モデル - 軽量な分類・整形向け",
+    "gpt-5.4-nano": {
+        "name": "GPT-5.4 nano",
+        "description": "最小コストのGPT-5.4モデル - 軽量な分類・整形向け",
         "max_context": "400k tokens",
         "max_output": "128k tokens",
         "modalities": ["text"],

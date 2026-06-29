@@ -102,8 +102,8 @@ def test_openai_service_initialization_with_api_key():
 def test_openai_service_initialization_with_user_api_key():
     """Test OpenAI service initialization with user-provided API key"""
     with patch("humancompiler_api.ai_service.OpenAI") as mock_openai:
-        service = OpenAIService(api_key="user-key", model="gpt-5.5-nano")
-        assert service.model == "gpt-5.5-nano"
+        service = OpenAIService(api_key="user-key", model="gpt-5.4-nano")
+        assert service.model == "gpt-5.4-nano"
         mock_openai.assert_called_once_with(api_key="user-key")
 
 
@@ -114,7 +114,7 @@ async def test_create_for_user_with_encrypted_key():
 
     mock_user_settings = Mock()
     mock_user_settings.openai_api_key_encrypted = "encrypted_key"
-    mock_user_settings.openai_model = "gpt-5.5-mini"
+    mock_user_settings.openai_model = "gpt-5.4-mini"
 
     mock_session = AsyncMock()
     mock_result = Mock()
@@ -150,7 +150,7 @@ def test_create_for_user_sync():
 
     mock_user_settings = Mock()
     mock_user_settings.openai_api_key_encrypted = "encrypted_key"
-    mock_user_settings.openai_model = "gpt-5.5-mini"
+    mock_user_settings.openai_model = "gpt-5.4-mini"
 
     mock_session = Mock()
     mock_session.exec.return_value.one_or_none.return_value = mock_user_settings

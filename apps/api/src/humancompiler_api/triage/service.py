@@ -688,7 +688,7 @@ class TriageService:
                 "response_format": {"type": "json_object"},
                 "max_completion_tokens": 900,
             }
-            if model.startswith("gpt-5.5"):
+            if model.startswith(("gpt-5.5", "gpt-5.4")):
                 api_params["reasoning_effort"] = "high"
             response = client.chat.completions.create(**api_params)
             content = response.choices[0].message.content or "{}"

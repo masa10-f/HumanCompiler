@@ -9,12 +9,12 @@ SET openai_model = 'gpt-5.5',
 WHERE openai_model = 'gpt-5';
 
 UPDATE user_settings
-SET openai_model = 'gpt-5.5-mini',
+SET openai_model = 'gpt-5.4-mini',
     updated_at = NOW()
 WHERE openai_model = 'gpt-5-mini';
 
 UPDATE user_settings
-SET openai_model = 'gpt-5.5-nano',
+SET openai_model = 'gpt-5.4-nano',
     updated_at = NOW()
 WHERE openai_model = 'gpt-5-nano';
 
@@ -24,6 +24,6 @@ SET openai_model = 'gpt-5.5',
 WHERE openai_model = 'gpt-4o';
 
 UPDATE user_settings
-SET openai_model = 'gpt-5.5-mini',
+SET openai_model = 'gpt-5.4-mini',
     updated_at = NOW()
 WHERE openai_model = 'gpt-4o-mini';

@@ -68,10 +68,10 @@ class TestWeeklyTaskSolver:
     def test_weekly_task_solver_with_custom_model(self):
         """Test WeeklyTaskSolver with custom model."""
         mock_client = Mock()
-        solver = WeeklyTaskSolver(openai_client=mock_client, model="gpt-5.5-mini")
+        solver = WeeklyTaskSolver(openai_client=mock_client, model="gpt-5.4-mini")
 
         assert solver.openai_client == mock_client
-        assert solver.model == "gpt-5.5-mini"
+        assert solver.model == "gpt-5.4-mini"
 
     def test_heuristic_task_selection_empty_context(self):
         """Test heuristic task selection with empty context."""
