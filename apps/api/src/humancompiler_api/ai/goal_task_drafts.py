@@ -724,12 +724,21 @@ class GoalTaskDraftService:
                         )
                     ):
                         continue
-                    if db_goal_id is None:
+                    task_goal_id = self._resolve_goal_id_for_task(
+                        session,
+                        user_id,
+                        request.project_id,
+                        draft_task,
+                        target_goal,
+                        goal_id_by_client_id,
+                    )
+                    task_goal_id = task_goal_id or db_goal_id
+                    if task_goal_id is None:
                         warnings.append(
                             f"タスク「{draft_task.title}」は紐づくゴールがないためスキップしました。"
                         )
                         continue
-                    task = self._create_task_from_draft(draft_task, db_goal_id)
+                    task = self._create_task_from_draft(draft_task, task_goal_id)
                     session.add(task)
                     session.flush()
                     created_tasks.append(task)
@@ -1039,8 +1048,9 @@ class GoalTaskDraftService:
 
         mode_instruction = {
             "project_goals": (
-                "プロジェクト全体のノートから、実行可能なゴール案を2-5件作り、"
-                "各ゴールに初期タスク案を3-8件含めてください。"
+                "プロジェクト全体のノートから、実行可能な新規ゴール案を2-5件作り、"
+                "各新規ゴールに初期タスク案を3-8件含めてください。既存ゴールに追加すべき"
+                "タスクがある場合はトップレベルのtasks[]に入れ、既存ゴールのgoal_idを設定してください。"
             ),
             "goal_tasks": (
                 "対象ゴールを達成するためのタスク案を5-12件作ってください。"
@@ -1078,7 +1088,10 @@ class GoalTaskDraftService:
             "conversation": conversation,
             "current_draft": current_draft,
             "output_contract": {
-                "project_goals": "Use goals[].tasks for tasks belonging to newly proposed goals.",
+                "project_goals": (
+                    "Use goals[].tasks for tasks belonging to newly proposed goals. "
+                    "Use top-level tasks[] with goal_id when a task should be added to an existing goal."
+                ),
                 "goal_tasks": "Use tasks[] and set goal_id to the target goal id.",
                 "split_task": "Use tasks[] and set source_task_id to the target task id.",
             },

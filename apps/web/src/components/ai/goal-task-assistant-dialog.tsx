@@ -22,15 +22,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { useApplyGoalTaskDraft, useStartGoalTaskDraftJob } from '@/hooks/use-ai-drafts';
+import { useGoalsByProject } from '@/hooks/use-goals-query';
 import { toast } from '@/hooks/use-toast';
 import { aiPlanningApi } from '@/lib/api';
 import type {
@@ -77,6 +70,12 @@ const emptyDraft: GoalTaskDraftPayload = {
 
 const AI_DRAFT_POLL_INTERVAL_MS = 2000;
 const AI_DRAFT_MAX_WAIT_MS = 10 * 60 * 1000;
+const UNASSIGNED_GOAL_VALUE = 'unassigned';
+
+type TaskGoalOption = {
+  value: string;
+  label: string;
+};
 
 const getNestedTaskIds = (goal: DraftGoal) => goal.tasks.map((task) => task.client_id);
 
@@ -92,6 +91,9 @@ const toDateInputValue = (value?: string | null) => {
   if (!value) return '';
   return value.slice(0, 10);
 };
+
+const draftGoalValue = (goalClientId: string) => `draft:${goalClientId}`;
+const existingGoalValue = (goalId: string) => `existing:${goalId}`;
 
 const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
@@ -116,8 +118,17 @@ export function GoalTaskAssistantDialog({
 
   const startDraftJobMutation = useStartGoalTaskDraftJob();
   const applyMutation = useApplyGoalTaskDraft();
+  const goalsQuery = useGoalsByProject(projectId, 0, 100);
 
   const isGeneratingDraft = startDraftJobMutation.isPending || isPollingDraft;
+  const existingGoalOptions = useMemo<TaskGoalOption[]>(
+    () =>
+      (goalsQuery.data ?? []).map((goal) => ({
+        value: existingGoalValue(goal.id),
+        label: `既存: ${goal.title}`,
+      })),
+    [goalsQuery.data]
+  );
 
   useEffect(() => {
     if (open && !message.trim()) {
@@ -345,6 +356,39 @@ export function GoalTaskAssistantDialog({
     );
   };
 
+  const updateTaskGoal = (taskClientId: string, value: string) => {
+    setDraft((current) => {
+      if (!current) return current;
+      const applyGoalSelection = (task: DraftTask): DraftTask => {
+        if (task.client_id !== taskClientId) return task;
+        if (value.startsWith('draft:')) {
+          return {
+            ...task,
+            goal_client_id: value.slice('draft:'.length),
+            goal_id: null,
+          };
+        }
+        if (value.startsWith('existing:')) {
+          return {
+            ...task,
+            goal_client_id: null,
+            goal_id: value.slice('existing:'.length),
+          };
+        }
+        return { ...task, goal_client_id: null, goal_id: null };
+      };
+
+      return {
+        ...current,
+        tasks: current.tasks.map(applyGoalSelection),
+        goals: current.goals.map((goal) => ({
+          ...goal,
+          tasks: goal.tasks.map(applyGoalSelection),
+        })),
+      };
+    });
+  };
+
   const toggleGoal = (goal: DraftGoal, checked: boolean) => {
     setSelectedGoalIds((current) => {
       const next = new Set(current);
@@ -395,7 +439,7 @@ export function GoalTaskAssistantDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid max-h-[calc(92vh-76px)] grid-cols-1 overflow-hidden lg:grid-cols-[340px_1fr]">
+        <div className="grid max-h-[calc(92vh-76px)] grid-cols-1 overflow-hidden lg:grid-cols-[340px_minmax(0,1fr)]">
           <div className="flex min-h-[280px] flex-col border-b p-4 lg:border-b-0 lg:border-r">
             <div className="mb-3 flex items-center gap-2 text-sm font-medium">
               <Bot className="h-4 w-4" />
@@ -453,7 +497,7 @@ export function GoalTaskAssistantDialog({
             </div>
           </div>
 
-          <div className="overflow-y-auto p-4">
+          <div className="min-w-0 overflow-y-auto p-4">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap gap-2">
                 <Badge variant="secondary">ゴール {selectedCounts.goals}</Badge>
@@ -502,71 +546,16 @@ export function GoalTaskAssistantDialog({
                 {draft.goals.length > 0 && (
                   <section className="space-y-3">
                     <h3 className="text-sm font-semibold">ゴール案</h3>
-                    <div className="overflow-x-auto rounded-md border">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="w-10" />
-                            <TableHead>タイトル</TableHead>
-                            <TableHead className="w-28">見積</TableHead>
-                            <TableHead>説明</TableHead>
-                            <TableHead className="min-w-[260px]">理由</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {draft.goals.map((goal) => (
-                            <TableRow key={goal.client_id}>
-                              <TableCell>
-                                <Checkbox
-                                  checked={selectedGoalIds.has(goal.client_id)}
-                                  onCheckedChange={(checked) => toggleGoal(goal, checked === true)}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <Input
-                                  value={goal.title}
-                                  onChange={(event) =>
-                                    updateGoal(goal.client_id, 'title', event.target.value)
-                                  }
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <Input
-                                  type="number"
-                                  min="0.1"
-                                  step="0.1"
-                                  value={goal.estimate_hours}
-                                  onChange={(event) =>
-                                    updateGoal(
-                                      goal.client_id,
-                                      'estimate_hours',
-                                      Number.parseFloat(event.target.value) || 0.1
-                                    )
-                                  }
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <Textarea
-                                  value={goal.description || ''}
-                                  rows={2}
-                                  onChange={(event) =>
-                                    updateGoal(goal.client_id, 'description', event.target.value)
-                                  }
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <Textarea
-                                  value={goal.rationale || ''}
-                                  rows={2}
-                                  onChange={(event) =>
-                                    updateGoal(goal.client_id, 'rationale', event.target.value)
-                                  }
-                                />
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                    <div className="space-y-3">
+                      {draft.goals.map((goal) => (
+                        <DraftGoalCard
+                          key={goal.client_id}
+                          goal={goal}
+                          selected={selectedGoalIds.has(goal.client_id)}
+                          onToggle={(checked) => toggleGoal(goal, checked)}
+                          onUpdate={updateGoal}
+                        />
+                      ))}
                     </div>
                   </section>
                 )}
@@ -578,8 +567,14 @@ export function GoalTaskAssistantDialog({
                       title={`${goal.title} のタスク案`}
                       tasks={goal.tasks}
                       selectedTaskIds={selectedTaskIds}
+                      goalOptions={[
+                        { value: draftGoalValue(goal.client_id), label: `新規: ${goal.title}` },
+                        ...existingGoalOptions,
+                      ]}
+                      fallbackGoalClientId={goal.client_id}
                       onToggleTask={toggleTask}
                       onUpdateTask={updateTask}
+                      onUpdateTaskGoal={updateTaskGoal}
                     />
                   ) : null
                 )}
@@ -589,8 +584,10 @@ export function GoalTaskAssistantDialog({
                     title="タスク案"
                     tasks={draft.tasks}
                     selectedTaskIds={selectedTaskIds}
+                    goalOptions={existingGoalOptions}
                     onToggleTask={toggleTask}
                     onUpdateTask={updateTask}
+                    onUpdateTaskGoal={updateTaskGoal}
                   />
                 )}
               </div>
@@ -602,58 +599,125 @@ export function GoalTaskAssistantDialog({
   );
 }
 
+function DraftGoalCard({
+  goal,
+  selected,
+  onToggle,
+  onUpdate,
+}: {
+  goal: DraftGoal;
+  selected: boolean;
+  onToggle: (checked: boolean) => void;
+  onUpdate: <K extends keyof DraftGoal>(
+    goalClientId: string,
+    field: K,
+    value: DraftGoal[K]
+  ) => void;
+}) {
+  return (
+    <div className="rounded-md border bg-background p-4">
+      <div className="mb-3 flex items-start gap-3">
+        <Checkbox checked={selected} onCheckedChange={(checked) => onToggle(checked === true)} />
+        <div className="min-w-0 flex-1">
+          <Input
+            value={goal.title}
+            onChange={(event) => onUpdate(goal.client_id, 'title', event.target.value)}
+          />
+        </div>
+        <div className="w-28 shrink-0">
+          <Input
+            type="number"
+            min="0.1"
+            step="0.1"
+            value={goal.estimate_hours}
+            onChange={(event) =>
+              onUpdate(
+                goal.client_id,
+                'estimate_hours',
+                Number.parseFloat(event.target.value) || 0.1
+              )
+            }
+          />
+        </div>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="space-y-1">
+          <div className="text-xs font-medium text-muted-foreground">説明</div>
+          <Textarea
+            value={goal.description || ''}
+            className="min-h-[96px] max-h-[240px] resize-y overflow-y-auto"
+            onChange={(event) => onUpdate(goal.client_id, 'description', event.target.value)}
+          />
+        </div>
+        <div className="space-y-1">
+          <div className="text-xs font-medium text-muted-foreground">理由</div>
+          <Textarea
+            value={goal.rationale || ''}
+            className="min-h-[96px] max-h-[240px] resize-y overflow-y-auto"
+            onChange={(event) => onUpdate(goal.client_id, 'rationale', event.target.value)}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TaskDraftTable({
   title,
   tasks,
   selectedTaskIds,
+  goalOptions,
+  fallbackGoalClientId,
   onToggleTask,
   onUpdateTask,
+  onUpdateTaskGoal,
 }: {
   title: string;
   tasks: DraftTask[];
   selectedTaskIds: Set<string>;
+  goalOptions: TaskGoalOption[];
+  fallbackGoalClientId?: string;
   onToggleTask: (taskClientId: string, checked: boolean) => void;
   onUpdateTask: <K extends keyof DraftTask>(
     taskClientId: string,
     field: K,
     value: DraftTask[K]
   ) => void;
+  onUpdateTaskGoal: (taskClientId: string, value: string) => void;
 }) {
   return (
     <section className="space-y-3">
       <h3 className="text-sm font-semibold">{title}</h3>
-      <div className="overflow-x-auto rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10" />
-              <TableHead className="min-w-[220px]">タイトル</TableHead>
-              <TableHead className="w-24">見積</TableHead>
-              <TableHead className="w-36">作業種別</TableHead>
-              <TableHead className="w-28">優先度</TableHead>
-              <TableHead className="w-36">締切</TableHead>
-              <TableHead className="min-w-[260px]">説明</TableHead>
-              <TableHead className="min-w-[280px]">理由</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {tasks.map((task) => (
-              <TableRow key={task.client_id}>
-                <TableCell>
+      <div className="space-y-3">
+        {tasks.map((task) => {
+          const goalValue = task.goal_id
+            ? existingGoalValue(task.goal_id)
+            : task.goal_client_id
+              ? draftGoalValue(task.goal_client_id)
+              : fallbackGoalClientId
+                ? draftGoalValue(fallbackGoalClientId)
+                : UNASSIGNED_GOAL_VALUE;
+
+          return (
+            <div key={task.client_id} className="rounded-md border bg-background p-4">
+              <div className="grid gap-3 lg:grid-cols-[auto_minmax(220px,1fr)_112px_160px_128px_160px]">
+                <div className="pt-2">
                   <Checkbox
                     checked={selectedTaskIds.has(task.client_id)}
                     onCheckedChange={(checked) => onToggleTask(task.client_id, checked === true)}
                   />
-                </TableCell>
-                <TableCell>
+                </div>
+                <div className="min-w-0 space-y-1">
+                  <div className="text-xs font-medium text-muted-foreground">タイトル</div>
                   <Input
                     value={task.title}
                     onChange={(event) =>
                       onUpdateTask(task.client_id, 'title', event.target.value)
                     }
                   />
-                </TableCell>
-                <TableCell>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-muted-foreground">見積</div>
                   <Input
                     type="number"
                     min="0.1"
@@ -667,8 +731,9 @@ function TaskDraftTable({
                       )
                     }
                   />
-                </TableCell>
-                <TableCell>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-muted-foreground">作業種別</div>
                   <Select
                     value={task.work_type}
                     onValueChange={(value) =>
@@ -686,8 +751,9 @@ function TaskDraftTable({
                       ))}
                     </SelectContent>
                   </Select>
-                </TableCell>
-                <TableCell>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-muted-foreground">優先度</div>
                   <Select
                     value={String(task.priority)}
                     onValueChange={(value) =>
@@ -705,8 +771,9 @@ function TaskDraftTable({
                       ))}
                     </SelectContent>
                   </Select>
-                </TableCell>
-                <TableCell>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-muted-foreground">締切</div>
                   <Input
                     type="date"
                     value={toDateInputValue(task.due_date)}
@@ -714,29 +781,58 @@ function TaskDraftTable({
                       onUpdateTask(task.client_id, 'due_date', event.target.value || null)
                     }
                   />
-                </TableCell>
-                <TableCell>
+                </div>
+              </div>
+
+              {goalOptions.length > 0 && (
+                <div className="mt-3 space-y-1">
+                  <div className="text-xs font-medium text-muted-foreground">割り当て先ゴール</div>
+                  <Select
+                    value={goalValue}
+                    onValueChange={(value) => onUpdateTaskGoal(task.client_id, value)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {!fallbackGoalClientId && (
+                        <SelectItem value={UNASSIGNED_GOAL_VALUE}>未割り当て</SelectItem>
+                      )}
+                      {goalOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-muted-foreground">説明</div>
                   <Textarea
                     value={task.description || ''}
-                    rows={2}
+                    className="min-h-[112px] max-h-[260px] resize-y overflow-y-auto"
                     onChange={(event) =>
                       onUpdateTask(task.client_id, 'description', event.target.value)
                     }
                   />
-                </TableCell>
-                <TableCell>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-muted-foreground">理由</div>
                   <Textarea
                     value={task.rationale || ''}
-                    rows={2}
+                    className="min-h-[112px] max-h-[260px] resize-y overflow-y-auto"
                     onChange={(event) =>
                       onUpdateTask(task.client_id, 'rationale', event.target.value)
                     }
                   />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </section>
   );

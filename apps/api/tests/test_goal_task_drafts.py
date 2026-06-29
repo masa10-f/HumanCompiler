@@ -149,6 +149,48 @@ def test_apply_draft_rejects_cross_tenant_task_goal_id(
     assert session.exec(select(Task).where(Task.title == "Task task-1")).first() is None
 
 
+def test_apply_project_draft_can_add_task_to_existing_goal(
+    session: Session, draft_workspace
+):
+    project = draft_workspace["project"]
+    user = draft_workspace["user"]
+    existing_goal = draft_workspace["goal"]
+
+    request = GoalTaskDraftApplyRequest(
+        project_id=project.id,
+        mode="project_goals",
+        goals=[
+            DraftGoal(
+                client_id="goal-1",
+                title="Generated goal",
+                description=None,
+                estimate_hours=2.0,
+                rationale=None,
+                confidence=0.8,
+                tasks=[
+                    make_draft_task(
+                        "task-1",
+                        goal_id=existing_goal.id,
+                        title="Existing goal task",
+                    )
+                ],
+            )
+        ],
+        tasks=[],
+        dependencies=[],
+        selected_goal_client_ids=["goal-1"],
+        selected_task_client_ids=["task-1"],
+    )
+
+    response = goal_task_draft_service.apply_draft(session, user.id, request)
+
+    assert len(response.created_goals) == 1
+    assert len(response.created_tasks) == 1
+    created_task = session.get(Task, response.created_tasks[0].id)
+    assert created_task is not None
+    assert created_task.goal_id == existing_goal.id
+
+
 def test_apply_draft_deduplicates_generated_dependencies(
     session: Session, draft_workspace
 ):
