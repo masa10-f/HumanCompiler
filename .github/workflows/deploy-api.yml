@@ -10,6 +10,7 @@ on:
     branches: [main]
     paths:
       - 'apps/api/**'
+      - '.github/workflows/deploy-api.yml'
 
 permissions:
   contents: read
@@ -104,6 +105,7 @@ jobs:
               SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
               SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
               ENCRYPTION_SALT="${{ secrets.ENCRYPTION_SALT }}" \
+              --stage \
               --app humancompiler-api-masa-preview; then
               break
             fi
@@ -194,6 +196,7 @@ jobs:
               SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
               SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
               ENCRYPTION_SALT="${{ secrets.ENCRYPTION_SALT }}" \
+              --stage \
               --app humancompiler-api-masa; then
               break
             fi
