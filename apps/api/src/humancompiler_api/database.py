@@ -244,7 +244,13 @@ class Database:
                 "❌ Database health check timed out after %.1fs",
                 DB_HEALTH_CHECK_TIMEOUT_SECONDS,
             )
-            self.get_engine().dispose()
+            try:
+                self.get_engine().dispose()
+            except Exception as dispose_err:
+                logger.warning(
+                    "Engine dispose after health-check timeout failed: %s",
+                    dispose_err,
+                )
             return False
         except Exception as e:
             logger.error(f"❌ Database health check failed: {e}")

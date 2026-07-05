@@ -44,3 +44,21 @@ async def test_health_check_disposes_engine_on_timeout():
                 assert await database.health_check() is False
 
     engine.dispose.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_health_check_returns_false_when_timeout_cleanup_fails():
+    database = Database()
+
+    with patch.object(database, "get_engine") as get_engine:
+        engine = get_engine.return_value
+        engine.dispose.side_effect = RuntimeError("dispose failed")
+        with patch("humancompiler_api.database.DB_HEALTH_CHECK_TIMEOUT_SECONDS", 0.01):
+            with patch.object(
+                database,
+                "_try_connect",
+                side_effect=lambda: time.sleep(0.1),
+            ):
+                assert await database.health_check() is False
+
+    engine.dispose.assert_called_once()
