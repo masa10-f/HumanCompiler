@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, CheckCircle2, Loader2, Send, Sparkles } from 'lucide-react';
+import { AlertTriangle, Bot, CheckCircle2, Loader2, Send, Sparkles } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -428,10 +428,10 @@ export function GoalTaskAssistantDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="max-h-[92vh] max-w-[1120px] overflow-hidden p-0">
-        <DialogHeader className="border-b px-6 py-4">
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5" />
+      <DialogContent className="flex max-h-[92vh] w-[calc(100vw-1rem)] max-w-[1180px] flex-col overflow-hidden p-0 sm:w-[calc(100vw-2rem)]">
+        <DialogHeader className="shrink-0 border-b px-4 py-4 pr-12 sm:px-6">
+          <DialogTitle className="flex min-w-0 items-center gap-2 leading-6">
+            <Sparkles className="h-5 w-5 shrink-0" />
             {title}
           </DialogTitle>
           <DialogDescription className="sr-only">
@@ -439,8 +439,8 @@ export function GoalTaskAssistantDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid max-h-[calc(92vh-76px)] grid-cols-1 overflow-hidden lg:grid-cols-[340px_minmax(0,1fr)]">
-          <div className="flex min-h-[280px] flex-col border-b p-4 lg:border-b-0 lg:border-r">
+        <div className="min-h-0 flex-1 overflow-y-auto lg:grid lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)] lg:overflow-hidden">
+          <div className="flex min-h-[260px] flex-col border-b p-4 lg:min-h-0 lg:overflow-y-auto lg:border-b-0 lg:border-r">
             <div className="mb-3 flex items-center gap-2 text-sm font-medium">
               <Bot className="h-4 w-4" />
               AI入力
@@ -453,13 +453,22 @@ export function GoalTaskAssistantDialog({
             />
             {draft?.assistant_message && (
               <div className="mt-4 rounded-md border bg-muted/40 p-3 text-sm">
-                {draft.assistant_message}
+                <div className="mb-1 text-xs font-medium text-muted-foreground">AIからのメモ</div>
+                <div className="whitespace-pre-wrap break-words leading-6">
+                  {draft.assistant_message}
+                </div>
               </div>
             )}
             {draft?.warnings && draft.warnings.length > 0 && (
-              <div className="mt-3 space-y-1 text-sm text-amber-700">
+              <div className="mt-3 rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-foreground">
+                <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-foreground">
+                  <AlertTriangle className="h-4 w-4 text-warning" />
+                  注意
+                </div>
                 {draft.warnings.map((warning) => (
-                  <div key={warning}>{warning}</div>
+                  <div key={warning} className="whitespace-pre-wrap break-words leading-6">
+                    {warning}
+                  </div>
                 ))}
               </div>
             )}
@@ -497,13 +506,13 @@ export function GoalTaskAssistantDialog({
             </div>
           </div>
 
-          <div className="min-w-0 overflow-y-auto p-4">
+          <div className="min-w-0 p-4 lg:min-h-0 lg:overflow-y-auto">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap gap-2">
                 <Badge variant="secondary">ゴール {selectedCounts.goals}</Badge>
                 <Badge variant="secondary">タスク {selectedCounts.tasks}</Badge>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
                   variant="outline"
@@ -617,27 +626,34 @@ function DraftGoalCard({
   return (
     <div className="rounded-md border bg-background p-4">
       <div className="mb-3 flex items-start gap-3">
-        <Checkbox checked={selected} onCheckedChange={(checked) => onToggle(checked === true)} />
-        <div className="min-w-0 flex-1">
-          <Input
-            value={goal.title}
-            onChange={(event) => onUpdate(goal.client_id, 'title', event.target.value)}
-          />
+        <div className="pt-7">
+          <Checkbox checked={selected} onCheckedChange={(checked) => onToggle(checked === true)} />
         </div>
-        <div className="w-28 shrink-0">
-          <Input
-            type="number"
-            min="0.1"
-            step="0.1"
-            value={goal.estimate_hours}
-            onChange={(event) =>
-              onUpdate(
-                goal.client_id,
-                'estimate_hours',
-                Number.parseFloat(event.target.value) || 0.1
-              )
-            }
-          />
+        <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-[minmax(0,1fr)_128px]">
+          <div className="min-w-0 space-y-1">
+            <div className="text-xs font-medium text-muted-foreground">ゴール名</div>
+            <Input
+              value={goal.title}
+              className="min-w-0"
+              onChange={(event) => onUpdate(goal.client_id, 'title', event.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <div className="text-xs font-medium text-muted-foreground">見積(h)</div>
+            <Input
+              type="number"
+              min="0.1"
+              step="0.1"
+              value={goal.estimate_hours}
+              onChange={(event) =>
+                onUpdate(
+                  goal.client_id,
+                  'estimate_hours',
+                  Number.parseFloat(event.target.value) || 0.1
+                )
+              }
+            />
+          </div>
         </div>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
@@ -687,7 +703,7 @@ function TaskDraftTable({
 }) {
   return (
     <section className="space-y-3">
-      <h3 className="text-sm font-semibold">{title}</h3>
+      <h3 className="break-words text-sm font-semibold">{title}</h3>
       <div className="space-y-3">
         {tasks.map((task) => {
           const goalValue = task.goal_id
@@ -700,87 +716,90 @@ function TaskDraftTable({
 
           return (
             <div key={task.client_id} className="rounded-md border bg-background p-4">
-              <div className="grid gap-3 lg:grid-cols-[auto_minmax(220px,1fr)_112px_160px_128px_160px]">
-                <div className="pt-2">
+              <div className="flex items-start gap-3">
+                <div className="pt-7">
                   <Checkbox
                     checked={selectedTaskIds.has(task.client_id)}
                     onCheckedChange={(checked) => onToggleTask(task.client_id, checked === true)}
                   />
                 </div>
-                <div className="min-w-0 space-y-1">
-                  <div className="text-xs font-medium text-muted-foreground">タイトル</div>
-                  <Input
-                    value={task.title}
-                    onChange={(event) =>
-                      onUpdateTask(task.client_id, 'title', event.target.value)
-                    }
-                  />
-                </div>
-                <div className="space-y-1">
-                  <div className="text-xs font-medium text-muted-foreground">見積</div>
-                  <Input
-                    type="number"
-                    min="0.1"
-                    step="0.1"
-                    value={task.estimate_hours}
-                    onChange={(event) =>
-                      onUpdateTask(
-                        task.client_id,
-                        'estimate_hours',
-                        Number.parseFloat(event.target.value) || 0.1
-                      )
-                    }
-                  />
-                </div>
-                <div className="space-y-1">
-                  <div className="text-xs font-medium text-muted-foreground">作業種別</div>
-                  <Select
-                    value={task.work_type}
-                    onValueChange={(value) =>
-                      onUpdateTask(task.client_id, 'work_type', value as WorkType)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {workTypeOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-xs font-medium text-muted-foreground">優先度</div>
-                  <Select
-                    value={String(task.priority)}
-                    onValueChange={(value) =>
-                      onUpdateTask(task.client_id, 'priority', Number.parseInt(value, 10))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {priorityOptions.map((option) => (
-                        <SelectItem key={option.value} value={String(option.value)}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-xs font-medium text-muted-foreground">締切</div>
-                  <Input
-                    type="date"
-                    value={toDateInputValue(task.due_date)}
-                    onChange={(event) =>
-                      onUpdateTask(task.client_id, 'due_date', event.target.value || null)
-                    }
-                  />
+                <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_104px_136px_112px_140px]">
+                  <div className="min-w-0 space-y-1 sm:col-span-2 xl:col-span-1">
+                    <div className="text-xs font-medium text-muted-foreground">タスク名</div>
+                    <Input
+                      value={task.title}
+                      className="min-w-0"
+                      onChange={(event) =>
+                        onUpdateTask(task.client_id, 'title', event.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs font-medium text-muted-foreground">見積(h)</div>
+                    <Input
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      value={task.estimate_hours}
+                      onChange={(event) =>
+                        onUpdateTask(
+                          task.client_id,
+                          'estimate_hours',
+                          Number.parseFloat(event.target.value) || 0.1
+                        )
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs font-medium text-muted-foreground">作業種別</div>
+                    <Select
+                      value={task.work_type}
+                      onValueChange={(value) =>
+                        onUpdateTask(task.client_id, 'work_type', value as WorkType)
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {workTypeOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs font-medium text-muted-foreground">優先度</div>
+                    <Select
+                      value={String(task.priority)}
+                      onValueChange={(value) =>
+                        onUpdateTask(task.client_id, 'priority', Number.parseInt(value, 10))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {priorityOptions.map((option) => (
+                          <SelectItem key={option.value} value={String(option.value)}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-xs font-medium text-muted-foreground">締切</div>
+                    <Input
+                      type="date"
+                      value={toDateInputValue(task.due_date)}
+                      onChange={(event) =>
+                        onUpdateTask(task.client_id, 'due_date', event.target.value || null)
+                      }
+                    />
+                  </div>
                 </div>
               </div>
 
