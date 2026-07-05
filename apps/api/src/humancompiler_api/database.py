@@ -33,6 +33,7 @@ POOL_RECYCLE_DEFAULT = 55
 # Connection-level timeouts for PostgreSQL (seconds)
 PG_CONNECT_TIMEOUT = 5
 PG_STATEMENT_TIMEOUT_MS = 30000  # 30 seconds
+DB_HEALTH_CHECK_TIMEOUT_SECONDS = 6.0
 
 
 class Database:
@@ -225,14 +226,25 @@ class Database:
 
     async def health_check(self) -> bool:
         """Check database connection health"""
+        import asyncio
+
         try:
-            client = self.get_client()
-            if client is None:
-                logger.warning("Database client not available (development mode)")
-                return False
-            # Simple query to test connection
-            client.table("users").select("count", count="exact").execute()
+            # Health checks should validate the same direct Postgres connection
+            # used by API handlers and background schedulers. Avoid Supabase Data
+            # API table reads here because anon/authenticated grants and RLS
+            # policies can legitimately block those even when the backend DB
+            # connection is healthy.
+            await asyncio.wait_for(
+                asyncio.to_thread(self._try_connect),
+                timeout=DB_HEALTH_CHECK_TIMEOUT_SECONDS,
+            )
             return True
+        except TimeoutError:
+            logger.error(
+                "❌ Database health check timed out after %.1fs",
+                DB_HEALTH_CHECK_TIMEOUT_SECONDS,
+            )
+            return False
         except Exception as e:
             logger.error(f"❌ Database health check failed: {e}")
             return False
