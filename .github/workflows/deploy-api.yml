@@ -10,6 +10,7 @@ on:
     branches: [main]
     paths:
       - 'apps/api/**'
+      - '.github/workflows/deploy-api.yml'
 
 permissions:
   contents: read
