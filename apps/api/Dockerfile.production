@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install build dependencies for OR-Tools and other packages
+# Install build dependencies for Python packages
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \

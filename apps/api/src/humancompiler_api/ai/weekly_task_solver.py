@@ -204,7 +204,10 @@ class WeeklyTaskSolver:
                 project_allocations,
             )
 
-            selected_tasks, optimization_insights = await self._optimize_with_ortools(
+            (
+                selected_tasks,
+                optimization_insights,
+            ) = await self._optimize_with_scheduler_backend(
                 context,
                 request.constraints,
                 project_allocations,
@@ -660,7 +663,7 @@ class WeeklyTaskSolver:
             "project_distribution": project_hours,
         }
 
-    async def _optimize_with_ortools(
+    async def _optimize_with_scheduler_backend(
         self,
         context: WeeklyPlanContext,
         constraints: WeeklyConstraints,
@@ -753,15 +756,8 @@ class WeeklyTaskSolver:
             )
 
             if not solve_result.success:
-                selected_tasks, fallback_insights = self._heuristic_task_selection(
-                    context,
-                    constraints,
-                    project_allocations,
-                    remaining_hours_map=remaining_hours_map,
-                )
-                return selected_tasks, [
-                    "OR-Tools optimization could not satisfy constraints",
-                    *fallback_insights,
+                return [], [
+                    "External weekly scheduler could not satisfy constraints",
                 ]
 
             task_by_id = {str(task.id): task for task in context.tasks}
@@ -779,10 +775,10 @@ class WeeklyTaskSolver:
                         task_id=task_id,
                         task_title=db_task.title,
                         estimated_hours=task_hours[task_id],
-                        priority=int(task_priority_scores[task_id]),
+                        priority=_coerce_task_priority(db_task.priority),
                         rationale=(
                             "External weekly scheduler selected this task "
-                            f"(priority: {task_priority_scores[task_id]:.1f})"
+                            f"(score: {task_priority_scores[task_id]:.1f})"
                         ),
                     )
                 )
@@ -799,7 +795,7 @@ class WeeklyTaskSolver:
                             weekly_id,
                             float(weekly_task.estimate_hours or 0),
                         ),
-                        priority=8,
+                        priority=3,
                         rationale="External weekly scheduler selected this recurring task",
                     )
                 )
@@ -813,58 +809,33 @@ class WeeklyTaskSolver:
             status_label = "optimal" if solve_result.status == "OPTIMAL" else "feasible"
 
             insights = [
-                f"{backend_name} OR-Tools weekly selection completed",
+                f"{backend_name} weekly selection completed",
                 f"Selected tasks: {len(selected_tasks)}",
                 f"Total hours: {total_selected_hours:.1f}h (capacity utilization: {capacity_utilization:.1%})",
                 f"Optimization status: {status_label}",
             ]
             return selected_tasks, insights
 
-        except Exception as exc:
-            logger.error("Weekly optimization failed: %s", exc)
-            selected_tasks, fallback_insights = self._heuristic_task_selection(
-                context,
-                constraints,
-                project_allocations,
-                remaining_hours_map=getattr(context, "remaining_hours_map", {}),
-            )
-            return selected_tasks, [
-                f"Weekly optimization failed: {exc}",
-                *fallback_insights,
-            ]
+        except Exception:
+            logger.exception("Weekly optimization failed")
+            raise
 
 
 def _load_weekly_scheduler_backend():
-    try:
-        from humancompiler_scheduler.human import (
-            ProjectAllocationSpec,
-            WeeklySolverConfig,
-            WeeklyTaskSpec,
-            optimize_weekly_selection,
-        )
+    from humancompiler_scheduler.human import (
+        ProjectAllocationSpec,
+        WeeklySolverConfig,
+        WeeklyTaskSpec,
+        optimize_weekly_selection,
+    )
 
-        return (
-            ProjectAllocationSpec,
-            WeeklySolverConfig,
-            WeeklyTaskSpec,
-            optimize_weekly_selection,
-            "External humancompiler-scheduler",
-        )
-    except ImportError:
-        from humancompiler_optimizer.weekly import (
-            ProjectAllocationSpec,
-            WeeklySolverConfig,
-            WeeklyTaskSpec,
-            optimize_weekly_selection,
-        )
-
-        return (
-            ProjectAllocationSpec,
-            WeeklySolverConfig,
-            WeeklyTaskSpec,
-            optimize_weekly_selection,
-            "Internal compatibility weekly scheduler",
-        )
+    return (
+        ProjectAllocationSpec,
+        WeeklySolverConfig,
+        WeeklyTaskSpec,
+        optimize_weekly_selection,
+        "External humancompiler-scheduler",
+    )
 
 
 def _coerce_task_priority(value: Any) -> int:

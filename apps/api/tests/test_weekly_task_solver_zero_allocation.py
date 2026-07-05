@@ -240,9 +240,9 @@ class TestWeeklyTaskSolverZeroAllocation:
             priority_weight=0.0,
         )
 
-        # Test OR-Tools constraint application directly
+        # Test external scheduler constraint application directly
         with patch("humancompiler_api.ai.weekly_task_solver.logger") as mock_logger:
-            # This would normally be called within _optimize_with_ortools
+            # This would normally be called within _optimize_with_scheduler_backend
             # We're testing the constraint logic directly
 
             # Simulate the constraint check

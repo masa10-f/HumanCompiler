@@ -309,7 +309,7 @@ export default function AIPlanningPage() {
         selected_tasks: weeklyPlan.task_plans,
         selected_recurring_task_ids: selectedRecurringTaskIds,
         total_allocated_hours: weeklyPlan.total_planned_hours,
-        project_allocations: projectAllocations,
+        project_allocations: weeklyPlan.project_allocations || [],
         optimization_insights: weeklyPlan.insights || [],
         recommendations: weeklyPlan.recommendations || [],
         capacity_hours: capacityHours,

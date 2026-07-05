@@ -364,7 +364,7 @@ async def test_generate_weekly_plan_success(weekly_plan_request, mock_session):
                 rationale="Selected by deterministic solver",
             )
         ],
-        optimization_insights=["OR-Tools weekly selection completed"],
+        optimization_insights=["external weekly selection completed"],
         constraint_analysis={},
         solver_metrics={},
         generated_at=datetime.now(),
@@ -386,7 +386,7 @@ async def test_generate_weekly_plan_success(weekly_plan_request, mock_session):
         assert result.success is True
         assert result.total_planned_hours == 25.0
         assert result.task_plans[0].task_id == "task-1"
-        assert "OR-Tools" in result.insights[0]
+        assert "external weekly selection" in result.insights[0]
 
 
 @pytest.mark.asyncio

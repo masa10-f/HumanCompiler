@@ -274,7 +274,7 @@ class TestSchedulerAPI:
         from datetime import time
 
         from humancompiler_api.routers.scheduler import optimize_schedule
-        from humancompiler_optimizer.daily import (
+        from humancompiler_api.routers.scheduler import (
             SchedulerTask,
             SlotKind,
             TaskKind,
@@ -318,7 +318,7 @@ class TestSchedulerAPI:
         from datetime import time
 
         from humancompiler_api.routers.scheduler import optimize_schedule
-        from humancompiler_optimizer.daily import (
+        from humancompiler_api.routers.scheduler import (
             FixedAssignment,
             SchedulerTask,
             SlotKind,
@@ -365,7 +365,7 @@ class TestSchedulerAPI:
         from datetime import time
 
         from humancompiler_api.routers.scheduler import optimize_schedule
-        from humancompiler_optimizer.daily import (
+        from humancompiler_api.routers.scheduler import (
             FixedAssignment,
             SchedulerTask,
             SlotKind,
@@ -409,7 +409,7 @@ class TestSchedulerAPI:
     def test_stale_fixed_assignments_are_skipped(self):
         """Fixed assignments for filtered tasks or missing slots should be ignored."""
         from humancompiler_api.routers.scheduler import _build_human_fixed_assignments
-        from humancompiler_optimizer.daily import FixedAssignment
+        from humancompiler_api.routers.scheduler import FixedAssignment
 
         assignments = _build_human_fixed_assignments(
             fixed_assignments=[
@@ -480,7 +480,7 @@ class TestSchedulerAPI:
     def test_slot_kind_mapping(self):
         """Test slot kind mapping function."""
         from humancompiler_api.routers.scheduler import map_slot_kind
-        from humancompiler_optimizer.daily import SlotKind as OptimizerSlotKind
+        from humancompiler_api.routers.scheduler import OptimizerSlotKind
 
         # Test mapping
         assert map_slot_kind("focused_work") == OptimizerSlotKind.FOCUSED_WORK
@@ -495,9 +495,9 @@ class TestSchedulerAPI:
         from datetime import time
 
         from humancompiler_api.routers.scheduler import optimize_schedule
-        from humancompiler_optimizer.daily import (
+        from humancompiler_api.routers.scheduler import (
+            OptimizerSlotKind,
             SchedulerTask,
-            SlotKind as OptimizerSlotKind,
             TaskKind,
             TimeSlot,
         )

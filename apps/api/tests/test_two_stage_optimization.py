@@ -1,4 +1,4 @@
-"""Test the deterministic weekly priority extraction + OR-Tools flow."""
+"""Test the deterministic weekly priority extraction + external scheduler flow."""
 
 import pytest
 from datetime import date, timedelta
@@ -88,7 +88,7 @@ class TestTwoStageOptimization:
         assert not mock_client.mock_calls
 
     @pytest.mark.asyncio
-    async def test_two_stage_optimization_with_ortools(self, mock_context):
+    async def test_two_stage_optimization_with_scheduler_backend(self, mock_context):
         """Test the complete two-stage optimization process."""
         # Mock the priority extractor
         mock_solver = WeeklyTaskSolver(openai_client=None)
@@ -111,7 +111,7 @@ class TestTwoStageOptimization:
         )
 
         # Test the optimization
-        selected_tasks, insights = await mock_solver._optimize_with_ortools(
+        selected_tasks, insights = await mock_solver._optimize_with_scheduler_backend(
             mock_context,
             request.constraints,
             [],
@@ -119,12 +119,12 @@ class TestTwoStageOptimization:
             request.user_prompt,
         )
 
-        # Verify that OR-Tools optimization runs
+        # Verify that external scheduler optimization runs
         assert len(insights) > 0
-        assert any("OR-Tools" in insight for insight in insights)
+        assert any("humancompiler-scheduler" in insight for insight in insights)
 
-    def test_ortools_constraint_formulation(self, mock_context):
-        """Test OR-Tools constraint formulation."""
+    def test_scheduler_constraint_formulation(self, mock_context):
+        """Test external scheduler constraint formulation."""
         # This test would verify that constraints are properly formulated
         # but we'll keep it simple for now
         constraints = WeeklyConstraints(
@@ -190,7 +190,7 @@ class TestTwoStageOptimization:
 
         insights = []
         backend_name = "External humancompiler-scheduler"
-        insights.append(f"{backend_name} OR-Tools weekly selection completed")
+        insights.append(f"{backend_name} weekly selection completed")
 
         assert len(insights) == 1
-        assert "OR-Tools weekly selection completed" in insights[0]
+        assert "humancompiler-scheduler weekly selection completed" in insights[0]

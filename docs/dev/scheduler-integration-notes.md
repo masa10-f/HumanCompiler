@@ -1,10 +1,7 @@
 # Scheduler Integration Notes
 
-HumanCompiler currently has two scheduler-related layers:
+HumanCompiler currently keeps scheduling code behind one API adapter layer:
 
-- `humancompiler_optimizer.daily` / `weekly`: legacy pure optimization models
-  and OR-Tools solver entry points. These modules are retained for compatibility
-  while runtime adapter code moves to `humancompiler-scheduler`.
 - `humancompiler_api.routers.scheduler`: FastAPI adapter code. It fetches user
   data, maps database models to optimizer inputs, applies ownership checks, and
   converts solver results back to API responses used by the web app.
@@ -57,10 +54,9 @@ keeps the existing response shape for the web app, while the backend uses
 Scheduler's timeline daily solver and accepts optional `solver_config`
 overrides.
 
-Weekly task selection now prefers `humancompiler_scheduler.human` weekly
-selection APIs when the external package exposes them. Until the Scheduler
-package release containing that API is available in every environment,
-HumanCompiler keeps a compatibility fallback to the legacy internal weekly
+Weekly task selection imports `humancompiler_scheduler.human` weekly selection
+APIs directly. HumanCompiler requires the Scheduler package release that
+contains those APIs and does not fall back to the legacy internal weekly
 optimizer. The weekly API no longer uses OpenAI priority extraction; task
 selection uses deterministic priority, deadline, remaining-hours, recurring
 task, capacity, dependency, and project-allocation inputs.
@@ -68,6 +64,6 @@ task, capacity, dependency, and project-allocation inputs.
 The scheduler tuning endpoint returns only user-tunable defaults and visible
 controls. Internal or misleading solver fields such as fixed-assignment and
 dependency-unlock scores are intentionally not exposed to the web UI. With
-`humancompiler-scheduler>=0.2.0`, the preference UI maps user-facing choices to
+`humancompiler-scheduler[cp-sat]>=0.3.0`, the preference UI maps user-facing choices to
 block-generation parameters such as `min_block_minutes`,
 `block_granularity_minutes`, and `max_candidate_block_minutes`.
