@@ -1,6 +1,4 @@
-"""
-AI-powered planning API endpoints using OpenAI Assistants API.
-"""
+"""Planning API endpoints."""
 
 import logging
 from datetime import date, datetime
@@ -19,11 +17,12 @@ from humancompiler_api.ai.goal_task_drafts import (
     GoalTaskDraftResponse,
     goal_task_draft_service,
 )
-from humancompiler_api.ai.planning_service import WeeklyPlanService
 from humancompiler_api.ai.weekly_task_solver import (
     WeeklyTaskSolver,
     TaskSolverRequest,
     TaskSolverResponse,
+    WeeklyConstraints,
+    ProjectAllocation,
 )
 from humancompiler_api.auth import get_current_user_id
 from humancompiler_api.database import get_session
@@ -176,20 +175,13 @@ async def generate_weekly_plan(
     session: Session = Depends(get_session),
 ):
     """
-    Generate AI-powered weekly plan using OpenAI Assistants API.
+    Generate a deterministic weekly plan.
 
     This endpoint:
     1. Collects user's projects, goals, and pending tasks
-    2. Formats context data for AI consumption
-    3. Calls OpenAI GPT-5.5 with function calling for structured planning
-    4. Returns optimized weekly schedule with recommendations
-
-    The AI considers:
-    - Task priorities and due dates
-    - Deep work vs light work scheduling
-    - Energy management throughout the day
-    - Goal alignment and project balance
-    - Realistic capacity planning
+    2. Applies project allocation and capacity constraints
+    3. Runs the weekly task selection solver
+    4. Returns the existing weekly plan response shape
     """
     try:
         logger.info(
@@ -224,50 +216,56 @@ async def generate_weekly_plan(
                 ).model_dump(),
             )
 
-        # Create user-specific OpenAI client (not OpenAIService)
-        from humancompiler_api.ai.openai_client import OpenAIClient
-        from humancompiler_api.models import UserSettings
-        from sqlmodel import select
-
-        # Get user settings
-        result = session.execute(
-            select(UserSettings).where(UserSettings.user_id == user_id)
-        )
-        user_settings = result.scalar_one_or_none()
-
-        openai_client = None
-        if user_settings and user_settings.openai_api_key_encrypted:
-            # Decrypt API key (try-catch for test environments)
-            try:
-                from humancompiler_api.crypto import get_crypto_service
-
-                api_key = get_crypto_service().decrypt(
-                    user_settings.openai_api_key_encrypted
+        available_hours = max(0.0, request.capacity_hours - 5.0)
+        project_allocations = []
+        for project_id, percentage in (
+            getattr(request, "project_allocations", None) or {}
+        ).items():
+            priority_weight = float(percentage) / 100.0
+            target_hours = available_hours * priority_weight
+            project_allocations.append(
+                ProjectAllocation(
+                    project_id=project_id,
+                    project_title=project_id,
+                    target_hours=target_hours,
+                    max_hours=target_hours * 1.5,
+                    priority_weight=priority_weight,
                 )
-                if api_key:
-                    openai_client = OpenAIClient(
-                        api_key=api_key, model=user_settings.openai_model
-                    )
-            except Exception as e:
-                logger.warning(f"Failed to decrypt API key: {e}")
-                # Continue without user-specific API key
+            )
 
-        if not openai_client:
-            # No server-side OpenAI API key fallback is allowed.
-            openai_client = OpenAIClient()
+        solver_request = TaskSolverRequest(
+            week_start_date=request.week_start_date,
+            constraints=WeeklyConstraints(
+                total_capacity_hours=request.capacity_hours,
+                meeting_buffer_hours=5.0,
+                project_allocations=project_allocations,
+            ),
+            project_filter=request.project_filter,
+            selected_recurring_task_ids=getattr(
+                request, "selected_recurring_task_ids", []
+            ),
+            preferences=request.preferences,
+        )
 
-        # Create weekly plan service with user's OpenAI client
-        weekly_plan_service = WeeklyPlanService(openai_service=openai_client)
-
-        # Generate weekly plan
-        plan_response = await weekly_plan_service.generate_weekly_plan(
-            session=session, user_id=user_id, request=request
+        task_solver = await WeeklyTaskSolver.create_for_user(UUID(user_id), session)
+        solver_response = await task_solver.solve_weekly_tasks(
+            session=session,
+            user_id=user_id,
+            request=solver_request,
         )
 
         logger.info(
-            f"Weekly plan generated: {len(plan_response.task_plans)} tasks planned"
+            f"Weekly plan generated: {len(solver_response.selected_tasks)} tasks planned"
         )
-        return plan_response
+        return WeeklyPlanResponse(
+            success=solver_response.success,
+            week_start_date=solver_response.week_start_date,
+            total_planned_hours=solver_response.total_allocated_hours,
+            task_plans=solver_response.selected_tasks,
+            recommendations=[],
+            insights=solver_response.optimization_insights,
+            generated_at=solver_response.generated_at,
+        )
 
     except HTTPException:
         raise
@@ -297,7 +295,7 @@ async def solve_weekly_tasks(
     session: Session = Depends(get_session),
 ):
     """
-    Advanced AI-powered weekly task solver using GPT-5.5.
+    Deterministic weekly task solver.
 
     This endpoint provides intelligent task selection and allocation optimization:
     1. Analyzes project priorities and deadline constraints
@@ -307,10 +305,9 @@ async def solve_weekly_tasks(
 
     The solver considers:
     - Project allocation strategies and time budgets
-    - Deadline urgency and business impact
+    - Deadline urgency
     - Weekly capacity and daily time constraints
-    - Deep work scheduling and energy management
-    - Task dependencies and context switching costs
+    - Task dependencies
     """
     try:
         logger.info(

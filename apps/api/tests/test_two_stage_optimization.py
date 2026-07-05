@@ -1,6 +1,4 @@
-"""
-Test the two-stage optimization process: OpenAI Priority Extraction + OR-Tools.
-"""
+"""Test the deterministic weekly priority extraction + OR-Tools flow."""
 
 import pytest
 from datetime import date, timedelta
@@ -17,7 +15,7 @@ from humancompiler_api.models import Project, Goal, Task
 
 
 class TestTwoStageOptimization:
-    """Test the two-stage optimization process."""
+    """Test the weekly optimization process."""
 
     @pytest.fixture
     def mock_context(self):
@@ -77,30 +75,17 @@ class TestTwoStageOptimization:
         assert priorities["task-1"] > priorities["task-2"]
 
     @pytest.mark.asyncio
-    async def test_priority_extraction_with_user_prompt(self, mock_context):
-        """Test priority extraction with user prompt."""
+    async def test_priority_extraction_ignores_legacy_openai_client(self, mock_context):
+        """Test priority extraction no longer calls OpenAI."""
         mock_client = Mock()
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.tool_calls = [Mock()]
-        mock_response.choices[0].message.tool_calls[
-            0
-        ].function.name = "extract_task_priorities"
-        mock_response.choices[0].message.tool_calls[
-            0
-        ].function.arguments = '{"task_priorities": {"task-1": 8.5, "task-2": 6.0}}'
-
-        mock_client.chat.completions.create.return_value = mock_response
-
         extractor = TaskPriorityExtractor(openai_client=mock_client)
 
         priorities = await extractor.extract_priorities(
             mock_context, "Focus on high-impact tasks this week", []
         )
 
-        assert priorities["task-1"] == 8.5
-        assert priorities["task-2"] == 6.0
-        mock_client.chat.completions.create.assert_called_once()
+        assert priorities["task-1"] > priorities["task-2"]
+        assert not mock_client.mock_calls
 
     @pytest.mark.asyncio
     async def test_two_stage_optimization_with_ortools(self, mock_context):
@@ -137,8 +122,6 @@ class TestTwoStageOptimization:
         # Verify that OR-Tools optimization runs
         assert len(insights) > 0
         assert any("OR-Tools" in insight for insight in insights)
-        if request.user_prompt:
-            assert any("ユーザー指示" in insight for insight in insights)
 
     def test_ortools_constraint_formulation(self, mock_context):
         """Test OR-Tools constraint formulation."""
@@ -158,18 +141,24 @@ class TestTwoStageOptimization:
         assert constraints.effort_efficiency_weight == 0.3
 
     @pytest.mark.asyncio
-    async def test_user_prompt_integration(self, mock_context):
-        """Test that user prompts are properly integrated into priority calculation."""
+    async def test_user_prompt_is_ignored_for_deterministic_priority(
+        self, mock_context
+    ):
+        """Test that legacy user prompts no longer affect priorities."""
         extractor = TaskPriorityExtractor(openai_client=None)
 
-        # Test priority context creation with user prompt
-        context_text = extractor._create_priority_context(
-            mock_context, "この週は特にタスク1を優先して取り組みたい", []
+        priorities_without_prompt = await extractor.extract_priorities(
+            mock_context,
+            None,
+            [],
+        )
+        priorities_with_prompt = await extractor.extract_priorities(
+            mock_context,
+            "この週は特にタスク1を優先して取り組みたい",
+            [],
         )
 
-        assert "ユーザーからの特別な指示" in context_text
-        assert "タスク1を優先して" in context_text
-        assert "優先度計算に反映してください" in context_text
+        assert priorities_with_prompt == priorities_without_prompt
 
     def test_task_solver_request_with_user_prompt(self):
         """Test TaskSolverRequest with user_prompt field."""
@@ -183,29 +172,25 @@ class TestTwoStageOptimization:
 
     @pytest.mark.asyncio
     async def test_priority_extraction_error_handling(self, mock_context):
-        """Test error handling in priority extraction."""
+        """Test deterministic priority extraction does not surface client errors."""
         mock_client = Mock()
         mock_client.chat.completions.create.side_effect = Exception("API Error")
 
         extractor = TaskPriorityExtractor(openai_client=mock_client)
 
-        # Should fall back to heuristic calculation
         priorities = await extractor.extract_priorities(mock_context, "Test prompt", [])
 
         assert isinstance(priorities, dict)
-        assert len(priorities) > 0  # Should have fallback priorities
+        assert len(priorities) > 0
+        assert not mock_client.mock_calls
 
     def test_optimization_insights_generation(self):
         """Test that optimization insights are properly generated."""
         solver = WeeklyTaskSolver(openai_client=None)
 
-        # Test insight generation with user prompt
         insights = []
-        user_prompt = "Focus on high-impact deliverables"
-
-        if user_prompt:
-            insights.append(f"💬 ユーザー指示「{user_prompt}」を優先度計算に反映")
+        backend_name = "External humancompiler-scheduler"
+        insights.append(f"{backend_name} OR-Tools weekly selection completed")
 
         assert len(insights) == 1
-        assert "high-impact deliverables" in insights[0]
-        assert "優先度計算に反映" in insights[0]
+        assert "OR-Tools weekly selection completed" in insights[0]

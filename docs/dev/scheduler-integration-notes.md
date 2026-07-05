@@ -2,9 +2,9 @@
 
 HumanCompiler currently has two scheduler-related layers:
 
-- `humancompiler_optimizer.daily` / `weekly`: pure optimization models and
-  OR-Tools solver entry points. These modules do not depend on database or API
-  objects.
+- `humancompiler_optimizer.daily` / `weekly`: legacy pure optimization models
+  and OR-Tools solver entry points. These modules are retained for compatibility
+  while runtime adapter code moves to `humancompiler-scheduler`.
 - `humancompiler_api.routers.scheduler`: FastAPI adapter code. It fetches user
   data, maps database models to optimizer inputs, applies ownership checks, and
   converts solver results back to API responses used by the web app.
@@ -57,10 +57,13 @@ keeps the existing response shape for the web app, while the backend uses
 Scheduler's timeline daily solver and accepts optional `solver_config`
 overrides.
 
-Weekly task selection still uses the existing HumanCompiler weekly optimizer
-because `humancompiler-scheduler>=0.2.0` does not expose a weekly selection API.
-Keep the weekly adapter isolated so it can move once Scheduler publishes a
-weekly contract.
+Weekly task selection now prefers `humancompiler_scheduler.human` weekly
+selection APIs when the external package exposes them. Until the Scheduler
+package release containing that API is available in every environment,
+HumanCompiler keeps a compatibility fallback to the legacy internal weekly
+optimizer. The weekly API no longer uses OpenAI priority extraction; task
+selection uses deterministic priority, deadline, remaining-hours, recurring
+task, capacity, dependency, and project-allocation inputs.
 
 The scheduler tuning endpoint returns only user-tunable defaults and visible
 controls. Internal or misleading solver fields such as fixed-assignment and

@@ -1,14 +1,14 @@
 /**
- * @fileoverview AI計画関連の型定義
- * @description AI支援による週次計画・スケジュール最適化に使用する型を定義
+ * @fileoverview 週次計画関連の型定義
+ * @description 週次計画・スケジュール最適化に使用する型を定義
  */
 
-import type { SlotKind } from '@/constants/schedule';
-import type { WorkType } from './task';
+import type { SlotKind } from "@/constants/schedule";
+import type { WorkType } from "./task";
 
 /**
  * 週次計画リクエスト
- * @description AI週次計画生成時のパラメータ
+ * @description 週次計画生成時のパラメータ
  */
 export interface WeeklyPlanRequest {
   /** 週の開始日 (ISO 8601形式、月曜日) */
@@ -19,19 +19,15 @@ export interface WeeklyPlanRequest {
   project_filter?: string[];
   /** 選択された定期タスクID一覧 */
   selected_recurring_task_ids?: string[];
-  /** プロジェクト別時間配分（キー: プロジェクトID, 値: 時間） */
+  /** プロジェクト別配分（キー: プロジェクトID, 値: 割合%） */
   project_allocations?: Record<string, number>;
   /** その他の設定 */
   preferences?: Record<string, unknown>;
-  /** ユーザーからの追加指示 */
-  user_prompt?: string;
-  /** AI優先度付けを使用するか */
-  use_ai_priority?: boolean;
 }
 
 /**
  * タスク計画
- * @description AI計画による個別タスクの割り当て情報
+ * @description 週次計画による個別タスクの割り当て情報
  */
 export interface TaskPlan {
   /** タスクID */
@@ -84,7 +80,7 @@ export interface ConstraintAnalysis {
 
 /**
  * 週次計画レスポンス
- * @description AI週次計画の生成結果
+ * @description 週次計画の生成結果
  */
 export interface WeeklyPlanResponse {
   /** 成功したかどうか */
@@ -95,9 +91,9 @@ export interface WeeklyPlanResponse {
   total_planned_hours: number;
   /** タスク計画一覧 */
   task_plans: TaskPlan[];
-  /** AI推奨事項 */
+  /** 推奨事項 */
   recommendations: string[];
-  /** AIインサイト */
+  /** 最適化インサイト */
   insights: string[];
   /** プロジェクト別配分 */
   project_allocations?: ProjectAllocation[];
@@ -203,7 +199,7 @@ export interface TimeSlot {
  */
 export interface TaskSource {
   /** ソースタイプ */
-  type: 'all_tasks' | 'project' | 'weekly_schedule';
+  type: "all_tasks" | "project" | "weekly_schedule";
   /** プロジェクトID（type='project'の場合） */
   project_id?: string;
   /** 週次スケジュール日付（type='weekly_schedule'の場合） */
@@ -259,7 +255,7 @@ export interface SchedulerConfigControl {
   min: number;
   max: number;
   step: number;
-  visibility: 'essential' | 'tuning' | 'expert';
+  visibility: "essential" | "tuning" | "expert";
   help: string;
 }
 

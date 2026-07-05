@@ -62,15 +62,15 @@ class TestWeeklyTaskSolver:
         solver = WeeklyTaskSolver()
 
         assert solver.openai_client is None
-        assert solver.model == "gpt-5.5"
+        assert solver.model == "deterministic"
         assert solver.context_collector is not None
 
     def test_weekly_task_solver_with_custom_model(self):
-        """Test WeeklyTaskSolver with custom model."""
+        """Test WeeklyTaskSolver ignores legacy OpenAI constructor args."""
         mock_client = Mock()
         solver = WeeklyTaskSolver(openai_client=mock_client, model="gpt-5.4-mini")
 
-        assert solver.openai_client == mock_client
+        assert solver.openai_client is None
         assert solver.model == "gpt-5.4-mini"
 
     def test_heuristic_task_selection_empty_context(self):
@@ -98,7 +98,7 @@ class TestWeeklyTaskSolver:
         )
 
         assert selected_tasks == []
-        assert "Using heuristic task selection (AI unavailable)" in insights
+        assert "Using deterministic heuristic task selection" in insights
 
     def test_heuristic_task_selection_with_tasks(self):
         """Test heuristic task selection with actual tasks."""
@@ -141,7 +141,7 @@ class TestWeeklyTaskSolver:
         # Higher priority task should come first
         assert selected_tasks[0].task_id == "task-1"
         assert selected_tasks[1].task_id == "task-2"
-        assert "Using heuristic task selection (AI unavailable)" in insights
+        assert "Using deterministic heuristic task selection" in insights
 
     def test_calculate_solver_metrics_basic(self):
         """Test basic solver metrics calculation."""
