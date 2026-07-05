@@ -237,14 +237,20 @@ async def generate_weekly_plan(
             week_start_date=request.week_start_date,
             constraints=WeeklyConstraints(
                 total_capacity_hours=request.capacity_hours,
+                daily_max_hours=8.0,
+                deep_work_blocks=2,
                 meeting_buffer_hours=5.0,
                 project_allocations=project_allocations,
+                project_balance_weight=0.7,
+                deadline_weight=0.2,
+                effort_efficiency_weight=0.1,
             ),
             project_filter=request.project_filter,
             selected_recurring_task_ids=getattr(
                 request, "selected_recurring_task_ids", []
             ),
             preferences=request.preferences,
+            user_prompt=None,
         )
 
         task_solver = await WeeklyTaskSolver.create_for_user(UUID(user_id), session)

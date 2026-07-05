@@ -8,7 +8,7 @@ from dataclasses import dataclass, field, fields
 from datetime import UTC, date, datetime, time, timedelta
 from enum import Enum
 from importlib.metadata import PackageNotFoundError, version
-from typing import Any, cast as typing_cast
+from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -1752,9 +1752,7 @@ async def create_daily_schedule(
             session, user_id, task_source, request.date
         )
         db_tasks = [
-            typing_cast(Task, task)
-            for task in source_tasks
-            if not isinstance(task, WeeklyRecurringTask)
+            task for task in source_tasks if not isinstance(task, WeeklyRecurringTask)
         ]
         weekly_recurring_tasks = [
             task for task in source_tasks if isinstance(task, WeeklyRecurringTask)
