@@ -11,6 +11,7 @@ import { AppHeader } from '@/components/layout/app-header';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ContextNoteEditor } from '@/components/notes/context-note-editor';
+import { GoalTaskAssistantDialog } from '@/components/ai/goal-task-assistant-dialog';
 import { useTaskNote } from '@/hooks/use-notes';
 import {
   ArrowLeft,
@@ -23,6 +24,7 @@ import {
   Timer,
   XCircle,
   AlertCircle,
+  Sparkles,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -148,7 +150,7 @@ export default function TaskDetailPage() {
 
         {/* Task Header */}
         <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm mb-6">
-          <div className="flex items-start justify-between mb-4">
+          <div className="flex flex-col gap-4 mb-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
                 {task.title}
@@ -157,9 +159,25 @@ export default function TaskDetailPage() {
                 <p className="text-gray-600 dark:text-gray-400">{task.description}</p>
               )}
             </div>
-            <div className={`flex items-center gap-2 ${statusInfo.color}`}>
-              <StatusIcon className="h-5 w-5" />
-              <span className="font-medium">{statusInfo.label}</span>
+            <div className="flex flex-col items-start gap-2 sm:items-end">
+              <div className={`flex items-center gap-2 ${statusInfo.color}`}>
+                <StatusIcon className="h-5 w-5" />
+                <span className="font-medium">{statusInfo.label}</span>
+              </div>
+              <GoalTaskAssistantDialog
+                projectId={projectId}
+                goalId={goalId}
+                taskId={taskId}
+                mode="split_task"
+                title="AIでタスク分割"
+                defaultMessage="このタスクのノートと説明をもとに、実行しやすい小さなタスクへ分割してください。"
+                onApplied={() => refetchTask()}
+              >
+                <Button variant="outline" size="sm">
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  AIで分割
+                </Button>
+              </GoalTaskAssistantDialog>
             </div>
           </div>
 

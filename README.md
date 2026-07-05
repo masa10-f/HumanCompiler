@@ -113,7 +113,6 @@ SUPABASE_URL="https://YOUR_PROJECT_ID.supabase.co"
 SUPABASE_ANON_KEY="your-actual-anon-key-from-supabase-dashboard"
 SUPABASE_SERVICE_ROLE_KEY="your-actual-service-role-key-from-supabase-dashboard"
 DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@db.YOUR_PROJECT.supabase.co:5432/postgres"
-OPENAI_API_KEY="sk-proj-your-actual-openai-api-key"
 ENVIRONMENT="development"
 ```
 

@@ -30,7 +30,7 @@ class TestWeeklyTaskSolverTaskFiltering:
     @pytest.fixture
     def mock_solver(self):
         """Mock weekly task solver."""
-        return WeeklyTaskSolver(openai_client=None, model="gpt-4")
+        return WeeklyTaskSolver(openai_client=None, model="gpt-5.4-mini")
 
     @pytest.fixture
     def sample_project_setup(self):

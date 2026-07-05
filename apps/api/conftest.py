@@ -26,7 +26,6 @@ os.environ.update(
             "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlc3QiLCJyb2xlIjoic2VydmljZV9yb2xlIiwiaWF0IjoxNjE2NDMyMTAwLCJleHAiOjE5MzE4MDgxMDB9."
             "test"
         ),
-        "OPENAI_API_KEY": "sk-test-key-for-testing-purposes-only",
         "ENVIRONMENT": "test",
         "DEBUG": "true",
         "CORS_ORIGINS": "http://localhost:3000,http://localhost:3001",

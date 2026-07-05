@@ -288,7 +288,6 @@ GitHub Actions automatically run on PRs:
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_ANON_KEY` | Supabase anonymous key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key |
-| `OPENAI_API_KEY` | OpenAI API key |
 | `DATABASE_URL` | PostgreSQL connection string |
 
 See `.env.example` files for complete list.

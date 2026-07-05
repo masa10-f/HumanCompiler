@@ -22,39 +22,25 @@ router = APIRouter(prefix="/api/user", tags=["user-settings"])
 
 
 AVAILABLE_MODELS = {
-    "gpt-5": {
-        "name": "GPT-5",
-        "description": "フラッグシップモデル - 高度推論・エージェント・コーディング",
+    "gpt-5.5": {
+        "name": "GPT-5.5",
+        "description": "最新フラッグシップモデル - 高度推論・エージェント・コーディング",
         "max_context": "400k tokens",
         "max_output": "128k tokens",
         "modalities": ["text", "image_input"],
     },
-    "gpt-5-mini": {
-        "name": "GPT-5 mini",
-        "description": "低コスト・高速 - 明確なタスクに最適",
+    "gpt-5.4-mini": {
+        "name": "GPT-5.4 mini",
+        "description": "高速・低コストのGPT-5.4モデル - 日常的なタスク生成向け",
         "max_context": "400k tokens",
         "max_output": "128k tokens",
         "modalities": ["text", "image_input"],
     },
-    "gpt-5-nano": {
-        "name": "GPT-5 nano",
-        "description": "最小コスト・最速 - 要約・分類など",
+    "gpt-5.4-nano": {
+        "name": "GPT-5.4 nano",
+        "description": "最小コストのGPT-5.4モデル - 軽量な分類・整形向け",
         "max_context": "400k tokens",
         "max_output": "128k tokens",
-        "modalities": ["text", "image_input"],
-    },
-    "gpt-4o": {
-        "name": "GPT-4o",
-        "description": "汎用マルチモーダル - 実績のあるモデル",
-        "max_context": "128k tokens",
-        "max_output": "4k tokens",
-        "modalities": ["text", "image_input"],
-    },
-    "gpt-4o-mini": {
-        "name": "GPT-4o mini",
-        "description": "省コスト運用 - 軽量タスク向け",
-        "max_context": "128k tokens",
-        "max_output": "4k tokens",
         "modalities": ["text"],
     },
 }
@@ -82,11 +68,7 @@ async def validate_openai_api_key(api_key: str) -> bool:
             timeout=10.0,  # Add timeout to prevent hanging
         )
         # Make a lightweight API call to validate the key
-        client.chat.completions.create(
-            model="gpt-3.5-turbo",  # Use a lightweight model for validation
-            messages=[{"role": "system", "content": "ping"}],  # Minimal input
-            max_completion_tokens=1,  # Limit response size
-        )
+        client.models.list()
         return True
     except openai.AuthenticationError:
         # Invalid API key
@@ -107,7 +89,7 @@ def validate_model_choice(model: str) -> bool:
 @router.get("/models")
 async def get_available_models() -> dict:
     """Get list of available OpenAI models with their specifications."""
-    return {"success": True, "models": AVAILABLE_MODELS, "default_model": "gpt-5"}
+    return {"success": True, "models": AVAILABLE_MODELS, "default_model": "gpt-5.5"}
 
 
 @router.get("/settings", response_model=UserSettingsResponse)
@@ -128,7 +110,7 @@ async def get_user_settings(
         return UserSettingsResponse(
             id=UUID("00000000-0000-0000-0000-000000000000"),
             user_id=user_id,
-            openai_model="gpt-5",
+            openai_model="gpt-5.5",
             ai_features_enabled=False,
             has_api_key=False,
             created_at=default_timestamp,
