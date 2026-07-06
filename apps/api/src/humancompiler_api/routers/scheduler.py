@@ -2513,12 +2513,36 @@ async def _apply_project_allocation_filtering(
         selected_tasks = []
 
         for allocation in project_allocations:
-            project_id = str(allocation["project_id"])
+            if not isinstance(allocation, dict):
+                logger.warning(
+                    "Skipping malformed project allocation entry for %s: %s",
+                    date_str,
+                    allocation,
+                )
+                continue
+            project_id_raw = allocation.get("project_id")
+            target_hours_raw = allocation.get("target_hours")
+            if not project_id_raw or target_hours_raw is None:
+                logger.warning(
+                    "Skipping incomplete project allocation entry for %s: %s",
+                    date_str,
+                    allocation,
+                )
+                continue
+            project_id = str(project_id_raw)
             if project_id not in tasks_by_project:
                 continue
 
             project_tasks = tasks_by_project[project_id]
-            target_hours = float(allocation["target_hours"])
+            try:
+                target_hours = float(target_hours_raw)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Skipping project allocation with invalid target_hours for %s: %s",
+                    date_str,
+                    allocation,
+                )
+                continue
 
             # Sort tasks by priority (higher priority first) with stable secondary sort
             # Use task ID hash for deterministic secondary ordering instead of random
