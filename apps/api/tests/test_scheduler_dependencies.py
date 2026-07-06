@@ -2,7 +2,8 @@
 Tests for scheduler dependency constraints.
 """
 
-from datetime import time
+from datetime import datetime, time
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -24,8 +25,11 @@ from humancompiler_api.routers.scheduler import (
     _check_task_dependencies_satisfied_relaxed,
     _batch_check_task_completion_status,
     _batch_check_goal_completion_status,
+    _get_tasks_from_weekly_schedule,
+    weekly_recurring_task_to_scheduler_task,
 )
-from humancompiler_api.models import TaskStatus, GoalStatus
+from humancompiler_api.models import GoalStatus, Task, TaskCategory, TaskStatus
+from humancompiler_api.models import WeeklyRecurringTask
 
 client = TestClient(app)
 
@@ -322,6 +326,184 @@ class TestSchedulerDependencies:
         assert result.success
         assert len(result.assignments) == 1
         assert len(result.unscheduled_tasks) == 0
+
+    def test_weekly_recurring_task_to_scheduler_task(self):
+        """Test weekly recurring task templates become schedulable tasks."""
+        task_id = uuid4()
+        weekly_task = WeeklyRecurringTask(
+            id=task_id,
+            user_id=uuid4(),
+            title="Weekly Study",
+            estimate_hours=Decimal("1.50"),
+            category=TaskCategory.STUDY,
+        )
+
+        scheduler_task = weekly_recurring_task_to_scheduler_task(weekly_task)
+
+        assert scheduler_task.id == str(task_id)
+        assert scheduler_task.title == "Weekly Study"
+        assert scheduler_task.estimate_hours == 1.5
+        assert scheduler_task.kind == TaskKind.STUDY
+        assert scheduler_task.is_weekly_recurring is True
+
+    @pytest.mark.asyncio
+    async def test_weekly_schedule_source_restores_selected_recurring_tasks(self):
+        """Saved weekly schedules restore both regular tasks and recurring tasks."""
+        user_uuid = uuid4()
+        user_id = str(user_uuid)
+        regular_id = uuid4()
+        recurring_id = uuid4()
+        regular_task = MagicMock(spec=Task)
+        regular_task.id = regular_id
+        weekly_task = WeeklyRecurringTask(
+            id=recurring_id,
+            user_id=user_uuid,
+            title="Weekly Review",
+            estimate_hours=Decimal("1.00"),
+            category=TaskCategory.REVIEW,
+        )
+        weekly_schedule = MagicMock()
+        weekly_schedule.schedule_json = {
+            "selected_tasks": [
+                {"task_id": str(regular_id)},
+                {"task_id": str(recurring_id)},
+            ],
+            "project_allocations": [],
+        }
+
+        class ExecResult:
+            def __init__(self, *, first_result=None, all_result=None):
+                self.first_result = first_result
+                self.all_result = all_result or []
+
+            def first(self):
+                return self.first_result
+
+            def all(self):
+                return self.all_result
+
+        class FakeSession:
+            def __init__(self):
+                self.results = iter(
+                    [
+                        ExecResult(first_result=weekly_schedule),
+                        ExecResult(all_result=[regular_task]),
+                        ExecResult(all_result=[weekly_task]),
+                    ]
+                )
+
+            def exec(self, _query):
+                return next(self.results)
+
+        tasks = await _get_tasks_from_weekly_schedule(
+            FakeSession(),
+            user_id,
+            datetime.now().strftime("%Y-%m-%d"),
+        )
+
+        assert tasks == [regular_task, weekly_task]
+
+    @pytest.mark.asyncio
+    async def test_weekly_schedule_source_accepts_legacy_project_allocation_map(self):
+        """Legacy percentage allocation maps keep saved selected tasks usable."""
+        user_uuid = uuid4()
+        user_id = str(user_uuid)
+        regular_id = uuid4()
+        project_id = str(uuid4())
+        regular_task = MagicMock(spec=Task)
+        regular_task.id = regular_id
+        weekly_schedule = MagicMock()
+        weekly_schedule.schedule_json = {
+            "selected_tasks": [{"task_id": str(regular_id)}],
+            "project_allocations": {project_id: 100},
+        }
+
+        class ExecResult:
+            def __init__(self, *, first_result=None, all_result=None):
+                self.first_result = first_result
+                self.all_result = all_result or []
+
+            def first(self):
+                return self.first_result
+
+            def all(self):
+                return self.all_result
+
+        class FakeSession:
+            def __init__(self):
+                self.results = iter(
+                    [
+                        ExecResult(first_result=weekly_schedule),
+                        ExecResult(all_result=[regular_task]),
+                    ]
+                )
+
+            def exec(self, _query):
+                return next(self.results)
+
+        tasks = await _get_tasks_from_weekly_schedule(
+            FakeSession(),
+            user_id,
+            "2025-06-23",
+        )
+
+        assert tasks == [regular_task]
+
+    @pytest.mark.asyncio
+    async def test_weekly_schedule_source_skips_malformed_project_allocations(self):
+        """Malformed allocation entries should not break saved weekly schedules."""
+        user_uuid = uuid4()
+        user_id = str(user_uuid)
+        regular_id = uuid4()
+        project_id = uuid4()
+        regular_task = MagicMock(spec=Task)
+        regular_task.id = regular_id
+        regular_task.goal_id = uuid4()
+        regular_task.estimate_hours = Decimal("1.00")
+        goal = MagicMock()
+        goal.id = regular_task.goal_id
+        goal.project_id = project_id
+        weekly_schedule = MagicMock()
+        weekly_schedule.schedule_json = {
+            "selected_tasks": [{"task_id": str(regular_id)}],
+            "project_allocations": [
+                {"project_id": str(project_id)},
+                {"project_id": str(project_id), "target_hours": "bad"},
+                {"project_id": str(project_id), "target_hours": 2.0},
+            ],
+        }
+
+        class ExecResult:
+            def __init__(self, *, first_result=None, all_result=None):
+                self.first_result = first_result
+                self.all_result = all_result or []
+
+            def first(self):
+                return self.first_result
+
+            def all(self):
+                return self.all_result
+
+        class FakeSession:
+            def __init__(self):
+                self.results = iter(
+                    [
+                        ExecResult(first_result=weekly_schedule),
+                        ExecResult(all_result=[regular_task]),
+                        ExecResult(all_result=[goal]),
+                    ]
+                )
+
+            def exec(self, _query):
+                return next(self.results)
+
+        tasks = await _get_tasks_from_weekly_schedule(
+            FakeSession(),
+            user_id,
+            "2025-06-23",
+        )
+
+        assert tasks == [regular_task]
 
     @patch("humancompiler_api.routers.scheduler._get_task_dependencies")
     @patch("humancompiler_api.routers.scheduler._get_goal_dependencies")

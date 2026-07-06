@@ -160,9 +160,8 @@ solver_config:
 
 ## Current Gaps For Later Phases
 
-- Weekly task selection has not moved to `humancompiler-scheduler` yet because
-  `humancompiler-scheduler>=0.2.0` only exposes Human daily scheduling
-  contracts.
+- Weekly task selection now requires the Scheduler package release that exposes
+  Human weekly selection contracts.
 - The current daily API does not expose unscheduled reasons, score breakdowns,
   or constraint violations.
 - Daily assignments now come from Scheduler timeline blocks, so tasks within

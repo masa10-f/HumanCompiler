@@ -62,15 +62,15 @@ class TestWeeklyTaskSolver:
         solver = WeeklyTaskSolver()
 
         assert solver.openai_client is None
-        assert solver.model == "gpt-5.5"
+        assert solver.model == "deterministic"
         assert solver.context_collector is not None
 
     def test_weekly_task_solver_with_custom_model(self):
-        """Test WeeklyTaskSolver with custom model."""
+        """Test WeeklyTaskSolver ignores legacy OpenAI constructor args."""
         mock_client = Mock()
         solver = WeeklyTaskSolver(openai_client=mock_client, model="gpt-5.4-mini")
 
-        assert solver.openai_client == mock_client
+        assert solver.openai_client is None
         assert solver.model == "gpt-5.4-mini"
 
     def test_heuristic_task_selection_empty_context(self):
@@ -98,7 +98,7 @@ class TestWeeklyTaskSolver:
         )
 
         assert selected_tasks == []
-        assert "Using heuristic task selection (AI unavailable)" in insights
+        assert "Using deterministic heuristic task selection" in insights
 
     def test_heuristic_task_selection_with_tasks(self):
         """Test heuristic task selection with actual tasks."""
@@ -141,7 +141,7 @@ class TestWeeklyTaskSolver:
         # Higher priority task should come first
         assert selected_tasks[0].task_id == "task-1"
         assert selected_tasks[1].task_id == "task-2"
-        assert "Using heuristic task selection (AI unavailable)" in insights
+        assert "Using deterministic heuristic task selection" in insights
 
     def test_calculate_solver_metrics_basic(self):
         """Test basic solver metrics calculation."""
@@ -218,8 +218,8 @@ class TestWeeklyTaskSolver:
         assert metrics["project_distribution"]["proj-1"] == 10.0
 
     @pytest.mark.asyncio
-    async def test_solve_weekly_tasks_fallback(self):
-        """Test solve_weekly_tasks with fallback (no OpenAI client)."""
+    async def test_solve_weekly_tasks_without_openai_client(self):
+        """Test solve_weekly_tasks without an OpenAI client."""
         solver = WeeklyTaskSolver()  # No OpenAI client
 
         # Mock session and context collector
@@ -251,11 +251,50 @@ class TestWeeklyTaskSolver:
         assert response.week_start_date == "2025-08-12"
         assert response.total_allocated_hours == 0.0
         assert len(response.selected_tasks) == 0
-        # New implementation uses OR-Tools instead of heuristic fallback
         assert response.success is True
         assert len(response.optimization_insights) > 0
-        # Should contain OR-Tools optimization message
-        assert any("OR-Tools" in insight for insight in response.optimization_insights)
+        # Should contain external Scheduler backend optimization message
+        assert any(
+            "humancompiler-scheduler" in insight
+            for insight in response.optimization_insights
+        )
+
+    @pytest.mark.asyncio
+    async def test_external_scheduler_response_keeps_task_priority_scale(self):
+        """Selected task plans keep the HumanCompiler 1-5 priority scale."""
+        solver = WeeklyTaskSolver()
+        task = Mock(spec=Task)
+        task.id = "task-1"
+        task.title = "High Priority Task"
+        task.estimate_hours = 1.0
+        task.priority = 1
+        task.due_date = None
+        task.goal_id = None
+
+        context = WeeklyPlanContext(
+            user_id="test-user",
+            week_start_date=date(2025, 8, 12),
+            projects=[],
+            goals=[],
+            tasks=[task],
+            capacity_hours=40.0,
+            preferences={},
+            weekly_recurring_tasks=[],
+            selected_recurring_task_ids=[],
+        )
+
+        selected_tasks, _ = await solver._optimize_with_scheduler_backend(
+            context,
+            WeeklyConstraints(total_capacity_hours=40.0),
+            [],
+            {"task-1": 10.0},
+            None,
+            remaining_hours_map={"task-1": 1.0},
+        )
+
+        assert len(selected_tasks) == 1
+        assert selected_tasks[0].priority == 1
+        assert "score: 10.0" in selected_tasks[0].rationale
 
     def test_analyze_constraints_basic(self):
         """Test constraint analysis."""

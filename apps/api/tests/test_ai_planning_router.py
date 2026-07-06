@@ -14,7 +14,9 @@ from humancompiler_api.routers.ai_planning import (
     analyze_workload,
     suggest_task_priorities,
 )
+from humancompiler_api.ai.models import TaskPlan
 from humancompiler_api.ai_service import WeeklyPlanRequest, WeeklyPlanResponse
+from humancompiler_api.ai.weekly_task_solver import TaskSolverResponse
 
 
 @pytest.fixture
@@ -346,19 +348,34 @@ async def test_suggest_task_priorities_scoring_algorithm(mock_session):
 
 # Original tests that don't use caching
 @pytest.mark.asyncio
-async def test_generate_weekly_plan_success(
-    weekly_plan_request, mock_plan_response, mock_session
-):
+async def test_generate_weekly_plan_success(weekly_plan_request, mock_session):
     """Test successful weekly plan generation"""
-    with patch(
-        "humancompiler_api.routers.ai_planning.WeeklyPlanService"
-    ) as MockService:
-        # Mock the service instance
-        mock_service_instance = Mock()
-        mock_service_instance.generate_weekly_plan = AsyncMock(
-            return_value=mock_plan_response
+    solver_response = TaskSolverResponse(
+        success=True,
+        week_start_date=weekly_plan_request.week_start_date,
+        total_allocated_hours=25.0,
+        project_allocations=[],
+        selected_tasks=[
+            TaskPlan(
+                task_id="task-1",
+                task_title="Task 1",
+                estimated_hours=2.0,
+                priority=8,
+                rationale="Selected by deterministic solver",
+            )
+        ],
+        optimization_insights=["external weekly selection completed"],
+        constraint_analysis={},
+        solver_metrics={},
+        generated_at=datetime.now(),
+    )
+
+    with patch("humancompiler_api.routers.ai_planning.WeeklyTaskSolver") as MockSolver:
+        mock_solver_instance = Mock()
+        mock_solver_instance.solve_weekly_tasks = AsyncMock(
+            return_value=solver_response
         )
-        MockService.return_value = mock_service_instance
+        MockSolver.create_for_user = AsyncMock(return_value=mock_solver_instance)
 
         result = await generate_weekly_plan(
             weekly_plan_request,
@@ -368,7 +385,8 @@ async def test_generate_weekly_plan_success(
 
         assert result.success is True
         assert result.total_planned_hours == 25.0
-        assert "Focus on deep work" in result.recommendations[0]
+        assert result.task_plans[0].task_id == "task-1"
+        assert "external weekly selection" in result.insights[0]
 
 
 @pytest.mark.asyncio

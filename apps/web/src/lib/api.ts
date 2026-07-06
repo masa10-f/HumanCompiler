@@ -1,39 +1,31 @@
-import { supabase } from './supabase';
-import { ApiError, NetworkError, logError } from './errors';
-import { getApiEndpoint, appConfig, safeLog } from './config';
-import { fetchWithFallback } from './fetch-with-fallback';
-import type {
-  Project,
-  ProjectCreate,
-  ProjectUpdate
-} from '@/types/project';
+import { supabase } from "./supabase";
+import { ApiError, NetworkError, logError } from "./errors";
+import { getApiEndpoint, appConfig, safeLog } from "./config";
+import { fetchWithFallback } from "./fetch-with-fallback";
+import type { Project, ProjectCreate, ProjectUpdate } from "@/types/project";
 import type {
   Goal,
   GoalCreate,
   GoalUpdate,
   GoalDependency,
-  GoalDependencyCreate
-} from '@/types/goal';
+  GoalDependencyCreate,
+} from "@/types/goal";
 import type {
   Task,
   TaskCreate,
   TaskUpdate,
-  TaskDependency
-} from '@/types/task';
-import type {
-  Log,
-  LogCreate,
-  LogUpdate
-} from '@/types/log';
+  TaskDependency,
+} from "@/types/task";
+import type { Log, LogCreate, LogUpdate } from "@/types/log";
 import type {
   ProjectProgress,
   GoalProgress,
-  TaskProgress
-} from '@/types/progress';
+  TaskProgress,
+} from "@/types/progress";
 import type {
   ProjectTimelineData,
-  TimelineOverviewData
-} from '@/types/timeline';
+  TimelineOverviewData,
+} from "@/types/timeline";
 import type {
   WeeklyPlanRequest,
   WeeklyPlanResponse,
@@ -47,43 +39,40 @@ import type {
   SlotTemplate,
   SlotTemplateCreate,
   SlotTemplateUpdate,
-  DayOfWeekTemplates
-} from '@/types/ai-planning';
+  DayOfWeekTemplates,
+} from "@/types/ai-planning";
 import type {
   TestAIIntegrationResponse,
   SaveDailyScheduleResponse,
   DailySchedule,
-  TestSchedulerResponse
-} from '@/types/api-responses';
+  TestSchedulerResponse,
+} from "@/types/api-responses";
 import type {
   WeeklyRecurringTask,
   WeeklyRecurringTaskCreate,
-  WeeklyRecurringTaskUpdate
-} from '@/types/weekly-recurring-task';
+  WeeklyRecurringTaskUpdate,
+} from "@/types/weekly-recurring-task";
 import type {
   WorkSession,
   WorkSessionStartRequest,
   WorkSessionCheckoutRequest,
   WorkSessionUpdateRequest,
   WorkSessionResumeRequest,
-} from '@/types/work-session';
+} from "@/types/work-session";
 import type {
   RescheduleSuggestion,
   RescheduleDecision,
   RescheduleDecisionRequest,
-  WorkSessionWithReschedule
-} from '@/types/reschedule';
-import type { SortOptions } from '@/types/sort';
-import type {
-  ContextNote,
-  ContextNoteUpdate
-} from '@/types/context-note';
+  WorkSessionWithReschedule,
+} from "@/types/reschedule";
+import type { SortOptions } from "@/types/sort";
+import type { ContextNote, ContextNoteUpdate } from "@/types/context-note";
 import type {
   QuickTask,
   QuickTaskCreate,
   QuickTaskUpdate,
-  QuickTaskConvertRequest
-} from '@/types/quick-task';
+  QuickTaskConvertRequest,
+} from "@/types/quick-task";
 import type {
   TriageApplyRequest,
   TriageApplyResponse,
@@ -91,9 +80,9 @@ import type {
   TriageCapacitySettingsUpdate,
   TriageItemOverrideRequest,
   TriageRun,
-  TriageRunCreateRequest
-} from '@/types/triage';
-import type { TaskStatus } from '@/types/task';
+  TriageRunCreateRequest,
+} from "@/types/triage";
+import type { TaskStatus } from "@/types/task";
 import type {
   GoalTaskDraftApplyRequest,
   GoalTaskDraftApplyResponse,
@@ -101,21 +90,23 @@ import type {
   GoalTaskDraftJobStatusResponse,
   GoalTaskDraftRequest,
   GoalTaskDraftResponse,
-} from '@/types/ai-drafts';
+} from "@/types/ai-drafts";
 
 export const DEFAULT_TASK_PAGE_LIMIT = 100;
 const AI_DRAFT_REQUEST_TIMEOUT_MS = 30000;
 
-type RawTask = Omit<Task, 'estimate_hours'> & {
+type RawTask = Omit<Task, "estimate_hours"> & {
   estimate_hours: number | string | null | undefined;
 };
 
-const normalizeEstimateHours = (estimateHours: RawTask['estimate_hours']): number => {
-  if (typeof estimateHours === 'number') {
+const normalizeEstimateHours = (
+  estimateHours: RawTask["estimate_hours"],
+): number => {
+  if (typeof estimateHours === "number") {
     return Number.isFinite(estimateHours) ? estimateHours : 0;
   }
 
-  if (typeof estimateHours === 'string') {
+  if (typeof estimateHours === "string") {
     const parsed = Number.parseFloat(estimateHours);
     return Number.isFinite(parsed) ? parsed : 0;
   }
@@ -135,9 +126,9 @@ const ensureHttps = (url: string): string => {
   if (!url) return url;
 
   // Force HTTPS for production API endpoints
-  if (appConfig.security.enforceHttps && url.startsWith('http://')) {
-    const httpsUrl = url.replace('http://', 'https://');
-    safeLog('info', `🔒 ensureHttps: Converting ${url} to ${httpsUrl}`);
+  if (appConfig.security.enforceHttps && url.startsWith("http://")) {
+    const httpsUrl = url.replace("http://", "https://");
+    safeLog("info", `🔒 ensureHttps: Converting ${url} to ${httpsUrl}`);
     return httpsUrl;
   }
 
@@ -153,18 +144,18 @@ type ApiRequestOptions = RequestInit & {
 
 const extractApiErrorMessage = (
   errorData: Record<string, unknown>,
-  fallback: string
+  fallback: string,
 ): string => {
   const detail = errorData.detail;
-  if (typeof detail === 'string') return detail;
-  if (detail && typeof detail === 'object') {
+  if (typeof detail === "string") return detail;
+  if (detail && typeof detail === "object") {
     const nestedDetail = detail as Record<string, unknown>;
-    if (typeof nestedDetail.message === 'string') return nestedDetail.message;
-    if (typeof nestedDetail.detail === 'string') return nestedDetail.detail;
-    if (typeof nestedDetail.error === 'string') return nestedDetail.error;
+    if (typeof nestedDetail.message === "string") return nestedDetail.message;
+    if (typeof nestedDetail.detail === "string") return nestedDetail.detail;
+    if (typeof nestedDetail.error === "string") return nestedDetail.error;
   }
-  if (typeof errorData.message === 'string') return errorData.message;
-  if (typeof errorData.error === 'string') return errorData.error;
+  if (typeof errorData.message === "string") return errorData.message;
+  if (typeof errorData.error === "string") return errorData.error;
   return fallback;
 };
 
@@ -178,73 +169,76 @@ const extractApiErrorMessage = (
 class ApiClient {
   private getBaseURL(): string {
     const url = getApiEndpoint();
-    safeLog('debug', `🔗 ApiClient.getBaseURL() returning: ${url}`);
+    safeLog("debug", `🔗 ApiClient.getBaseURL() returning: ${url}`);
     return url;
   }
 
   private async getAuthHeaders(): Promise<HeadersInit> {
-    safeLog('debug', '🔍 [ApiClient] Getting Supabase session...');
+    safeLog("debug", "🔍 [ApiClient] Getting Supabase session...");
 
     // Try to refresh the session first
-    const { data: { session }, error } = await supabase.auth.getSession();
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
 
     if (error) {
-      safeLog('error', '❌ [ApiClient] Supabase auth error:', error);
-      throw new Error('Authentication error');
+      safeLog("error", "❌ [ApiClient] Supabase auth error:", error);
+      throw new Error("Authentication error");
     }
 
     if (!session?.access_token) {
-      safeLog('error', '❌ [ApiClient] No access token found');
-      throw new Error('User not authenticated');
+      safeLog("error", "❌ [ApiClient] No access token found");
+      throw new Error("User not authenticated");
     }
 
     // Check if token is expired and refresh if needed
     if (session.expires_at && Date.now() / 1000 > session.expires_at - 60) {
-      safeLog('debug', '🔄 [ApiClient] Token expiring soon, refreshing...');
-      const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
+      safeLog("debug", "🔄 [ApiClient] Token expiring soon, refreshing...");
+      const { data: refreshedSession, error: refreshError } =
+        await supabase.auth.refreshSession();
 
       if (refreshError || !refreshedSession.session) {
-        safeLog('error', '❌ [ApiClient] Failed to refresh token:', refreshError);
-        throw new Error('Failed to refresh authentication');
+        safeLog(
+          "error",
+          "❌ [ApiClient] Failed to refresh token:",
+          refreshError,
+        );
+        throw new Error("Failed to refresh authentication");
       }
 
-      safeLog('info', '✅ [ApiClient] Token refreshed successfully');
+      safeLog("info", "✅ [ApiClient] Token refreshed successfully");
       return {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${refreshedSession.session.access_token}`,
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${refreshedSession.session.access_token}`,
       };
     }
 
-    safeLog('debug', '✅ [ApiClient] Auth headers prepared');
+    safeLog("debug", "✅ [ApiClient] Auth headers prepared");
     return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${session.access_token}`,
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
     };
   }
 
   private async request<T>(
     endpoint: string,
-    options: ApiRequestOptions = {}
+    options: ApiRequestOptions = {},
   ): Promise<T> {
-    const {
-      enableFallback,
-      maxRetries,
-      retryDelay,
-      timeout,
-      ...fetchOptions
-    } = options;
+    const { enableFallback, maxRetries, retryDelay, timeout, ...fetchOptions } =
+      options;
     const context = {
       endpoint,
-      method: fetchOptions.method || 'GET',
-      timestamp: new Date()
+      method: fetchOptions.method || "GET",
+      timestamp: new Date(),
     };
 
-    safeLog('debug', '🔍 [ApiClient] Starting request:', context);
+    safeLog("debug", "🔍 [ApiClient] Starting request:", context);
 
     try {
-      safeLog('debug', '🔍 [ApiClient] Getting auth headers...');
+      safeLog("debug", "🔍 [ApiClient] Getting auth headers...");
       const headers = await this.getAuthHeaders();
-      safeLog('debug', '✅ [ApiClient] Auth headers obtained');
+      safeLog("debug", "✅ [ApiClient] Auth headers obtained");
 
       // Use enhanced fetch with fallback
       const response = await fetchWithFallback(endpoint, {
@@ -259,10 +253,10 @@ class ApiClient {
         retryDelay: retryDelay ?? appConfig.api.retryDelay,
       });
 
-      safeLog('debug', '🔍 [ApiClient] Response received:', {
+      safeLog("debug", "🔍 [ApiClient] Response received:", {
         status: response.status,
         statusText: response.statusText,
-        ok: response.ok
+        ok: response.ok,
       });
 
       if (!response.ok) {
@@ -273,7 +267,7 @@ class ApiClient {
           errorData = await response.json();
           errorMessage = extractApiErrorMessage(
             errorData,
-            `HTTP ${response.status}: ${response.statusText}`
+            `HTTP ${response.status}: ${response.statusText}`,
           );
         } catch {
           errorMessage = `HTTP ${response.status}: ${response.statusText}`;
@@ -284,7 +278,7 @@ class ApiClient {
           response.status,
           errorMessage,
           { ...context, statusCode: response.status, responseData: errorData },
-          errorMessage
+          errorMessage,
         );
 
         logError(apiError, context);
@@ -293,13 +287,13 @@ class ApiClient {
 
       // Handle 204 No Content responses
       if (response.status === 204) {
-        safeLog('debug', '✅ [ApiClient] 204 No Content response');
+        safeLog("debug", "✅ [ApiClient] 204 No Content response");
         return {} as T;
       }
 
-      safeLog('debug', '🔍 [ApiClient] Parsing JSON response...');
+      safeLog("debug", "🔍 [ApiClient] Parsing JSON response...");
       const responseData = await response.json();
-      safeLog('debug', '✅ [ApiClient] JSON response parsed successfully');
+      safeLog("debug", "✅ [ApiClient] JSON response parsed successfully");
       return responseData;
     } catch (error) {
       // If it's already an ApiError or NetworkError, re-throw it
@@ -308,12 +302,13 @@ class ApiClient {
       }
 
       // Fallback for unknown errors
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       const unknownError = new ApiError(
         500,
         `Unexpected error: ${errorMessage}`,
         context,
-        '予期しないエラーが発生しました。'
+        "予期しないエラーが発生しました。",
       );
       logError(unknownError, context);
       throw unknownError;
@@ -330,17 +325,21 @@ class ApiClient {
    * @param sortOptions - Sorting configuration
    * @returns Array of Project objects
    */
-  async getProjects(skip: number = 0, limit: number = 20, sortOptions?: SortOptions): Promise<Project[]> {
+  async getProjects(
+    skip: number = 0,
+    limit: number = 20,
+    sortOptions?: SortOptions,
+  ): Promise<Project[]> {
     const params = new URLSearchParams({
       skip: skip.toString(),
       limit: limit.toString(),
     });
 
     if (sortOptions?.sortBy) {
-      params.set('sort_by', sortOptions.sortBy);
+      params.set("sort_by", sortOptions.sortBy);
     }
     if (sortOptions?.sortOrder) {
-      params.set('sort_order', sortOptions.sortOrder);
+      params.set("sort_order", sortOptions.sortOrder);
     }
 
     return this.request<Project[]>(`/api/projects/?${params.toString()}`);
@@ -351,22 +350,25 @@ class ApiClient {
   }
 
   async createProject(projectData: ProjectCreate): Promise<Project> {
-    return this.request<Project>('/api/projects/', {
-      method: 'POST',
+    return this.request<Project>("/api/projects/", {
+      method: "POST",
       body: JSON.stringify(projectData),
     });
   }
 
-  async updateProject(projectId: string, projectData: ProjectUpdate): Promise<Project> {
+  async updateProject(
+    projectId: string,
+    projectData: ProjectUpdate,
+  ): Promise<Project> {
     return this.request<Project>(`/api/projects/${projectId}/`, {
-      method: 'PUT',
+      method: "PUT",
       body: JSON.stringify(projectData),
     });
   }
 
   async deleteProject(projectId: string): Promise<void> {
     return this.request<void>(`/api/projects/${projectId}/`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
   }
 
@@ -381,20 +383,27 @@ class ApiClient {
    * @param sortOptions - Sorting configuration
    * @returns Array of Goal objects
    */
-  async getGoalsByProject(projectId: string, skip: number = 0, limit: number = 20, sortOptions?: SortOptions): Promise<Goal[]> {
+  async getGoalsByProject(
+    projectId: string,
+    skip: number = 0,
+    limit: number = 20,
+    sortOptions?: SortOptions,
+  ): Promise<Goal[]> {
     const params = new URLSearchParams({
       skip: skip.toString(),
       limit: limit.toString(),
     });
 
     if (sortOptions?.sortBy) {
-      params.set('sort_by', sortOptions.sortBy);
+      params.set("sort_by", sortOptions.sortBy);
     }
     if (sortOptions?.sortOrder) {
-      params.set('sort_order', sortOptions.sortOrder);
+      params.set("sort_order", sortOptions.sortOrder);
     }
 
-    return this.request<Goal[]>(`/api/goals/project/${projectId}?${params.toString()}`);
+    return this.request<Goal[]>(
+      `/api/goals/project/${projectId}?${params.toString()}`,
+    );
   }
 
   async getGoal(goalId: string): Promise<Goal> {
@@ -402,22 +411,22 @@ class ApiClient {
   }
 
   async createGoal(goalData: GoalCreate): Promise<Goal> {
-    return this.request<Goal>('/api/goals/', {
-      method: 'POST',
+    return this.request<Goal>("/api/goals/", {
+      method: "POST",
       body: JSON.stringify(goalData),
     });
   }
 
   async updateGoal(goalId: string, goalData: GoalUpdate): Promise<Goal> {
     return this.request<Goal>(`/api/goals/${goalId}/`, {
-      method: 'PUT',
+      method: "PUT",
       body: JSON.stringify(goalData),
     });
   }
 
   async deleteGoal(goalId: string): Promise<void> {
     return this.request<void>(`/api/goals/${goalId}/`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
   }
 
@@ -429,20 +438,24 @@ class ApiClient {
    * @param dependencyData - Dependency creation data
    * @returns Created GoalDependency object
    */
-  async addGoalDependency(dependencyData: GoalDependencyCreate): Promise<GoalDependency> {
-    return this.request<GoalDependency>('/api/goal-dependencies/', {
-      method: 'POST',
+  async addGoalDependency(
+    dependencyData: GoalDependencyCreate,
+  ): Promise<GoalDependency> {
+    return this.request<GoalDependency>("/api/goal-dependencies/", {
+      method: "POST",
       body: JSON.stringify(dependencyData),
     });
   }
 
   async getGoalDependencies(goalId: string): Promise<GoalDependency[]> {
-    return this.request<GoalDependency[]>(`/api/goal-dependencies/goal/${goalId}/`);
+    return this.request<GoalDependency[]>(
+      `/api/goal-dependencies/goal/${goalId}/`,
+    );
   }
 
   async deleteGoalDependency(dependencyId: string): Promise<void> {
     return this.request<void>(`/api/goal-dependencies/${dependencyId}/`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
   }
 
@@ -457,37 +470,51 @@ class ApiClient {
    * @param sortOptions - Sorting configuration
    * @returns Array of Task objects
    */
-  async getTasksByGoal(goalId: string, skip: number = 0, limit: number = DEFAULT_TASK_PAGE_LIMIT, sortOptions?: SortOptions): Promise<Task[]> {
+  async getTasksByGoal(
+    goalId: string,
+    skip: number = 0,
+    limit: number = DEFAULT_TASK_PAGE_LIMIT,
+    sortOptions?: SortOptions,
+  ): Promise<Task[]> {
     const params = new URLSearchParams({
       skip: skip.toString(),
       limit: limit.toString(),
     });
 
     if (sortOptions?.sortBy) {
-      params.set('sort_by', sortOptions.sortBy);
+      params.set("sort_by", sortOptions.sortBy);
     }
     if (sortOptions?.sortOrder) {
-      params.set('sort_order', sortOptions.sortOrder);
+      params.set("sort_order", sortOptions.sortOrder);
     }
 
-    const tasks = await this.request<RawTask[]>(`/api/tasks/goal/${goalId}?${params.toString()}`);
+    const tasks = await this.request<RawTask[]>(
+      `/api/tasks/goal/${goalId}?${params.toString()}`,
+    );
     return normalizeTasks(tasks);
   }
 
-  async getTasksByProject(projectId: string, skip: number = 0, limit: number = DEFAULT_TASK_PAGE_LIMIT, sortOptions?: SortOptions): Promise<Task[]> {
+  async getTasksByProject(
+    projectId: string,
+    skip: number = 0,
+    limit: number = DEFAULT_TASK_PAGE_LIMIT,
+    sortOptions?: SortOptions,
+  ): Promise<Task[]> {
     const params = new URLSearchParams({
       skip: skip.toString(),
       limit: limit.toString(),
     });
 
     if (sortOptions?.sortBy) {
-      params.set('sort_by', sortOptions.sortBy);
+      params.set("sort_by", sortOptions.sortBy);
     }
     if (sortOptions?.sortOrder) {
-      params.set('sort_order', sortOptions.sortOrder);
+      params.set("sort_order", sortOptions.sortOrder);
     }
 
-    const tasks = await this.request<RawTask[]>(`/api/tasks/project/${projectId}?${params.toString()}`);
+    const tasks = await this.request<RawTask[]>(
+      `/api/tasks/project/${projectId}?${params.toString()}`,
+    );
     return normalizeTasks(tasks);
   }
 
@@ -497,8 +524,8 @@ class ApiClient {
   }
 
   async createTask(taskData: TaskCreate): Promise<Task> {
-    const task = await this.request<RawTask>('/api/tasks/', {
-      method: 'POST',
+    const task = await this.request<RawTask>("/api/tasks/", {
+      method: "POST",
       body: JSON.stringify(taskData),
     });
     return normalizeTask(task);
@@ -506,7 +533,7 @@ class ApiClient {
 
   async updateTask(taskId: string, taskData: TaskUpdate): Promise<Task> {
     const task = await this.request<RawTask>(`/api/tasks/${taskId}/`, {
-      method: 'PUT',
+      method: "PUT",
       body: JSON.stringify(taskData),
     });
     return normalizeTask(task);
@@ -514,7 +541,7 @@ class ApiClient {
 
   async deleteTask(taskId: string): Promise<void> {
     return this.request<void>(`/api/tasks/${taskId}/`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
   }
 
@@ -527,9 +554,12 @@ class ApiClient {
    * @param dependsOnTaskId - The prerequisite task UUID
    * @returns Created TaskDependency object
    */
-  async addTaskDependency(taskId: string, dependsOnTaskId: string): Promise<TaskDependency> {
+  async addTaskDependency(
+    taskId: string,
+    dependsOnTaskId: string,
+  ): Promise<TaskDependency> {
     return this.request<TaskDependency>(`/api/tasks/${taskId}/dependencies/`, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({
         depends_on_task_id: dependsOnTaskId,
       }),
@@ -540,10 +570,16 @@ class ApiClient {
     return this.request<TaskDependency[]>(`/api/tasks/${taskId}/dependencies/`);
   }
 
-  async deleteTaskDependency(taskId: string, dependencyId: string): Promise<void> {
-    return this.request<void>(`/api/tasks/${taskId}/dependencies/${dependencyId}/`, {
-      method: 'DELETE',
-    });
+  async deleteTaskDependency(
+    taskId: string,
+    dependencyId: string,
+  ): Promise<void> {
+    return this.request<void>(
+      `/api/tasks/${taskId}/dependencies/${dependencyId}/`,
+      {
+        method: "DELETE",
+      },
+    );
   }
 
   // === AI Planning API methods ===
@@ -554,27 +590,51 @@ class ApiClient {
    * @param planRequest - Weekly plan request configuration
    * @returns Optimized weekly plan response
    */
-  async generateWeeklyPlan(planRequest: WeeklyPlanRequest): Promise<WeeklyPlanResponse> {
-    // Use the new OR-Tools weekly task solver instead of legacy weekly-plan
+  async generateWeeklyPlan(
+    planRequest: WeeklyPlanRequest,
+  ): Promise<WeeklyPlanResponse> {
+    const meetingBufferHours = 5;
+    const availableHours = Math.max(
+      0,
+      planRequest.capacity_hours - meetingBufferHours,
+    );
+    const projectAllocations = Object.entries(
+      planRequest.project_allocations || {},
+    ).map(([projectId, percentage]) => {
+      const priorityWeight = Number(percentage) / 100;
+      const targetHours = availableHours * priorityWeight;
+      return {
+        project_id: projectId,
+        project_title: projectId,
+        target_hours: targetHours,
+        max_hours: targetHours * 1.5,
+        priority_weight: priorityWeight,
+      };
+    });
+
     const solverRequest = {
       week_start_date: planRequest.week_start_date,
       constraints: {
         total_capacity_hours: planRequest.capacity_hours,
+        meeting_buffer_hours: meetingBufferHours,
+        project_allocations: projectAllocations,
         deadline_weight: 0.4,
         project_balance_weight: 0.3,
         effort_efficiency_weight: 0.3,
       },
       project_filter: planRequest.project_filter,
-      selected_recurring_task_ids: planRequest.selected_recurring_task_ids || [],
+      selected_recurring_task_ids:
+        planRequest.selected_recurring_task_ids || [],
       preferences: planRequest.preferences || {},
-      user_prompt: planRequest.user_prompt,
-      use_ai_priority: planRequest.use_ai_priority || false,
     };
 
-    const solverResponse = await this.request<WeeklyScheduleData>('/api/ai/weekly-task-solver', {
-      method: 'POST',
-      body: JSON.stringify(solverRequest),
-    });
+    const solverResponse = await this.request<WeeklyScheduleData>(
+      "/api/ai/weekly-task-solver",
+      {
+        method: "POST",
+        body: JSON.stringify(solverRequest),
+      },
+    );
 
     // Convert TaskSolverResponse to WeeklyPlanResponse format for compatibility
     return {
@@ -593,27 +653,31 @@ class ApiClient {
 
   async analyzeWorkload(projectIds?: string[]): Promise<WorkloadAnalysis> {
     const body = projectIds ? { project_ids: projectIds } : {};
-    return this.request<WorkloadAnalysis>('/api/ai/analyze-workload', {
-      method: 'POST',
+    return this.request<WorkloadAnalysis>("/api/ai/analyze-workload", {
+      method: "POST",
       body: JSON.stringify(body),
     });
   }
 
-  async suggestTaskPriorities(projectId?: string): Promise<PrioritySuggestions> {
+  async suggestTaskPriorities(
+    projectId?: string,
+  ): Promise<PrioritySuggestions> {
     const body = projectId ? { project_id: projectId } : {};
-    return this.request<PrioritySuggestions>('/api/ai/suggest-priorities', {
-      method: 'POST',
+    return this.request<PrioritySuggestions>("/api/ai/suggest-priorities", {
+      method: "POST",
       body: JSON.stringify(body),
     });
   }
 
   async testAIIntegration(): Promise<TestAIIntegrationResponse> {
-    return this.request<TestAIIntegrationResponse>('/api/ai/weekly-plan/test');
+    return this.request<TestAIIntegrationResponse>("/api/ai/weekly-plan/test");
   }
 
-  async generateGoalTaskDraft(request: GoalTaskDraftRequest): Promise<GoalTaskDraftResponse> {
-    return this.request<GoalTaskDraftResponse>('/api/ai/goal-task-drafts', {
-      method: 'POST',
+  async generateGoalTaskDraft(
+    request: GoalTaskDraftRequest,
+  ): Promise<GoalTaskDraftResponse> {
+    return this.request<GoalTaskDraftResponse>("/api/ai/goal-task-drafts", {
+      method: "POST",
       body: JSON.stringify(request),
       enableFallback: false,
       maxRetries: 1,
@@ -621,61 +685,75 @@ class ApiClient {
     });
   }
 
-  async startGoalTaskDraftJob(request: GoalTaskDraftRequest): Promise<GoalTaskDraftJobResponse> {
-    return this.request<GoalTaskDraftJobResponse>('/api/ai/goal-task-draft-jobs', {
-      method: 'POST',
-      body: JSON.stringify(request),
-      enableFallback: false,
-      maxRetries: 1,
-      timeout: AI_DRAFT_REQUEST_TIMEOUT_MS,
-    });
+  async startGoalTaskDraftJob(
+    request: GoalTaskDraftRequest,
+  ): Promise<GoalTaskDraftJobResponse> {
+    return this.request<GoalTaskDraftJobResponse>(
+      "/api/ai/goal-task-draft-jobs",
+      {
+        method: "POST",
+        body: JSON.stringify(request),
+        enableFallback: false,
+        maxRetries: 1,
+        timeout: AI_DRAFT_REQUEST_TIMEOUT_MS,
+      },
+    );
   }
 
-  async getGoalTaskDraftJob(responseId: string): Promise<GoalTaskDraftJobStatusResponse> {
+  async getGoalTaskDraftJob(
+    responseId: string,
+  ): Promise<GoalTaskDraftJobStatusResponse> {
     return this.request<GoalTaskDraftJobStatusResponse>(
       `/api/ai/goal-task-draft-jobs/${encodeURIComponent(responseId)}`,
       {
         enableFallback: false,
         maxRetries: 1,
         timeout: AI_DRAFT_REQUEST_TIMEOUT_MS,
-      }
+      },
     );
   }
 
-  async applyGoalTaskDraft(request: GoalTaskDraftApplyRequest): Promise<GoalTaskDraftApplyResponse> {
-    return this.request<GoalTaskDraftApplyResponse>('/api/ai/apply-goal-task-draft', {
-      method: 'POST',
-      body: JSON.stringify(request),
-    });
+  async applyGoalTaskDraft(
+    request: GoalTaskDraftApplyRequest,
+  ): Promise<GoalTaskDraftApplyResponse> {
+    return this.request<GoalTaskDraftApplyResponse>(
+      "/api/ai/apply-goal-task-draft",
+      {
+        method: "POST",
+        body: JSON.stringify(request),
+      },
+    );
   }
 
   // === Capacity Triage API methods ===
 
   async getTriageSettings(): Promise<TriageCapacitySettings> {
-    return this.request<TriageCapacitySettings>('/api/triage/settings');
+    return this.request<TriageCapacitySettings>("/api/triage/settings");
   }
 
-  async updateTriageSettings(settings: TriageCapacitySettingsUpdate): Promise<TriageCapacitySettings> {
-    return this.request<TriageCapacitySettings>('/api/triage/settings', {
-      method: 'PUT',
+  async updateTriageSettings(
+    settings: TriageCapacitySettingsUpdate,
+  ): Promise<TriageCapacitySettings> {
+    return this.request<TriageCapacitySettings>("/api/triage/settings", {
+      method: "PUT",
       body: JSON.stringify(settings),
     });
   }
 
   async createTriageRun(request?: TriageRunCreateRequest): Promise<TriageRun> {
     const options: RequestInit = {
-      method: 'POST',
+      method: "POST",
     };
     if (request !== undefined) {
       options.body = JSON.stringify(request);
     }
-    return this.request<TriageRun>('/api/triage/runs', {
+    return this.request<TriageRun>("/api/triage/runs", {
       ...options,
     });
   }
 
   async getLatestTriageRun(): Promise<TriageRun | null> {
-    return this.request<TriageRun | null>('/api/triage/runs/latest');
+    return this.request<TriageRun | null>("/api/triage/runs/latest");
   }
 
   async getTriageRun(runId: string): Promise<TriageRun> {
@@ -685,19 +763,28 @@ class ApiClient {
   async overrideTriageItem(
     runId: string,
     itemId: string,
-    request: TriageItemOverrideRequest
+    request: TriageItemOverrideRequest,
   ): Promise<TriageRun> {
-    return this.request<TriageRun>(`/api/triage/runs/${runId}/items/${itemId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(request),
-    });
+    return this.request<TriageRun>(
+      `/api/triage/runs/${runId}/items/${itemId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      },
+    );
   }
 
-  async applyTriageRun(runId: string, request: TriageApplyRequest): Promise<TriageApplyResponse> {
-    return this.request<TriageApplyResponse>(`/api/triage/runs/${runId}/apply`, {
-      method: 'POST',
-      body: JSON.stringify(request),
-    });
+  async applyTriageRun(
+    runId: string,
+    request: TriageApplyRequest,
+  ): Promise<TriageApplyResponse> {
+    return this.request<TriageApplyResponse>(
+      `/api/triage/runs/${runId}/apply`,
+      {
+        method: "POST",
+        body: JSON.stringify(request),
+      },
+    );
   }
 
   // === Scheduling API methods ===
@@ -708,16 +795,20 @@ class ApiClient {
    * @param scheduleRequest - Schedule optimization request
    * @returns Optimized schedule result
    */
-  async optimizeDailySchedule(scheduleRequest: ScheduleRequest): Promise<ScheduleResult> {
-    return this.request<ScheduleResult>('/api/schedule/daily', {
-      method: 'POST',
+  async optimizeDailySchedule(
+    scheduleRequest: ScheduleRequest,
+  ): Promise<ScheduleResult> {
+    return this.request<ScheduleResult>("/api/schedule/daily", {
+      method: "POST",
       body: JSON.stringify(scheduleRequest),
     });
   }
 
-  async saveDailySchedule(scheduleData: ScheduleResult & { date: string; generated_at: string }): Promise<SaveDailyScheduleResponse> {
-    return this.request<SaveDailyScheduleResponse>('/api/schedule/daily/save', {
-      method: 'POST',
+  async saveDailySchedule(
+    scheduleData: ScheduleResult & { date: string; generated_at: string },
+  ): Promise<SaveDailyScheduleResponse> {
+    return this.request<SaveDailyScheduleResponse>("/api/schedule/daily/save", {
+      method: "POST",
       body: JSON.stringify(scheduleData),
     });
   }
@@ -726,24 +817,33 @@ class ApiClient {
     return this.request<DailySchedule>(`/api/schedule/daily/${date}/`);
   }
 
-  async listDailySchedules(skip?: number, limit?: number): Promise<DailySchedule[]> {
+  async listDailySchedules(
+    skip?: number,
+    limit?: number,
+  ): Promise<DailySchedule[]> {
     const params = new URLSearchParams();
-    if (skip !== undefined) params.append('skip', skip.toString());
-    if (limit !== undefined) params.append('limit', limit.toString());
+    if (skip !== undefined) params.append("skip", skip.toString());
+    if (limit !== undefined) params.append("limit", limit.toString());
 
-    return this.request<DailySchedule[]>(`/api/schedule/daily/list?${params.toString()}`);
+    return this.request<DailySchedule[]>(
+      `/api/schedule/daily/list?${params.toString()}`,
+    );
   }
 
   async testScheduler(): Promise<TestSchedulerResponse> {
-    return this.request<TestSchedulerResponse>('/api/schedule/test');
+    return this.request<TestSchedulerResponse>("/api/schedule/test");
   }
 
   async getSchedulerTuningConfig(): Promise<SchedulerTuningConfig> {
-    return this.request<SchedulerTuningConfig>('/api/schedule/tuning/config');
+    return this.request<SchedulerTuningConfig>("/api/schedule/tuning/config");
   }
 
-  async getWeeklyScheduleOptions(): Promise<import('@/types/ai-planning').WeeklyScheduleOption[]> {
-    return this.request<import('@/types/ai-planning').WeeklyScheduleOption[]>('/api/schedule/weekly-schedule-options');
+  async getWeeklyScheduleOptions(): Promise<
+    import("@/types/ai-planning").WeeklyScheduleOption[]
+  > {
+    return this.request<import("@/types/ai-planning").WeeklyScheduleOption[]>(
+      "/api/schedule/weekly-schedule-options",
+    );
   }
 
   // === Log API methods ===
@@ -756,16 +856,28 @@ class ApiClient {
    * @param limit - Maximum results (default: 20)
    * @returns Array of Log objects
    */
-  async getLogsByTask(taskId: string, skip: number = 0, limit: number = 20): Promise<Log[]> {
-    return this.request<Log[]>(`/api/logs/task/${taskId}?skip=${skip}&limit=${limit}`);
+  async getLogsByTask(
+    taskId: string,
+    skip: number = 0,
+    limit: number = 20,
+  ): Promise<Log[]> {
+    return this.request<Log[]>(
+      `/api/logs/task/${taskId}?skip=${skip}&limit=${limit}`,
+    );
   }
 
-  async getLogsBatch(taskIds: string[], skip: number = 0, limit: number = 20): Promise<Record<string, Log[]>> {
+  async getLogsBatch(
+    taskIds: string[],
+    skip: number = 0,
+    limit: number = 20,
+  ): Promise<Record<string, Log[]>> {
     if (taskIds.length === 0) {
       return {};
     }
-    const taskIdsParam = taskIds.join(',');
-    return this.request<Record<string, Log[]>>(`/api/logs/batch?task_ids=${taskIdsParam}&skip=${skip}&limit=${limit}`);
+    const taskIdsParam = taskIds.join(",");
+    return this.request<Record<string, Log[]>>(
+      `/api/logs/batch?task_ids=${taskIdsParam}&skip=${skip}&limit=${limit}`,
+    );
   }
 
   async getLog(logId: string): Promise<Log> {
@@ -773,22 +885,22 @@ class ApiClient {
   }
 
   async createLog(logData: LogCreate): Promise<Log> {
-    return this.request<Log>('/api/logs/', {
-      method: 'POST',
+    return this.request<Log>("/api/logs/", {
+      method: "POST",
       body: JSON.stringify(logData),
     });
   }
 
   async updateLog(logId: string, logData: LogUpdate): Promise<Log> {
     return this.request<Log>(`/api/logs/${logId}/`, {
-      method: 'PUT',
+      method: "PUT",
       body: JSON.stringify(logData),
     });
   }
 
   async deleteLog(logId: string): Promise<void> {
     return this.request<void>(`/api/logs/${logId}/`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
   }
 
@@ -821,17 +933,27 @@ class ApiClient {
    * @param limit - Maximum results (default: 30)
    * @returns Array of saved weekly schedules
    */
-  async getWeeklySchedules(skip = 0, limit = 30): Promise<SavedWeeklySchedule[]> {
-    return this.request<SavedWeeklySchedule[]>(`/api/weekly-schedule/list?skip=${skip}&limit=${limit}`);
+  async getWeeklySchedules(
+    skip = 0,
+    limit = 30,
+  ): Promise<SavedWeeklySchedule[]> {
+    return this.request<SavedWeeklySchedule[]>(
+      `/api/weekly-schedule/list?skip=${skip}&limit=${limit}`,
+    );
   }
 
   async getWeeklySchedule(weekStartDate: string): Promise<SavedWeeklySchedule> {
-    return this.request<SavedWeeklySchedule>(`/api/weekly-schedule/${weekStartDate}/`);
+    return this.request<SavedWeeklySchedule>(
+      `/api/weekly-schedule/${weekStartDate}/`,
+    );
   }
 
-  async saveWeeklySchedule(weekStartDate: string, scheduleData: any): Promise<SavedWeeklySchedule> {
-    return this.request<SavedWeeklySchedule>('/api/weekly-schedule/save', {
-      method: 'POST',
+  async saveWeeklySchedule(
+    weekStartDate: string,
+    scheduleData: any,
+  ): Promise<SavedWeeklySchedule> {
+    return this.request<SavedWeeklySchedule>("/api/weekly-schedule/save", {
+      method: "POST",
       body: JSON.stringify({
         week_start_date: weekStartDate,
         schedule_data: scheduleData,
@@ -839,12 +961,16 @@ class ApiClient {
     });
   }
 
-  async deleteWeeklySchedule(weekStartDate: string): Promise<{ message: string }> {
-    return this.request<{ message: string }>(`/api/weekly-schedule/${weekStartDate}/`, {
-      method: 'DELETE',
-    });
+  async deleteWeeklySchedule(
+    weekStartDate: string,
+  ): Promise<{ message: string }> {
+    return this.request<{ message: string }>(
+      `/api/weekly-schedule/${weekStartDate}/`,
+      {
+        method: "DELETE",
+      },
+    );
   }
-
 
   // === Timeline API methods ===
 
@@ -865,25 +991,34 @@ class ApiClient {
     endDate?: string,
     timeUnit?: string,
     weeklyWorkHours?: number,
-    sortOptions?: SortOptions
+    sortOptions?: SortOptions,
   ): Promise<ProjectTimelineData> {
     const params = new URLSearchParams();
-    if (startDate) params.append('start_date', startDate);
-    if (endDate) params.append('end_date', endDate);
-    if (timeUnit) params.append('time_unit', timeUnit);
-    if (weeklyWorkHours !== undefined) params.append('weekly_work_hours', weeklyWorkHours.toString());
-    if (sortOptions?.sortBy) params.append('sort_by', sortOptions.sortBy);
-    if (sortOptions?.sortOrder) params.append('sort_order', sortOptions.sortOrder);
+    if (startDate) params.append("start_date", startDate);
+    if (endDate) params.append("end_date", endDate);
+    if (timeUnit) params.append("time_unit", timeUnit);
+    if (weeklyWorkHours !== undefined)
+      params.append("weekly_work_hours", weeklyWorkHours.toString());
+    if (sortOptions?.sortBy) params.append("sort_by", sortOptions.sortBy);
+    if (sortOptions?.sortOrder)
+      params.append("sort_order", sortOptions.sortOrder);
 
-    return this.request<ProjectTimelineData>(`/api/timeline/projects/${projectId}/?${params.toString()}`);
+    return this.request<ProjectTimelineData>(
+      `/api/timeline/projects/${projectId}/?${params.toString()}`,
+    );
   }
 
-  async getTimelineOverview(startDate?: string, endDate?: string): Promise<TimelineOverviewData> {
+  async getTimelineOverview(
+    startDate?: string,
+    endDate?: string,
+  ): Promise<TimelineOverviewData> {
     const params = new URLSearchParams();
-    if (startDate) params.append('start_date', startDate);
-    if (endDate) params.append('end_date', endDate);
+    if (startDate) params.append("start_date", startDate);
+    if (endDate) params.append("end_date", endDate);
 
-    return this.request<TimelineOverviewData>(`/api/timeline/overview?${params.toString()}`);
+    return this.request<TimelineOverviewData>(
+      `/api/timeline/overview?${params.toString()}`,
+    );
   }
 
   // === Reports API methods ===
@@ -895,15 +1030,21 @@ class ApiClient {
    * @param projectIds - Optional project IDs to filter
    * @returns Weekly report data
    */
-  async generateWeeklyReport(weekStartDate: string, projectIds?: string[]): Promise<import('@/types/reports').WeeklyReportResponse> {
+  async generateWeeklyReport(
+    weekStartDate: string,
+    projectIds?: string[],
+  ): Promise<import("@/types/reports").WeeklyReportResponse> {
     const body: any = { week_start_date: weekStartDate };
     if (projectIds && projectIds.length > 0) {
       body.project_ids = projectIds;
     }
-    return this.request<import('@/types/reports').WeeklyReportResponse>('/api/reports/weekly', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
+    return this.request<import("@/types/reports").WeeklyReportResponse>(
+      "/api/reports/weekly",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    );
   }
 
   // === Weekly Recurring Tasks ===
@@ -921,41 +1062,50 @@ class ApiClient {
     skip: number = 0,
     limit: number = 20,
     category?: string,
-    isActive?: boolean
+    isActive?: boolean,
   ): Promise<WeeklyRecurringTask[]> {
     const params = new URLSearchParams();
-    if (skip) params.append('skip', skip.toString());
-    if (limit) params.append('limit', limit.toString());
-    if (category) params.append('category', category);
-    if (isActive !== undefined) params.append('is_active', isActive.toString());
+    if (skip) params.append("skip", skip.toString());
+    if (limit) params.append("limit", limit.toString());
+    if (category) params.append("category", category);
+    if (isActive !== undefined) params.append("is_active", isActive.toString());
 
-    return this.request<WeeklyRecurringTask[]>(`/api/weekly-recurring-tasks?${params.toString()}`);
+    return this.request<WeeklyRecurringTask[]>(
+      `/api/weekly-recurring-tasks?${params.toString()}`,
+    );
   }
 
   async getWeeklyRecurringTask(taskId: string): Promise<WeeklyRecurringTask> {
-    return this.request<WeeklyRecurringTask>(`/api/weekly-recurring-tasks/${taskId}/`);
+    return this.request<WeeklyRecurringTask>(
+      `/api/weekly-recurring-tasks/${taskId}/`,
+    );
   }
 
-  async createWeeklyRecurringTask(taskData: WeeklyRecurringTaskCreate): Promise<WeeklyRecurringTask> {
-    return this.request<WeeklyRecurringTask>('/api/weekly-recurring-tasks', {
-      method: 'POST',
+  async createWeeklyRecurringTask(
+    taskData: WeeklyRecurringTaskCreate,
+  ): Promise<WeeklyRecurringTask> {
+    return this.request<WeeklyRecurringTask>("/api/weekly-recurring-tasks", {
+      method: "POST",
       body: JSON.stringify(taskData),
     });
   }
 
   async updateWeeklyRecurringTask(
     taskId: string,
-    taskData: WeeklyRecurringTaskUpdate
+    taskData: WeeklyRecurringTaskUpdate,
   ): Promise<WeeklyRecurringTask> {
-    return this.request<WeeklyRecurringTask>(`/api/weekly-recurring-tasks/${taskId}/`, {
-      method: 'PUT',
-      body: JSON.stringify(taskData),
-    });
+    return this.request<WeeklyRecurringTask>(
+      `/api/weekly-recurring-tasks/${taskId}/`,
+      {
+        method: "PUT",
+        body: JSON.stringify(taskData),
+      },
+    );
   }
 
   async deleteWeeklyRecurringTask(taskId: string): Promise<void> {
     return this.request<void>(`/api/weekly-recurring-tasks/${taskId}/`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
   }
 
@@ -969,8 +1119,8 @@ class ApiClient {
    * @returns The created work session
    */
   async startWorkSession(data: WorkSessionStartRequest): Promise<WorkSession> {
-    return this.request<WorkSession>('/api/work-sessions/start', {
-      method: 'POST',
+    return this.request<WorkSession>("/api/work-sessions/start", {
+      method: "POST",
       body: JSON.stringify(data),
     });
   }
@@ -982,11 +1132,16 @@ class ApiClient {
    * @param data - Checkout data including decision and optional KPT
    * @returns The updated session with generated log
    */
-  async checkoutWorkSession(data: WorkSessionCheckoutRequest): Promise<WorkSessionWithReschedule> {
-    return this.request<WorkSessionWithReschedule>('/api/work-sessions/checkout', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  async checkoutWorkSession(
+    data: WorkSessionCheckoutRequest,
+  ): Promise<WorkSessionWithReschedule> {
+    return this.request<WorkSessionWithReschedule>(
+      "/api/work-sessions/checkout",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+    );
   }
 
   // === Reschedule API (Issue #227) ===
@@ -997,7 +1152,7 @@ class ApiClient {
    * @returns Array of pending reschedule suggestions
    */
   async getPendingRescheduleSuggestions(): Promise<RescheduleSuggestion[]> {
-    return this.request<RescheduleSuggestion[]>('/api/reschedule/suggestions');
+    return this.request<RescheduleSuggestion[]>("/api/reschedule/suggestions");
   }
 
   /**
@@ -1006,8 +1161,12 @@ class ApiClient {
    * @param suggestionId - The suggestion ID
    * @returns The reschedule suggestion
    */
-  async getRescheduleSuggestion(suggestionId: string): Promise<RescheduleSuggestion> {
-    return this.request<RescheduleSuggestion>(`/api/reschedule/suggestions/${suggestionId}`);
+  async getRescheduleSuggestion(
+    suggestionId: string,
+  ): Promise<RescheduleSuggestion> {
+    return this.request<RescheduleSuggestion>(
+      `/api/reschedule/suggestions/${suggestionId}`,
+    );
   }
 
   /**
@@ -1019,15 +1178,15 @@ class ApiClient {
    */
   async acceptRescheduleSuggestion(
     suggestionId: string,
-    reason?: string
+    reason?: string,
   ): Promise<RescheduleSuggestion> {
     const body: RescheduleDecisionRequest = reason ? { reason } : {};
     return this.request<RescheduleSuggestion>(
       `/api/reschedule/suggestions/${suggestionId}/accept`,
       {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify(body),
-      }
+      },
     );
   }
 
@@ -1040,15 +1199,15 @@ class ApiClient {
    */
   async rejectRescheduleSuggestion(
     suggestionId: string,
-    reason?: string
+    reason?: string,
   ): Promise<RescheduleSuggestion> {
     const body: RescheduleDecisionRequest = reason ? { reason } : {};
     return this.request<RescheduleSuggestion>(
       `/api/reschedule/suggestions/${suggestionId}/reject`,
       {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify(body),
-      }
+      },
     );
   }
 
@@ -1058,8 +1217,12 @@ class ApiClient {
    * @param limit - Maximum results (default: 50)
    * @returns Array of reschedule decisions
    */
-  async getRescheduleDecisionHistory(limit: number = 50): Promise<RescheduleDecision[]> {
-    return this.request<RescheduleDecision[]>(`/api/reschedule/decisions?limit=${limit}`);
+  async getRescheduleDecisionHistory(
+    limit: number = 50,
+  ): Promise<RescheduleDecision[]> {
+    return this.request<RescheduleDecision[]>(
+      `/api/reschedule/decisions?limit=${limit}`,
+    );
   }
 
   /**
@@ -1068,7 +1231,7 @@ class ApiClient {
    * @returns The active session or null if none exists
    */
   async getCurrentWorkSession(): Promise<WorkSession | null> {
-    return this.request<WorkSession | null>('/api/work-sessions/current');
+    return this.request<WorkSession | null>("/api/work-sessions/current");
   }
 
   /**
@@ -1078,8 +1241,13 @@ class ApiClient {
    * @param limit - Maximum results (default: 20)
    * @returns Array of work sessions
    */
-  async getWorkSessionHistory(skip: number = 0, limit: number = 20): Promise<WorkSession[]> {
-    return this.request<WorkSession[]>(`/api/work-sessions/history?skip=${skip}&limit=${limit}`);
+  async getWorkSessionHistory(
+    skip: number = 0,
+    limit: number = 20,
+  ): Promise<WorkSession[]> {
+    return this.request<WorkSession[]>(
+      `/api/work-sessions/history?skip=${skip}&limit=${limit}`,
+    );
   }
 
   /**
@@ -1093,10 +1261,10 @@ class ApiClient {
   async getWorkSessionsByTask(
     taskId: string,
     skip: number = 0,
-    limit: number = 20
+    limit: number = 20,
   ): Promise<WorkSession[]> {
     return this.request<WorkSession[]>(
-      `/api/work-sessions/task/${taskId}?skip=${skip}&limit=${limit}`
+      `/api/work-sessions/task/${taskId}?skip=${skip}&limit=${limit}`,
     );
   }
 
@@ -1109,10 +1277,10 @@ class ApiClient {
    */
   async updateWorkSession(
     sessionId: string,
-    data: WorkSessionUpdateRequest
+    data: WorkSessionUpdateRequest,
   ): Promise<WorkSession> {
     return this.request<WorkSession>(`/api/work-sessions/${sessionId}`, {
-      method: 'PUT',
+      method: "PUT",
       body: JSON.stringify(data),
     });
   }
@@ -1124,7 +1292,7 @@ class ApiClient {
    * @returns Unresponsive session or null if none exists
    */
   async getUnresponsiveSession(): Promise<WorkSession | null> {
-    return this.request<WorkSession | null>('/api/work-sessions/unresponsive');
+    return this.request<WorkSession | null>("/api/work-sessions/unresponsive");
   }
 
   /**
@@ -1134,8 +1302,8 @@ class ApiClient {
    * @returns The paused work session
    */
   async pauseWorkSession(): Promise<WorkSession> {
-    return this.request<WorkSession>('/api/work-sessions/pause', {
-      method: 'POST',
+    return this.request<WorkSession>("/api/work-sessions/pause", {
+      method: "POST",
     });
   }
 
@@ -1146,9 +1314,11 @@ class ApiClient {
    * @param data - Resume options including extend_checkout flag
    * @returns The resumed work session
    */
-  async resumeWorkSession(data: WorkSessionResumeRequest = {}): Promise<WorkSession> {
-    return this.request<WorkSession>('/api/work-sessions/resume', {
-      method: 'POST',
+  async resumeWorkSession(
+    data: WorkSessionResumeRequest = {},
+  ): Promise<WorkSession> {
+    return this.request<WorkSession>("/api/work-sessions/resume", {
+      method: "POST",
       body: JSON.stringify(data),
     });
   }
@@ -1172,9 +1342,12 @@ class ApiClient {
    * @param data - Note update data
    * @returns The updated context note
    */
-  async updateProjectNote(projectId: string, data: ContextNoteUpdate): Promise<ContextNote> {
+  async updateProjectNote(
+    projectId: string,
+    data: ContextNoteUpdate,
+  ): Promise<ContextNote> {
     return this.request<ContextNote>(`/api/notes/projects/${projectId}`, {
-      method: 'PUT',
+      method: "PUT",
       body: JSON.stringify(data),
     });
   }
@@ -1196,9 +1369,12 @@ class ApiClient {
    * @param data - Note update data
    * @returns The updated context note
    */
-  async updateGoalNote(goalId: string, data: ContextNoteUpdate): Promise<ContextNote> {
+  async updateGoalNote(
+    goalId: string,
+    data: ContextNoteUpdate,
+  ): Promise<ContextNote> {
     return this.request<ContextNote>(`/api/notes/goals/${goalId}`, {
-      method: 'PUT',
+      method: "PUT",
       body: JSON.stringify(data),
     });
   }
@@ -1220,9 +1396,12 @@ class ApiClient {
    * @param data - Note update data
    * @returns The updated context note
    */
-  async updateTaskNote(taskId: string, data: ContextNoteUpdate): Promise<ContextNote> {
+  async updateTaskNote(
+    taskId: string,
+    data: ContextNoteUpdate,
+  ): Promise<ContextNote> {
     return this.request<ContextNote>(`/api/notes/tasks/${taskId}`, {
-      method: 'PUT',
+      method: "PUT",
       body: JSON.stringify(data),
     });
   }
@@ -1242,7 +1421,7 @@ class ApiClient {
     skip: number = 0,
     limit: number = 50,
     sortOptions?: SortOptions,
-    status?: TaskStatus
+    status?: TaskStatus,
   ): Promise<QuickTask[]> {
     const params = new URLSearchParams({
       skip: skip.toString(),
@@ -1250,13 +1429,13 @@ class ApiClient {
     });
 
     if (sortOptions?.sortBy) {
-      params.set('sort_by', sortOptions.sortBy);
+      params.set("sort_by", sortOptions.sortBy);
     }
     if (sortOptions?.sortOrder) {
-      params.set('sort_order', sortOptions.sortOrder);
+      params.set("sort_order", sortOptions.sortOrder);
     }
     if (status) {
-      params.set('status', status);
+      params.set("status", status);
     }
 
     return this.request<QuickTask[]>(`/api/quick-tasks/?${params.toString()}`);
@@ -1279,8 +1458,8 @@ class ApiClient {
    * @returns The created QuickTask object
    */
   async createQuickTask(taskData: QuickTaskCreate): Promise<QuickTask> {
-    return this.request<QuickTask>('/api/quick-tasks/', {
-      method: 'POST',
+    return this.request<QuickTask>("/api/quick-tasks/", {
+      method: "POST",
       body: JSON.stringify(taskData),
     });
   }
@@ -1292,9 +1471,12 @@ class ApiClient {
    * @param taskData - Quick task update data
    * @returns The updated QuickTask object
    */
-  async updateQuickTask(taskId: string, taskData: QuickTaskUpdate): Promise<QuickTask> {
+  async updateQuickTask(
+    taskId: string,
+    taskData: QuickTaskUpdate,
+  ): Promise<QuickTask> {
     return this.request<QuickTask>(`/api/quick-tasks/${taskId}/`, {
-      method: 'PUT',
+      method: "PUT",
       body: JSON.stringify(taskData),
     });
   }
@@ -1306,7 +1488,7 @@ class ApiClient {
    */
   async deleteQuickTask(taskId: string): Promise<void> {
     return this.request<void>(`/api/quick-tasks/${taskId}/`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
   }
 
@@ -1320,10 +1502,13 @@ class ApiClient {
    */
   async convertQuickTaskToTask(taskId: string, goalId: string): Promise<Task> {
     const convertData: QuickTaskConvertRequest = { goal_id: goalId };
-    const task = await this.request<RawTask>(`/api/quick-tasks/${taskId}/convert`, {
-      method: 'POST',
-      body: JSON.stringify(convertData),
-    });
+    const task = await this.request<RawTask>(
+      `/api/quick-tasks/${taskId}/convert`,
+      {
+        method: "POST",
+        body: JSON.stringify(convertData),
+      },
+    );
     return normalizeTask(task);
   }
 
@@ -1340,7 +1525,7 @@ class ApiClient {
   async getSlotTemplates(
     dayOfWeek?: number,
     skip: number = 0,
-    limit: number = 50
+    limit: number = 50,
   ): Promise<{ templates: SlotTemplate[]; total: number }> {
     const params = new URLSearchParams({
       skip: skip.toString(),
@@ -1348,10 +1533,12 @@ class ApiClient {
     });
 
     if (dayOfWeek !== undefined) {
-      params.set('day_of_week', dayOfWeek.toString());
+      params.set("day_of_week", dayOfWeek.toString());
     }
 
-    return this.request<{ templates: SlotTemplate[]; total: number }>(`/api/slot-templates/?${params.toString()}`);
+    return this.request<{ templates: SlotTemplate[]; total: number }>(
+      `/api/slot-templates/?${params.toString()}`,
+    );
   }
 
   /**
@@ -1360,7 +1547,7 @@ class ApiClient {
    * @returns Templates organized by day (Monday-Sunday)
    */
   async getSlotTemplatesByDay(): Promise<DayOfWeekTemplates[]> {
-    return this.request<DayOfWeekTemplates[]>('/api/slot-templates/by-day');
+    return this.request<DayOfWeekTemplates[]>("/api/slot-templates/by-day");
   }
 
   /**
@@ -1369,8 +1556,12 @@ class ApiClient {
    * @param dayOfWeek - Day of week (0=Monday, 6=Sunday)
    * @returns The default SlotTemplate or null
    */
-  async getDefaultSlotTemplate(dayOfWeek: number): Promise<SlotTemplate | null> {
-    return this.request<SlotTemplate | null>(`/api/slot-templates/default/${dayOfWeek}`);
+  async getDefaultSlotTemplate(
+    dayOfWeek: number,
+  ): Promise<SlotTemplate | null> {
+    return this.request<SlotTemplate | null>(
+      `/api/slot-templates/default/${dayOfWeek}`,
+    );
   }
 
   /**
@@ -1389,9 +1580,11 @@ class ApiClient {
    * @param templateData - Slot template creation data
    * @returns The created SlotTemplate object
    */
-  async createSlotTemplate(templateData: SlotTemplateCreate): Promise<SlotTemplate> {
-    return this.request<SlotTemplate>('/api/slot-templates/', {
-      method: 'POST',
+  async createSlotTemplate(
+    templateData: SlotTemplateCreate,
+  ): Promise<SlotTemplate> {
+    return this.request<SlotTemplate>("/api/slot-templates/", {
+      method: "POST",
       body: JSON.stringify(templateData),
     });
   }
@@ -1403,9 +1596,12 @@ class ApiClient {
    * @param templateData - Slot template update data
    * @returns The updated SlotTemplate object
    */
-  async updateSlotTemplate(templateId: string, templateData: SlotTemplateUpdate): Promise<SlotTemplate> {
+  async updateSlotTemplate(
+    templateId: string,
+    templateData: SlotTemplateUpdate,
+  ): Promise<SlotTemplate> {
     return this.request<SlotTemplate>(`/api/slot-templates/${templateId}`, {
-      method: 'PUT',
+      method: "PUT",
       body: JSON.stringify(templateData),
     });
   }
@@ -1417,7 +1613,7 @@ class ApiClient {
    */
   async deleteSlotTemplate(templateId: string): Promise<void> {
     return this.request<void>(`/api/slot-templates/${templateId}`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
   }
 }
@@ -1435,7 +1631,8 @@ export const projectsApi = {
     apiClient.getProjects(skip, limit, sortOptions),
   getById: (id: string) => apiClient.getProject(id),
   create: (data: ProjectCreate) => apiClient.createProject(data),
-  update: (id: string, data: ProjectUpdate) => apiClient.updateProject(id, data),
+  update: (id: string, data: ProjectUpdate) =>
+    apiClient.updateProject(id, data),
   delete: (id: string) => apiClient.deleteProject(id),
 };
 
@@ -1444,15 +1641,21 @@ export const projectsApi = {
  * Provides methods for goal CRUD and dependency operations.
  */
 export const goalsApi = {
-  getByProject: (projectId: string, skip?: number, limit?: number, sortOptions?: SortOptions) =>
-    apiClient.getGoalsByProject(projectId, skip, limit, sortOptions),
+  getByProject: (
+    projectId: string,
+    skip?: number,
+    limit?: number,
+    sortOptions?: SortOptions,
+  ) => apiClient.getGoalsByProject(projectId, skip, limit, sortOptions),
   getById: (id: string) => apiClient.getGoal(id),
   create: (data: GoalCreate) => apiClient.createGoal(data),
   update: (id: string, data: GoalUpdate) => apiClient.updateGoal(id, data),
   delete: (id: string) => apiClient.deleteGoal(id),
-  addDependency: (data: GoalDependencyCreate) => apiClient.addGoalDependency(data),
+  addDependency: (data: GoalDependencyCreate) =>
+    apiClient.addGoalDependency(data),
   getDependencies: (goalId: string) => apiClient.getGoalDependencies(goalId),
-  deleteDependency: (dependencyId: string) => apiClient.deleteGoalDependency(dependencyId),
+  deleteDependency: (dependencyId: string) =>
+    apiClient.deleteGoalDependency(dependencyId),
 };
 
 /**
@@ -1460,10 +1663,18 @@ export const goalsApi = {
  * Provides methods for task CRUD and dependency operations.
  */
 export const tasksApi = {
-  getByGoal: (goalId: string, skip?: number, limit?: number, sortOptions?: SortOptions) =>
-    apiClient.getTasksByGoal(goalId, skip, limit, sortOptions),
-  getByProject: (projectId: string, skip?: number, limit?: number, sortOptions?: SortOptions) =>
-    apiClient.getTasksByProject(projectId, skip, limit, sortOptions),
+  getByGoal: (
+    goalId: string,
+    skip?: number,
+    limit?: number,
+    sortOptions?: SortOptions,
+  ) => apiClient.getTasksByGoal(goalId, skip, limit, sortOptions),
+  getByProject: (
+    projectId: string,
+    skip?: number,
+    limit?: number,
+    sortOptions?: SortOptions,
+  ) => apiClient.getTasksByProject(projectId, skip, limit, sortOptions),
   getById: (id: string) => apiClient.getTask(id),
   create: (data: TaskCreate) => apiClient.createTask(data),
   update: (id: string, data: TaskUpdate) => apiClient.updateTask(id, data),
@@ -1480,14 +1691,21 @@ export const tasksApi = {
  * Provides methods for AI-powered task planning and workload analysis.
  */
 export const aiPlanningApi = {
-  generateWeeklyPlan: (request: WeeklyPlanRequest) => apiClient.generateWeeklyPlan(request),
-  analyzeWorkload: (projectIds?: string[]) => apiClient.analyzeWorkload(projectIds),
-  suggestPriorities: (projectId?: string) => apiClient.suggestTaskPriorities(projectId),
+  generateWeeklyPlan: (request: WeeklyPlanRequest) =>
+    apiClient.generateWeeklyPlan(request),
+  analyzeWorkload: (projectIds?: string[]) =>
+    apiClient.analyzeWorkload(projectIds),
+  suggestPriorities: (projectId?: string) =>
+    apiClient.suggestTaskPriorities(projectId),
   testIntegration: () => apiClient.testAIIntegration(),
-  generateGoalTaskDraft: (request: GoalTaskDraftRequest) => apiClient.generateGoalTaskDraft(request),
-  startGoalTaskDraftJob: (request: GoalTaskDraftRequest) => apiClient.startGoalTaskDraftJob(request),
-  getGoalTaskDraftJob: (responseId: string) => apiClient.getGoalTaskDraftJob(responseId),
-  applyGoalTaskDraft: (request: GoalTaskDraftApplyRequest) => apiClient.applyGoalTaskDraft(request),
+  generateGoalTaskDraft: (request: GoalTaskDraftRequest) =>
+    apiClient.generateGoalTaskDraft(request),
+  startGoalTaskDraftJob: (request: GoalTaskDraftRequest) =>
+    apiClient.startGoalTaskDraftJob(request),
+  getGoalTaskDraftJob: (responseId: string) =>
+    apiClient.getGoalTaskDraftJob(responseId),
+  applyGoalTaskDraft: (request: GoalTaskDraftApplyRequest) =>
+    apiClient.applyGoalTaskDraft(request),
 };
 
 /**
@@ -1498,11 +1716,15 @@ export const triageApi = {
   getSettings: () => apiClient.getTriageSettings(),
   updateSettings: (settings: TriageCapacitySettingsUpdate) =>
     apiClient.updateTriageSettings(settings),
-  createRun: (request?: TriageRunCreateRequest) => apiClient.createTriageRun(request),
+  createRun: (request?: TriageRunCreateRequest) =>
+    apiClient.createTriageRun(request),
   getLatestRun: () => apiClient.getLatestTriageRun(),
   getRun: (runId: string) => apiClient.getTriageRun(runId),
-  overrideItem: (runId: string, itemId: string, request: TriageItemOverrideRequest) =>
-    apiClient.overrideTriageItem(runId, itemId, request),
+  overrideItem: (
+    runId: string,
+    itemId: string,
+    request: TriageItemOverrideRequest,
+  ) => apiClient.overrideTriageItem(runId, itemId, request),
   applyRun: (runId: string, request: TriageApplyRequest) =>
     apiClient.applyTriageRun(runId, request),
 };
@@ -1512,10 +1734,14 @@ export const triageApi = {
  * Provides methods for daily schedule optimization.
  */
 export const schedulingApi = {
-  optimizeDaily: (request: ScheduleRequest) => apiClient.optimizeDailySchedule(request),
-  save: (scheduleData: ScheduleResult & { date: string; generated_at: string }) => apiClient.saveDailySchedule(scheduleData),
+  optimizeDaily: (request: ScheduleRequest) =>
+    apiClient.optimizeDailySchedule(request),
+  save: (
+    scheduleData: ScheduleResult & { date: string; generated_at: string },
+  ) => apiClient.saveDailySchedule(scheduleData),
   getByDate: (date: string) => apiClient.getDailySchedule(date),
-  list: (skip?: number, limit?: number) => apiClient.listDailySchedules(skip, limit),
+  list: (skip?: number, limit?: number) =>
+    apiClient.listDailySchedules(skip, limit),
   test: () => apiClient.testScheduler(),
   getTuningConfig: () => apiClient.getSchedulerTuningConfig(),
   getWeeklyScheduleOptions: () => apiClient.getWeeklyScheduleOptions(),
@@ -1551,10 +1777,14 @@ export const progressApi = {
  * Provides methods for managing saved weekly schedules.
  */
 export const weeklyScheduleApi = {
-  getAll: (skip?: number, limit?: number) => apiClient.getWeeklySchedules(skip, limit),
-  getByWeek: (weekStartDate: string) => apiClient.getWeeklySchedule(weekStartDate),
-  save: (weekStartDate: string, scheduleData: any) => apiClient.saveWeeklySchedule(weekStartDate, scheduleData),
-  delete: (weekStartDate: string) => apiClient.deleteWeeklySchedule(weekStartDate),
+  getAll: (skip?: number, limit?: number) =>
+    apiClient.getWeeklySchedules(skip, limit),
+  getByWeek: (weekStartDate: string) =>
+    apiClient.getWeeklySchedule(weekStartDate),
+  save: (weekStartDate: string, scheduleData: any) =>
+    apiClient.saveWeeklySchedule(weekStartDate, scheduleData),
+  delete: (weekStartDate: string) =>
+    apiClient.deleteWeeklySchedule(weekStartDate),
 };
 
 /**
@@ -1562,12 +1792,19 @@ export const weeklyScheduleApi = {
  * Provides methods for managing recurring task templates.
  */
 export const weeklyRecurringTasksApi = {
-  getAll: (skip?: number, limit?: number, category?: string, isActive?: boolean) =>
-    apiClient.getWeeklyRecurringTasks(skip, limit, category, isActive),
-  getActive: () => apiClient.getWeeklyRecurringTasks(undefined, undefined, undefined, true),
+  getAll: (
+    skip?: number,
+    limit?: number,
+    category?: string,
+    isActive?: boolean,
+  ) => apiClient.getWeeklyRecurringTasks(skip, limit, category, isActive),
+  getActive: () =>
+    apiClient.getWeeklyRecurringTasks(undefined, undefined, undefined, true),
   getById: (taskId: string) => apiClient.getWeeklyRecurringTask(taskId),
-  create: (taskData: WeeklyRecurringTaskCreate) => apiClient.createWeeklyRecurringTask(taskData),
-  update: (taskId: string, taskData: WeeklyRecurringTaskUpdate) => apiClient.updateWeeklyRecurringTask(taskId, taskData),
+  create: (taskData: WeeklyRecurringTaskCreate) =>
+    apiClient.createWeeklyRecurringTask(taskData),
+  update: (taskId: string, taskData: WeeklyRecurringTaskUpdate) =>
+    apiClient.updateWeeklyRecurringTask(taskId, taskData),
   delete: (taskId: string) => apiClient.deleteWeeklyRecurringTask(taskId),
 };
 
@@ -1576,8 +1813,22 @@ export const weeklyRecurringTasksApi = {
  * Provides methods for timeline visualization data.
  */
 export const timelineApi = {
-  getProjectTimeline: (projectId: string, startDate?: string, endDate?: string, timeUnit?: string, weeklyWorkHours?: number, sortOptions?: SortOptions) =>
-    apiClient.getProjectTimeline(projectId, startDate, endDate, timeUnit, weeklyWorkHours, sortOptions),
+  getProjectTimeline: (
+    projectId: string,
+    startDate?: string,
+    endDate?: string,
+    timeUnit?: string,
+    weeklyWorkHours?: number,
+    sortOptions?: SortOptions,
+  ) =>
+    apiClient.getProjectTimeline(
+      projectId,
+      startDate,
+      endDate,
+      timeUnit,
+      weeklyWorkHours,
+      sortOptions,
+    ),
   getOverview: (startDate?: string, endDate?: string) =>
     apiClient.getTimelineOverview(startDate, endDate),
 };
@@ -1597,16 +1848,19 @@ export const reportsApi = {
  */
 export const workSessionsApi = {
   start: (data: WorkSessionStartRequest) => apiClient.startWorkSession(data),
-  checkout: (data: WorkSessionCheckoutRequest) => apiClient.checkoutWorkSession(data),
+  checkout: (data: WorkSessionCheckoutRequest) =>
+    apiClient.checkoutWorkSession(data),
   getCurrent: () => apiClient.getCurrentWorkSession(),
-  getHistory: (skip?: number, limit?: number) => apiClient.getWorkSessionHistory(skip, limit),
+  getHistory: (skip?: number, limit?: number) =>
+    apiClient.getWorkSessionHistory(skip, limit),
   getByTask: (taskId: string, skip?: number, limit?: number) =>
     apiClient.getWorkSessionsByTask(taskId, skip, limit),
   update: (sessionId: string, data: WorkSessionUpdateRequest) =>
     apiClient.updateWorkSession(sessionId, data),
   getUnresponsive: () => apiClient.getUnresponsiveSession(),
   pause: () => apiClient.pauseWorkSession(),
-  resume: (data?: WorkSessionResumeRequest) => apiClient.resumeWorkSession(data),
+  resume: (data?: WorkSessionResumeRequest) =>
+    apiClient.resumeWorkSession(data),
 };
 
 /**
@@ -1615,12 +1869,14 @@ export const workSessionsApi = {
  */
 export const rescheduleApi = {
   getPendingSuggestions: () => apiClient.getPendingRescheduleSuggestions(),
-  getSuggestion: (suggestionId: string) => apiClient.getRescheduleSuggestion(suggestionId),
+  getSuggestion: (suggestionId: string) =>
+    apiClient.getRescheduleSuggestion(suggestionId),
   acceptSuggestion: (suggestionId: string, reason?: string) =>
     apiClient.acceptRescheduleSuggestion(suggestionId, reason),
   rejectSuggestion: (suggestionId: string, reason?: string) =>
     apiClient.rejectRescheduleSuggestion(suggestionId, reason),
-  getDecisionHistory: (limit?: number) => apiClient.getRescheduleDecisionHistory(limit),
+  getDecisionHistory: (limit?: number) =>
+    apiClient.getRescheduleDecisionHistory(limit),
 };
 
 /**
@@ -1644,13 +1900,19 @@ export const notesApi = {
  * Provides methods for managing unclassified tasks that don't belong to any project/goal.
  */
 export const quickTasksApi = {
-  getAll: (skip?: number, limit?: number, sortOptions?: SortOptions, status?: TaskStatus) =>
-    apiClient.getQuickTasks(skip, limit, sortOptions, status),
+  getAll: (
+    skip?: number,
+    limit?: number,
+    sortOptions?: SortOptions,
+    status?: TaskStatus,
+  ) => apiClient.getQuickTasks(skip, limit, sortOptions, status),
   getById: (taskId: string) => apiClient.getQuickTask(taskId),
   create: (taskData: QuickTaskCreate) => apiClient.createQuickTask(taskData),
-  update: (taskId: string, taskData: QuickTaskUpdate) => apiClient.updateQuickTask(taskId, taskData),
+  update: (taskId: string, taskData: QuickTaskUpdate) =>
+    apiClient.updateQuickTask(taskId, taskData),
   delete: (taskId: string) => apiClient.deleteQuickTask(taskId),
-  convertToTask: (taskId: string, goalId: string) => apiClient.convertQuickTaskToTask(taskId, goalId),
+  convertToTask: (taskId: string, goalId: string) =>
+    apiClient.convertQuickTaskToTask(taskId, goalId),
 };
 
 /**
@@ -1661,9 +1923,11 @@ export const slotTemplatesApi = {
   getAll: (dayOfWeek?: number, skip?: number, limit?: number) =>
     apiClient.getSlotTemplates(dayOfWeek, skip, limit),
   getByDay: () => apiClient.getSlotTemplatesByDay(),
-  getDefault: (dayOfWeek: number) => apiClient.getDefaultSlotTemplate(dayOfWeek),
+  getDefault: (dayOfWeek: number) =>
+    apiClient.getDefaultSlotTemplate(dayOfWeek),
   getById: (templateId: string) => apiClient.getSlotTemplate(templateId),
-  create: (templateData: SlotTemplateCreate) => apiClient.createSlotTemplate(templateData),
+  create: (templateData: SlotTemplateCreate) =>
+    apiClient.createSlotTemplate(templateData),
   update: (templateId: string, templateData: SlotTemplateUpdate) =>
     apiClient.updateSlotTemplate(templateId, templateData),
   delete: (templateId: string) => apiClient.deleteSlotTemplate(templateId),
@@ -1675,27 +1939,30 @@ export const slotTemplatesApi = {
 export const getSecureApiUrl = (): string => {
   const baseUrl = getApiEndpoint();
   const secureUrl = ensureHttps(baseUrl);
-  safeLog('debug', `🔗 getSecureApiUrl: ${baseUrl} -> ${secureUrl}`);
+  safeLog("debug", `🔗 getSecureApiUrl: ${baseUrl} -> ${secureUrl}`);
   return secureUrl;
 };
 
 // Export helper function for getting properly constructed API URL for fetch calls
 export const getApiUrl = (): string => {
   const baseUrl = getApiEndpoint();
-  safeLog('debug', `🔒 getApiUrl: returning ${baseUrl}`);
+  safeLog("debug", `🔒 getApiUrl: returning ${baseUrl}`);
   return baseUrl;
 };
 
 // Secure fetch wrapper that enforces HTTPS and includes fallback functionality
-export const secureFetch = async (endpoint: string, options: RequestInit = {}): Promise<Response> => {
-  safeLog('debug', `🛡️ secureFetch called for endpoint: ${endpoint}`);
+export const secureFetch = async (
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<Response> => {
+  safeLog("debug", `🛡️ secureFetch called for endpoint: ${endpoint}`);
 
   // Use the enhanced fetch with fallback
   return fetchWithFallback(endpoint, {
     ...options,
     headers: {
       ...options.headers,
-      'Upgrade-Insecure-Requests': '1',
+      "Upgrade-Insecure-Requests": "1",
     },
     timeout: appConfig.api.timeout,
     maxRetries: appConfig.api.retryAttempts,

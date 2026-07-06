@@ -75,45 +75,67 @@ class TestSchedulerAPI:
         assert block_config_keys.issubset(data["defaults"])
         assert block_config_keys.issubset({item["key"] for item in data["schema"]})
 
-    @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
-    @patch("humancompiler_api.routers.scheduler.db.get_session")
-    @patch("humancompiler_api.routers.scheduler.task_service.get_tasks_by_goal")
+    @patch("humancompiler_api.routers.scheduler.optimize_schedule")
+    @patch(
+        "humancompiler_api.routers.scheduler._get_task_actual_hours",
+        return_value={},
+    )
+    @patch(
+        "humancompiler_api.routers.scheduler.quick_task_service.get_active_quick_tasks",
+        return_value=[],
+    )
+    @patch("humancompiler_api.routers.scheduler.task_service.get_all_user_tasks")
     def test_create_daily_schedule_success(
-        self, mock_get_tasks, mock_session, mock_get_goal, mock_auth
+        self,
+        mock_get_all_tasks,
+        _mock_get_quick_tasks,
+        _mock_get_actual_hours,
+        mock_optimize_schedule,
+        mock_auth,
     ):
         """Test successful daily schedule creation."""
-        # Mock session as generator
-        mock_sess = MagicMock()
-
-        def session_generator():
-            yield mock_sess
-
-        mock_session.return_value = session_generator()
+        from humancompiler_api.database import db
+        from humancompiler_api.routers.scheduler import ScheduleResult
 
         # Mock task data with valid UUIDs
         goal_id = str(uuid4())
         task_id = str(uuid4())
 
-        mock_task = MagicMock()
-        mock_task.id = task_id
-        mock_task.title = "Test Task"
-        mock_task.estimate_hours = 2.0
-        mock_task.status = "pending"
-        mock_task.due_date = None
-        mock_task.goal_id = goal_id
-        mock_task.priority = 3
-        mock_task.work_type = WorkType.FOCUSED_WORK
-        mock_get_tasks.return_value = [mock_task]
+        mock_task = SimpleNamespace(
+            id=task_id,
+            title="Test Task",
+            estimate_hours=2.0,
+            status="pending",
+            due_date=None,
+            goal_id=goal_id,
+            priority=3,
+            work_type=WorkType.FOCUSED_WORK,
+        )
+        mock_get_all_tasks.return_value = [mock_task]
 
         # Mock goal data
         project_id = str(uuid4())
-        mock_goal = MagicMock()
-        mock_goal.project_id = project_id
-        mock_get_goal.return_value = mock_goal
+        mock_goal = SimpleNamespace(id=goal_id, project_id=project_id)
+        mock_sess = MagicMock()
+        mock_sess.exec.return_value.all.return_value = [mock_goal]
+
+        def mock_get_session():
+            yield mock_sess
+
+        app.dependency_overrides[db.get_session] = mock_get_session
+        mock_optimize_schedule.return_value = ScheduleResult(
+            success=True,
+            assignments=[],
+            unscheduled_tasks=[task_id],
+            total_scheduled_hours=0.0,
+            optimization_status="OPTIMAL",
+            solve_time_seconds=0.1,
+            objective_value=0.0,
+        )
 
         request_data = {
             "date": "2025-06-23",
-            "goal_id": goal_id,
+            "task_source": {"type": "all_tasks"},
             "time_slots": [{"start": "09:00", "end": "12:00", "kind": "focused_work"}],
             "solver_config": {
                 "min_block_minutes": 15,
@@ -122,8 +144,11 @@ class TestSchedulerAPI:
             },
         }
 
-        # No need for auth header since we're using dependency override
-        response = client.post("/api/schedule/daily", json=request_data)
+        try:
+            response = client.post("/api/schedule/daily", json=request_data)
+        finally:
+            if db.get_session in app.dependency_overrides:
+                del app.dependency_overrides[db.get_session]
 
         assert response.status_code == 200
         data = response.json()
@@ -274,7 +299,7 @@ class TestSchedulerAPI:
         from datetime import time
 
         from humancompiler_api.routers.scheduler import optimize_schedule
-        from humancompiler_optimizer.daily import (
+        from humancompiler_api.routers.scheduler import (
             SchedulerTask,
             SlotKind,
             TaskKind,
@@ -318,7 +343,7 @@ class TestSchedulerAPI:
         from datetime import time
 
         from humancompiler_api.routers.scheduler import optimize_schedule
-        from humancompiler_optimizer.daily import (
+        from humancompiler_api.routers.scheduler import (
             FixedAssignment,
             SchedulerTask,
             SlotKind,
@@ -365,7 +390,7 @@ class TestSchedulerAPI:
         from datetime import time
 
         from humancompiler_api.routers.scheduler import optimize_schedule
-        from humancompiler_optimizer.daily import (
+        from humancompiler_api.routers.scheduler import (
             FixedAssignment,
             SchedulerTask,
             SlotKind,
@@ -409,7 +434,7 @@ class TestSchedulerAPI:
     def test_stale_fixed_assignments_are_skipped(self):
         """Fixed assignments for filtered tasks or missing slots should be ignored."""
         from humancompiler_api.routers.scheduler import _build_human_fixed_assignments
-        from humancompiler_optimizer.daily import FixedAssignment
+        from humancompiler_api.routers.scheduler import FixedAssignment
 
         assignments = _build_human_fixed_assignments(
             fixed_assignments=[
@@ -480,7 +505,7 @@ class TestSchedulerAPI:
     def test_slot_kind_mapping(self):
         """Test slot kind mapping function."""
         from humancompiler_api.routers.scheduler import map_slot_kind
-        from humancompiler_optimizer.daily import SlotKind as OptimizerSlotKind
+        from humancompiler_api.routers.scheduler import OptimizerSlotKind
 
         # Test mapping
         assert map_slot_kind("focused_work") == OptimizerSlotKind.FOCUSED_WORK
@@ -495,9 +520,9 @@ class TestSchedulerAPI:
         from datetime import time
 
         from humancompiler_api.routers.scheduler import optimize_schedule
-        from humancompiler_optimizer.daily import (
+        from humancompiler_api.routers.scheduler import (
+            OptimizerSlotKind,
             SchedulerTask,
-            SlotKind as OptimizerSlotKind,
             TaskKind,
             TimeSlot,
         )
@@ -585,29 +610,36 @@ class TestSchedulerAPI:
         assert response.status_code == 400
         assert "meeting slots" in response.json()["detail"]
 
-    @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
-    @patch("humancompiler_api.routers.scheduler.db.get_session")
-    @patch("humancompiler_api.routers.scheduler.task_service.get_tasks_by_goal")
+    @patch(
+        "humancompiler_api.routers.scheduler.quick_task_service.get_active_quick_tasks",
+        return_value=[],
+    )
+    @patch("humancompiler_api.routers.scheduler.task_service.get_all_user_tasks")
     def test_create_daily_schedule_no_tasks(
-        self, mock_get_tasks, mock_session, mock_get_goal, mock_auth
+        self, mock_get_all_tasks, _mock_get_quick_tasks, mock_auth
     ):
         """Test schedule creation when no tasks are found."""
-        # Mock session as generator
+        from humancompiler_api.database import db
+
         mock_sess = MagicMock()
 
-        def session_generator():
+        def mock_get_session():
             yield mock_sess
 
-        mock_session.return_value = session_generator()
-        mock_get_tasks.return_value = []  # No tasks
+        app.dependency_overrides[db.get_session] = mock_get_session
+        mock_get_all_tasks.return_value = []  # No tasks
 
         request_data = {
             "date": "2025-06-23",
-            "goal_id": str(uuid4()),
+            "task_source": {"type": "all_tasks"},
             "time_slots": [{"start": "09:00", "end": "12:00", "kind": "focused_work"}],
         }
 
-        response = client.post("/api/schedule/daily", json=request_data)
+        try:
+            response = client.post("/api/schedule/daily", json=request_data)
+        finally:
+            if db.get_session in app.dependency_overrides:
+                del app.dependency_overrides[db.get_session]
 
         assert response.status_code == 200
         data = response.json()
@@ -616,69 +648,93 @@ class TestSchedulerAPI:
         assert len(data["unscheduled_tasks"]) == 0
         assert data["optimization_status"] == "NO_TASKS"
 
-    @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
-    @patch("humancompiler_api.routers.scheduler.db.get_session")
-    @patch("humancompiler_api.routers.scheduler.task_service.get_tasks_by_goal")
+    @patch("humancompiler_api.routers.scheduler.optimize_schedule")
+    @patch(
+        "humancompiler_api.routers.scheduler._get_task_actual_hours",
+        return_value={},
+    )
+    @patch(
+        "humancompiler_api.routers.scheduler.quick_task_service.get_active_quick_tasks",
+        return_value=[],
+    )
+    @patch("humancompiler_api.routers.scheduler.task_service.get_all_user_tasks")
     def test_create_daily_schedule_completed_tasks_filtered(
-        self, mock_get_tasks, mock_session, mock_get_goal, mock_auth
+        self,
+        mock_get_all_tasks,
+        _mock_get_quick_tasks,
+        _mock_get_actual_hours,
+        mock_optimize_schedule,
+        mock_auth,
     ):
         """Test that completed tasks are filtered out from scheduling."""
-        # Mock session as generator
-        mock_sess = MagicMock()
-
-        def session_generator():
-            yield mock_sess
-
-        mock_session.return_value = session_generator()
+        from humancompiler_api.database import db
+        from humancompiler_api.routers.scheduler import ScheduleResult
 
         # Mock tasks with different statuses
         goal_id = str(uuid4())
         project_id = str(uuid4())
 
-        mock_task_pending = MagicMock()
-        mock_task_pending.id = str(uuid4())
-        mock_task_pending.title = "Pending Task"
-        mock_task_pending.status = "pending"
-        mock_task_pending.estimate_hours = 1.0
-        mock_task_pending.due_date = None
-        mock_task_pending.goal_id = goal_id
-        mock_task_pending.priority = 2
-        mock_task_pending.work_type = WorkType.LIGHT_WORK
+        mock_task_pending = SimpleNamespace(
+            id=str(uuid4()),
+            title="Pending Task",
+            status="pending",
+            estimate_hours=1.0,
+            due_date=None,
+            goal_id=goal_id,
+            priority=2,
+            work_type=WorkType.LIGHT_WORK,
+        )
 
-        mock_task_completed = MagicMock()
-        mock_task_completed.id = str(uuid4())
-        mock_task_completed.title = "Completed Task"
-        mock_task_completed.status = "completed"
-        mock_task_completed.estimate_hours = 2.0
-        mock_task_completed.due_date = None
-        mock_task_completed.goal_id = goal_id
-        mock_task_completed.priority = 1
-        mock_task_completed.work_type = WorkType.LIGHT_WORK
+        mock_task_completed = SimpleNamespace(
+            id=str(uuid4()),
+            title="Completed Task",
+            status="completed",
+            estimate_hours=2.0,
+            due_date=None,
+            goal_id=goal_id,
+            priority=1,
+            work_type=WorkType.LIGHT_WORK,
+        )
 
         # Mock goal data
-        mock_goal = MagicMock()
-        mock_goal.project_id = project_id
-        mock_get_goal.return_value = mock_goal
+        mock_goal = SimpleNamespace(id=goal_id, project_id=project_id)
+        mock_sess = MagicMock()
+        mock_sess.exec.return_value.all.return_value = [mock_goal]
 
-        mock_get_tasks.return_value = [mock_task_pending, mock_task_completed]
+        def mock_get_session():
+            yield mock_sess
+
+        app.dependency_overrides[db.get_session] = mock_get_session
+
+        mock_get_all_tasks.return_value = [mock_task_pending, mock_task_completed]
+        mock_optimize_schedule.return_value = ScheduleResult(
+            success=True,
+            assignments=[],
+            unscheduled_tasks=[mock_task_pending.id],
+            total_scheduled_hours=0.0,
+            optimization_status="OPTIMAL",
+            solve_time_seconds=0.1,
+            objective_value=0.0,
+        )
 
         request_data = {
             "date": "2025-06-23",
-            "goal_id": goal_id,
+            "task_source": {"type": "all_tasks"},
             "time_slots": [{"start": "09:00", "end": "12:00", "kind": "light_work"}],
         }
 
-        response = client.post("/api/schedule/daily", json=request_data)
+        try:
+            response = client.post("/api/schedule/daily", json=request_data)
+        finally:
+            if db.get_session in app.dependency_overrides:
+                del app.dependency_overrides[db.get_session]
 
         assert response.status_code == 200
-        data = response.json()
 
         # Should only consider pending task
-        if data["success"] and data["assignments"]:
-            # Check that only pending task is in assignments
-            task_ids = [assignment["task_id"] for assignment in data["assignments"]]
-            assert mock_task_pending.id in task_ids
-            assert mock_task_completed.id not in task_ids
+        scheduled_tasks = mock_optimize_schedule.call_args.args[0]
+        task_ids = [task.id for task in scheduled_tasks]
+        assert task_ids == [mock_task_pending.id]
 
     @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
     @patch("humancompiler_api.routers.scheduler.task_service.get_tasks_by_project")

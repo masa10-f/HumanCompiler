@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/src
 
-# Install system dependencies for OR-Tools and health checks
+# Install system dependencies for builds and health checks
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
