@@ -403,6 +403,52 @@ class TestSchedulerDependencies:
 
         assert tasks == [regular_task, weekly_task]
 
+    @pytest.mark.asyncio
+    async def test_weekly_schedule_source_accepts_legacy_project_allocation_map(self):
+        """Legacy percentage allocation maps keep saved selected tasks usable."""
+        user_uuid = uuid4()
+        user_id = str(user_uuid)
+        regular_id = uuid4()
+        project_id = str(uuid4())
+        regular_task = MagicMock(spec=Task)
+        regular_task.id = regular_id
+        weekly_schedule = MagicMock()
+        weekly_schedule.schedule_json = {
+            "selected_tasks": [{"task_id": str(regular_id)}],
+            "project_allocations": {project_id: 100},
+        }
+
+        class ExecResult:
+            def __init__(self, *, first_result=None, all_result=None):
+                self.first_result = first_result
+                self.all_result = all_result or []
+
+            def first(self):
+                return self.first_result
+
+            def all(self):
+                return self.all_result
+
+        class FakeSession:
+            def __init__(self):
+                self.results = iter(
+                    [
+                        ExecResult(first_result=weekly_schedule),
+                        ExecResult(all_result=[regular_task]),
+                    ]
+                )
+
+            def exec(self, _query):
+                return next(self.results)
+
+        tasks = await _get_tasks_from_weekly_schedule(
+            FakeSession(),
+            user_id,
+            "2025-06-23",
+        )
+
+        assert tasks == [regular_task]
+
     @patch("humancompiler_api.routers.scheduler._get_task_dependencies")
     @patch("humancompiler_api.routers.scheduler._get_goal_dependencies")
     @patch(

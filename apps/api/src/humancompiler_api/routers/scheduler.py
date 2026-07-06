@@ -2463,7 +2463,7 @@ async def list_daily_schedules(
 async def _apply_project_allocation_filtering(
     session: Session,
     tasks: list[Task],
-    project_allocations: list[dict[str, Any]],
+    project_allocations: list[dict[str, Any]] | dict[str, Any],
     date_str: str,
 ) -> list[Task]:
     """
@@ -2480,6 +2480,14 @@ async def _apply_project_allocation_filtering(
     """
     try:
         from humancompiler_api.models import Goal
+
+        if isinstance(project_allocations, dict):
+            logger.info(
+                "Legacy weekly schedule project allocation map detected for %s; "
+                "keeping saved selected tasks",
+                date_str,
+            )
+            return tasks
 
         # Pre-fetch all goals in one query to avoid N+1 problem
         goal_ids = [task.goal_id for task in tasks if task.goal_id]
