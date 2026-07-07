@@ -25,7 +25,9 @@ from humancompiler_api.routers.scheduler import (
     _check_task_dependencies_satisfied_relaxed,
     _batch_check_task_completion_status,
     _batch_check_goal_completion_status,
+    _extract_weekly_assigned_hours,
     _get_tasks_from_weekly_schedule,
+    _get_weekly_schedule_assigned_hours,
     weekly_recurring_task_to_scheduler_task,
 )
 from humancompiler_api.models import GoalStatus, Task, TaskCategory, TaskStatus
@@ -402,6 +404,85 @@ class TestSchedulerDependencies:
         )
 
         assert tasks == [regular_task, weekly_task]
+
+    @pytest.mark.asyncio
+    async def test_weekly_schedule_source_attaches_assigned_hours(self):
+        """Saved weekly schedules carry partial weekly hours into daily scheduling."""
+        user_uuid = uuid4()
+        user_id = str(user_uuid)
+        regular_id = uuid4()
+        recurring_id = uuid4()
+        regular_task = MagicMock(spec=Task)
+        regular_task.id = regular_id
+        weekly_task = WeeklyRecurringTask(
+            id=recurring_id,
+            user_id=user_uuid,
+            title="Weekly Review",
+            estimate_hours=Decimal("2.00"),
+            category=TaskCategory.REVIEW,
+        )
+        weekly_schedule = MagicMock()
+        weekly_schedule.schedule_json = {
+            "selected_tasks": [
+                {"task_id": str(regular_id), "estimated_hours": 5.0},
+                {"task_id": str(recurring_id), "estimated_hours": 0.5},
+            ],
+            "assigned_task_hours": {str(regular_id): 5.0},
+            "assigned_recurring_task_hours": {str(recurring_id): 0.5},
+            "project_allocations": [],
+        }
+
+        class ExecResult:
+            def __init__(self, *, first_result=None, all_result=None):
+                self.first_result = first_result
+                self.all_result = all_result or []
+
+            def first(self):
+                return self.first_result
+
+            def all(self):
+                return self.all_result
+
+        class FakeSession:
+            def __init__(self):
+                self.results = iter(
+                    [
+                        ExecResult(first_result=weekly_schedule),
+                        ExecResult(all_result=[regular_task]),
+                        ExecResult(all_result=[weekly_task]),
+                    ]
+                )
+
+            def exec(self, _query):
+                return next(self.results)
+
+        tasks = await _get_tasks_from_weekly_schedule(
+            FakeSession(),
+            user_id,
+            datetime.now().strftime("%Y-%m-%d"),
+        )
+
+        assert tasks == [regular_task, weekly_task]
+        assert _get_weekly_schedule_assigned_hours(regular_task) == 5.0
+        assert _get_weekly_schedule_assigned_hours(weekly_task) == 0.5
+
+    def test_weekly_assigned_hour_maps_override_selected_task_fallback(self):
+        """Explicit v0.3.1 assigned-hour maps are more authoritative."""
+        task_id = str(uuid4())
+        recurring_id = str(uuid4())
+
+        assigned_hours = _extract_weekly_assigned_hours(
+            {
+                "assigned_task_hours": {task_id: 4.0},
+                "assigned_recurring_task_hours": {recurring_id: 1.0},
+            },
+            [
+                {"task_id": task_id, "estimated_hours": 8.0},
+                {"task_id": recurring_id, "estimated_hours": 2.0},
+            ],
+        )
+
+        assert assigned_hours == {task_id: 4.0, recurring_id: 1.0}
 
     @pytest.mark.asyncio
     async def test_weekly_schedule_source_accepts_legacy_project_allocation_map(self):

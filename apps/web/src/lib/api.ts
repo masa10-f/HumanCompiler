@@ -642,6 +642,9 @@ class ApiClient {
       week_start_date: solverResponse.week_start_date,
       total_planned_hours: solverResponse.total_allocated_hours,
       task_plans: solverResponse.selected_tasks || [],
+      assigned_task_hours: solverResponse.assigned_task_hours || {},
+      assigned_recurring_task_hours:
+        solverResponse.assigned_recurring_task_hours || {},
       recommendations: [], // TaskSolver doesn't have recommendations
       insights: solverResponse.optimization_insights || [],
       project_allocations: solverResponse.project_allocations || [],

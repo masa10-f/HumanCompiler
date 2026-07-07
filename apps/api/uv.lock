@@ -555,7 +555,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=41.0.0" },
     { name = "fastapi", specifier = ">=0.104.0" },
     { name = "httpx", specifier = ">=0.25.0" },
-    { name = "humancompiler-scheduler", extras = ["cp-sat"], specifier = ">=0.3.0" },
+    { name = "humancompiler-scheduler", extras = ["cp-sat"], specifier = ">=0.3.1" },
     { name = "langgraph", specifier = ">=0.1.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.5.0" },
     { name = "openai", specifier = ">=2.44.0" },
@@ -579,14 +579,14 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "humancompiler-scheduler"
-version = "0.3.0"
+version = "0.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7e/5e/edd715267cabb164d4e01c7c415b376c23d7b18541b939935677f9c9bc4f/humancompiler_scheduler-0.3.0.tar.gz", hash = "sha256:362035d4870ae497d748efefe199f5507b3730fd3e7290e56c442a72ab0617d9", size = 159729, upload-time = "2026-07-05T21:54:44.239Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/49/89/a9daf36b8f52a077b7a7ecc22c1d6d7234056d2b5115d8a03bbf0be9577c/humancompiler_scheduler-0.3.1.tar.gz", hash = "sha256:147e09668b5253aa68ce48e30eb27dcd9ee84c9dcb8f1144733781a314c9115c", size = 160681, upload-time = "2026-07-06T04:00:51.324Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c3/bd/fe2b22f3a03979b2b552cf450913e01e37c98150c0407849ce90ad7d1d67/humancompiler_scheduler-0.3.0-py3-none-any.whl", hash = "sha256:492b1915b7511e5e9ec7b7249bd184c7e25030bd1eac8e25d926e90924aeadde", size = 32755, upload-time = "2026-07-05T21:54:42.948Z" },
+    { url = "https://files.pythonhosted.org/packages/c9/17/84903b3e9a1dcad8791b73ac09336e602f0b5bcc87cb7abb08b632daf632/humancompiler_scheduler-0.3.1-py3-none-any.whl", hash = "sha256:f1ea1b50ce7951db10a53ea35549739458e0b37cdd522ae6143d1ad45ab5adf4", size = 33330, upload-time = "2026-07-06T04:00:49.845Z" },
 ]
 
 [package.optional-dependencies]

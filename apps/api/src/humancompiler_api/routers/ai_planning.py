@@ -268,6 +268,8 @@ async def generate_weekly_plan(
             week_start_date=solver_response.week_start_date,
             total_planned_hours=solver_response.total_allocated_hours,
             task_plans=solver_response.selected_tasks,
+            assigned_task_hours=solver_response.assigned_task_hours,
+            assigned_recurring_task_hours=solver_response.assigned_recurring_task_hours,
             recommendations=[],
             insights=solver_response.optimization_insights,
             generated_at=solver_response.generated_at,
