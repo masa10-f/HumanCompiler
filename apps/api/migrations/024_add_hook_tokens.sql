@@ -27,16 +27,31 @@ CREATE INDEX IF NOT EXISTS idx_hook_tokens_token_hash
 
 ALTER TABLE public.hook_tokens ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "hook_tokens_own_data" ON public.hook_tokens
-    FOR ALL
+DROP POLICY IF EXISTS "hook_tokens_own_data" ON public.hook_tokens;
+DROP POLICY IF EXISTS "hook_tokens_own_metadata" ON public.hook_tokens;
+
+CREATE POLICY "hook_tokens_own_metadata" ON public.hook_tokens
+    FOR SELECT
     TO authenticated
-    USING (auth.uid()::text = user_id::text)
-    WITH CHECK (auth.uid()::text = user_id::text);
+    USING (auth.uid()::text = user_id::text);
+
+REVOKE ALL ON public.hook_tokens FROM anon, authenticated;
+
+GRANT SELECT (
+    id,
+    user_id,
+    name,
+    token_prefix,
+    last_used_at,
+    revoked_at,
+    created_at,
+    updated_at
+) ON public.hook_tokens TO authenticated;
 
 COMMENT ON TABLE public.hook_tokens IS 'User-scoped hashed tokens for external hook ingestion';
 COMMENT ON COLUMN public.hook_tokens.user_id IS 'Owner of the hook token';
 COMMENT ON COLUMN public.hook_tokens.name IS 'User-facing token label';
 COMMENT ON COLUMN public.hook_tokens.token_hash IS 'SHA-256 hash of the hook token secret';
-COMMENT ON COLUMN public.hook_tokens.token_prefix IS 'Non-secret token prefix shown in the UI';
+COMMENT ON COLUMN public.hook_tokens.token_prefix IS 'Non-secret public token id shown in the UI';
 COMMENT ON COLUMN public.hook_tokens.last_used_at IS 'Most recent successful hook use';
 COMMENT ON COLUMN public.hook_tokens.revoked_at IS 'Set when the token is revoked';

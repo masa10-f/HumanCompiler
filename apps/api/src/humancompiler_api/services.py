@@ -1577,12 +1577,15 @@ class HookTokenService:
     """Service for user-scoped hook ingestion tokens."""
 
     TOKEN_PREFIX = "hc_hook_"
+    PUBLIC_ID_BYTES = 6
     TOKEN_PREFIX_LENGTH = 16
 
     @classmethod
-    def generate_token(cls) -> str:
-        """Generate a new hook token secret."""
-        return f"{cls.TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
+    def generate_token(cls) -> tuple[str, str]:
+        """Generate a hook token and its non-secret display prefix."""
+        public_id = secrets.token_urlsafe(cls.PUBLIC_ID_BYTES)
+        token_prefix = f"{cls.TOKEN_PREFIX}{public_id}"
+        return f"{token_prefix}_{secrets.token_urlsafe(32)}", token_prefix
 
     @staticmethod
     def hash_token(token: str) -> str:
@@ -1594,14 +1597,14 @@ class HookTokenService:
     ) -> tuple[HookToken, str]:
         """Create a hook token and return the one-time plaintext secret."""
         user_id_validated = validate_uuid(user_id, "user_id")
-        token = self.generate_token()
+        token, token_prefix = self.generate_token()
         now = datetime.now(UTC)
         hook_token = HookToken(
             id=uuid4(),
             user_id=user_id_validated,
             name=token_data.name,
             token_hash=self.hash_token(token),
-            token_prefix=token[: self.TOKEN_PREFIX_LENGTH],
+            token_prefix=token_prefix[: self.TOKEN_PREFIX_LENGTH],
             created_at=now,
             updated_at=now,
         )
