@@ -1576,7 +1576,7 @@ class WorkSessionService(
 class HookTokenService:
     """Service for user-scoped hook ingestion tokens."""
 
-    TOKEN_PREFIX = "hc_hook_"
+    HOOK_NAMESPACE = "hc_hook_"
     PUBLIC_ID_BYTES = 6
     TOKEN_PREFIX_LENGTH = 16
 
@@ -1584,7 +1584,7 @@ class HookTokenService:
     def generate_token(cls) -> tuple[str, str]:
         """Generate a hook token and its non-secret display prefix."""
         public_id = secrets.token_urlsafe(cls.PUBLIC_ID_BYTES)
-        token_prefix = f"{cls.TOKEN_PREFIX}{public_id}"
+        token_prefix = f"{cls.HOOK_NAMESPACE}{public_id}"
         return f"{token_prefix}_{secrets.token_urlsafe(32)}", token_prefix
 
     @staticmethod
