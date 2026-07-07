@@ -28,6 +28,7 @@ from humancompiler_api.routers.scheduler import (
     _extract_weekly_assigned_hours,
     _get_tasks_from_weekly_schedule,
     _get_weekly_schedule_assigned_hours,
+    _calculate_weekly_schedule_remaining_hours,
     weekly_recurring_task_to_scheduler_task,
 )
 from humancompiler_api.models import GoalStatus, Task, TaskCategory, TaskStatus
@@ -483,6 +484,36 @@ class TestSchedulerDependencies:
         )
 
         assert assigned_hours == {task_id: 4.0, recurring_id: 1.0}
+
+    def test_weekly_schedule_remaining_hours_subtracts_logged_work_from_cap(self):
+        """Daily scheduling should not exceed the weekly assigned budget."""
+        remaining_hours = _calculate_weekly_schedule_remaining_hours(
+            estimate_hours=10.0,
+            actual_hours=3.0,
+            weekly_assigned_hours=5.0,
+        )
+
+        assert remaining_hours == 2.0
+
+    def test_weekly_schedule_remaining_hours_without_cap_uses_task_remaining(self):
+        """Schedules without weekly caps keep the legacy task remaining behavior."""
+        remaining_hours = _calculate_weekly_schedule_remaining_hours(
+            estimate_hours=10.0,
+            actual_hours=3.0,
+            weekly_assigned_hours=None,
+        )
+
+        assert remaining_hours == 7.0
+
+    def test_weekly_schedule_remaining_hours_never_goes_negative(self):
+        """Logged work can exhaust the weekly assigned budget."""
+        remaining_hours = _calculate_weekly_schedule_remaining_hours(
+            estimate_hours=10.0,
+            actual_hours=6.0,
+            weekly_assigned_hours=5.0,
+        )
+
+        assert remaining_hours == 0.0
 
     @pytest.mark.asyncio
     async def test_weekly_schedule_source_accepts_legacy_project_allocation_map(self):

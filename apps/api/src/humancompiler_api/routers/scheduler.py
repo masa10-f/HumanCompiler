@@ -136,6 +136,19 @@ def _get_weekly_schedule_assigned_hours(task: Any) -> float | None:
     return hours if hours > 0 else None
 
 
+def _calculate_weekly_schedule_remaining_hours(
+    estimate_hours: float,
+    actual_hours: float,
+    weekly_assigned_hours: float | None,
+) -> float:
+    full_remaining_hours = max(0.0, estimate_hours - actual_hours)
+    if weekly_assigned_hours is None:
+        return full_remaining_hours
+
+    weekly_remaining_hours = max(0.0, weekly_assigned_hours - actual_hours)
+    return min(full_remaining_hours, weekly_remaining_hours)
+
+
 @dataclass
 class TimeSlot:
     start: time
@@ -1884,16 +1897,15 @@ async def create_daily_schedule(
             actual_hours = actual_hours_map.get(task_id_str, 0.0)
             estimate_hours = float(db_task.estimate_hours)
             weekly_assigned_hours = _get_weekly_schedule_assigned_hours(db_task)
-            full_remaining_hours = max(0.0, estimate_hours - actual_hours)
+            schedule_remaining_hours = _calculate_weekly_schedule_remaining_hours(
+                estimate_hours,
+                actual_hours,
+                weekly_assigned_hours,
+            )
             if weekly_assigned_hours is not None:
-                schedule_remaining_hours = min(
-                    full_remaining_hours,
-                    weekly_assigned_hours,
-                )
                 scheduler_estimate_hours = schedule_remaining_hours
                 scheduler_actual_hours = 0.0
             else:
-                schedule_remaining_hours = full_remaining_hours
                 scheduler_estimate_hours = estimate_hours
                 scheduler_actual_hours = actual_hours
             task_priority = db_task.priority
