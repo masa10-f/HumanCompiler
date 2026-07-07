@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useTaskNote } from '@/hooks/use-notes';
-import { ContextNoteEditor } from '@/components/notes/context-note-editor';
+import { ContextNotePanel } from '@/components/notes/context-note-panel';
 import { FileText, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -52,12 +52,13 @@ export function TaskNotesSection({ taskId }: TaskNotesSectionProps) {
             <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
           </div>
         ) : (
-          <ContextNoteEditor
+          <ContextNotePanel
             content={note?.content ?? ''}
-            onUpdate={(content) => updateNote({ content })}
+            onUpdate={(content) => updateNote({ content, content_type: 'html' })}
             saving={saving}
             placeholder="作業メモを入力..."
-            className="max-h-[500px] overflow-y-auto"
+            updatedAt={note?.updated_at}
+            variant="compact"
           />
         )}
       </CardContent>

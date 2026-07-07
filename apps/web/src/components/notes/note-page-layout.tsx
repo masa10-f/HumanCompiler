@@ -4,10 +4,9 @@ import { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Loader2, AlertCircle, FileText } from 'lucide-react';
-import { ContextNoteEditor } from './context-note-editor';
+import { ContextNotePanel } from './context-note-panel';
 import { useNote } from '@/hooks/use-notes';
 import type { NoteEntityType } from '@/types/context-note';
-import { format } from 'date-fns';
 
 interface NotePageLayoutProps {
   entityType: NoteEntityType;
@@ -78,24 +77,17 @@ export function NotePageLayout({
         </p>
       </div>
 
-      {/* Editor */}
-      <ContextNoteEditor
+      <ContextNotePanel
         content={note?.content || ''}
         onUpdate={(content) => {
           if (note) {
-            updateNote({ content });
+            updateNote({ content, content_type: 'html' });
           }
         }}
         saving={saving}
         placeholder={`Write context notes for this ${entityType}...`}
+        updatedAt={note?.updated_at}
       />
-
-      {/* Footer */}
-      {note && (
-        <div className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-          Last updated: {format(new Date(note.updated_at), 'yyyy-MM-dd HH:mm')}
-        </div>
-      )}
     </div>
   );
 }

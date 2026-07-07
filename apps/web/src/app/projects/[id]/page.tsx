@@ -8,7 +8,7 @@ import { AppHeader } from '@/components/layout/app-header'
 import { ProjectHeader } from '@/components/projects/project-header'
 import { ProjectProgressCard } from '@/components/progress/progress-card'
 import { GoalList } from '@/components/goals/goal-list'
-import { ContextNoteEditor } from '@/components/notes/context-note-editor'
+import { ContextNotePanel } from '@/components/notes/context-note-panel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowLeft, FileText, Loader2, AlertCircle } from 'lucide-react'
@@ -131,11 +131,12 @@ export default function ProjectDetailPage() {
                   </Button>
                 </div>
               ) : (
-                <ContextNoteEditor
+                <ContextNotePanel
                   content={projectNote?.content || ''}
-                  onUpdate={(content) => updateNote({ content })}
+                  onUpdate={(content) => updateNote({ content, content_type: 'html' })}
                   saving={noteSaving}
                   placeholder="プロジェクトに関するメモや背景情報を記録..."
+                  updatedAt={projectNote?.updated_at}
                 />
               )}
             </CardContent>
