@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -61,7 +62,10 @@ export function DroppableSlot({
 
   const isMeetingSlot = slot.kind === 'meeting';
   const colors = getSlotKindPanelStyle(slot.kind);
-  const selectableProjects = getSelectableProjects(projects);
+  const selectableProjects = useMemo(
+    () => getSelectableProjects(projects),
+    [projects]
+  );
 
   // Check if the dragged task can be dropped here (kind matching)
   const canDrop = !isMeetingSlot && (

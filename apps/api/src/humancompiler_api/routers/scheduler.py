@@ -93,6 +93,7 @@ class SchedulerTask:
 
 
 WEEKLY_SCHEDULE_ASSIGNED_HOURS_ATTR = "_weekly_schedule_assigned_hours"
+WEEKLY_SCHEDULE_LOG_START_ATTR = "_weekly_schedule_log_start"
 
 
 def _set_weekly_schedule_assigned_hours(
@@ -136,16 +137,46 @@ def _get_weekly_schedule_assigned_hours(task: Any) -> float | None:
     return hours if hours > 0 else None
 
 
+def _set_weekly_schedule_log_start(
+    task: Any,
+    log_start: datetime | None,
+) -> None:
+    if log_start is None:
+        return
+
+    try:
+        setattr(task, WEEKLY_SCHEDULE_LOG_START_ATTR, log_start)
+    except Exception:
+        try:
+            task.__dict__[WEEKLY_SCHEDULE_LOG_START_ATTR] = log_start
+        except Exception:
+            logger.warning(
+                "Could not attach weekly log start to task %s",
+                getattr(task, "id", "unknown"),
+            )
+
+
+def _get_weekly_schedule_log_start(task: Any) -> datetime | None:
+    value = getattr(task, WEEKLY_SCHEDULE_LOG_START_ATTR, None)
+    if value is None:
+        value = getattr(task, "__dict__", {}).get(WEEKLY_SCHEDULE_LOG_START_ATTR)
+    return value if isinstance(value, datetime) else None
+
+
 def _calculate_weekly_schedule_remaining_hours(
     estimate_hours: float,
     actual_hours: float,
     weekly_assigned_hours: float | None,
+    weekly_actual_hours: float | None = None,
 ) -> float:
     full_remaining_hours = max(0.0, estimate_hours - actual_hours)
     if weekly_assigned_hours is None:
         return full_remaining_hours
 
-    weekly_remaining_hours = max(0.0, weekly_assigned_hours - actual_hours)
+    cap_consumed_hours = (
+        actual_hours if weekly_actual_hours is None else weekly_actual_hours
+    )
+    weekly_remaining_hours = max(0.0, weekly_assigned_hours - cap_consumed_hours)
     return min(full_remaining_hours, weekly_remaining_hours)
 
 
@@ -410,7 +441,11 @@ class SchedulerTuningConfigResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-def _get_task_actual_hours(session: Session, task_ids: list[str]) -> dict[str, float]:
+def _get_task_actual_hours(
+    session: Session,
+    task_ids: list[str],
+    created_at_gte: datetime | None = None,
+) -> dict[str, float]:
     """
     Get actual hours logged for each task from the logs table.
 
@@ -445,14 +480,13 @@ def _get_task_actual_hours(session: Session, task_ids: list[str]) -> dict[str, f
 
         # Query sum of actual_minutes for each task and convert to hours
         task_uuid_strs = [str(uuid) for uuid in task_uuids]
-        query = (
-            select(
-                cast(Log.task_id, String),
-                func.sum(Log.actual_minutes).label("total_minutes"),
-            )
-            .where(cast(Log.task_id, String).in_(task_uuid_strs))
-            .group_by(cast(Log.task_id, String))
-        )
+        query = select(
+            cast(Log.task_id, String),
+            func.sum(Log.actual_minutes).label("total_minutes"),
+        ).where(cast(Log.task_id, String).in_(task_uuid_strs))
+        if created_at_gte is not None:
+            query = query.where(Log.created_at >= created_at_gte)
+        query = query.group_by(cast(Log.task_id, String))
 
         results = session.exec(query).all()
 
@@ -1855,6 +1889,26 @@ async def create_daily_schedule(
         all_task_ids = [str(db_task.id) for db_task in db_tasks]
         actual_hours_map = _get_task_actual_hours(session, all_task_ids)
         logger.info(f"Retrieved actual hours for {len(actual_hours_map)} tasks")
+        weekly_log_start_by_task = {
+            str(db_task.id): log_start
+            for db_task in db_tasks
+            if _get_weekly_schedule_assigned_hours(db_task) is not None
+            and (log_start := _get_weekly_schedule_log_start(db_task)) is not None
+        }
+        weekly_actual_hours_map: dict[str, float] = {}
+        for log_start in set(weekly_log_start_by_task.values()):
+            task_ids_for_log_start = [
+                task_id
+                for task_id, task_log_start in weekly_log_start_by_task.items()
+                if task_log_start == log_start
+            ]
+            weekly_actual_hours_map.update(
+                _get_task_actual_hours(
+                    session,
+                    task_ids_for_log_start,
+                    created_at_gte=log_start,
+                )
+            )
 
         # Pre-fetch all goals in one query to avoid N+1 problem
         goal_ids = [db_task.goal_id for db_task in db_tasks if db_task.goal_id]
@@ -1897,10 +1951,16 @@ async def create_daily_schedule(
             actual_hours = actual_hours_map.get(task_id_str, 0.0)
             estimate_hours = float(db_task.estimate_hours)
             weekly_assigned_hours = _get_weekly_schedule_assigned_hours(db_task)
+            weekly_actual_hours = (
+                weekly_actual_hours_map.get(task_id_str, 0.0)
+                if task_id_str in weekly_log_start_by_task
+                else None
+            )
             schedule_remaining_hours = _calculate_weekly_schedule_remaining_hours(
                 estimate_hours,
                 actual_hours,
                 weekly_assigned_hours,
+                weekly_actual_hours,
             )
             if weekly_assigned_hours is not None:
                 scheduler_estimate_hours = schedule_remaining_hours
@@ -1929,13 +1989,16 @@ async def create_daily_schedule(
                 logger.info(
                     f"Task {task_id_str} '{db_task.title}' has no remaining hours "
                     f"(estimate: {estimate_hours}h, actual: {actual_hours}h, "
-                    f"weekly assigned: {weekly_assigned_hours})"
+                    f"weekly assigned: {weekly_assigned_hours}, "
+                    f"weekly actual: {weekly_actual_hours})"
                 )
             else:
                 logger.debug(
                     f"Task {task_id_str} '{db_task.title}' - "
                     f"estimate: {estimate_hours}h, actual: {actual_hours}h, "
-                    f"remaining: {remaining_hours}h, weekly assigned: {weekly_assigned_hours}"
+                    f"remaining: {remaining_hours}h, "
+                    f"weekly assigned: {weekly_assigned_hours}, "
+                    f"weekly actual: {weekly_actual_hours}"
                 )
             scheduler_tasks.append(scheduler_task)
 
@@ -2685,6 +2748,9 @@ async def _get_tasks_from_weekly_schedule(
             return []
 
         selected_tasks = schedule_data["selected_tasks"]
+        weekly_log_start = getattr(weekly_schedule, "created_at", None)
+        if not isinstance(weekly_log_start, datetime):
+            weekly_log_start = week_start_datetime
         try:
             task_ids = [task["task_id"] for task in selected_tasks]
             assigned_hours_by_task = _extract_weekly_assigned_hours(
@@ -2724,6 +2790,7 @@ async def _get_tasks_from_weekly_schedule(
                     task,
                     assigned_hours_by_task.get(str(task.id)),
                 )
+                _set_weekly_schedule_log_start(task, weekly_log_start)
             logger.info(
                 f"Fetched {len(tasks)} tasks in single query from {len(valid_uuids)} IDs"
             )
@@ -2751,6 +2818,7 @@ async def _get_tasks_from_weekly_schedule(
                     task,
                     assigned_hours_by_task.get(str(task.id)),
                 )
+                _set_weekly_schedule_log_start(task, weekly_log_start)
             found_weekly_ids = {str(task.id) for task in weekly_recurring_tasks}
             for task_id in weekly_recurring_ids:
                 if task_id not in found_weekly_ids:
