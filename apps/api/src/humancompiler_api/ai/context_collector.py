@@ -51,7 +51,6 @@ class ContextCollector:
             project
             for project in projects
             if getattr(project, "status", None) == ProjectStatus.IN_PROGRESS
-            or getattr(project, "status", None) == ProjectStatus.IN_PROGRESS.value
         ]
         logger.debug(
             f"Context Collection: Filtered to {len(projects)} in-progress projects"

@@ -29,6 +29,7 @@ from humancompiler_api.routers.scheduler import (
     _get_tasks_from_weekly_schedule,
     _get_weekly_schedule_assigned_hours,
     _calculate_weekly_schedule_remaining_hours,
+    _get_weekly_schedule_log_start,
     weekly_recurring_task_to_scheduler_task,
 )
 from humancompiler_api.models import GoalStatus, Task, TaskCategory, TaskStatus
@@ -366,6 +367,7 @@ class TestSchedulerDependencies:
             category=TaskCategory.REVIEW,
         )
         weekly_schedule = MagicMock()
+        weekly_schedule.created_at = datetime(2025, 6, 23, 9, 0)
         weekly_schedule.schedule_json = {
             "selected_tasks": [
                 {"task_id": str(regular_id)},
@@ -423,6 +425,7 @@ class TestSchedulerDependencies:
             category=TaskCategory.REVIEW,
         )
         weekly_schedule = MagicMock()
+        weekly_schedule.created_at = datetime(2025, 6, 23, 9, 0)
         weekly_schedule.schedule_json = {
             "selected_tasks": [
                 {"task_id": str(regular_id), "estimated_hours": 5.0},
@@ -466,6 +469,9 @@ class TestSchedulerDependencies:
         assert tasks == [regular_task, weekly_task]
         assert _get_weekly_schedule_assigned_hours(regular_task) == 5.0
         assert _get_weekly_schedule_assigned_hours(weekly_task) == 0.5
+        assert (
+            _get_weekly_schedule_log_start(regular_task) == weekly_schedule.created_at
+        )
 
     def test_weekly_assigned_hour_maps_override_selected_task_fallback(self):
         """Explicit v0.3.1 assigned-hour maps are more authoritative."""
@@ -491,6 +497,32 @@ class TestSchedulerDependencies:
             estimate_hours=10.0,
             actual_hours=3.0,
             weekly_assigned_hours=5.0,
+        )
+
+        assert remaining_hours == 2.0
+
+    def test_weekly_schedule_remaining_hours_ignores_pre_plan_logged_work_for_cap(
+        self,
+    ):
+        """Pre-plan logs are already reflected in the solver's remaining hours."""
+        remaining_hours = _calculate_weekly_schedule_remaining_hours(
+            estimate_hours=10.0,
+            actual_hours=4.0,
+            weekly_assigned_hours=5.0,
+            weekly_actual_hours=0.0,
+        )
+
+        assert remaining_hours == 5.0
+
+    def test_weekly_schedule_remaining_hours_subtracts_post_plan_logged_work_from_cap(
+        self,
+    ):
+        """Post-plan logs consume the weekly assigned budget."""
+        remaining_hours = _calculate_weekly_schedule_remaining_hours(
+            estimate_hours=10.0,
+            actual_hours=7.0,
+            weekly_assigned_hours=5.0,
+            weekly_actual_hours=3.0,
         )
 
         assert remaining_hours == 2.0
