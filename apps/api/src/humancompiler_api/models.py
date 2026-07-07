@@ -238,6 +238,7 @@ class User(UserBase, table=True):  # type: ignore[call-arg]
     push_subscriptions: list["PushSubscription"] = Relationship(back_populates="user")
     quick_tasks: list["QuickTask"] = Relationship(back_populates="owner")
     slot_templates: list["SlotTemplate"] = Relationship(back_populates="user")
+    hook_tokens: list["HookToken"] = Relationship(back_populates="user")
 
 
 class ProjectBase(SQLModel):
@@ -777,6 +778,32 @@ class UserSettings(UserSettingsBase, table=True):  # type: ignore[call-arg]
 
     # Relationships
     user: User = Relationship(back_populates="settings")
+
+
+class HookToken(SQLModel, table=True):  # type: ignore[call-arg]
+    """User-scoped token for external hook ingestion."""
+
+    __tablename__ = "hook_tokens"
+
+    id: UUID | None = SQLField(
+        default=None,
+        sa_column=Column(
+            "id",
+            SQLAlchemyUUID,
+            primary_key=True,
+            server_default=text("gen_random_uuid()"),
+        ),
+    )
+    user_id: UUID = SQLField(foreign_key="users.id", index=True)
+    name: str = SQLField(min_length=1, max_length=100)
+    token_hash: str = SQLField(max_length=64, unique=True, index=True)
+    token_prefix: str = SQLField(max_length=16)
+    last_used_at: datetime | None = SQLField(default=None)
+    revoked_at: datetime | None = SQLField(default=None)
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+
+    user: User = Relationship(back_populates="hook_tokens")
 
 
 # Email Notification Models (Issue #261)
@@ -1364,6 +1391,50 @@ class UserSettingsResponse(BaseModel):
             # Assume naive datetime is UTC and add timezone info
             value = value.replace(tzinfo=UTC)
         return value.isoformat()
+
+
+class HookTokenCreate(BaseModel):
+    """Hook token creation request."""
+
+    name: str = Field(min_length=1, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        """Normalize token names and reject whitespace-only values."""
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Hook token name cannot be empty")
+        return stripped
+
+
+class HookTokenResponse(BaseModel):
+    """Hook token metadata response. The token secret is never returned here."""
+
+    id: UUID
+    user_id: UUID
+    name: str
+    token_prefix: str
+    last_used_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("last_used_at", "created_at", "updated_at")
+    def serialize_datetimes(self, value: datetime | None) -> str | None:
+        """Ensure datetimes are serialized with UTC timezone info."""
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
+
+class HookTokenCreatedResponse(HookTokenResponse):
+    """Hook token creation response, including the one-time token secret."""
+
+    token: str
 
     model_config = ConfigDict(from_attributes=True)
 

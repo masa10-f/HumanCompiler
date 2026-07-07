@@ -2,6 +2,8 @@
 from . import (
     ai_planning,
     goals,
+    hook_tokens,
+    hooks,
     monitoring,
     notes,
     notifications,
@@ -19,6 +21,8 @@ from . import (
 __all__ = [
     "ai_planning",
     "goals",
+    "hook_tokens",
+    "hooks",
     "monitoring",
     "notes",
     "notifications",
