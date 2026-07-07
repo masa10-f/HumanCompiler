@@ -70,6 +70,8 @@ class TaskSolverResponse(BaseModel):
     total_allocated_hours: float
     project_allocations: list[ProjectAllocation]
     selected_tasks: list[TaskPlan]
+    assigned_task_hours: dict[str, float] = Field(default_factory=dict)
+    assigned_recurring_task_hours: dict[str, float] = Field(default_factory=dict)
     optimization_insights: list[str]
     constraint_analysis: ConstraintAnalysis | dict[str, Any]
     solver_metrics: SolverMetrics | dict[str, Any]
@@ -189,6 +191,10 @@ class WeeklyTaskSolver:
                 initial_context,
                 request.constraints,
             )
+            project_allocations = self._resolve_project_allocation_titles(
+                initial_context,
+                project_allocations,
+            )
             context = await self._collect_solver_context(
                 session,
                 user_id,
@@ -223,6 +229,20 @@ class WeeklyTaskSolver:
                 context,
             )
             total_allocated = sum(task.estimated_hours for task in selected_tasks)
+            selected_regular_ids = {str(task.id) for task in context.tasks}
+            selected_recurring_ids = {
+                str(task.id) for task in context.weekly_recurring_tasks
+            }
+            assigned_task_hours = {
+                task.task_id: task.estimated_hours
+                for task in selected_tasks
+                if task.task_id in selected_regular_ids
+            }
+            assigned_recurring_task_hours = {
+                task.task_id: task.estimated_hours
+                for task in selected_tasks
+                if task.task_id in selected_recurring_ids
+            }
 
             return TaskSolverResponse(
                 success=True,
@@ -230,6 +250,8 @@ class WeeklyTaskSolver:
                 total_allocated_hours=total_allocated,
                 project_allocations=project_allocations,
                 selected_tasks=selected_tasks,
+                assigned_task_hours=assigned_task_hours,
+                assigned_recurring_task_hours=assigned_recurring_task_hours,
                 optimization_insights=optimization_insights,
                 constraint_analysis=constraint_analysis,
                 solver_metrics=solver_metrics,
@@ -243,6 +265,8 @@ class WeeklyTaskSolver:
                 total_allocated_hours=0.0,
                 project_allocations=[],
                 selected_tasks=[],
+                assigned_task_hours={},
+                assigned_recurring_task_hours={},
                 optimization_insights=[f"Solver error: {exc}"],
                 constraint_analysis={},
                 solver_metrics={},
@@ -487,7 +511,10 @@ class WeeklyTaskSolver:
         constraints: WeeklyConstraints,
     ) -> list[ProjectAllocation]:
         if constraints.project_allocations:
-            return constraints.project_allocations
+            return self._resolve_project_allocation_titles(
+                context,
+                constraints.project_allocations,
+            )
 
         available_hours = (
             constraints.total_capacity_hours - constraints.meeting_buffer_hours
@@ -558,6 +585,32 @@ class WeeklyTaskSolver:
                 )
             )
         return allocations
+
+    def _resolve_project_allocation_titles(
+        self,
+        context: WeeklyPlanContext,
+        project_allocations: list[ProjectAllocation],
+    ) -> list[ProjectAllocation]:
+        """Fill project titles from DB context when clients only sent IDs."""
+        title_by_project_id = {
+            str(project.id): project.title for project in context.projects
+        }
+        resolved_allocations: list[ProjectAllocation] = []
+
+        for allocation in project_allocations:
+            project_id = str(allocation.project_id)
+            project_title = allocation.project_title
+            resolved_title = title_by_project_id.get(project_id)
+            if resolved_title and (
+                not project_title or str(project_title) == project_id
+            ):
+                project_title = resolved_title
+
+            resolved_allocations.append(
+                allocation.model_copy(update={"project_title": project_title})
+            )
+
+        return resolved_allocations
 
     def _heuristic_task_selection(
         self,
@@ -764,22 +817,38 @@ class WeeklyTaskSolver:
             weekly_by_id = {
                 str(task.id): task for task in context.weekly_recurring_tasks
             }
+            assigned_task_hours = getattr(solve_result, "assigned_task_hours", {})
+            assigned_recurring_task_hours = getattr(
+                solve_result,
+                "assigned_recurring_task_hours",
+                {},
+            )
 
             selected_tasks = []
             for task_id in solve_result.selected_task_ids:
                 db_task = task_by_id.get(task_id)
                 if not db_task:
                     continue
+                full_hours = task_hours[task_id]
+                assigned_hours = float(assigned_task_hours.get(task_id, full_hours))
+                if assigned_hours < full_hours:
+                    rationale = (
+                        "External weekly scheduler partially assigned this task "
+                        f"({assigned_hours:.1f}h of {full_hours:.1f}h, "
+                        f"score: {task_priority_scores[task_id]:.1f})"
+                    )
+                else:
+                    rationale = (
+                        "External weekly scheduler selected this task "
+                        f"(score: {task_priority_scores[task_id]:.1f})"
+                    )
                 selected_tasks.append(
                     TaskPlan(
                         task_id=task_id,
                         task_title=db_task.title,
-                        estimated_hours=task_hours[task_id],
+                        estimated_hours=assigned_hours,
                         priority=_coerce_task_priority(db_task.priority),
-                        rationale=(
-                            "External weekly scheduler selected this task "
-                            f"(score: {task_priority_scores[task_id]:.1f})"
-                        ),
+                        rationale=rationale,
                     )
                 )
 
@@ -787,16 +856,27 @@ class WeeklyTaskSolver:
                 weekly_task = weekly_by_id.get(weekly_id)
                 if not weekly_task:
                     continue
+                full_hours = recurring_hours.get(
+                    weekly_id,
+                    float(weekly_task.estimate_hours or 0),
+                )
+                assigned_hours = float(
+                    assigned_recurring_task_hours.get(weekly_id, full_hours)
+                )
+                if assigned_hours < full_hours:
+                    rationale = (
+                        "External weekly scheduler partially assigned this recurring task "
+                        f"({assigned_hours:.1f}h of {full_hours:.1f}h)"
+                    )
+                else:
+                    rationale = "External weekly scheduler selected this recurring task"
                 selected_tasks.append(
                     TaskPlan(
                         task_id=weekly_id,
                         task_title=f"[週課] {weekly_task.title}",
-                        estimated_hours=recurring_hours.get(
-                            weekly_id,
-                            float(weekly_task.estimate_hours or 0),
-                        ),
+                        estimated_hours=assigned_hours,
                         priority=3,
-                        rationale="External weekly scheduler selected this recurring task",
+                        rationale=rationale,
                     )
                 )
 

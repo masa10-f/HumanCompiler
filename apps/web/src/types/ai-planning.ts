@@ -91,6 +91,10 @@ export interface WeeklyPlanResponse {
   total_planned_hours: number;
   /** タスク計画一覧 */
   task_plans: TaskPlan[];
+  /** 通常タスクの割り当て時間（キー: タスクID, 値: 時間） */
+  assigned_task_hours?: Record<string, number>;
+  /** 週課の割り当て時間（キー: 週課ID, 値: 時間） */
+  assigned_recurring_task_hours?: Record<string, number>;
   /** 推奨事項 */
   recommendations: string[];
   /** 最適化インサイト */
@@ -363,6 +367,10 @@ export interface WeeklyScheduleData {
   week_start_date: string;
   /** 選択されたタスク一覧 */
   selected_tasks: TaskPlan[];
+  /** 通常タスクの割り当て時間（キー: タスクID, 値: 時間） */
+  assigned_task_hours?: Record<string, number>;
+  /** 週課の割り当て時間（キー: 週課ID, 値: 時間） */
+  assigned_recurring_task_hours?: Record<string, number>;
   /** 総配分時間（時間単位） */
   total_allocated_hours: number;
   /** プロジェクト別配分 */

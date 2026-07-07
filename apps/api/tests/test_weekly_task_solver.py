@@ -296,6 +296,90 @@ class TestWeeklyTaskSolver:
         assert selected_tasks[0].priority == 1
         assert "score: 10.0" in selected_tasks[0].rationale
 
+    @pytest.mark.asyncio
+    async def test_external_scheduler_response_uses_assigned_partial_hours(self):
+        """v0.3.1 weekly selections expose assigned hours, not full task hours."""
+        solver = WeeklyTaskSolver()
+        project = Mock()
+        project.id = "project-1"
+        project.title = "Readable Project"
+        goal = Mock(spec=Goal)
+        goal.id = "goal-1"
+        goal.project_id = "project-1"
+        task = Mock(spec=Task)
+        task.id = "task-1"
+        task.title = "Large Task"
+        task.estimate_hours = 10.0
+        task.priority = 1
+        task.due_date = None
+        task.goal_id = "goal-1"
+
+        context = WeeklyPlanContext(
+            user_id="test-user",
+            week_start_date=date(2025, 8, 12),
+            projects=[project],
+            goals=[goal],
+            tasks=[task],
+            capacity_hours=5.0,
+            preferences={},
+            weekly_recurring_tasks=[],
+            selected_recurring_task_ids=[],
+        )
+
+        selected_tasks, _ = await solver._optimize_with_scheduler_backend(
+            context,
+            WeeklyConstraints(total_capacity_hours=5.0),
+            [
+                ProjectAllocation(
+                    project_id="project-1",
+                    project_title="Readable Project",
+                    target_hours=5.0,
+                    max_hours=5.0,
+                    priority_weight=1.0,
+                )
+            ],
+            {"task-1": 10.0},
+            None,
+            remaining_hours_map={"task-1": 10.0},
+        )
+
+        assert len(selected_tasks) == 1
+        assert selected_tasks[0].estimated_hours == 5.0
+        assert "partially assigned" in selected_tasks[0].rationale
+
+    def test_project_allocation_titles_are_resolved_from_context(self):
+        """Client-supplied project IDs are replaced with readable project names."""
+        solver = WeeklyTaskSolver()
+        project = Mock()
+        project.id = "project-1"
+        project.title = "Readable Project"
+        context = WeeklyPlanContext(
+            user_id="test-user",
+            week_start_date=date(2025, 8, 12),
+            projects=[project],
+            goals=[],
+            tasks=[],
+            capacity_hours=40.0,
+            preferences={},
+            weekly_recurring_tasks=[],
+            selected_recurring_task_ids=[],
+        )
+
+        allocations = solver._resolve_project_allocation_titles(
+            context,
+            [
+                ProjectAllocation(
+                    project_id="project-1",
+                    project_title="project-1",
+                    target_hours=5.0,
+                    max_hours=5.0,
+                    priority_weight=1.0,
+                )
+            ],
+        )
+
+        assert allocations[0].project_title == "Readable Project"
+
     def test_analyze_constraints_basic(self):
         """Test constraint analysis."""
         solver = WeeklyTaskSolver()

@@ -93,6 +93,17 @@ export default function AIPlanningPage() {
   const [editingWeeklyTask, setEditingWeeklyTask] =
     useState<WeeklyRecurringTask | null>(null);
 
+  const getProjectDisplayTitle = useCallback(
+    (projectId?: string, projectTitle?: string) => {
+      const project = projects.find((candidate) => candidate.id === projectId);
+      if (project && (!projectTitle || projectTitle === projectId)) {
+        return project.title;
+      }
+      return projectTitle || projectId || "未設定";
+    },
+    [projects],
+  );
+
   const preloadAiPlanningData = useCallback(async () => {
     setLoadingSchedules(true);
     setLoadingWeeklyTasks(true);
@@ -308,6 +319,9 @@ export default function AIPlanningPage() {
       const scheduleData = {
         selected_tasks: weeklyPlan.task_plans,
         selected_recurring_task_ids: selectedRecurringTaskIds,
+        assigned_task_hours: weeklyPlan.assigned_task_hours || {},
+        assigned_recurring_task_hours:
+          weeklyPlan.assigned_recurring_task_hours || {},
         total_allocated_hours: weeklyPlan.total_planned_hours,
         project_allocations: weeklyPlan.project_allocations || [],
         optimization_insights: weeklyPlan.insights || [],
@@ -1234,7 +1248,10 @@ export default function AIPlanningPage() {
                               className="flex items-center justify-between p-2 border rounded"
                             >
                               <span className="font-medium">
-                                {allocation.project_title}
+                                {getProjectDisplayTitle(
+                                  allocation.project_id,
+                                  allocation.project_title,
+                                )}
                               </span>
                               <div className="text-sm text-gray-600">
                                 目標: {allocation.target_hours}h / 最大:{" "}

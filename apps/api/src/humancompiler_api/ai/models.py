@@ -63,6 +63,8 @@ class WeeklyPlanResponse(BaseModel):
     week_start_date: str
     total_planned_hours: float
     task_plans: list[TaskPlan]
+    assigned_task_hours: dict[str, float] = Field(default_factory=dict)
+    assigned_recurring_task_hours: dict[str, float] = Field(default_factory=dict)
     recommendations: list[str]
     insights: list[str]
     generated_at: datetime
