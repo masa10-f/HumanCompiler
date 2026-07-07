@@ -15,13 +15,16 @@ jest.mock('../context-note-editor', () => ({
     content,
     onUpdate,
     placeholder,
+    saving,
   }: {
     content: string;
     onUpdate: (content: string) => void;
     placeholder?: string;
+    saving?: boolean;
   }) => (
     <div>
       <div aria-label="note toolbar">Toolbar</div>
+      {saving && <div>Saving...</div>}
       <textarea
         aria-label="note editor"
         placeholder={placeholder}
@@ -69,6 +72,20 @@ describe('ContextNotePanel', () => {
     expect(onUpdate).toHaveBeenCalledWith('<p>Changed note</p>');
   });
 
+  it('leaves the saving indicator to the editor while editing', () => {
+    render(
+      <ContextNotePanel
+        content="<p>Draft note</p>"
+        onUpdate={jest.fn()}
+        saving
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /edit/i }));
+
+    expect(screen.getAllByText('Saving...')).toHaveLength(1);
+  });
+
   it('shows an empty state with an edit action for blank notes', () => {
     render(<ContextNotePanel content="<p></p>" onUpdate={jest.fn()} />);
 
@@ -78,5 +95,12 @@ describe('ContextNotePanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /edit/i }));
 
     expect(screen.getByLabelText('note editor')).toBeInTheDocument();
+  });
+
+  it('renders structural note content even when it has no text', () => {
+    render(<ContextNotePanel content="<hr>" onUpdate={jest.fn()} />);
+
+    expect(screen.getByLabelText('note viewer')).toHaveTextContent('<hr>');
+    expect(screen.queryByText('No notes yet')).not.toBeInTheDocument();
   });
 });

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { Edit3, FileText, Loader2 } from 'lucide-react';
+import { Edit3, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ContextNoteEditor } from './context-note-editor';
@@ -19,6 +19,15 @@ interface ContextNotePanelProps {
 }
 
 function hasRenderableContent(content: string) {
+  const hasStructuralContent =
+    /<(img|hr|iframe|video|audio|canvas|table|thead|tbody|tr|td|th|pre|blockquote)\b/i.test(content) ||
+    /data-type=["']taskList["']/i.test(content) ||
+    /type=["']checkbox["']/i.test(content);
+
+  if (hasStructuralContent) {
+    return true;
+  }
+
   return content
     .replace(/<[^>]*>/g, '')
     .replace(/&nbsp;/g, ' ')
@@ -58,12 +67,7 @@ export function ContextNotePanel({
         />
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-500 dark:text-gray-400">
           <div className="flex min-h-9 items-center">
-            {saving ? (
-              <span className="inline-flex items-center gap-1">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Saving...
-              </span>
-            ) : formattedUpdatedAt ? (
+            {formattedUpdatedAt ? (
               <span>Last updated: {formattedUpdatedAt}</span>
             ) : null}
           </div>

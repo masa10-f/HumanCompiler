@@ -52,14 +52,16 @@ export function TaskNotesSection({ taskId }: TaskNotesSectionProps) {
             <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
           </div>
         ) : (
-          <ContextNotePanel
-            content={note?.content ?? ''}
-            onUpdate={(content) => updateNote({ content, content_type: 'html' })}
-            saving={saving}
-            placeholder="作業メモを入力..."
-            updatedAt={note?.updated_at}
-            variant="compact"
-          />
+          <div className="max-h-[500px] overflow-y-auto pr-1">
+            <ContextNotePanel
+              content={note?.content ?? ''}
+              onUpdate={(content) => updateNote({ content, content_type: 'html' })}
+              saving={saving}
+              placeholder="作業メモを入力..."
+              updatedAt={note?.updated_at}
+              variant="compact"
+            />
+          </div>
         )}
       </CardContent>
     </Card>
