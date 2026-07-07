@@ -214,8 +214,63 @@ class TestWeeklyTaskSolver:
         assert metrics["task_count"] == 2
         assert metrics["avg_task_hours"] == 5.0  # (4 + 6) / 2
         assert metrics["projects_involved"] == 1
-        assert "proj-1" in metrics["project_distribution"]
-        assert metrics["project_distribution"]["proj-1"] == 10.0
+        assert "Project 1" in metrics["project_distribution"]
+        assert metrics["project_distribution"]["Project 1"] == 10.0
+
+    def test_calculate_solver_metrics_resolves_project_distribution_names(self):
+        """Project distribution output uses readable names, not raw project IDs."""
+        solver = WeeklyTaskSolver()
+
+        selected_tasks = [
+            TaskPlan(
+                task_id="task-1",
+                task_title="Task 1",
+                estimated_hours=3.0,
+                priority=8,
+                rationale="High priority",
+            )
+        ]
+
+        project = Mock()
+        project.id = "proj-1"
+        project.title = "Readable Project"
+
+        goal = Mock(spec=Goal)
+        goal.id = "goal-1"
+        goal.project_id = "proj-1"
+
+        task = Mock(spec=Task)
+        task.id = "task-1"
+        task.goal_id = "goal-1"
+
+        context = WeeklyPlanContext(
+            user_id="test-user",
+            week_start_date=date(2025, 8, 12),
+            projects=[project],
+            goals=[goal],
+            tasks=[task],
+            capacity_hours=40.0,
+            preferences={},
+            weekly_recurring_tasks=[],
+            selected_recurring_task_ids=[],
+        )
+
+        metrics = solver._calculate_solver_metrics(
+            selected_tasks,
+            [
+                ProjectAllocation(
+                    project_id="proj-1",
+                    project_title="proj-1",
+                    target_hours=5.0,
+                    max_hours=5.0,
+                    priority_weight=1.0,
+                )
+            ],
+            WeeklyConstraints(total_capacity_hours=40.0),
+            context,
+        )
+
+        assert metrics["project_distribution"] == {"Readable Project": 3.0}
 
     @pytest.mark.asyncio
     async def test_solve_weekly_tasks_without_openai_client(self):

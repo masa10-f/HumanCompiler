@@ -5,7 +5,6 @@ used throughout the AI module, replacing loose dict[str, Any] annotations.
 """
 
 from typing_extensions import TypedDict
-from uuid import UUID
 
 
 class ConstraintAnalysis(TypedDict):
@@ -27,7 +26,7 @@ class SolverMetrics(TypedDict):
     task_count: int
     avg_task_hours: float
     projects_involved: int
-    project_distribution: dict[str | UUID, float]
+    project_distribution: dict[str, float]
 
 
 class WeeklyPlanPreferences(TypedDict, total=False):

@@ -822,7 +822,9 @@ export default function AIPlanningPage() {
                                 key={project}
                                 className="flex items-center justify-between p-2 bg-gray-50 rounded"
                               >
-                                <span className="font-medium">{project}</span>
+                                <span className="font-medium">
+                                  {getProjectDisplayTitle(project)}
+                                </span>
                                 <span className="text-sm text-gray-600">
                                   {Number(hours).toFixed(1)}時間
                                 </span>
