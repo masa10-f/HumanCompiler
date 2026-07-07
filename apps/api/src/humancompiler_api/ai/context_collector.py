@@ -10,6 +10,7 @@ from sqlmodel import Session
 
 from humancompiler_api.ai.models import WeeklyPlanContext
 from humancompiler_api.ai.types import WeeklyPlanPreferences
+from humancompiler_api.models import ProjectStatus
 from humancompiler_api.services import (
     goal_service,
     project_service,
@@ -43,9 +44,18 @@ class ContextCollector:
 
         logger.debug(f"Context Collection: Starting for user {user_id}")
 
-        # Get user's projects
+        # Get user's in-progress projects
         projects = self.project_service.get_projects(session, user_id)
         logger.debug(f"Context Collection: Found {len(projects)} projects")
+        projects = [
+            project
+            for project in projects
+            if getattr(project, "status", None) == ProjectStatus.IN_PROGRESS
+            or getattr(project, "status", None) == ProjectStatus.IN_PROGRESS.value
+        ]
+        logger.debug(
+            f"Context Collection: Filtered to {len(projects)} in-progress projects"
+        )
 
         # Filter projects if specified
         if project_filter:

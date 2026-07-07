@@ -26,6 +26,7 @@ import {
 import { Clock, Search, FolderOpen, AlertCircle } from 'lucide-react';
 import { projectsApi, tasksApi } from '@/lib/api';
 import { log } from '@/lib/logger';
+import { getSelectableProjects } from '@/lib/project-filters';
 import type { Project } from '@/types/project';
 
 interface ManualTaskSelectDialogProps {
@@ -58,15 +59,28 @@ export function ManualTaskSelectDialog({
     queryFn: () => projectsApi.getAll(0, 100),
     enabled: open,
   });
+  const selectableProjects = useMemo(
+    () => getSelectableProjects(projects),
+    [projects]
+  );
+
+  useEffect(() => {
+    if (
+      selectedProjectId !== 'all' &&
+      !selectableProjects.some((project) => project.id === selectedProjectId)
+    ) {
+      setSelectedProjectId('all');
+    }
+  }, [selectableProjects, selectedProjectId]);
 
   // Fetch tasks for selected project (or all projects)
   const { data: tasks = [], isLoading: tasksLoading } = useQuery({
-    queryKey: ['tasks', 'manual-select', selectedProjectId, projects.map(p => p.id).join(',')],
+    queryKey: ['tasks', 'manual-select', selectedProjectId, selectableProjects.map(p => p.id).join(',')],
     queryFn: async () => {
       if (selectedProjectId === 'all') {
         // Fetch tasks from all projects in parallel.
         // Ignore failures for individual projects and return other projects' tasks.
-        const taskPromises = projects.map((project) =>
+        const taskPromises = selectableProjects.map((project) =>
           tasksApi.getByProject(project.id, 0, 100)
         );
         const taskResults = await Promise.allSettled(taskPromises);
@@ -76,7 +90,7 @@ export function ManualTaskSelectDialog({
           }
 
           log.error(
-            `Failed to load tasks for project ${projects[index]?.id}`,
+            `Failed to load tasks for project ${selectableProjects[index]?.id}`,
             result.reason instanceof Error ? result.reason : new Error(String(result.reason)),
             { component: 'ManualTaskSelectDialog' }
           );
@@ -87,7 +101,7 @@ export function ManualTaskSelectDialog({
         return tasksApi.getByProject(selectedProjectId, 0, 100);
       }
     },
-    enabled: open && (selectedProjectId !== 'all' || projects.length > 0),
+    enabled: open && (selectedProjectId !== 'all' || selectableProjects.length > 0),
   });
 
   // Filter to only show actionable tasks (pending or in_progress)
@@ -170,7 +184,7 @@ export function ManualTaskSelectDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">すべてのプロジェクト</SelectItem>
-                {projects.map((project: Project) => (
+                {selectableProjects.map((project: Project) => (
                   <SelectItem key={project.id} value={project.id}>
                     {project.title}
                   </SelectItem>

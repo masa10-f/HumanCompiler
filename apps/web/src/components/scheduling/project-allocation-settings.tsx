@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { AlertCircle, Info } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { getSelectableProjects } from '@/lib/project-filters';
 import type { Project } from '@/types/project';
 
 interface ProjectAllocationSettingsProps {
@@ -24,15 +25,19 @@ export function ProjectAllocationSettings({
 }: ProjectAllocationSettingsProps) {
   const [localAllocations, setLocalAllocations] = useState<Record<string, number>>(allocations);
   const [totalPercentage, setTotalPercentage] = useState(0);
+  const selectableProjects = useMemo(
+    () => getSelectableProjects(projects),
+    [projects]
+  );
 
   // Initialize allocations for all projects
   useEffect(() => {
     const initialAllocations: Record<string, number> = {};
-    projects.forEach((project) => {
+    selectableProjects.forEach((project) => {
       initialAllocations[project.id] = allocations[project.id] || 0;
     });
     setLocalAllocations(initialAllocations);
-  }, [projects, allocations]);
+  }, [selectableProjects, allocations]);
 
   // Calculate total percentage
   useEffect(() => {
@@ -47,13 +52,13 @@ export function ProjectAllocationSettings({
   };
 
   const autoBalance = () => {
-    if (projects.length === 0) return;
+    if (selectableProjects.length === 0) return;
 
-    const equalAllocation = Math.floor(100 / projects.length);
-    const remainder = 100 - equalAllocation * projects.length;
+    const equalAllocation = Math.floor(100 / selectableProjects.length);
+    const remainder = 100 - equalAllocation * selectableProjects.length;
 
     const newAllocations: Record<string, number> = {};
-    projects.forEach((project, index) => {
+    selectableProjects.forEach((project, index) => {
       // Add remainder to first project to ensure 100% total
       newAllocations[project.id] = equalAllocation + (index === 0 ? remainder : 0);
     });
@@ -90,7 +95,7 @@ export function ProjectAllocationSettings({
           </Alert>
         )}
 
-        {projects.length === 0 ? (
+        {selectableProjects.length === 0 ? (
           <Alert>
             <Info className="h-4 w-4" />
             <AlertDescription>
@@ -110,7 +115,7 @@ export function ProjectAllocationSettings({
 
             {/* Project allocation sliders */}
             <div className="space-y-4">
-              {projects.map((project) => {
+              {selectableProjects.map((project) => {
                 const allocation = localAllocations[project.id] || 0;
                 return (
                   <div key={project.id} className="space-y-2">
