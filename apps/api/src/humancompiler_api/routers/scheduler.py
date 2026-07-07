@@ -485,7 +485,7 @@ def _get_task_actual_hours(
             func.sum(Log.actual_minutes).label("total_minutes"),
         ).where(cast(Log.task_id, String).in_(task_uuid_strs))
         if created_at_gte is not None:
-            query = query.where(Log.created_at >= created_at_gte)
+            query = query.where(Log.created_at >= created_at_gte)  # type: ignore[operator]
         query = query.group_by(cast(Log.task_id, String))
 
         results = session.exec(query).all()
