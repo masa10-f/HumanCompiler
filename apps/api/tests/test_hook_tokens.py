@@ -70,10 +70,12 @@ def test_create_hook_token_returns_secret_once_and_stores_hash(session: Session)
     data = response.json()
     assert data["name"] == "PR review hook"
     assert data["token"].startswith("hc_hook_")
-    assert data["token_prefix"] == data["token"][:16]
+    assert len(data["token_prefix"]) == 16
+    assert data["token"].startswith(f"{data['token_prefix']}_")
     assert "token_hash" not in data
 
     stored_token = session.exec(select(HookToken)).one()
+    assert stored_token.token_prefix == data["token_prefix"]
     assert (
         stored_token.token_hash
         == hashlib.sha256(data["token"].encode("utf-8")).hexdigest()
