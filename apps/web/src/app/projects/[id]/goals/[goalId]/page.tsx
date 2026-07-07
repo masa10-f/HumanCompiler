@@ -22,7 +22,7 @@ import { TaskEditDialog } from '@/components/tasks/task-edit-dialog';
 import { TaskDeleteDialog } from '@/components/tasks/task-delete-dialog';
 import { TaskLogsMemoPanel } from '@/components/tasks/task-logs-memo-panel';
 import { LogFormDialog } from '@/components/logs/log-form-dialog';
-import { ContextNoteEditor } from '@/components/notes/context-note-editor';
+import { ContextNotePanel } from '@/components/notes/context-note-panel';
 import { GoalTaskAssistantDialog } from '@/components/ai/goal-task-assistant-dialog';
 import { ArrowLeft, Plus, Clock, Calendar, GitBranch, FileText, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import { taskStatusLabels, taskStatusColors, workTypeLabels, workTypeColors, taskPriorityLabels, taskPriorityColors } from '@/types/task';
@@ -319,11 +319,12 @@ export default function GoalDetailPage() {
                 </Button>
               </div>
             ) : (
-              <ContextNoteEditor
+              <ContextNotePanel
                 content={goalNote?.content || ''}
-                onUpdate={(content) => updateNote({ content })}
+                onUpdate={(content) => updateNote({ content, content_type: 'html' })}
                 saving={noteSaving}
                 placeholder="ゴールに関するメモや背景情報を記録..."
+                updatedAt={goalNote?.updated_at}
               />
             )}
           </CardContent>

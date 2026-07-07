@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { AppHeader } from '@/components/layout/app-header';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ContextNoteEditor } from '@/components/notes/context-note-editor';
+import { ContextNotePanel } from '@/components/notes/context-note-panel';
 import { GoalTaskAssistantDialog } from '@/components/ai/goal-task-assistant-dialog';
 import { useTaskNote } from '@/hooks/use-notes';
 import {
@@ -227,21 +227,17 @@ export default function TaskDetailPage() {
               </div>
             ) : (
               <div>
-                <ContextNoteEditor
+                <ContextNotePanel
                   content={note?.content || ''}
                   onUpdate={(content) => {
                     if (note) {
-                      updateNote({ content });
+                      updateNote({ content, content_type: 'html' });
                     }
                   }}
                   saving={saving}
                   placeholder="Write context notes for this task..."
+                  updatedAt={note?.updated_at}
                 />
-                {note && (
-                  <div className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-                    Last updated: {format(new Date(note.updated_at), 'yyyy-MM-dd HH:mm')}
-                  </div>
-                )}
               </div>
             )}
           </TabsContent>

@@ -1,15 +1,9 @@
 'use client';
 
 import { useEditor, EditorContent, BubbleMenu } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Placeholder from '@tiptap/extension-placeholder';
-import Link from '@tiptap/extension-link';
-import TaskList from '@tiptap/extension-task-list';
-import TaskItem from '@tiptap/extension-task-item';
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
-import { common, createLowlight } from 'lowlight';
 import { useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
+import { createContextNoteExtensions } from './context-note-extensions';
 import {
   Bold,
   Italic,
@@ -30,8 +24,6 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const lowlight = createLowlight(common);
-
 interface ContextNoteEditorProps {
   content: string;
   onUpdate: (content: string) => void;
@@ -40,6 +32,7 @@ interface ContextNoteEditorProps {
   placeholder?: string;
   className?: string;
   readOnly?: boolean;
+  variant?: 'full' | 'compact';
 }
 
 export function ContextNoteEditor({
@@ -50,34 +43,13 @@ export function ContextNoteEditor({
   placeholder = 'Write your notes here...',
   className,
   readOnly = false,
+  variant = 'full',
 }: ContextNoteEditorProps) {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isCompact = variant === 'compact';
 
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        codeBlock: false, // We use CodeBlockLowlight instead
-        heading: {
-          levels: [1, 2, 3],
-        },
-      }),
-      Placeholder.configure({
-        placeholder,
-      }),
-      Link.configure({
-        openOnClick: true,
-        HTMLAttributes: {
-          class: 'text-blue-600 dark:text-blue-400 underline cursor-pointer',
-        },
-      }),
-      TaskList,
-      TaskItem.configure({
-        nested: true,
-      }),
-      CodeBlockLowlight.configure({
-        lowlight,
-      }),
-    ],
+    extensions: createContextNoteExtensions(placeholder),
     content,
     editable: !readOnly,
     onUpdate: ({ editor }) => {
@@ -142,7 +114,7 @@ export function ContextNoteEditor({
     <div className={cn('relative', className)}>
       {/* Toolbar */}
       {!readOnly && (
-        <div className="flex flex-wrap items-center gap-1 p-2 border-b bg-gray-50 dark:bg-gray-800 rounded-t-lg">
+        <div className="flex flex-wrap items-center gap-1 border border-gray-200 bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-800 rounded-t-lg">
           {/* History */}
           <Button
             variant="ghost"
@@ -311,7 +283,7 @@ export function ContextNoteEditor({
           {/* Save indicator */}
           <div className="flex-1" />
           {saving && (
-            <div className="flex items-center text-sm text-gray-500">
+            <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
               <Loader2 className="h-4 w-4 animate-spin mr-1" />
               Saving...
             </div>
@@ -323,23 +295,16 @@ export function ContextNoteEditor({
       <EditorContent
         editor={editor}
         className={cn(
-          'prose prose-sm dark:prose-invert max-w-none',
-          'min-h-[300px] p-4',
+          'context-note-content context-note-editor prose prose-sm dark:prose-invert max-w-none',
+          isCompact ? 'min-h-[180px] p-3' : 'min-h-[300px] p-4',
           'border border-gray-200 dark:border-gray-700',
+          !readOnly && 'border-t-0',
           !readOnly && 'rounded-b-lg',
           readOnly && 'rounded-lg',
           'bg-white dark:bg-gray-900',
           'focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent',
           '[&_.ProseMirror]:outline-none',
-          '[&_.ProseMirror]:min-h-[260px]',
-          // Task list styles
-          '[&_ul[data-type="taskList"]]:list-none',
-          '[&_ul[data-type="taskList"]]:pl-0',
-          '[&_ul[data-type="taskList"]_li]:flex',
-          '[&_ul[data-type="taskList"]_li]:items-start',
-          '[&_ul[data-type="taskList"]_li]:gap-2',
-          '[&_ul[data-type="taskList"]_li_label]:mt-0.5',
-          '[&_ul[data-type="taskList"]_li_div]:flex-1',
+          isCompact ? '[&_.ProseMirror]:min-h-[150px]' : '[&_.ProseMirror]:min-h-[260px]',
           // Placeholder styles
           '[&_.is-editor-empty:first-child::before]:text-gray-400',
           '[&_.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]',

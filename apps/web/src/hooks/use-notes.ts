@@ -6,6 +6,14 @@ import type { ContextNote, ContextNoteUpdate, NoteEntityType } from '@/types/con
 
 const DEBOUNCE_MS = 500;
 
+function normalizeNoteUpdate(data: ContextNoteUpdate): ContextNoteUpdate {
+  if (data.content !== undefined && data.content_type === undefined) {
+    return { ...data, content_type: 'html' };
+  }
+
+  return data;
+}
+
 export interface UseNoteReturn {
   note: ContextNote | null;
   loading: boolean;
@@ -75,6 +83,8 @@ export function useNote({ entityType, entityId }: UseNoteConfig): UseNoteReturn 
     async (data: ContextNoteUpdate) => {
       if (!entityId) return;
 
+      const normalizedData = normalizeNoteUpdate(data);
+
       try {
         setSaving(true);
         setError(null);
@@ -83,20 +93,20 @@ export function useNote({ entityType, entityId }: UseNoteConfig): UseNoteReturn 
         let updated: ContextNote;
         switch (entityType) {
           case 'project':
-            updated = await notesApi.updateProjectNote(entityId, data);
+            updated = await notesApi.updateProjectNote(entityId, normalizedData);
             break;
           case 'goal':
-            updated = await notesApi.updateGoalNote(entityId, data);
+            updated = await notesApi.updateGoalNote(entityId, normalizedData);
             break;
           case 'task':
-            updated = await notesApi.updateTaskNote(entityId, data);
+            updated = await notesApi.updateTaskNote(entityId, normalizedData);
             break;
           default:
             throw new Error(`Invalid entity type: ${entityType}`);
         }
 
         // Only update state if this is the latest content
-        if (latestContentRef.current === null || latestContentRef.current === data.content) {
+        if (latestContentRef.current === null || latestContentRef.current === normalizedData.content) {
           log.component(hookName, 'save_success', { noteId: updated.id });
           setNote(updated);
         } else {
@@ -119,11 +129,17 @@ export function useNote({ entityType, entityId }: UseNoteConfig): UseNoteReturn 
     (data: ContextNoteUpdate) => {
       if (!entityId) return;
 
+      const normalizedData = normalizeNoteUpdate(data);
+
       // Track latest content to prevent stale updates
-      latestContentRef.current = data.content ?? null;
+      latestContentRef.current = normalizedData.content ?? null;
 
       // Optimistically update local state
-      setNote((prev) => prev ? { ...prev, content: data.content ?? prev.content } : prev);
+      setNote((prev) => prev ? {
+        ...prev,
+        content: normalizedData.content ?? prev.content,
+        content_type: normalizedData.content_type ?? prev.content_type,
+      } : prev);
 
       // Clear existing debounce timer
       if (debounceTimerRef.current) {
@@ -132,7 +148,7 @@ export function useNote({ entityType, entityId }: UseNoteConfig): UseNoteReturn 
 
       // Set new debounce timer
       debounceTimerRef.current = setTimeout(() => {
-        updateNoteImmediate(data).catch(() => {
+        updateNoteImmediate(normalizedData).catch(() => {
           // Error already handled in updateNoteImmediate
         });
       }, DEBOUNCE_MS);
