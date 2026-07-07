@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ListTodo, Search, Filter } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getSelectableProjects } from '@/lib/project-filters';
 import { DraggableTask } from './DraggableTask';
 import type { TaskInfo } from '@/types/ai-planning';
 import type { Project } from '@/types/project';
@@ -23,6 +24,10 @@ export function TaskPool({ tasks, assignedTaskIds, isLoading, projects = [] }: T
   const [searchQuery, setSearchQuery] = useState('');
   const [kindFilter, setKindFilter] = useState<string>('all');
   const [projectFilter, setProjectFilter] = useState<string>('all');
+  const selectableProjects = useMemo(
+    () => getSelectableProjects(projects),
+    [projects]
+  );
 
   const { isOver, setNodeRef } = useDroppable({
     id: 'task-pool',
@@ -88,6 +93,15 @@ export function TaskPool({ tasks, assignedTaskIds, isLoading, projects = [] }: T
     light_work: 'bg-green-100 text-green-800',
   };
 
+  useEffect(() => {
+    if (
+      projectFilter !== 'all' &&
+      !selectableProjects.some((project) => project.id === projectFilter)
+    ) {
+      setProjectFilter('all');
+    }
+  }, [projectFilter, selectableProjects]);
+
   const totalHours = availableTasks.reduce((sum, task) => sum + task.estimate_hours, 0);
 
   return (
@@ -143,14 +157,14 @@ export function TaskPool({ tasks, assignedTaskIds, isLoading, projects = [] }: T
                 <SelectItem value="light_work">軽作業</SelectItem>
               </SelectContent>
             </Select>
-            {projects.length > 0 && (
+            {selectableProjects.length > 0 && (
               <Select value={projectFilter} onValueChange={setProjectFilter}>
                 <SelectTrigger className="flex-1 h-9">
                   <SelectValue placeholder="プロジェクト" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">すべてのプロジェクト</SelectItem>
-                  {projects.map((project) => (
+                  {selectableProjects.map((project) => (
                     <SelectItem key={project.id} value={project.id}>
                       {project.title}
                     </SelectItem>

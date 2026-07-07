@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Clock, Trash2, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getSelectableProjects } from '@/lib/project-filters';
 import { DraggableTask } from './DraggableTask';
 import { getSlotKindLabel, getSlotKindPanelStyle, slotKindLabels } from '@/constants/schedule';
 import type { TimeSlot, TaskInfo } from '@/types/ai-planning';
@@ -60,6 +61,7 @@ export function DroppableSlot({
 
   const isMeetingSlot = slot.kind === 'meeting';
   const colors = getSlotKindPanelStyle(slot.kind);
+  const selectableProjects = getSelectableProjects(projects);
 
   // Check if the dragged task can be dropped here (kind matching)
   const canDrop = !isMeetingSlot && (
@@ -154,7 +156,7 @@ export function DroppableSlot({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">未指定</SelectItem>
-              {projects.map((project) => (
+              {selectableProjects.map((project) => (
                 <SelectItem key={project.id} value={project.id}>
                   {project.title}
                 </SelectItem>

@@ -39,6 +39,7 @@ import { toast } from '@/hooks/use-toast';
 import { schedulingApi, projectsApi, tasksApi, quickTasksApi, slotTemplatesApi } from '@/lib/api';
 import { getSlotKindLabel, getSlotKindColor, slotKinds } from '@/constants/schedule';
 import { DroppableSlot, TaskPool, DraggableTask } from '@/components/scheduling';
+import { getSelectableProjects } from '@/lib/project-filters';
 import type { SlotKind } from '@/constants/schedule';
 import type {
   ScheduleRequest,
@@ -82,6 +83,10 @@ export default function SchedulingPage() {
   const [taskSource, setTaskSource] = useState<TaskSource>({ type: 'all_tasks' });
   const [projects, setProjects] = useState<Project[]>([]);
   const [weeklyScheduleOptions, setWeeklyScheduleOptions] = useState<WeeklyScheduleOption[]>([]);
+  const selectableProjects = useMemo(
+    () => getSelectableProjects(projects),
+    [projects]
+  );
 
   // Available tasks for scheduling
   const [availableTasks, setAvailableTasks] = useState<TaskInfo[]>([]);
@@ -142,6 +147,16 @@ export default function SchedulingPage() {
 
     loadInitialData();
   }, [user]);
+
+  useEffect(() => {
+    if (
+      taskSource.type === 'project' &&
+      taskSource.project_id &&
+      !selectableProjects.some((project) => project.id === taskSource.project_id)
+    ) {
+      setTaskSource({ type: 'all_tasks' });
+    }
+  }, [selectableProjects, taskSource]);
 
   // Load slot templates
   useEffect(() => {
@@ -204,7 +219,7 @@ export default function SchedulingPage() {
         } else if (taskSource.type === 'all_tasks') {
           // Load tasks from all projects
           const allTasks: TaskInfo[] = [];
-          const taskFetches = projects.map((project) =>
+          const taskFetches = selectableProjects.map((project) =>
             tasksApi.getByProject(project.id).then((projectTasks) =>
               projectTasks
                 .filter((t) => t.status !== 'completed' && t.status !== 'cancelled')
@@ -248,7 +263,7 @@ export default function SchedulingPage() {
               allTasks.push(...(result.value as TaskInfo[]));
             } else {
               logger.error(
-                `Failed to load tasks for project ${projects[index]?.id}`,
+                `Failed to load tasks for project ${selectableProjects[index]?.id}`,
                 result.reason instanceof Error ? result.reason : new Error(String(result.reason))
               );
             }
@@ -285,10 +300,10 @@ export default function SchedulingPage() {
       }
     };
 
-    if (projects.length > 0 || taskSource.type === 'weekly_schedule') {
+    if (selectableProjects.length > 0 || taskSource.type === 'weekly_schedule') {
       loadTasks();
     }
-  }, [user, taskSource, projects]);
+  }, [user, taskSource, selectableProjects]);
 
   // Get assigned task IDs
   const assignedTaskIds = useMemo(() => {
@@ -590,7 +605,7 @@ export default function SchedulingPage() {
                         <SelectValue placeholder="選択..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {projects.map((project) => (
+                        {selectableProjects.map((project) => (
                           <SelectItem key={project.id} value={project.id}>
                             {project.title}
                           </SelectItem>
@@ -684,7 +699,7 @@ export default function SchedulingPage() {
                 tasks={availableTasks}
                 assignedTaskIds={assignedTaskIds}
                 isLoading={isLoadingTasks}
-                projects={projects}
+                projects={selectableProjects}
               />
             </div>
 
@@ -721,7 +736,7 @@ export default function SchedulingPage() {
                         slot={slot}
                         slotIndex={index}
                         assignedTasks={getSlotTasks(index)}
-                        projects={projects}
+                        projects={selectableProjects}
                         onSlotChange={updateTimeSlot}
                         onRemoveSlot={removeTimeSlot}
                         onRemoveTask={removeTaskFromSlot}

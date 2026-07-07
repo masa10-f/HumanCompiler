@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useProjects } from "@/hooks/use-projects";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,7 @@ import {
   reportsApi,
 } from "@/lib/api";
 import { getJSTDateString, getJSTISOString } from "@/lib/date-utils";
+import { getSelectableProjects } from "@/lib/project-filters";
 import type {
   WeeklyPlanResponse,
   SavedWeeklySchedule,
@@ -92,6 +93,14 @@ export default function AIPlanningPage() {
   const [weeklyTaskDialogOpen, setWeeklyTaskDialogOpen] = useState(false);
   const [editingWeeklyTask, setEditingWeeklyTask] =
     useState<WeeklyRecurringTask | null>(null);
+  const selectableProjects = useMemo(
+    () => getSelectableProjects(projects),
+    [projects],
+  );
+  const selectableProjectIds = useMemo(
+    () => new Set(selectableProjects.map((project) => project.id)),
+    [selectableProjects],
+  );
 
   const getProjectDisplayTitle = useCallback(
     (projectId?: string, projectTitle?: string) => {
@@ -150,6 +159,25 @@ export default function AIPlanningPage() {
       void preloadAiPlanningData();
     }
   }, [session, preloadAiPlanningData]);
+
+  useEffect(() => {
+    setSelectedProjects((current) => {
+      const next = current.filter((projectId) =>
+        selectableProjectIds.has(projectId),
+      );
+      return next.length === current.length ? current : next;
+    });
+    setProjectAllocations((current) => {
+      const next = Object.fromEntries(
+        Object.entries(current).filter(([projectId]) =>
+          selectableProjectIds.has(projectId),
+        ),
+      );
+      return Object.keys(next).length === Object.keys(current).length
+        ? current
+        : next;
+    });
+  }, [selectableProjectIds]);
 
   if (authLoading || !user) {
     return (
@@ -512,7 +540,7 @@ export default function AIPlanningPage() {
                 <div className="space-y-2">
                   <Label>対象プロジェクト (任意)</Label>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-32 overflow-y-auto">
-                    {projects.map((project) => (
+                    {selectableProjects.map((project) => (
                       <div
                         key={project.id}
                         className="flex items-center space-x-2"
@@ -538,7 +566,7 @@ export default function AIPlanningPage() {
                 {/* Project Allocation Settings */}
                 {selectedProjects.length > 0 && (
                   <ProjectAllocationSettings
-                    projects={projects.filter((p) =>
+                    projects={selectableProjects.filter((p) =>
                       selectedProjects.includes(p.id),
                     )}
                     allocations={projectAllocations}
@@ -1315,7 +1343,7 @@ export default function AIPlanningPage() {
                 <div className="space-y-2">
                   <Label>対象プロジェクト (任意)</Label>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-32 overflow-y-auto">
-                    {projects.map((project) => (
+                    {selectableProjects.map((project) => (
                       <div
                         key={project.id}
                         className="flex items-center space-x-2"

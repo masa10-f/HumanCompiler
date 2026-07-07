@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { projectsApi, triageApi } from '@/lib/api';
+import { getSelectableProjects } from '@/lib/project-filters';
 import type { Project } from '@/types/project';
 import type { WorkType } from '@/types/task';
 import { workTypeLabels } from '@/types/task';
@@ -50,13 +51,23 @@ export function TriageSettingsCard() {
         ]);
         if (cancelled) return;
 
-        setProjects(projectData);
+        const selectableProjects = getSelectableProjects(projectData);
+        const selectableProjectIds = new Set(
+          selectableProjects.map((project) => project.id)
+        );
+        setProjects(selectableProjects);
         setWeeklyCapacityHours(settings.weekly_capacity_hours);
         setMeetingBufferHours(settings.meeting_buffer_hours);
         setCadenceDays(settings.cadence_days);
         setAutoGenerateEnabled(settings.auto_generate_enabled);
         setUseAiRankAdjustment(settings.use_ai_rank_adjustment);
-        setProjectAllocations(settings.project_allocations || {});
+        setProjectAllocations(
+          Object.fromEntries(
+            Object.entries(settings.project_allocations || {}).filter(([projectId]) =>
+              selectableProjectIds.has(projectId)
+            )
+          )
+        );
         setInboxAllocationPercent(settings.inbox_allocation_percent || 0);
         setWorkTypeCaps({
           focused_work: settings.work_type_caps.focused_work?.toString() || '',
