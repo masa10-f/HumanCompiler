@@ -74,6 +74,11 @@ import type {
   QuickTaskConvertRequest,
 } from "@/types/quick-task";
 import type {
+  HookToken,
+  HookTokenCreate,
+  HookTokenCreated,
+} from "@/types/hook-token";
+import type {
   TriageApplyRequest,
   TriageApplyResponse,
   TriageCapacitySettings,
@@ -1515,6 +1520,27 @@ class ApiClient {
     return normalizeTask(task);
   }
 
+  // === Hook Token API methods ===
+
+  async getHookTokens(): Promise<HookToken[]> {
+    return this.request<HookToken[]>("/api/user/hook-tokens");
+  }
+
+  async createHookToken(
+    tokenData: HookTokenCreate,
+  ): Promise<HookTokenCreated> {
+    return this.request<HookTokenCreated>("/api/user/hook-tokens", {
+      method: "POST",
+      body: JSON.stringify(tokenData),
+    });
+  }
+
+  async revokeHookToken(tokenId: string): Promise<void> {
+    return this.request<void>(`/api/user/hook-tokens/${tokenId}`, {
+      method: "DELETE",
+    });
+  }
+
   // === Slot Template Methods ===
 
   /**
@@ -1916,6 +1942,16 @@ export const quickTasksApi = {
   delete: (taskId: string) => apiClient.deleteQuickTask(taskId),
   convertToTask: (taskId: string, goalId: string) =>
     apiClient.convertQuickTaskToTask(taskId, goalId),
+};
+
+/**
+ * Hook Tokens API convenience wrapper.
+ * Provides methods for managing external quick-task hook tokens.
+ */
+export const hookTokensApi = {
+  getAll: () => apiClient.getHookTokens(),
+  create: (tokenData: HookTokenCreate) => apiClient.createHookToken(tokenData),
+  revoke: (tokenId: string) => apiClient.revokeHookToken(tokenId),
 };
 
 /**

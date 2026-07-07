@@ -5,14 +5,21 @@ Refactored services using base service class
 from collections import deque
 from datetime import datetime, UTC
 from decimal import Decimal, ROUND_HALF_UP
+import hashlib
+import secrets
 from uuid import UUID
+from uuid import uuid4
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, and_, delete, func, select
 
 from humancompiler_api.base_service import BaseService
-from humancompiler_api.common.error_handlers import validate_uuid
+from humancompiler_api.common.error_handlers import (
+    ResourceNotFoundError,
+    safe_execute,
+    validate_uuid,
+)
 from humancompiler_api.models import (
     Goal,
     GoalCreate,
@@ -50,6 +57,8 @@ from humancompiler_api.models import (
     QuickTask,
     QuickTaskCreate,
     QuickTaskUpdate,
+    HookToken,
+    HookTokenCreate,
     TaskStatus,
     SlotTemplate,
     SlotTemplateCreate,
@@ -1564,6 +1573,106 @@ class WorkSessionService(
         return work_session
 
 
+class HookTokenService:
+    """Service for user-scoped hook ingestion tokens."""
+
+    TOKEN_PREFIX = "hc_hook_"
+    TOKEN_PREFIX_LENGTH = 16
+
+    @classmethod
+    def generate_token(cls) -> str:
+        """Generate a new hook token secret."""
+        return f"{cls.TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
+
+    @staticmethod
+    def hash_token(token: str) -> str:
+        """Hash a hook token for storage and lookup."""
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+    def create_hook_token(
+        self, session: Session, token_data: HookTokenCreate, user_id: str | UUID
+    ) -> tuple[HookToken, str]:
+        """Create a hook token and return the one-time plaintext secret."""
+        user_id_validated = validate_uuid(user_id, "user_id")
+        token = self.generate_token()
+        now = datetime.now(UTC)
+        hook_token = HookToken(
+            id=uuid4(),
+            user_id=user_id_validated,
+            name=token_data.name,
+            token_hash=self.hash_token(token),
+            token_prefix=token[: self.TOKEN_PREFIX_LENGTH],
+            created_at=now,
+            updated_at=now,
+        )
+
+        def create_operation() -> HookToken:
+            session.add(hook_token)
+            session.flush()
+            return hook_token
+
+        return safe_execute(session, create_operation), token
+
+    def get_hook_tokens(self, session: Session, user_id: str | UUID) -> list[HookToken]:
+        """Return active hook token metadata for a user."""
+        user_id_validated = validate_uuid(user_id, "user_id")
+        statement = (
+            select(HookToken)
+            .where(
+                HookToken.user_id == user_id_validated,
+                HookToken.revoked_at.is_(None),
+            )
+            .order_by(HookToken.created_at.desc(), HookToken.id.asc())
+        )
+        return list(session.exec(statement).all())
+
+    def revoke_hook_token(
+        self, session: Session, token_id: str | UUID, user_id: str | UUID
+    ) -> HookToken:
+        """Revoke an active hook token."""
+        token_id_validated = validate_uuid(token_id, "token_id")
+        user_id_validated = validate_uuid(user_id, "user_id")
+        hook_token = session.exec(
+            select(HookToken).where(
+                HookToken.id == token_id_validated,
+                HookToken.user_id == user_id_validated,
+                HookToken.revoked_at.is_(None),
+            )
+        ).first()
+        if hook_token is None:
+            raise ResourceNotFoundError("HookToken", token_id_validated)
+
+        now = datetime.now(UTC)
+        hook_token.revoked_at = now
+        hook_token.updated_at = now
+        session.add(hook_token)
+        session.commit()
+        session.refresh(hook_token)
+        return hook_token
+
+    def get_active_token_by_secret(
+        self, session: Session, token: str
+    ) -> HookToken | None:
+        """Resolve an active hook token from a plaintext secret."""
+        token_hash = self.hash_token(token)
+        return session.exec(
+            select(HookToken).where(
+                HookToken.token_hash == token_hash,
+                HookToken.revoked_at.is_(None),
+            )
+        ).first()
+
+    def mark_token_used(self, session: Session, hook_token: HookToken) -> HookToken:
+        """Record successful hook token use."""
+        now = datetime.now(UTC)
+        hook_token.last_used_at = now
+        hook_token.updated_at = now
+        session.add(hook_token)
+        session.commit()
+        session.refresh(hook_token)
+        return hook_token
+
+
 class QuickTaskService(BaseService[QuickTask, QuickTaskCreate, QuickTaskUpdate]):
     """QuickTask service for unclassified tasks not belonging to any project"""
 
@@ -1958,5 +2067,6 @@ task_service = TaskService()
 log_service = LogService()
 weekly_recurring_task_service = WeeklyRecurringTaskService()
 work_session_service = WorkSessionService()
+hook_token_service = HookTokenService()
 quick_task_service = QuickTaskService()
 slot_template_service = SlotTemplateService()

@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Eye, EyeOff, Key, AlertCircle, CheckCircle, Download, Upload, Database, Mail, Bell } from "lucide-react"
+import { Eye, EyeOff, Key, AlertCircle, CheckCircle, Download, Upload, Database, Mail, Bell, Copy, Plus, Trash2 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { AppHeader } from "@/components/layout/app-header"
 import { TriageSettingsCard } from "@/components/triage/triage-settings-card"
@@ -16,7 +16,8 @@ import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { supabase } from "@/lib/supabase"
 import { log } from "@/lib/logger"
 import { getJSTDateString } from "@/lib/date-utils"
-import { secureFetch } from "@/lib/api"
+import { hookTokensApi, secureFetch } from "@/lib/api"
+import type { HookToken } from "@/types/hook-token"
 
 
 interface ModelInfo {
@@ -37,6 +38,14 @@ const USER_API_KEY_REGEX = /^sk-[a-zA-Z0-9-_]{20,}$/
 // Default model from environment or fallback
 const DEFAULT_MODEL = process.env.NEXT_PUBLIC_DEFAULT_OPENAI_MODEL || "gpt-5.5"
 
+const formatHookTokenDate = (value: string | null) => {
+  if (!value) return "未使用"
+  return new Date(value).toLocaleString("ja-JP", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  })
+}
+
 export default function SettingsPage() {
   const router = useRouter()
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -50,6 +59,12 @@ export default function SettingsPage() {
   const [success, setSuccess] = useState("")
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [availableModels, setAvailableModels] = useState<AvailableModels | null>(null)
+  const [hookTokens, setHookTokens] = useState<HookToken[]>([])
+  const [hookTokenName, setHookTokenName] = useState("")
+  const [newHookToken, setNewHookToken] = useState<string | null>(null)
+  const [hookTokensLoading, setHookTokensLoading] = useState(false)
+  const [hookTokenActionLoading, setHookTokenActionLoading] = useState(false)
+  const [hookTokenToRevoke, setHookTokenToRevoke] = useState<HookToken | null>(null)
   const [exportLoading, setExportLoading] = useState(false)
   const [importLoading, setImportLoading] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
@@ -87,6 +102,7 @@ export default function SettingsPage() {
 
     fetchUserSettings()
     fetchAvailableModels()
+    fetchHookTokens()
     fetchExportInfo()
 
     // Cleanup function
@@ -178,6 +194,78 @@ export default function SettingsPage() {
       log.error('Failed to fetch settings', err as Error, { component: 'Settings' })
     } finally {
       setLoadingSettings(false)
+    }
+  }
+
+  const fetchHookTokens = async () => {
+    setHookTokensLoading(true)
+    try {
+      const tokens = await hookTokensApi.getAll()
+      setHookTokens(tokens)
+    } catch (err) {
+      log.error('Failed to fetch hook tokens', err as Error, { component: 'Settings' })
+    } finally {
+      setHookTokensLoading(false)
+    }
+  }
+
+  const handleCreateHookToken = async () => {
+    const trimmedName = hookTokenName.trim()
+    if (!trimmedName) {
+      setError("Hook token名を入力してください")
+      return
+    }
+
+    setHookTokenActionLoading(true)
+    setError("")
+    setSuccess("")
+    setNewHookToken(null)
+
+    try {
+      const createdToken = await hookTokensApi.create({ name: trimmedName })
+      setHookTokens((currentTokens) => [createdToken, ...currentTokens])
+      setHookTokenName("")
+      setNewHookToken(createdToken.token)
+      setSuccess("Hook tokenを作成しました")
+    } catch (err) {
+      log.error('Failed to create hook token', err as Error, { component: 'Settings' })
+      setError("Hook tokenの作成に失敗しました")
+    } finally {
+      setHookTokenActionLoading(false)
+    }
+  }
+
+  const handleCopyHookToken = async () => {
+    if (!newHookToken) return
+
+    try {
+      await navigator.clipboard.writeText(newHookToken)
+      setSuccess("Hook tokenをコピーしました")
+    } catch (err) {
+      log.error('Failed to copy hook token', err as Error, { component: 'Settings' })
+      setError("Hook tokenのコピーに失敗しました")
+    }
+  }
+
+  const confirmRevokeHookToken = async () => {
+    if (!hookTokenToRevoke) return
+
+    setHookTokenActionLoading(true)
+    setError("")
+    setSuccess("")
+
+    try {
+      await hookTokensApi.revoke(hookTokenToRevoke.id)
+      setHookTokens((currentTokens) =>
+        currentTokens.filter((token) => token.id !== hookTokenToRevoke.id)
+      )
+      setHookTokenToRevoke(null)
+      setSuccess("Hook tokenを失効しました")
+    } catch (err) {
+      log.error('Failed to revoke hook token', err as Error, { component: 'Settings' })
+      setError("Hook tokenの失効に失敗しました")
+    } finally {
+      setHookTokenActionLoading(false)
     }
   }
 
@@ -639,6 +727,101 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Key className="h-5 w-5" />
+            Hook Tokens
+          </CardTitle>
+          <CardDescription>
+            外部hookからQuick Taskを登録するためのtoken
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {newHookToken && (
+            <Alert>
+              <CheckCircle className="h-4 w-4" />
+              <AlertDescription>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <code className="min-w-0 flex-1 overflow-x-auto rounded bg-muted px-2 py-1 text-xs">
+                    {newHookToken}
+                  </code>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyHookToken}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    コピー
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              value={hookTokenName}
+              onChange={(event) => setHookTokenName(event.target.value)}
+              placeholder="Token name"
+              maxLength={100}
+              disabled={hookTokenActionLoading}
+            />
+            <Button
+              onClick={handleCreateHookToken}
+              disabled={hookTokenActionLoading || !hookTokenName.trim()}
+              className="sm:w-auto"
+            >
+              {hookTokenActionLoading ? (
+                "作成中..."
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-2" />
+                  作成
+                </>
+              )}
+            </Button>
+          </div>
+
+          <div className="space-y-2">
+            {hookTokensLoading ? (
+              <div className="text-sm text-muted-foreground">読み込み中...</div>
+            ) : hookTokens.length === 0 ? (
+              <div className="rounded border border-dashed p-4 text-sm text-muted-foreground">
+                Active tokenはありません
+              </div>
+            ) : (
+              hookTokens.map((token) => (
+                <div
+                  key={token.id}
+                  className="flex flex-col gap-3 rounded border p-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0 space-y-1">
+                    <div className="font-medium truncate">{token.name}</div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span>{token.token_prefix}...</span>
+                      <span>作成: {formatHookTokenDate(token.created_at)}</span>
+                      <span>最終使用: {formatHookTokenDate(token.last_used_at)}</span>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setHookTokenToRevoke(token)}
+                    disabled={hookTokenActionLoading}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    失効
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="mt-6">
         <TriageSettingsCard />
       </div>
@@ -933,6 +1116,17 @@ export default function SettingsPage() {
         cancelText="キャンセル"
         variant="destructive"
         loading={loading}
+      />
+      <ConfirmationModal
+        isOpen={hookTokenToRevoke !== null}
+        onClose={() => setHookTokenToRevoke(null)}
+        onConfirm={confirmRevokeHookToken}
+        title="Hook tokenを失効"
+        description="このHook tokenを失効してもよろしいですか？"
+        confirmText="失効"
+        cancelText="キャンセル"
+        variant="destructive"
+        loading={hookTokenActionLoading}
       />
       </div>
     </div>
