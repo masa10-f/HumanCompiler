@@ -681,14 +681,14 @@ class WeeklyTaskSolver:
             else 0.0
         )
 
-        task_to_project = {}
+        task_to_project: dict[str, str] = {}
         for task in context.tasks:
             for goal in context.goals:
                 if goal.id == task.goal_id:
-                    task_to_project[str(task.id)] = goal.project_id
+                    task_to_project[str(task.id)] = str(goal.project_id)
                     break
 
-        project_hours = {}
+        project_hours: dict[str, float] = {}
         for task in selected_tasks:
             project_id = task_to_project.get(task.task_id, "unassigned")
             project_hours[project_id] = (
@@ -705,6 +705,22 @@ class WeeklyTaskSolver:
             ) / len(project_hours)
             balance_score = max(0.0, 1.0 - (variance / (expected_hours**2)))
 
+        project_titles = {
+            str(project.id): project.title
+            for project in context.projects
+            if getattr(project, "id", None) is not None
+        }
+        for allocation in project_allocations:
+            project_id = str(allocation.project_id)
+            project_title = allocation.project_title
+            if project_title and project_title != project_id:
+                project_titles.setdefault(project_id, project_title)
+
+        project_distribution = {
+            project_titles.get(project_id, project_id): hours
+            for project_id, hours in project_hours.items()
+        }
+
         return {
             "capacity_utilization": capacity_utilization,
             "project_balance_score": balance_score,
@@ -713,7 +729,7 @@ class WeeklyTaskSolver:
             if selected_tasks
             else 0,
             "projects_involved": len(project_hours),
-            "project_distribution": project_hours,
+            "project_distribution": project_distribution,
         }
 
     async def _optimize_with_scheduler_backend(
