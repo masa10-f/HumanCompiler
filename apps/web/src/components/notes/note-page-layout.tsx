@@ -79,11 +79,7 @@ export function NotePageLayout({
 
       <ContextNotePanel
         content={note?.content || ''}
-        onUpdate={(content) => {
-          if (note) {
-            updateNote({ content, content_type: 'html' });
-          }
-        }}
+        onUpdate={(content) => updateNote({ content, content_type: 'html' })}
         saving={saving}
         placeholder={`Write context notes for this ${entityType}...`}
         updatedAt={note?.updated_at}
