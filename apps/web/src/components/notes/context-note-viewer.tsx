@@ -47,7 +47,7 @@ export function ContextNoteViewer({
     <EditorContent
       editor={editor}
       className={cn(
-        'context-note-content context-note-viewer prose prose-sm dark:prose-invert max-w-none',
+        'context-note-content context-note-viewer max-w-none',
         isCompact ? 'p-3' : 'p-4',
         'rounded-lg bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100',
         'border border-gray-200 dark:border-gray-700',

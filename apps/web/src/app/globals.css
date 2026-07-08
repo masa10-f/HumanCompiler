@@ -132,11 +132,16 @@
 
 @layer components {
   .context-note-content {
+    color: hsl(var(--foreground));
+    font-size: 0.9375rem;
+    line-height: 1.7;
     overflow-wrap: anywhere;
   }
 
   .context-note-content .ProseMirror {
+    color: inherit;
     outline: none;
+    white-space: normal;
   }
 
   .context-note-content .ProseMirror > *:first-child {
@@ -148,11 +153,11 @@
   }
 
   .context-note-content h1 {
-    @apply mt-6 mb-3 text-2xl font-semibold leading-tight tracking-normal text-gray-950 dark:text-gray-50;
+    @apply mt-7 mb-3 border-b border-gray-200 pb-2 text-2xl font-semibold leading-tight tracking-normal text-gray-950 dark:border-gray-800 dark:text-gray-50;
   }
 
   .context-note-content h2 {
-    @apply mt-5 mb-2 text-xl font-semibold leading-tight tracking-normal text-gray-950 dark:text-gray-50;
+    @apply mt-6 mb-2 text-xl font-semibold leading-tight tracking-normal text-gray-950 dark:text-gray-50;
   }
 
   .context-note-content h3 {
@@ -160,51 +165,84 @@
   }
 
   .context-note-content p {
-    @apply my-3 leading-7 text-gray-800 dark:text-gray-200;
+    @apply my-3 text-gray-800 dark:text-gray-200;
+    line-height: 1.7;
   }
 
   .context-note-content ul:not([data-type="taskList"]) {
-    @apply my-3 list-disc space-y-1 pl-6;
+    @apply my-3 list-disc pl-6 text-gray-800 dark:text-gray-200;
   }
 
   .context-note-content ol {
-    @apply my-3 list-decimal space-y-1 pl-6;
+    @apply my-3 list-decimal pl-6 text-gray-800 dark:text-gray-200;
   }
 
   .context-note-content li {
-    @apply pl-1 leading-7;
+    @apply my-1 pl-1;
+    line-height: 1.7;
+  }
+
+  .context-note-content li > p {
+    @apply my-0;
+  }
+
+  .context-note-content li > ul,
+  .context-note-content li > ol {
+    @apply my-1;
   }
 
   .context-note-content ul[data-type="taskList"] {
-    @apply my-3 list-none space-y-2 pl-0;
+    @apply my-3 list-none pl-0 text-gray-800 dark:text-gray-200;
   }
 
   .context-note-content ul[data-type="taskList"] li {
-    @apply flex items-start gap-2 pl-0;
+    @apply my-2 grid list-none gap-x-3 pl-0;
+    grid-template-columns: 1.125rem minmax(0, 1fr);
+    line-height: 1.6;
   }
 
   .context-note-content ul[data-type="taskList"] li > label {
-    @apply mt-1 inline-flex shrink-0 items-center;
+    @apply m-0 flex h-6 w-[1.125rem] items-center justify-center p-0;
+    grid-column: 1;
   }
 
   .context-note-content ul[data-type="taskList"] li > div {
-    @apply min-w-0 flex-1;
+    @apply min-w-0 pt-0;
+    grid-column: 2;
   }
 
   .context-note-content ul[data-type="taskList"] input[type="checkbox"] {
-    @apply h-4 w-4 rounded border-gray-300;
+    @apply m-0 h-4 w-4 shrink-0 rounded border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-950;
+    accent-color: hsl(var(--primary));
+    transform: translateY(1px);
+  }
+
+  .context-note-content ul[data-type="taskList"] li > div > p:first-child {
+    @apply mt-0;
+  }
+
+  .context-note-content ul[data-type="taskList"] li > div > p:last-child {
+    @apply mb-0;
+  }
+
+  .context-note-content ul[data-type="taskList"] ul[data-type="taskList"] {
+    @apply mt-2;
   }
 
   .context-note-content blockquote {
-    @apply my-4 border-l-4 border-gray-300 pl-4 italic text-gray-700 dark:border-gray-600 dark:text-gray-300;
+    @apply my-4 rounded-r-md border-l-4 border-gray-300 bg-gray-50 py-2 pl-4 pr-3 text-gray-700 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300;
+  }
+
+  .context-note-content blockquote p {
+    @apply my-1;
   }
 
   .context-note-content code {
-    @apply rounded bg-gray-100 px-1.5 py-0.5 text-[0.9em] text-gray-900 dark:bg-gray-800 dark:text-gray-100;
+    @apply rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[0.9em] text-gray-900 dark:bg-gray-800 dark:text-gray-100;
   }
 
   .context-note-content pre {
-    @apply my-4 max-w-full overflow-x-auto rounded-md bg-gray-950 p-4 text-sm text-gray-100;
+    @apply my-4 max-w-full overflow-x-auto rounded-md bg-gray-950 p-4 font-mono text-sm leading-6 text-gray-100;
   }
 
   .context-note-content pre code {
@@ -219,7 +257,28 @@
     @apply my-6 border-gray-200 dark:border-gray-700;
   }
 
+  .context-note-content table {
+    @apply my-4 w-full border-collapse overflow-hidden rounded-md text-sm;
+  }
+
+  .context-note-content th,
+  .context-note-content td {
+    @apply border border-gray-200 px-3 py-2 align-top dark:border-gray-700;
+  }
+
+  .context-note-content th {
+    @apply bg-gray-50 font-semibold text-gray-900 dark:bg-gray-800 dark:text-gray-100;
+  }
+
+  .context-note-content img {
+    @apply my-4 max-w-full rounded-md border border-gray-200 dark:border-gray-700;
+  }
+
   .context-note-viewer .ProseMirror {
     cursor: default;
+  }
+
+  .context-note-editor .ProseMirror {
+    caret-color: hsl(var(--primary));
   }
 }
