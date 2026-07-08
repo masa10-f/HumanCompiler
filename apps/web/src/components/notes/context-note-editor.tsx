@@ -295,7 +295,7 @@ export function ContextNoteEditor({
       <EditorContent
         editor={editor}
         className={cn(
-          'context-note-content context-note-editor prose prose-sm dark:prose-invert max-w-none',
+          'context-note-content context-note-editor max-w-none',
           isCompact ? 'min-h-[180px] p-3' : 'min-h-[300px] p-4',
           'border border-gray-200 dark:border-gray-700',
           !readOnly && 'border-t-0',
