@@ -247,39 +247,46 @@ export default function TasksPage() {
       projects.map((project) => project.id).join(","),
     ],
     queryFn: async () => {
-      const results = await Promise.all(
+      const results = await Promise.allSettled(
         projects.map((project) => goalsApi.getByProject(project.id, 0, 100)),
       );
-      return results.flat();
+      return results.flatMap((result) =>
+        result.status === "fulfilled" ? result.value : [],
+      );
     },
     enabled: projects.length > 0,
   });
 
-  const clientPlanPreset =
-    preset === "today" || preset === "week" || preset === "unplanned";
   const filters = useMemo<TaskWorkspaceFilters>(() => {
     let statuses = status ? [status] : undefined;
     if (
       !status &&
-      (preset === "next" || preset === "overdue" || clientPlanPreset)
+      (preset === "next" ||
+        preset === "overdue" ||
+        preset === "today" ||
+        preset === "week" ||
+        preset === "unplanned")
     ) {
       statuses = actionableStatuses;
     }
     if (!status && preset === "in_progress") statuses = ["in_progress"];
 
     return {
-      skip: clientPlanPreset ? 0 : page * 50,
-      limit: clientPlanPreset ? 100 : 50,
+      skip: page * 50,
+      limit: 50,
       status: statuses,
       projectId: projectId || undefined,
       goalId: goalId || undefined,
       dueBefore: preset === "overdue" ? new Date().toISOString() : undefined,
       search: deferredSearch || undefined,
       blocked: preset === "blocked" ? true : undefined,
+      plan:
+        preset === "today" || preset === "week" || preset === "unplanned"
+          ? preset
+          : undefined,
       sortBy: preset === "next" ? "priority" : "due_date",
     };
   }, [
-    clientPlanPreset,
     deferredSearch,
     goalId,
     page,
@@ -290,18 +297,7 @@ export default function TasksPage() {
 
   const workspace = useTaskWorkspace(filters);
   const recommendations = useTaskRecommendations();
-  const visibleTasks = useMemo(() => {
-    const items = workspace.data?.items ?? [];
-    if (preset === "today") return items.filter((task) => task.planned_today);
-    if (preset === "week")
-      return items.filter((task) => task.planned_this_week);
-    if (preset === "unplanned") {
-      return items.filter(
-        (task) => !task.planned_today && !task.planned_this_week,
-      );
-    }
-    return items;
-  }, [preset, workspace.data?.items]);
+  const visibleTasks = workspace.data?.items ?? [];
 
   const filteredGoals = projectId
     ? goals.filter((goal) => goal.project_id === projectId)
@@ -495,7 +491,7 @@ export default function TasksPage() {
               )}
             </Card>
 
-            {!clientPlanPreset && (workspace.data?.total ?? 0) > 50 && (
+            {(workspace.data?.total ?? 0) > 50 && (
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">
                   {page * 50 + 1}–

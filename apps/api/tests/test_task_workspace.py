@@ -11,6 +11,8 @@ from humancompiler_api.models import (
     GoalCreate,
     Log,
     ProjectCreate,
+    ProjectStatus,
+    Schedule,
     TaskCreate,
     TaskDependency,
     TaskStatus,
@@ -19,7 +21,10 @@ from humancompiler_api.models import (
     UserCreate,
     WorkSession,
 )
-from humancompiler_api.routers.tasks import build_workspace_items
+from humancompiler_api.routers.tasks import (
+    _extract_planned_task_ids,
+    build_workspace_items,
+)
 from humancompiler_api.services import (
     GoalService,
     ProjectService,
@@ -96,6 +101,101 @@ def test_workspace_lists_and_filters_tasks_across_projects(session, test_user_id
     )
     assert blocked_total == 1
     assert [row[0].id for row in blocked_rows] == [first_task.id]
+
+
+def test_workspace_filters_by_project_status_and_plan_membership(session, test_user_id):
+    pending_data = create_test_data(session, test_user_id)
+    project_service = ProjectService()
+    goal_service = GoalService()
+    task_service = TaskService()
+    active_project = project_service.create_project(
+        session,
+        ProjectCreate(title="Active project", status=ProjectStatus.IN_PROGRESS),
+        test_user_id,
+    )
+    active_goal = goal_service.create_goal(
+        session,
+        GoalCreate(
+            project_id=active_project.id,
+            title="Active goal",
+            estimate_hours=Decimal("8"),
+        ),
+        test_user_id,
+    )
+    pending_task = task_service.create_task(
+        session,
+        TaskCreate(
+            goal_id=pending_data["goal"].id,
+            title="Pending project task",
+            estimate_hours=Decimal("1"),
+        ),
+        test_user_id,
+    )
+    planned_task = task_service.create_task(
+        session,
+        TaskCreate(
+            goal_id=active_goal.id,
+            title="Planned active task",
+            estimate_hours=Decimal("1"),
+        ),
+        test_user_id,
+    )
+    unplanned_task = task_service.create_task(
+        session,
+        TaskCreate(
+            goal_id=active_goal.id,
+            title="Unplanned active task",
+            estimate_hours=Decimal("1"),
+        ),
+        test_user_id,
+    )
+
+    active_rows, active_total = task_service.get_workspace_tasks(
+        session,
+        test_user_id,
+        project_status=ProjectStatus.IN_PROGRESS,
+    )
+    assert active_total == 2
+    assert {row[0].id for row in active_rows} == {planned_task.id, unplanned_task.id}
+    assert pending_task.id not in {row[0].id for row in active_rows}
+
+    planned_rows, planned_total = task_service.get_workspace_tasks(
+        session,
+        test_user_id,
+        included_task_ids={planned_task.id},
+    )
+    assert planned_total == 1
+    assert [row[0].id for row in planned_rows] == [planned_task.id]
+
+    unplanned_rows, unplanned_total = task_service.get_workspace_tasks(
+        session,
+        test_user_id,
+        excluded_task_ids={planned_task.id},
+    )
+    assert unplanned_total == 2
+    assert {row[0].id for row in unplanned_rows} == {
+        pending_task.id,
+        unplanned_task.id,
+    }
+
+
+def test_extract_planned_task_ids_supports_camel_case_assignments(
+    session, test_user_id
+):
+    task_id = uuid4()
+    session.add(
+        Schedule(
+            id=uuid4(),
+            user_id=test_user_id,
+            date=datetime.now(UTC),
+            plan_json={"assignments": [{"taskId": str(task_id)}]},
+        )
+    )
+    session.flush()
+
+    today_ids, _ = _extract_planned_task_ids(session, test_user_id)
+
+    assert str(task_id) in today_ids
 
 
 def test_moving_task_preserves_related_records(session, test_user_id):

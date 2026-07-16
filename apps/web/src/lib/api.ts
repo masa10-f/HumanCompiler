@@ -551,12 +551,15 @@ class ApiClient {
     if (filters.limit !== undefined) params.set("limit", String(filters.limit));
     filters.status?.forEach((status) => params.append("status", status));
     if (filters.projectId) params.set("project_id", filters.projectId);
+    if (filters.projectStatus)
+      params.set("project_status", filters.projectStatus);
     if (filters.goalId) params.set("goal_id", filters.goalId);
     if (filters.dueBefore) params.set("due_before", filters.dueBefore);
     if (filters.dueAfter) params.set("due_after", filters.dueAfter);
     if (filters.search) params.set("search", filters.search);
     if (filters.blocked !== undefined)
       params.set("blocked", String(filters.blocked));
+    if (filters.plan) params.set("plan", filters.plan);
     if (filters.sortBy) params.set("sort_by", filters.sortBy);
     if (filters.sortOrder) params.set("sort_order", filters.sortOrder);
 

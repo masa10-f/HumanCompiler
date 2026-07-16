@@ -144,12 +144,14 @@ describe('tasksApi', () => {
     const page = await tasksApi.getWorkspace({
       status: ['pending', 'in_progress'],
       projectId: 'project-1',
+      projectStatus: 'in_progress',
+      plan: 'today',
       search: 'workspace',
     })
 
     expect(mockFetchWithFallback).toHaveBeenCalledTimes(1)
     expect(mockFetchWithFallback.mock.calls[0]?.[0]).toContain(
-      '/api/tasks?status=pending&status=in_progress&project_id=project-1&search=workspace'
+      '/api/tasks?status=pending&status=in_progress&project_id=project-1&project_status=in_progress&search=workspace&plan=today'
     )
     expect(page.items[0]).toEqual(
       expect.objectContaining({ estimate_hours: 3.5, remaining_estimate_hours: 2.25 })

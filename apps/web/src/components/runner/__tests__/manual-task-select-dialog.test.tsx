@@ -74,4 +74,34 @@ describe('ManualTaskSelectDialog recommended task flow', () => {
       );
     });
   });
+
+  it('limits the all-project picker to active projects', async () => {
+    jest.mocked(projectsApi.getAll).mockResolvedValue([]);
+    jest.mocked(tasksApi.getWorkspace).mockResolvedValue({
+      items: [],
+      total: 0,
+      skip: 0,
+      limit: 100,
+    });
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ManualTaskSelectDialog
+          open
+          onOpenChange={jest.fn()}
+          isStarting={false}
+          onStart={jest.fn()}
+        />
+      </QueryClientProvider>
+    );
+
+    await waitFor(() => {
+      expect(tasksApi.getWorkspace).toHaveBeenCalledWith(
+        expect.objectContaining({ projectStatus: 'in_progress' })
+      );
+    });
+  });
 });

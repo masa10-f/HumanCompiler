@@ -151,11 +151,13 @@ export interface TaskWorkspaceFilters {
   limit?: number;
   status?: TaskStatus[];
   projectId?: string;
+  projectStatus?: 'pending' | 'in_progress' | 'completed' | 'cancelled';
   goalId?: string;
   dueBefore?: string;
   dueAfter?: string;
   search?: string;
   blocked?: boolean;
+  plan?: 'today' | 'week' | 'unplanned';
   sortBy?: 'due_date' | 'priority' | 'status' | 'title' | 'updated_at';
   sortOrder?: 'asc' | 'desc';
 }

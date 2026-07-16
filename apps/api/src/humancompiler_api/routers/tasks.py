@@ -23,8 +23,10 @@ from humancompiler_api.models import (
     Task,
     TaskRecommendation,
     TaskStatus,
+    ProjectStatus,
     TaskWorkspaceItem,
     TaskWorkspacePage,
+    TaskWorkspacePlanFilter,
     TaskWorkspaceSortBy,
     Schedule,
     WeeklySchedule,
@@ -99,18 +101,29 @@ def _extract_planned_task_ids(
     ).all()
 
     today_ids = {
-        str(assignment.get("task_id"))
+        str(assignment.get("task_id") or assignment.get("taskId"))
         for schedule in daily_schedules
         for assignment in (schedule.plan_json or {}).get("assignments", [])
-        if assignment.get("task_id")
+        if assignment.get("task_id") or assignment.get("taskId")
     }
     week_ids = {
-        str(task.get("task_id"))
+        str(task.get("task_id") or task.get("taskId"))
         for schedule in weekly_schedules
         for task in (schedule.schedule_json or {}).get("selected_tasks", [])
-        if task.get("task_id")
+        if task.get("task_id") or task.get("taskId")
     }
     return today_ids, week_ids
+
+
+def _valid_task_uuids(task_ids: set[str]) -> set[UUID]:
+    """Return valid UUIDs from stored plan payloads, ignoring stale invalid IDs."""
+    valid_ids: set[UUID] = set()
+    for task_id in task_ids:
+        try:
+            valid_ids.add(UUID(task_id))
+        except ValueError:
+            logger.warning("Ignoring invalid task ID in saved plan: %s", task_id)
+    return valid_ids
 
 
 def build_workspace_items(
@@ -174,15 +187,28 @@ async def get_task_workspace(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     task_statuses: Annotated[list[TaskStatus] | None, Query(alias="status")] = None,
     project_id: UUID | None = None,
+    project_status: ProjectStatus | None = None,
     goal_id: UUID | None = None,
     due_before: datetime | None = None,
     due_after: datetime | None = None,
     search: Annotated[str | None, Query(max_length=200)] = None,
     blocked: bool | None = None,
+    plan: TaskWorkspacePlanFilter | None = None,
     sort_by: TaskWorkspaceSortBy = TaskWorkspaceSortBy.DUE_DATE,
     sort_order: SortOrder = SortOrder.ASC,
 ) -> TaskWorkspacePage:
     """List tasks across all owned projects using one filtered, paginated query."""
+    included_task_ids: set[UUID] | None = None
+    excluded_task_ids: set[UUID] | None = None
+    if plan is not None:
+        today_ids, week_ids = _extract_planned_task_ids(session, current_user.user_id)
+        if plan == TaskWorkspacePlanFilter.TODAY:
+            included_task_ids = _valid_task_uuids(today_ids)
+        elif plan == TaskWorkspacePlanFilter.WEEK:
+            included_task_ids = _valid_task_uuids(week_ids)
+        else:
+            excluded_task_ids = _valid_task_uuids(today_ids | week_ids)
+
     rows, total = task_service.get_workspace_tasks(
         session,
         current_user.user_id,
@@ -190,11 +216,14 @@ async def get_task_workspace(
         limit=limit,
         statuses=task_statuses,
         project_id=project_id,
+        project_status=project_status,
         goal_id=goal_id,
         due_before=due_before,
         due_after=due_after,
         search=search,
         blocked=blocked,
+        included_task_ids=included_task_ids,
+        excluded_task_ids=excluded_task_ids,
         sort_by=sort_by,
         sort_order=sort_order,
     )

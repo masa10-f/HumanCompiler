@@ -102,6 +102,14 @@ class TaskWorkspaceSortBy(StrEnum):
     UPDATED_AT = "updated_at"
 
 
+class TaskWorkspacePlanFilter(StrEnum):
+    """Plan-membership filters for the cross-project task workspace."""
+
+    TODAY = "today"
+    WEEK = "week"
+    UNPLANNED = "unplanned"
+
+
 class CheckoutType(StrEnum):
     """Checkout type for work sessions"""
 
