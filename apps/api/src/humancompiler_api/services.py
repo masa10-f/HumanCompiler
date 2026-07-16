@@ -11,7 +11,7 @@ from uuid import UUID
 from uuid import uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 from sqlmodel import Session, and_, delete, func, select
 
 from humancompiler_api.base_service import BaseService
@@ -63,6 +63,7 @@ from humancompiler_api.models import (
     SlotTemplate,
     SlotTemplateCreate,
     SlotTemplateUpdate,
+    TaskWorkspaceSortBy,
 )
 
 
@@ -634,6 +635,120 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         """Get all tasks for a user across all projects"""
         return self.get_all(session, owner_id, skip, limit)
 
+    def get_workspace_tasks(
+        self,
+        session: Session,
+        owner_id: str | UUID,
+        *,
+        skip: int = 0,
+        limit: int = 50,
+        statuses: list[TaskStatus] | None = None,
+        project_id: UUID | None = None,
+        goal_id: UUID | None = None,
+        due_before: datetime | None = None,
+        due_after: datetime | None = None,
+        search: str | None = None,
+        blocked: bool | None = None,
+        sort_by: TaskWorkspaceSortBy = TaskWorkspaceSortBy.DUE_DATE,
+        sort_order: SortOrder = SortOrder.ASC,
+    ) -> tuple[list[tuple[Task, Goal, Project, int, datetime | None]], int]:
+        """Fetch one page of user tasks with hierarchy and aggregate work data."""
+        owner_uuid = UUID(str(owner_id))
+        actual_minutes = (
+            select(
+                Log.task_id,
+                func.coalesce(func.sum(Log.actual_minutes), 0).label("minutes"),
+            )
+            .group_by(Log.task_id)
+            .subquery()
+        )
+        last_worked = (
+            select(
+                WorkSession.task_id,
+                func.max(WorkSession.started_at).label("last_worked_at"),
+            )
+            .group_by(WorkSession.task_id)
+            .subquery()
+        )
+
+        conditions = [Project.owner_id == owner_uuid]
+        if statuses:
+            conditions.append(Task.status.in_(statuses))
+        if project_id:
+            conditions.append(Project.id == project_id)
+        if goal_id:
+            conditions.append(Goal.id == goal_id)
+        if due_before:
+            conditions.append(Task.due_date <= due_before)
+        if due_after:
+            conditions.append(Task.due_date >= due_after)
+        if search and search.strip():
+            pattern = f"%{search.strip()}%"
+            conditions.append(
+                Task.title.ilike(pattern)
+                | Task.description.ilike(pattern)
+                | Task.memo.ilike(pattern)
+            )
+        if blocked is not None:
+            prerequisite = aliased(Task)
+            blocking_dependency = (
+                select(TaskDependency.id)
+                .join(
+                    prerequisite,
+                    TaskDependency.depends_on_task_id == prerequisite.id,
+                )
+                .where(
+                    TaskDependency.task_id == Task.id,
+                    prerequisite.status != TaskStatus.COMPLETED,
+                )
+                .exists()
+            )
+            conditions.append(blocking_dependency if blocked else ~blocking_dependency)
+
+        count_statement = (
+            select(func.count(Task.id))
+            .select_from(Task)
+            .join(Goal, Task.goal_id == Goal.id)
+            .join(Project, Goal.project_id == Project.id)
+            .where(*conditions)
+        )
+        total = int(session.exec(count_statement).one())
+
+        statement = (
+            select(
+                Task,
+                Goal,
+                Project,
+                func.coalesce(actual_minutes.c.minutes, 0),
+                last_worked.c.last_worked_at,
+            )
+            .join(Goal, Task.goal_id == Goal.id)
+            .join(Project, Goal.project_id == Project.id)
+            .outerjoin(actual_minutes, actual_minutes.c.task_id == Task.id)
+            .outerjoin(last_worked, last_worked.c.task_id == Task.id)
+            .where(*conditions)
+        )
+
+        sort_columns = {
+            TaskWorkspaceSortBy.DUE_DATE: Task.due_date,
+            TaskWorkspaceSortBy.PRIORITY: Task.priority,
+            TaskWorkspaceSortBy.STATUS: Task.status,
+            TaskWorkspaceSortBy.TITLE: Task.title,
+            TaskWorkspaceSortBy.UPDATED_AT: Task.updated_at,
+        }
+        sort_column = sort_columns[sort_by]
+        order_expression = (
+            sort_column.desc() if sort_order == SortOrder.DESC else sort_column.asc()
+        )
+        if sort_by == TaskWorkspaceSortBy.DUE_DATE:
+            order_expression = order_expression.nulls_last()
+        statement = (
+            statement.order_by(order_expression, Task.priority.asc(), Task.id.asc())
+            .offset(skip)
+            .limit(limit)
+        )
+        return list(session.exec(statement).all()), total
+
     def update_task(
         self,
         session: Session,
@@ -642,6 +757,8 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         task_data: TaskUpdate,
     ) -> Task:
         """Update task"""
+        if task_data.goal_id is not None:
+            self.goal_service.get_goal(session, task_data.goal_id, owner_id)
         return self.update(session, task_id, task_data, owner_id)
 
     def delete_task(
