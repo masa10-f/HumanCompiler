@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Dialog,
@@ -55,6 +55,7 @@ export function ManualTaskSelectDialog({
   const [plannedOutcome, setPlannedOutcome] = useState('');
   const [chooseAnotherTask, setChooseAnotherTask] = useState(false);
   const isInitialTaskMode = Boolean(initialTaskId) && !chooseAnotherTask;
+  const deferredSearch = useDeferredValue(searchQuery.trim());
 
   // Fetch all projects
   const { data: projects = [], isLoading: projectsLoading } = useQuery({
@@ -78,13 +79,13 @@ export function ManualTaskSelectDialog({
 
   // Fetch cross-project tasks in one server-side query.
   const { data: taskPage, isLoading: tasksLoading } = useQuery({
-    queryKey: ['tasks', 'manual-select', selectedProjectId, searchQuery],
+    queryKey: ['tasks', 'manual-select', selectedProjectId, deferredSearch],
     queryFn: () => tasksApi.getWorkspace({
       limit: 100,
       status: ['pending', 'in_progress'],
       projectId: selectedProjectId === 'all' ? undefined : selectedProjectId,
       projectStatus: selectedProjectId === 'all' ? 'in_progress' : undefined,
-      search: searchQuery.trim() || undefined,
+      search: deferredSearch || undefined,
       sortBy: 'priority',
     }),
     enabled: open && !isInitialTaskMode,
