@@ -53,12 +53,14 @@ export function ManualTaskSelectDialog({
   const [searchQuery, setSearchQuery] = useState('');
   const [duration, setDuration] = useState<number>(60);
   const [plannedOutcome, setPlannedOutcome] = useState('');
+  const [chooseAnotherTask, setChooseAnotherTask] = useState(false);
+  const isInitialTaskMode = Boolean(initialTaskId) && !chooseAnotherTask;
 
   // Fetch all projects
   const { data: projects = [], isLoading: projectsLoading } = useQuery({
     queryKey: ['projects', 'all'],
     queryFn: () => projectsApi.getAll(0, 100),
-    enabled: open,
+    enabled: open && !isInitialTaskMode,
   });
   const selectableProjects = useMemo(
     () => getSelectableProjects(projects),
@@ -84,12 +86,27 @@ export function ManualTaskSelectDialog({
       search: searchQuery.trim() || undefined,
       sortBy: 'priority',
     }),
-    enabled: open,
+    enabled: open && !isInitialTaskMode,
   });
   const filteredTasks = taskPage?.items ?? [];
 
+  // A workspace or recommendation link may point to a task outside the first
+  // page of the manual picker, so load that task directly by ID.
+  const {
+    data: initialTask,
+    isLoading: initialTaskLoading,
+    isError: initialTaskError,
+  } = useQuery({
+    queryKey: ['tasks', 'manual-select', 'initial', initialTaskId],
+    queryFn: () => tasksApi.getById(initialTaskId as string),
+    enabled: open && isInitialTaskMode,
+  });
+
   useEffect(() => {
-    if (open && initialTaskId) setSelectedTaskId(initialTaskId);
+    if (open && initialTaskId) {
+      setSelectedTaskId(initialTaskId);
+      setChooseAnotherTask(false);
+    }
   }, [initialTaskId, open]);
 
   // Calculate planned checkout time
@@ -116,29 +133,84 @@ export function ManualTaskSelectDialog({
     setSearchQuery('');
     setDuration(60);
     setPlannedOutcome('');
+    setChooseAnotherTask(false);
     onOpenChange(false);
   };
 
-  const selectedTask = filteredTasks.find((t) => t.id === selectedTaskId);
-  const isLoading = projectsLoading || tasksLoading;
+  const selectedTask = isInitialTaskMode
+    ? initialTask
+    : filteredTasks.find((t) => t.id === selectedTaskId);
+  const isLoading = isInitialTaskMode
+    ? initialTaskLoading
+    : projectsLoading || tasksLoading;
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && handleClose()}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FolderOpen className="h-5 w-5" />
-            タスクを手動で選択
+            {isInitialTaskMode ? 'セッション開始' : 'タスクを手動で選択'}
           </DialogTitle>
           <DialogDescription>
-            スケジュール外のタスクを選択して作業を開始できます。
-            作業完了時にスケジュールへの影響が提案されます。
+            {isInitialTaskMode ? (
+              <>選択したタスクの作業時間と今回の目標を確認してください。</>
+            ) : (
+              <>
+                スケジュール外のタスクを選択して作業を開始できます。
+                作業完了時にスケジュールへの影響が提案されます。
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
+          {isInitialTaskMode && (
+            <div className="space-y-3">
+              <Label>開始するタスク</Label>
+              {isLoading ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  読み込み中...
+                </div>
+              ) : initialTaskError || !initialTask ? (
+                <div className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive">
+                  選択したタスクを読み込めませんでした。
+                </div>
+              ) : (
+                <div className="rounded-lg border border-primary/40 bg-primary/5 p-4">
+                  <p className="font-medium">{initialTask.title}</p>
+                  {initialTask.description && (
+                    <p className="mt-1 text-sm text-muted-foreground line-clamp-3">
+                      {initialTask.description}
+                    </p>
+                  )}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Badge variant="outline" className="text-xs">
+                      <Clock className="h-3 w-3 mr-1" />
+                      見積もり {initialTask.estimate_hours}h
+                    </Badge>
+                    <Badge variant="secondary" className="text-xs">
+                      {initialTask.status === 'pending' ? '未着手' : '進行中'}
+                    </Badge>
+                  </div>
+                </div>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setChooseAnotherTask(true);
+                  setSelectedTaskId('');
+                }}
+              >
+                別のタスクを選択
+              </Button>
+            </div>
+          )}
+
           {/* Project filter */}
-          <div className="space-y-2">
+          <div className={isInitialTaskMode ? 'hidden' : 'space-y-2'}>
             <Label>プロジェクト</Label>
             <Select
               value={selectedProjectId}
@@ -162,7 +234,7 @@ export function ManualTaskSelectDialog({
           </div>
 
           {/* Search */}
-          <div className="space-y-2">
+          <div className={isInitialTaskMode ? 'hidden' : 'space-y-2'}>
             <Label>タスク検索</Label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -176,7 +248,7 @@ export function ManualTaskSelectDialog({
           </div>
 
           {/* Task selection */}
-          <div className="space-y-3">
+          <div className={isInitialTaskMode ? 'hidden' : 'space-y-3'}>
             <Label>タスク選択</Label>
             {isLoading ? (
               <div className="text-center py-8 text-muted-foreground">
@@ -307,7 +379,12 @@ export function ManualTaskSelectDialog({
           </Button>
           <Button
             onClick={handleStart}
-            disabled={!selectedTaskId || isStarting}
+            disabled={
+              !selectedTaskId ||
+              isStarting ||
+              isLoading ||
+              (isInitialTaskMode && (initialTaskError || !initialTask))
+            }
           >
             {isStarting ? '開始中...' : 'セッション開始'}
           </Button>
