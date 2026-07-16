@@ -25,7 +25,6 @@ import {
 } from '@/components/ui/select';
 import { Clock, Search, FolderOpen, AlertCircle } from 'lucide-react';
 import { projectsApi, tasksApi } from '@/lib/api';
-import { log } from '@/lib/logger';
 import { getSelectableProjects } from '@/lib/project-filters';
 import type { Project } from '@/types/project';
 
@@ -33,6 +32,7 @@ interface ManualTaskSelectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   isStarting: boolean;
+  initialTaskId?: string | null;
   onStart: (
     taskId: string,
     plannedCheckoutAt: string,
@@ -45,6 +45,7 @@ export function ManualTaskSelectDialog({
   open,
   onOpenChange,
   isStarting,
+  initialTaskId,
   onStart,
 }: ManualTaskSelectDialogProps) {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
@@ -73,54 +74,23 @@ export function ManualTaskSelectDialog({
     }
   }, [selectableProjects, selectedProjectId]);
 
-  // Fetch tasks for selected project (or all projects)
-  const { data: tasks = [], isLoading: tasksLoading } = useQuery({
-    queryKey: ['tasks', 'manual-select', selectedProjectId, selectableProjects.map(p => p.id).join(',')],
-    queryFn: async () => {
-      if (selectedProjectId === 'all') {
-        // Fetch tasks from all projects in parallel.
-        // Ignore failures for individual projects and return other projects' tasks.
-        const taskPromises = selectableProjects.map((project) =>
-          tasksApi.getByProject(project.id, 0, 100)
-        );
-        const taskResults = await Promise.allSettled(taskPromises);
-        return taskResults.flatMap((result, index) => {
-          if (result.status === 'fulfilled') {
-            return result.value;
-          }
-
-          log.error(
-            `Failed to load tasks for project ${selectableProjects[index]?.id}`,
-            result.reason instanceof Error ? result.reason : new Error(String(result.reason)),
-            { component: 'ManualTaskSelectDialog' }
-          );
-
-          return [];
-        });
-      } else {
-        return tasksApi.getByProject(selectedProjectId, 0, 100);
-      }
-    },
-    enabled: open && (selectedProjectId !== 'all' || selectableProjects.length > 0),
+  // Fetch cross-project tasks in one server-side query.
+  const { data: taskPage, isLoading: tasksLoading } = useQuery({
+    queryKey: ['tasks', 'manual-select', selectedProjectId, searchQuery],
+    queryFn: () => tasksApi.getWorkspace({
+      limit: 100,
+      status: ['pending', 'in_progress'],
+      projectId: selectedProjectId === 'all' ? undefined : selectedProjectId,
+      search: searchQuery.trim() || undefined,
+      sortBy: 'priority',
+    }),
+    enabled: open,
   });
+  const filteredTasks = taskPage?.items ?? [];
 
-  // Filter to only show actionable tasks (pending or in_progress)
-  const actionableTasks = useMemo(() => {
-    return tasks.filter(
-      (task) => task.status === 'pending' || task.status === 'in_progress'
-    );
-  }, [tasks]);
-
-  // Filter tasks by search query
-  const filteredTasks = useMemo(() => {
-    if (!searchQuery.trim()) return actionableTasks;
-    const query = searchQuery.toLowerCase();
-    return actionableTasks.filter(
-      (task) =>
-        task.title.toLowerCase().includes(query) ||
-        (task.description?.toLowerCase().includes(query) ?? false)
-    );
-  }, [actionableTasks, searchQuery]);
+  useEffect(() => {
+    if (open && initialTaskId) setSelectedTaskId(initialTaskId);
+  }, [initialTaskId, open]);
 
   // Calculate planned checkout time
   const calculateCheckoutTime = (): string => {
@@ -149,11 +119,6 @@ export function ManualTaskSelectDialog({
     onOpenChange(false);
   };
 
-  // Reset task selection when project changes
-  useEffect(() => {
-    setSelectedTaskId('');
-  }, [selectedProjectId]);
-
   const selectedTask = filteredTasks.find((t) => t.id === selectedTaskId);
   const isLoading = projectsLoading || tasksLoading;
 
@@ -177,7 +142,10 @@ export function ManualTaskSelectDialog({
             <Label>プロジェクト</Label>
             <Select
               value={selectedProjectId}
-              onValueChange={setSelectedProjectId}
+              onValueChange={(value) => {
+                setSelectedProjectId(value);
+                setSelectedTaskId('');
+              }}
             >
               <SelectTrigger>
                 <SelectValue placeholder="プロジェクトを選択" />
@@ -248,6 +216,9 @@ export function ManualTaskSelectDialog({
                         </p>
                       )}
                       <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        <Badge variant="outline" className="text-xs">
+                          {task.project_title} › {task.goal_title}
+                        </Badge>
                         <Badge variant="outline" className="text-xs">
                           <Clock className="h-3 w-3 mr-1" />
                           {task.estimate_hours}h

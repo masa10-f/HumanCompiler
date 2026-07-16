@@ -18,7 +18,7 @@ import { PauseDialog } from './pause-dialog';
 import { ResumeDialog } from './resume-dialog';
 import { NotificationBanner } from './notification-banner';
 import { RescheduleSuggestionCard } from './reschedule-suggestion-card';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Play, AlertCircle, Pause, FolderOpen, Calendar } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { formatDuration } from '@/types/runner';
@@ -54,10 +54,19 @@ export function RunnerPage() {
 
   const [startDialogOpen, setStartDialogOpen] = useState(false);
   const [manualTaskDialogOpen, setManualTaskDialogOpen] = useState(false);
+  const [initialTaskId, setInitialTaskId] = useState<string | null>(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [pauseDialogOpen, setPauseDialogOpen] = useState(false);
   const [resumeDialogOpen, setResumeDialogOpen] = useState(false);
   const [selectedNextTaskId, setSelectedNextTaskId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const taskId = new URLSearchParams(window.location.search).get('taskId');
+    if (taskId) {
+      setInitialTaskId(taskId);
+      setManualTaskDialogOpen(true);
+    }
+  }, []);
 
   // Issue #227: Reschedule suggestion state
   const [lastRescheduleSuggestion, setLastRescheduleSuggestion] = useState<RescheduleSuggestion | null>(null);
@@ -304,12 +313,17 @@ export function RunnerPage() {
 
         <ManualTaskSelectDialog
           open={manualTaskDialogOpen}
-          onOpenChange={setManualTaskDialogOpen}
+          onOpenChange={(open) => {
+            setManualTaskDialogOpen(open);
+            if (!open) setInitialTaskId(null);
+          }}
           isStarting={isStarting}
+          initialTaskId={initialTaskId}
           onStart={async (taskId, plannedCheckoutAt, plannedOutcome, isManualExecution) => {
             try {
               await startSession(taskId, plannedCheckoutAt, plannedOutcome, isManualExecution);
               setManualTaskDialogOpen(false);
+              setInitialTaskId(null);
             } catch (error) {
               console.error('Start session failed:', error);
             }

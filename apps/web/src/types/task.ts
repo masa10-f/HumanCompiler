@@ -123,6 +123,47 @@ export interface TaskUpdate {
   work_type?: WorkType;
   /** 優先度 (1:最高 〜 5:最低) */
   priority?: number;
+  /** 移動先ゴールID */
+  goal_id?: string;
+}
+
+export interface TaskWorkspaceItem extends Task {
+  project_id: string;
+  project_title: string;
+  goal_title: string;
+  remaining_estimate_hours: number;
+  is_blocked: boolean;
+  blocking_task_ids: string[];
+  last_worked_at: string | null;
+  planned_today: boolean;
+  planned_this_week: boolean;
+}
+
+export interface TaskWorkspacePage {
+  items: TaskWorkspaceItem[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
+export interface TaskWorkspaceFilters {
+  skip?: number;
+  limit?: number;
+  status?: TaskStatus[];
+  projectId?: string;
+  goalId?: string;
+  dueBefore?: string;
+  dueAfter?: string;
+  search?: string;
+  blocked?: boolean;
+  sortBy?: 'due_date' | 'priority' | 'status' | 'title' | 'updated_at';
+  sortOrder?: 'asc' | 'desc';
+}
+
+export interface TaskRecommendation {
+  task: TaskWorkspaceItem;
+  score: number;
+  reason: string;
 }
 
 /**

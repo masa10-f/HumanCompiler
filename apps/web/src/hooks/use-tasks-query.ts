@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { DEFAULT_TASK_PAGE_LIMIT, tasksApi } from '@/lib/api'
 import type { QueryClient, Query } from '@tanstack/react-query'
-import type { Task, TaskCreate, TaskUpdate, TaskDependency } from '@/types/task'
+import type { Task, TaskCreate, TaskUpdate, TaskDependency, TaskWorkspaceFilters } from '@/types/task'
 import type { SortOptions } from '@/types/sort'
 
 /**
@@ -14,6 +14,8 @@ export const taskKeys = {
   detail: (id: string) => [...taskKeys.details(), id] as const,
   byGoal: (goalId: string) => [...taskKeys.all, 'goal', goalId] as const,
   byProject: (projectId: string) => [...taskKeys.all, 'project', projectId] as const,
+  workspace: (filters: TaskWorkspaceFilters) => [...taskKeys.all, 'workspace', filters] as const,
+  recommendations: () => [...taskKeys.all, 'recommendations'] as const,
 }
 
 const isTaskGoalQuery = (query: Query) =>
@@ -30,6 +32,24 @@ const invalidateTaskCollections = (queryClient: QueryClient, goalId?: string) =>
   }
 
   queryClient.invalidateQueries({ predicate: isTaskProjectQuery })
+  queryClient.invalidateQueries({ queryKey: [...taskKeys.all, 'workspace'] })
+  queryClient.invalidateQueries({ queryKey: taskKeys.recommendations() })
+}
+
+export function useTaskWorkspace(filters: TaskWorkspaceFilters) {
+  return useQuery({
+    queryKey: taskKeys.workspace(filters),
+    queryFn: () => tasksApi.getWorkspace(filters),
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useTaskRecommendations() {
+  return useQuery({
+    queryKey: taskKeys.recommendations(),
+    queryFn: () => tasksApi.getRecommendations(),
+    staleTime: 60 * 1000,
+  })
 }
 
 const updateTaskInList = (
@@ -194,7 +214,7 @@ export function useUpdateTask() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: TaskUpdate }) =>
       tasksApi.update(id, data),
-    onSuccess: (updatedTask: Task) => {
+    onSuccess: (updatedTask: Task, variables) => {
       // Update the cached task
       queryClient.setQueryData(
         taskKeys.detail(updatedTask.id),
@@ -202,7 +222,10 @@ export function useUpdateTask() {
       )
 
       // Invalidate task collections to reflect changes in goal and project views.
-      invalidateTaskCollections(queryClient, updatedTask.goal_id)
+      invalidateTaskCollections(
+        queryClient,
+        variables.data.goal_id ? undefined : updatedTask.goal_id
+      )
     },
   })
 }

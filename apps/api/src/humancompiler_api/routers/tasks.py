@@ -1,10 +1,12 @@
 import logging
 from collections.abc import Generator
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from humancompiler_api.auth import AuthUser, get_current_user
 from humancompiler_api.database import db
@@ -19,6 +21,13 @@ from humancompiler_api.models import (
     SortBy,
     SortOrder,
     Task,
+    TaskRecommendation,
+    TaskStatus,
+    TaskWorkspaceItem,
+    TaskWorkspacePage,
+    TaskWorkspaceSortBy,
+    Schedule,
+    WeeklySchedule,
 )
 from humancompiler_api.services import task_service
 
@@ -61,6 +70,196 @@ def build_task_responses_with_dependencies(
         task_responses.append(task_response)
 
     return task_responses
+
+
+def _extract_planned_task_ids(
+    session: Session, owner_id: str | UUID
+) -> tuple[set[str], set[str]]:
+    """Return task IDs in today's daily plan and the current weekly plan."""
+    owner_uuid = UUID(str(owner_id))
+    now = datetime.now(UTC)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = day_start + timedelta(days=1)
+    week_start = day_start - timedelta(days=day_start.weekday())
+    week_end = week_start + timedelta(days=7)
+
+    daily_schedules = session.exec(
+        select(Schedule).where(
+            Schedule.user_id == owner_uuid,
+            Schedule.date >= day_start,
+            Schedule.date < day_end,
+        )
+    ).all()
+    weekly_schedules = session.exec(
+        select(WeeklySchedule).where(
+            WeeklySchedule.user_id == owner_uuid,
+            WeeklySchedule.week_start_date >= week_start,
+            WeeklySchedule.week_start_date < week_end,
+        )
+    ).all()
+
+    today_ids = {
+        str(assignment.get("task_id"))
+        for schedule in daily_schedules
+        for assignment in (schedule.plan_json or {}).get("assignments", [])
+        if assignment.get("task_id")
+    }
+    week_ids = {
+        str(task.get("task_id"))
+        for schedule in weekly_schedules
+        for task in (schedule.schedule_json or {}).get("selected_tasks", [])
+        if task.get("task_id")
+    }
+    return today_ids, week_ids
+
+
+def build_workspace_items(
+    session: Session,
+    rows: list[tuple[Task, object, object, int, datetime | None]],
+    owner_id: str | UUID,
+) -> list[TaskWorkspaceItem]:
+    """Hydrate workspace query rows without per-task database calls."""
+    if not rows:
+        return []
+
+    tasks = [row[0] for row in rows]
+    dependencies = task_service.get_task_dependencies_batch(
+        session, [task.id for task in tasks], owner_id
+    )
+    today_ids, week_ids = _extract_planned_task_ids(session, owner_id)
+
+    items: list[TaskWorkspaceItem] = []
+    for task, goal, project, actual_minutes, last_worked_at in rows:
+        task_response = TaskResponse.model_validate(task)
+        task_dependencies = dependencies.get(str(task.id), [])
+        dependency_responses = []
+        blocking_task_ids = []
+        for dependency in task_dependencies:
+            dependency_response = TaskDependencyResponse.model_validate(dependency)
+            if dependency.depends_on_task:
+                dependency_response.depends_on_task = (
+                    TaskDependencyTaskInfo.model_validate(dependency.depends_on_task)
+                )
+                if dependency.depends_on_task.status != TaskStatus.COMPLETED:
+                    blocking_task_ids.append(dependency.depends_on_task.id)
+            dependency_responses.append(dependency_response)
+
+        task_response.dependencies = dependency_responses
+        remaining = max(
+            Decimal("0"),
+            task.estimate_hours - (Decimal(str(actual_minutes)) / Decimal("60")),
+        )
+        items.append(
+            TaskWorkspaceItem(
+                **task_response.model_dump(),
+                project_id=project.id,
+                project_title=project.title,
+                goal_title=goal.title,
+                remaining_estimate_hours=remaining.quantize(Decimal("0.01")),
+                is_blocked=bool(blocking_task_ids),
+                blocking_task_ids=blocking_task_ids,
+                last_worked_at=last_worked_at,
+                planned_today=str(task.id) in today_ids,
+                planned_this_week=str(task.id) in week_ids,
+            )
+        )
+    return items
+
+
+@router.get("/", response_model=TaskWorkspacePage)
+@router.get("", response_model=TaskWorkspacePage, include_in_schema=False)
+async def get_task_workspace(
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    task_statuses: Annotated[list[TaskStatus] | None, Query(alias="status")] = None,
+    project_id: UUID | None = None,
+    goal_id: UUID | None = None,
+    due_before: datetime | None = None,
+    due_after: datetime | None = None,
+    search: Annotated[str | None, Query(max_length=200)] = None,
+    blocked: bool | None = None,
+    sort_by: TaskWorkspaceSortBy = TaskWorkspaceSortBy.DUE_DATE,
+    sort_order: SortOrder = SortOrder.ASC,
+) -> TaskWorkspacePage:
+    """List tasks across all owned projects using one filtered, paginated query."""
+    rows, total = task_service.get_workspace_tasks(
+        session,
+        current_user.user_id,
+        skip=skip,
+        limit=limit,
+        statuses=task_statuses,
+        project_id=project_id,
+        goal_id=goal_id,
+        due_before=due_before,
+        due_after=due_after,
+        search=search,
+        blocked=blocked,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+    return TaskWorkspacePage(
+        items=build_workspace_items(session, rows, current_user.user_id),
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
+
+
+@router.get("/recommendations", response_model=list[TaskRecommendation])
+async def get_task_recommendations(
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> list[TaskRecommendation]:
+    """Return up to three deterministic, read-only next-task recommendations."""
+    rows, _ = task_service.get_workspace_tasks(
+        session,
+        current_user.user_id,
+        limit=100,
+        statuses=[TaskStatus.PENDING, TaskStatus.IN_PROGRESS],
+        sort_by=TaskWorkspaceSortBy.PRIORITY,
+    )
+    items = build_workspace_items(session, rows, current_user.user_id)
+    now = datetime.now(UTC)
+    recommendations: list[TaskRecommendation] = []
+    for item in items:
+        if item.is_blocked:
+            continue
+
+        score = (6 - item.priority) * 20
+        reasons = [f"優先度が{item.priority}"]
+        if item.status == TaskStatus.IN_PROGRESS:
+            score += 20
+            reasons.append("すでに作業中")
+        if item.planned_today:
+            score += 30
+            reasons.append("今日の計画に登録済み")
+        elif item.planned_this_week:
+            score += 10
+            reasons.append("今週の計画に登録済み")
+        if item.due_date:
+            due_date = item.due_date
+            if due_date.tzinfo is None:
+                due_date = due_date.replace(tzinfo=UTC)
+            days = (due_date - now).total_seconds() / 86400
+            if days < 0:
+                score += 50
+                reasons.append("期限超過")
+            elif days <= 1:
+                score += 40
+                reasons.append("期限まで24時間以内")
+            elif days <= 3:
+                score += 25
+                reasons.append("期限まで3日以内")
+            elif days <= 7:
+                score += 10
+                reasons.append("期限まで1週間以内")
+        recommendations.append(
+            TaskRecommendation(task=item, score=score, reason="、".join(reasons))
+        )
+
+    return sorted(recommendations, key=lambda item: item.score, reverse=True)[:3]
 
 
 @router.post(

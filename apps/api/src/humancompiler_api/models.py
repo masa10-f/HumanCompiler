@@ -92,6 +92,16 @@ class SortOrder(StrEnum):
     DESC = "desc"
 
 
+class TaskWorkspaceSortBy(StrEnum):
+    """Sort field options for the cross-project task workspace."""
+
+    DUE_DATE = "due_date"
+    PRIORITY = "priority"
+    STATUS = "status"
+    TITLE = "title"
+    UPDATED_AT = "updated_at"
+
+
 class CheckoutType(StrEnum):
     """Checkout type for work sessions"""
 
@@ -1042,6 +1052,7 @@ class TaskUpdate(BaseModel):
     status: TaskStatus | None = None
     work_type: WorkType | None = None
     priority: int | None = Field(None, ge=1, le=5)
+    goal_id: UUID | None = None
 
 
 class TaskResponse(TaskBase):
@@ -1059,6 +1070,42 @@ class TaskResponse(TaskBase):
     def serialize_estimate_hours(self, value: Decimal) -> float:
         """Convert Decimal to float for JSON serialization"""
         return float(value)
+
+
+class TaskWorkspaceItem(TaskResponse):
+    """Task enriched with hierarchy and execution context for the workspace."""
+
+    project_id: UUID
+    project_title: str
+    goal_title: str
+    remaining_estimate_hours: Decimal = Field(ge=0)
+    is_blocked: bool = False
+    blocking_task_ids: list[UUID] = Field(default_factory=list)
+    last_worked_at: datetime | None = None
+    planned_today: bool = False
+    planned_this_week: bool = False
+
+    @field_serializer("remaining_estimate_hours")
+    def serialize_remaining_estimate_hours(self, value: Decimal) -> float:
+        """Convert Decimal to float for JSON serialization."""
+        return float(value)
+
+
+class TaskWorkspacePage(BaseModel):
+    """Paginated task workspace response."""
+
+    items: list[TaskWorkspaceItem]
+    total: int
+    skip: int
+    limit: int
+
+
+class TaskRecommendation(BaseModel):
+    """A safe, read-only next-task recommendation with an explicit rationale."""
+
+    task: TaskWorkspaceItem
+    score: int
+    reason: str
 
 
 class TaskSummary(BaseModel):

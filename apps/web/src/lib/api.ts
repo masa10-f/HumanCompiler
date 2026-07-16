@@ -15,6 +15,10 @@ import type {
   TaskCreate,
   TaskUpdate,
   TaskDependency,
+  TaskRecommendation,
+  TaskWorkspaceFilters,
+  TaskWorkspaceItem,
+  TaskWorkspacePage,
 } from "@/types/task";
 import type { Log, LogCreate, LogUpdate } from "@/types/log";
 import type {
@@ -125,6 +129,22 @@ const normalizeTask = (task: RawTask): Task => ({
 });
 
 const normalizeTasks = (tasks: RawTask[]): Task[] => tasks.map(normalizeTask);
+
+type RawWorkspaceItem = Omit<
+  TaskWorkspaceItem,
+  "estimate_hours" | "remaining_estimate_hours"
+> & {
+  estimate_hours: number | string | null | undefined;
+  remaining_estimate_hours: number | string | null | undefined;
+};
+
+const normalizeWorkspaceItem = (task: RawWorkspaceItem): TaskWorkspaceItem => ({
+  ...task,
+  estimate_hours: normalizeEstimateHours(task.estimate_hours),
+  remaining_estimate_hours: normalizeEstimateHours(
+    task.remaining_estimate_hours,
+  ),
+});
 
 // Helper function to ensure HTTPS protocol
 const ensureHttps = (url: string): string => {
@@ -521,6 +541,42 @@ class ApiClient {
       `/api/tasks/project/${projectId}?${params.toString()}`,
     );
     return normalizeTasks(tasks);
+  }
+
+  async getTaskWorkspace(
+    filters: TaskWorkspaceFilters = {},
+  ): Promise<TaskWorkspacePage> {
+    const params = new URLSearchParams();
+    if (filters.skip !== undefined) params.set("skip", String(filters.skip));
+    if (filters.limit !== undefined) params.set("limit", String(filters.limit));
+    filters.status?.forEach((status) => params.append("status", status));
+    if (filters.projectId) params.set("project_id", filters.projectId);
+    if (filters.goalId) params.set("goal_id", filters.goalId);
+    if (filters.dueBefore) params.set("due_before", filters.dueBefore);
+    if (filters.dueAfter) params.set("due_after", filters.dueAfter);
+    if (filters.search) params.set("search", filters.search);
+    if (filters.blocked !== undefined)
+      params.set("blocked", String(filters.blocked));
+    if (filters.sortBy) params.set("sort_by", filters.sortBy);
+    if (filters.sortOrder) params.set("sort_order", filters.sortOrder);
+
+    const page = await this.request<{
+      items: RawWorkspaceItem[];
+      total: number;
+      skip: number;
+      limit: number;
+    }>(`/api/tasks?${params.toString()}`);
+    return { ...page, items: page.items.map(normalizeWorkspaceItem) };
+  }
+
+  async getTaskRecommendations(): Promise<TaskRecommendation[]> {
+    const recommendations = await this.request<
+      Array<Omit<TaskRecommendation, "task"> & { task: RawWorkspaceItem }>
+    >("/api/tasks/recommendations");
+    return recommendations.map((recommendation) => ({
+      ...recommendation,
+      task: normalizeWorkspaceItem(recommendation.task),
+    }));
   }
 
   async getTask(taskId: string): Promise<Task> {
@@ -1692,6 +1748,9 @@ export const goalsApi = {
  * Provides methods for task CRUD and dependency operations.
  */
 export const tasksApi = {
+  getWorkspace: (filters?: TaskWorkspaceFilters) =>
+    apiClient.getTaskWorkspace(filters),
+  getRecommendations: () => apiClient.getTaskRecommendations(),
   getByGoal: (
     goalId: string,
     skip?: number,

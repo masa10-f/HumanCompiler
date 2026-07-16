@@ -19,18 +19,19 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 // Icons
-import { TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play, Timer, ListChecks, MoreHorizontal, ChevronDown, CalendarDays, SlidersHorizontal, LayoutTemplate } from 'lucide-react'
+import { TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play, Timer, ListChecks, MoreHorizontal, ChevronDown, CalendarDays, SlidersHorizontal, LayoutTemplate, ListTodo } from 'lucide-react'
 
 // Hooks
 import { useAuth } from '@/hooks/use-auth'
 
 interface AppHeaderProps {
-  currentPage?: 'dashboard' | 'projects' | 'ai-planning' | 'triage' | 'scheduling' | 'scheduling-daily' | 'scheduling-settings' | 'scheduler-tuning' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner'
+  currentPage?: 'dashboard' | 'tasks' | 'projects' | 'ai-planning' | 'triage' | 'scheduling' | 'scheduling-daily' | 'scheduling-settings' | 'scheduler-tuning' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner'
 }
 
 const NAVIGATION_ITEMS = [
   { id: 'dashboard', label: 'ダッシュボード', path: '/dashboard', icon: Home },
   { id: 'runner', label: 'Runner', path: '/runner', icon: Play },
+  { id: 'tasks', label: 'タスク', path: '/tasks', icon: ListTodo },
   { id: 'projects', label: 'プロジェクト', path: '/projects', icon: FolderOpen },
   { id: 'scheduling', label: 'スケジューリング', path: '/scheduling', icon: Calendar },
   { id: 'triage', label: 'トリアージ', path: '/triage', icon: ListChecks },
@@ -51,6 +52,7 @@ const SCHEDULING_NAVIGATION_ITEMS = [
 const PRIMARY_NAVIGATION_IDS = new Set([
   'dashboard',
   'runner',
+  'tasks',
   'projects',
   'scheduling',
   'triage',
