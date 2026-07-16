@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlmodel import Session, select
@@ -36,6 +37,7 @@ from humancompiler_api.services import task_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+APP_TIMEZONE = ZoneInfo("Asia/Tokyo")
 
 
 def get_session() -> Generator[Session, None, None]:
@@ -74,16 +76,27 @@ def build_task_responses_with_dependencies(
     return task_responses
 
 
+def _plan_date_windows(
+    now: datetime | None = None,
+) -> tuple[datetime, datetime, datetime, datetime]:
+    """Return naive date boundaries matching stored JST schedule dates."""
+    instant = now or datetime.now(UTC)
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=UTC)
+    local_date = instant.astimezone(APP_TIMEZONE).date()
+    day_start = datetime.combine(local_date, datetime.min.time())
+    day_end = day_start + timedelta(days=1)
+    week_start = day_start - timedelta(days=day_start.weekday())
+    week_end = week_start + timedelta(days=7)
+    return day_start, day_end, week_start, week_end
+
+
 def _extract_planned_task_ids(
     session: Session, owner_id: str | UUID
 ) -> tuple[set[str], set[str]]:
     """Return task IDs in today's daily plan and the current weekly plan."""
     owner_uuid = UUID(str(owner_id))
-    now = datetime.now(UTC)
-    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    day_end = day_start + timedelta(days=1)
-    week_start = day_start - timedelta(days=day_start.weekday())
-    week_end = week_start + timedelta(days=7)
+    day_start, day_end, week_start, week_end = _plan_date_windows()
 
     daily_schedules = session.exec(
         select(Schedule).where(
@@ -130,6 +143,8 @@ def build_workspace_items(
     session: Session,
     rows: list[tuple[Task, object, object, int, datetime | None]],
     owner_id: str | UUID,
+    today_ids: set[str] | None = None,
+    week_ids: set[str] | None = None,
 ) -> list[TaskWorkspaceItem]:
     """Hydrate workspace query rows without per-task database calls."""
     if not rows:
@@ -138,7 +153,8 @@ def build_workspace_items(
     tasks = [row[0] for row in rows]
     task_ids = [task.id for task in tasks if task.id is not None]
     dependencies = task_service.get_task_dependencies_batch(session, task_ids, owner_id)
-    today_ids, week_ids = _extract_planned_task_ids(session, owner_id)
+    if today_ids is None or week_ids is None:
+        today_ids, week_ids = _extract_planned_task_ids(session, owner_id)
 
     items: list[TaskWorkspaceItem] = []
     for task, goal, project, actual_minutes, last_worked_at in rows:
@@ -200,6 +216,8 @@ async def get_task_workspace(
     """List tasks across all owned projects using one filtered, paginated query."""
     included_task_ids: set[UUID] | None = None
     excluded_task_ids: set[UUID] | None = None
+    today_ids: set[str] | None = None
+    week_ids: set[str] | None = None
     if plan is not None:
         today_ids, week_ids = _extract_planned_task_ids(session, current_user.user_id)
         if plan == TaskWorkspacePlanFilter.TODAY:
@@ -228,7 +246,13 @@ async def get_task_workspace(
         sort_order=sort_order,
     )
     return TaskWorkspacePage(
-        items=build_workspace_items(session, rows, current_user.user_id),
+        items=build_workspace_items(
+            session,
+            rows,
+            current_user.user_id,
+            today_ids=today_ids,
+            week_ids=week_ids,
+        ),
         total=total,
         skip=skip,
         limit=limit,

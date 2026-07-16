@@ -295,8 +295,8 @@ export default function TasksPage() {
     status,
   ]);
 
-  const workspace = useTaskWorkspace(filters);
-  const recommendations = useTaskRecommendations();
+  const workspace = useTaskWorkspace(filters, Boolean(user));
+  const recommendations = useTaskRecommendations(Boolean(user));
   const visibleTasks = workspace.data?.items ?? [];
 
   const filteredGoals = projectId

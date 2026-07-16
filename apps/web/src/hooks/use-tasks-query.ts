@@ -36,18 +36,20 @@ const invalidateTaskCollections = (queryClient: QueryClient, goalId?: string) =>
   queryClient.invalidateQueries({ queryKey: taskKeys.recommendations() })
 }
 
-export function useTaskWorkspace(filters: TaskWorkspaceFilters) {
+export function useTaskWorkspace(filters: TaskWorkspaceFilters, enabled = true) {
   return useQuery({
     queryKey: taskKeys.workspace(filters),
     queryFn: () => tasksApi.getWorkspace(filters),
+    enabled,
     staleTime: 30 * 1000,
   })
 }
 
-export function useTaskRecommendations() {
+export function useTaskRecommendations(enabled = true) {
   return useQuery({
     queryKey: taskKeys.recommendations(),
     queryFn: () => tasksApi.getRecommendations(),
+    enabled,
     staleTime: 60 * 1000,
   })
 }

@@ -5,7 +5,14 @@ import { act, waitFor } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
 import { createMockTask, createMockTasks, resetIdCounter } from './helpers/mock-factories'
 import { renderHookWithClient } from './helpers/test-utils'
-import type { Task, TaskCreate, TaskDependency, TaskUpdate } from '@/types/task'
+import type {
+  Task,
+  TaskCreate,
+  TaskDependency,
+  TaskRecommendation,
+  TaskUpdate,
+  TaskWorkspacePage,
+} from '@/types/task'
 import { SortBy, SortOrder } from '@/types/sort'
 import type { SortOptions } from '@/types/sort'
 
@@ -18,6 +25,8 @@ const mockUpdate = jest.fn<Promise<Task>, [string, TaskUpdate]>()
 const mockDelete = jest.fn<Promise<void>, [string]>()
 const mockAddDependency = jest.fn<Promise<TaskDependency>, [string, string]>()
 const mockDeleteDependency = jest.fn<Promise<void>, [string, string]>()
+const mockGetWorkspace = jest.fn<Promise<TaskWorkspacePage>, [object?]>()
+const mockGetRecommendations = jest.fn<Promise<TaskRecommendation[]>, []>()
 
 const createPersistentQueryClient = () =>
   new QueryClient({
@@ -44,6 +53,8 @@ jest.mock('@/lib/api', () => ({
     delete: (id: string) => mockDelete(id),
     addDependency: (taskId: string, dependsOnTaskId: string) => mockAddDependency(taskId, dependsOnTaskId),
     deleteDependency: (taskId: string, dependencyId: string) => mockDeleteDependency(taskId, dependencyId),
+    getWorkspace: (filters?: object) => mockGetWorkspace(filters),
+    getRecommendations: () => mockGetRecommendations(),
   },
 }))
 
@@ -58,6 +69,8 @@ import {
   useDeleteTask,
   useAddTaskDependency,
   useDeleteTaskDependency,
+  useTaskRecommendations,
+  useTaskWorkspace,
   taskKeys,
 } from '../use-tasks-query'
 
@@ -74,6 +87,30 @@ describe('taskKeys', () => {
     expect(taskKeys.all).toEqual(['tasks'])
     expect(taskKeys.details()).toEqual(['tasks', 'detail'])
     expect(taskKeys.detail('task-1')).toEqual(['tasks', 'detail', 'task-1'])
+  })
+})
+
+describe('workspace queries', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('waits for authentication before fetching workspace data', () => {
+    const { result } = renderHookWithClient(() =>
+      useTaskWorkspace({ status: ['pending'] }, false)
+    )
+
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(mockGetWorkspace).not.toHaveBeenCalled()
+  })
+
+  it('waits for authentication before fetching recommendations', () => {
+    const { result } = renderHookWithClient(() =>
+      useTaskRecommendations(false)
+    )
+
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(mockGetRecommendations).not.toHaveBeenCalled()
   })
 })
 
