@@ -182,6 +182,9 @@ def test_workspace_filters_by_project_status_and_plan_membership(session, test_u
 def test_extract_planned_task_ids_supports_camel_case_assignments(
     session, test_user_id
 ):
+    UserService().create_user(
+        session, UserCreate(email="schedule-owner@example.com"), test_user_id
+    )
     task_id = uuid4()
     session.add(
         Schedule(
