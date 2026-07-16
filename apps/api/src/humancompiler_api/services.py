@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import aliased, selectinload
-from sqlmodel import Session, and_, delete, func, select
+from sqlmodel import Session, and_, col, delete, func, select
 
 from humancompiler_api.base_service import BaseService
 from humancompiler_api.common.error_handlers import (
@@ -678,10 +678,10 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             conditions.append(Project.id == project_id)
         if goal_id:
             conditions.append(Goal.id == goal_id)
-        if due_before:
-            conditions.append(Task.due_date <= due_before)
-        if due_after:
-            conditions.append(Task.due_date >= due_after)
+        if due_before is not None:
+            conditions.append(col(Task.due_date) <= due_before)
+        if due_after is not None:
+            conditions.append(col(Task.due_date) >= due_after)
         if search and search.strip():
             pattern = f"%{search.strip()}%"
             conditions.append(

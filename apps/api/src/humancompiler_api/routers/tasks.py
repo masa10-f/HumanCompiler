@@ -123,9 +123,8 @@ def build_workspace_items(
         return []
 
     tasks = [row[0] for row in rows]
-    dependencies = task_service.get_task_dependencies_batch(
-        session, [task.id for task in tasks], owner_id
-    )
+    task_ids = [task.id for task in tasks if task.id is not None]
+    dependencies = task_service.get_task_dependencies_batch(session, task_ids, owner_id)
     today_ids, week_ids = _extract_planned_task_ids(session, owner_id)
 
     items: list[TaskWorkspaceItem] = []
