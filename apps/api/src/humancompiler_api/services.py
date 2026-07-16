@@ -31,6 +31,7 @@ from humancompiler_api.models import (
     LogUpdate,
     Project,
     ProjectCreate,
+    ProjectStatus,
     ProjectUpdate,
     Task,
     TaskCreate,
@@ -644,11 +645,14 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         limit: int = 50,
         statuses: list[TaskStatus] | None = None,
         project_id: UUID | None = None,
+        project_status: ProjectStatus | None = None,
         goal_id: UUID | None = None,
         due_before: datetime | None = None,
         due_after: datetime | None = None,
         search: str | None = None,
         blocked: bool | None = None,
+        included_task_ids: set[UUID] | None = None,
+        excluded_task_ids: set[UUID] | None = None,
         sort_by: TaskWorkspaceSortBy = TaskWorkspaceSortBy.DUE_DATE,
         sort_order: SortOrder = SortOrder.ASC,
     ) -> tuple[list[tuple[Task, Goal, Project, int, datetime | None]], int]:
@@ -676,6 +680,8 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             conditions.append(Task.status.in_(statuses))
         if project_id:
             conditions.append(Project.id == project_id)
+        if project_status:
+            conditions.append(Project.status == project_status)
         if goal_id:
             conditions.append(Goal.id == goal_id)
         if due_before is not None:
@@ -704,6 +710,10 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
                 .exists()
             )
             conditions.append(blocking_dependency if blocked else ~blocking_dependency)
+        if included_task_ids is not None:
+            conditions.append(col(Task.id).in_(included_task_ids))
+        if excluded_task_ids:
+            conditions.append(~col(Task.id).in_(excluded_task_ids))
 
         count_statement = (
             select(func.count(Task.id))

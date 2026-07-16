@@ -83,6 +83,7 @@ export function ManualTaskSelectDialog({
       limit: 100,
       status: ['pending', 'in_progress'],
       projectId: selectedProjectId === 'all' ? undefined : selectedProjectId,
+      projectStatus: selectedProjectId === 'all' ? 'in_progress' : undefined,
       search: searchQuery.trim() || undefined,
       sortBy: 'priority',
     }),
