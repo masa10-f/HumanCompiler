@@ -1,6 +1,12 @@
 'use client'
 
-import React, { useCallback, useMemo, useRef, useState } from 'react'
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { parseISO } from 'date-fns'
 import {
   AlertTriangle,
@@ -61,6 +67,8 @@ const RENDER_LIMITS = {
   goals: 100,
   taskSegments: 500,
 }
+
+const CURRENT_TIME_REFRESH_MS = 60 * 60 * 1000
 
 const clampPercentage = (value: number) => Math.min(100, Math.max(0, value))
 
@@ -174,6 +182,7 @@ export function TimelineVisualizer({
     null,
   )
   const [liveRegionMessage, setLiveRegionMessage] = useState('')
+  const [currentTime, setCurrentTime] = useState<number | null>(null)
   const [tooltipPosition, setTooltipPosition] = useState<{
     x: number
     y: number
@@ -192,6 +201,16 @@ export function TimelineVisualizer({
   const taskSegmentsAreCapped =
     datasetSize.tasks > RENDER_LIMITS.taskSegments
   const isLargeDataset = goalsAreCapped || taskSegmentsAreCapped
+
+  useEffect(() => {
+    const updateCurrentTime = () => setCurrentTime(Date.now())
+    updateCurrentTime()
+    const intervalId = window.setInterval(
+      updateCurrentTime,
+      CURRENT_TIME_REFRESH_MS,
+    )
+    return () => window.clearInterval(intervalId)
+  }, [])
 
   const layoutModel = useMemo<LayoutModel | null>(() => {
     if (!data) return null
@@ -262,7 +281,7 @@ export function TimelineVisualizer({
     const activeTasks = tasks.filter(
       (task) => task.status === 'in_progress',
     ).length
-    const now = Date.now()
+    const now = currentTime ?? 0
     const overdueTasks = tasks.filter((task) => {
       if (
         !task.due_date ||
@@ -290,7 +309,7 @@ export function TimelineVisualizer({
       overdueTasks,
       progress,
     }
-  }, [data])
+  }, [currentTime, data])
 
   const timeAxisMarkers = useMemo(() => {
     if (!layoutModel) return []
@@ -348,7 +367,8 @@ export function TimelineVisualizer({
     if (!layoutModel) return null
     const start = parseISO(layoutModel.timeline.start_date).getTime()
     const end = parseISO(layoutModel.timeline.end_date).getTime()
-    const today = Date.now()
+    if (currentTime === null) return null
+    const today = currentTime
     if (today < start || today > end || end <= start) return null
     const chartWidth =
       layoutModel.dimensions.width -
@@ -358,7 +378,7 @@ export function TimelineVisualizer({
       layoutModel.dimensions.padding.left +
       ((today - start) / (end - start)) * chartWidth
     )
-  }, [layoutModel])
+  }, [currentTime, layoutModel])
 
   const updateFilters = useCallback(
     (patch: Partial<TimelineFilters>) => {
@@ -859,8 +879,9 @@ export function TimelineVisualizer({
               width={layoutModel.dimensions.width * zoomLevel}
               height={layoutModel.dimensions.height * zoomLevel}
               viewBox={`0 0 ${layoutModel.dimensions.width} ${layoutModel.dimensions.height}`}
-              role="img"
-              aria-labelledby="timeline-title timeline-description"
+              role="group"
+              aria-labelledby="timeline-title"
+              aria-describedby="timeline-description"
               onClick={(event) => {
                 if (event.target === svgRef.current) closeTooltip()
               }}
