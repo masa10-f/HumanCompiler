@@ -242,6 +242,15 @@ export function TimelineGoalBar({
               }}
             >
               <rect
+                data-task-hit-area={segment.task_id}
+                x={segment.x0}
+                y={barY}
+                width={segmentWidth}
+                height={dimensions.goal_bar_height}
+                fill="transparent"
+                pointerEvents="all"
+              />
+              <rect
                 x={segment.x0 + 2}
                 y={barY + dimensions.goal_bar_height - 9}
                 width={Math.max(2, segmentWidth - 4)}

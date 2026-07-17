@@ -566,8 +566,14 @@ export function TimelineVisualizer({
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-medium text-slate-500 dark:text-slate-400">
                 <span className="inline-flex items-center gap-1.5">
                   <CalendarDays className="h-3.5 w-3.5" />
-                  {formatLongDate(data.timeline.start_date)} —{' '}
-                  {formatLongDate(data.timeline.end_date)}
+                  {formatLongDate(
+                    layoutModel?.timeline.start_date ??
+                      data.timeline.start_date,
+                  )}{' '}
+                  —{' '}
+                  {formatLongDate(
+                    layoutModel?.timeline.end_date ?? data.timeline.end_date,
+                  )}
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <Clock3 className="h-3.5 w-3.5" />週{' '}
