@@ -57,6 +57,11 @@ const CHART = {
   headerHeight: 72,
 }
 
+const RENDER_LIMITS = {
+  goals: 100,
+  taskSegments: 500,
+}
+
 const clampPercentage = (value: number) => Math.min(100, Math.max(0, value))
 
 function formatHours(value: number) {
@@ -174,11 +179,42 @@ export function TimelineVisualizer({
     y: number
   } | null>(null)
 
+  const datasetSize = useMemo(
+    () => ({
+      goals: data?.goals.length ?? 0,
+      tasks:
+        data?.goals.reduce((count, goal) => count + goal.tasks.length, 0) ??
+        0,
+    }),
+    [data],
+  )
+  const goalsAreCapped = datasetSize.goals > RENDER_LIMITS.goals
+  const taskSegmentsAreCapped =
+    datasetSize.tasks > RENDER_LIMITS.taskSegments
+  const isLargeDataset = goalsAreCapped || taskSegmentsAreCapped
+
   const layoutModel = useMemo<LayoutModel | null>(() => {
     if (!data) return null
     try {
-      const goalCount = data.goals.length
-      return computeTimelineLayout(data, {
+      const visibleGoals = data.goals.slice(0, RENDER_LIMITS.goals)
+      const layoutData =
+        visibleGoals.length === data.goals.length
+          ? data
+          : { ...data, goals: visibleGoals }
+      const goalCount = visibleGoals.length
+
+      if (data.goals.length > RENDER_LIMITS.goals) {
+        logger.warn(
+          'Timeline goal rendering capped for a large dataset',
+          {
+            totalGoals: data.goals.length,
+            renderedGoals: RENDER_LIMITS.goals,
+          },
+          { component: 'TimelineVisualizer' },
+        )
+      }
+
+      return computeTimelineLayout(layoutData, {
         canvas_width: Math.max(1440, 1120 + goalCount * 36),
         canvas_height: Math.max(
           320,
@@ -657,10 +693,14 @@ export function TimelineVisualizer({
             </Select>
             <Button
               variant={
-                filters.show_task_segments !== false ? 'secondary' : 'outline'
+                filters.show_task_segments !== false &&
+                !taskSegmentsAreCapped
+                  ? 'secondary'
+                  : 'outline'
               }
               size="sm"
               className="h-9 rounded-xl"
+              disabled={taskSegmentsAreCapped}
               onClick={() =>
                 updateFilters({
                   show_task_segments: filters.show_task_segments === false,
@@ -723,15 +763,81 @@ export function TimelineVisualizer({
           </div>
         </div>
 
+        {isLargeDataset && (
+          <div
+            className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-medium text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 sm:px-6"
+            role="status"
+          >
+            データ量が多いため、表示を最適化しています。
+            {goalsAreCapped && ` ゴールは先頭${RENDER_LIMITS.goals}件を表示します。`}
+            {taskSegmentsAreCapped &&
+              ' タスク内訳は省略し、ゴール単位で表示します。'}
+          </div>
+        )}
+
         {!layoutModel ? (
-          <CardContent className="px-6 py-16 text-center">
-            <AlertTriangle className="mx-auto h-7 w-7 text-amber-500" />
-            <p className="mt-3 text-sm font-medium">
-              タイムラインを描画できませんでした。
-            </p>
-            <Button variant="outline" className="mt-5" onClick={onRefresh}>
-              再読み込み
-            </Button>
+          <CardContent className="px-4 py-5 sm:px-6">
+            <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                    簡易表示に切り替えました
+                  </p>
+                  <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                    チャートを描画できないため、ゴールの進捗を一覧で表示しています。
+                  </p>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={onRefresh}>
+                再読み込み
+              </Button>
+            </div>
+            <div
+              className="mt-4 max-h-[560px] space-y-2 overflow-auto"
+              role="list"
+              aria-label="ゴール進捗の簡易表示"
+            >
+              {data.goals.slice(0, RENDER_LIMITS.goals).map((goal) => {
+                const totalHours = goal.tasks.reduce(
+                  (sum, task) => sum + Math.max(0, task.estimate_hours),
+                  0,
+                )
+                const completedHours = goal.tasks.reduce(
+                  (sum, task) =>
+                    sum +
+                    Math.max(0, task.estimate_hours) *
+                      (clampPercentage(task.progress_percentage) / 100),
+                  0,
+                )
+                const percentage = totalHours
+                  ? Math.round((completedHours / totalHours) * 100)
+                  : 0
+
+                return (
+                  <div
+                    key={goal.id}
+                    className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950"
+                    role="listitem"
+                  >
+                    <div className="flex items-center justify-between gap-4 text-sm">
+                      <span className="truncate font-semibold text-slate-900 dark:text-white">
+                        {goal.title}
+                      </span>
+                      <span className="shrink-0 font-mono font-semibold text-slate-600 dark:text-slate-300">
+                        {percentage}%
+                      </span>
+                    </div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                      <div
+                        className="h-full rounded-full bg-blue-600"
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </CardContent>
         ) : layoutModel.goals.length === 0 ? (
           <CardContent className="px-6 py-16 text-center text-sm text-slate-500">
@@ -966,7 +1072,10 @@ export function TimelineVisualizer({
                   isSelected={selectedGoal?.id === goal.id}
                   onGoalClick={openGoal}
                   onTaskClick={openTask}
-                  showTaskSegments={filters.show_task_segments !== false}
+                  showTaskSegments={
+                    filters.show_task_segments !== false &&
+                    !taskSegmentsAreCapped
+                  }
                 />
               ))}
             </svg>
