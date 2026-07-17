@@ -37,6 +37,7 @@ export class TimelineLayoutEngine {
       canvas_height: 800,
       row_height: 80,
       goal_bar_height: 40,
+      goal_bar_offset_y: 20,
       padding: {
         top: 40,
         right: 60,
@@ -234,6 +235,7 @@ export class TimelineLayoutEngine {
         height: canvasHeight,
         row_height: this.config.row_height,
         goal_bar_height: this.config.goal_bar_height,
+        goal_bar_offset_y: this.config.goal_bar_offset_y,
         padding: this.config.padding
       }
     }
@@ -427,8 +429,16 @@ export class TimelineLayoutEngine {
       }
 
       // Calculate arrow positions
-      const fromY = this.config.padding.top + fromGoal.row * this.config.row_height + this.config.goal_bar_height / 2
-      const toY = this.config.padding.top + toGoal.row * this.config.row_height + this.config.goal_bar_height / 2
+      const fromY =
+        this.config.padding.top +
+        fromGoal.row * this.config.row_height +
+        this.config.goal_bar_offset_y +
+        this.config.goal_bar_height / 2
+      const toY =
+        this.config.padding.top +
+        toGoal.row * this.config.row_height +
+        this.config.goal_bar_offset_y +
+        this.config.goal_bar_height / 2
 
       // Add horizontal offset for multiple arrows to avoid overlap
       const horizontalOffset = this.config.arrow.horizontal_offset + (index % 3) * 10

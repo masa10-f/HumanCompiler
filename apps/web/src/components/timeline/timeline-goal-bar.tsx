@@ -8,11 +8,18 @@ interface TimelineGoalBarProps {
   dimensions: {
     row_height: number
     goal_bar_height: number
+    goal_bar_offset_y: number
     padding: { top: number; left: number }
   }
   isSelected: boolean
-  onGoalClick: (goal: LayoutGoal, event: React.MouseEvent) => void
-  onTaskClick: (task: LayoutTaskSegment, event: React.MouseEvent) => void
+  onGoalClick: (
+    goal: LayoutGoal,
+    event: React.SyntheticEvent<SVGGElement>,
+  ) => void
+  onTaskClick: (
+    task: LayoutTaskSegment,
+    event: React.SyntheticEvent<SVGGElement>,
+  ) => void
   showTaskSegments: boolean
 }
 
@@ -70,7 +77,7 @@ export function TimelineGoalBar({
   showTaskSegments,
 }: TimelineGoalBarProps) {
   const y = dimensions.padding.top + goal.row * dimensions.row_height
-  const barY = y + 47
+  const barY = y + dimensions.goal_bar_offset_y
   const width = Math.max(8, goal.x1 - goal.x0)
   const progress = Math.min(1, Math.max(0, goal.progress))
   const percentage = Math.round(progress * 100)
@@ -109,6 +116,12 @@ export function TimelineGoalBar({
         aria-label={`ゴール ${goal.title}、${percentage}%完了、残り${formatHours(remainingHours)}`}
         className="cursor-pointer"
         onClick={(event) => onGoalClick(goal, event)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          event.preventDefault()
+          event.stopPropagation()
+          onGoalClick(goal, event)
+        }}
       >
         <circle cx="28" cy={y + 34} r="5" fill={style.color} />
         <text
@@ -218,6 +231,12 @@ export function TimelineGoalBar({
               aria-label={`タスク ${segment.title}、${Math.round(segmentProgress * 100)}%完了`}
               className="cursor-pointer"
               onClick={(event) => {
+                event.stopPropagation()
+                onTaskClick(segment, event)
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return
+                event.preventDefault()
                 event.stopPropagation()
                 onTaskClick(segment, event)
               }}
