@@ -32,6 +32,7 @@ export function QuickTaskList({
   const [editingTask, setEditingTask] = useState<QuickTask | null>(null);
   const [deletingTask, setDeletingTask] = useState<QuickTask | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async () => {
     setIsLoading(true);
@@ -60,10 +61,39 @@ export function QuickTaskList({
   };
 
   const handleTaskUpdated = (updatedTask: QuickTask) => {
-    setTasks((prev) =>
-      prev.map((task) => (task.id === updatedTask.id ? updatedTask : task))
-    );
+    setTasks((prev) => {
+      if (updatedTask.status === 'completed' || updatedTask.status === 'cancelled') {
+        return prev.filter((task) => task.id !== updatedTask.id);
+      }
+      return prev.map((task) => (task.id === updatedTask.id ? updatedTask : task));
+    });
     setEditingTask(null);
+  };
+
+  const handleTaskComplete = async (task: QuickTask) => {
+    if (completingTaskId) return;
+
+    setCompletingTaskId(task.id);
+    try {
+      await quickTasksApi.update(task.id, { status: 'completed' });
+      setTasks((prev) => prev.filter((item) => item.id !== task.id));
+      toast({
+        title: 'クイックタスクを完了しました',
+        description: `「${task.title}」を完了にしました。`,
+      });
+    } catch (err) {
+      log.error('Failed to complete quick task', err, {
+        component: 'QuickTaskList',
+        taskId: task.id,
+      });
+      toast({
+        title: 'エラー',
+        description: 'クイックタスクを完了できませんでした。再試行してください。',
+        variant: 'destructive',
+      });
+    } finally {
+      setCompletingTaskId(null);
+    }
   };
 
   const handleDeleteConfirm = async () => {
@@ -158,6 +188,8 @@ export function QuickTaskList({
                   onEdit={setEditingTask}
                   onDelete={setDeletingTask}
                   onConvert={onConvertToTask}
+                  onComplete={handleTaskComplete}
+                  isCompleting={completingTaskId === task.id}
                 />
               ))}
             </div>

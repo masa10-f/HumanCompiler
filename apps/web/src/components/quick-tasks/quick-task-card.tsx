@@ -3,7 +3,7 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Clock, Flag, Calendar, MoreVertical, Inbox } from 'lucide-react';
+import { Check, Clock, Flag, Calendar, MoreVertical, Inbox, Loader2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,6 +25,8 @@ export interface QuickTaskCardProps {
   onEdit?: (task: QuickTask) => void;
   onDelete?: (task: QuickTask) => void;
   onConvert?: (task: QuickTask) => void;
+  onComplete?: (task: QuickTask) => void;
+  isCompleting?: boolean;
 }
 
 export function QuickTaskCard({
@@ -32,6 +34,8 @@ export function QuickTaskCard({
   onEdit,
   onDelete,
   onConvert,
+  onComplete,
+  isCompleting = false,
 }: QuickTaskCardProps) {
   const hasBadges = task.status || task.work_type;
   const hasMetadata = task.estimate_hours !== undefined || task.priority !== undefined || task.due_date;
@@ -41,6 +45,24 @@ export function QuickTaskCard({
       <CardContent className="p-4 space-y-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
+            {onComplete && (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-7 w-7 flex-shrink-0 rounded-full"
+                onClick={() => onComplete(task)}
+                disabled={isCompleting}
+                aria-label={`「${task.title}」を完了`}
+                title="完了にする"
+              >
+                {isCompleting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4" />
+                )}
+              </Button>
+            )}
             <Inbox className="h-4 w-4 text-muted-foreground flex-shrink-0" />
             <span className="font-medium text-sm truncate">{task.title}</span>
           </div>
