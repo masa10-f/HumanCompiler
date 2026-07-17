@@ -2,6 +2,18 @@ import { parseISO, differenceInDays, format } from 'date-fns'
 import type { TimelineGoal, DependencyGraph } from './types'
 import { logger } from '@/lib/logger'
 
+/** Clamp a percentage to the range used by timeline progress UI. */
+export function clampPercentage(value: number): number {
+  const normalized = Number.isFinite(value) ? value : 0
+  return Math.min(100, Math.max(0, normalized))
+}
+
+/** Format timeline effort consistently, preserving one decimal when needed. */
+export function formatHours(value: number): string {
+  const rounded = Math.round(value * 10) / 10
+  return Number.isInteger(rounded) ? `${rounded}h` : `${rounded.toFixed(1)}h`
+}
+
 /**
  * Safe debug logging utility for timeline operations
  */

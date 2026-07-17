@@ -3,6 +3,7 @@
 import React from 'react'
 import { ArrowUpRight, Check, CircleDot, FolderKanban } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
+import { clampPercentage } from '@/lib/timeline/utils'
 import type { TimelineOverviewData } from '@/types/timeline'
 
 interface TimelineOverviewProps {
@@ -11,8 +12,6 @@ interface TimelineOverviewProps {
   error?: string | null
   onProjectSelect: (projectId: string) => void
 }
-
-const clamp = (value: number) => Math.min(100, Math.max(0, value || 0))
 
 export function TimelineOverview({
   data,
@@ -68,7 +67,7 @@ export function TimelineOverview({
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {data.projects.map((project) => {
         const progress = Math.round(
-          clamp(project.statistics.tasks_completion_rate),
+          clampPercentage(project.statistics.tasks_completion_rate),
         )
         const activeTasks = project.statistics.in_progress_tasks
         return (
