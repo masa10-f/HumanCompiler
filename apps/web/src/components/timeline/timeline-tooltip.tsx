@@ -1,6 +1,12 @@
 "use client"
 
-import React from 'react'
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import { format, parseISO } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import { Badge } from '@/components/ui/badge'
@@ -12,6 +18,54 @@ interface TimelineTooltipProps {
   task: LayoutTaskSegment | null
   position: { x: number; y: number }
   onClose: () => void
+}
+
+interface TooltipLayout {
+  left: number
+  top: number
+  placement: 'top' | 'bottom'
+}
+
+const TOOLTIP_MARGIN = 16
+const TOOLTIP_GAP = 12
+
+export function calculateTooltipLayout({
+  anchor,
+  tooltipWidth,
+  tooltipHeight,
+  viewportWidth,
+  viewportHeight,
+}: {
+  anchor: { x: number; y: number }
+  tooltipWidth: number
+  tooltipHeight: number
+  viewportWidth: number
+  viewportHeight: number
+}): TooltipLayout {
+  const availableWidth = Math.max(0, viewportWidth - TOOLTIP_MARGIN * 2)
+  const availableHeight = Math.max(0, viewportHeight - TOOLTIP_MARGIN * 2)
+  const width = Math.min(tooltipWidth, availableWidth)
+  const height = Math.min(tooltipHeight, availableHeight)
+  const maxLeft = Math.max(TOOLTIP_MARGIN, viewportWidth - width - TOOLTIP_MARGIN)
+  const left = Math.min(
+    Math.max(TOOLTIP_MARGIN, anchor.x - width / 2),
+    maxLeft,
+  )
+  const topPlacement = anchor.y - height - TOOLTIP_GAP
+
+  if (topPlacement >= TOOLTIP_MARGIN) {
+    return { left, top: topPlacement, placement: 'top' }
+  }
+
+  const maxTop = Math.max(
+    TOOLTIP_MARGIN,
+    viewportHeight - height - TOOLTIP_MARGIN,
+  )
+  return {
+    left,
+    top: Math.min(Math.max(TOOLTIP_MARGIN, anchor.y + TOOLTIP_GAP), maxTop),
+    placement: 'bottom',
+  }
 }
 
 // Modern status configurations
@@ -56,6 +110,54 @@ export function TimelineTooltip({
   position,
   onClose
 }: TimelineTooltipProps) {
+  const tooltipRef = useRef<HTMLDivElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const [layout, setLayout] = useState<TooltipLayout>({
+    left: TOOLTIP_MARGIN,
+    top: TOOLTIP_MARGIN,
+    placement: 'top',
+  })
+  const [isPositioned, setIsPositioned] = useState(false)
+
+  const updateLayout = useCallback(() => {
+    const tooltip = tooltipRef.current
+    if (!tooltip) return
+    const bounds = tooltip.getBoundingClientRect()
+    setLayout(
+      calculateTooltipLayout({
+        anchor: position,
+        tooltipWidth: bounds.width,
+        tooltipHeight: bounds.height,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      }),
+    )
+    setIsPositioned(true)
+  }, [position])
+
+  useLayoutEffect(() => {
+    updateLayout()
+    window.addEventListener('resize', updateLayout)
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(updateLayout)
+    if (tooltipRef.current) resizeObserver?.observe(tooltipRef.current)
+
+    return () => {
+      window.removeEventListener('resize', updateLayout)
+      resizeObserver?.disconnect()
+    }
+  }, [updateLayout])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return null
     try {
@@ -78,37 +180,52 @@ export function TimelineTooltip({
     return STATUS_CONFIG[status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.pending
   }
 
-  // Position tooltip to avoid screen edges with better margin
-  const adjustedPosition = {
-    x: Math.max(20, Math.min(position.x, window.innerWidth - 360)),
-    y: Math.max(20, Math.min(position.y - 10, window.innerHeight - 300))
-  }
-
   return (
-    <div
-      className="fixed z-50 animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-2 duration-200"
-      style={{
-        left: adjustedPosition.x,
-        top: adjustedPosition.y,
-        transform: 'translate(-50%, -100%)'
-      }}
-    >
-      {/* Glassmorphism container */}
-      <div className="relative bg-white/95 backdrop-blur-xl border border-slate-200/80 rounded-2xl shadow-2xl shadow-slate-900/10 overflow-hidden max-w-sm">
-        {/* Gradient accent bar */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500" />
-
-        {/* Close Button */}
+    <>
+      <div
+        className="fixed inset-0 z-40 bg-slate-950/5 backdrop-blur-[1px]"
+        data-testid="timeline-tooltip-backdrop"
+        aria-hidden="true"
+        onClick={onClose}
+      />
+      <div
+        ref={tooltipRef}
+        data-testid="timeline-tooltip"
+        data-placement={layout.placement}
+        className="fixed z-50 w-[min(24rem,calc(100vw-2rem))] animate-in fade-in-0 duration-150"
+        style={{
+          left: layout.left,
+          top: layout.top,
+          visibility: isPositioned ? 'visible' : 'hidden',
+          maxHeight: 'calc(100vh - 2rem)',
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={goal ? `${goal.title}の詳細` : `${task?.title ?? 'タスク'}の詳細`}
+        onKeyDown={(event) => {
+          if (event.key === 'Tab') {
+            event.preventDefault()
+            closeButtonRef.current?.focus()
+          }
+        }}
+      >
         <button
+          ref={closeButtonRef}
+          type="button"
           onClick={onClose}
-          className="absolute top-3 right-3 p-1.5 hover:bg-slate-100 rounded-lg transition-colors group z-10"
+          className="absolute right-3 top-3 z-20 rounded-lg bg-white/90 p-1.5 shadow-sm transition-colors hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           aria-label="閉じる"
+          autoFocus
         >
-          <X className="w-4 h-4 text-slate-400 group-hover:text-slate-600" />
+          <X className="h-4 w-4 text-slate-500" />
         </button>
+        {/* Glassmorphism container */}
+        <div className="relative max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl border border-slate-200/80 bg-white/95 shadow-2xl shadow-slate-900/10 backdrop-blur-xl">
+          {/* Gradient accent bar */}
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500" />
 
-        {/* Goal Tooltip Content */}
-        {goal && (
+          {/* Goal Tooltip Content */}
+          {goal && (
           <div className="p-5 pt-6">
             {/* Header */}
             <div className="flex items-start gap-3 mb-4 pr-8">
@@ -227,10 +344,10 @@ export function TimelineTooltip({
               </div>
             </div>
           </div>
-        )}
+          )}
 
-        {/* Task Tooltip Content */}
-        {task && (
+          {/* Task Tooltip Content */}
+          {task && (
           <div className="p-5 pt-6">
             {/* Header */}
             <div className="flex items-start gap-3 mb-4 pr-8">
@@ -334,11 +451,9 @@ export function TimelineTooltip({
               </div>
             </div>
           </div>
-        )}
-
-        {/* Bottom arrow indicator */}
-        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white border-r border-b border-slate-200/80 rotate-45" />
+          )}
+        </div>
       </div>
-    </div>
+    </>
   )
 }

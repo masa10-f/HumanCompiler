@@ -169,6 +169,7 @@ export function TimelineVisualizer({
 }: TimelineVisualizerProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const tooltipTriggerRef = useRef<SVGGElement | null>(null)
   const { toast } = useToast()
   const [zoomLevel, setZoomLevel] = useState(1)
   const [selectedGoal, setSelectedGoal] = useState<LayoutGoal | null>(null)
@@ -403,6 +404,7 @@ export function TimelineVisualizer({
   const openGoal = useCallback(
     (goal: LayoutGoal, event: React.SyntheticEvent<SVGGElement>) => {
       event.stopPropagation()
+      tooltipTriggerRef.current = event.currentTarget
       setSelectedGoal(goal)
       setSelectedTask(null)
       setTooltipPosition(getActivationPosition(event))
@@ -416,6 +418,7 @@ export function TimelineVisualizer({
   const openTask = useCallback(
     (task: LayoutTaskSegment, event: React.SyntheticEvent<SVGGElement>) => {
       event.stopPropagation()
+      tooltipTriggerRef.current = event.currentTarget
       setSelectedTask(task)
       setSelectedGoal(null)
       setTooltipPosition(getActivationPosition(event))
@@ -427,10 +430,12 @@ export function TimelineVisualizer({
   )
 
   const closeTooltip = useCallback(() => {
+    const trigger = tooltipTriggerRef.current
     setSelectedGoal(null)
     setSelectedTask(null)
     setTooltipPosition(null)
     setLiveRegionMessage('詳細表示を閉じました。')
+    window.requestAnimationFrame(() => trigger?.focus())
   }, [])
 
   const handleZoomIn = useCallback(() => {
