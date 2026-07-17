@@ -321,7 +321,6 @@ export function TimelineVisualizer({
         cursor.setMonth(cursor.getMonth() + 1)
       }
     } else {
-    } else {
       const stepMs = filters.time_unit === 'week' ? oneDay * 7 : oneDay
       for (
         let timestamp = startDate.getTime();
