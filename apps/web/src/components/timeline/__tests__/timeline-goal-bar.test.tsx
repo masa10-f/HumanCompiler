@@ -61,7 +61,7 @@ const dimensions = {
   padding: { top: 72, left: 330 },
 }
 
-describe('TimelineGoalBar keyboard activation', () => {
+describe('TimelineGoalBar interactions', () => {
   it('opens a goal with Enter', () => {
     const onGoalClick = jest.fn()
     render(
@@ -104,5 +104,31 @@ describe('TimelineGoalBar keyboard activation', () => {
     })
 
     expect(onTaskClick).toHaveBeenCalledWith(goal.segments[0], expect.any(Object))
+  })
+
+  it('opens a task from its full visible segment area', () => {
+    const onGoalClick = jest.fn()
+    const onTaskClick = jest.fn()
+    const { container } = render(
+      <svg>
+        <TimelineGoalBar
+          goal={goal}
+          dimensions={dimensions}
+          isSelected={false}
+          onGoalClick={onGoalClick}
+          onTaskClick={onTaskClick}
+          showTaskSegments
+        />
+      </svg>,
+    )
+    const hitArea = container.querySelector(
+      '[data-task-hit-area="task-1"]',
+    )
+
+    expect(hitArea).toHaveAttribute('fill', 'transparent')
+    fireEvent.click(hitArea!)
+
+    expect(onTaskClick).toHaveBeenCalledWith(goal.segments[0], expect.any(Object))
+    expect(onGoalClick).not.toHaveBeenCalled()
   })
 })
