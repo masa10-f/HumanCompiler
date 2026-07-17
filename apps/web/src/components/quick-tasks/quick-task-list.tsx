@@ -32,7 +32,7 @@ export function QuickTaskList({
   const [editingTask, setEditingTask] = useState<QuickTask | null>(null);
   const [deletingTask, setDeletingTask] = useState<QuickTask | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
+  const [completingTaskIds, setCompletingTaskIds] = useState<Set<string>>(new Set());
 
   const fetchTasks = useCallback(async () => {
     setIsLoading(true);
@@ -71,9 +71,9 @@ export function QuickTaskList({
   };
 
   const handleTaskComplete = async (task: QuickTask) => {
-    if (completingTaskId) return;
+    if (completingTaskIds.has(task.id)) return;
 
-    setCompletingTaskId(task.id);
+    setCompletingTaskIds((prev) => new Set(prev).add(task.id));
     try {
       await quickTasksApi.update(task.id, { status: 'completed' });
       setTasks((prev) => prev.filter((item) => item.id !== task.id));
@@ -92,7 +92,11 @@ export function QuickTaskList({
         variant: 'destructive',
       });
     } finally {
-      setCompletingTaskId(null);
+      setCompletingTaskIds((prev) => {
+        const next = new Set(prev);
+        next.delete(task.id);
+        return next;
+      });
     }
   };
 
@@ -189,7 +193,7 @@ export function QuickTaskList({
                   onDelete={setDeletingTask}
                   onConvert={onConvertToTask}
                   onComplete={handleTaskComplete}
-                  isCompleting={completingTaskId === task.id}
+                  isCompleting={completingTaskIds.has(task.id)}
                 />
               ))}
             </div>
