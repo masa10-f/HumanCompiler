@@ -53,6 +53,7 @@ const CHART = {
   labelWidth: 330,
   rowHeight: 108,
   barHeight: 42,
+  barOffsetY: 47,
   headerHeight: 72,
 }
 
@@ -167,6 +168,7 @@ export function TimelineVisualizer({
   const [selectedTask, setSelectedTask] = useState<LayoutTaskSegment | null>(
     null,
   )
+  const [liveRegionMessage, setLiveRegionMessage] = useState('')
   const [tooltipPosition, setTooltipPosition] = useState<{
     x: number
     y: number
@@ -184,6 +186,7 @@ export function TimelineVisualizer({
         ),
         row_height: CHART.rowHeight,
         goal_bar_height: CHART.barHeight,
+        goal_bar_offset_y: CHART.barOffsetY,
         padding: {
           top: CHART.headerHeight,
           right: 88,
@@ -328,28 +331,141 @@ export function TimelineVisualizer({
     [filters, onFiltersChange],
   )
 
-  const openGoal = useCallback((goal: LayoutGoal, event: React.MouseEvent) => {
-    event.stopPropagation()
-    setSelectedGoal(goal)
-    setSelectedTask(null)
-    setTooltipPosition({ x: event.clientX, y: event.clientY })
-  }, [])
+  const getActivationPosition = useCallback(
+    (event: React.SyntheticEvent<SVGGElement>) => {
+      const nativeEvent = event.nativeEvent
+      if (
+        'clientX' in nativeEvent &&
+        'clientY' in nativeEvent &&
+        typeof nativeEvent.clientX === 'number' &&
+        typeof nativeEvent.clientY === 'number' &&
+        nativeEvent.clientX > 0
+      ) {
+        return { x: nativeEvent.clientX, y: nativeEvent.clientY }
+      }
+
+      const bounds = event.currentTarget.getBoundingClientRect()
+      return { x: bounds.left + bounds.width / 2, y: bounds.top }
+    },
+    [],
+  )
+
+  const openGoal = useCallback(
+    (goal: LayoutGoal, event: React.SyntheticEvent<SVGGElement>) => {
+      event.stopPropagation()
+      setSelectedGoal(goal)
+      setSelectedTask(null)
+      setTooltipPosition(getActivationPosition(event))
+      setLiveRegionMessage(
+        `ゴール「${goal.title}」を選択しました。進捗 ${Math.round(goal.progress * 100)}%。`,
+      )
+    },
+    [getActivationPosition],
+  )
 
   const openTask = useCallback(
-    (task: LayoutTaskSegment, event: React.MouseEvent) => {
+    (task: LayoutTaskSegment, event: React.SyntheticEvent<SVGGElement>) => {
       event.stopPropagation()
       setSelectedTask(task)
       setSelectedGoal(null)
-      setTooltipPosition({ x: event.clientX, y: event.clientY })
+      setTooltipPosition(getActivationPosition(event))
+      setLiveRegionMessage(
+        `タスク「${task.title}」を選択しました。進捗 ${Math.round(task.progress * 100)}%。`,
+      )
     },
-    [],
+    [getActivationPosition],
   )
 
   const closeTooltip = useCallback(() => {
     setSelectedGoal(null)
     setSelectedTask(null)
     setTooltipPosition(null)
+    setLiveRegionMessage('詳細表示を閉じました。')
   }, [])
+
+  const handleZoomIn = useCallback(() => {
+    setZoomLevel((value) => {
+      const next = Math.min(1.8, value + 0.1)
+      setLiveRegionMessage(`表示倍率 ${Math.round(next * 100)}%。`)
+      return next
+    })
+  }, [])
+
+  const handleZoomOut = useCallback(() => {
+    setZoomLevel((value) => {
+      const next = Math.max(0.7, value - 0.1)
+      setLiveRegionMessage(`表示倍率 ${Math.round(next * 100)}%。`)
+      return next
+    })
+  }, [])
+
+  const handleZoomReset = useCallback(() => {
+    setZoomLevel(1)
+    setLiveRegionMessage('表示倍率を100%に戻しました。')
+  }, [])
+
+  const handleTimelineKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!layoutModel) return
+
+      if (event.key === 'Escape') {
+        closeTooltip()
+        return
+      }
+      if (event.key === '+' || event.key === '=') {
+        event.preventDefault()
+        handleZoomIn()
+        return
+      }
+      if (event.key === '-') {
+        event.preventDefault()
+        handleZoomOut()
+        return
+      }
+      if (event.key === '0') {
+        event.preventDefault()
+        handleZoomReset()
+        return
+      }
+      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+
+      event.preventDefault()
+      const selectedGoalId =
+        selectedGoal?.id ||
+        layoutModel.goals.find((goal) =>
+          goal.segments.some((segment) => segment.id === selectedTask?.id),
+        )?.id
+      const currentIndex = layoutModel.goals.findIndex(
+        (goal) => goal.id === selectedGoalId,
+      )
+      const direction = event.key === 'ArrowDown' ? 1 : -1
+      const nextIndex =
+        currentIndex < 0
+          ? direction > 0
+            ? 0
+            : layoutModel.goals.length - 1
+          : (currentIndex + direction + layoutModel.goals.length) %
+            layoutModel.goals.length
+      const nextGoal = layoutModel.goals[nextIndex]
+      if (!nextGoal) return
+
+      setSelectedGoal(nextGoal)
+      setSelectedTask(null)
+      setTooltipPosition(null)
+      setLiveRegionMessage(
+        `${nextIndex + 1}番目のゴール「${nextGoal.title}」。進捗 ${Math.round(nextGoal.progress * 100)}%。`,
+      )
+    },
+    [
+      closeTooltip,
+      handleZoomIn,
+      handleZoomOut,
+      handleZoomReset,
+      layoutModel,
+      selectedGoal,
+      selectedTask,
+    ],
+  )
 
   const downloadSVG = useCallback(() => {
     if (!svgRef.current || !data) return
@@ -426,6 +542,9 @@ export function TimelineVisualizer({
 
   return (
     <div className="space-y-5">
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {liveRegionMessage}
+      </div>
       <section className="overflow-hidden rounded-3xl border border-slate-200 bg-[radial-gradient(circle_at_top_right,_rgba(37,99,235,0.12),_transparent_38%),linear-gradient(135deg,#ffffff_0%,#f8fafc_100%)] p-5 shadow-[0_18px_60px_-34px_rgba(15,23,42,0.45)] dark:border-slate-800 dark:bg-[radial-gradient(circle_at_top_right,_rgba(37,99,235,0.18),_transparent_38%),linear-gradient(135deg,#0f172a_0%,#020617_100%)] sm:p-7">
         <div className="flex min-w-0 flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 flex-col items-start gap-5 sm:flex-row sm:items-center">
@@ -568,9 +687,7 @@ export function TimelineVisualizer({
                 variant="ghost"
                 size="sm"
                 className="h-7 w-7 rounded-lg p-0"
-                onClick={() =>
-                  setZoomLevel((value) => Math.max(0.7, value - 0.1))
-                }
+                onClick={handleZoomOut}
                 aria-label="縮小"
               >
                 <ZoomOut className="h-3.5 w-3.5" />
@@ -582,9 +699,7 @@ export function TimelineVisualizer({
                 variant="ghost"
                 size="sm"
                 className="h-7 w-7 rounded-lg p-0"
-                onClick={() =>
-                  setZoomLevel((value) => Math.min(1.8, value + 0.1))
-                }
+                onClick={handleZoomIn}
                 aria-label="拡大"
               >
                 <ZoomIn className="h-3.5 w-3.5" />
@@ -624,6 +739,8 @@ export function TimelineVisualizer({
             tabIndex={0}
             role="region"
             aria-label="プロジェクトのロードマップ"
+            aria-keyshortcuts="ArrowUp ArrowDown Escape + - 0"
+            onKeyDown={handleTimelineKeyDown}
           >
             <svg
               ref={svgRef}
@@ -656,23 +773,39 @@ export function TimelineVisualizer({
                 </filter>
                 <marker
                   id="arrowhead"
-                  markerWidth="8"
-                  markerHeight="6"
+                  viewBox="0 0 8 8"
+                  markerWidth="7"
+                  markerHeight="7"
                   refX="7"
-                  refY="3"
+                  refY="4"
                   orient="auto"
                 >
-                  <polygon points="0 0, 8 3, 0 6" fill="#64748b" />
+                  <path
+                    d="M 1 1.25 L 6.5 4 L 1 6.75"
+                    fill="none"
+                    stroke="#64748b"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </marker>
                 <marker
                   id="arrowhead-invalid"
-                  markerWidth="8"
-                  markerHeight="6"
+                  viewBox="0 0 8 8"
+                  markerWidth="7"
+                  markerHeight="7"
                   refX="7"
-                  refY="3"
+                  refY="4"
                   orient="auto"
                 >
-                  <polygon points="0 0, 8 3, 0 6" fill="#ef4444" />
+                  <path
+                    d="M 1 1.25 L 6.5 4 L 1 6.75"
+                    fill="none"
+                    stroke="#ef4444"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </marker>
               </defs>
 

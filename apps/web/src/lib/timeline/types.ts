@@ -94,6 +94,7 @@ export interface LayoutModel {
     height: number
     row_height: number
     goal_bar_height: number
+    goal_bar_offset_y: number
     padding: {
       top: number
       right: number
@@ -108,6 +109,7 @@ export interface TimelineConfig {
   canvas_height: number
   row_height: number
   goal_bar_height: number
+  goal_bar_offset_y: number
   padding: {
     top: number
     right: number

@@ -1,4 +1,4 @@
-"use client"
+'use client'
 
 import React from 'react'
 import type { LayoutArrow } from '@/lib/timeline/types'
@@ -8,104 +8,109 @@ interface TimelineDependencyArrowProps {
   isHighlighted: boolean
 }
 
+function createSmoothPath(arrow: LayoutArrow) {
+  const start = arrow.path[0]
+  const end = arrow.path[arrow.path.length - 1]
+  if (!start || !end) return null
+
+  const horizontalDistance = end.x - start.x
+  if (horizontalDistance >= 56) {
+    const bend = Math.min(120, Math.max(36, horizontalDistance * 0.42))
+    return {
+      d: `M ${start.x} ${start.y} C ${start.x + bend} ${start.y}, ${end.x - bend} ${end.y}, ${end.x} ${end.y}`,
+      start,
+      end,
+      midpoint: {
+        x: (start.x + end.x) / 2,
+        y: (start.y + end.y) / 2,
+      },
+    }
+  }
+
+  const channelX = Math.max(start.x, end.x) + 52
+  return {
+    d: `M ${start.x} ${start.y} C ${channelX} ${start.y}, ${channelX} ${end.y}, ${end.x} ${end.y}`,
+    start,
+    end,
+    midpoint: {
+      x: channelX,
+      y: (start.y + end.y) / 2,
+    },
+  }
+}
+
 export function TimelineDependencyArrow({
   arrow,
-  isHighlighted
+  isHighlighted,
 }: TimelineDependencyArrowProps) {
-  // Create path string for SVG polyline
-  const pathString = arrow.path
-    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
-    .join(' ')
+  const curve = createSmoothPath(arrow)
+  if (!curve) return null
 
-  const strokeColor = arrow.is_valid ? '#6b7280' : '#ef4444'
+  const strokeColor = arrow.is_valid ? '#64748b' : '#ef4444'
   const markerId = arrow.is_valid ? 'arrowhead' : 'arrowhead-invalid'
-  const strokeWidth = isHighlighted ? 3 : 2
-  const opacity = isHighlighted ? 1 : 0.7
 
   return (
-    <g className="dependency-arrow" role="group" aria-label={`${arrow.from_goal_id}から${arrow.to_goal_id}への依存関係${arrow.is_valid ? '' : '（循環依存の警告）'}`}>
-      {/* Arrow Path */}
+    <g
+      className="dependency-arrow pointer-events-none"
+      role="group"
+      aria-label={`${arrow.from_goal_id}から${arrow.to_goal_id}への依存関係${arrow.is_valid ? '' : '（循環依存の警告）'}`}
+    >
+      {isHighlighted && (
+        <path
+          d={curve.d}
+          fill="none"
+          stroke={strokeColor}
+          strokeWidth="7"
+          strokeLinecap="round"
+          opacity="0.12"
+          aria-hidden="true"
+        />
+      )}
       <path
-        d={pathString}
+        d={curve.d}
         fill="none"
         stroke={strokeColor}
-        strokeWidth={strokeWidth}
-        strokeDasharray={arrow.is_valid ? 'none' : '5,5'}
+        strokeWidth={isHighlighted ? 2.25 : 1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeDasharray={arrow.is_valid ? undefined : '4 5'}
         markerEnd={`url(#${markerId})`}
-        opacity={opacity}
-        className="transition-all hover:opacity-100"
+        opacity={isHighlighted ? 0.95 : 0.58}
+        aria-hidden="true"
+      />
+      <circle
+        cx={curve.start.x}
+        cy={curve.start.y}
+        r={isHighlighted ? 3 : 2.25}
+        fill="#ffffff"
+        stroke={strokeColor}
+        strokeWidth="1.5"
         aria-hidden="true"
       />
 
-      {/* Invisible thicker path for easier hovering */}
-      <path
-        d={pathString}
-        fill="none"
-        stroke="transparent"
-        strokeWidth="8"
-        className="cursor-pointer"
-      />
-
-      {/* Dependency label (if highlighted) */}
-      {isHighlighted && arrow.path.length >= 2 && arrow.path[1] && (
-        <g className="dependency-label">
-          {/* Label background */}
-          <rect
-            x={arrow.path[1].x - 15}
-            y={arrow.path[1].y - 8}
-            width="30"
-            height="16"
-            fill="white"
-            stroke={strokeColor}
-            strokeWidth="1"
-            rx="3"
-            opacity="0.9"
+      {!arrow.is_valid && (
+        <g className="cycle-warning" aria-hidden="true">
+          <circle
+            cx={curve.midpoint.x}
+            cy={curve.midpoint.y}
+            r="7"
+            fill="#ffffff"
+            stroke="#ef4444"
+            strokeWidth="1.5"
           />
-
-          {/* Label text */}
           <text
-            x={arrow.path[1].x}
-            y={arrow.path[1].y}
+            x={curve.midpoint.x}
+            y={curve.midpoint.y + 0.5}
             textAnchor="middle"
             dominantBaseline="middle"
-            className="text-xs font-medium pointer-events-none"
-            fontSize="10"
-            fill={strokeColor}
+            fontSize="9"
+            fontWeight="700"
+            fill="#dc2626"
           >
-            依存
+            !
           </text>
         </g>
       )}
-
-      {/* Warning icon for invalid dependencies (cycles) */}
-      {!arrow.is_valid && arrow.path.length >= 2 && (() => {
-        const midPoint = arrow.path[Math.floor(arrow.path.length / 2)]
-        if (!midPoint) return null
-
-        return (
-          <g className="cycle-warning">
-            <circle
-              cx={midPoint.x}
-              cy={midPoint.y}
-              r="8"
-              fill="#fef2f2"
-              stroke="#ef4444"
-              strokeWidth="2"
-            />
-            <text
-              x={midPoint.x}
-              y={midPoint.y}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              className="text-xs font-bold pointer-events-none"
-              fontSize="10"
-              fill="#ef4444"
-            >
-              !
-            </text>
-          </g>
-        )
-      })()}
     </g>
   )
 }

@@ -201,6 +201,34 @@ describe('TimelineLayoutEngine', () => {
       expect(arrow.path.length).toBeGreaterThanOrEqual(2)
     })
 
+    it('should anchor dependency arrows to the vertical center of goal bars', () => {
+      const data = createMockTimelineData()
+      const customEngine = new TimelineLayoutEngine({
+        row_height: 108,
+        goal_bar_height: 42,
+        goal_bar_offset_y: 47,
+      })
+      const layout = customEngine.computeLayout(data)
+      const arrow = layout.arrows[0]
+      const fromGoal = layout.goals.find(
+        goal => goal.id === arrow.from_goal_id
+      )
+      const toGoal = layout.goals.find(goal => goal.id === arrow.to_goal_id)
+      const expectedFromY =
+        layout.dimensions.padding.top +
+        fromGoal!.row * layout.dimensions.row_height +
+        layout.dimensions.goal_bar_offset_y +
+        layout.dimensions.goal_bar_height / 2
+      const expectedToY =
+        layout.dimensions.padding.top +
+        toGoal!.row * layout.dimensions.row_height +
+        layout.dimensions.goal_bar_offset_y +
+        layout.dimensions.goal_bar_height / 2
+
+      expect(arrow.path[0].y).toBe(expectedFromY)
+      expect(arrow.path[arrow.path.length - 1].y).toBe(expectedToY)
+    })
+
     it('should handle goals without dates', () => {
       const data = createMockTimelineData()
       // Remove dates from second goal
