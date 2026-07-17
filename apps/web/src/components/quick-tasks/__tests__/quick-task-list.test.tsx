@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { toast } from '@/hooks/use-toast';
 import { quickTasksApi } from '@/lib/api';
@@ -42,6 +42,12 @@ const task: QuickTask = {
   priority: 3,
   created_at: '2026-07-16T00:00:00Z',
   updated_at: '2026-07-16T00:00:00Z',
+};
+
+const otherTask: QuickTask = {
+  ...task,
+  id: 'quick-task-2',
+  title: '別のテストタスク',
 };
 
 describe('QuickTaskList completion', () => {
@@ -87,5 +93,36 @@ describe('QuickTaskList completion', () => {
       );
     });
     expect(screen.getByText(task.title)).toBeInTheDocument();
+  });
+
+  it('allows different quick tasks to be completed concurrently', async () => {
+    jest.mocked(quickTasksApi.getAll).mockResolvedValue([task, otherTask]);
+
+    let resolveFirst!: (value: QuickTask) => void;
+    let resolveSecond!: (value: QuickTask) => void;
+    jest.mocked(quickTasksApi.update)
+      .mockImplementationOnce(
+        () => new Promise((resolve) => {
+          resolveFirst = resolve;
+        })
+      )
+      .mockImplementationOnce(
+        () => new Promise((resolve) => {
+          resolveSecond = resolve;
+        })
+      );
+
+    render(<QuickTaskList />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '「テストタスク」を完了' }));
+    fireEvent.click(screen.getByRole('button', { name: '「別のテストタスク」を完了' }));
+
+    expect(quickTasksApi.update).toHaveBeenNthCalledWith(1, task.id, { status: 'completed' });
+    expect(quickTasksApi.update).toHaveBeenNthCalledWith(2, otherTask.id, { status: 'completed' });
+
+    await act(async () => {
+      resolveFirst({ ...task, status: 'completed' });
+      resolveSecond({ ...otherTask, status: 'completed' });
+    });
   });
 });
