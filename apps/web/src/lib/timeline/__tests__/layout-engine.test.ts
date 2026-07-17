@@ -1,5 +1,6 @@
 import { TimelineLayoutEngine } from '../layout-engine'
 import type { TimelineData } from '../types'
+import { clampPercentage, formatHours } from '../utils'
 
 // Mock data helper functions
 const createMockTimelineData = (): TimelineData => ({
@@ -91,6 +92,20 @@ const createMockTimelineData = (): TimelineData => ({
       ]
     }
   ]
+})
+
+describe('timeline display helpers', () => {
+  it('clamps percentages to a safe display range', () => {
+    expect(clampPercentage(-5)).toBe(0)
+    expect(clampPercentage(42.5)).toBe(42.5)
+    expect(clampPercentage(140)).toBe(100)
+    expect(clampPercentage(Number.NaN)).toBe(0)
+  })
+
+  it('formats whole and fractional effort consistently', () => {
+    expect(formatHours(12)).toBe('12h')
+    expect(formatHours(12.34)).toBe('12.3h')
+  })
 })
 
 describe('TimelineLayoutEngine', () => {

@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { computeTimelineLayout } from '@/lib/timeline/layout-engine'
+import { clampPercentage, formatHours } from '@/lib/timeline/utils'
 import { logger } from '@/lib/logger'
 import type {
   LayoutGoal,
@@ -69,13 +70,6 @@ const RENDER_LIMITS = {
 }
 
 const CURRENT_TIME_REFRESH_MS = 60 * 60 * 1000
-
-const clampPercentage = (value: number) => Math.min(100, Math.max(0, value))
-
-function formatHours(value: number) {
-  const rounded = Math.round(value * 10) / 10
-  return Number.isInteger(rounded) ? `${rounded}h` : `${rounded.toFixed(1)}h`
-}
 
 const shortDateFormatter = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',

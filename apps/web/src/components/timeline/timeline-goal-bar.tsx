@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react'
 import type { LayoutGoal, LayoutTaskSegment } from '@/lib/timeline/types'
+import { formatHours } from '@/lib/timeline/utils'
 
 interface TimelineGoalBarProps {
   goal: LayoutGoal
@@ -61,11 +62,6 @@ const safeDate = (value: string | null) => {
   } catch {
     return null
   }
-}
-
-const formatHours = (value: number) => {
-  const rounded = Math.round(value * 10) / 10
-  return Number.isInteger(rounded) ? `${rounded}h` : `${rounded.toFixed(1)}h`
 }
 
 export function TimelineGoalBar({
