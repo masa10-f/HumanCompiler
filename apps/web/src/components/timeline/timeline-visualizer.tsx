@@ -315,11 +315,12 @@ export function TimelineVisualizer({
     const oneDay = 86_400_000
 
     if (filters.time_unit === 'month') {
-      const cursor = new Date(startDate)
+      const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
       while (cursor.getTime() <= endTime) {
         dates.push(new Date(cursor))
-        cursor.setUTCMonth(cursor.getUTCMonth() + 1)
+        cursor.setMonth(cursor.getMonth() + 1)
       }
+    } else {
     } else {
       const stepMs = filters.time_unit === 'week' ? oneDay * 7 : oneDay
       for (
