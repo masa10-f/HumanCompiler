@@ -106,7 +106,11 @@ export default function ProjectTimelinePage() {
                   min="1"
                   max="168"
                   value={weeklyWorkHours}
-                  onChange={(e) => setWeeklyWorkHours(Number(e.target.value))}
+                  onChange={(e) =>
+                    setWeeklyWorkHours(
+                      Math.min(168, Math.max(1, Number(e.target.value) || 1)),
+                    )
+                  }
                   className="h-7 w-16 border-0 bg-transparent p-0 text-right text-sm font-semibold shadow-none focus-visible:ring-0"
                 />
                 <span className="text-xs text-slate-500">時間 / 週</span>
