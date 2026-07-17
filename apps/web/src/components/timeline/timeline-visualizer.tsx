@@ -1,21 +1,44 @@
-"use client"
+'use client'
 
-import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react'
-import { useErrorHandler } from './timeline-error-boundary'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import React, { useCallback, useMemo, useRef, useState } from 'react'
+import { parseISO } from 'date-fns'
+import {
+  AlertTriangle,
+  CalendarDays,
+  Check,
+  Clock3,
+  Download,
+  Flag,
+  GitBranch,
+  Layers3,
+  RefreshCw,
+  Target,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { Download, Calendar, ZoomIn, ZoomOut, RotateCcw, AlertTriangle, Clock, Target, Layers } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { computeTimelineLayout } from '@/lib/timeline/layout-engine'
-import { TimelineGoalBar } from './timeline-goal-bar'
-import { TimelineDependencyArrow } from './timeline-dependency-arrow'
-import { TimelineTooltip } from './timeline-tooltip'
-import type { TimelineData, LayoutModel, LayoutGoal, LayoutTaskSegment, TimelineFilters } from '@/lib/timeline/types'
 import { logger } from '@/lib/logger'
-import { format, parseISO, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval } from 'date-fns'
-import { ja } from 'date-fns/locale'
+import type {
+  LayoutGoal,
+  LayoutModel,
+  LayoutTaskSegment,
+  TimelineData,
+  TimelineFilters,
+} from '@/lib/timeline/types'
+import { TimelineDependencyArrow } from './timeline-dependency-arrow'
+import { TimelineGoalBar } from './timeline-goal-bar'
+import { TimelineTooltip } from './timeline-tooltip'
 
 interface TimelineVisualizerProps {
   data: TimelineData | null
@@ -26,25 +49,106 @@ interface TimelineVisualizerProps {
   onRefresh: () => void
 }
 
-// Modern color palette
-const COLORS = {
-  background: {
-    primary: '#fafbfc',
-    secondary: '#f1f5f9',
-    grid: '#e2e8f0',
-    gridAlt: '#f8fafc',
-  },
-  text: {
-    primary: '#1e293b',
-    secondary: '#64748b',
-    muted: '#94a3b8',
-  },
-  accent: {
-    primary: '#3b82f6',
-    success: '#10b981',
-    warning: '#f59e0b',
-    danger: '#ef4444',
-  },
+const CHART = {
+  labelWidth: 330,
+  rowHeight: 108,
+  barHeight: 42,
+  headerHeight: 72,
+}
+
+const clampPercentage = (value: number) => Math.min(100, Math.max(0, value))
+
+function formatHours(value: number) {
+  const rounded = Math.round(value * 10) / 10
+  return Number.isInteger(rounded) ? `${rounded}h` : `${rounded.toFixed(1)}h`
+}
+
+const shortDateFormatter = new Intl.DateTimeFormat('ja-JP', {
+  timeZone: 'Asia/Tokyo',
+  month: 'numeric',
+  day: 'numeric',
+})
+
+const longDateFormatter = new Intl.DateTimeFormat('ja-JP', {
+  timeZone: 'Asia/Tokyo',
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+})
+
+const formatShortDate = (date: Date) => shortDateFormatter.format(date)
+const formatLongDate = (value: string) =>
+  longDateFormatter.format(new Date(value))
+
+function ProgressDial({ percentage }: { percentage: number }) {
+  const value = Math.round(clampPercentage(percentage))
+
+  return (
+    <div
+      className="relative grid h-28 w-28 shrink-0 place-items-center rounded-full"
+      style={{
+        background: `conic-gradient(#2563eb ${value * 3.6}deg, #e8edf5 0deg)`,
+      }}
+      role="img"
+      aria-label={`プロジェクト進捗 ${value}%`}
+    >
+      <div className="absolute inset-[9px] rounded-full bg-white shadow-inner dark:bg-slate-950" />
+      <div className="relative text-center">
+        <div className="font-mono text-3xl font-semibold tracking-[-0.08em] text-slate-950 dark:text-white">
+          {value}
+          <span className="ml-0.5 text-base tracking-normal text-slate-500">
+            %
+          </span>
+        </div>
+        <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
+          完了
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MetricCard({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  tone = 'slate',
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  value: string
+  detail: string
+  tone?: 'slate' | 'blue' | 'emerald' | 'amber'
+}) {
+  const tones = {
+    slate: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+    blue: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+    emerald:
+      'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+    amber: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+  }
+
+  return (
+    <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200/80 bg-white/80 p-4 dark:border-slate-800 dark:bg-slate-950/70">
+      <div
+        className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${tones[tone]}`}
+      >
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+          {label}
+        </p>
+        <p className="mt-0.5 truncate text-xl font-semibold tracking-tight text-slate-950 dark:text-white">
+          {value}
+        </p>
+        <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+          {detail}
+        </p>
+      </div>
+    </div>
+  )
 }
 
 export function TimelineVisualizer({
@@ -53,603 +157,473 @@ export function TimelineVisualizer({
   error,
   filters,
   onFiltersChange,
-  onRefresh
+  onRefresh,
 }: TimelineVisualizerProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
-  const { handleError } = useErrorHandler()
-
   const [zoomLevel, setZoomLevel] = useState(1)
   const [selectedGoal, setSelectedGoal] = useState<LayoutGoal | null>(null)
-  const [selectedTask, setSelectedTask] = useState<LayoutTaskSegment | null>(null)
-  const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null)
-  const [liveRegionMessage, setLiveRegionMessage] = useState('')
+  const [selectedTask, setSelectedTask] = useState<LayoutTaskSegment | null>(
+    null,
+  )
+  const [tooltipPosition, setTooltipPosition] = useState<{
+    x: number
+    y: number
+  } | null>(null)
 
-  // Performance optimization: debounce layout computations
-  const [layoutComputeTimestamp, setLayoutComputeTimestamp] = useState(0)
-  const layoutComputeTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-
-  // State for fallback mode when layout computation fails
-  const [isSimplifiedMode, setIsSimplifiedMode] = useState(false)
-
-  // Compute layout when data changes
   const layoutModel = useMemo<LayoutModel | null>(() => {
     if (!data) return null
-
     try {
-      // Check for large datasets and show warning
       const goalCount = data.goals.length
-      const taskCount = data.goals.reduce((sum, g) => sum + g.tasks.length, 0)
-
-      // Determine if virtualization is needed
-      const needsVirtualization = goalCount > 100 || taskCount > 500
-
-      if (goalCount > 50 || taskCount > 200) {
-        logger.warn('Large dataset detected', { goalCount, taskCount }, { component: 'TimelineVisualizer' })
-
-        if (needsVirtualization) {
-          logger.warn('Virtualization recommended for optimal performance', { component: 'TimelineVisualizer' })
-        }
-      }
-
-      const layoutOptions = {
-        canvas_width: Math.max(1400, goalCount * 100),
-        canvas_height: Math.max(600, goalCount * 80),
-        enable_virtualization: needsVirtualization,
-        simplified_mode: isSimplifiedMode
-      }
-
-      return computeTimelineLayout(data, layoutOptions)
-    } catch (error) {
-      logger.error('Layout computation failed', error instanceof Error ? error : new Error(String(error)), { component: 'TimelineVisualizer' })
-
-      // Try simplified mode as fallback - but prevent infinite loops
-      if (!isSimplifiedMode) {
-        logger.debug('Attempting fallback to simplified mode', { component: 'TimelineVisualizer' })
-        // Use setTimeout to prevent immediate re-computation and potential stack overflow
-        setTimeout(() => setIsSimplifiedMode(true), 0)
-        return null // Will trigger re-computation with simplified mode
-      }
-
-      // If simplified mode also fails, return null instead of throwing
-      logger.warn('Simplified mode also failed, rendering fallback UI', { component: 'TimelineVisualizer' })
+      return computeTimelineLayout(data, {
+        canvas_width: Math.max(1440, 1120 + goalCount * 36),
+        canvas_height: Math.max(
+          320,
+          goalCount * CHART.rowHeight + CHART.headerHeight + 48,
+        ),
+        row_height: CHART.rowHeight,
+        goal_bar_height: CHART.barHeight,
+        padding: {
+          top: CHART.headerHeight,
+          right: 88,
+          bottom: 48,
+          left: CHART.labelWidth,
+        },
+      })
+    } catch (layoutError) {
+      logger.error(
+        'Timeline layout computation failed',
+        layoutError instanceof Error
+          ? layoutError
+          : new Error(String(layoutError)),
+        { component: 'TimelineVisualizer' },
+      )
       return null
     }
-  }, [data, isSimplifiedMode])
+  }, [data])
 
-  // Generate time axis markers
+  const summary = useMemo(() => {
+    if (!data) return null
+    const tasks = data.goals.flatMap((goal) => goal.tasks)
+    const totalHours = tasks.reduce(
+      (sum, task) => sum + Math.max(0, task.estimate_hours),
+      0,
+    )
+    const completedEquivalentHours = tasks.reduce(
+      (sum, task) =>
+        sum +
+        Math.max(0, task.estimate_hours) *
+          (clampPercentage(task.progress_percentage) / 100),
+      0,
+    )
+    const completedTasks = tasks.filter(
+      (task) => task.status === 'completed',
+    ).length
+    const activeTasks = tasks.filter(
+      (task) => task.status === 'in_progress',
+    ).length
+    const now = Date.now()
+    const overdueTasks = tasks.filter((task) => {
+      if (
+        !task.due_date ||
+        task.status === 'completed' ||
+        task.status === 'cancelled'
+      )
+        return false
+      const due = Date.parse(task.due_date)
+      return Number.isFinite(due) && due < now
+    }).length
+    const progress =
+      totalHours > 0
+        ? (completedEquivalentHours / totalHours) * 100
+        : tasks.length > 0
+          ? (completedTasks / tasks.length) * 100
+          : 0
+
+    return {
+      tasks,
+      totalHours,
+      completedEquivalentHours,
+      remainingHours: Math.max(0, totalHours - completedEquivalentHours),
+      completedTasks,
+      activeTasks,
+      overdueTasks,
+      progress,
+    }
+  }, [data])
+
   const timeAxisMarkers = useMemo(() => {
-    if (!layoutModel || !data) return []
-
+    if (!layoutModel) return []
     const startDate = parseISO(layoutModel.timeline.start_date)
     const endDate = parseISO(layoutModel.timeline.end_date)
-    const timeUnit = filters.time_unit || 'day'
+    const dates: Date[] = []
+    const endTime = endDate.getTime()
+    const oneDay = 86_400_000
 
-    let dates: Date[] = []
-    try {
-      if (timeUnit === 'day') {
-        dates = eachDayOfInterval({ start: startDate, end: endDate })
-      } else if (timeUnit === 'week') {
-        dates = eachWeekOfInterval({ start: startDate, end: endDate }, { locale: ja })
-      } else {
-        dates = eachMonthOfInterval({ start: startDate, end: endDate })
+    if (filters.time_unit === 'month') {
+      const cursor = new Date(startDate)
+      while (cursor.getTime() <= endTime) {
+        dates.push(new Date(cursor))
+        cursor.setUTCMonth(cursor.getUTCMonth() + 1)
       }
-    } catch {
-      return []
+    } else {
+      const stepMs = filters.time_unit === 'week' ? oneDay * 7 : oneDay
+      for (
+        let timestamp = startDate.getTime();
+        timestamp <= endTime;
+        timestamp += stepMs
+      ) {
+        dates.push(new Date(timestamp))
+      }
     }
 
-    // Limit markers to avoid cluttering
-    const maxMarkers = 20
-    const step = Math.max(1, Math.floor(dates.length / maxMarkers))
+    const maxMarkers = 14
+    const step = Math.max(1, Math.ceil(dates.length / maxMarkers))
+    const chartWidth =
+      layoutModel.dimensions.width -
+      layoutModel.dimensions.padding.left -
+      layoutModel.dimensions.padding.right
 
-    return dates.filter((_, index) => index % step === 0).map(date => {
-      const daysSinceStart = Math.floor((date.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
-      const x = layoutModel.dimensions.padding.left +
-        (daysSinceStart / layoutModel.timeline.total_days) * (layoutModel.dimensions.width - layoutModel.dimensions.padding.left - 100)
+    return dates
+      .filter((_, index) => index % step === 0)
+      .map((date) => {
+        const elapsedDays = (date.getTime() - startDate.getTime()) / 86_400_000
+        const x =
+          layoutModel.dimensions.padding.left +
+          (elapsedDays / Math.max(1, layoutModel.timeline.total_days)) *
+            chartWidth
+        const label =
+          filters.time_unit === 'month'
+            ? new Intl.DateTimeFormat('ja-JP', {
+                timeZone: 'Asia/Tokyo',
+                year: 'numeric',
+                month: 'short',
+              }).format(date)
+            : formatShortDate(date)
+        return { x, label, date }
+      })
+  }, [filters.time_unit, layoutModel])
 
-      let label = ''
-      if (timeUnit === 'day') {
-        label = format(date, 'M/d', { locale: ja })
-      } else if (timeUnit === 'week') {
-        label = format(date, 'M/d週', { locale: ja })
-      } else {
-        label = format(date, 'M月', { locale: ja })
-      }
+  const todayX = useMemo(() => {
+    if (!layoutModel) return null
+    const start = parseISO(layoutModel.timeline.start_date).getTime()
+    const end = parseISO(layoutModel.timeline.end_date).getTime()
+    const today = Date.now()
+    if (today < start || today > end || end <= start) return null
+    const chartWidth =
+      layoutModel.dimensions.width -
+      layoutModel.dimensions.padding.left -
+      layoutModel.dimensions.padding.right
+    return (
+      layoutModel.dimensions.padding.left +
+      ((today - start) / (end - start)) * chartWidth
+    )
+  }, [layoutModel])
 
-      return { x, label, date }
-    })
-  }, [layoutModel, data, filters.time_unit])
+  const updateFilters = useCallback(
+    (patch: Partial<TimelineFilters>) => {
+      onFiltersChange({ ...filters, ...patch })
+    },
+    [filters, onFiltersChange],
+  )
 
-
-  // Handle zoom controls
-  const handleZoomIn = useCallback(() => {
-    setZoomLevel(prev => {
-      const newLevel = Math.min(prev * 1.2, 3)
-      setLiveRegionMessage(`ズームイン: ${Math.round(newLevel * 100)}%`)
-      return newLevel
-    })
-  }, [])
-
-  const handleZoomOut = useCallback(() => {
-    setZoomLevel(prev => {
-      const newLevel = Math.max(prev / 1.2, 0.5)
-      setLiveRegionMessage(`ズームアウト: ${Math.round(newLevel * 100)}%`)
-      return newLevel
-    })
-  }, [])
-
-  const handleZoomReset = useCallback(() => {
-    setZoomLevel(1)
-    setLiveRegionMessage('ズームをリセットしました: 100%')
-  }, [])
-
-  // Handle filter changes
-  const handleTimeUnitChange = useCallback((unit: string) => {
-    onFiltersChange({ ...filters, time_unit: unit as 'day' | 'week' | 'month' })
-  }, [filters, onFiltersChange])
-
-  // Handle goal selection
-  const handleGoalClick = useCallback((goal: LayoutGoal, event: React.MouseEvent) => {
+  const openGoal = useCallback((goal: LayoutGoal, event: React.MouseEvent) => {
     event.stopPropagation()
     setSelectedGoal(goal)
     setSelectedTask(null)
     setTooltipPosition({ x: event.clientX, y: event.clientY })
-
-    // Announce to screen readers
-    setLiveRegionMessage(`ゴール「${goal.title}」を選択しました。ステータス: ${goal.status}`)
   }, [])
 
-  // Handle task selection
-  const handleTaskClick = useCallback((task: LayoutTaskSegment, event: React.MouseEvent) => {
-    event.stopPropagation()
-    setSelectedTask(task)
-    setSelectedGoal(null)
-    setTooltipPosition({ x: event.clientX, y: event.clientY })
-
-    // Announce to screen readers
-    setLiveRegionMessage(`タスク「${task.title}」を選択しました。進捗: ${task.progress_percentage}%`)
-  }, [])
-
-  // Close tooltip when clicking outside
-  const handleSvgClick = useCallback((event: React.MouseEvent) => {
-    if (event.target === svgRef.current) {
+  const openTask = useCallback(
+    (task: LayoutTaskSegment, event: React.MouseEvent) => {
+      event.stopPropagation()
+      setSelectedTask(task)
       setSelectedGoal(null)
-      setSelectedTask(null)
-      setTooltipPosition(null)
-    }
-  }, [])
-
-  // Handle outside clicks to close tooltip
-  const handleClickOutside = useCallback((event: MouseEvent) => {
-    if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-      setSelectedGoal(null)
-      setSelectedTask(null)
-      setTooltipPosition(null)
-    }
-  }, [])
-
-  // Download timeline as SVG
-  const downloadSVG = useCallback(async () => {
-    if (!svgRef.current || !data) return
-
-    try {
-      const svgElement = svgRef.current
-      const svgData = new XMLSerializer().serializeToString(svgElement)
-      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
-      const svgUrl = URL.createObjectURL(svgBlob)
-
-      const link = document.createElement('a')
-      link.href = svgUrl
-      link.download = `${data.project.title}_timeline.svg`
-      link.click()
-
-      URL.revokeObjectURL(svgUrl)
-
-      toast({
-        title: "タイムラインをダウンロードしました",
-        description: "SVG形式でタイムラインが保存されました。",
-      })
-    } catch (error) {
-      logger.error('Download failed', error instanceof Error ? error : new Error(String(error)), { component: 'TimelineVisualizer' })
-      handleError(error instanceof Error ? error : new Error('SVG download failed'))
-      toast({
-        title: "ダウンロードに失敗しました",
-        description: "ファイルの生成中にエラーが発生しました。",
-        variant: "destructive",
-      })
-    }
-  }, [data, toast, handleError])
-
-  // Keyboard navigation
-  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if (!layoutModel) return
-
-    switch (event.key) {
-      case 'Escape':
-        setSelectedGoal(null)
-        setSelectedTask(null)
-        setTooltipPosition(null)
-        break
-
-      case 'ArrowUp':
-      case 'ArrowDown':
-        event.preventDefault()
-        const currentGoalIndex = selectedGoal
-          ? layoutModel.goals.findIndex(g => g.id === selectedGoal.id)
-          : -1
-
-        let newIndex: number
-        if (event.key === 'ArrowUp') {
-          newIndex = currentGoalIndex <= 0 ? layoutModel.goals.length - 1 : currentGoalIndex - 1
-        } else {
-          newIndex = currentGoalIndex >= layoutModel.goals.length - 1 ? 0 : currentGoalIndex + 1
-        }
-
-        if (newIndex >= 0 && newIndex < layoutModel.goals.length) {
-          const newGoal = layoutModel.goals[newIndex]
-          setSelectedGoal(newGoal || null)
-          setSelectedTask(null)
-          setTooltipPosition(null)
-
-          if (newGoal) {
-            setLiveRegionMessage(`${newIndex + 1}番目のゴール「${newGoal.title}」を選択`)
-          }
-        }
-        break
-
-      case 'Enter':
-      case ' ':
-        if (selectedGoal && selectedGoal.segments.length > 0) {
-          event.preventDefault()
-          setSelectedTask(selectedGoal.segments[0] || null)
-        }
-        break
-
-      case '+':
-      case '=':
-        event.preventDefault()
-        handleZoomIn()
-        break
-
-      case '-':
-        event.preventDefault()
-        handleZoomOut()
-        break
-
-      case '0':
-        event.preventDefault()
-        handleZoomReset()
-        break
-    }
-  }, [layoutModel, selectedGoal, handleZoomIn, handleZoomOut, handleZoomReset])
-
-  // Memory management and cleanup
-  useEffect(() => {
-    // Add event listener for clicks outside the timeline
-    document.addEventListener('mousedown', handleClickOutside)
-
-    // Clear layout computation timeout on unmount
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-
-      if (layoutComputeTimeoutRef.current) {
-        clearTimeout(layoutComputeTimeoutRef.current)
-        layoutComputeTimeoutRef.current = null
-      }
-
-      // Clear any pending state updates
-      setSelectedGoal(null)
-      setSelectedTask(null)
-      setTooltipPosition(null)
-    }
-  }, [handleClickOutside])
-
-  // Clean up selections when data changes to prevent memory leaks
-  useEffect(() => {
-    if (data) {
-      setSelectedGoal(null)
-      setSelectedTask(null)
-      setTooltipPosition(null)
-    }
-  }, [data])
-
-  // Reset simplified mode when new data comes in (separate effect to prevent loops)
-  useEffect(() => {
-    if (data && isSimplifiedMode) {
-      logger.debug('Resetting simplified mode for new data', { component: 'TimelineVisualizer' })
-      setIsSimplifiedMode(false)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]) // intentionally exclude isSimplifiedMode to prevent loops
-
-  // Performance monitoring
-  useEffect(() => {
-    if (layoutModel) {
-      const now = performance.now()
-
-      // Log performance metrics in development
-      if (process.env.NODE_ENV === 'development') {
-        const computeTime = now - layoutComputeTimestamp
-        const taskCount = layoutModel.goals.reduce((sum, g) => sum + g.segments.length, 0)
-        logger.debug('Timeline layout computed', { computeTimeMs: computeTime.toFixed(2), goalCount: layoutModel.goals.length, taskCount }, { component: 'TimelineVisualizer' })
-      }
-
-      // Update timestamp after logging to avoid infinite loop
-      setLayoutComputeTimestamp(now)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layoutModel]) // Remove layoutComputeTimestamp from dependencies to prevent loop
-
-  // Loading state with modern skeleton
-  if (isLoading) {
-    return (
-      <Card className="border-0 shadow-lg bg-gradient-to-br from-white to-slate-50">
-        <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-3">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Calendar className="w-5 h-5 text-blue-600" />
-            </div>
-            <span className="text-xl font-semibold text-slate-800">タイムライン</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex gap-4 mb-6">
-              <div className="h-10 bg-gradient-to-r from-slate-200 to-slate-100 rounded-lg w-32 animate-pulse" />
-              <div className="h-10 bg-gradient-to-r from-slate-200 to-slate-100 rounded-lg w-24 animate-pulse" />
-            </div>
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="flex items-center gap-4">
-                  <div className="w-32 h-6 bg-gradient-to-r from-slate-200 to-slate-100 rounded animate-pulse" />
-                  <div className="flex-1 h-10 bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 rounded-lg animate-pulse" style={{ animationDelay: `${i * 100}ms` }} />
-                </div>
-              ))}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  // Error state with modern design
-  if (error) {
-    return (
-      <Card className="border-0 shadow-lg bg-gradient-to-br from-white to-red-50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-3">
-            <div className="p-2 bg-red-100 rounded-lg">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
-            </div>
-            <span className="text-xl font-semibold text-slate-800">タイムライン</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle className="w-8 h-8 text-red-500" />
-            </div>
-            <p className="text-lg font-medium text-red-600 mb-2">エラーが発生しました</p>
-            <p className="text-sm text-slate-600 mb-6 max-w-md mx-auto">{error}</p>
-            <Button
-              onClick={onRefresh}
-              className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-md"
-            >
-              <RotateCcw className="w-4 h-4 mr-2" />
-              再試行
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  // Simplified timeline fallback when layout computation fails
-  const SimplifiedTimeline = ({ data }: { data: TimelineData }) => (
-    <Card className="border-0 shadow-lg bg-gradient-to-br from-white to-amber-50">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-3">
-          <div className="p-2 bg-amber-100 rounded-lg">
-            <Layers className="w-5 h-5 text-amber-600" />
-          </div>
-          <div>
-            <span className="text-xl font-semibold text-slate-800">{data.project.title}</span>
-            <p className="text-sm font-normal text-amber-600 mt-1 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4" />
-              簡易表示モード
-            </p>
-          </div>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-6">
-          {data.goals.map((goal) => (
-            <div key={goal.id} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className={`w-3 h-3 rounded-full ${
-                    goal.status === 'completed' ? 'bg-emerald-500' :
-                    goal.status === 'in_progress' ? 'bg-blue-500' :
-                    goal.status === 'cancelled' ? 'bg-red-500' : 'bg-slate-400'
-                  }`} />
-                  <h3 className="font-semibold text-lg text-slate-800">{goal.title}</h3>
-                </div>
-                <Badge
-                  className={`${
-                    goal.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
-                    goal.status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
-                    goal.status === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
-                  }`}
-                >
-                  {goal.status === 'completed' ? '完了' :
-                   goal.status === 'in_progress' ? '進行中' :
-                   goal.status === 'cancelled' ? '中止' : '未着手'}
-                </Badge>
-              </div>
-              {goal.description && (
-                <p className="text-slate-600 text-sm mb-4">{goal.description}</p>
-              )}
-              <div className="space-y-2">
-                {goal.tasks.map((task) => (
-                  <div key={task.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
-                    <div
-                      className={`w-2.5 h-2.5 rounded-full ${
-                        task.status === 'completed' ? 'bg-emerald-500' :
-                        task.status === 'in_progress' ? 'bg-blue-500' :
-                        task.status === 'cancelled' ? 'bg-red-500' : 'bg-slate-400'
-                      }`}
-                    />
-                    <span className="flex-1 text-slate-700">{task.title}</span>
-                    <span className="text-xs text-slate-500 font-medium px-2 py-1 bg-white rounded">
-                      {task.estimate_hours}h
-                    </span>
-                    {task.due_date && (
-                      <span className="text-xs text-slate-500">
-                        {new Date(task.due_date).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' })}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="mt-8 flex justify-center">
-          <Button
-            onClick={() => setIsSimplifiedMode(false)}
-            variant="outline"
-            className="border-amber-300 text-amber-700 hover:bg-amber-50"
-          >
-            <RotateCcw className="w-4 h-4 mr-2" />
-            詳細表示を再試行
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+      setTooltipPosition({ x: event.clientX, y: event.clientY })
+    },
+    [],
   )
 
-  if (!data) {
+  const closeTooltip = useCallback(() => {
+    setSelectedGoal(null)
+    setSelectedTask(null)
+    setTooltipPosition(null)
+  }, [])
+
+  const downloadSVG = useCallback(() => {
+    if (!svgRef.current || !data) return
+    try {
+      const source = new XMLSerializer().serializeToString(svgRef.current)
+      const url = URL.createObjectURL(
+        new Blob([source], { type: 'image/svg+xml;charset=utf-8' }),
+      )
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${data.project.title}_timeline.svg`
+      link.click()
+      URL.revokeObjectURL(url)
+      toast({
+        title: 'タイムラインを書き出しました',
+        description: 'SVG形式で保存しました。',
+      })
+    } catch (downloadError) {
+      logger.error(
+        'Timeline download failed',
+        downloadError instanceof Error
+          ? downloadError
+          : new Error(String(downloadError)),
+        { component: 'TimelineVisualizer' },
+      )
+      toast({
+        title: '書き出しに失敗しました',
+        description: 'もう一度お試しください。',
+        variant: 'destructive',
+      })
+    }
+  }, [data, toast])
+
+  if (isLoading) {
     return (
-      <Card className="border-0 shadow-lg bg-gradient-to-br from-white to-slate-50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-3">
-            <div className="p-2 bg-slate-100 rounded-lg">
-              <Calendar className="w-5 h-5 text-slate-600" />
-            </div>
-            <span className="text-xl font-semibold text-slate-800">タイムライン</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Calendar className="w-8 h-8 text-slate-400" />
-            </div>
-            <p className="text-slate-500">タイムラインデータが見つかりません。</p>
+      <div className="space-y-5" aria-label="タイムラインを読み込み中">
+        <div className="h-48 animate-pulse rounded-3xl bg-slate-200/70 dark:bg-slate-800" />
+        <div className="h-[460px] animate-pulse rounded-3xl bg-slate-200/70 dark:bg-slate-800" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <Card className="overflow-hidden border-red-200 bg-red-50/70 shadow-none dark:border-red-900 dark:bg-red-950/30">
+        <CardContent className="flex flex-col items-center px-6 py-16 text-center">
+          <div className="grid h-14 w-14 place-items-center rounded-2xl bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-300">
+            <AlertTriangle className="h-7 w-7" />
           </div>
+          <h2 className="mt-5 text-lg font-semibold">
+            タイムラインを読み込めませんでした
+          </h2>
+          <p className="mt-2 max-w-lg text-sm text-slate-600 dark:text-slate-300">
+            {error}
+          </p>
+          <Button onClick={onRefresh} className="mt-6">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            再試行
+          </Button>
         </CardContent>
       </Card>
     )
   }
 
-  if (!layoutModel) {
-    // Show simplified timeline as fallback
-    return <SimplifiedTimeline data={data} />
+  if (!data || !summary) {
+    return (
+      <Card className="border-dashed shadow-none">
+        <CardContent className="px-6 py-16 text-center text-sm text-slate-500">
+          表示できるタイムラインデータがありません。
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
-    <div className="space-y-6">
-      {/* ARIA Live Region for screen reader announcements */}
-      <div
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-        className="sr-only"
-      >
-        {liveRegionMessage}
-      </div>
-
-      {/* Header Controls - Modern glassmorphism design */}
-      <Card className="border-0 shadow-lg bg-gradient-to-br from-white to-slate-50 overflow-hidden">
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-3">
-              <div className="p-2.5 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg shadow-blue-500/20">
-                <Calendar className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <span className="text-xl font-semibold text-slate-800">{data.project.title}</span>
-                <p className="text-sm font-normal text-slate-500 mt-0.5">タイムライン</p>
-              </div>
-            </CardTitle>
-            <div className="flex items-center gap-2">
-              <Select value={filters.time_unit} onValueChange={handleTimeUnitChange}>
-                <SelectTrigger className="w-28 bg-white border-slate-200 shadow-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="day">日単位</SelectItem>
-                  <SelectItem value="week">週単位</SelectItem>
-                  <SelectItem value="month">月単位</SelectItem>
-                </SelectContent>
-              </Select>
-              <div className="flex items-center bg-slate-100 rounded-lg p-1">
-                <Button onClick={handleZoomOut} size="sm" variant="ghost" className="h-8 w-8 p-0 hover:bg-white">
-                  <ZoomOut className="w-4 h-4" />
-                </Button>
-                <span className="px-2 text-xs font-medium text-slate-600 min-w-[40px] text-center">
-                  {Math.round(zoomLevel * 100)}%
+    <div className="space-y-5">
+      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-[radial-gradient(circle_at_top_right,_rgba(37,99,235,0.12),_transparent_38%),linear-gradient(135deg,#ffffff_0%,#f8fafc_100%)] p-5 shadow-[0_18px_60px_-34px_rgba(15,23,42,0.45)] dark:border-slate-800 dark:bg-[radial-gradient(circle_at_top_right,_rgba(37,99,235,0.18),_transparent_38%),linear-gradient(135deg,#0f172a_0%,#020617_100%)] sm:p-7">
+        <div className="flex min-w-0 flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 flex-col items-start gap-5 sm:flex-row sm:items-center">
+            <ProgressDial percentage={summary.progress} />
+            <div className="min-w-0">
+              <Badge className="border-0 bg-blue-100 text-blue-700 hover:bg-blue-100 dark:bg-blue-950 dark:text-blue-300">
+                PROJECT TIMELINE
+              </Badge>
+              <h1 className="mt-3 truncate text-2xl font-semibold tracking-tight text-slate-950 dark:text-white sm:text-3xl">
+                {data.project.title}
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+                見積工数を基準に、各タスクの進捗を加重平均しています。
+                <span className="ml-1 font-semibold text-slate-900 dark:text-white">
+                  {formatHours(summary.completedEquivalentHours)} 完了相当 / 全{' '}
+                  {formatHours(summary.totalHours)}
                 </span>
-                <Button onClick={handleZoomIn} size="sm" variant="ghost" className="h-8 w-8 p-0 hover:bg-white">
-                  <ZoomIn className="w-4 h-4" />
-                </Button>
-                <Button onClick={handleZoomReset} size="sm" variant="ghost" className="h-8 w-8 p-0 hover:bg-white">
-                  <RotateCcw className="w-4 h-4" />
-                </Button>
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                <span className="inline-flex items-center gap-1.5">
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  {formatLongDate(data.timeline.start_date)} —{' '}
+                  {formatLongDate(data.timeline.end_date)}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock3 className="h-3.5 w-3.5" />週{' '}
+                  {data.project.weekly_work_hours}h
+                </span>
               </div>
-              <Button onClick={downloadSVG} size="sm" className="bg-slate-800 hover:bg-slate-900 shadow-md">
-                <Download className="w-4 h-4 mr-2" />
-                SVG
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:min-w-[610px]">
+            <MetricCard
+              icon={Target}
+              label="残り工数"
+              value={formatHours(summary.remainingHours)}
+              detail={`全体 ${formatHours(summary.totalHours)}`}
+              tone="blue"
+            />
+            <MetricCard
+              icon={Check}
+              label="完了タスク"
+              value={`${summary.completedTasks} / ${summary.tasks.length}`}
+              detail={`${summary.activeTasks}件が進行中`}
+              tone="emerald"
+            />
+            <MetricCard
+              icon={Flag}
+              label="ゴール"
+              value={`${data.goals.length}件`}
+              detail={`${data.goals.filter((goal) => goal.status === 'completed').length}件完了`}
+            />
+            <MetricCard
+              icon={AlertTriangle}
+              label="期限超過"
+              value={`${summary.overdueTasks}件`}
+              detail={summary.overdueTasks ? '要確認' : '遅延なし'}
+              tone={summary.overdueTasks ? 'amber' : 'slate'}
+            />
+          </div>
+        </div>
+      </section>
+
+      <Card className="overflow-hidden rounded-3xl border-slate-200 shadow-[0_18px_60px_-40px_rgba(15,23,42,0.45)] dark:border-slate-800">
+        <div className="flex flex-col gap-4 border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="flex items-center gap-2 text-base font-semibold text-slate-950 dark:text-white">
+              <Layers3 className="h-4 w-4 text-blue-600" />
+              ロードマップ
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              バーを選択すると、ゴールやタスクの内訳を確認できます。
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              value={filters.time_unit}
+              onValueChange={(value) =>
+                updateFilters({
+                  time_unit: value as TimelineFilters['time_unit'],
+                })
+              }
+            >
+              <SelectTrigger
+                className="h-9 w-[112px] rounded-xl bg-white dark:bg-slate-950"
+                aria-label="時間軸"
+              >
+                <SelectValue
+                  placeholder={
+                    filters.time_unit === 'day'
+                      ? '日単位'
+                      : filters.time_unit === 'month'
+                        ? '月単位'
+                        : '週単位'
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="day">日単位</SelectItem>
+                <SelectItem value="week">週単位</SelectItem>
+                <SelectItem value="month">月単位</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant={
+                filters.show_task_segments !== false ? 'secondary' : 'outline'
+              }
+              size="sm"
+              className="h-9 rounded-xl"
+              onClick={() =>
+                updateFilters({
+                  show_task_segments: filters.show_task_segments === false,
+                })
+              }
+            >
+              <Layers3 className="mr-1.5 h-3.5 w-3.5" />
+              タスク内訳
+            </Button>
+            <Button
+              variant={
+                filters.show_dependencies !== false ? 'secondary' : 'outline'
+              }
+              size="sm"
+              className="h-9 rounded-xl"
+              onClick={() =>
+                updateFilters({
+                  show_dependencies: filters.show_dependencies === false,
+                })
+              }
+            >
+              <GitBranch className="mr-1.5 h-3.5 w-3.5" />
+              依存関係
+            </Button>
+            <div
+              className="flex h-9 items-center rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-800 dark:bg-slate-900"
+              aria-label={`表示倍率 ${Math.round(zoomLevel * 100)}%`}
+            >
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 rounded-lg p-0"
+                onClick={() =>
+                  setZoomLevel((value) => Math.max(0.7, value - 0.1))
+                }
+                aria-label="縮小"
+              >
+                <ZoomOut className="h-3.5 w-3.5" />
+              </Button>
+              <span className="min-w-[92px] text-center text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                表示倍率 {Math.round(zoomLevel * 100)}%
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 rounded-lg p-0"
+                onClick={() =>
+                  setZoomLevel((value) => Math.min(1.8, value + 0.1))
+                }
+                aria-label="拡大"
+              >
+                <ZoomIn className="h-3.5 w-3.5" />
               </Button>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 rounded-xl"
+              onClick={downloadSVG}
+            >
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              書き出す
+            </Button>
           </div>
+        </div>
 
-          {/* Stats bar */}
-          <div className="flex items-center gap-6 mt-4 pt-4 border-t border-slate-100">
-            <div className="flex items-center gap-2 text-sm">
-              <Clock className="w-4 h-4 text-slate-400" />
-              <span className="text-slate-600">
-                {new Date(layoutModel.timeline.start_date).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' })} - {new Date(layoutModel.timeline.end_date).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' })}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <Target className="w-4 h-4 text-slate-400" />
-              <span className="text-slate-600">{layoutModel.goals.length}個のゴール</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <Layers className="w-4 h-4 text-slate-400" />
-              <span className="text-slate-600">{layoutModel.goals.reduce((sum, g) => sum + g.segments.length, 0)}個のタスク</span>
-            </div>
-            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-              週{data.project.weekly_work_hours}時間
-            </Badge>
-          </div>
-        </CardHeader>
-      </Card>
-
-      {/* Timeline Visualization */}
-      <Card className="border-0 shadow-lg overflow-hidden">
-        <CardContent className="p-0">
+        {!layoutModel ? (
+          <CardContent className="px-6 py-16 text-center">
+            <AlertTriangle className="mx-auto h-7 w-7 text-amber-500" />
+            <p className="mt-3 text-sm font-medium">
+              タイムラインを描画できませんでした。
+            </p>
+            <Button variant="outline" className="mt-5" onClick={onRefresh}>
+              再読み込み
+            </Button>
+          </CardContent>
+        ) : layoutModel.goals.length === 0 ? (
+          <CardContent className="px-6 py-16 text-center text-sm text-slate-500">
+            この期間に表示できるゴールがありません。
+          </CardContent>
+        ) : (
           <div
             ref={containerRef}
-            className="overflow-auto focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
-            style={{
-              height: Math.min(layoutModel.dimensions.height * zoomLevel + 100, 700),
-            }}
+            className="overflow-auto bg-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 dark:bg-slate-950"
+            style={{ maxHeight: 720 }}
             tabIndex={0}
-            role="application"
-            aria-label="インタラクティブタイムライン表示"
-            onKeyDown={handleKeyDown}
+            role="region"
+            aria-label="プロジェクトのロードマップ"
           >
             <svg
               ref={svgRef}
@@ -657,54 +631,41 @@ export function TimelineVisualizer({
               height={layoutModel.dimensions.height * zoomLevel}
               viewBox={`0 0 ${layoutModel.dimensions.width} ${layoutModel.dimensions.height}`}
               role="img"
-              aria-labelledby="timeline-title"
-              aria-describedby="timeline-description"
-              onClick={handleSvgClick}
-              style={{ background: `linear-gradient(180deg, ${COLORS.background.primary} 0%, ${COLORS.background.secondary} 100%)` }}
+              aria-labelledby="timeline-title timeline-description"
+              onClick={(event) => {
+                if (event.target === svgRef.current) closeTooltip()
+              }}
             >
-              {/* Accessibility Title and Description */}
-              <title id="timeline-title">
-                {data.project.title}のタイムライン - {layoutModel.goals.length}個のゴールと{layoutModel.goals.reduce((sum, g) => sum + g.segments.length, 0)}個のタスク
-              </title>
-              <desc id="timeline-description">
-                プロジェクト開始: {new Date(layoutModel.timeline.start_date).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' })}
-                終了予定: {new Date(layoutModel.timeline.end_date).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' })}
-                週間作業時間: {data.project.weekly_work_hours}時間
-              </desc>
-
-              {/* Modern Background Grid */}
+              <title id="timeline-title">{`${data.project.title}のタイムライン`}</title>
+              <desc id="timeline-description">{`${layoutModel.goals.length}個のゴールを、期間と進捗率で表示しています。`}</desc>
               <defs>
-                <pattern
-                  id="timeline-grid-modern"
-                  width="100"
-                  height={layoutModel.dimensions.row_height}
-                  patternUnits="userSpaceOnUse"
+                <filter
+                  id="timeline-soft-shadow"
+                  x="-20%"
+                  y="-50%"
+                  width="140%"
+                  height="200%"
                 >
-                  <rect width="100" height={layoutModel.dimensions.row_height} fill="transparent" />
-                  <line x1="0" y1={layoutModel.dimensions.row_height} x2="100" y2={layoutModel.dimensions.row_height} stroke={COLORS.background.grid} strokeWidth="1" strokeDasharray="4 4" />
-                  <line x1="100" y1="0" x2="100" y2={layoutModel.dimensions.row_height} stroke={COLORS.background.grid} strokeWidth="1" opacity="0.5" />
-                </pattern>
-
-                {/* Soft gradient for left label area */}
-                <linearGradient id="label-area-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#ffffff" />
-                  <stop offset="100%" stopColor="transparent" />
-                </linearGradient>
-
-                {/* Arrow markers */}
+                  <feDropShadow
+                    dx="0"
+                    dy="3"
+                    stdDeviation="4"
+                    floodColor="#0f172a"
+                    floodOpacity="0.12"
+                  />
+                </filter>
                 <marker
-                  id="arrowhead-modern"
+                  id="arrowhead"
                   markerWidth="8"
                   markerHeight="6"
                   refX="7"
                   refY="3"
                   orient="auto"
                 >
-                  <polygon points="0 0, 8 3, 0 6" fill="#94a3b8" />
+                  <polygon points="0 0, 8 3, 0 6" fill="#64748b" />
                 </marker>
-
                 <marker
-                  id="arrowhead-invalid-modern"
+                  id="arrowhead-invalid"
                   markerWidth="8"
                   markerHeight="6"
                   refX="7"
@@ -715,162 +676,191 @@ export function TimelineVisualizer({
                 </marker>
               </defs>
 
-              {/* Grid Background */}
               <rect
-                width={layoutModel.dimensions.width}
-                height={layoutModel.dimensions.height}
-                fill="url(#timeline-grid-modern)"
+                width="100%"
+                height="100%"
+                fill="#ffffff"
+                className="dark:fill-slate-950"
               />
-
-              {/* Time axis header background */}
               <rect
                 x="0"
                 y="0"
-                width={layoutModel.dimensions.width}
-                height="40"
-                fill="rgba(255, 255, 255, 0.9)"
+                width={CHART.labelWidth}
+                height="100%"
+                fill="#f8fafc"
+                className="dark:fill-slate-900"
+              />
+              <rect
+                x="0"
+                y="0"
+                width="100%"
+                height={CHART.headerHeight}
+                fill="#ffffff"
+                className="dark:fill-slate-950"
               />
               <line
                 x1="0"
-                y1="40"
-                x2={layoutModel.dimensions.width}
-                y2="40"
-                stroke={COLORS.background.grid}
-                strokeWidth="2"
+                y1={CHART.headerHeight}
+                x2="100%"
+                y2={CHART.headerHeight}
+                stroke="#cbd5e1"
+              />
+              <line
+                x1={CHART.labelWidth}
+                y1="0"
+                x2={CHART.labelWidth}
+                y2="100%"
+                stroke="#cbd5e1"
               />
 
-              {/* Time axis markers */}
-              {timeAxisMarkers.map((marker, index) => (
-                <g key={index}>
+              <text
+                x="28"
+                y="30"
+                fontSize="10"
+                fontWeight="700"
+                letterSpacing="1.4"
+                fill="#64748b"
+              >
+                GOALS
+              </text>
+              <text
+                x="28"
+                y="51"
+                fontSize="13"
+                fontWeight="600"
+                fill="#0f172a"
+                className="dark:fill-white"
+              >
+                ゴールと完了率
+              </text>
+              {timeAxisMarkers.map((marker) => (
+                <g key={marker.date.toISOString()}>
                   <line
                     x1={marker.x}
-                    y1="40"
+                    y1={CHART.headerHeight}
                     x2={marker.x}
-                    y2={layoutModel.dimensions.height}
-                    stroke={COLORS.background.grid}
-                    strokeWidth="1"
-                    strokeDasharray="4 4"
-                    opacity="0.6"
+                    y2="100%"
+                    stroke="#e2e8f0"
+                    strokeDasharray="3 5"
                   />
                   <text
-                    x={marker.x}
-                    y="26"
-                    textAnchor="middle"
-                    style={{
-                      fontSize: '11px',
-                      fontWeight: 500,
-                      fill: COLORS.text.secondary,
-                    }}
+                    x={marker.x + 8}
+                    y="43"
+                    fontSize="11"
+                    fontWeight="600"
+                    fill="#64748b"
                   >
                     {marker.label}
                   </text>
                 </g>
               ))}
 
-              {/* Left label area background */}
-              <rect
-                x="0"
-                y="40"
-                width={layoutModel.dimensions.padding.left}
-                height={layoutModel.dimensions.height - 40}
-                fill="url(#label-area-gradient)"
-              />
+              {layoutModel.goals.map((goal, index) => {
+                const y = CHART.headerHeight + index * CHART.rowHeight
+                return (
+                  <rect
+                    key={`row-${goal.id}`}
+                    x="0"
+                    y={y}
+                    width="100%"
+                    height={CHART.rowHeight}
+                    fill={index % 2 === 0 ? '#ffffff' : '#f8fafc'}
+                    className={
+                      index % 2 === 0
+                        ? 'dark:fill-slate-950'
+                        : 'dark:fill-slate-900/60'
+                    }
+                  />
+                )
+              })}
 
-              {/* Goal Bars */}
-              <g transform="translate(0, 10)">
-                {layoutModel.goals.map(goal => (
-                  <TimelineGoalBar
-                    key={goal.id}
-                    goal={goal}
-                    dimensions={layoutModel.dimensions}
-                    isSelected={selectedGoal?.id === goal.id}
-                    onGoalClick={handleGoalClick}
-                    onTaskClick={handleTaskClick}
-                    showTaskSegments={filters.show_task_segments !== false}
+              {todayX !== null && (
+                <g className="pointer-events-none">
+                  <line
+                    x1={todayX}
+                    y1="22"
+                    x2={todayX}
+                    y2="100%"
+                    stroke="#f97316"
+                    strokeWidth="1.5"
+                  />
+                  <rect
+                    x={todayX - 22}
+                    y="16"
+                    width="44"
+                    height="20"
+                    rx="10"
+                    fill="#fff7ed"
+                    stroke="#fdba74"
+                  />
+                  <text
+                    x={todayX}
+                    y="26"
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize="10"
+                    fontWeight="700"
+                    fill="#c2410c"
+                  >
+                    今日
+                  </text>
+                </g>
+              )}
+
+              {filters.show_dependencies !== false &&
+                layoutModel.arrows.map((arrow) => (
+                  <TimelineDependencyArrow
+                    key={arrow.id}
+                    arrow={arrow}
+                    isHighlighted={
+                      selectedGoal?.id === arrow.from_goal_id ||
+                      selectedGoal?.id === arrow.to_goal_id
+                    }
                   />
                 ))}
-              </g>
 
-              {/* Dependency Arrows */}
-              {filters.show_dependencies !== false && layoutModel.arrows.map(arrow => (
-                <TimelineDependencyArrow
-                  key={arrow.id}
-                  arrow={arrow}
-                  isHighlighted={
-                    selectedGoal?.id === arrow.from_goal_id ||
-                    selectedGoal?.id === arrow.to_goal_id
-                  }
+              {layoutModel.goals.map((goal) => (
+                <TimelineGoalBar
+                  key={goal.id}
+                  goal={goal}
+                  dimensions={layoutModel.dimensions}
+                  isSelected={selectedGoal?.id === goal.id}
+                  onGoalClick={openGoal}
+                  onTaskClick={openTask}
+                  showTaskSegments={filters.show_task_segments !== false}
                 />
               ))}
             </svg>
           </div>
-        </CardContent>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 sm:px-6">
+          <div className="flex flex-wrap items-center gap-4">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />
+              進行中
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+              完了
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-slate-300" />
+              未着手
+            </span>
+          </div>
+          <span>完了率は見積工数で重み付けしています</span>
+        </div>
       </Card>
 
-      {/* Tooltip */}
       {(selectedGoal || selectedTask) && tooltipPosition && (
         <TimelineTooltip
           goal={selectedGoal}
           task={selectedTask}
           position={tooltipPosition}
-          onClose={() => {
-            setSelectedGoal(null)
-            setSelectedTask(null)
-            setTooltipPosition(null)
-          }}
+          onClose={closeTooltip}
         />
       )}
-
-      {/* Legend - Modern pill design */}
-      <Card className="border-0 shadow-lg bg-gradient-to-br from-white to-slate-50">
-        <CardContent className="py-5">
-          {/* Keyboard Navigation Help */}
-          <div className="mb-4 text-center">
-            <details className="inline-block text-xs text-slate-500">
-              <summary className="cursor-pointer hover:text-slate-700 select-none font-medium">
-                キーボード操作ガイド
-              </summary>
-              <div className="mt-3 p-4 bg-slate-50 rounded-xl text-left space-y-2">
-                <p><kbd className="px-2 py-1 bg-white border border-slate-200 rounded-md text-slate-700 font-mono text-xs">↑</kbd> / <kbd className="px-2 py-1 bg-white border border-slate-200 rounded-md text-slate-700 font-mono text-xs">↓</kbd> ゴール選択</p>
-                <p><kbd className="px-2 py-1 bg-white border border-slate-200 rounded-md text-slate-700 font-mono text-xs">Enter</kbd> / <kbd className="px-2 py-1 bg-white border border-slate-200 rounded-md text-slate-700 font-mono text-xs">Space</kbd> タスク詳細表示</p>
-                <p><kbd className="px-2 py-1 bg-white border border-slate-200 rounded-md text-slate-700 font-mono text-xs">Esc</kbd> 選択解除</p>
-                <p><kbd className="px-2 py-1 bg-white border border-slate-200 rounded-md text-slate-700 font-mono text-xs">+</kbd> / <kbd className="px-2 py-1 bg-white border border-slate-200 rounded-md text-slate-700 font-mono text-xs">-</kbd> ズーム調整</p>
-                <p><kbd className="px-2 py-1 bg-white border border-slate-200 rounded-md text-slate-700 font-mono text-xs">0</kbd> ズームリセット</p>
-              </div>
-            </details>
-          </div>
-
-          <div className="flex items-center justify-center gap-4 flex-wrap">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-full">
-              <div className="w-3 h-3 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600" />
-              <span className="text-sm text-emerald-700 font-medium">完了</span>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 rounded-full">
-              <div className="w-3 h-3 rounded-full bg-gradient-to-br from-blue-400 to-blue-600" />
-              <span className="text-sm text-blue-700 font-medium">進行中</span>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-full">
-              <div className="w-3 h-3 rounded-full bg-gradient-to-br from-slate-300 to-slate-500" />
-              <span className="text-sm text-slate-600 font-medium">未着手</span>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 rounded-full">
-              <div className="w-3 h-3 rounded-full bg-gradient-to-br from-red-400 to-red-600" />
-              <span className="text-sm text-red-700 font-medium">中止</span>
-            </div>
-            {filters.show_dependencies !== false && (
-              <>
-                <div className="w-px h-6 bg-slate-200" />
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-full">
-                  <svg width="20" height="8">
-                    <line x1="0" y1="4" x2="16" y2="4" stroke="#94a3b8" strokeWidth="2" markerEnd="url(#arrowhead-modern)" />
-                  </svg>
-                  <span className="text-sm text-slate-600 font-medium">依存関係</span>
-                </div>
-              </>
-            )}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }

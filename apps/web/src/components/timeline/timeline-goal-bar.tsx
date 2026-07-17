@@ -1,4 +1,4 @@
-"use client"
+'use client'
 
 import React, { useMemo } from 'react'
 import type { LayoutGoal, LayoutTaskSegment } from '@/lib/timeline/types'
@@ -8,10 +8,7 @@ interface TimelineGoalBarProps {
   dimensions: {
     row_height: number
     goal_bar_height: number
-    padding: {
-      top: number
-      left: number
-    }
+    padding: { top: number; left: number }
   }
   isSelected: boolean
   onGoalClick: (goal: LayoutGoal, event: React.MouseEvent) => void
@@ -19,33 +16,50 @@ interface TimelineGoalBarProps {
   showTaskSegments: boolean
 }
 
-// Modern color palette with gradients
-const STATUS_STYLES = {
+const STATUS = {
   completed: {
-    gradient: ['#10b981', '#059669'],
-    glow: 'rgba(16, 185, 129, 0.3)',
-    bg: '#ecfdf5',
-    border: '#a7f3d0',
+    label: '完了',
+    color: '#059669',
+    soft: '#d1fae5',
+    track: '#ecfdf5',
   },
   in_progress: {
-    gradient: ['#3b82f6', '#2563eb'],
-    glow: 'rgba(59, 130, 246, 0.3)',
-    bg: '#eff6ff',
-    border: '#bfdbfe',
+    label: '進行中',
+    color: '#2563eb',
+    soft: '#dbeafe',
+    track: '#eff6ff',
   },
   cancelled: {
-    gradient: ['#ef4444', '#dc2626'],
-    glow: 'rgba(239, 68, 68, 0.3)',
-    bg: '#fef2f2',
-    border: '#fecaca',
+    label: '中止',
+    color: '#dc2626',
+    soft: '#fee2e2',
+    track: '#fef2f2',
   },
   pending: {
-    gradient: ['#6b7280', '#4b5563'],
-    glow: 'rgba(107, 114, 128, 0.2)',
-    bg: '#f9fafb',
-    border: '#e5e7eb',
+    label: '未着手',
+    color: '#64748b',
+    soft: '#e2e8f0',
+    track: '#f1f5f9',
   },
 } as const
+
+const safeDate = (value: string | null) => {
+  if (!value) return null
+  try {
+    return new Intl.DateTimeFormat('ja-JP', {
+      timeZone: 'Asia/Tokyo',
+      month: 'numeric',
+      day: 'numeric',
+    }).format(new Date(value))
+  } catch {
+    return null
+  }
+}
+
+const formatHours = (value: number) => {
+  const rounded = Math.round(value * 10) / 10
+  return Number.isInteger(rounded) ? `${rounded}h` : `${rounded.toFixed(1)}h`
+}
 
 export function TimelineGoalBar({
   goal,
@@ -53,302 +67,219 @@ export function TimelineGoalBar({
   isSelected,
   onGoalClick,
   onTaskClick,
-  showTaskSegments
+  showTaskSegments,
 }: TimelineGoalBarProps) {
   const y = dimensions.padding.top + goal.row * dimensions.row_height
-  const barY = y + (dimensions.row_height - dimensions.goal_bar_height) / 2
-  const width = goal.x1 - goal.x0
+  const barY = y + 47
+  const width = Math.max(8, goal.x1 - goal.x0)
+  const progress = Math.min(1, Math.max(0, goal.progress))
+  const percentage = Math.round(progress * 100)
+  const style = STATUS[goal.status] || STATUS.pending
+  const completedHours = goal.originalGoal.tasks.reduce(
+    (sum, task) =>
+      sum +
+      Math.max(0, task.estimate_hours) *
+        Math.min(1, Math.max(0, task.progress_percentage / 100)),
+    0,
+  )
+  const remainingHours = Math.max(
+    0,
+    goal.originalGoal.estimate_hours - completedHours,
+  )
+  const startDate = safeDate(goal.originalGoal.start_date)
+  const endDate = safeDate(goal.originalGoal.end_date)
 
-  // Get status styles
-  const statusKey = (goal.status in STATUS_STYLES ? goal.status : 'pending') as keyof typeof STATUS_STYLES
-  const styles = STATUS_STYLES[statusKey]
-
-  // Create unique gradient IDs for this goal
-  const gradientId = `goal-gradient-${goal.id}`
-  const progressGradientId = `goal-progress-gradient-${goal.id}`
-  const glowId = `goal-glow-${goal.id}`
-
-  const progressWidth = width * goal.progress
-
-  // Calculate task segment colors
-  const taskColors = useMemo(() => {
-    return goal.segments.map(segment => {
-      const taskStatusKey = (segment.originalTask.status in STATUS_STYLES
-        ? segment.originalTask.status
-        : 'pending') as keyof typeof STATUS_STYLES
-      return STATUS_STYLES[taskStatusKey]
-    })
-  }, [goal.segments])
+  const taskStyles = useMemo(
+    () =>
+      goal.segments.map((segment) => {
+        const key =
+          segment.originalTask.status in STATUS
+            ? segment.originalTask.status
+            : 'pending'
+        return STATUS[key as keyof typeof STATUS]
+      }),
+    [goal.segments],
+  )
 
   return (
-    <g className="goal-bar" style={{ transition: 'all 0.2s ease' }}>
-      {/* Definitions for gradients and effects */}
-      <defs>
-        {/* Background gradient */}
-        <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#ffffff" />
-          <stop offset="100%" stopColor={styles.bg} />
-        </linearGradient>
-
-        {/* Progress gradient */}
-        <linearGradient id={progressGradientId} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor={styles.gradient[0]} stopOpacity="0.9" />
-          <stop offset="100%" stopColor={styles.gradient[1]} stopOpacity="0.7" />
-        </linearGradient>
-
-        {/* Glow filter */}
-        <filter id={glowId} x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="3" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
-
-      {/* Goal Label with background highlight */}
-      <g className="goal-label">
-        <rect
-          x={10}
-          y={y + dimensions.row_height / 2 - 12}
-          width={dimensions.padding.left - 30}
-          height="24"
-          fill="#ffffff"
-          stroke="#e2e8f0"
-          strokeWidth="1"
-          rx="6"
-          ry="6"
-        />
-        <text
-          x={dimensions.padding.left - 20}
-          y={y + dimensions.row_height / 2}
-          textAnchor="end"
-          dominantBaseline="middle"
-          className="select-none"
-          style={{
-            fontSize: '12px',
-            fontWeight: 600,
-            fill: '#334155',
-          }}
-        >
-          {goal.title.length > 18 ? `${goal.title.slice(0, 16)}...` : goal.title}
-        </text>
-      </g>
-
-      {/* Subtle row background on hover/select */}
-      {isSelected && (
-        <rect
-          x={goal.x0 - 4}
-          y={barY - 4}
-          width={width + 8}
-          height={dimensions.goal_bar_height + 8}
-          fill={styles.glow}
-          rx="8"
-          className="pointer-events-none"
-          style={{ transition: 'all 0.2s ease' }}
-        />
-      )}
-
-      {/* Main Goal Bar Background - Modern rounded design */}
-      <rect
-        x={goal.x0}
-        y={barY}
-        width={width}
-        height={dimensions.goal_bar_height}
-        fill={`url(#${gradientId})`}
-        stroke={isSelected ? styles.gradient[0] : styles.border}
-        strokeWidth={isSelected ? 2 : 1}
-        rx="8"
-        ry="8"
-        className="cursor-pointer"
-        style={{
-          filter: isSelected ? `url(#${glowId})` : 'none',
-          transition: 'all 0.2s ease',
-        }}
-        onClick={(event) => onGoalClick(goal, event)}
+    <g className="goal-bar">
+      <g
         role="button"
-        aria-label={`ゴール: ${goal.title} - 進捗率 ${Math.round(goal.progress * 100)}% (${goal.originalGoal.status})`}
         tabIndex={0}
-      />
+        aria-label={`ゴール ${goal.title}、${percentage}%完了、残り${formatHours(remainingHours)}`}
+        className="cursor-pointer"
+        onClick={(event) => onGoalClick(goal, event)}
+      >
+        <circle cx="28" cy={y + 34} r="5" fill={style.color} />
+        <text
+          x="43"
+          y={y + 31}
+          fontSize="14"
+          fontWeight="700"
+          fill="#0f172a"
+          className="dark:fill-white"
+        >
+          {goal.title.length > 25 ? `${goal.title.slice(0, 23)}…` : goal.title}
+        </text>
+        <text
+          x="43"
+          y={y + 52}
+          fontSize="10.5"
+          fontWeight="600"
+          fill={style.color}
+        >
+          {style.label}
+        </text>
+        <text x="91" y={y + 52} fontSize="10.5" fill="#64748b">
+          {[startDate, endDate].filter(Boolean).join(' — ') ||
+            `${goal.originalGoal.estimate_hours}h の計画`}
+        </text>
+        <text
+          x={dimensions.padding.left - 28}
+          y={y + 34}
+          textAnchor="end"
+          fontSize="23"
+          fontWeight="700"
+          fill="#0f172a"
+          className="dark:fill-white"
+        >
+          {percentage}
+          <tspan fontSize="12" fill="#64748b">
+            %
+          </tspan>
+        </text>
+        <text
+          x={dimensions.padding.left - 28}
+          y={y + 52}
+          textAnchor="end"
+          fontSize="9.5"
+          fontWeight="700"
+          letterSpacing="1"
+          fill="#94a3b8"
+        >
+          完了率
+        </text>
 
-      {/* Progress Fill - Smooth gradient with rounded ends */}
-      {goal.progress > 0 && (
+        <text
+          x={goal.x0}
+          y={barY - 11}
+          fontSize="10.5"
+          fontWeight="650"
+          fill="#475569"
+        >
+          {percentage}% 完了 · 残り {formatHours(remainingHours)}
+        </text>
         <rect
           x={goal.x0}
           y={barY}
-          width={Math.max(progressWidth, 16)}
+          width={width}
           height={dimensions.goal_bar_height}
-          fill={`url(#${progressGradientId})`}
-          rx="8"
-          ry="8"
-          clipPath={`inset(0 ${width - progressWidth}px 0 0 round 8px)`}
-          className="pointer-events-none"
-          style={{ transition: 'width 0.3s ease' }}
+          rx="12"
+          fill={style.track}
+          stroke={isSelected ? style.color : '#cbd5e1'}
+          strokeWidth={isSelected ? 2 : 1}
+          filter={isSelected ? 'url(#timeline-soft-shadow)' : undefined}
         />
-      )}
+        {progress > 0 && (
+          <rect
+            x={goal.x0}
+            y={barY}
+            width={Math.max(8, width * progress)}
+            height={dimensions.goal_bar_height}
+            rx="12"
+            fill={style.color}
+            className="pointer-events-none"
+          />
+        )}
+        {progress > 0 && progress < 1 && (
+          <g className="pointer-events-none">
+            <circle
+              cx={goal.x0 + width * progress}
+              cy={barY + dimensions.goal_bar_height / 2}
+              r="7"
+              fill="#ffffff"
+              stroke={style.color}
+              strokeWidth="3"
+            />
+          </g>
+        )}
+      </g>
 
-      {/* Inner progress bar highlight */}
-      {goal.progress > 0 && (
-        <rect
-          x={goal.x0 + 2}
-          y={barY + 2}
-          width={Math.max(progressWidth - 4, 12)}
-          height={4}
-          fill="rgba(255, 255, 255, 0.4)"
-          rx="2"
-          className="pointer-events-none"
-        />
-      )}
-
-      {/* Task Segments - Modern pill design */}
-      {showTaskSegments && goal.segments.map((segment, index) => {
-        const segmentWidth = segment.x1 - segment.x0
-        const taskStyle = taskColors[index]
-        const taskGradientId = `task-gradient-${segment.id}`
-
-        return (
-          <g key={segment.id} className="task-segment">
-            <defs>
-              <linearGradient id={taskGradientId} x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor={taskStyle?.gradient[0] || '#6b7280'} stopOpacity="1" />
-                <stop offset="100%" stopColor={taskStyle?.gradient[1] || '#4b5563'} stopOpacity="0.8" />
-              </linearGradient>
-            </defs>
-
-            {/* Task Segment Container */}
-            <rect
-              x={segment.x0 + 2}
-              y={barY + 4}
-              width={Math.max(segmentWidth - 4, 8)}
-              height={dimensions.goal_bar_height - 8}
-              fill="rgba(255, 255, 255, 0.9)"
-              stroke={taskStyle?.border || '#e5e7eb'}
-              strokeWidth="1"
-              rx="4"
-              ry="4"
+      {showTaskSegments &&
+        goal.segments.map((segment, index) => {
+          const segmentWidth = Math.max(4, segment.x1 - segment.x0)
+          const segmentProgress = Math.min(1, Math.max(0, segment.progress))
+          const taskStyle = taskStyles[index] || STATUS.pending
+          return (
+            <g
+              key={segment.id}
+              role="button"
+              tabIndex={0}
+              aria-label={`タスク ${segment.title}、${Math.round(segmentProgress * 100)}%完了`}
               className="cursor-pointer"
-              style={{
-                transition: 'all 0.15s ease',
-              }}
               onClick={(event) => {
                 event.stopPropagation()
                 onTaskClick(segment, event)
               }}
-              onMouseEnter={(e) => {
-                (e.target as SVGRectElement).style.transform = 'translateY(-1px)'
-                ;(e.target as SVGRectElement).style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))'
-              }}
-              onMouseLeave={(e) => {
-                (e.target as SVGRectElement).style.transform = ''
-                ;(e.target as SVGRectElement).style.filter = ''
-              }}
-              role="button"
-              aria-label={`タスク: ${segment.title} - 進捗率 ${Math.round(segment.progress * 100)}% (${segment.originalTask.status})`}
-              tabIndex={0}
-            />
-
-            {/* Task Progress Fill */}
-            {segment.progress > 0 && (
+            >
               <rect
                 x={segment.x0 + 2}
-                y={barY + 4}
-                width={Math.max((segmentWidth - 4) * segment.progress, 4)}
-                height={dimensions.goal_bar_height - 8}
-                fill={`url(#${taskGradientId})`}
-                rx="4"
-                ry="4"
-                className="pointer-events-none"
-                style={{ transition: 'width 0.3s ease' }}
+                y={barY + dimensions.goal_bar_height - 9}
+                width={Math.max(2, segmentWidth - 4)}
+                height="5"
+                rx="2.5"
+                fill={taskStyle.soft}
               />
-            )}
+              {segmentProgress > 0 && (
+                <rect
+                  x={segment.x0 + 2}
+                  y={barY + dimensions.goal_bar_height - 9}
+                  width={Math.max(2, (segmentWidth - 4) * segmentProgress)}
+                  height="5"
+                  rx="2.5"
+                  fill={taskStyle.color}
+                />
+              )}
+              {segmentWidth > 105 && (
+                <text
+                  x={segment.x0 + segmentWidth / 2}
+                  y={barY + 21}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize="9.5"
+                  fontWeight="650"
+                  fill={segmentProgress > 0.55 ? '#ffffff' : '#475569'}
+                  className="pointer-events-none"
+                >
+                  {segment.title.length > 14
+                    ? `${segment.title.slice(0, 12)}…`
+                    : segment.title}
+                </text>
+              )}
+            </g>
+          )
+        })}
 
-            {/* Task name (if wide enough) */}
-            {segmentWidth > 80 && (
-              <text
-                x={segment.x0 + segmentWidth / 2}
-                y={barY + dimensions.goal_bar_height / 2}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                className="pointer-events-none select-none"
-                style={{
-                  fontSize: '9px',
-                  fontWeight: 500,
-                  fill: segment.progress > 0.5 ? '#ffffff' : '#4b5563',
-                  textShadow: segment.progress > 0.5 ? '0 1px 2px rgba(0,0,0,0.2)' : 'none',
-                }}
-              >
-                {segment.title.length > 12 ? `${segment.title.slice(0, 10)}...` : segment.title}
-              </text>
-            )}
-          </g>
-        )
-      })}
-
-      {/* Progress Percentage Label - Clean modern style */}
-      {width > 80 && (
-        <g className="pointer-events-none">
-          <rect
-            x={goal.x0 + width / 2 - 20}
-            y={barY + dimensions.goal_bar_height + 4}
-            width="40"
-            height="18"
-            fill={styles.gradient[0]}
-            rx="9"
-            ry="9"
-            opacity="0.95"
-          />
-          <text
-            x={goal.x0 + width / 2}
-            y={barY + dimensions.goal_bar_height + 13}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            className="select-none"
-            style={{
-              fontSize: '10px',
-              fontWeight: 600,
-              fill: '#ffffff',
-              letterSpacing: '0.02em',
-            }}
-          >
-            {Math.round(goal.progress * 100)}%
-          </text>
-        </g>
-      )}
-
-      {/* Status Indicator - Simple dot */}
-      <circle
-        cx={goal.x0 - 8}
-        cy={barY + dimensions.goal_bar_height / 2}
-        r="4"
-        fill={styles.gradient[0]}
-        className="pointer-events-none"
-      />
-
-      {/* Estimate Hours Label - Modern badge style */}
       <g className="pointer-events-none">
         <rect
-          x={goal.x1 + 8}
-          y={barY + dimensions.goal_bar_height / 2 - 9}
-          width="36"
-          height="18"
-          fill="#f3f4f6"
-          stroke="#e5e7eb"
-          strokeWidth="1"
-          rx="4"
+          x={goal.x1 + 10}
+          y={barY + 9}
+          width="54"
+          height="24"
+          rx="12"
+          fill="#f8fafc"
+          stroke="#cbd5e1"
         />
         <text
-          x={goal.x1 + 26}
-          y={barY + dimensions.goal_bar_height / 2}
+          x={goal.x1 + 37}
+          y={barY + 21}
           textAnchor="middle"
           dominantBaseline="middle"
-          className="select-none"
-          style={{
-            fontSize: '10px',
-            fontWeight: 500,
-            fill: '#6b7280',
-          }}
+          fontSize="10"
+          fontWeight="700"
+          fill="#475569"
         >
-          {goal.originalGoal.estimate_hours}h
+          {formatHours(goal.originalGoal.estimate_hours)}
         </text>
       </g>
     </g>
