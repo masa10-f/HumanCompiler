@@ -636,13 +636,10 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         """Get all tasks for a user across all projects"""
         return self.get_all(session, owner_id, skip, limit)
 
-    def get_workspace_tasks(
+    def _workspace_filter_conditions(
         self,
-        session: Session,
         owner_id: str | UUID,
         *,
-        skip: int = 0,
-        limit: int = 50,
         statuses: list[TaskStatus] | None = None,
         project_id: UUID | None = None,
         project_status: ProjectStatus | None = None,
@@ -653,28 +650,9 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         blocked: bool | None = None,
         included_task_ids: set[UUID] | None = None,
         excluded_task_ids: set[UUID] | None = None,
-        sort_by: TaskWorkspaceSortBy = TaskWorkspaceSortBy.DUE_DATE,
-        sort_order: SortOrder = SortOrder.ASC,
-    ) -> tuple[list[tuple[Task, Goal, Project, int, datetime | None]], int]:
-        """Fetch one page of user tasks with hierarchy and aggregate work data."""
+    ) -> list:
+        """Build the shared hierarchy and task filters for workspace queries."""
         owner_uuid = UUID(str(owner_id))
-        actual_minutes = (
-            select(
-                Log.task_id,
-                func.coalesce(func.sum(Log.actual_minutes), 0).label("minutes"),
-            )
-            .group_by(Log.task_id)
-            .subquery()
-        )
-        last_worked = (
-            select(
-                WorkSession.task_id,
-                func.max(WorkSession.started_at).label("last_worked_at"),
-            )
-            .group_by(WorkSession.task_id)
-            .subquery()
-        )
-
         conditions = [Project.owner_id == owner_uuid]
         if statuses:
             conditions.append(Task.status.in_(statuses))
@@ -707,6 +685,7 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
                     TaskDependency.task_id == Task.id,
                     prerequisite.status != TaskStatus.COMPLETED,
                 )
+                .correlate(Task)
                 .exists()
             )
             conditions.append(blocking_dependency if blocked else ~blocking_dependency)
@@ -714,6 +693,59 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             conditions.append(col(Task.id).in_(included_task_ids))
         if excluded_task_ids:
             conditions.append(~col(Task.id).in_(excluded_task_ids))
+        return conditions
+
+    def get_workspace_tasks(
+        self,
+        session: Session,
+        owner_id: str | UUID,
+        *,
+        skip: int = 0,
+        limit: int = 50,
+        statuses: list[TaskStatus] | None = None,
+        project_id: UUID | None = None,
+        project_status: ProjectStatus | None = None,
+        goal_id: UUID | None = None,
+        due_before: datetime | None = None,
+        due_after: datetime | None = None,
+        search: str | None = None,
+        blocked: bool | None = None,
+        included_task_ids: set[UUID] | None = None,
+        excluded_task_ids: set[UUID] | None = None,
+        sort_by: TaskWorkspaceSortBy = TaskWorkspaceSortBy.DUE_DATE,
+        sort_order: SortOrder = SortOrder.ASC,
+    ) -> tuple[list[tuple[Task, Goal, Project, int, datetime | None]], int]:
+        """Fetch one page of user tasks with hierarchy and aggregate work data."""
+        actual_minutes = (
+            select(
+                Log.task_id,
+                func.coalesce(func.sum(Log.actual_minutes), 0).label("minutes"),
+            )
+            .group_by(Log.task_id)
+            .subquery()
+        )
+        last_worked = (
+            select(
+                WorkSession.task_id,
+                func.max(WorkSession.started_at).label("last_worked_at"),
+            )
+            .group_by(WorkSession.task_id)
+            .subquery()
+        )
+
+        conditions = self._workspace_filter_conditions(
+            owner_id,
+            statuses=statuses,
+            project_id=project_id,
+            project_status=project_status,
+            goal_id=goal_id,
+            due_before=due_before,
+            due_after=due_after,
+            search=search,
+            blocked=blocked,
+            included_task_ids=included_task_ids,
+            excluded_task_ids=excluded_task_ids,
+        )
 
         count_statement = (
             select(func.count(Task.id))
@@ -755,6 +787,53 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         statement = (
             statement.order_by(order_expression, Task.priority.asc(), Task.id.asc())
             .offset(skip)
+            .limit(limit)
+        )
+        return list(session.exec(statement).all()), total
+
+    def get_workspace_graph_tasks(
+        self,
+        session: Session,
+        owner_id: str | UUID,
+        *,
+        limit: int,
+        statuses: list[TaskStatus] | None = None,
+        project_id: UUID | None = None,
+        goal_id: UUID | None = None,
+        due_before: datetime | None = None,
+        due_after: datetime | None = None,
+        search: str | None = None,
+        blocked: bool | None = None,
+        included_task_ids: set[UUID] | None = None,
+        excluded_task_ids: set[UUID] | None = None,
+    ) -> tuple[list[Task], int]:
+        """Fetch graph root tasks without work-log or work-session aggregates."""
+        conditions = self._workspace_filter_conditions(
+            owner_id,
+            statuses=statuses,
+            project_id=project_id,
+            goal_id=goal_id,
+            due_before=due_before,
+            due_after=due_after,
+            search=search,
+            blocked=blocked,
+            included_task_ids=included_task_ids,
+            excluded_task_ids=excluded_task_ids,
+        )
+        count_statement = (
+            select(func.count(Task.id))
+            .select_from(Task)
+            .join(Goal, Task.goal_id == Goal.id)
+            .join(Project, Goal.project_id == Project.id)
+            .where(*conditions)
+        )
+        total = int(session.exec(count_statement).one())
+        statement = (
+            select(Task)
+            .join(Goal, Task.goal_id == Goal.id)
+            .join(Project, Goal.project_id == Project.id)
+            .where(*conditions)
+            .order_by(Task.id.asc())
             .limit(limit)
         )
         return list(session.exec(statement).all()), total
@@ -817,7 +896,7 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
                     and_(
                         is_actionable,
                         col(Task.due_date).is_not(None),
-                        col(Task.due_date) < current_time,
+                        col(Task.due_date) <= current_time,
                     )
                 )
                 .label("overdue"),
