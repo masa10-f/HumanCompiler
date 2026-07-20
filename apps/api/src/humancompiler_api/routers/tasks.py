@@ -366,7 +366,7 @@ async def get_task_dependency_graph(
         else:
             excluded_task_ids = _valid_task_uuids(today_ids | week_ids)
 
-    rows, total = task_service.get_workspace_tasks(
+    tasks, total = task_service.get_workspace_graph_tasks(
         session,
         current_user.user_id,
         limit=DEPENDENCY_GRAPH_NODE_LIMIT + 1,
@@ -388,7 +388,7 @@ async def get_task_dependency_graph(
             limit=DEPENDENCY_GRAPH_NODE_LIMIT,
         )
 
-    root_ids = {row[0].id for row in rows if row[0].id}
+    root_ids = {task.id for task in tasks if task.id}
     if not root_ids:
         return TaskDependencyGraphResponse(total=0, node_count=0)
 

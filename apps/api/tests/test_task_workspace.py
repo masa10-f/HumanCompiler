@@ -236,6 +236,25 @@ async def test_workspace_summary_uses_lightweight_aggregate_query(
     assert summary.ready == 1
 
 
+def test_workspace_summary_treats_task_due_now_as_overdue(session, test_user_id):
+    data = create_test_data(session, test_user_id)
+    now = datetime(2026, 7, 20, 12, tzinfo=UTC)
+    TaskService().create_task(
+        session,
+        TaskCreate(
+            goal_id=data["goal"].id,
+            title="Due now",
+            estimate_hours=Decimal("1"),
+            due_date=now,
+        ),
+        test_user_id,
+    )
+
+    summary = TaskService().get_workspace_summary_counts(session, test_user_id, now=now)
+
+    assert summary["overdue"] == 1
+
+
 @pytest.mark.asyncio
 async def test_dependency_context_raises_not_found_for_missing_or_unowned_task(
     session, test_user_id
@@ -323,13 +342,44 @@ async def test_dependency_graph_uses_prerequisite_to_dependent_direction(
 
 
 @pytest.mark.asyncio
+async def test_dependency_graph_skips_workspace_work_aggregates(
+    session, test_user_id, monkeypatch
+):
+    data = create_test_data(session, test_user_id)
+    task = TaskService().create_task(
+        session,
+        TaskCreate(
+            goal_id=data["goal"].id,
+            title="Graph root",
+            estimate_hours=Decimal("1"),
+        ),
+        test_user_id,
+    )
+
+    def unexpected_workspace_load(*args, **kwargs):
+        raise AssertionError("graph must not load workspace work aggregates")
+
+    monkeypatch.setattr(
+        shared_task_service, "get_workspace_tasks", unexpected_workspace_load
+    )
+
+    graph = await get_task_dependency_graph(
+        session, AuthUser(str(test_user_id), "test@example.com")
+    )
+
+    assert [node.id for node in graph.nodes] == [task.id]
+
+
+@pytest.mark.asyncio
 async def test_dependency_graph_reports_limit_without_partial_graph(
     session, test_user_id, monkeypatch
 ):
     def oversized_workspace(*args, **kwargs):
         return [], 201
 
-    monkeypatch.setattr(shared_task_service, "get_workspace_tasks", oversized_workspace)
+    monkeypatch.setattr(
+        shared_task_service, "get_workspace_graph_tasks", oversized_workspace
+    )
 
     graph = await get_task_dependency_graph(
         session,
