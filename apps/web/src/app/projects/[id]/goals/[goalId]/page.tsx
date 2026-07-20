@@ -1,86 +1,26 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
-import { useAllTasksByGoal, useUpdateTask } from '@/hooks/use-tasks-query';
+import { useAllTasksByGoal } from '@/hooks/use-tasks-query';
 import { useGoal } from '@/hooks/use-goals-query';
 import { useProject } from '@/hooks/use-project-query';
 import { useGoalNote } from '@/hooks/use-notes';
 import { useQuery } from '@tanstack/react-query';
 import { progressApi } from '@/lib/api';
 import { useBatchLogsQuery } from '@/hooks/use-logs-query';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { SortDropdown } from '@/components/ui/sort-dropdown';
 import { TaskFormDialog } from '@/components/tasks/task-form-dialog';
-import { TaskEditDialog } from '@/components/tasks/task-edit-dialog';
-import { TaskDeleteDialog } from '@/components/tasks/task-delete-dialog';
-import { TaskLogsMemoPanel } from '@/components/tasks/task-logs-memo-panel';
-import { LogFormDialog } from '@/components/logs/log-form-dialog';
+import { GoalTaskList } from '@/components/tasks/goal-task-list';
 import { ContextNotePanel } from '@/components/notes/context-note-panel';
 import { GoalTaskAssistantDialog } from '@/components/ai/goal-task-assistant-dialog';
-import { ArrowLeft, Plus, Clock, Calendar, GitBranch, FileText, Loader2, AlertCircle, Sparkles } from 'lucide-react';
-import { taskStatusLabels, taskStatusColors, workTypeLabels, workTypeColors, taskPriorityLabels, taskPriorityColors } from '@/types/task';
-import type { TaskStatus, Task } from '@/types/task';
+import { ArrowLeft, Plus, Clock, FileText, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import { SortBy, SortOrder } from '@/types/sort';
 import type { SortOptions } from '@/types/sort';
-import { log } from '@/lib/logger';
 import { AppHeader } from '@/components/layout/app-header';
-import { toast } from '@/hooks/use-toast';
-import { getStatusUpdateError } from '@/lib/status-error-handler';
-
-// Component for inline status editing
-function TaskStatusSelect({ task }: { task: Task }) {
-  const updateTaskMutation = useUpdateTask();
-
-  const handleStatusChange = async (newStatus: TaskStatus) => {
-    try {
-      await updateTaskMutation.mutateAsync({
-        id: task.id,
-        data: { status: newStatus }
-      });
-    } catch (error) {
-      log.error('Failed to update task status', error, {
-        component: 'TaskStatusSelect',
-        taskId: task.id,
-        newStatus
-      });
-
-      const { title, message } = getStatusUpdateError(error as Error, 'task');
-      toast({
-        title,
-        description: message,
-        variant: 'destructive',
-      });
-    }
-  };
-
-  return (
-    <Select value={task.status} onValueChange={handleStatusChange} disabled={updateTaskMutation.isPending}>
-      <SelectTrigger className="w-auto min-w-[100px] h-auto p-1">
-        <SelectValue>
-          <Badge className={taskStatusColors[task.status]}>
-            {taskStatusLabels[task.status]}
-          </Badge>
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {Object.entries(taskStatusLabels).map(([value, label]) => (
-          <SelectItem key={value} value={value}>
-            <Badge className={taskStatusColors[value as TaskStatus]}>
-              {label}
-            </Badge>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
 
 export default function GoalDetailPage() {
   const { user, loading: authLoading } = useAuth();
@@ -424,152 +364,15 @@ export default function GoalDetailPage() {
             </CardContent>
           </Card>
         ) : (
-          <Card>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>タスク名</TableHead>
-                    <TableHead>作業種別</TableHead>
-                    <TableHead>優先度</TableHead>
-                    <TableHead>依存関係</TableHead>
-                    <TableHead>ステータス</TableHead>
-                    <TableHead>見積時間</TableHead>
-                    <TableHead>実績時間</TableHead>
-                    <TableHead>締切日</TableHead>
-                    <TableHead>作成日</TableHead>
-                    <TableHead>操作</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tasks.map((task) => (
-                    <React.Fragment key={task.id}>
-                      <TableRow>
-                        <TableCell>
-                          <div>
-                            <Link
-                              href={`/projects/${id}/goals/${goalId}/tasks/${task.id}`}
-                              className="font-medium hover:text-blue-600 hover:underline"
-                            >
-                              {task.title}
-                            </Link>
-                            {task.description && (
-                              <div className="text-sm text-gray-500 line-clamp-1">
-                                {task.description}
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={workTypeColors[task.work_type || 'light_work']}>
-                            {workTypeLabels[task.work_type || 'light_work']}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={taskPriorityColors[task.priority || 3]}>
-                            {taskPriorityLabels[task.priority || 3]}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {task.dependencies && task.dependencies.length > 0 ? (
-                            <div className="flex items-center gap-2">
-                              <div className="flex items-center gap-1">
-                                <GitBranch className="h-4 w-4 text-blue-500" />
-                                <span className="text-sm text-muted-foreground">
-                                  {task.dependencies.length}件
-                                </span>
-                              </div>
-                              <div className="flex -space-x-2" title={`依存タスク: ${task.dependencies.map(d => d.depends_on_task?.title || '不明').join(', ')}`}>
-                                {task.dependencies.slice(0, 3).map((dep, index) => (
-                                  <div
-                                    key={dep.id}
-                                    className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 border border-white text-xs"
-                                    title={dep.depends_on_task?.title || '不明なタスク'}
-                                  >
-                                    {index + 1}
-                                  </div>
-                                ))}
-                                {task.dependencies.length > 3 && (
-                                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 border border-white text-xs">
-                                    +{task.dependencies.length - 3}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">なし</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <TaskStatusSelect task={task} />
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {task.estimate_hours}h
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Clock className="h-3 w-3 text-green-600" />
-                            {((taskActualMinutesById[task.id] || 0) / 60).toFixed(1)}h
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {task.due_date ? (
-                            <div className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              {new Date(task.due_date).toLocaleDateString('ja-JP')}
-                            </div>
-                          ) : (
-                            <span className="text-gray-400">未設定</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-sm text-gray-500">
-                            {new Date(task.created_at).toLocaleDateString('ja-JP')}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            <LogFormDialog
-                              taskId={task.id}
-                              taskTitle={task.title}
-                              trigger={
-                                <Button variant="outline" size="sm">
-                                  時間記録
-                                </Button>
-                              }
-                            />
-                            <TaskEditDialog task={task} availableTasks={tasks}>
-                              <Button variant="outline" size="sm">
-                                編集
-                              </Button>
-                            </TaskEditDialog>
-                            <TaskDeleteDialog task={task}>
-                              <Button variant="outline" size="sm">
-                                削除
-                              </Button>
-                            </TaskDeleteDialog>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell colSpan={10} className="p-0">
-                          <TaskLogsMemoPanel
-                            task={task}
-                            logs={logsByTask[task.id] || []}
-                            logsLoading={logsLoading}
-                            logsError={logsError}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    </React.Fragment>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <GoalTaskList
+            tasks={tasks}
+            projectId={id}
+            goalId={goalId}
+            logsByTask={logsByTask}
+            logsLoading={logsLoading}
+            logsError={logsError}
+            actualMinutesByTask={taskActualMinutesById}
+          />
         )}
         </div>
       </div>
