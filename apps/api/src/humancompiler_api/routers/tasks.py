@@ -201,15 +201,6 @@ def _context_task(
     )
 
 
-def _is_overdue(task: Task, now: datetime) -> bool:
-    if task.status not in ACTIONABLE_TASK_STATUSES or task.due_date is None:
-        return False
-    due_date = task.due_date
-    if due_date.tzinfo is None:
-        due_date = due_date.replace(tzinfo=UTC)
-    return due_date < now
-
-
 def build_workspace_items(
     session: Session,
     rows: list[tuple[Task, object, object, int, datetime | None]],
@@ -340,34 +331,14 @@ async def get_task_workspace_summary(
     search: Annotated[str | None, Query(max_length=200)] = None,
 ) -> TaskWorkspaceSummary:
     """Return decision-oriented counts for the current workspace scope."""
-    rows, total = task_service.get_workspace_tasks(
+    counts = task_service.get_workspace_summary_counts(
         session,
         current_user.user_id,
-        limit=1_000_000,
         project_id=project_id,
         goal_id=goal_id,
         search=search,
     )
-    tasks = [row[0] for row in rows]
-    task_ids = [task.id for task in tasks if task.id]
-    dependencies = task_service.get_task_dependencies_batch(
-        session, task_ids, current_user.user_id
-    )
-    now = datetime.now(UTC)
-    summary = TaskWorkspaceSummary(total=total)
-    for task in tasks:
-        is_ready, is_blocked, _ = _dependency_state(
-            task, dependencies.get(str(task.id), [])
-        )
-        if is_ready:
-            summary.ready += 1
-        if is_blocked and task.status in ACTIONABLE_TASK_STATUSES:
-            summary.blocked += 1
-        if task.status == TaskStatus.IN_PROGRESS:
-            summary.in_progress += 1
-        if _is_overdue(task, now):
-            summary.overdue += 1
-    return summary
+    return TaskWorkspaceSummary(**counts)
 
 
 @router.get("/dependency-graph", response_model=TaskDependencyGraphResponse)
@@ -649,9 +620,7 @@ async def get_task_dependency_context(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> TaskDependencyContext:
     """Return prerequisite and dependent tasks with hierarchy information."""
-    task = task_service.get_task(session, task_id, current_user.user_id)
-    if not task:
-        return TaskDependencyContext()
+    task_service.get_task(session, task_id, current_user.user_id)
 
     relationships = list(
         session.exec(

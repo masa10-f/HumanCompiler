@@ -759,6 +759,83 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         )
         return list(session.exec(statement).all()), total
 
+    def get_workspace_summary_counts(
+        self,
+        session: Session,
+        owner_id: str | UUID,
+        *,
+        project_id: UUID | None = None,
+        goal_id: UUID | None = None,
+        search: str | None = None,
+        now: datetime | None = None,
+    ) -> dict[str, int]:
+        """Count workspace states without hydrating tasks or work aggregates."""
+        owner_uuid = UUID(str(owner_id))
+        conditions = [Project.owner_id == owner_uuid]
+        if project_id:
+            conditions.append(Project.id == project_id)
+        if goal_id:
+            conditions.append(Goal.id == goal_id)
+        if search and search.strip():
+            pattern = f"%{search.strip()}%"
+            conditions.append(
+                Task.title.ilike(pattern)
+                | Task.description.ilike(pattern)
+                | Task.memo.ilike(pattern)
+            )
+
+        prerequisite = aliased(Task)
+        has_blocker = (
+            select(TaskDependency.id)
+            .join(
+                prerequisite,
+                TaskDependency.depends_on_task_id == prerequisite.id,
+            )
+            .where(
+                TaskDependency.task_id == Task.id,
+                prerequisite.status != TaskStatus.COMPLETED,
+            )
+            .correlate(Task)
+            .exists()
+        )
+        is_actionable = Task.status.in_([TaskStatus.PENDING, TaskStatus.IN_PROGRESS])
+        current_time = now or datetime.now(UTC)
+        statement = (
+            select(
+                func.count(Task.id).label("total"),
+                func.count(Task.id)
+                .filter(and_(is_actionable, ~has_blocker))
+                .label("ready"),
+                func.count(Task.id)
+                .filter(and_(is_actionable, has_blocker))
+                .label("blocked"),
+                func.count(Task.id)
+                .filter(Task.status == TaskStatus.IN_PROGRESS)
+                .label("in_progress"),
+                func.count(Task.id)
+                .filter(
+                    and_(
+                        is_actionable,
+                        col(Task.due_date).is_not(None),
+                        col(Task.due_date) < current_time,
+                    )
+                )
+                .label("overdue"),
+            )
+            .select_from(Task)
+            .join(Goal, Task.goal_id == Goal.id)
+            .join(Project, Goal.project_id == Project.id)
+            .where(*conditions)
+        )
+        row = session.exec(statement).one()
+        return {
+            "total": int(row.total or 0),
+            "ready": int(row.ready or 0),
+            "blocked": int(row.blocked or 0),
+            "in_progress": int(row.in_progress or 0),
+            "overdue": int(row.overdue or 0),
+        }
+
     def update_task(
         self,
         session: Session,
