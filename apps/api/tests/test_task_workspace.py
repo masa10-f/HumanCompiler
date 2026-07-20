@@ -199,6 +199,81 @@ async def test_workspace_summary_and_dependency_context(session, test_user_id):
 
 
 @pytest.mark.asyncio
+async def test_workspace_summary_uses_lightweight_aggregate_query(
+    session, test_user_id, monkeypatch
+):
+    data = create_test_data(session, test_user_id)
+    TaskService().create_task(
+        session,
+        TaskCreate(
+            goal_id=data["goal"].id,
+            title="Aggregate-only task",
+            estimate_hours=Decimal("1"),
+        ),
+        test_user_id,
+    )
+
+    def unexpected_workspace_load(*args, **kwargs):
+        raise AssertionError("summary must not hydrate workspace task rows")
+
+    def unexpected_dependency_load(*args, **kwargs):
+        raise AssertionError("summary must not hydrate task dependencies")
+
+    monkeypatch.setattr(
+        shared_task_service, "get_workspace_tasks", unexpected_workspace_load
+    )
+    monkeypatch.setattr(
+        shared_task_service,
+        "get_task_dependencies_batch",
+        unexpected_dependency_load,
+    )
+
+    summary = await get_task_workspace_summary(
+        session, AuthUser(str(test_user_id), "test@example.com")
+    )
+
+    assert summary.total == 1
+    assert summary.ready == 1
+
+
+@pytest.mark.asyncio
+async def test_dependency_context_raises_not_found_for_missing_or_unowned_task(
+    session, test_user_id
+):
+    other_user_id = uuid4()
+    UserService().create_user(
+        session, UserCreate(email="dependency-owner@example.com"), other_user_id
+    )
+    other_project = ProjectService().create_project(
+        session, ProjectCreate(title="Other project"), other_user_id
+    )
+    other_goal = GoalService().create_goal(
+        session,
+        GoalCreate(
+            project_id=other_project.id,
+            title="Other goal",
+            estimate_hours=Decimal("1"),
+        ),
+        other_user_id,
+    )
+    other_task = TaskService().create_task(
+        session,
+        TaskCreate(
+            goal_id=other_goal.id,
+            title="Other task",
+            estimate_hours=Decimal("1"),
+        ),
+        other_user_id,
+    )
+    user = AuthUser(str(test_user_id), "test@example.com")
+
+    with pytest.raises(ResourceNotFoundError):
+        await get_task_dependency_context(uuid4(), session, user)
+    with pytest.raises(ResourceNotFoundError):
+        await get_task_dependency_context(other_task.id, session, user)
+
+
+@pytest.mark.asyncio
 async def test_dependency_graph_uses_prerequisite_to_dependent_direction(
     session, test_user_id
 ):
