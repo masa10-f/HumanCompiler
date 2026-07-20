@@ -15,10 +15,13 @@ import type {
   TaskCreate,
   TaskUpdate,
   TaskDependency,
+  TaskDependencyContext,
+  TaskDependencyGraphResponse,
   TaskRecommendation,
   TaskWorkspaceFilters,
   TaskWorkspaceItem,
   TaskWorkspacePage,
+  TaskWorkspaceSummary,
 } from "@/types/task";
 import type { Log, LogCreate, LogUpdate } from "@/types/log";
 import type {
@@ -580,6 +583,44 @@ class ApiClient {
       ...recommendation,
       task: normalizeWorkspaceItem(recommendation.task),
     }));
+  }
+
+  async getTaskWorkspaceSummary(
+    filters: Pick<TaskWorkspaceFilters, "projectId" | "goalId" | "search"> = {},
+  ): Promise<TaskWorkspaceSummary> {
+    const params = new URLSearchParams();
+    if (filters.projectId) params.set("project_id", filters.projectId);
+    if (filters.goalId) params.set("goal_id", filters.goalId);
+    if (filters.search) params.set("search", filters.search);
+    return this.request<TaskWorkspaceSummary>(
+      `/api/tasks/summary?${params.toString()}`,
+    );
+  }
+
+  async getTaskDependencyGraph(
+    filters: TaskWorkspaceFilters = {},
+  ): Promise<TaskDependencyGraphResponse> {
+    const params = new URLSearchParams();
+    filters.status?.forEach((status) => params.append("status", status));
+    if (filters.projectId) params.set("project_id", filters.projectId);
+    if (filters.goalId) params.set("goal_id", filters.goalId);
+    if (filters.dueBefore) params.set("due_before", filters.dueBefore);
+    if (filters.dueAfter) params.set("due_after", filters.dueAfter);
+    if (filters.search) params.set("search", filters.search);
+    if (filters.blocked !== undefined)
+      params.set("blocked", String(filters.blocked));
+    if (filters.plan) params.set("plan", filters.plan);
+    return this.request<TaskDependencyGraphResponse>(
+      `/api/tasks/dependency-graph?${params.toString()}`,
+    );
+  }
+
+  async getTaskDependencyContext(
+    taskId: string,
+  ): Promise<TaskDependencyContext> {
+    return this.request<TaskDependencyContext>(
+      `/api/tasks/${taskId}/dependency-context`,
+    );
   }
 
   async getTask(taskId: string): Promise<Task> {
@@ -1585,9 +1626,7 @@ class ApiClient {
     return this.request<HookToken[]>("/api/user/hook-tokens");
   }
 
-  async createHookToken(
-    tokenData: HookTokenCreate,
-  ): Promise<HookTokenCreated> {
+  async createHookToken(tokenData: HookTokenCreate): Promise<HookTokenCreated> {
     return this.request<HookTokenCreated>("/api/user/hook-tokens", {
       method: "POST",
       body: JSON.stringify(tokenData),
@@ -1754,6 +1793,13 @@ export const tasksApi = {
   getWorkspace: (filters?: TaskWorkspaceFilters) =>
     apiClient.getTaskWorkspace(filters),
   getRecommendations: () => apiClient.getTaskRecommendations(),
+  getSummary: (
+    filters?: Pick<TaskWorkspaceFilters, "projectId" | "goalId" | "search">,
+  ) => apiClient.getTaskWorkspaceSummary(filters),
+  getDependencyGraph: (filters?: TaskWorkspaceFilters) =>
+    apiClient.getTaskDependencyGraph(filters),
+  getDependencyContext: (taskId: string) =>
+    apiClient.getTaskDependencyContext(taskId),
   getByGoal: (
     goalId: string,
     skip?: number,

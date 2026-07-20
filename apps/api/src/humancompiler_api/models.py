@@ -1088,6 +1088,7 @@ class TaskWorkspaceItem(TaskResponse):
     goal_title: str
     remaining_estimate_hours: Decimal = Field(ge=0)
     is_blocked: bool = False
+    is_ready: bool = False
     blocking_task_ids: list[UUID] = Field(default_factory=list)
     last_worked_at: datetime | None = None
     planned_today: bool = False
@@ -1106,6 +1107,65 @@ class TaskWorkspacePage(BaseModel):
     total: int
     skip: int
     limit: int
+
+
+class TaskWorkspaceSummary(BaseModel):
+    """Counts used by the task workspace decision filters."""
+
+    total: int = 0
+    ready: int = 0
+    blocked: int = 0
+    in_progress: int = 0
+    overdue: int = 0
+
+
+class TaskDependencyContextTask(BaseModel):
+    """Task and hierarchy information shown in dependency context panels."""
+
+    id: UUID
+    title: str
+    status: TaskStatus
+    project_id: UUID
+    project_title: str
+    goal_id: UUID
+    goal_title: str
+    is_ready: bool = False
+    is_blocked: bool = False
+
+
+class TaskDependencyContext(BaseModel):
+    """Both directions of a task dependency relationship."""
+
+    prerequisites: list[TaskDependencyContextTask] = Field(default_factory=list)
+    dependents: list[TaskDependencyContextTask] = Field(default_factory=list)
+
+
+class TaskDependencyGraphNode(TaskDependencyContextTask):
+    """A task node in the filtered dependency graph."""
+
+    priority: int
+    due_date: datetime | None = None
+    is_context: bool = False
+
+
+class TaskDependencyGraphEdge(BaseModel):
+    """Directed dependency edge from prerequisite to dependent task."""
+
+    id: UUID
+    prerequisite_task_id: UUID
+    dependent_task_id: UUID
+    prerequisite_status: TaskStatus
+
+
+class TaskDependencyGraphResponse(BaseModel):
+    """Bounded graph payload for the task dependency map."""
+
+    nodes: list[TaskDependencyGraphNode] = Field(default_factory=list)
+    edges: list[TaskDependencyGraphEdge] = Field(default_factory=list)
+    total: int = 0
+    node_count: int = 0
+    exceeds_limit: bool = False
+    limit: int = 200
 
 
 class TaskRecommendation(BaseModel):

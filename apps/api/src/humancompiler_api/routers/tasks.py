@@ -7,7 +7,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlmodel import Session, select
+from sqlmodel import Session, or_, select
 
 from humancompiler_api.auth import AuthUser, get_current_user
 from humancompiler_api.database import db
@@ -17,6 +17,12 @@ from humancompiler_api.models import (
     TaskResponse,
     TaskUpdate,
     TaskDependencyCreate,
+    TaskDependency,
+    TaskDependencyContext,
+    TaskDependencyContextTask,
+    TaskDependencyGraphEdge,
+    TaskDependencyGraphNode,
+    TaskDependencyGraphResponse,
     TaskDependencyResponse,
     TaskDependencyTaskInfo,
     SortBy,
@@ -27,10 +33,13 @@ from humancompiler_api.models import (
     ProjectStatus,
     TaskWorkspaceItem,
     TaskWorkspacePage,
+    TaskWorkspaceSummary,
     TaskWorkspacePlanFilter,
     TaskWorkspaceSortBy,
     Schedule,
     WeeklySchedule,
+    Goal,
+    Project,
 )
 from humancompiler_api.services import task_service
 
@@ -38,6 +47,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 APP_TIMEZONE = ZoneInfo("Asia/Tokyo")
+DEPENDENCY_GRAPH_NODE_LIMIT = 200
+ACTIONABLE_TASK_STATUSES = {TaskStatus.PENDING, TaskStatus.IN_PROGRESS}
 
 
 def get_session() -> Generator[Session, None, None]:
@@ -139,6 +150,66 @@ def _valid_task_uuids(task_ids: set[str]) -> set[UUID]:
     return valid_ids
 
 
+def _dependency_state(
+    task: Task, dependencies: list[TaskDependency]
+) -> tuple[bool, bool, list[UUID]]:
+    """Return ready, blocked and blocker IDs using the canonical task rule."""
+    blocking_task_ids = [
+        dependency.depends_on_task.id
+        for dependency in dependencies
+        if dependency.depends_on_task
+        and dependency.depends_on_task.status != TaskStatus.COMPLETED
+        and dependency.depends_on_task.id is not None
+    ]
+    is_blocked = bool(blocking_task_ids)
+    is_ready = task.status in ACTIONABLE_TASK_STATUSES and not is_blocked
+    return is_ready, is_blocked, blocking_task_ids
+
+
+def _owned_task_hierarchy(
+    session: Session, owner_id: str | UUID, task_ids: set[UUID]
+) -> dict[UUID, tuple[Task, Goal, Project]]:
+    """Load owned tasks and their hierarchy in one query."""
+    if not task_ids:
+        return {}
+    rows = session.exec(
+        select(Task, Goal, Project)
+        .join(Goal, Task.goal_id == Goal.id)
+        .join(Project, Goal.project_id == Project.id)
+        .where(Project.owner_id == UUID(str(owner_id)), Task.id.in_(task_ids))
+    ).all()
+    return {task.id: (task, goal, project) for task, goal, project in rows if task.id}
+
+
+def _context_task(
+    task: Task,
+    goal: Goal,
+    project: Project,
+    dependencies: list[TaskDependency],
+) -> TaskDependencyContextTask:
+    is_ready, is_blocked, _ = _dependency_state(task, dependencies)
+    return TaskDependencyContextTask(
+        id=task.id,
+        title=task.title,
+        status=task.status,
+        project_id=project.id,
+        project_title=project.title,
+        goal_id=goal.id,
+        goal_title=goal.title,
+        is_ready=is_ready,
+        is_blocked=is_blocked,
+    )
+
+
+def _is_overdue(task: Task, now: datetime) -> bool:
+    if task.status not in ACTIONABLE_TASK_STATUSES or task.due_date is None:
+        return False
+    due_date = task.due_date
+    if due_date.tzinfo is None:
+        due_date = due_date.replace(tzinfo=UTC)
+    return due_date < now
+
+
 def build_workspace_items(
     session: Session,
     rows: list[tuple[Task, object, object, int, datetime | None]],
@@ -161,18 +232,18 @@ def build_workspace_items(
         task_response = TaskResponse.model_validate(task)
         task_dependencies = dependencies.get(str(task.id), [])
         dependency_responses = []
-        blocking_task_ids = []
         for dependency in task_dependencies:
             dependency_response = TaskDependencyResponse.model_validate(dependency)
             if dependency.depends_on_task:
                 dependency_response.depends_on_task = (
                     TaskDependencyTaskInfo.model_validate(dependency.depends_on_task)
                 )
-                if dependency.depends_on_task.status != TaskStatus.COMPLETED:
-                    blocking_task_ids.append(dependency.depends_on_task.id)
             dependency_responses.append(dependency_response)
 
         task_response.dependencies = dependency_responses
+        is_ready, is_blocked, blocking_task_ids = _dependency_state(
+            task, task_dependencies
+        )
         remaining = max(
             Decimal("0"),
             task.estimate_hours - (Decimal(str(actual_minutes)) / Decimal("60")),
@@ -184,7 +255,8 @@ def build_workspace_items(
                 project_title=project.title,
                 goal_title=goal.title,
                 remaining_estimate_hours=remaining.quantize(Decimal("0.01")),
-                is_blocked=bool(blocking_task_ids),
+                is_blocked=is_blocked,
+                is_ready=is_ready,
                 blocking_task_ids=blocking_task_ids,
                 last_worked_at=last_worked_at,
                 planned_today=str(task.id) in today_ids,
@@ -256,6 +328,159 @@ async def get_task_workspace(
         total=total,
         skip=skip,
         limit=limit,
+    )
+
+
+@router.get("/summary", response_model=TaskWorkspaceSummary)
+async def get_task_workspace_summary(
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+    project_id: UUID | None = None,
+    goal_id: UUID | None = None,
+    search: Annotated[str | None, Query(max_length=200)] = None,
+) -> TaskWorkspaceSummary:
+    """Return decision-oriented counts for the current workspace scope."""
+    rows, total = task_service.get_workspace_tasks(
+        session,
+        current_user.user_id,
+        limit=1_000_000,
+        project_id=project_id,
+        goal_id=goal_id,
+        search=search,
+    )
+    tasks = [row[0] for row in rows]
+    task_ids = [task.id for task in tasks if task.id]
+    dependencies = task_service.get_task_dependencies_batch(
+        session, task_ids, current_user.user_id
+    )
+    now = datetime.now(UTC)
+    summary = TaskWorkspaceSummary(total=total)
+    for task in tasks:
+        is_ready, is_blocked, _ = _dependency_state(
+            task, dependencies.get(str(task.id), [])
+        )
+        if is_ready:
+            summary.ready += 1
+        if is_blocked and task.status in ACTIONABLE_TASK_STATUSES:
+            summary.blocked += 1
+        if task.status == TaskStatus.IN_PROGRESS:
+            summary.in_progress += 1
+        if _is_overdue(task, now):
+            summary.overdue += 1
+    return summary
+
+
+@router.get("/dependency-graph", response_model=TaskDependencyGraphResponse)
+async def get_task_dependency_graph(
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+    task_statuses: Annotated[list[TaskStatus] | None, Query(alias="status")] = None,
+    project_id: UUID | None = None,
+    goal_id: UUID | None = None,
+    due_before: datetime | None = None,
+    due_after: datetime | None = None,
+    search: Annotated[str | None, Query(max_length=200)] = None,
+    blocked: bool | None = None,
+    plan: TaskWorkspacePlanFilter | None = None,
+) -> TaskDependencyGraphResponse:
+    """Return a bounded filtered graph plus directly connected context tasks."""
+    included_task_ids: set[UUID] | None = None
+    excluded_task_ids: set[UUID] | None = None
+    if plan is not None:
+        today_ids, week_ids = _extract_planned_task_ids(session, current_user.user_id)
+        if plan == TaskWorkspacePlanFilter.TODAY:
+            included_task_ids = _valid_task_uuids(today_ids)
+        elif plan == TaskWorkspacePlanFilter.WEEK:
+            included_task_ids = _valid_task_uuids(week_ids)
+        else:
+            excluded_task_ids = _valid_task_uuids(today_ids | week_ids)
+
+    rows, total = task_service.get_workspace_tasks(
+        session,
+        current_user.user_id,
+        limit=DEPENDENCY_GRAPH_NODE_LIMIT + 1,
+        statuses=task_statuses,
+        project_id=project_id,
+        goal_id=goal_id,
+        due_before=due_before,
+        due_after=due_after,
+        search=search,
+        blocked=blocked,
+        included_task_ids=included_task_ids,
+        excluded_task_ids=excluded_task_ids,
+    )
+    if total > DEPENDENCY_GRAPH_NODE_LIMIT:
+        return TaskDependencyGraphResponse(
+            total=total,
+            node_count=total,
+            exceeds_limit=True,
+            limit=DEPENDENCY_GRAPH_NODE_LIMIT,
+        )
+
+    root_ids = {row[0].id for row in rows if row[0].id}
+    if not root_ids:
+        return TaskDependencyGraphResponse(total=0, node_count=0)
+
+    connected_dependencies = list(
+        session.exec(
+            select(TaskDependency).where(
+                or_(
+                    TaskDependency.task_id.in_(root_ids),
+                    TaskDependency.depends_on_task_id.in_(root_ids),
+                )
+            )
+        ).all()
+    )
+    node_ids = set(root_ids)
+    for dependency in connected_dependencies:
+        node_ids.add(dependency.task_id)
+        node_ids.add(dependency.depends_on_task_id)
+
+    if len(node_ids) > DEPENDENCY_GRAPH_NODE_LIMIT:
+        return TaskDependencyGraphResponse(
+            total=total,
+            node_count=len(node_ids),
+            exceeds_limit=True,
+            limit=DEPENDENCY_GRAPH_NODE_LIMIT,
+        )
+
+    hierarchy = _owned_task_hierarchy(session, current_user.user_id, node_ids)
+    owned_node_ids = set(hierarchy)
+    dependencies_by_task = task_service.get_task_dependencies_batch(
+        session, list(owned_node_ids), current_user.user_id
+    )
+    nodes: list[TaskDependencyGraphNode] = []
+    for task_id, (task, goal, project) in hierarchy.items():
+        context = _context_task(
+            task, goal, project, dependencies_by_task.get(str(task_id), [])
+        )
+        nodes.append(
+            TaskDependencyGraphNode(
+                **context.model_dump(),
+                priority=task.priority,
+                due_date=task.due_date,
+                is_context=task_id not in root_ids,
+            )
+        )
+
+    edges = [
+        TaskDependencyGraphEdge(
+            id=dependency.id,
+            prerequisite_task_id=dependency.depends_on_task_id,
+            dependent_task_id=dependency.task_id,
+            prerequisite_status=hierarchy[dependency.depends_on_task_id][0].status,
+        )
+        for dependency in connected_dependencies
+        if dependency.id
+        and dependency.task_id in owned_node_ids
+        and dependency.depends_on_task_id in owned_node_ids
+    ]
+    return TaskDependencyGraphResponse(
+        nodes=nodes,
+        edges=edges,
+        total=total,
+        node_count=len(nodes),
+        limit=DEPENDENCY_GRAPH_NODE_LIMIT,
     )
 
 
@@ -411,6 +636,71 @@ async def get_task(
         TaskDependencyResponse.model_validate(dep) for dep in dependencies
     ]
     return task_response
+
+
+@router.get(
+    "/{task_id}/dependency-context",
+    response_model=TaskDependencyContext,
+    responses={404: {"model": ErrorResponse, "description": "Task not found"}},
+)
+async def get_task_dependency_context(
+    task_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> TaskDependencyContext:
+    """Return prerequisite and dependent tasks with hierarchy information."""
+    task = task_service.get_task(session, task_id, current_user.user_id)
+    if not task:
+        return TaskDependencyContext()
+
+    relationships = list(
+        session.exec(
+            select(TaskDependency).where(
+                or_(
+                    TaskDependency.task_id == task_id,
+                    TaskDependency.depends_on_task_id == task_id,
+                )
+            )
+        ).all()
+    )
+    related_ids = {task_id}
+    for relationship in relationships:
+        related_ids.add(relationship.task_id)
+        related_ids.add(relationship.depends_on_task_id)
+
+    hierarchy = _owned_task_hierarchy(session, current_user.user_id, related_ids)
+    dependencies_by_task = task_service.get_task_dependencies_batch(
+        session, list(hierarchy), current_user.user_id
+    )
+
+    def to_context(related_task_id: UUID) -> TaskDependencyContextTask | None:
+        row = hierarchy.get(related_task_id)
+        if not row:
+            return None
+        related_task, goal, project = row
+        return _context_task(
+            related_task,
+            goal,
+            project,
+            dependencies_by_task.get(str(related_task_id), []),
+        )
+
+    prerequisites = [
+        context
+        for relationship in relationships
+        if relationship.task_id == task_id
+        and (context := to_context(relationship.depends_on_task_id)) is not None
+    ]
+    dependents = [
+        context
+        for relationship in relationships
+        if relationship.depends_on_task_id == task_id
+        and (context := to_context(relationship.task_id)) is not None
+    ]
+    return TaskDependencyContext(
+        prerequisites=prerequisites,
+        dependents=dependents,
+    )
 
 
 @router.put(

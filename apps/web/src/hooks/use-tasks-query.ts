@@ -16,13 +16,14 @@ export const taskKeys = {
   byProject: (projectId: string) => [...taskKeys.all, 'project', projectId] as const,
   workspace: (filters: TaskWorkspaceFilters) => [...taskKeys.all, 'workspace', filters] as const,
   recommendations: () => [...taskKeys.all, 'recommendations'] as const,
+  summary: (filters: Pick<TaskWorkspaceFilters, 'projectId' | 'goalId' | 'search'>) => [...taskKeys.all, 'summary', filters] as const,
+  dependencyGraph: (filters: TaskWorkspaceFilters) => [...taskKeys.all, 'dependency-graph', filters] as const,
+  dependencyContext: (taskId: string) => [...taskKeys.detail(taskId), 'dependency-context'] as const,
 }
 
-const isTaskGoalQuery = (query: Query) =>
-  query.queryKey[0] === taskKeys.all[0] && query.queryKey[1] === 'goal'
+const isTaskGoalQuery = (query: Query) => query.queryKey[0] === taskKeys.all[0] && query.queryKey[1] === 'goal'
 
-const isTaskProjectQuery = (query: Query) =>
-  query.queryKey[0] === taskKeys.all[0] && query.queryKey[1] === 'project'
+const isTaskProjectQuery = (query: Query) => query.queryKey[0] === taskKeys.all[0] && query.queryKey[1] === 'project'
 
 const invalidateTaskCollections = (queryClient: QueryClient, goalId?: string) => {
   if (goalId) {
@@ -34,6 +35,13 @@ const invalidateTaskCollections = (queryClient: QueryClient, goalId?: string) =>
   queryClient.invalidateQueries({ predicate: isTaskProjectQuery })
   queryClient.invalidateQueries({ queryKey: [...taskKeys.all, 'workspace'] })
   queryClient.invalidateQueries({ queryKey: taskKeys.recommendations() })
+  queryClient.invalidateQueries({ queryKey: [...taskKeys.all, 'summary'] })
+  queryClient.invalidateQueries({
+    queryKey: [...taskKeys.all, 'dependency-graph'],
+  })
+  queryClient.invalidateQueries({
+    predicate: (query) => query.queryKey.includes('dependency-context'),
+  })
 }
 
 export function useTaskWorkspace(filters: TaskWorkspaceFilters, enabled = true) {
@@ -54,11 +62,34 @@ export function useTaskRecommendations(enabled = true) {
   })
 }
 
-const updateTaskInList = (
-  data: unknown,
-  taskId: string,
-  updateTask: (task: Task) => Task
-) => {
+export function useTaskWorkspaceSummary(filters: Pick<TaskWorkspaceFilters, 'projectId' | 'goalId' | 'search'>, enabled = true) {
+  return useQuery({
+    queryKey: taskKeys.summary(filters),
+    queryFn: () => tasksApi.getSummary(filters),
+    enabled,
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useTaskDependencyGraph(filters: TaskWorkspaceFilters, enabled = true) {
+  return useQuery({
+    queryKey: taskKeys.dependencyGraph(filters),
+    queryFn: () => tasksApi.getDependencyGraph(filters),
+    enabled,
+    staleTime: 30 * 1000,
+  })
+}
+
+export function useTaskDependencyContext(taskId?: string) {
+  return useQuery({
+    queryKey: taskKeys.dependencyContext(taskId ?? ''),
+    queryFn: () => tasksApi.getDependencyContext(taskId as string),
+    enabled: Boolean(taskId),
+    staleTime: 30 * 1000,
+  })
+}
+
+const updateTaskInList = (data: unknown, taskId: string, updateTask: (task: Task) => Task) => {
   if (!Array.isArray(data)) {
     return data
   }
@@ -72,24 +103,12 @@ const updateTaskInList = (
   })
 }
 
-const updateTaskCaches = (
-  queryClient: QueryClient,
-  task: Task,
-  updateTask: (task: Task) => Task
-) => {
-  queryClient.setQueryData<Task>(taskKeys.detail(task.id), (cachedTask) =>
-    updateTask(cachedTask ?? task)
-  )
+const updateTaskCaches = (queryClient: QueryClient, task: Task, updateTask: (task: Task) => Task) => {
+  queryClient.setQueryData<Task>(taskKeys.detail(task.id), (cachedTask) => updateTask(cachedTask ?? task))
 
-  queryClient.setQueriesData(
-    { queryKey: taskKeys.byGoal(task.goal_id) },
-    (data) => updateTaskInList(data, task.id, updateTask)
-  )
+  queryClient.setQueriesData({ queryKey: taskKeys.byGoal(task.goal_id) }, (data) => updateTaskInList(data, task.id, updateTask))
 
-  queryClient.setQueriesData(
-    { predicate: isTaskProjectQuery },
-    (data) => updateTaskInList(data, task.id, updateTask)
-  )
+  queryClient.setQueriesData({ predicate: isTaskProjectQuery }, (data) => updateTaskInList(data, task.id, updateTask))
 }
 
 /**
@@ -102,7 +121,7 @@ const updateTaskCaches = (
  * @returns UseQueryResult with task array
  */
 export function useTasksByGoal(goalId: string, skip = 0, limit = DEFAULT_TASK_PAGE_LIMIT, sortOptions?: SortOptions) {
-  const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
+  const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default'
   return useQuery({
     queryKey: [...taskKeys.byGoal(goalId), 'page', skip, limit, sortKey],
     queryFn: () => tasksApi.getByGoal(goalId, skip, limit, sortOptions),
@@ -120,23 +139,23 @@ export function useTasksByGoal(goalId: string, skip = 0, limit = DEFAULT_TASK_PA
  * @returns UseQueryResult with the complete task array
  */
 export function useAllTasksByGoal(goalId: string, sortOptions?: SortOptions) {
-  const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
+  const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default'
 
   return useQuery({
     queryKey: [...taskKeys.byGoal(goalId), 'all', DEFAULT_TASK_PAGE_LIMIT, sortKey],
     queryFn: async () => {
-      const tasks: Task[] = [];
-      let skip = 0;
+      const tasks: Task[] = []
+      let skip = 0
 
       while (true) {
-        const page = await tasksApi.getByGoal(goalId, skip, DEFAULT_TASK_PAGE_LIMIT, sortOptions);
-        tasks.push(...page);
+        const page = await tasksApi.getByGoal(goalId, skip, DEFAULT_TASK_PAGE_LIMIT, sortOptions)
+        tasks.push(...page)
 
         if (page.length < DEFAULT_TASK_PAGE_LIMIT) {
-          return tasks;
+          return tasks
         }
 
-        skip += DEFAULT_TASK_PAGE_LIMIT;
+        skip += DEFAULT_TASK_PAGE_LIMIT
       }
     },
     enabled: !!goalId,
@@ -155,7 +174,7 @@ export function useAllTasksByGoal(goalId: string, sortOptions?: SortOptions) {
  * @returns UseQueryResult with task array
  */
 export function useTasksByProject(projectId: string, skip = 0, limit = DEFAULT_TASK_PAGE_LIMIT, sortOptions?: SortOptions) {
-  const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
+  const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default'
   return useQuery({
     queryKey: [...taskKeys.byProject(projectId), 'page', skip, limit, sortKey],
     queryFn: () => tasksApi.getByProject(projectId, skip, limit, sortOptions),
@@ -196,10 +215,7 @@ export function useCreateTask() {
       invalidateTaskCollections(queryClient, newTask.goal_id)
 
       // Add the new task to cache
-      queryClient.setQueryData(
-        taskKeys.detail(newTask.id),
-        newTask
-      )
+      queryClient.setQueryData(taskKeys.detail(newTask.id), newTask)
     },
   })
 }
@@ -214,20 +230,13 @@ export function useUpdateTask() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: TaskUpdate }) =>
-      tasksApi.update(id, data),
+    mutationFn: ({ id, data }: { id: string; data: TaskUpdate }) => tasksApi.update(id, data),
     onSuccess: (updatedTask: Task, variables) => {
       // Update the cached task
-      queryClient.setQueryData(
-        taskKeys.detail(updatedTask.id),
-        updatedTask
-      )
+      queryClient.setQueryData(taskKeys.detail(updatedTask.id), updatedTask)
 
       // Invalidate task collections to reflect changes in goal and project views.
-      invalidateTaskCollections(
-        queryClient,
-        variables.data.goal_id ? undefined : updatedTask.goal_id
-      )
+      invalidateTaskCollections(queryClient, variables.data.goal_id ? undefined : updatedTask.goal_id)
     },
   })
 }
@@ -269,23 +278,20 @@ export function useAddTaskDependency(task: Task, availableTasks: Task[] = []) {
       const dependsOnTask = availableTasks.find((availableTask) => availableTask.id === dependsOnTaskId)
       const hydratedDependency: TaskDependency = {
         ...dependency,
-        depends_on_task: dependency.depends_on_task ?? (dependsOnTask
-          ? {
-              id: dependsOnTask.id,
-              title: dependsOnTask.title,
-              status: dependsOnTask.status,
-            }
-          : null),
+        depends_on_task:
+          dependency.depends_on_task ??
+          (dependsOnTask
+            ? {
+                id: dependsOnTask.id,
+                title: dependsOnTask.title,
+                status: dependsOnTask.status,
+              }
+            : null),
       }
 
       updateTaskCaches(queryClient, task, (cachedTask) => ({
         ...cachedTask,
-        dependencies: [
-          ...(cachedTask.dependencies ?? []).filter(
-            (existingDependency) => existingDependency.id !== hydratedDependency.id
-          ),
-          hydratedDependency,
-        ],
+        dependencies: [...(cachedTask.dependencies ?? []).filter((existingDependency) => existingDependency.id !== hydratedDependency.id), hydratedDependency],
       }))
 
       queryClient.invalidateQueries({ queryKey: taskKeys.detail(task.id) })
@@ -306,9 +312,7 @@ export function useDeleteTaskDependency(task: Task) {
     onSuccess: (_, dependencyId) => {
       updateTaskCaches(queryClient, task, (cachedTask) => ({
         ...cachedTask,
-        dependencies: (cachedTask.dependencies ?? []).filter(
-          (dependency) => dependency.id !== dependencyId
-        ),
+        dependencies: (cachedTask.dependencies ?? []).filter((dependency) => dependency.id !== dependencyId),
       }))
 
       queryClient.invalidateQueries({ queryKey: taskKeys.detail(task.id) })
