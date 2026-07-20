@@ -21,16 +21,22 @@ from humancompiler_api.models import (
     UserCreate,
     WorkSession,
 )
+from humancompiler_api.auth import AuthUser
 from humancompiler_api.routers.tasks import (
+    _dependency_state,
     _extract_planned_task_ids,
     _plan_date_windows,
     build_workspace_items,
+    get_task_dependency_context,
+    get_task_dependency_graph,
+    get_task_workspace_summary,
 )
 from humancompiler_api.services import (
     GoalService,
     ProjectService,
     TaskService,
     UserService,
+    task_service as shared_task_service,
 )
 
 
@@ -95,6 +101,7 @@ def test_workspace_lists_and_filters_tasks_across_projects(session, test_user_id
     assert items[0].goal_title == first["goal"].title
     assert items[0].remaining_estimate_hours == Decimal("1.50")
     assert items[0].is_blocked is True
+    assert items[0].is_ready is False
     assert items[0].blocking_task_ids == [prerequisite.id]
 
     blocked_rows, blocked_total = task_service.get_workspace_tasks(
@@ -102,6 +109,162 @@ def test_workspace_lists_and_filters_tasks_across_projects(session, test_user_id
     )
     assert blocked_total == 1
     assert [row[0].id for row in blocked_rows] == [first_task.id]
+
+
+def test_ready_requires_actionable_status_and_completed_dependencies(
+    session, test_user_id
+):
+    data = create_test_data(session, test_user_id)
+    task_service = TaskService()
+    prerequisite = task_service.create_task(
+        session,
+        TaskCreate(
+            goal_id=data["goal"].id,
+            title="Prerequisite",
+            estimate_hours=Decimal("1"),
+        ),
+        test_user_id,
+    )
+    dependent = task_service.create_task(
+        session,
+        TaskCreate(
+            goal_id=data["goal"].id,
+            title="Dependent",
+            estimate_hours=Decimal("1"),
+        ),
+        test_user_id,
+    )
+    dependency = TaskDependency(
+        id=uuid4(),
+        task_id=dependent.id,
+        depends_on_task_id=prerequisite.id,
+    )
+    dependency.depends_on_task = prerequisite
+
+    assert _dependency_state(dependent, [dependency])[0:2] == (False, True)
+
+    prerequisite.status = TaskStatus.COMPLETED
+    assert _dependency_state(dependent, [dependency])[0:2] == (True, False)
+
+    dependent.status = TaskStatus.COMPLETED
+    assert _dependency_state(dependent, [dependency])[0:2] == (False, False)
+
+    dependent.status = TaskStatus.PENDING
+    prerequisite.status = TaskStatus.CANCELLED
+    assert _dependency_state(dependent, [dependency])[0:2] == (False, True)
+
+
+@pytest.mark.asyncio
+async def test_workspace_summary_and_dependency_context(session, test_user_id):
+    data = create_test_data(session, test_user_id)
+    task_service = TaskService()
+    prerequisite = task_service.create_task(
+        session,
+        TaskCreate(
+            goal_id=data["goal"].id,
+            title="Prepare",
+            estimate_hours=Decimal("1"),
+            status=TaskStatus.IN_PROGRESS,
+        ),
+        test_user_id,
+    )
+    dependent = task_service.create_task(
+        session,
+        TaskCreate(
+            goal_id=data["goal"].id,
+            title="Publish",
+            estimate_hours=Decimal("1"),
+        ),
+        test_user_id,
+    )
+    session.add(
+        TaskDependency(
+            id=uuid4(),
+            task_id=dependent.id,
+            depends_on_task_id=prerequisite.id,
+        )
+    )
+    session.flush()
+    user = AuthUser(str(test_user_id), "test@example.com")
+
+    summary = await get_task_workspace_summary(session, user)
+    context = await get_task_dependency_context(dependent.id, session, user)
+
+    assert summary.total == 2
+    assert summary.ready == 1
+    assert summary.blocked == 1
+    assert summary.in_progress == 1
+    assert [item.id for item in context.prerequisites] == [prerequisite.id]
+    assert context.prerequisites[0].project_title == data["project"].title
+
+
+@pytest.mark.asyncio
+async def test_dependency_graph_uses_prerequisite_to_dependent_direction(
+    session, test_user_id
+):
+    data = create_test_data(session, test_user_id)
+    task_service = TaskService()
+    prerequisite = task_service.create_task(
+        session,
+        TaskCreate(
+            goal_id=data["goal"].id,
+            title="Prepare",
+            estimate_hours=Decimal("1"),
+            status=TaskStatus.COMPLETED,
+        ),
+        test_user_id,
+    )
+    dependent = task_service.create_task(
+        session,
+        TaskCreate(
+            goal_id=data["goal"].id,
+            title="Publish",
+            estimate_hours=Decimal("1"),
+        ),
+        test_user_id,
+    )
+    relationship = TaskDependency(
+        id=uuid4(),
+        task_id=dependent.id,
+        depends_on_task_id=prerequisite.id,
+    )
+    session.add(relationship)
+    session.flush()
+
+    graph = await get_task_dependency_graph(
+        session,
+        AuthUser(str(test_user_id), "test@example.com"),
+        search="Publish",
+    )
+
+    assert graph.exceeds_limit is False
+    assert {node.id for node in graph.nodes} == {prerequisite.id, dependent.id}
+    assert len(graph.edges) == 1
+    assert graph.edges[0].prerequisite_task_id == prerequisite.id
+    assert graph.edges[0].dependent_task_id == dependent.id
+    nodes = {node.id: node for node in graph.nodes}
+    assert nodes[prerequisite.id].is_context is True
+    assert nodes[dependent.id].is_context is False
+
+
+@pytest.mark.asyncio
+async def test_dependency_graph_reports_limit_without_partial_graph(
+    session, test_user_id, monkeypatch
+):
+    def oversized_workspace(*args, **kwargs):
+        return [], 201
+
+    monkeypatch.setattr(shared_task_service, "get_workspace_tasks", oversized_workspace)
+
+    graph = await get_task_dependency_graph(
+        session,
+        AuthUser(str(test_user_id), "test@example.com"),
+    )
+
+    assert graph.exceeds_limit is True
+    assert graph.total == 201
+    assert graph.nodes == []
+    assert graph.edges == []
 
 
 def test_workspace_filters_by_project_status_and_plan_membership(session, test_user_id):

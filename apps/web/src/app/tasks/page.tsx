@@ -4,20 +4,23 @@ import Link from "next/link";
 import { useDeferredValue, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertTriangle,
   Bot,
-  CalendarDays,
+  CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Inbox,
   ListTodo,
+  Network,
   Play,
+  Rows3,
   Search,
 } from "lucide-react";
 
 import { AppHeader } from "@/components/layout/app-header";
 import { QuickTaskList } from "@/components/quick-tasks";
+import { TaskDependencyMap } from "@/components/tasks/task-dependency-map";
+import { TaskDependencyPanel } from "@/components/tasks/task-dependency-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,11 +36,17 @@ import { useAuth } from "@/hooks/use-auth";
 import { toast } from "@/hooks/use-toast";
 import {
   useTaskRecommendations,
+  useTaskDependencyGraph,
   useTaskWorkspace,
+  useTaskWorkspaceSummary,
   useUpdateTask,
 } from "@/hooks/use-tasks-query";
 import { goalsApi, projectsApi, quickTasksApi } from "@/lib/api";
-import type { Goal } from "@/types/goal";
+import {
+  buildTaskWorkspaceFilters,
+  DEFAULT_TASK_WORKSPACE_PRESET,
+  type TaskWorkspacePreset,
+} from "@/lib/tasks/workspace-filters";
 import type { QuickTask } from "@/types/quick-task";
 import type {
   TaskStatus,
@@ -46,19 +55,10 @@ import type {
 } from "@/types/task";
 import { taskStatusLabels } from "@/types/task";
 
-type Preset =
-  | "next"
-  | "today"
-  | "week"
-  | "in_progress"
-  | "overdue"
-  | "blocked"
-  | "unplanned"
-  | "inbox"
-  | "all";
+type Preset = TaskWorkspacePreset;
 
 const PRESETS: Array<{ id: Preset; label: string }> = [
-  { id: "next", label: "次にやる" },
+  { id: "ready", label: "Ready" },
   { id: "today", label: "今日" },
   { id: "week", label: "今週" },
   { id: "in_progress", label: "作業中" },
@@ -69,22 +69,26 @@ const PRESETS: Array<{ id: Preset; label: string }> = [
   { id: "all", label: "全タスク" },
 ];
 
-const actionableStatuses: TaskStatus[] = ["pending", "in_progress"];
-
-function dateInputValue(value: string | null) {
-  return value ? value.slice(0, 10) : "";
-}
-
 function TaskRow({
   task,
-  goals,
   onOpen,
 }: {
   task: TaskWorkspaceItem;
-  goals: Goal[];
   onOpen: () => void;
 }) {
   const updateTask = useUpdateTask();
+  const [dependenciesOpen, setDependenciesOpen] = useState(false);
+  const dependencies = task.dependencies ?? [];
+  const completedDependencies = dependencies.filter(
+    (dependency) => dependency.depends_on_task?.status === "completed",
+  ).length;
+  const blockingDependencies = dependencies.filter(
+    (dependency) => dependency.depends_on_task?.status !== "completed",
+  );
+  const canStart =
+    !task.is_blocked &&
+    task.status !== "completed" &&
+    task.status !== "cancelled";
 
   const update = async (
     data: Parameters<typeof updateTask.mutateAsync>[0]["data"],
@@ -101,118 +105,149 @@ function TaskRow({
   };
 
   return (
-    <div className="grid gap-3 border-b border-border px-4 py-4 last:border-b-0 xl:grid-cols-[minmax(260px,2fr)_140px_110px_150px_120px_minmax(210px,1fr)_110px] xl:items-center">
-      <div className="min-w-0">
-        <button className="block max-w-full text-left" onClick={onOpen}>
-          <span className="block truncate font-medium hover:text-primary hover:underline">
-            {task.title}
+    <div className="border-b border-border last:border-b-0">
+      <div className="grid gap-3 px-4 py-3 lg:grid-cols-[100px_minmax(240px,2fr)_minmax(180px,1fr)_120px_100px_80px_70px_170px] lg:items-center">
+        <div>
+          {task.status === "completed" ? (
+            <Badge variant="success">完了</Badge>
+          ) : task.status === "cancelled" ? (
+            <Badge variant="secondary">キャンセル</Badge>
+          ) : task.is_blocked ? (
+            <Badge variant="warning">ブロック中</Badge>
+          ) : (
+            <Badge variant="info">Ready</Badge>
+          )}
+        </div>
+
+        <div className="min-w-0">
+          <button className="block max-w-full text-left" onClick={onOpen}>
+            <span className="block truncate font-medium hover:text-primary hover:underline">
+              {task.title}
+            </span>
+          </button>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span>
+              {task.project_title} › {task.goal_title}
+            </span>
+            {task.planned_today && <Badge variant="info">今日</Badge>}
+            {!task.planned_today && task.planned_this_week && (
+              <Badge variant="secondary">今週</Badge>
+            )}
+          </div>
+        </div>
+
+        <div className="text-sm">
+          {dependencies.length === 0 ? (
+            <span className="text-muted-foreground">依存なし</span>
+          ) : (
+            <button
+              className="flex items-center gap-1 rounded px-1 py-1 text-left hover:bg-muted"
+              aria-expanded={dependenciesOpen}
+              onClick={() => setDependenciesOpen((value) => !value)}
+            >
+              <span>
+                {completedDependencies}/{dependencies.length} 完了
+              </span>
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${dependenciesOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+          )}
+        </div>
+
+        <label className="text-xs text-muted-foreground">
+          <span className="mb-1 block lg:hidden">ステータス</span>
+          <select
+            aria-label={`${task.title}のステータス`}
+            className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+            value={task.status}
+            disabled={updateTask.isPending}
+            onChange={(event) =>
+              update({ status: event.target.value as TaskStatus })
+            }
+          >
+            {Object.entries(taskStatusLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="text-sm">
+          <span className="mr-2 text-xs text-muted-foreground lg:hidden">
+            期限
           </span>
-        </button>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span>
-            {task.project_title} › {task.goal_title}
+          {task.due_date
+            ? new Date(task.due_date).toLocaleDateString("ja-JP", {
+                month: "numeric",
+                day: "numeric",
+              })
+            : "—"}
+        </div>
+        <div className="text-sm">
+          <span className="mr-2 text-xs text-muted-foreground lg:hidden">
+            残り
           </span>
-          {task.is_blocked && <Badge variant="destructive">ブロック中</Badge>}
-          {task.planned_today && <Badge variant="info">今日</Badge>}
-          {!task.planned_today && task.planned_this_week && (
-            <Badge variant="secondary">今週</Badge>
+          {task.remaining_estimate_hours}h
+        </div>
+        <div className="text-sm">
+          <span className="mr-2 text-xs text-muted-foreground lg:hidden">
+            優先度
+          </span>
+          P{task.priority}
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={onOpen}>
+            詳細
+          </Button>
+          {canStart ? (
+            <Button size="sm" asChild>
+              <Link href={`/runner?taskId=${encodeURIComponent(task.id)}`}>
+                <Play className="mr-1 h-4 w-4" />
+                開始
+              </Link>
+            </Button>
+          ) : (
+            <Button size="sm" disabled>
+              <Play className="mr-1 h-4 w-4" />
+              開始
+            </Button>
           )}
         </div>
       </div>
 
-      <label className="text-xs text-muted-foreground">
-        <span className="mb-1 block xl:hidden">ステータス</span>
-        <select
-          aria-label={`${task.title}のステータス`}
-          className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-          value={task.status}
-          disabled={updateTask.isPending}
-          onChange={(event) =>
-            update({ status: event.target.value as TaskStatus })
-          }
-        >
-          {Object.entries(taskStatusLabels).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="text-xs text-muted-foreground">
-        <span className="mb-1 block xl:hidden">優先度</span>
-        <select
-          aria-label={`${task.title}の優先度`}
-          className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-          value={task.priority}
-          disabled={updateTask.isPending}
-          onChange={(event) => update({ priority: Number(event.target.value) })}
-        >
-          {[1, 2, 3, 4, 5].map((priority) => (
-            <option key={priority} value={priority}>
-              {priority}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="text-xs text-muted-foreground">
-        <span className="mb-1 block xl:hidden">期限</span>
-        <Input
-          aria-label={`${task.title}の期限`}
-          type="date"
-          defaultValue={dateInputValue(task.due_date)}
-          disabled={updateTask.isPending}
-          onChange={(event) =>
-            update({
-              due_date: event.target.value
-                ? new Date(`${event.target.value}T23:59:59`).toISOString()
-                : null,
-            })
-          }
-        />
-      </label>
-
-      <label className="text-xs text-muted-foreground">
-        <span className="mb-1 block xl:hidden">見積時間</span>
-        <Input
-          aria-label={`${task.title}の見積時間`}
-          type="number"
-          min="0.01"
-          step="0.25"
-          defaultValue={task.estimate_hours}
-          disabled={updateTask.isPending}
-          onBlur={(event) => {
-            const value = Number(event.target.value);
-            if (value > 0 && value !== task.estimate_hours)
-              update({ estimate_hours: value });
-          }}
-        />
-      </label>
-
-      <label className="text-xs text-muted-foreground">
-        <span className="mb-1 block xl:hidden">所属ゴール</span>
-        <select
-          aria-label={`${task.title}の所属ゴール`}
-          className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-          value={task.goal_id}
-          disabled={updateTask.isPending}
-          onChange={(event) => update({ goal_id: event.target.value })}
-        >
-          {goals.map((goal) => (
-            <option key={goal.id} value={goal.id}>
-              {goal.title}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <Button size="sm" asChild>
-        <Link href={`/runner?taskId=${encodeURIComponent(task.id)}`}>
-          <Play className="mr-1 h-4 w-4" />
-          開始
-        </Link>
-      </Button>
+      {dependenciesOpen && dependencies.length > 0 && (
+        <div className="border-t bg-muted/30 px-4 py-3 lg:pl-[336px]">
+          <div className="mb-2 text-xs font-medium text-muted-foreground">
+            先に完了すべきタスク
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {dependencies.map((dependency) => (
+              <button
+                key={dependency.id}
+                className="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 text-xs hover:border-primary"
+                onClick={onOpen}
+              >
+                {dependency.depends_on_task?.status === "completed" ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                ) : (
+                  <span className="h-2 w-2 rounded-full bg-amber-500" />
+                )}
+                {dependency.depends_on_task?.title ?? "不明なタスク"}
+                {dependency.depends_on_task?.status === "cancelled" && (
+                  <span className="text-destructive">要確認</span>
+                )}
+              </button>
+            ))}
+          </div>
+          {blockingDependencies.length > 0 && (
+            <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+              未完了の依存タスクが {blockingDependencies.length} 件あります。
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -220,16 +255,15 @@ function TaskRow({
 export default function TasksPage() {
   const { user, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
-  const [preset, setPreset] = useState<Preset>("next");
+  const [preset, setPreset] = useState<Preset>(DEFAULT_TASK_WORKSPACE_PRESET);
+  const [view, setView] = useState<"list" | "graph">("list");
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search.trim());
   const [projectId, setProjectId] = useState("");
   const [goalId, setGoalId] = useState("");
   const [status, setStatus] = useState<TaskStatus | "">("");
   const [page, setPage] = useState(0);
-  const [selectedTask, setSelectedTask] = useState<TaskWorkspaceItem | null>(
-    null,
-  );
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [convertingTask, setConvertingTask] = useState<QuickTask | null>(null);
   const [convertGoalId, setConvertGoalId] = useState("");
   const [inboxVersion, setInboxVersion] = useState(0);
@@ -258,45 +292,37 @@ export default function TasksPage() {
   });
 
   const filters = useMemo<TaskWorkspaceFilters>(() => {
-    let statuses = status ? [status] : undefined;
-    if (
-      !status &&
-      (preset === "next" ||
-        preset === "overdue" ||
-        preset === "today" ||
-        preset === "week" ||
-        preset === "unplanned")
-    ) {
-      statuses = actionableStatuses;
-    }
-    if (!status && preset === "in_progress") statuses = ["in_progress"];
-
-    return {
-      skip: page * 50,
-      limit: 50,
-      status: statuses,
-      projectId: projectId || undefined,
-      goalId: goalId || undefined,
-      dueBefore: preset === "overdue" ? new Date().toISOString() : undefined,
-      search: deferredSearch || undefined,
-      blocked: preset === "blocked" ? true : undefined,
-      plan:
-        preset === "today" || preset === "week" || preset === "unplanned"
-          ? preset
-          : undefined,
-      sortBy: preset === "next" ? "priority" : "due_date",
-    };
-  }, [
-    deferredSearch,
-    goalId,
-    page,
-    preset,
-    projectId,
-    status,
-  ]);
+    return buildTaskWorkspaceFilters({
+      preset,
+      page,
+      status,
+      projectId,
+      goalId,
+      search: deferredSearch,
+    });
+  }, [deferredSearch, goalId, page, preset, projectId, status]);
 
   const workspace = useTaskWorkspace(filters, Boolean(user));
   const recommendations = useTaskRecommendations(Boolean(user));
+  const summaryFilters = useMemo(
+    () => ({
+      projectId: projectId || undefined,
+      goalId: goalId || undefined,
+      search: deferredSearch || undefined,
+    }),
+    [deferredSearch, goalId, projectId],
+  );
+  const summary = useTaskWorkspaceSummary(summaryFilters, Boolean(user));
+  const dependencyGraph = useTaskDependencyGraph(
+    {
+      ...filters,
+      skip: undefined,
+      limit: undefined,
+      sortBy: undefined,
+      sortOrder: undefined,
+    },
+    Boolean(user) && view === "graph" && preset !== "inbox",
+  );
   const visibleTasks = workspace.data?.items ?? [];
 
   const filteredGoals = projectId
@@ -330,6 +356,77 @@ export default function TasksPage() {
           <p className="mt-1 text-sm text-muted-foreground">
             プロジェクト階層をまたいで、次に取り組むタスクを探して調整できます。
           </p>
+        </div>
+
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-stretch xl:justify-between">
+          <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-5">
+            {[
+              {
+                id: "ready" as Preset,
+                label: "Ready",
+                value: summary.data?.ready ?? 0,
+                tone: "text-blue-600",
+              },
+              {
+                id: "blocked" as Preset,
+                label: "ブロック",
+                value: summary.data?.blocked ?? 0,
+                tone: "text-amber-600",
+              },
+              {
+                id: "in_progress" as Preset,
+                label: "作業中",
+                value: summary.data?.in_progress ?? 0,
+                tone: "text-violet-600",
+              },
+              {
+                id: "overdue" as Preset,
+                label: "期限切れ",
+                value: summary.data?.overdue ?? 0,
+                tone: "text-red-600",
+              },
+              {
+                id: "all" as Preset,
+                label: "全タスク",
+                value: summary.data?.total ?? 0,
+                tone: "text-foreground",
+              },
+            ].map((item) => (
+              <button
+                key={item.id}
+                className={`rounded-lg border bg-card px-3 py-3 text-left transition-colors hover:border-primary/60 ${preset === item.id ? "border-primary ring-1 ring-primary/30" : ""}`}
+                onClick={() => {
+                  setPreset(item.id);
+                  setPage(0);
+                }}
+              >
+                <div className="text-xs text-muted-foreground">
+                  {item.label}
+                </div>
+                <div className={`mt-1 text-xl font-semibold ${item.tone}`}>
+                  {summary.isLoading ? "—" : item.value}
+                </div>
+              </button>
+            ))}
+          </div>
+          <div className="flex self-start rounded-lg border bg-card p-1">
+            <Button
+              size="sm"
+              variant={view === "list" ? "secondary" : "ghost"}
+              onClick={() => setView("list")}
+            >
+              <Rows3 className="mr-2 h-4 w-4" />
+              一覧
+            </Button>
+            <Button
+              size="sm"
+              variant={view === "graph" ? "secondary" : "ghost"}
+              onClick={() => setView("graph")}
+            >
+              <Network className="mr-2 h-4 w-4" />
+              依存マップ
+            </Button>
+          </div>
         </div>
 
         {recommendations.data &&
@@ -457,41 +554,53 @@ export default function TasksPage() {
               </CardContent>
             </Card>
 
-            <Card className="overflow-hidden">
-              <div className="hidden grid-cols-[minmax(260px,2fr)_140px_110px_150px_120px_minmax(210px,1fr)_110px] gap-3 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground xl:grid">
-                <span>タスク</span>
-                <span>ステータス</span>
-                <span>優先度</span>
-                <span>期限</span>
-                <span>見積時間</span>
-                <span>所属ゴール</span>
-                <span>Runner</span>
-              </div>
-              {workspace.isLoading ? (
-                <div className="p-12 text-center text-muted-foreground">
-                  読み込み中...
+            {view === "list" ? (
+              <Card className="overflow-hidden">
+                <div className="sticky top-0 z-10 hidden grid-cols-[100px_minmax(240px,2fr)_minmax(180px,1fr)_120px_100px_80px_70px_170px] gap-3 border-b bg-muted/95 px-4 py-2 text-xs font-medium text-muted-foreground backdrop-blur lg:grid">
+                  <span>実行状態</span>
+                  <span>タスク</span>
+                  <span>依存状況</span>
+                  <span>ステータス</span>
+                  <span>期限</span>
+                  <span>残り</span>
+                  <span>優先度</span>
+                  <span>操作</span>
                 </div>
-              ) : workspace.isError ? (
-                <div className="p-12 text-center text-destructive">
-                  タスクの取得に失敗しました
-                </div>
-              ) : visibleTasks.length === 0 ? (
-                <div className="p-12 text-center text-muted-foreground">
-                  条件に一致するタスクはありません
-                </div>
-              ) : (
-                visibleTasks.map((task) => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    goals={goals}
-                    onOpen={() => setSelectedTask(task)}
-                  />
-                ))
-              )}
-            </Card>
+                {workspace.isLoading ? (
+                  <div className="p-12 text-center text-muted-foreground">
+                    読み込み中...
+                  </div>
+                ) : workspace.isError ? (
+                  <div className="p-12 text-center text-destructive">
+                    タスクの取得に失敗しました
+                  </div>
+                ) : visibleTasks.length === 0 ? (
+                  <div className="p-12 text-center text-muted-foreground">
+                    条件に一致するタスクはありません
+                  </div>
+                ) : (
+                  visibleTasks.map((task) => (
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      onOpen={() => setSelectedTaskId(task.id)}
+                    />
+                  ))
+                )}
+              </Card>
+            ) : (
+              <Card className="overflow-hidden">
+                <TaskDependencyMap
+                  graph={dependencyGraph.data}
+                  isLoading={dependencyGraph.isLoading}
+                  isError={dependencyGraph.isError}
+                  selectedTaskId={selectedTaskId}
+                  onSelectTask={(node) => setSelectedTaskId(node.id)}
+                />
+              </Card>
+            )}
 
-            {(workspace.data?.total ?? 0) > 50 && (
+            {view === "list" && (workspace.data?.total ?? 0) > 50 && (
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">
                   {page * 50 + 1}–
@@ -524,57 +633,12 @@ export default function TasksPage() {
         )}
       </main>
 
-      <Dialog
-        open={Boolean(selectedTask)}
-        onOpenChange={(open) => !open && setSelectedTask(null)}
-      >
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
-          {selectedTask && (
-            <>
-              <DialogHeader>
-                <DialogTitle>{selectedTask.title}</DialogTitle>
-                <DialogDescription>
-                  {selectedTask.project_title} › {selectedTask.goal_title}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 text-sm">
-                <p className="whitespace-pre-wrap">
-                  {selectedTask.description || "説明はありません。"}
-                </p>
-                {selectedTask.memo && (
-                  <div className="rounded-md bg-muted p-3 whitespace-pre-wrap">
-                    {selectedTask.memo}
-                  </div>
-                )}
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    残り見積 {selectedTask.remaining_estimate_hours}時間
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CalendarDays className="h-4 w-4" />
-                    最終作業{" "}
-                    {selectedTask.last_worked_at
-                      ? new Date(selectedTask.last_worked_at).toLocaleString(
-                          "ja-JP",
-                        )
-                      : "なし"}
-                  </div>
-                </div>
-                {selectedTask.is_blocked && (
-                  <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
-                    <span>
-                      未完了の依存タスクが{" "}
-                      {selectedTask.blocking_task_ids.length} 件あります。
-                    </span>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      <TaskDependencyPanel
+        taskId={selectedTaskId}
+        availableTasks={visibleTasks}
+        onClose={() => setSelectedTaskId(null)}
+        onSelectTask={setSelectedTaskId}
+      />
 
       <Dialog
         open={Boolean(convertingTask)}

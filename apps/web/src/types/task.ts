@@ -133,10 +133,58 @@ export interface TaskWorkspaceItem extends Task {
   goal_title: string;
   remaining_estimate_hours: number;
   is_blocked: boolean;
+  is_ready: boolean;
   blocking_task_ids: string[];
   last_worked_at: string | null;
   planned_today: boolean;
   planned_this_week: boolean;
+}
+
+export interface TaskWorkspaceSummary {
+  total: number;
+  ready: number;
+  blocked: number;
+  in_progress: number;
+  overdue: number;
+}
+
+export interface TaskDependencyContextTask {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  project_id: string;
+  project_title: string;
+  goal_id: string;
+  goal_title: string;
+  is_ready: boolean;
+  is_blocked: boolean;
+}
+
+export interface TaskDependencyContext {
+  prerequisites: TaskDependencyContextTask[];
+  dependents: TaskDependencyContextTask[];
+}
+
+export interface TaskDependencyGraphNode extends TaskDependencyContextTask {
+  priority: number;
+  due_date: string | null;
+  is_context: boolean;
+}
+
+export interface TaskDependencyGraphEdge {
+  id: string;
+  prerequisite_task_id: string;
+  dependent_task_id: string;
+  prerequisite_status: TaskStatus;
+}
+
+export interface TaskDependencyGraphResponse {
+  nodes: TaskDependencyGraphNode[];
+  edges: TaskDependencyGraphEdge[];
+  total: number;
+  node_count: number;
+  exceeds_limit: boolean;
+  limit: number;
 }
 
 export interface TaskWorkspacePage {

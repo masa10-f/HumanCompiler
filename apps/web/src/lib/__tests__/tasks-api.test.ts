@@ -83,25 +83,15 @@ describe('tasksApi', () => {
   })
 
   it('normalizes string estimate_hours from task list responses', async () => {
-    mockFetchWithFallback.mockResolvedValueOnce(
-      mockJsonResponse([
-        rawTask({ id: 'task-1', estimate_hours: '2.50' }),
-        rawTask({ id: 'task-2', estimate_hours: 1.25 }),
-      ])
-    )
+    mockFetchWithFallback.mockResolvedValueOnce(mockJsonResponse([rawTask({ id: 'task-1', estimate_hours: '2.50' }), rawTask({ id: 'task-2', estimate_hours: 1.25 })]))
 
     const tasks = await tasksApi.getByGoal('goal-1')
 
-    expect(tasks).toEqual([
-      expect.objectContaining({ id: 'task-1', estimate_hours: 2.5 }),
-      expect.objectContaining({ id: 'task-2', estimate_hours: 1.25 }),
-    ])
+    expect(tasks).toEqual([expect.objectContaining({ id: 'task-1', estimate_hours: 2.5 }), expect.objectContaining({ id: 'task-2', estimate_hours: 1.25 })])
   })
 
   it('normalizes string estimate_hours from single task responses', async () => {
-    mockFetchWithFallback.mockResolvedValueOnce(
-      mockJsonResponse(rawTask({ estimate_hours: '3.75' }))
-    )
+    mockFetchWithFallback.mockResolvedValueOnce(mockJsonResponse(rawTask({ estimate_hours: '3.75' })))
 
     const task = await tasksApi.getById('task-1')
 
@@ -109,9 +99,7 @@ describe('tasksApi', () => {
   })
 
   it('normalizes invalid estimate_hours values to zero at the API boundary', async () => {
-    mockFetchWithFallback.mockResolvedValueOnce(
-      mockJsonResponse(rawTask({ estimate_hours: 'not-a-number' }))
-    )
+    mockFetchWithFallback.mockResolvedValueOnce(mockJsonResponse(rawTask({ estimate_hours: 'not-a-number' })))
 
     const task = await tasksApi.update('task-1', { title: 'Updated' })
 
@@ -129,6 +117,7 @@ describe('tasksApi', () => {
             project_title: 'Project 1',
             goal_title: 'Goal 1',
             is_blocked: false,
+            is_ready: true,
             blocking_task_ids: [],
             last_worked_at: null,
             planned_today: true,
@@ -138,7 +127,7 @@ describe('tasksApi', () => {
         total: 1,
         skip: 0,
         limit: 50,
-      })
+      }),
     )
 
     const page = await tasksApi.getWorkspace({
@@ -150,11 +139,65 @@ describe('tasksApi', () => {
     })
 
     expect(mockFetchWithFallback).toHaveBeenCalledTimes(1)
-    expect(mockFetchWithFallback.mock.calls[0]?.[0]).toContain(
-      '/api/tasks?status=pending&status=in_progress&project_id=project-1&project_status=in_progress&search=workspace&plan=today'
-    )
+    expect(mockFetchWithFallback.mock.calls[0]?.[0]).toContain('/api/tasks?status=pending&status=in_progress&project_id=project-1&project_status=in_progress&search=workspace&plan=today')
     expect(page.items[0]).toEqual(
-      expect.objectContaining({ estimate_hours: 3.5, remaining_estimate_hours: 2.25 })
+      expect.objectContaining({
+        estimate_hours: 3.5,
+        remaining_estimate_hours: 2.25,
+        is_ready: true,
+      }),
     )
+  })
+
+  it('loads workspace summary for the active hierarchy scope', async () => {
+    mockFetchWithFallback.mockResolvedValueOnce(
+      mockJsonResponse({
+        total: 8,
+        ready: 4,
+        blocked: 2,
+        in_progress: 1,
+        overdue: 1,
+      }),
+    )
+
+    const summary = await tasksApi.getSummary({
+      projectId: 'project-1',
+      goalId: 'goal-1',
+      search: 'publish',
+    })
+
+    expect(mockFetchWithFallback.mock.calls[0]?.[0]).toContain('/api/tasks/summary?project_id=project-1&goal_id=goal-1&search=publish')
+    expect(summary.ready).toBe(4)
+  })
+
+  it('loads the dependency graph with the workspace filters', async () => {
+    mockFetchWithFallback.mockResolvedValueOnce(
+      mockJsonResponse({
+        nodes: [],
+        edges: [],
+        total: 0,
+        node_count: 0,
+        exceeds_limit: false,
+        limit: 200,
+      }),
+    )
+
+    await tasksApi.getDependencyGraph({
+      status: ['pending', 'in_progress'],
+      projectId: 'project-1',
+      blocked: false,
+      plan: 'today',
+    })
+
+    expect(mockFetchWithFallback.mock.calls[0]?.[0]).toContain('/api/tasks/dependency-graph?status=pending&status=in_progress&project_id=project-1&blocked=false&plan=today')
+  })
+
+  it('loads both directions of dependency context', async () => {
+    mockFetchWithFallback.mockResolvedValueOnce(mockJsonResponse({ prerequisites: [], dependents: [] }))
+
+    const context = await tasksApi.getDependencyContext('task-1')
+
+    expect(mockFetchWithFallback.mock.calls[0]?.[0]).toContain('/api/tasks/task-1/dependency-context')
+    expect(context).toEqual({ prerequisites: [], dependents: [] })
   })
 })
