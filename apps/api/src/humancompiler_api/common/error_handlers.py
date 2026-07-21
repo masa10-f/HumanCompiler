@@ -16,6 +16,8 @@ from humancompiler_api.exceptions import (
     HumanCompilerException,
     ResourceNotFoundError as ApiResourceNotFoundError,
     ValidationError as ApiValidationError,
+    build_error_content,
+    include_debug_error_details,
 )
 from humancompiler_api.models import ErrorResponse
 
@@ -77,13 +79,32 @@ async def service_exception_handler(request: Request, exc: ServiceError):
     elif isinstance(exc, ExternalServiceError):
         status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 
+    is_server_error = status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR
+    if is_server_error:
+        logger.error(
+            "Service error during %s %s",
+            request.method,
+            request.url.path,
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+
+    detail = exc.message
+    if is_server_error and not include_debug_error_details():
+        detail = (
+            "Service temporarily unavailable"
+            if status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+            else "Internal server error"
+        )
+
     return JSONResponse(
         status_code=status_code,
-        content={
-            "detail": exc.message,
-            "error_code": exc.error_code,
-            "path": str(request.url),
-        },
+        content=build_error_content(
+            detail=detail,
+            error_code=exc.error_code
+            or ("INTERNAL_ERROR" if is_server_error else None),
+            request=request,
+            exception=exc if is_server_error else None,
+        ),
     )
 
 
@@ -128,7 +149,9 @@ def handle_service_error(error: Exception) -> HTTPException:
             detail=ErrorResponse.create(
                 code="INTERNAL_SERVER_ERROR",
                 message="Internal server error",
-                details={"error_type": type(error).__name__},
+                details={"error_type": type(error).__name__}
+                if include_debug_error_details()
+                else None,
             ).model_dump(),
         )
 
