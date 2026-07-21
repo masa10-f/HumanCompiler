@@ -18,6 +18,7 @@ from humancompiler_api.exceptions import (
     ValidationError as ApiValidationError,
     build_error_content,
     include_debug_error_details,
+    public_server_error_detail,
 )
 from humancompiler_api.models import ErrorResponse
 
@@ -90,11 +91,7 @@ async def service_exception_handler(request: Request, exc: ServiceError):
 
     detail = exc.message
     if is_server_error and not include_debug_error_details():
-        detail = (
-            "Service temporarily unavailable"
-            if status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-            else "Internal server error"
-        )
+        detail = public_server_error_detail(status_code)
 
     return JSONResponse(
         status_code=status_code,

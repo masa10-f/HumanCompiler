@@ -112,6 +112,25 @@ async def test_http_exception_handler_hides_server_details_in_production(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_http_exception_handler_uses_service_message_for_503(monkeypatch):
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "debug", False)
+
+    response = await http_exception_handler(
+        make_request(),
+        HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="postgres connection failed at internal-db:5432",
+        ),
+    )
+
+    assert json.loads(response.body) == {
+        "detail": "Service temporarily unavailable",
+        "error_code": "INTERNAL_ERROR",
+    }
+
+
+@pytest.mark.asyncio
 async def test_http_exception_handler_preserves_client_message_in_production(
     monkeypatch,
 ):

@@ -15,6 +15,13 @@ def include_debug_error_details() -> bool:
     return settings.environment == "development" and settings.debug
 
 
+def public_server_error_detail(status_code: int) -> str:
+    """Return the safe public message for a server-side HTTP error."""
+    if status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
+        return "Service temporarily unavailable"
+    return "Internal server error"
+
+
 def build_error_content(
     *,
     detail: Any,
@@ -98,7 +105,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
     detail = exc.detail
     if is_server_error and not include_debug_error_details():
-        detail = "Internal server error"
+        detail = public_server_error_detail(exc.status_code)
 
     return JSONResponse(
         status_code=exc.status_code,
