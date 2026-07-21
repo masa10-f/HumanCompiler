@@ -163,8 +163,8 @@ class TestSimpleBackupAPI:
             assert response.status_code == 500
 
             data = response.json()
-            assert "detail" in data
-            assert "Failed to retrieve backup status" in data["detail"]
+            assert data["detail"] == "Internal server error"
+            assert data["error_code"] == "INTERNAL_ERROR"
 
     def test_backup_info_endpoint_error(self, client):
         """Test backup info endpoint error handling"""
@@ -177,8 +177,8 @@ class TestSimpleBackupAPI:
             assert response.status_code == 500
 
             data = response.json()
-            assert "detail" in data
-            assert "Failed to retrieve backup information" in data["detail"]
+            assert data["detail"] == "Internal server error"
+            assert data["error_code"] == "INTERNAL_ERROR"
 
     def test_rate_limiting(self, client):
         """Test rate limiting on endpoints"""

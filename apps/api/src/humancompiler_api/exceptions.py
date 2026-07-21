@@ -1,7 +1,52 @@
+import logging
+from typing import Any
+
 from fastapi import HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-# from pydantic import ValidationError as PydanticValidationError  # Unused but may be needed
+
+from humancompiler_api.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+def include_debug_error_details() -> bool:
+    """Return whether diagnostic fields may be exposed to API clients."""
+    return settings.environment == "development" and settings.debug
+
+
+def build_error_content(
+    *,
+    detail: Any,
+    error_code: str | None,
+    request: Request | None = None,
+    exception: Exception | None = None,
+) -> dict[str, Any]:
+    """Build an error payload without exposing diagnostics outside local debug mode."""
+    content: dict[str, Any] = {
+        "detail": detail,
+        "error_code": error_code,
+    }
+
+    if include_debug_error_details():
+        if request is not None:
+            # Keep query parameters out of responses even in development because they
+            # can contain tokens or other credentials.
+            content["path"] = request.url.path
+        if exception is not None:
+            content["error_type"] = type(exception).__name__
+            content["debug_message"] = str(exception) or "No details available"
+
+    return content
+
+
+def _log_server_error(request: Request, exc: Exception) -> None:
+    logger.error(
+        "Unhandled error during %s %s",
+        request.method,
+        request.url.path,
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
 
 
 class HumanCompilerException(Exception):
@@ -47,13 +92,22 @@ TaskAgentException = HumanCompilerException
 
 async def http_exception_handler(request: Request, exc: HTTPException):
     """Handle HTTP exceptions"""
+    is_server_error = exc.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR
+    if is_server_error:
+        _log_server_error(request, exc)
+
+    detail = exc.detail
+    if is_server_error and not include_debug_error_details():
+        detail = "Internal server error"
+
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "detail": exc.detail,
-            "error_code": getattr(exc, "error_code", None),
-            "path": str(request.url),
-        },
+        content=build_error_content(
+            detail=detail,
+            error_code=getattr(exc, "error_code", None)
+            or ("INTERNAL_ERROR" if is_server_error else None),
+            request=request,
+        ),
     )
 
 
@@ -69,14 +123,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             }
         )
 
+    content = build_error_content(
+        detail="Request validation failed",
+        error_code="VALIDATION_ERROR",
+        request=request,
+    )
+    content["errors"] = errors
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={
-            "detail": "Request validation failed",
-            "error_code": "VALIDATION_ERROR",
-            "errors": errors,
-            "path": str(request.url),
-        },
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=content
     )
 
 
@@ -92,14 +146,14 @@ async def pydantic_validation_exception_handler(request: Request, exc: Validatio
             }
         )
 
+    content = build_error_content(
+        detail="Data validation failed",
+        error_code="VALIDATION_ERROR",
+        request=request,
+    )
+    content["errors"] = errors
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={
-            "detail": "Data validation failed",
-            "error_code": "VALIDATION_ERROR",
-            "errors": errors,
-            "path": str(request.url),
-        },
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=content
     )
 
 
@@ -118,21 +172,23 @@ async def humancompiler_exception_handler(
 
     return JSONResponse(
         status_code=status_code,
-        content={
-            "detail": exc.message,
-            "error_code": exc.error_code,
-            "path": str(request.url),
-        },
+        content=build_error_content(
+            detail=exc.message,
+            error_code=exc.error_code,
+            request=request,
+        ),
     )
 
 
 async def general_exception_handler(request: Request, exc: Exception):
     """Handle general exceptions"""
+    _log_server_error(request, exc)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "detail": "Internal server error",
-            "error_code": "INTERNAL_ERROR",
-            "path": str(request.url),
-        },
+        content=build_error_content(
+            detail="Internal server error",
+            error_code="INTERNAL_ERROR",
+            request=request,
+            exception=exc,
+        ),
     )
