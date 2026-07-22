@@ -14,6 +14,7 @@ import {
   useCheckoutWorkSession,
   usePauseWorkSession,
   useResumeWorkSession,
+  useSwitchWorkSession,
   getSessionOverdueStatus,
   isSessionPaused,
 } from './use-work-sessions';
@@ -23,7 +24,7 @@ import { schedulingApi, tasksApi, goalsApi, projectsApi, workSessionsApi } from 
 import { queryKeys } from '@/lib/query-keys';
 import type { Goal } from '@/types/goal';
 import type { Project } from '@/types/project';
-import type { SessionDecision } from '@/types/work-session';
+import type { SessionDecision, SwitchDisposition } from '@/types/work-session';
 import type { RescheduleSuggestion } from '@/types/reschedule';
 import type {
   UseRunnerReturn,
@@ -132,6 +133,7 @@ export function useRunner(): UseRunnerReturn {
   const checkoutMutation = useCheckoutWorkSession();
   const pauseMutation = usePauseWorkSession();
   const resumeMutation = useResumeWorkSession();
+  const switchMutation = useSwitchWorkSession();
 
   // Issue #228: Notification integration
   const {
@@ -276,6 +278,23 @@ export function useRunner(): UseRunnerReturn {
     queryClient.invalidateQueries({ queryKey: ['runner'] });
   };
 
+  const switchSession = async (
+    taskId: string,
+    disposition: SwitchDisposition,
+    interruptionNote: string | undefined,
+    plannedCheckoutAt: string,
+    plannedOutcome?: string,
+  ): Promise<void> => {
+    await switchMutation.mutateAsync({
+      next_task_id: taskId,
+      disposition,
+      interruption_note: interruptionNote,
+      planned_checkout_at: plannedCheckoutAt,
+      planned_outcome: plannedOutcome,
+    });
+    queryClient.invalidateQueries({ queryKey: ['runner'] });
+  };
+
   return {
     // State
     session: session ?? null,
@@ -293,12 +312,14 @@ export function useRunner(): UseRunnerReturn {
     isCheckingOut: checkoutMutation.isPending,
     isPausing: pauseMutation.isPending,
     isResuming: resumeMutation.isPending,
+    isSwitching: switchMutation.isPending,
 
     // Actions
     startSession,
     checkout,
     pauseSession,
     resumeSession,
+    switchSession,
 
     // Refresh
     refetchSession,

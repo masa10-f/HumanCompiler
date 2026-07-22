@@ -22,6 +22,9 @@ import type {
   TaskWorkspaceItem,
   TaskWorkspacePage,
   TaskWorkspaceSummary,
+  BulkTaskMutation,
+  BulkTaskPreview,
+  BulkTaskApplyRequest,
 } from "@/types/task";
 import type { Log, LogCreate, LogUpdate } from "@/types/log";
 import type {
@@ -65,6 +68,9 @@ import type {
   WorkSessionCheckoutRequest,
   WorkSessionUpdateRequest,
   WorkSessionResumeRequest,
+  WorkSessionSwitchRequest,
+  WorkSessionSwitchResponse,
+  WorkSessionResumeContext,
 } from "@/types/work-session";
 import type {
   RescheduleSuggestion,
@@ -585,6 +591,37 @@ class ApiClient {
     }));
   }
 
+  async previewBulkTaskChanges(
+    mutations: BulkTaskMutation[],
+  ): Promise<BulkTaskPreview> {
+    return this.request<BulkTaskPreview>("/api/tasks/bulk/preview", {
+      method: "POST",
+      body: JSON.stringify({ mutations }),
+    });
+  }
+
+  async applyBulkTaskChanges(
+    request: BulkTaskApplyRequest,
+  ): Promise<BulkTaskPreview> {
+    return this.request<BulkTaskPreview>("/api/tasks/bulk/apply", {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  }
+
+  async previewNaturalLanguageTaskChanges(
+    instruction: string,
+    taskIds: string[],
+  ): Promise<BulkTaskPreview> {
+    return this.request<BulkTaskPreview>(
+      "/api/tasks/bulk/natural-language/preview",
+      {
+        method: "POST",
+        body: JSON.stringify({ instruction, task_ids: taskIds }),
+      },
+    );
+  }
+
   async getTaskWorkspaceSummary(
     filters: Pick<TaskWorkspaceFilters, "projectId" | "goalId" | "search"> = {},
   ): Promise<TaskWorkspaceSummary> {
@@ -1069,6 +1106,23 @@ class ApiClient {
     });
   }
 
+  async updateWeeklyScheduleDraft(
+    weekStartDate: string,
+    scheduleData: Record<string, unknown>,
+    expectedUpdatedAt?: string | null,
+  ): Promise<SavedWeeklySchedule> {
+    return this.request<SavedWeeklySchedule>(
+      `/api/weekly-schedule/${weekStartDate}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          schedule_data: scheduleData,
+          expected_updated_at: expectedUpdatedAt ?? null,
+        }),
+      },
+    );
+  }
+
   async deleteWeeklySchedule(
     weekStartDate: string,
   ): Promise<{ message: string }> {
@@ -1249,6 +1303,23 @@ class ApiClient {
         method: "POST",
         body: JSON.stringify(data),
       },
+    );
+  }
+
+  async switchWorkSession(
+    data: WorkSessionSwitchRequest,
+  ): Promise<WorkSessionSwitchResponse> {
+    return this.request<WorkSessionSwitchResponse>("/api/work-sessions/switch", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getWorkSessionResumeContext(
+    taskId: string,
+  ): Promise<WorkSessionResumeContext | null> {
+    return this.request<WorkSessionResumeContext | null>(
+      `/api/work-sessions/task/${taskId}/resume-context`,
     );
   }
 
@@ -1793,6 +1864,12 @@ export const tasksApi = {
   getWorkspace: (filters?: TaskWorkspaceFilters) =>
     apiClient.getTaskWorkspace(filters),
   getRecommendations: () => apiClient.getTaskRecommendations(),
+  previewBulk: (mutations: BulkTaskMutation[]) =>
+    apiClient.previewBulkTaskChanges(mutations),
+  applyBulk: (request: BulkTaskApplyRequest) =>
+    apiClient.applyBulkTaskChanges(request),
+  previewNaturalLanguage: (instruction: string, taskIds: string[]) =>
+    apiClient.previewNaturalLanguageTaskChanges(instruction, taskIds),
   getSummary: (
     filters?: Pick<TaskWorkspaceFilters, "projectId" | "goalId" | "search">,
   ) => apiClient.getTaskWorkspaceSummary(filters),
@@ -1920,6 +1997,16 @@ export const weeklyScheduleApi = {
     apiClient.getWeeklySchedule(weekStartDate),
   save: (weekStartDate: string, scheduleData: any) =>
     apiClient.saveWeeklySchedule(weekStartDate, scheduleData),
+  updateDraft: (
+    weekStartDate: string,
+    scheduleData: Record<string, unknown>,
+    expectedUpdatedAt?: string | null,
+  ) =>
+    apiClient.updateWeeklyScheduleDraft(
+      weekStartDate,
+      scheduleData,
+      expectedUpdatedAt,
+    ),
   delete: (weekStartDate: string) =>
     apiClient.deleteWeeklySchedule(weekStartDate),
 };
@@ -1987,6 +2074,9 @@ export const workSessionsApi = {
   start: (data: WorkSessionStartRequest) => apiClient.startWorkSession(data),
   checkout: (data: WorkSessionCheckoutRequest) =>
     apiClient.checkoutWorkSession(data),
+  switch: (data: WorkSessionSwitchRequest) => apiClient.switchWorkSession(data),
+  getResumeContext: (taskId: string) =>
+    apiClient.getWorkSessionResumeContext(taskId),
   getCurrent: () => apiClient.getCurrentWorkSession(),
   getHistory: (skip?: number, limit?: number) =>
     apiClient.getWorkSessionHistory(skip, limit),

@@ -101,6 +101,20 @@ export default function SchedulingPage() {
   // Active dragging state
   const [activeDragTask, setActiveDragTask] = useState<TaskInfo | null>(null);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const source = params.get('source');
+    const weekStart = params.get('week_start');
+    const date = params.get('date');
+    if (date) setSelectedDate(date);
+    if (source === 'weekly_schedule' && weekStart) {
+      setTaskSource({
+        type: 'weekly_schedule',
+        weekly_schedule_date: weekStart,
+      });
+    }
+  }, []);
+
   // DnD sensors
   const sensors = useSensors(
     useSensor(PointerSensor, {

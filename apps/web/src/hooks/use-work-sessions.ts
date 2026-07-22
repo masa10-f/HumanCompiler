@@ -18,6 +18,8 @@ import type {
   WorkSessionCheckoutRequest,
   WorkSessionUpdateRequest,
   WorkSessionResumeRequest,
+  WorkSessionSwitchRequest,
+  WorkSessionSwitchResponse,
 } from '@/types/work-session';
 import type { WorkSessionWithReschedule } from '@/types/reschedule';
 
@@ -125,6 +127,32 @@ export function useCheckoutWorkSession() {
         queryClient.invalidateQueries({ queryKey: queryKeys.reschedule.suggestions() });
       }
     },
+  });
+}
+
+export function useSwitchWorkSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: WorkSessionSwitchRequest) => workSessionsApi.switch(data),
+    onSuccess: (result: WorkSessionSwitchResponse) => {
+      queryClient.setQueryData(
+        queryKeys.workSessions.current(),
+        result.current_session,
+      );
+      queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.all });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.logs.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.progress.all });
+    },
+  });
+}
+
+export function useWorkSessionResumeContext(taskId?: string) {
+  return useQuery({
+    queryKey: [...queryKeys.workSessions.all, 'resume-context', taskId],
+    queryFn: () => workSessionsApi.getResumeContext(taskId as string),
+    enabled: Boolean(taskId),
+    staleTime: 30 * 1000,
   });
 }
 

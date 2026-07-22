@@ -100,6 +100,7 @@ class TaskWorkspaceSortBy(StrEnum):
     STATUS = "status"
     TITLE = "title"
     UPDATED_AT = "updated_at"
+    LAST_WORKED_AT = "last_worked_at"
 
 
 class TaskWorkspacePlanFilter(StrEnum):
@@ -126,6 +127,14 @@ class SessionDecision(StrEnum):
     SWITCH = "switch"
     BREAK = "break"
     COMPLETE = "complete"
+
+
+class SwitchDisposition(StrEnum):
+    """How the current task is left when atomically switching tasks."""
+
+    COMPLETE = "complete"
+    PAUSE = "pause"
+    DEFER = "defer"
 
 
 class ContinueReason(StrEnum):
@@ -675,6 +684,13 @@ class WorkSession(WorkSessionBase, table=True):  # type: ignore[call-arg]
             SQLEnum(ContinueReason, values_callable=lambda x: [e.value for e in x])
         ),
     )
+    switch_disposition: SwitchDisposition | None = SQLField(
+        default=None,
+        sa_column=Column(
+            SQLEnum(SwitchDisposition, values_callable=lambda x: [e.value for e in x])
+        ),
+    )
+    interruption_note: str | None = SQLField(default=None, max_length=2000)
 
     # KPT reflection
     kpt_keep: str | None = SQLField(default=None, max_length=500)
@@ -1092,6 +1108,7 @@ class TaskWorkspaceItem(TaskResponse):
     blocking_task_ids: list[UUID] = Field(default_factory=list)
     last_worked_at: datetime | None = None
     planned_today: bool = False
+    planned_today_unplaced: bool = False
     planned_this_week: bool = False
 
     @field_serializer("remaining_estimate_hours")
@@ -1379,6 +1396,39 @@ class WorkSessionCheckoutRequest(BaseModel):
     next_task_id: UUID | None = None
 
 
+class WorkSessionSwitchRequest(BaseModel):
+    """Atomically close the active session and start another task."""
+
+    next_task_id: UUID
+    disposition: SwitchDisposition
+    interruption_note: str | None = Field(None, max_length=2000)
+    planned_checkout_at: datetime
+    planned_outcome: str | None = Field(None, max_length=500)
+    remaining_estimate_hours: Decimal | None = Field(None, ge=0)
+
+    @model_validator(mode="after")
+    def require_interruption_note(self):
+        if self.disposition != SwitchDisposition.COMPLETE and not (
+            self.interruption_note and self.interruption_note.strip()
+        ):
+            raise ValueError(
+                "An interruption note is required when pausing or deferring"
+            )
+        return self
+
+
+class WorkSessionResumeContextResponse(BaseModel):
+    """Most recent interruption context for restarting a task."""
+
+    task_id: UUID
+    interruption_note: str
+    interrupted_at: datetime
+    disposition: SwitchDisposition
+    remaining_estimate_hours: Decimal | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class WorkSessionUpdate(BaseModel):
     """Request model for updating a work session's KPT fields.
 
@@ -1419,6 +1469,8 @@ class WorkSessionResponse(WorkSessionBase):
     checkout_type: CheckoutType | None
     decision: SessionDecision | None
     continue_reason: ContinueReason | None
+    switch_disposition: SwitchDisposition | None = None
+    interruption_note: str | None = None
     kpt_keep: str | None
     kpt_problem: str | None
     kpt_try: str | None
@@ -1466,6 +1518,14 @@ class WorkSessionWithLogResponse(WorkSessionResponse):
     """Work session response with generated log"""
 
     generated_log: LogResponse | None = None
+
+
+class WorkSessionSwitchResponse(BaseModel):
+    """Previous and newly active sessions returned by an atomic switch."""
+
+    previous_session: WorkSessionResponse
+    current_session: WorkSessionResponse
+    generated_log: LogResponse
 
 
 class UserSettingsCreate(BaseModel):

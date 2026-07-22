@@ -479,15 +479,18 @@ def test_extract_planned_task_ids_supports_camel_case_assignments(
         Schedule(
             id=uuid4(),
             user_id=test_user_id,
-            date=datetime.now(UTC),
+            # Schedule dates are stored as naive JST calendar dates. Using a raw
+            # UTC timestamp makes this test cross midnight nine hours too late.
+            date=_plan_date_windows()[0],
             plan_json={"assignments": [{"taskId": str(task_id)}]},
         )
     )
     session.flush()
 
-    today_ids, _ = _extract_planned_task_ids(session, test_user_id)
+    today_ids, _, placed_today_ids = _extract_planned_task_ids(session, test_user_id)
 
     assert str(task_id) in today_ids
+    assert str(task_id) in placed_today_ids
 
 
 def test_plan_date_windows_use_jst_calendar_boundaries():

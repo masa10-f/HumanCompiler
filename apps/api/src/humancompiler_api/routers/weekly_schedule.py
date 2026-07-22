@@ -34,6 +34,13 @@ class WeeklyScheduleSaveRequest(BaseModel):
     )
 
 
+class WeeklyScheduleDraftUpdate(BaseModel):
+    """Concurrency-safe update for an editable weekly-plan draft."""
+
+    schedule_data: dict = Field(..., description="Edited weekly schedule data")
+    expected_updated_at: datetime | None = None
+
+
 def validate_week_start_date(date_str: str) -> datetime:
     """
     Validate and parse week start date.
@@ -334,6 +341,60 @@ async def get_weekly_schedule(
                 },
             ).model_dump(),
         )
+
+
+@router.put("/{week_start_date}", response_model=WeeklyScheduleResponse)
+async def update_weekly_schedule_draft(
+    week_start_date: str,
+    request: WeeklyScheduleDraftUpdate,
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(db.get_session),
+):
+    """Merge and save an editable weekly plan without dropping legacy fields."""
+    week_start = validate_week_start_date(week_start_date)
+    user_uuid = UUID(user_id) if isinstance(user_id, str) else user_id
+    existing = session.exec(
+        select(WeeklySchedule).where(
+            WeeklySchedule.user_id == user_uuid,
+            WeeklySchedule.week_start_date == week_start,
+        )
+    ).first()
+    if existing is None and request.expected_updated_at is not None:
+        raise HTTPException(status_code=409, detail="Weekly plan no longer exists")
+    if existing is not None:
+        if request.expected_updated_at is None or existing.updated_at is None:
+            raise HTTPException(
+                status_code=409, detail="Weekly plan changed after loading"
+            )
+        expected = request.expected_updated_at
+        actual = existing.updated_at
+        if expected.tzinfo is not None:
+            expected = expected.replace(tzinfo=None)
+        if actual.tzinfo is not None:
+            actual = actual.replace(tzinfo=None)
+        if actual != expected:
+            raise HTTPException(
+                status_code=409, detail="Weekly plan changed after loading"
+            )
+
+    now = datetime.now()
+    if existing is None:
+        existing = WeeklySchedule(
+            id=uuid4(),
+            user_id=user_uuid,
+            week_start_date=week_start,
+            schedule_json=request.schedule_data,
+        )
+    else:
+        existing.schedule_json = {
+            **(existing.schedule_json or {}),
+            **request.schedule_data,
+        }
+        existing.updated_at = now
+    session.add(existing)
+    session.commit()
+    session.refresh(existing)
+    return WeeklyScheduleResponse.model_validate(existing)
 
 
 @router.delete("/{week_start_date}")

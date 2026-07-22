@@ -13,6 +13,8 @@ import { TaskSwitcher } from './task-switcher';
 import { TaskNotesSection } from './task-notes-section';
 import { StartSessionDialog } from './start-session-dialog';
 import { ManualTaskSelectDialog } from './manual-task-select-dialog';
+import { TaskPickerDialog } from './task-picker-dialog';
+import { TaskSwitchDialog } from './task-switch-dialog';
 import { CheckoutDialog } from './checkout-dialog';
 import { PauseDialog } from './pause-dialog';
 import { ResumeDialog } from './resume-dialog';
@@ -23,6 +25,8 @@ import { Play, AlertCircle, Pause, FolderOpen, Calendar } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { formatDuration } from '@/types/runner';
 import type { RescheduleSuggestion } from '@/types/reschedule';
+import type { TaskWorkspaceItem } from '@/types/task';
+import { goalsApi, projectsApi, tasksApi } from '@/lib/api';
 
 export function RunnerPage() {
   const { user, loading: authLoading } = useAuth();
@@ -40,10 +44,12 @@ export function RunnerPage() {
     isCheckingOut,
     isPausing,
     isResuming,
+    isSwitching,
     startSession,
     checkout,
     pauseSession,
     resumeSession,
+    switchSession,
     currentNotification,
     dismissNotification,
     snoozeSession,
@@ -54,6 +60,8 @@ export function RunnerPage() {
 
   const [startDialogOpen, setStartDialogOpen] = useState(false);
   const [manualTaskDialogOpen, setManualTaskDialogOpen] = useState(false);
+  const [taskPickerOpen, setTaskPickerOpen] = useState(false);
+  const [switchTarget, setSwitchTarget] = useState<TaskWorkspaceItem | null>(null);
   const [initialTaskId, setInitialTaskId] = useState<string | null>(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [pauseDialogOpen, setPauseDialogOpen] = useState(false);
@@ -62,11 +70,37 @@ export function RunnerPage() {
 
   useEffect(() => {
     const taskId = new URLSearchParams(window.location.search).get('taskId');
-    if (taskId) {
+    if (!taskId) return;
+    if (!session) {
       setInitialTaskId(taskId);
       setManualTaskDialogOpen(true);
+      return;
     }
-  }, []);
+    if (session.task_id === taskId || switchTarget?.id === taskId) return;
+    void (async () => {
+      try {
+        const task = await tasksApi.getById(taskId);
+        const goal = await goalsApi.getById(task.goal_id);
+        const project = await projectsApi.getById(goal.project_id);
+        setSwitchTarget({
+          ...task,
+          project_id: project.id,
+          project_title: project.title,
+          goal_title: goal.title,
+          remaining_estimate_hours: task.estimate_hours,
+          is_blocked: false,
+          is_ready: true,
+          blocking_task_ids: [],
+          last_worked_at: null,
+          planned_today: false,
+          planned_today_unplaced: false,
+          planned_this_week: false,
+        });
+      } catch {
+        setTaskPickerOpen(true);
+      }
+    })();
+  }, [session, switchTarget?.id]);
 
   // Issue #227: Reschedule suggestion state
   const [lastRescheduleSuggestion, setLastRescheduleSuggestion] = useState<RescheduleSuggestion | null>(null);
@@ -215,6 +249,11 @@ export function RunnerPage() {
               onResume={() => setResumeDialogOpen(true)}
             />
 
+            <Button variant="outline" onClick={() => setTaskPickerOpen(true)}>
+              <FolderOpen className="mr-2 h-4 w-4" />
+              別タスクへ切替
+            </Button>
+
             {/* Next candidates */}
             {nextCandidates.length > 0 && (
               <TaskSwitcher
@@ -265,7 +304,7 @@ export function RunnerPage() {
                     スケジュールから選択
                   </Button>
                   <Button
-                    onClick={() => setManualTaskDialogOpen(true)}
+                    onClick={() => setTaskPickerOpen(true)}
                     className="flex-1"
                     variant="outline"
                   >
@@ -327,6 +366,32 @@ export function RunnerPage() {
             } catch (error) {
               console.error('Start session failed:', error);
             }
+          }}
+        />
+
+        <TaskPickerDialog
+          open={taskPickerOpen}
+          onOpenChange={setTaskPickerOpen}
+          excludeTaskId={session?.task_id}
+          title={session ? '切替先のタスクを選択' : '開始するタスクを選択'}
+          onSelect={(task) => {
+            if (session) {
+              setSwitchTarget(task);
+            } else {
+              setInitialTaskId(task.id);
+              setManualTaskDialogOpen(true);
+            }
+          }}
+        />
+
+        <TaskSwitchDialog
+          open={Boolean(switchTarget)}
+          onOpenChange={(open) => !open && setSwitchTarget(null)}
+          task={switchTarget}
+          isSwitching={isSwitching}
+          onSwitch={async (...args) => {
+            await switchSession(...args);
+            setSwitchTarget(null);
           }}
         />
 

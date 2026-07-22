@@ -50,9 +50,11 @@ from humancompiler_api.models import (
     WorkSessionUpdate,
     WorkSessionPauseRequest,
     WorkSessionResumeRequest,
+    WorkSessionSwitchRequest,
     CheckoutType,
     SessionDecision,
     ContinueReason,
+    SwitchDisposition,
     SortBy,
     SortOrder,
     QuickTask,
@@ -777,6 +779,7 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             TaskWorkspaceSortBy.STATUS: Task.status,
             TaskWorkspaceSortBy.TITLE: Task.title,
             TaskWorkspaceSortBy.UPDATED_AT: Task.updated_at,
+            TaskWorkspaceSortBy.LAST_WORKED_AT: last_worked.c.last_worked_at,
         }
         sort_column = sort_columns[sort_by]
         order_expression = (
@@ -1600,6 +1603,142 @@ class WorkSessionService(
         session.refresh(current_session)
 
         return current_session, new_log
+
+    def switch_session(
+        self,
+        session: Session,
+        user_id: str | UUID,
+        switch_data: WorkSessionSwitchRequest,
+    ) -> tuple[WorkSession, WorkSession, Log]:
+        """Atomically end the current session and start the requested task."""
+        user_uuid = validate_uuid(user_id, "user_id")
+        current = self.get_current_session(session, user_uuid)
+        if not current:
+            raise HTTPException(status_code=404, detail="No active session found")
+        if current.task_id == switch_data.next_task_id:
+            raise HTTPException(status_code=400, detail="Next task must be different")
+
+        next_task = self.task_service.get_task(
+            session, switch_data.next_task_id, user_uuid
+        )
+        if next_task.status not in {TaskStatus.PENDING, TaskStatus.IN_PROGRESS}:
+            raise HTTPException(status_code=409, detail="Next task is not actionable")
+        dependencies = self.task_service.get_task_dependencies_batch(
+            session, [switch_data.next_task_id], user_uuid
+        ).get(str(switch_data.next_task_id), [])
+        if any(
+            dependency.depends_on_task
+            and dependency.depends_on_task.status != TaskStatus.COMPLETED
+            for dependency in dependencies
+        ):
+            raise HTTPException(status_code=409, detail="Next task is blocked")
+
+        current_task = self.task_service.get_task(session, current.task_id, user_uuid)
+        ended_at = datetime.now(UTC)
+        total_paused_seconds = current.total_paused_seconds or 0
+        if current.paused_at is not None:
+            paused_at = current.paused_at
+            if paused_at.tzinfo is None:
+                paused_at = paused_at.replace(tzinfo=UTC)
+            total_paused_seconds += max(0, int((ended_at - paused_at).total_seconds()))
+            current.paused_at = None
+        started_at = current.started_at
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=UTC)
+        actual_seconds = max(
+            0, int((ended_at - started_at).total_seconds()) - total_paused_seconds
+        )
+        actual_minutes = max(1, actual_seconds // 60)
+        prior_minutes = session.exec(
+            select(func.coalesce(func.sum(Log.actual_minutes), 0)).where(
+                Log.task_id == current.task_id
+            )
+        ).one()
+        calculated_remaining = max(
+            Decimal("0"),
+            current_task.estimate_hours
+            - (Decimal(int(prior_minutes or 0) + actual_minutes) / Decimal("60")),
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+        current.ended_at = ended_at
+        current.total_paused_seconds = total_paused_seconds
+        current.checkout_type = CheckoutType.INTERRUPTED
+        current.decision = (
+            SessionDecision.COMPLETE
+            if switch_data.disposition == SwitchDisposition.COMPLETE
+            else SessionDecision.SWITCH
+        )
+        current.switch_disposition = switch_data.disposition
+        current.interruption_note = (
+            switch_data.interruption_note.strip()
+            if switch_data.interruption_note
+            else None
+        )
+        current.remaining_estimate_hours = (
+            switch_data.remaining_estimate_hours
+            if switch_data.remaining_estimate_hours is not None
+            else calculated_remaining
+        )
+        current.updated_at = ended_at
+
+        current_task.status = {
+            SwitchDisposition.COMPLETE: TaskStatus.COMPLETED,
+            SwitchDisposition.PAUSE: TaskStatus.IN_PROGRESS,
+            SwitchDisposition.DEFER: TaskStatus.PENDING,
+        }[switch_data.disposition]
+        current_task.updated_at = ended_at
+
+        log = Log(
+            id=uuid4(),
+            task_id=current.task_id,
+            actual_minutes=actual_minutes,
+            comment=current.interruption_note,
+        )
+        next_session = WorkSession(
+            id=uuid4(),
+            user_id=user_uuid,
+            task_id=next_task.id,
+            planned_checkout_at=switch_data.planned_checkout_at,
+            planned_outcome=switch_data.planned_outcome,
+            is_manual_execution=True,
+        )
+        if next_task.status == TaskStatus.PENDING:
+            next_task.status = TaskStatus.IN_PROGRESS
+            next_task.updated_at = ended_at
+
+        try:
+            session.add(current)
+            session.add(current_task)
+            session.add(next_task)
+            session.add(log)
+            session.add(next_session)
+            session.commit()
+            session.refresh(current)
+            session.refresh(next_session)
+            session.refresh(log)
+        except Exception:
+            session.rollback()
+            raise
+        return current, next_session, log
+
+    def get_resume_context(
+        self, session: Session, user_id: str | UUID, task_id: str | UUID
+    ) -> WorkSession | None:
+        """Return the newest recorded interruption for an owned task."""
+        user_uuid = validate_uuid(user_id, "user_id")
+        task_uuid = validate_uuid(task_id, "task_id")
+        self.task_service.get_task(session, task_uuid, user_uuid)
+        return session.exec(
+            select(WorkSession)
+            .where(
+                WorkSession.user_id == user_uuid,
+                WorkSession.task_id == task_uuid,
+                WorkSession.interruption_note.is_not(None),
+                WorkSession.switch_disposition.is_not(None),
+            )
+            .order_by(WorkSession.ended_at.desc())
+            .limit(1)
+        ).first()
 
     def get_sessions_by_task(
         self,

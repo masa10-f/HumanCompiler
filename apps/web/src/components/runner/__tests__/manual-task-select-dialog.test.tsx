@@ -4,7 +4,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-import { projectsApi, tasksApi } from '@/lib/api';
+import { projectsApi, tasksApi, workSessionsApi } from '@/lib/api';
 import { ManualTaskSelectDialog } from '../manual-task-select-dialog';
 
 jest.mock('@/lib/api', () => ({
@@ -14,6 +14,9 @@ jest.mock('@/lib/api', () => ({
   tasksApi: {
     getById: jest.fn(),
     getWorkspace: jest.fn(),
+  },
+  workSessionsApi: {
+    getResumeContext: jest.fn(),
   },
 }));
 
@@ -51,6 +54,9 @@ function renderDialog(onStart = jest.fn().mockResolvedValue(undefined)) {
 }
 
 describe('ManualTaskSelectDialog recommended task flow', () => {
+  beforeEach(() => {
+    jest.mocked(workSessionsApi.getResumeContext).mockResolvedValue(null);
+  });
   it('loads the selected task directly and starts it without opening the task picker', async () => {
     jest.mocked(tasksApi.getById).mockResolvedValue(task);
 
