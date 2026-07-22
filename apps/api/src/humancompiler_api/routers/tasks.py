@@ -1,12 +1,15 @@
+import json
 import logging
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Annotated
-from uuid import UUID
+from typing import Annotated, Literal
+from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from openai import OpenAI
+from pydantic import BaseModel, Field
 from sqlmodel import Session, or_, select
 
 from humancompiler_api.auth import AuthUser, get_current_user
@@ -40,7 +43,9 @@ from humancompiler_api.models import (
     WeeklySchedule,
     Goal,
     Project,
+    UserSettings,
 )
+from humancompiler_api.crypto import get_crypto_service
 from humancompiler_api.services import task_service
 
 logger = logging.getLogger(__name__)
@@ -52,9 +57,646 @@ ACTIONABLE_TASK_STATUSES = {TaskStatus.PENDING, TaskStatus.IN_PROGRESS}
 
 
 def get_session() -> Generator[Session, None, None]:
-    """Database session dependency"""
+    """Database session dependency."""
     with Session(db.get_engine()) as session:
         yield session
+
+
+class BulkTaskPatch(BaseModel):
+    """Whitelisted fields supported by manual and AI bulk changes."""
+
+    status: TaskStatus | None = None
+    priority: int | None = Field(None, ge=1, le=5)
+    due_date: datetime | None = None
+    goal_id: UUID | None = None
+
+
+class PlanMembershipMutation(BaseModel):
+    scope: Literal["daily", "weekly"]
+    action: Literal["add", "remove"]
+    target_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class BulkTaskMutation(BaseModel):
+    task_id: UUID
+    patch: BulkTaskPatch = Field(default_factory=BulkTaskPatch)
+    plans: list[PlanMembershipMutation] = Field(default_factory=list, max_length=4)
+
+
+class BulkTaskRequest(BaseModel):
+    mutations: list[BulkTaskMutation] = Field(min_length=1, max_length=100)
+
+
+class BulkTaskApplyRequest(BulkTaskRequest):
+    expected_task_versions: dict[str, str]
+    expected_plan_versions: dict[str, str | None] = Field(default_factory=dict)
+
+
+class BulkFieldDiff(BaseModel):
+    field: str
+    before: object | None = None
+    after: object | None = None
+
+
+class BulkTaskPreviewItem(BaseModel):
+    task_id: UUID
+    title: str
+    diffs: list[BulkFieldDiff]
+
+
+class BulkTaskPreviewResponse(BaseModel):
+    mutations: list[BulkTaskMutation]
+    items: list[BulkTaskPreviewItem]
+    affected_count: int
+    warnings: list[str] = Field(default_factory=list)
+    expected_task_versions: dict[str, str]
+    expected_plan_versions: dict[str, str | None]
+    interpretation: str | None = None
+
+
+class NaturalLanguageBulkRequest(BaseModel):
+    instruction: str = Field(min_length=1, max_length=2000)
+    task_ids: list[UUID] = Field(min_length=1, max_length=100)
+
+
+def _version_value(value: datetime | None) -> str:
+    if value is None:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.isoformat()
+
+
+def _parse_plan_date(value: str) -> datetime:
+    try:
+        return datetime.strptime(value, "%Y-%m-%d")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid plan date") from exc
+
+
+def _load_bulk_tasks(
+    session: Session, owner_id: str | UUID, mutations: list[BulkTaskMutation]
+) -> dict[UUID, tuple[Task, Goal, Project]]:
+    task_ids = {mutation.task_id for mutation in mutations}
+    rows = _owned_task_hierarchy(session, owner_id, task_ids)
+    if len(rows) != len(task_ids):
+        raise HTTPException(status_code=404, detail="One or more tasks were not found")
+
+    goal_ids = {
+        mutation.patch.goal_id
+        for mutation in mutations
+        if mutation.patch.goal_id is not None
+    }
+    if goal_ids:
+        owned_goal_ids = set(
+            session.exec(
+                select(Goal.id)
+                .join(Project, Goal.project_id == Project.id)
+                .where(
+                    Project.owner_id == UUID(str(owner_id)),
+                    Goal.id.in_(goal_ids),
+                )
+            ).all()
+        )
+        if owned_goal_ids != goal_ids:
+            raise HTTPException(status_code=404, detail="Target goal was not found")
+    return rows
+
+
+def _get_plan(
+    session: Session, owner_id: UUID, scope: str, target_date: str
+) -> Schedule | WeeklySchedule | None:
+    parsed = _parse_plan_date(target_date)
+    model = Schedule if scope == "daily" else WeeklySchedule
+    date_column = Schedule.date if scope == "daily" else WeeklySchedule.week_start_date
+    return session.exec(
+        select(model).where(model.user_id == owner_id, date_column == parsed)
+    ).first()
+
+
+def _plan_key(scope: str, target_date: str) -> str:
+    return f"{scope}:{target_date}"
+
+
+def _daily_members(plan: Schedule | None) -> set[str]:
+    payload = (plan.plan_json if plan else {}) or {}
+    members = {str(task_id) for task_id in payload.get("planned_task_ids", [])}
+    members.update(
+        str(item.get("task_id") or item.get("taskId"))
+        for item in payload.get("assignments", [])
+        if item.get("task_id") or item.get("taskId")
+    )
+    return members
+
+
+def _weekly_members(plan: WeeklySchedule | None) -> set[str]:
+    payload = (plan.schedule_json if plan else {}) or {}
+    members = {str(task_id) for task_id in payload.get("selected_task_ids", [])}
+    for item in payload.get("selected_tasks", []):
+        if isinstance(item, dict):
+            task_id = item.get("task_id") or item.get("taskId")
+        else:
+            task_id = item
+        if task_id:
+            members.add(str(task_id))
+    return members
+
+
+def _preview_bulk(
+    session: Session,
+    owner_id: str | UUID,
+    request: BulkTaskRequest,
+    *,
+    interpretation: str | None = None,
+    initial_warnings: list[str] | None = None,
+) -> BulkTaskPreviewResponse:
+    rows = _load_bulk_tasks(session, owner_id, request.mutations)
+    expected_plan_versions: dict[str, str | None] = {}
+    items: list[BulkTaskPreviewItem] = []
+    warnings = list(initial_warnings or [])
+    plan_cache: dict[str, Schedule | WeeklySchedule | None] = {}
+
+    for mutation in request.mutations:
+        task, _goal, _project = rows[mutation.task_id]
+        diffs: list[BulkFieldDiff] = []
+        patch_values = mutation.patch.model_dump(exclude_unset=True)
+        for field_name, after in patch_values.items():
+            before = getattr(task, field_name)
+            before_value = before.value if hasattr(before, "value") else before
+            after_value = after.value if hasattr(after, "value") else after
+            if str(before_value) != str(after_value):
+                diffs.append(
+                    BulkFieldDiff(
+                        field=field_name, before=before_value, after=after_value
+                    )
+                )
+
+        for plan_change in mutation.plans:
+            key = _plan_key(plan_change.scope, plan_change.target_date)
+            if key not in plan_cache:
+                plan_cache[key] = _get_plan(
+                    session,
+                    UUID(str(owner_id)),
+                    plan_change.scope,
+                    plan_change.target_date,
+                )
+                plan = plan_cache[key]
+                expected_plan_versions[key] = (
+                    _version_value(plan.updated_at) if plan else None
+                )
+            plan = plan_cache[key]
+            members = (
+                _daily_members(plan if isinstance(plan, Schedule) else None)
+                if plan_change.scope == "daily"
+                else _weekly_members(plan if isinstance(plan, WeeklySchedule) else None)
+            )
+            is_member = str(task.id) in members
+            after_member = plan_change.action == "add"
+            if is_member == after_member:
+                warnings.append(
+                    f"{task.title}: {plan_change.target_date} の{plan_change.scope}計画は変更不要です"
+                )
+            else:
+                diffs.append(
+                    BulkFieldDiff(
+                        field=f"plan:{plan_change.scope}:{plan_change.target_date}",
+                        before=is_member,
+                        after=after_member,
+                    )
+                )
+
+        items.append(
+            BulkTaskPreviewItem(task_id=mutation.task_id, title=task.title, diffs=diffs)
+        )
+
+    return BulkTaskPreviewResponse(
+        mutations=request.mutations,
+        items=items,
+        affected_count=sum(bool(item.diffs) for item in items),
+        warnings=warnings,
+        expected_task_versions={
+            str(task_id): _version_value(task.updated_at)
+            for task_id, (task, _goal, _project) in rows.items()
+        },
+        expected_plan_versions=expected_plan_versions,
+        interpretation=interpretation,
+    )
+
+
+def _sanitize_ai_bulk_mutations(
+    payload: object,
+    allowed_task_ids: set[UUID],
+    allowed_goal_ids: set[UUID],
+) -> tuple[list[BulkTaskMutation], list[str]]:
+    """Discard unsafe AI output field-by-field while preserving valid changes."""
+    warnings: list[str] = []
+    if not isinstance(payload, dict):
+        return [], ["AI応答がJSONオブジェクトではないため、変更を破棄しました"]
+    raw_mutations = payload.get("mutations", [])
+    if not isinstance(raw_mutations, list):
+        return [], ["AI応答のmutationsが配列ではないため、変更を破棄しました"]
+
+    allowed_task_id_strings = {str(task_id) for task_id in allowed_task_ids}
+    allowed_goal_id_strings = {str(goal_id) for goal_id in allowed_goal_ids}
+    merged: dict[str, dict[str, object]] = {}
+    allowed_patch_fields = {"status", "priority", "due_date", "goal_id"}
+    for index, raw in enumerate(raw_mutations, start=1):
+        if not isinstance(raw, dict):
+            warnings.append(f"AI変更案{index}: オブジェクトではないため破棄しました")
+            continue
+        for field_name in set(raw) - {"task_id", "patch", "plans"}:
+            warnings.append(f"AI変更案{index}: 未許可項目 {field_name} を破棄しました")
+        task_id = str(raw.get("task_id") or "")
+        if task_id not in allowed_task_id_strings:
+            warnings.append(f"AI変更案{index}: 選択範囲外のタスクIDを破棄しました")
+            continue
+
+        clean_patch: dict[str, object] = {}
+        raw_patch = raw.get("patch", {})
+        if not isinstance(raw_patch, dict):
+            warnings.append(f"AI変更案{index}: patchが不正なため破棄しました")
+            raw_patch = {}
+        for field_name, value in raw_patch.items():
+            if field_name not in allowed_patch_fields:
+                warnings.append(
+                    f"AI変更案{index}: 未許可の変更項目 {field_name} を破棄しました"
+                )
+                continue
+            try:
+                validated_patch = BulkTaskPatch.model_validate({field_name: value})
+                validated_value = validated_patch.model_dump(exclude_unset=True)[
+                    field_name
+                ]
+            except Exception:
+                warnings.append(
+                    f"AI変更案{index}: {field_name} の値が不正なため破棄しました"
+                )
+                continue
+            if (
+                field_name == "goal_id"
+                and str(validated_value) not in allowed_goal_id_strings
+            ):
+                warnings.append(
+                    f"AI変更案{index}: 所有していないゴールIDを破棄しました"
+                )
+                continue
+            clean_patch[field_name] = validated_value
+
+        clean_plans: list[PlanMembershipMutation] = []
+        raw_plans = raw.get("plans", [])
+        if not isinstance(raw_plans, list):
+            warnings.append(f"AI変更案{index}: plansが不正なため破棄しました")
+            raw_plans = []
+        for plan_index, raw_plan in enumerate(raw_plans, start=1):
+            try:
+                plan_change = PlanMembershipMutation.model_validate(raw_plan)
+                _parse_plan_date(plan_change.target_date)
+            except Exception:
+                warnings.append(
+                    f"AI変更案{index}の計画変更{plan_index}: 値が不正なため破棄しました"
+                )
+                continue
+            if plan_change not in clean_plans:
+                clean_plans.append(plan_change)
+
+        if not clean_patch and not clean_plans:
+            continue
+        target = merged.setdefault(
+            task_id,
+            {"task_id": task_id, "patch": {}, "plans": []},
+        )
+        target_patch = target["patch"]
+        if isinstance(target_patch, dict):
+            target_patch.update(clean_patch)
+        target_plans = target["plans"]
+        if isinstance(target_plans, list):
+            for plan_change in clean_plans:
+                serialized = plan_change.model_dump()
+                if serialized not in target_plans:
+                    target_plans.append(serialized)
+
+    mutations = [BulkTaskMutation.model_validate(item) for item in merged.values()]
+    return mutations, warnings
+
+
+def _apply_daily_membership(
+    session: Session,
+    owner_id: UUID,
+    target_date: str,
+    task: Task,
+    action: str,
+) -> None:
+    plan = _get_plan(session, owner_id, "daily", target_date)
+    if plan is None:
+        plan = Schedule(
+            id=uuid4(),
+            user_id=owner_id,
+            date=_parse_plan_date(target_date),
+            plan_json={"assignments": [], "planned_task_ids": []},
+        )
+    payload = dict(plan.plan_json or {})
+    assignments = list(payload.get("assignments", []))
+    members = list(dict.fromkeys([*_daily_members(plan), str(task.id)]))
+    if action == "remove":
+        members = [task_id for task_id in members if task_id != str(task.id)]
+        assignments = [
+            assignment
+            for assignment in assignments
+            if str(assignment.get("task_id") or assignment.get("taskId"))
+            != str(task.id)
+        ]
+    payload["planned_task_ids"] = members
+    payload["assignments"] = assignments
+    payload["total_scheduled_hours"] = sum(
+        float(assignment.get("duration_hours", 0) or 0) for assignment in assignments
+    )
+    plan.plan_json = payload
+    plan.updated_at = datetime.now(UTC)
+    session.add(plan)
+
+
+def _apply_weekly_membership(
+    session: Session,
+    owner_id: UUID,
+    target_date: str,
+    task: Task,
+    action: str,
+) -> None:
+    plan = _get_plan(session, owner_id, "weekly", target_date)
+    if plan is None:
+        plan = WeeklySchedule(
+            id=uuid4(),
+            user_id=owner_id,
+            week_start_date=_parse_plan_date(target_date),
+            schedule_json={"selected_tasks": [], "assigned_task_hours": {}},
+        )
+    payload = dict(plan.schedule_json or {})
+    selected = list(payload.get("selected_tasks", []))
+    assigned = dict(payload.get("assigned_task_hours", {}))
+    pinned = list(payload.get("pinned_task_ids", []))
+    selected = [
+        item
+        for item in selected
+        if str(
+            (item.get("task_id") or item.get("taskId"))
+            if isinstance(item, dict)
+            else item
+        )
+        != str(task.id)
+    ]
+    if action == "add":
+        selected.append(
+            {
+                "task_id": str(task.id),
+                "task_title": task.title,
+                "estimated_hours": float(task.estimate_hours),
+                "priority": task.priority,
+                "rationale": "タスクワークスペースから手動追加",
+            }
+        )
+        assigned[str(task.id)] = float(task.estimate_hours)
+    else:
+        assigned.pop(str(task.id), None)
+        pinned = [task_id for task_id in pinned if str(task_id) != str(task.id)]
+    payload["selected_tasks"] = selected
+    if "selected_task_ids" in payload:
+        payload["selected_task_ids"] = [
+            str(item.get("task_id") or item.get("taskId"))
+            if isinstance(item, dict)
+            else str(item)
+            for item in selected
+        ]
+    payload["assigned_task_hours"] = assigned
+    payload["pinned_task_ids"] = pinned
+    payload["total_allocated_hours"] = sum(float(value) for value in assigned.values())
+    plan.schedule_json = payload
+    plan.updated_at = datetime.now(UTC)
+    session.add(plan)
+
+
+@router.post("/bulk/preview", response_model=BulkTaskPreviewResponse)
+async def preview_bulk_task_changes(
+    request: BulkTaskRequest,
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> BulkTaskPreviewResponse:
+    """Validate a bulk change and return its exact, non-mutating diff."""
+    return _preview_bulk(session, current_user.user_id, request)
+
+
+@router.post("/bulk/apply", response_model=BulkTaskPreviewResponse)
+async def apply_bulk_task_changes(
+    request: BulkTaskApplyRequest,
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> BulkTaskPreviewResponse:
+    """Apply a previously previewed bulk change atomically."""
+    owner_id = UUID(str(current_user.user_id))
+    preview_request = BulkTaskRequest(mutations=request.mutations)
+    preview = _preview_bulk(session, owner_id, preview_request)
+    if preview.expected_task_versions != request.expected_task_versions:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="One or more tasks changed after the preview",
+        )
+    if preview.expected_plan_versions != request.expected_plan_versions:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A daily or weekly plan changed after the preview",
+        )
+
+    rows = _load_bulk_tasks(session, owner_id, request.mutations)
+    now = datetime.now(UTC)
+    try:
+        for mutation in request.mutations:
+            task = rows[mutation.task_id][0]
+            for field_name, value in mutation.patch.model_dump(
+                exclude_unset=True
+            ).items():
+                setattr(task, field_name, value)
+            if mutation.patch.model_fields_set:
+                task.updated_at = now
+                session.add(task)
+
+            for plan_change in mutation.plans:
+                existing = _get_plan(
+                    session,
+                    owner_id,
+                    plan_change.scope,
+                    plan_change.target_date,
+                )
+                members = (
+                    _daily_members(existing if isinstance(existing, Schedule) else None)
+                    if plan_change.scope == "daily"
+                    else _weekly_members(
+                        existing if isinstance(existing, WeeklySchedule) else None
+                    )
+                )
+                should_add = plan_change.action == "add"
+                if (str(task.id) in members) == should_add:
+                    continue
+                if plan_change.scope == "daily":
+                    _apply_daily_membership(
+                        session,
+                        owner_id,
+                        plan_change.target_date,
+                        task,
+                        plan_change.action,
+                    )
+                else:
+                    _apply_weekly_membership(
+                        session,
+                        owner_id,
+                        plan_change.target_date,
+                        task,
+                        plan_change.action,
+                    )
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+
+    return preview
+
+
+@router.post("/bulk/natural-language/preview", response_model=BulkTaskPreviewResponse)
+async def preview_natural_language_bulk_changes(
+    request: NaturalLanguageBulkRequest,
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> BulkTaskPreviewResponse:
+    """Translate a bounded natural-language instruction into a safe bulk preview."""
+    owner_id = UUID(str(current_user.user_id))
+    placeholder_mutations = [
+        BulkTaskMutation(task_id=task_id) for task_id in request.task_ids
+    ]
+    rows = _load_bulk_tasks(session, owner_id, placeholder_mutations)
+    settings = session.exec(
+        select(UserSettings).where(UserSettings.user_id == owner_id)
+    ).first()
+    if not settings or not settings.openai_api_key_encrypted:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OpenAI API key is not configured",
+        )
+    try:
+        api_key = get_crypto_service().decrypt(settings.openai_api_key_encrypted)
+        if not api_key:
+            raise ValueError("OpenAI API key could not be decrypted")
+        goals = session.exec(
+            select(Goal, Project)
+            .join(Project, Goal.project_id == Project.id)
+            .where(Project.owner_id == owner_id)
+        ).all()
+        allowed_goal_ids = {goal.id for goal, _project in goals if goal.id is not None}
+        client = OpenAI(api_key=api_key, timeout=30.0)
+        model = settings.openai_model or "gpt-5.5"
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Return JSON only. Never invent task or goal IDs. Only use the "
+                        "allowed fields and task IDs supplied by the user. Omit unchanged tasks."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "instruction": request.instruction,
+                            "today_jst": datetime.now(UTC)
+                            .astimezone(APP_TIMEZONE)
+                            .date()
+                            .isoformat(),
+                            "schema": {
+                                "interpretation": "short Japanese summary",
+                                "mutations": [
+                                    {
+                                        "task_id": "one supplied UUID",
+                                        "patch": {
+                                            "status": "pending|in_progress|completed|cancelled",
+                                            "priority": "integer 1..5",
+                                            "due_date": "ISO datetime or null",
+                                            "goal_id": "one supplied goal UUID",
+                                        },
+                                        "plans": [
+                                            {
+                                                "scope": "daily|weekly",
+                                                "action": "add|remove",
+                                                "target_date": "YYYY-MM-DD",
+                                            }
+                                        ],
+                                    }
+                                ],
+                            },
+                            "tasks": [
+                                {
+                                    "id": str(task.id),
+                                    "title": task.title,
+                                    "status": task.status.value,
+                                    "priority": task.priority,
+                                    "due_date": task.due_date.isoformat()
+                                    if task.due_date
+                                    else None,
+                                    "goal_id": str(task.goal_id),
+                                }
+                                for task, _goal, _project in rows.values()
+                            ],
+                            "goals": [
+                                {
+                                    "id": str(goal.id),
+                                    "title": goal.title,
+                                    "project": project.title,
+                                }
+                                for goal, project in goals
+                            ],
+                        },
+                        ensure_ascii=False,
+                    ),
+                },
+            ],
+            response_format={"type": "json_object"},
+            max_completion_tokens=2500,
+            **(
+                {"reasoning_effort": "high"}
+                if model.startswith(("gpt-5.5", "gpt-5.4"))
+                else {}
+            ),
+        )
+        payload = json.loads(response.choices[0].message.content or "{}")
+        mutations, ai_warnings = _sanitize_ai_bulk_mutations(
+            payload,
+            set(request.task_ids),
+            allowed_goal_ids,
+        )
+        if not mutations:
+            mutations = [
+                BulkTaskMutation(task_id=task_id)
+                for task_id in dict.fromkeys(request.task_ids)
+            ]
+        bulk_request = BulkTaskRequest(mutations=mutations)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("Natural language bulk preview failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI instruction could not be converted into safe changes",
+        ) from exc
+
+    return _preview_bulk(
+        session,
+        owner_id,
+        bulk_request,
+        interpretation=str(
+            payload.get("interpretation")
+            if isinstance(payload, dict) and payload.get("interpretation")
+            else request.instruction
+        )[:1000],
+        initial_warnings=ai_warnings,
+    )
 
 
 def build_task_responses_with_dependencies(
@@ -104,8 +746,8 @@ def _plan_date_windows(
 
 def _extract_planned_task_ids(
     session: Session, owner_id: str | UUID
-) -> tuple[set[str], set[str]]:
-    """Return task IDs in today's daily plan and the current weekly plan."""
+) -> tuple[set[str], set[str], set[str]]:
+    """Return today's plan IDs, weekly IDs, and today's placed assignment IDs."""
     owner_uuid = UUID(str(owner_id))
     day_start, day_end, week_start, week_end = _plan_date_windows()
 
@@ -124,19 +766,26 @@ def _extract_planned_task_ids(
         )
     ).all()
 
-    today_ids = {
+    placed_today_ids = {
         str(assignment.get("task_id") or assignment.get("taskId"))
         for schedule in daily_schedules
         for assignment in (schedule.plan_json or {}).get("assignments", [])
         if assignment.get("task_id") or assignment.get("taskId")
     }
+    today_ids = set(placed_today_ids)
+    today_ids.update(
+        str(task_id)
+        for schedule in daily_schedules
+        for task_id in (schedule.plan_json or {}).get("planned_task_ids", [])
+        if task_id
+    )
     week_ids = {
         str(task.get("task_id") or task.get("taskId"))
         for schedule in weekly_schedules
         for task in (schedule.schedule_json or {}).get("selected_tasks", [])
         if task.get("task_id") or task.get("taskId")
     }
-    return today_ids, week_ids
+    return today_ids, week_ids, placed_today_ids
 
 
 def _valid_task_uuids(task_ids: set[str]) -> set[UUID]:
@@ -207,6 +856,7 @@ def build_workspace_items(
     owner_id: str | UUID,
     today_ids: set[str] | None = None,
     week_ids: set[str] | None = None,
+    placed_today_ids: set[str] | None = None,
 ) -> list[TaskWorkspaceItem]:
     """Hydrate workspace query rows without per-task database calls."""
     if not rows:
@@ -215,8 +865,10 @@ def build_workspace_items(
     tasks = [row[0] for row in rows]
     task_ids = [task.id for task in tasks if task.id is not None]
     dependencies = task_service.get_task_dependencies_batch(session, task_ids, owner_id)
-    if today_ids is None or week_ids is None:
-        today_ids, week_ids = _extract_planned_task_ids(session, owner_id)
+    if today_ids is None or week_ids is None or placed_today_ids is None:
+        today_ids, week_ids, placed_today_ids = _extract_planned_task_ids(
+            session, owner_id
+        )
 
     items: list[TaskWorkspaceItem] = []
     for task, goal, project, actual_minutes, last_worked_at in rows:
@@ -251,6 +903,9 @@ def build_workspace_items(
                 blocking_task_ids=blocking_task_ids,
                 last_worked_at=last_worked_at,
                 planned_today=str(task.id) in today_ids,
+                planned_today_unplaced=(
+                    str(task.id) in today_ids and str(task.id) not in placed_today_ids
+                ),
                 planned_this_week=str(task.id) in week_ids,
             )
         )
@@ -281,8 +936,11 @@ async def get_task_workspace(
     excluded_task_ids: set[UUID] | None = None
     today_ids: set[str] | None = None
     week_ids: set[str] | None = None
+    placed_today_ids: set[str] | None = None
     if plan is not None:
-        today_ids, week_ids = _extract_planned_task_ids(session, current_user.user_id)
+        today_ids, week_ids, placed_today_ids = _extract_planned_task_ids(
+            session, current_user.user_id
+        )
         if plan == TaskWorkspacePlanFilter.TODAY:
             included_task_ids = _valid_task_uuids(today_ids)
         elif plan == TaskWorkspacePlanFilter.WEEK:
@@ -315,6 +973,7 @@ async def get_task_workspace(
             current_user.user_id,
             today_ids=today_ids,
             week_ids=week_ids,
+            placed_today_ids=placed_today_ids,
         ),
         total=total,
         skip=skip,
@@ -358,7 +1017,9 @@ async def get_task_dependency_graph(
     included_task_ids: set[UUID] | None = None
     excluded_task_ids: set[UUID] | None = None
     if plan is not None:
-        today_ids, week_ids = _extract_planned_task_ids(session, current_user.user_id)
+        today_ids, week_ids, _placed_today_ids = _extract_planned_task_ids(
+            session, current_user.user_id
+        )
         if plan == TaskWorkspacePlanFilter.TODAY:
             included_task_ids = _valid_task_uuids(today_ids)
         elif plan == TaskWorkspacePlanFilter.WEEK:

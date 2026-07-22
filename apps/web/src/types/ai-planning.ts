@@ -91,6 +91,8 @@ export interface WeeklyPlanResponse {
   total_planned_hours: number;
   /** タスク計画一覧 */
   task_plans: TaskPlan[];
+  /** 手動編集で固定したタスクID */
+  pinned_task_ids?: string[];
   /** 通常タスクの割り当て時間（キー: タスクID, 値: 時間） */
   assigned_task_hours?: Record<string, number>;
   /** 週課の割り当て時間（キー: 週課ID, 値: 時間） */
@@ -367,6 +369,8 @@ export interface WeeklyScheduleData {
   week_start_date: string;
   /** 選択されたタスク一覧 */
   selected_tasks: TaskPlan[];
+  /** 手動編集で固定されたタスク */
+  pinned_task_ids?: string[];
   /** 通常タスクの割り当て時間（キー: タスクID, 値: 時間） */
   assigned_task_hours?: Record<string, number>;
   /** 週課の割り当て時間（キー: 週課ID, 値: 時間） */
@@ -377,6 +381,10 @@ export interface WeeklyScheduleData {
   project_allocations: ProjectAllocation[];
   /** 最適化インサイト */
   optimization_insights: string[];
+  /** 計画生成・編集時の推奨事項 */
+  recommendations?: string[];
+  /** 設定した週間容量 */
+  capacity_hours?: number;
   /** 制約分析結果 */
   constraint_analysis: ConstraintAnalysis;
   /** ソルバーメトリクス */

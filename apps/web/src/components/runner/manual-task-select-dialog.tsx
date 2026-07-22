@@ -16,6 +16,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useWorkSessionResumeContext } from '@/hooks/use-work-sessions';
 import {
   Select,
   SelectContent,
@@ -56,6 +58,7 @@ export function ManualTaskSelectDialog({
   const [chooseAnotherTask, setChooseAnotherTask] = useState(false);
   const isInitialTaskMode = Boolean(initialTaskId) && !chooseAnotherTask;
   const deferredSearch = useDeferredValue(searchQuery.trim());
+  const resumeContext = useWorkSessionResumeContext(selectedTaskId || undefined);
 
   // Fetch all projects
   const { data: projects = [], isLoading: projectsLoading } = useQuery({
@@ -209,6 +212,17 @@ export function ManualTaskSelectDialog({
                 別のタスクを選択
               </Button>
             </div>
+          )}
+
+          {selectedTask && resumeContext.data && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                前回の中断（{new Date(resumeContext.data.interrupted_at).toLocaleString('ja-JP')}）: {resumeContext.data.interruption_note}
+                {resumeContext.data.remaining_estimate_hours != null &&
+                  `（残り ${resumeContext.data.remaining_estimate_hours}h）`}
+              </AlertDescription>
+            </Alert>
           )}
 
           {/* Project filter */}

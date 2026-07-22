@@ -2,7 +2,7 @@
  * Runner/Focus mode type definitions
  */
 
-import type { WorkSession, SessionDecision, ContinueReason } from './work-session';
+import type { WorkSession, SessionDecision, ContinueReason, SwitchDisposition } from './work-session';
 import type { Task } from './task';
 import type { Goal } from './goal';
 import type { Project } from './project';
@@ -72,6 +72,7 @@ export interface UseRunnerReturn {
   isCheckingOut: boolean;
   isPausing: boolean;
   isResuming: boolean;
+  isSwitching: boolean;
 
   // Actions
   startSession: (
@@ -83,6 +84,13 @@ export interface UseRunnerReturn {
   checkout: (decision: SessionDecision, options?: CheckoutOptions) => Promise<RescheduleSuggestion | null>;
   pauseSession: () => Promise<void>;
   resumeSession: (extendCheckout?: boolean) => Promise<void>;
+  switchSession: (
+    taskId: string,
+    disposition: SwitchDisposition,
+    interruptionNote: string | undefined,
+    plannedCheckoutAt: string,
+    plannedOutcome?: string,
+  ) => Promise<void>;
 
   // Refresh
   refetchSession: () => void;

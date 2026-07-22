@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useDeferredValue, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -21,6 +22,8 @@ import { AppHeader } from "@/components/layout/app-header";
 import { QuickTaskList } from "@/components/quick-tasks";
 import { TaskDependencyMap } from "@/components/tasks/task-dependency-map";
 import { TaskDependencyPanel } from "@/components/tasks/task-dependency-panel";
+import { TaskBulkToolbar } from "@/components/tasks/task-bulk-toolbar";
+import { TaskPickerDialog } from "@/components/runner/task-picker-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,9 +75,13 @@ const PRESETS: Array<{ id: Preset; label: string }> = [
 function TaskRow({
   task,
   onOpen,
+  selected,
+  onToggle,
 }: {
   task: TaskWorkspaceItem;
   onOpen: () => void;
+  selected: boolean;
+  onToggle: () => void;
 }) {
   const updateTask = useUpdateTask();
   const [dependenciesOpen, setDependenciesOpen] = useState(false);
@@ -106,7 +113,14 @@ function TaskRow({
 
   return (
     <div className="border-b border-border last:border-b-0">
-      <div className="grid gap-3 px-4 py-3 lg:grid-cols-[100px_minmax(240px,2fr)_minmax(180px,1fr)_120px_100px_80px_70px_170px] lg:items-center">
+      <div className="grid gap-3 px-4 py-3 lg:grid-cols-[36px_100px_minmax(240px,2fr)_minmax(180px,1fr)_120px_100px_80px_70px_170px] lg:items-center">
+        <input
+          type="checkbox"
+          aria-label={`${task.title}を選択`}
+          checked={selected}
+          onChange={onToggle}
+          className="h-4 w-4"
+        />
         <div>
           {task.status === "completed" ? (
             <Badge variant="success">完了</Badge>
@@ -129,7 +143,11 @@ function TaskRow({
             <span>
               {task.project_title} › {task.goal_title}
             </span>
-            {task.planned_today && <Badge variant="info">今日</Badge>}
+            {task.planned_today && (
+              <Badge variant="info">
+                {task.planned_today_unplaced ? "今日・未配置" : "今日"}
+              </Badge>
+            )}
             {!task.planned_today && task.planned_this_week && (
               <Badge variant="secondary">今週</Badge>
             )}
@@ -218,7 +236,7 @@ function TaskRow({
       </div>
 
       {dependenciesOpen && dependencies.length > 0 && (
-        <div className="border-t bg-muted/30 px-4 py-3 lg:pl-[336px]">
+        <div className="border-t bg-muted/30 px-4 py-3 lg:pl-[372px]">
           <div className="mb-2 text-xs font-medium text-muted-foreground">
             先に完了すべきタスク
           </div>
@@ -254,6 +272,7 @@ function TaskRow({
 
 export default function TasksPage() {
   const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [preset, setPreset] = useState<Preset>(DEFAULT_TASK_WORKSPACE_PRESET);
   const [view, setView] = useState<"list" | "graph">("list");
@@ -268,6 +287,8 @@ export default function TasksPage() {
   const [convertGoalId, setConvertGoalId] = useState("");
   const [inboxVersion, setInboxVersion] = useState(0);
   const [isConverting, setIsConverting] = useState(false);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+  const [taskPickerOpen, setTaskPickerOpen] = useState(false);
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects", "task-workspace"],
@@ -349,14 +370,27 @@ export default function TasksPage() {
       <AppHeader currentPage="tasks" />
       <main className="mx-auto max-w-screen-2xl space-y-5 px-4 py-6 sm:px-6 lg:px-8">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold">
-            <ListTodo className="h-6 w-6" />
-            タスクワークスペース
-          </h1>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="flex items-center gap-2 text-2xl font-bold">
+              <ListTodo className="h-6 w-6" />
+              タスクワークスペース
+            </h1>
+            <Button variant="outline" onClick={() => setTaskPickerOpen(true)}>
+              <Play className="mr-2 h-4 w-4" />
+              タスクを選んでRunnerへ
+            </Button>
+          </div>
           <p className="mt-1 text-sm text-muted-foreground">
             プロジェクト階層をまたいで、次に取り組むタスクを探して調整できます。
           </p>
         </div>
+
+        <TaskBulkToolbar
+          selectedTaskIds={[...selectedTaskIds]}
+          goals={goals}
+          onClear={() => setSelectedTaskIds(new Set())}
+          onApplied={() => setPage(0)}
+        />
 
         <div className="flex flex-col gap-3 xl:flex-row xl:items-stretch xl:justify-between">
           <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-5">
@@ -556,7 +590,22 @@ export default function TasksPage() {
 
             {view === "list" ? (
               <Card className="overflow-hidden">
-                <div className="sticky top-0 z-10 hidden grid-cols-[100px_minmax(240px,2fr)_minmax(180px,1fr)_120px_100px_80px_70px_170px] gap-3 border-b bg-muted/95 px-4 py-2 text-xs font-medium text-muted-foreground backdrop-blur lg:grid">
+                <div className="sticky top-0 z-10 hidden grid-cols-[36px_100px_minmax(240px,2fr)_minmax(180px,1fr)_120px_100px_80px_70px_170px] gap-3 border-b bg-muted/95 px-4 py-2 text-xs font-medium text-muted-foreground backdrop-blur lg:grid">
+                  <input
+                    type="checkbox"
+                    aria-label="表示中のタスクをすべて選択"
+                    checked={visibleTasks.length > 0 && visibleTasks.every((task) => selectedTaskIds.has(task.id))}
+                    onChange={(event) => {
+                      setSelectedTaskIds((current) => {
+                        const next = new Set(current);
+                        visibleTasks.forEach((task) => {
+                          if (event.target.checked && next.size < 100) next.add(task.id);
+                          if (!event.target.checked) next.delete(task.id);
+                        });
+                        return next;
+                      });
+                    }}
+                  />
                   <span>実行状態</span>
                   <span>タスク</span>
                   <span>依存状況</span>
@@ -584,6 +633,16 @@ export default function TasksPage() {
                       key={task.id}
                       task={task}
                       onOpen={() => setSelectedTaskId(task.id)}
+                      selected={selectedTaskIds.has(task.id)}
+                      onToggle={() => {
+                        setSelectedTaskIds((current) => {
+                          const next = new Set(current);
+                          if (next.has(task.id)) next.delete(task.id);
+                          else if (next.size < 100) next.add(task.id);
+                          else toast({ title: "一度に選択できるのは100件までです", variant: "destructive" });
+                          return next;
+                        });
+                      }}
                     />
                   ))
                 )}
@@ -638,6 +697,12 @@ export default function TasksPage() {
         availableTasks={visibleTasks}
         onClose={() => setSelectedTaskId(null)}
         onSelectTask={setSelectedTaskId}
+      />
+
+      <TaskPickerDialog
+        open={taskPickerOpen}
+        onOpenChange={setTaskPickerOpen}
+        onSelect={(task) => router.push(`/runner?taskId=${encodeURIComponent(task.id)}`)}
       />
 
       <Dialog

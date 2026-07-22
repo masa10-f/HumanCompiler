@@ -29,6 +29,9 @@ from humancompiler_api.models import (
     WorkSessionUpdate,
     WorkSessionPauseRequest,
     WorkSessionResumeRequest,
+    WorkSessionSwitchRequest,
+    WorkSessionResumeContextResponse,
+    WorkSessionSwitchResponse,
     WorkSessionResponse,
     WorkSessionWithLogResponse,
     WorkSessionWithRescheduleResponse,
@@ -139,6 +142,30 @@ async def checkout_session(
 
 
 @router.post(
+    "/switch",
+    response_model=WorkSessionSwitchResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Session or task not found"},
+        409: {"model": ErrorResponse, "description": "Target task is unavailable"},
+    },
+)
+async def switch_session(
+    switch_data: WorkSessionSwitchRequest,
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> WorkSessionSwitchResponse:
+    """End the current work item and start another in one transaction."""
+    previous, current, log = work_session_service.switch_session(
+        session, current_user.user_id, switch_data
+    )
+    return WorkSessionSwitchResponse(
+        previous_session=WorkSessionResponse.model_validate(previous),
+        current_session=WorkSessionResponse.model_validate(current),
+        generated_log=LogResponse.model_validate(log),
+    )
+
+
+@router.post(
     "/pause",
     response_model=WorkSessionResponse,
     responses={
@@ -217,6 +244,34 @@ async def get_session_history(
         session, current_user.user_id, skip, limit
     )
     return [WorkSessionResponse.model_validate(s) for s in sessions]
+
+
+@router.get(
+    "/task/{task_id}/resume-context",
+    response_model=WorkSessionResumeContextResponse | None,
+)
+async def get_resume_context(
+    task_id: str,
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> WorkSessionResumeContextResponse | None:
+    """Return the latest saved interruption note for a task."""
+    context = work_session_service.get_resume_context(
+        session, current_user.user_id, task_id
+    )
+    if (
+        context is None
+        or context.ended_at is None
+        or context.switch_disposition is None
+    ):
+        return None
+    return WorkSessionResumeContextResponse(
+        task_id=context.task_id,
+        interruption_note=context.interruption_note or "",
+        interrupted_at=context.ended_at,
+        disposition=context.switch_disposition,
+        remaining_estimate_hours=context.remaining_estimate_hours,
+    )
 
 
 @router.get(

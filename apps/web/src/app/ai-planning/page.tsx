@@ -39,6 +39,7 @@ import { AppHeader } from "@/components/layout/app-header";
 import { WeeklyRecurringTaskSelector } from "@/components/weekly-recurring-task-selector";
 import { WeeklyRecurringTaskDialog } from "@/components/weekly-recurring-task-dialog";
 import { ProjectAllocationSettings } from "@/components/scheduling/project-allocation-settings";
+import { WeeklyPlanEditor } from "@/components/scheduling/weekly-plan-editor";
 import { toast } from "@/hooks/use-toast";
 import {
   aiPlanningApi,
@@ -49,11 +50,45 @@ import {
 import { getJSTDateString, getJSTISOString } from "@/lib/date-utils";
 import { getSelectableProjects } from "@/lib/project-filters";
 import type {
+  TaskPlan,
+  WeeklyScheduleData,
   WeeklyPlanResponse,
   SavedWeeklySchedule,
 } from "@/types/ai-planning";
 import type { WeeklyReportResponse } from "@/types/reports";
 import type { WeeklyRecurringTask } from "@/types/weekly-recurring-task";
+
+function normalizeSavedTaskPlans(data: WeeklyScheduleData): TaskPlan[] {
+  const legacy = data as unknown as Record<string, unknown>;
+  const rawTasks = Array.isArray(legacy.selected_tasks)
+    ? legacy.selected_tasks
+    : Array.isArray(legacy.selected_task_ids)
+      ? legacy.selected_task_ids
+      : [];
+  const assigned = (legacy.assigned_task_hours ?? {}) as Record<string, number>;
+  return rawTasks.flatMap((raw): TaskPlan[] => {
+    if (typeof raw === "string") {
+      return [{
+        task_id: raw,
+        task_title: `タスク ${raw.slice(0, 8)}`,
+        estimated_hours: Number(assigned[raw] ?? 1),
+        priority: 3,
+        rationale: "旧形式の週次計画から復元",
+      }];
+    }
+    if (!raw || typeof raw !== "object") return [];
+    const item = raw as Record<string, unknown>;
+    const taskId = String(item.task_id ?? item.taskId ?? item.id ?? "");
+    if (!taskId) return [];
+    return [{
+      task_id: taskId,
+      task_title: String(item.task_title ?? item.taskTitle ?? item.title ?? `タスク ${taskId.slice(0, 8)}`),
+      estimated_hours: Number(item.estimated_hours ?? item.estimate_hours ?? assigned[taskId] ?? 1),
+      priority: Number(item.priority ?? 3),
+      rationale: String(item.rationale ?? "保存済み週次計画から復元"),
+    }];
+  });
+}
 
 export default function AIPlanningPage() {
   const { user, session, loading: authLoading } = useAuth();
@@ -354,11 +389,19 @@ export default function AIPlanningPage() {
         project_allocations: weeklyPlan.project_allocations || [],
         optimization_insights: weeklyPlan.insights || [],
         recommendations: weeklyPlan.recommendations || [],
+        pinned_task_ids: weeklyPlan.pinned_task_ids || [],
         capacity_hours: capacityHours,
         generation_timestamp: getJSTISOString(),
       };
 
-      await weeklyScheduleApi.save(weeklyPlan.week_start_date, scheduleData);
+      const saved = await weeklyScheduleApi.updateDraft(
+        weeklyPlan.week_start_date,
+        scheduleData,
+        selectedSchedule?.week_start_date.slice(0, 10) === weeklyPlan.week_start_date
+          ? selectedSchedule.updated_at
+          : undefined,
+      );
+      setSelectedSchedule(saved);
 
       toast({
         title: "週間スケジュールを保存しました",
@@ -623,6 +666,18 @@ export default function AIPlanningPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <WeeklyPlanEditor
+                    plan={weeklyPlan}
+                    capacityHours={capacityHours}
+                    projects={selectableProjects}
+                    canRecalculate={
+                      selectedSchedule?.week_start_date.slice(0, 10) ===
+                      weeklyPlan.week_start_date
+                    }
+                    onChange={setWeeklyPlan}
+                  />
+
+                  <Separator />
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <Card>
                       <CardContent className="pt-6">
@@ -1076,7 +1131,7 @@ export default function AIPlanningPage() {
                           週の計画
                         </div>
                         <div className="text-sm text-gray-600">
-                          {schedule.schedule_json.selected_tasks.length}
+                          {normalizeSavedTaskPlans(schedule.schedule_json).length}
                           個のタスク・
                           {schedule.schedule_json.total_allocated_hours}時間
                         </div>
@@ -1123,10 +1178,37 @@ export default function AIPlanningPage() {
             {selectedSchedule && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Calendar className="h-5 w-5" />
-                    週間スケジュール詳細
-                  </CardTitle>
+                  <div className="flex items-center justify-between gap-3">
+                    <CardTitle className="flex items-center gap-2">
+                      <Calendar className="h-5 w-5" />
+                      週間スケジュール詳細
+                    </CardTitle>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const data = selectedSchedule.schedule_json;
+                        const normalizedTasks = normalizeSavedTaskPlans(data);
+                        setCapacityHours(data.capacity_hours ?? data.total_allocated_hours ?? 40);
+                        setWeeklyPlan({
+                          success: true,
+                          week_start_date: selectedSchedule.week_start_date.slice(0, 10),
+                          total_planned_hours: data.total_allocated_hours ?? 0,
+                          task_plans: normalizedTasks,
+                          assigned_task_hours: data.assigned_task_hours ?? {},
+                          assigned_recurring_task_hours: data.assigned_recurring_task_hours ?? {},
+                          pinned_task_ids: data.pinned_task_ids ?? [],
+                          recommendations: data.recommendations ?? [],
+                          insights: data.optimization_insights ?? [],
+                          project_allocations: data.project_allocations ?? [],
+                          generated_at: data.generated_at ?? selectedSchedule.updated_at,
+                        });
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                    >
+                      <Edit className="mr-2 h-4 w-4" />
+                      この計画を編集
+                    </Button>
+                  </div>
                   <CardDescription>
                     {new Date(
                       selectedSchedule.week_start_date,
@@ -1147,8 +1229,9 @@ export default function AIPlanningPage() {
                           <div>
                             <div className="text-2xl font-bold">
                               {
-                                selectedSchedule.schedule_json.selected_tasks
-                                  .length
+                                normalizeSavedTaskPlans(
+                                  selectedSchedule.schedule_json,
+                                ).length
                               }
                             </div>
                             <div className="text-xs text-gray-500">
@@ -1187,7 +1270,7 @@ export default function AIPlanningPage() {
                             <div className="text-2xl font-bold">
                               {
                                 selectedSchedule.schedule_json
-                                  .project_allocations.length
+                                  .project_allocations?.length ?? 0
                               }
                             </div>
                             <div className="text-xs text-gray-500">
@@ -1206,7 +1289,7 @@ export default function AIPlanningPage() {
                       選択されたタスク
                     </h4>
                     <div className="space-y-2">
-                      {selectedSchedule.schedule_json.selected_tasks.map(
+                      {normalizeSavedTaskPlans(selectedSchedule.schedule_json).map(
                         (task, index) => (
                           <div
                             key={index}

@@ -137,6 +137,7 @@ export interface TaskWorkspaceItem extends Task {
   blocking_task_ids: string[];
   last_worked_at: string | null;
   planned_today: boolean;
+  planned_today_unplaced: boolean;
   planned_this_week: boolean;
 }
 
@@ -206,8 +207,47 @@ export interface TaskWorkspaceFilters {
   search?: string;
   blocked?: boolean;
   plan?: 'today' | 'week' | 'unplanned';
-  sortBy?: 'due_date' | 'priority' | 'status' | 'title' | 'updated_at';
+  sortBy?: 'due_date' | 'priority' | 'status' | 'title' | 'updated_at' | 'last_worked_at';
   sortOrder?: 'asc' | 'desc';
+}
+
+export interface PlanMembershipMutation {
+  scope: 'daily' | 'weekly';
+  action: 'add' | 'remove';
+  target_date: string;
+}
+
+export interface BulkTaskPatch {
+  status?: TaskStatus;
+  priority?: number;
+  due_date?: string | null;
+  goal_id?: string;
+}
+
+export interface BulkTaskMutation {
+  task_id: string;
+  patch?: BulkTaskPatch;
+  plans?: PlanMembershipMutation[];
+}
+
+export interface BulkTaskPreview {
+  mutations: BulkTaskMutation[];
+  items: Array<{
+    task_id: string;
+    title: string;
+    diffs: Array<{ field: string; before: unknown; after: unknown }>;
+  }>;
+  affected_count: number;
+  warnings: string[];
+  expected_task_versions: Record<string, string>;
+  expected_plan_versions: Record<string, string | null>;
+  interpretation?: string | null;
+}
+
+export interface BulkTaskApplyRequest {
+  mutations: BulkTaskMutation[];
+  expected_task_versions: Record<string, string>;
+  expected_plan_versions: Record<string, string | null>;
 }
 
 export interface TaskRecommendation {

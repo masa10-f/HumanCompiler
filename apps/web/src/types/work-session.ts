@@ -14,6 +14,7 @@ export type CheckoutType = 'manual' | 'scheduled' | 'overdue' | 'interrupted';
  * Decision made at session checkout
  */
 export type SessionDecision = 'continue' | 'switch' | 'break' | 'complete';
+export type SwitchDisposition = 'complete' | 'pause' | 'defer';
 
 /**
  * Reason for continuing a session
@@ -42,6 +43,8 @@ export interface WorkSession {
   checkout_type: CheckoutType | null;
   decision: SessionDecision | null;
   continue_reason: ContinueReason | null;
+  switch_disposition?: SwitchDisposition | null;
+  interruption_note?: string | null;
   kpt_keep: string | null;
   kpt_problem: string | null;
   kpt_try: string | null;
@@ -110,6 +113,29 @@ export interface WorkSessionPauseRequest {
  */
 export interface WorkSessionResumeRequest {
   extend_checkout?: boolean;
+}
+
+export interface WorkSessionSwitchRequest {
+  next_task_id: string;
+  disposition: SwitchDisposition;
+  interruption_note?: string;
+  planned_checkout_at: string;
+  planned_outcome?: string;
+  remaining_estimate_hours?: number;
+}
+
+export interface WorkSessionSwitchResponse {
+  previous_session: WorkSession;
+  current_session: WorkSession;
+  generated_log: Log;
+}
+
+export interface WorkSessionResumeContext {
+  task_id: string;
+  interruption_note: string;
+  interrupted_at: string;
+  disposition: SwitchDisposition;
+  remaining_estimate_hours: number | null;
 }
 
 /**
