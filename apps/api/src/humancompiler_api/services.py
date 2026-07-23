@@ -785,7 +785,10 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         order_expression = (
             sort_column.desc() if sort_order == SortOrder.DESC else sort_column.asc()
         )
-        if sort_by == TaskWorkspaceSortBy.DUE_DATE:
+        if sort_by in {
+            TaskWorkspaceSortBy.DUE_DATE,
+            TaskWorkspaceSortBy.LAST_WORKED_AT,
+        }:
             order_expression = order_expression.nulls_last()
         statement = (
             statement.order_by(order_expression, Task.priority.asc(), Task.id.asc())
@@ -1692,7 +1695,7 @@ class WorkSessionService(
             id=uuid4(),
             task_id=current.task_id,
             actual_minutes=actual_minutes,
-            comment=current.interruption_note,
+            comment=(current.interruption_note or "")[:500] or None,
         )
         next_session = WorkSession(
             id=uuid4(),
