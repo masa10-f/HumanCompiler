@@ -27,6 +27,7 @@ import { formatDuration } from '@/types/runner';
 import type { RescheduleSuggestion } from '@/types/reschedule';
 import type { TaskWorkspaceItem } from '@/types/task';
 import { goalsApi, projectsApi, tasksApi } from '@/lib/api';
+import { consumeRunnerTaskId } from '@/lib/runner/route-task-id';
 
 export function RunnerPage() {
   const { user, loading: authLoading } = useAuth();
@@ -69,7 +70,8 @@ export function RunnerPage() {
   const [selectedNextTaskId, setSelectedNextTaskId] = useState<string | null>(null);
 
   useEffect(() => {
-    const taskId = new URLSearchParams(window.location.search).get('taskId');
+    if (isLoading) return;
+    const taskId = consumeRunnerTaskId();
     if (!taskId) return;
     if (!session) {
       setInitialTaskId(taskId);
@@ -100,7 +102,7 @@ export function RunnerPage() {
         setTaskPickerOpen(true);
       }
     })();
-  }, [session, switchTarget?.id]);
+  }, [isLoading, session, switchTarget?.id]);
 
   // Issue #227: Reschedule suggestion state
   const [lastRescheduleSuggestion, setLastRescheduleSuggestion] = useState<RescheduleSuggestion | null>(null);
