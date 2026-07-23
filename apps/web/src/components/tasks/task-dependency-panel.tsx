@@ -17,8 +17,13 @@ import {
 import { TaskEditDialog } from "@/components/tasks/task-edit-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useGoal } from "@/hooks/use-goals-query";
 import { useTask, useTaskDependencyContext } from "@/hooks/use-tasks-query";
-import type { Task, TaskDependencyContextTask } from "@/types/task";
+import type {
+  Task,
+  TaskDependencyContextTask,
+  TaskWorkspaceItem,
+} from "@/types/task";
 import { taskStatusLabels } from "@/types/task";
 
 interface TaskDependencyPanelProps {
@@ -73,10 +78,20 @@ export function TaskDependencyPanel({
 }: TaskDependencyPanelProps) {
   const taskQuery = useTask(taskId ?? "");
   const contextQuery = useTaskDependencyContext(taskId ?? undefined);
+  const goalQuery = useGoal(taskQuery.data?.goal_id ?? "");
   if (!taskId) return null;
 
   const task = taskQuery.data;
   const context = contextQuery.data;
+  const workspaceTask = availableTasks.find(
+    (item): item is TaskWorkspaceItem =>
+      item.id === taskId && "project_id" in item,
+  );
+  const projectId = workspaceTask?.project_id ?? goalQuery.data?.project_id;
+  const taskDetailHref =
+    task && projectId
+      ? `/projects/${projectId}/goals/${task.goal_id}/tasks/${task.id}`
+      : null;
   const hasCancelledPrerequisite = context?.prerequisites.some(
     (item) => item.status === "cancelled",
   );
@@ -234,12 +249,27 @@ export function TaskDependencyPanel({
                   編集・依存設定
                 </Button>
               </TaskEditDialog>
-              <Button variant="ghost" className="sm:col-span-2" asChild>
-                <Link href={`/projects`}>
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                  プロジェクト画面を開く
-                </Link>
-              </Button>
+              {taskDetailHref ? (
+                <Button variant="ghost" className="sm:col-span-2" asChild>
+                  <Link href={taskDetailHref}>
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    タスク詳細ページを開く
+                  </Link>
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  className="sm:col-span-2"
+                  disabled
+                >
+                  {goalQuery.isLoading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                  )}
+                  タスク詳細ページを開く
+                </Button>
+              )}
             </div>
           </div>
         )}

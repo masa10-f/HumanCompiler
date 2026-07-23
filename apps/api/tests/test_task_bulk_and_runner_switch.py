@@ -195,6 +195,58 @@ def test_runner_switch_is_atomic_and_saves_resume_context(
         assert context.remaining_estimate_hours is not None
 
 
+def test_runner_switch_keeps_long_resume_note_and_truncates_log_comment(
+    session, test_user_id
+):
+    data = create_test_data(session, test_user_id)
+    tasks = TaskService()
+    current_task = tasks.create_task(
+        session,
+        TaskCreate(
+            goal_id=data["goal"].id,
+            title="Long note current",
+            estimate_hours=Decimal("2"),
+        ),
+        test_user_id,
+    )
+    next_task = tasks.create_task(
+        session,
+        TaskCreate(
+            goal_id=data["goal"].id,
+            title="Long note next",
+            estimate_hours=Decimal("1"),
+        ),
+        test_user_id,
+    )
+    service = WorkSessionService()
+    service.start_session(
+        session,
+        WorkSessionStartRequest(
+            task_id=current_task.id,
+            planned_checkout_at=datetime.now(UTC) + timedelta(hours=1),
+        ),
+        test_user_id,
+    )
+    note = "再" * 1000
+
+    previous, _current, log = service.switch_session(
+        session,
+        test_user_id,
+        WorkSessionSwitchRequest(
+            next_task_id=next_task.id,
+            disposition=SwitchDisposition.PAUSE,
+            interruption_note=note,
+            planned_checkout_at=datetime.now(UTC) + timedelta(hours=1),
+        ),
+    )
+
+    assert previous.interruption_note == note
+    assert log.comment == note[:500]
+    context = service.get_resume_context(session, test_user_id, current_task.id)
+    assert context is not None
+    assert context.interruption_note == note
+
+
 def test_bulk_request_rejects_more_than_one_hundred_items():
     mutation = {
         "task_id": "12345678-1234-1234-1234-123456789012",
@@ -375,6 +427,94 @@ async def test_daily_remove_deletes_assignment_and_recalculates_total(
     assert str(task.id) not in plan.plan_json["planned_task_ids"]
     assert len(plan.plan_json["assignments"]) == 1
     assert plan.plan_json["total_scheduled_hours"] == 0.5
+
+
+@pytest.mark.asyncio
+async def test_weekly_membership_preserves_legacy_selected_task_ids(
+    session, test_user_id
+):
+    data = create_test_data(session, test_user_id)
+    tasks = TaskService()
+    removed_task = tasks.create_task(
+        session,
+        TaskCreate(
+            goal_id=data["goal"].id,
+            title="Remove legacy task",
+            estimate_hours=Decimal("1"),
+        ),
+        test_user_id,
+    )
+    untouched_task = tasks.create_task(
+        session,
+        TaskCreate(
+            goal_id=data["goal"].id,
+            title="Keep legacy task",
+            estimate_hours=Decimal("2"),
+        ),
+        test_user_id,
+    )
+    added_task = tasks.create_task(
+        session,
+        TaskCreate(
+            goal_id=data["goal"].id,
+            title="Add current task",
+            estimate_hours=Decimal("3"),
+        ),
+        test_user_id,
+    )
+    plan = WeeklySchedule(
+        id=uuid4(),
+        user_id=test_user_id,
+        week_start_date=datetime(2030, 1, 7),
+        schedule_json={
+            "selected_task_ids": [
+                str(removed_task.id),
+                str(untouched_task.id),
+            ],
+            "assigned_task_hours": {
+                str(removed_task.id): 1,
+                str(untouched_task.id): 2,
+            },
+        },
+    )
+    session.add(plan)
+    session.commit()
+
+    for task, action in [
+        (removed_task, "remove"),
+        (added_task, "add"),
+    ]:
+        request = BulkTaskRequest(
+            mutations=[
+                BulkTaskMutation(
+                    task_id=task.id,
+                    plans=[
+                        PlanMembershipMutation(
+                            scope="weekly",
+                            action=action,
+                            target_date="2030-01-07",
+                        )
+                    ],
+                )
+            ]
+        )
+        preview = _preview_bulk(session, test_user_id, request)
+        await apply_bulk_task_changes(
+            BulkTaskApplyRequest(
+                mutations=request.mutations,
+                expected_task_versions=preview.expected_task_versions,
+                expected_plan_versions=preview.expected_plan_versions,
+            ),
+            session,
+            _auth(test_user_id),
+        )
+
+    session.refresh(plan)
+    expected_ids = {str(untouched_task.id), str(added_task.id)}
+    assert set(plan.schedule_json["selected_task_ids"]) == expected_ids
+    assert {
+        str(item["task_id"]) for item in plan.schedule_json["selected_tasks"]
+    } == expected_ids
 
 
 @pytest.mark.asyncio

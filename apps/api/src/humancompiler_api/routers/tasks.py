@@ -434,6 +434,28 @@ def _apply_weekly_membership(
     selected = list(payload.get("selected_tasks", []))
     assigned = dict(payload.get("assigned_task_hours", {}))
     pinned = list(payload.get("pinned_task_ids", []))
+    selected_ids = {
+        str(
+            (item.get("task_id") or item.get("taskId"))
+            if isinstance(item, dict)
+            else item
+        )
+        for item in selected
+    }
+    for legacy_task_id in payload.get("selected_task_ids", []):
+        legacy_task_id = str(legacy_task_id)
+        if legacy_task_id in selected_ids:
+            continue
+        selected.append(
+            {
+                "task_id": legacy_task_id,
+                "task_title": f"タスク {legacy_task_id[:8]}",
+                "estimated_hours": float(assigned.get(legacy_task_id, 1)),
+                "priority": 3,
+                "rationale": "旧形式の週次計画から復元",
+            }
+        )
+        selected_ids.add(legacy_task_id)
     selected = [
         item
         for item in selected
@@ -779,12 +801,9 @@ def _extract_planned_task_ids(
         for task_id in (schedule.plan_json or {}).get("planned_task_ids", [])
         if task_id
     )
-    week_ids = {
-        str(task.get("task_id") or task.get("taskId"))
-        for schedule in weekly_schedules
-        for task in (schedule.schedule_json or {}).get("selected_tasks", [])
-        if task.get("task_id") or task.get("taskId")
-    }
+    week_ids: set[str] = set()
+    for schedule in weekly_schedules:
+        week_ids.update(_weekly_members(schedule))
     return today_ids, week_ids, placed_today_ids
 
 
