@@ -4,7 +4,7 @@ Weekly schedule API endpoints for storing and retrieving weekly task selections.
 
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -377,7 +377,7 @@ async def update_weekly_schedule_draft(
                 status_code=409, detail="Weekly plan changed after loading"
             )
 
-    now = datetime.now()
+    now = datetime.now(UTC)
     if existing is None:
         existing = WeeklySchedule(
             id=uuid4(),
