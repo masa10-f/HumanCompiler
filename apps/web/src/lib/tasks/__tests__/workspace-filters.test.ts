@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2024-2025 Masato Fukushima <masa1063fuk@gmail.com>
+//
+// This file is part of HumanCompiler.
+// For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
+
 import {
   buildTaskWorkspaceFilters,
   DEFAULT_TASK_WORKSPACE_PRESET,
@@ -33,6 +39,7 @@ describe("task workspace filters", () => {
       search: "publish",
     });
 
+    expect(filters.status).toEqual(["pending", "in_progress"]);
     expect(filters.blocked).toBe(true);
     expect(filters.projectId).toBe("project-1");
     expect(filters.search).toBe("publish");
