@@ -169,21 +169,21 @@ function DependencyButton({
 
 function TaskActions({ task, tasks }: { task: Task; tasks: Task[] }) {
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-1">
       <LogFormDialog
         taskId={task.id}
         taskTitle={task.title}
         trigger={
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" className="w-full sm:w-auto">
             時間記録
           </Button>
         }
       />
       <TaskEditDialog task={task} availableTasks={tasks}>
-        <Button variant="outline" size="sm">編集</Button>
+        <Button variant="outline" size="sm" className="w-full sm:w-auto">編集</Button>
       </TaskEditDialog>
       <TaskDeleteDialog task={task}>
-        <Button variant="outline" size="sm">削除</Button>
+        <Button variant="outline" size="sm" className="w-full sm:w-auto">削除</Button>
       </TaskDeleteDialog>
     </div>
   )
@@ -420,8 +420,8 @@ function TaskMobileCard({
   return (
     <Card>
       <CardContent className="space-y-4 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
+        <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:justify-between">
+          <div className="min-w-0 flex-1">
             <TaskDecisionBadge task={task} />
             <Link
               href={`/projects/${projectId}/goals/${goalId}/tasks/${task.id}`}
@@ -435,7 +435,9 @@ function TaskMobileCard({
               </p>
             )}
           </div>
-          <TaskStatusSelect task={task} />
+          <div className="shrink-0">
+            <TaskStatusSelect task={task} />
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 rounded-lg bg-muted/50 p-3 text-sm">

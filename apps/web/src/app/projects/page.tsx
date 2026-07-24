@@ -290,13 +290,14 @@ export default function ProjectsPage() {
       <AppHeader currentPage="projects" />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <div>
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <h1 className="text-3xl font-bold">プロジェクト一覧</h1>
-            <p className="text-gray-600 mt-2">研究・開発プロジェクトを管理します。</p>
+            <p className="mt-2 text-muted-foreground">研究・開発プロジェクトを管理します。</p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:shrink-0 sm:flex-row sm:items-center">
             <SortDropdown
+              className="w-full sm:w-auto"
               currentSort={sortOptions}
               onSortChange={setSortOptions}
               sortFields={[
@@ -308,7 +309,7 @@ export default function ProjectsPage() {
             />
             <Button
               onClick={() => setShowCreateForm(true)}
-              className="flex items-center gap-2"
+              className="flex w-full items-center gap-2 sm:w-auto"
             >
               <Plus className="h-4 w-4" />
               新規プロジェクト作成
@@ -414,12 +415,12 @@ export default function ProjectsPage() {
                 className="hover:shadow-lg transition-shadow relative"
               >
                 <CardHeader>
-                  <div className="flex justify-between items-start">
+                  <div className="flex min-w-0 items-start justify-between gap-2">
                     <div
-                      className="flex-1 cursor-pointer"
+                      className="min-w-0 flex-1 cursor-pointer"
                       onClick={() => router.push(`/projects/${project.id}`)}
                     >
-                      <CardTitle className="line-clamp-1 pr-8">{project.title}</CardTitle>
+                      <CardTitle className="line-clamp-2">{project.title}</CardTitle>
                       <CardDescription className="line-clamp-2">
                         {project.description || 'プロジェクトの説明がありません'}
                       </CardDescription>
@@ -428,7 +429,7 @@ export default function ProjectsPage() {
                       <DropdownMenuTrigger asChild>
                         <Button
                           variant="ghost"
-                          className="h-8 w-8 p-0"
+                          className="h-8 w-8 shrink-0 p-0"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <span className="sr-only">アクションメニューを開く</span>
@@ -461,8 +462,8 @@ export default function ProjectsPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm text-gray-500">
+                    <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="text-sm text-muted-foreground">
                         作成日: {new Date(project.created_at).toLocaleDateString('ja-JP')}
                       </div>
                       <div onClick={(e) => e.stopPropagation()}>

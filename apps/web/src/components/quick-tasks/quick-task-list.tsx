@@ -158,8 +158,8 @@ export function QuickTaskList({
     <>
       <Card>
         {showHeader && (
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-lg font-medium flex items-center gap-2">
+          <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 pb-2">
+            <CardTitle className="min-w-0 text-lg font-medium flex items-center gap-2">
               <Inbox className="h-5 w-5" />
               クイックタスク
               {tasks.length > 0 && (

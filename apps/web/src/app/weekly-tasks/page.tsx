@@ -100,15 +100,15 @@ export default function WeeklyTasksPage() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <AppHeader currentPage="ai-planning" />
-      <div className="container mx-auto p-6">
-      <div className="flex justify-between items-center mb-6">
-        <div>
+      <div className="container mx-auto py-6">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-3xl font-bold">週課管理</h1>
           <p className="text-muted-foreground mt-2">
             定期的に行う週単位のタスクを管理します
           </p>
         </div>
-        <Button onClick={handleCreateTask} className="flex items-center gap-2">
+        <Button onClick={handleCreateTask} className="flex w-full items-center gap-2 sm:w-auto sm:shrink-0">
           <Plus className="h-4 w-4" />
           新しい週課を追加
         </Button>
@@ -118,8 +118,8 @@ export default function WeeklyTasksPage() {
         {tasks.map((task) => (
           <Card key={task.id} className={`${!task.is_active ? "opacity-50" : ""}`}>
             <CardHeader className="pb-3">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
+              <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:justify-between">
+                <div className="min-w-0 flex-1">
                   <CardTitle className="text-lg">{task.title}</CardTitle>
                   <div className="flex items-center gap-2 mt-2">
                     <Badge className={getCategoryColor(task.category)}>

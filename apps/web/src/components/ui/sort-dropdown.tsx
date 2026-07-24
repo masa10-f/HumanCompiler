@@ -56,11 +56,11 @@ export function SortDropdown({
   };
 
   return (
-    <div className={cn('flex items-center gap-2', className)}>
+    <div className={cn('flex min-w-0 items-center gap-2', className)}>
       {/* Sort Field Dropdown */}
-      <Menu as="div" className="relative inline-block text-left">
+      <Menu as="div" className="relative min-w-0 flex-1 text-left sm:inline-block sm:flex-none">
         <div>
-          <Menu.Button className="inline-flex w-full justify-center gap-x-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+          <Menu.Button className="inline-flex w-full justify-center gap-x-1.5 rounded-md bg-background px-3 py-2 text-sm font-semibold text-foreground shadow-sm ring-1 ring-inset ring-border hover:bg-muted">
             {currentField.label}
             <ChevronDownIcon className="-mr-1 h-5 w-5 text-gray-400" aria-hidden="true" />
           </Menu.Button>
@@ -75,7 +75,7 @@ export function SortDropdown({
           leaveFrom="transform opacity-100 scale-100"
           leaveTo="transform opacity-0 scale-95"
         >
-          <Menu.Items className="absolute right-0 z-10 mt-2 w-36 origin-top-right divide-y divide-gray-100 rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+          <Menu.Items className="absolute right-0 z-10 mt-2 w-36 origin-top-right divide-y divide-border rounded-md bg-popover text-popover-foreground shadow-lg ring-1 ring-border focus:outline-none">
             <div className="py-1">
               {sortFields.map((field) => (
                 <Menu.Item key={field.value}>
@@ -83,8 +83,8 @@ export function SortDropdown({
                     <button
                       onClick={() => handleSortFieldChange(field.value)}
                       className={cn(
-                        active ? 'bg-gray-100 text-gray-900' : 'text-gray-700',
-                        currentSort.sortBy === field.value && 'bg-blue-50 text-blue-700 font-medium',
+                        active ? 'bg-muted text-foreground' : 'text-popover-foreground',
+                        currentSort.sortBy === field.value && 'bg-primary/10 text-primary font-medium',
                         'block w-full px-4 py-2 text-left text-sm'
                       )}
                     >
@@ -101,7 +101,7 @@ export function SortDropdown({
       {/* Sort Order Toggle Button */}
       <button
         onClick={handleSortOrderToggle}
-        className="inline-flex items-center justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+        className="inline-flex shrink-0 items-center justify-center rounded-md bg-background px-3 py-2 text-sm font-semibold text-foreground shadow-sm ring-1 ring-inset ring-border hover:bg-muted"
         title={isAscending ? '昇順' : '降順'}
         aria-label={`並び順を${isAscending ? '降順' : '昇順'}に変更`}
       >

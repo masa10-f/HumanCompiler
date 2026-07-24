@@ -125,12 +125,31 @@
   * {
     @apply border-border;
   }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
   body {
-    @apply bg-background text-foreground;
+    @apply min-w-0 overflow-x-hidden bg-background text-foreground;
+  }
+  main,
+  .container {
+    min-width: 0;
+  }
+  h1,
+  h2,
+  h3 {
+    overflow-wrap: anywhere;
   }
 }
 
 @layer components {
+  .container {
+    @apply px-4 sm:px-6 lg:px-8;
+  }
+
   .context-note-content {
     color: hsl(var(--foreground));
     font-size: 0.9375rem;
@@ -280,5 +299,32 @@
 
   .context-note-editor .ProseMirror {
     caret-color: hsl(var(--primary));
+  }
+}
+
+@layer utilities {
+  /* Keep legacy screens readable while their fixed gray utilities are migrated. */
+  html.dark .text-gray-900:not([class*="dark:text-"]),
+  html.dark .text-gray-800:not([class*="dark:text-"]) {
+    color: hsl(var(--foreground));
+  }
+
+  html.dark .text-gray-700:not([class*="dark:text-"]),
+  html.dark .text-gray-600:not([class*="dark:text-"]),
+  html.dark .text-gray-500:not([class*="dark:text-"]) {
+    color: hsl(var(--muted-foreground));
+  }
+
+  html.dark .bg-white:not([class*="dark:bg-"]) {
+    background-color: hsl(var(--card));
+  }
+
+  html.dark .bg-gray-50:not([class*="dark:bg-"]) {
+    background-color: hsl(var(--muted));
+  }
+
+  html.dark .border-gray-200:not([class*="dark:border-"]),
+  html.dark .border-gray-300:not([class*="dark:border-"]) {
+    border-color: hsl(var(--border));
   }
 }

@@ -47,7 +47,7 @@ export function TaskCard({
       <CardContent className="p-4 space-y-2">
         <Link
           href={linkHref}
-          className="block font-medium text-sm hover:underline"
+          className="block break-words text-sm font-medium hover:underline"
         >
           {title}
         </Link>

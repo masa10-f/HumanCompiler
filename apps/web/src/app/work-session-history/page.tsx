@@ -343,9 +343,9 @@ export default function WorkSessionHistoryPage() {
                   className="hover:shadow-md transition-shadow"
                 >
                   <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg flex items-center gap-2">
+                    <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
                           {session.task?.title || 'タスク名不明'}
                           {!session.ended_at && (
                             <Badge variant="secondary" className="text-xs">
@@ -353,7 +353,7 @@ export default function WorkSessionHistoryPage() {
                             </Badge>
                           )}
                         </CardTitle>
-                        <CardDescription className="flex items-center gap-4 mt-1">
+                        <CardDescription className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
                           <span className="flex items-center gap-1">
                             <Calendar className="h-4 w-4" />
                             {format(new Date(session.started_at), 'yyyy/MM/dd (E)', {
@@ -380,7 +380,7 @@ export default function WorkSessionHistoryPage() {
                           </span>
                         </CardDescription>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex shrink-0 flex-wrap items-center gap-2">
                         {session.checkout_type && (
                           <Badge variant="outline">
                             {CHECKOUT_TYPE_LABELS[session.checkout_type]}

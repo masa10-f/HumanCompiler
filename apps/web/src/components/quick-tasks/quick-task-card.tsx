@@ -64,7 +64,7 @@ export function QuickTaskCard({
               </Button>
             )}
             <Inbox className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            <span className="font-medium text-sm truncate">{task.title}</span>
+            <span className="min-w-0 break-words text-sm font-medium">{task.title}</span>
           </div>
 
           <DropdownMenu>

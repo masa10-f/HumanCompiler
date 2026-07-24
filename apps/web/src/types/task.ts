@@ -321,10 +321,10 @@ export const taskStatusLabels: Record<TaskStatus, string> = {
  * タスクステータスのTailwind CSSカラークラス
  */
 export const taskStatusColors: Record<TaskStatus, string> = {
-  pending: 'bg-gray-100 text-gray-800',
-  in_progress: 'bg-blue-100 text-blue-800',
-  completed: 'bg-green-100 text-green-800',
-  cancelled: 'bg-red-100 text-red-800',
+  pending: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
+  in_progress: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200',
+  completed: 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200',
+  cancelled: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200',
 };
 
 /**
@@ -340,9 +340,9 @@ export const workTypeLabels: Record<WorkType, string> = {
  * 作業種別のTailwind CSSカラークラス
  */
 export const workTypeColors: Record<WorkType, string> = {
-  light_work: 'bg-yellow-100 text-yellow-800',
-  study: 'bg-purple-100 text-purple-800',
-  focused_work: 'bg-orange-100 text-orange-800',
+  light_work: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-200',
+  study: 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-200',
+  focused_work: 'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-200',
 };
 
 /**
@@ -360,9 +360,9 @@ export const taskPriorityLabels: Record<number, string> = {
  * 優先度のTailwind CSSカラークラス
  */
 export const taskPriorityColors: Record<number, string> = {
-  1: 'bg-red-100 text-red-800',
-  2: 'bg-orange-100 text-orange-800',
-  3: 'bg-yellow-100 text-yellow-800',
-  4: 'bg-blue-100 text-blue-800',
-  5: 'bg-gray-100 text-gray-800',
+  1: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200',
+  2: 'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-200',
+  3: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-200',
+  4: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200',
+  5: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
 };
