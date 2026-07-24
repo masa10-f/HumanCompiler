@@ -42,9 +42,11 @@ export const GoalCard = memo(function GoalCard({
       aria-label={`ゴール: ${goal.title}`}
     >
       <CardHeader>
-        <div className="flex justify-between items-start mb-2">
-          <CardTitle className="line-clamp-1 flex-1">{goal.title}</CardTitle>
-          <GoalStatusDropdown goal={goal} />
+        <div className="mb-2 flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:justify-between">
+          <CardTitle className="line-clamp-2 min-w-0 flex-1">{goal.title}</CardTitle>
+          <div className="shrink-0">
+            <GoalStatusDropdown goal={goal} />
+          </div>
         </div>
         <CardDescription className="line-clamp-2">
           {goal.description || 'ゴールの説明がありません'}
@@ -52,7 +54,7 @@ export const GoalCard = memo(function GoalCard({
       </CardHeader>
       <CardContent className="pt-4">
         <div className="space-y-4">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-sm text-muted-foreground flex items-center gap-2">
               <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-info/10 text-info font-medium">
                 見積: {goal.estimate_hours}h

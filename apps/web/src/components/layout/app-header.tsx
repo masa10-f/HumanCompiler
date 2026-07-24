@@ -9,6 +9,7 @@ import Link from 'next/link'
 
 // UI components
 import { Button } from '@/components/ui/button'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import {
   DropdownMenu,
@@ -87,7 +88,7 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
   return (
     <header className="bg-card/95 backdrop-blur-sm shadow-md border-b border-border/60 sticky top-0 z-50">
       <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16 gap-2 xl:gap-3">
+        <div className="flex h-16 items-center justify-between gap-2 xl:gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden xl:gap-4">
             <div className="flex shrink-0 items-center space-x-3">
               <Image
@@ -190,7 +191,7 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
             </nav>
 
             {/* Mobile Navigation */}
-            <div className="lg:hidden">
+            <div className="shrink-0 lg:hidden">
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
                   <Button variant="ghost" size="sm" aria-label="メニューを開く">
@@ -277,15 +278,18 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
               </Dialog>
             </div>
           </div>
-          <div className="hidden shrink-0 lg:flex items-center gap-2 xl:gap-3">
-            {user?.email && (
-              <span className="hidden max-w-[220px] truncate rounded-full bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground 2xl:inline-block">
-                {user.email}
-              </span>
-            )}
-            <Button variant="outline" onClick={signOut} className="border-border hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50 whitespace-nowrap">
-              ログアウト
-            </Button>
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2 xl:gap-3">
+            <ThemeToggle />
+            <div className="hidden items-center gap-2 lg:flex xl:gap-3">
+              {user?.email && (
+                <span className="hidden max-w-[220px] truncate rounded-full bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground 2xl:inline-block">
+                  {user.email}
+                </span>
+              )}
+              <Button variant="outline" onClick={signOut} className="border-border hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50 whitespace-nowrap">
+                ログアウト
+              </Button>
+            </div>
           </div>
         </div>
       </div>
