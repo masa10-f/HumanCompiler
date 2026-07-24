@@ -16,6 +16,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { toast } from '@/hooks/use-toast';
 import { useWorkSessionResumeContext } from '@/hooks/use-work-sessions';
 import type { SwitchDisposition } from '@/types/work-session';
 import type { TaskWorkspaceItem } from '@/types/task';
@@ -141,14 +142,25 @@ export function TaskSwitchDialog({
             disabled={isSwitching || duration < 5 || (noteRequired && !note.trim())}
             onClick={async () => {
               const checkout = new Date(Date.now() + duration * 60 * 1000).toISOString();
-              await onSwitch(
-                task.id,
-                disposition,
-                noteRequired ? note.trim() : undefined,
-                checkout,
-                outcome.trim() || undefined,
-              );
-              onOpenChange(false);
+              try {
+                await onSwitch(
+                  task.id,
+                  disposition,
+                  noteRequired ? note.trim() : undefined,
+                  checkout,
+                  outcome.trim() || undefined,
+                );
+                onOpenChange(false);
+              } catch (error) {
+                toast({
+                  title: 'タスクの切替に失敗しました',
+                  description:
+                    error instanceof Error
+                      ? error.message
+                      : '不明なエラーが発生しました',
+                  variant: 'destructive',
+                });
+              }
             }}
           >
             {isSwitching ? '切替中...' : '記録して切替'}

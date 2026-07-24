@@ -2,13 +2,17 @@
  * @jest-environment jsdom
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
+import { toast } from '@/hooks/use-toast';
 import { workSessionsApi } from '@/lib/api';
 import { TaskSwitchDialog } from '../task-switch-dialog';
 
 jest.mock('@/lib/api', () => ({
   workSessionsApi: { getResumeContext: jest.fn() },
+}));
+jest.mock('@/hooks/use-toast', () => ({
+  toast: jest.fn(),
 }));
 
 const task = {
@@ -64,5 +68,36 @@ describe('TaskSwitchDialog', () => {
     expect(await screen.findByText(/前回の続き/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('中断メモ'), { target: { value: 'ここから再開' } });
     expect(screen.getByRole('button', { name: '記録して切替' })).toBeEnabled();
+  });
+
+  it('shows a switch error and keeps the dialog open', async () => {
+    jest.mocked(workSessionsApi.getResumeContext).mockResolvedValue(null);
+    const onOpenChange = jest.fn();
+    const onSwitch = jest.fn().mockRejectedValue(new Error('Next task is blocked'));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TaskSwitchDialog
+          open
+          onOpenChange={onOpenChange}
+          task={task}
+          isSwitching={false}
+          onSwitch={onSwitch}
+        />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.change(screen.getByLabelText('中断メモ'), { target: { value: 'ここから再開' } });
+    fireEvent.click(screen.getByRole('button', { name: '記録して切替' }));
+
+    await waitFor(() => {
+      expect(toast).toHaveBeenCalledWith({
+        title: 'タスクの切替に失敗しました',
+        description: 'Next task is blocked',
+        variant: 'destructive',
+      });
+    });
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('中断メモ')).toHaveValue('ここから再開');
   });
 });

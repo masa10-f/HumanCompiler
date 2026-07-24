@@ -48,7 +48,9 @@ import {
   reportsApi,
 } from "@/lib/api";
 import { getJSTDateString, getJSTISOString } from "@/lib/date-utils";
+import { ApiError } from "@/lib/errors";
 import { getSelectableProjects } from "@/lib/project-filters";
+import { saveWeeklyScheduleDraft } from "@/lib/weekly-schedule-draft";
 import type {
   TaskPlan,
   WeeklyScheduleData,
@@ -394,13 +396,12 @@ export default function AIPlanningPage() {
         generation_timestamp: getJSTISOString(),
       };
 
-      const saved = await weeklyScheduleApi.updateDraft(
-        weeklyPlan.week_start_date,
+      const saved = await saveWeeklyScheduleDraft({
+        api: weeklyScheduleApi,
+        weekStartDate: weeklyPlan.week_start_date,
         scheduleData,
-        selectedSchedule?.week_start_date.slice(0, 10) === weeklyPlan.week_start_date
-          ? selectedSchedule.updated_at
-          : undefined,
-      );
+        selectedSchedule,
+      });
       setSelectedSchedule(saved);
 
       toast({
@@ -413,6 +414,57 @@ export default function AIPlanningPage() {
         loadSavedSchedules();
       }
     } catch (error) {
+      if (error instanceof ApiError && error.statusCode === 409) {
+        try {
+          const latest = await weeklyScheduleApi.getByWeek(
+            weeklyPlan.week_start_date,
+          );
+          setSelectedSchedule(latest);
+          setSavedSchedules((current) => {
+            const withoutLatest = current.filter(
+              (schedule) =>
+                schedule.week_start_date.slice(0, 10) !==
+                weeklyPlan.week_start_date,
+            );
+            return [latest, ...withoutLatest];
+          });
+          toast({
+            title: "週間スケジュールが更新されています",
+            description:
+              "最新の保存状態を読み込みました。編集中の内容は保持されています。内容を確認して、もう一度保存してください。",
+            variant: "destructive",
+          });
+          return;
+        } catch (reloadError) {
+          if (
+            reloadError instanceof ApiError &&
+            reloadError.statusCode === 404
+          ) {
+            setSelectedSchedule(null);
+            setSavedSchedules((current) =>
+              current.filter(
+                (schedule) =>
+                  schedule.week_start_date.slice(0, 10) !==
+                  weeklyPlan.week_start_date,
+              ),
+            );
+            toast({
+              title: "保存済みの週間スケジュールが削除されています",
+              description:
+                "編集中の内容は保持されています。もう一度保存すると新しい計画として作成されます。",
+              variant: "destructive",
+            });
+            return;
+          }
+          toast({
+            title: "週間スケジュールが更新されています",
+            description:
+              "最新版を取得できませんでした。保存済み計画を再読み込みしてから、もう一度編集してください。",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
       toast({
         title: "週間スケジュールの保存に失敗しました",
         description:
