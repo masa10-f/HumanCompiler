@@ -110,4 +110,34 @@ describe('TriageSettingsCard', () => {
       )
     })
   })
+
+  it('keeps cached projects editable after a background refetch error', async () => {
+    mockUseProjectOptions.mockReturnValue({
+      data: [
+        {
+          id: 'project-1',
+          title: 'Cached project',
+          description: null,
+          status: 'in_progress',
+          owner_id: 'user-1',
+          created_at: '2025-01-01T00:00:00Z',
+          updated_at: '2025-01-01T00:00:00Z',
+        },
+      ],
+      error: new Error('background failure'),
+      isLoading: false,
+      refetch: mockRefetchProjects,
+    })
+
+    render(<TriageSettingsCard />)
+
+    expect(await screen.findByText('Cached project')).toBeInTheDocument()
+    fireEvent.click(
+      screen.getByRole('button', { name: 'トリアージ設定を保存' }),
+    )
+    expect(
+      await screen.findByText('配分の合計を100%にしてください（現在: 110%）'),
+    ).toBeInTheDocument()
+    expect(mockUpdateSettings).not.toHaveBeenCalled()
+  })
 })

@@ -13,7 +13,8 @@ import { SortBy, SortOrder } from '@/types/sort'
 export const projectKeys = queryKeys.projects
 
 const PROJECT_OPTIONS_LIMIT = 100
-// TODO: Use a paginated collection if the UI needs to support over 100 projects.
+// TODO: Use a paginated collection with server-side sorting over 100 projects;
+// sorting only this first page does not produce the true top-N.
 // Keep this order aligned with STATUS_PRIORITY["project"] in
 // apps/api/src/humancompiler_api/models.py.
 const PROJECT_STATUS_PRIORITY: Record<Project['status'], number> = {
