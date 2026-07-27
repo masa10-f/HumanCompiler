@@ -137,6 +137,25 @@ describe('useGoalsByProjects', () => {
 
     expect(result.current.data).toBe(firstData)
   })
+
+  it('keeps successful project goals when another project fails', async () => {
+    mockGetByProject.mockImplementation(async (projectId: string) => {
+      if (projectId === 'proj-2') {
+        throw new Error('boom')
+      }
+      return createMockGoals(2, { project_id: projectId })
+    })
+
+    const { result } = renderHookWithClient(() =>
+      useGoalsByProjects(['proj-1', 'proj-2']),
+    )
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+    expect(result.current.data).toHaveLength(2)
+    expect(result.current.error).toEqual(new Error('boom'))
+  })
 })
 
 describe('useGoal', () => {

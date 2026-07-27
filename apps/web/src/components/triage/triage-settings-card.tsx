@@ -47,6 +47,12 @@ export function TriageSettingsCard() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const projectsErrorMessage = projectsError
+    ? projectsError instanceof Error
+      ? projectsError.message
+      : 'プロジェクトの取得に失敗しました'
+    : '';
+  const displayError = error || projectsErrorMessage;
 
   useEffect(() => {
     let cancelled = false;
@@ -84,16 +90,6 @@ export function TriageSettingsCard() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (projectsError) {
-      setError(
-        projectsError instanceof Error
-          ? projectsError.message
-          : 'プロジェクトの取得に失敗しました'
-      );
-    }
-  }, [projectsError]);
 
   const loading = projectsLoading || settingsLoading;
 
@@ -180,10 +176,10 @@ export function TriageSettingsCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {error && (
+        {displayError && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription>{displayError}</AlertDescription>
           </Alert>
         )}
 

@@ -50,16 +50,8 @@ describe('projectKeys', () => {
     expect(projectKeys.all).toEqual(['projects'])
   })
 
-  it('should generate correct keys for lists', () => {
-    expect(projectKeys.lists()).toEqual(['projects', 'list'])
-  })
-
   it('should generate a shared options key', () => {
     expect(projectKeys.options()).toEqual(['projects', 'options'])
-  })
-
-  it('should generate correct keys for list with filters', () => {
-    expect(projectKeys.list('filter-1')).toEqual(['projects', 'list', { filters: 'filter-1' }])
   })
 
   it('should generate correct keys for details', () => {
@@ -115,8 +107,13 @@ describe('useProject', () => {
     expect(queryState).toBeDefined()
   })
 
-  it('should render cached project options without fetching detail again', async () => {
+  it('should render cached project options while revalidating detail', async () => {
     const cachedProject = createMockProject({ id: 'proj-1' })
+    const refreshedProject = createMockProject({
+      id: 'proj-1',
+      title: 'Refreshed project',
+    })
+    mockGetById.mockResolvedValue(refreshedProject)
     const queryClient = createTestQueryClient()
     queryClient.setQueryData(projectKeys.options(), [cachedProject], {
       updatedAt: Date.now(),
@@ -128,7 +125,10 @@ describe('useProject', () => {
 
     expect(result.current.data).toEqual(cachedProject)
     expect(result.current.isLoading).toBe(false)
-    expect(mockGetById).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(mockGetById).toHaveBeenCalledWith('proj-1')
+      expect(result.current.data).toEqual(refreshedProject)
+    })
   })
 })
 
