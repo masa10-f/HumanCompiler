@@ -15,7 +15,10 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { tasksApi } from '@/lib/api';
-import { getOpenProjects } from '@/lib/project-filters';
+import {
+  getGoalProjectIds,
+  getOpenProjects,
+} from '@/lib/project-filters';
 import { useProjectOptions } from '@/hooks/use-project-query';
 import { useGoalsByProjects } from '@/hooks/use-goals-query';
 import type { TaskWorkspaceItem } from '@/types/task';
@@ -53,7 +56,7 @@ export function TaskPickerDialog({
     [projects.data],
   );
   const goalProjectIds = useMemo(
-    () => openProjects.map((project) => project.id),
+    () => getGoalProjectIds(openProjects),
     [openProjects],
   );
   const goals = useGoalsByProjects(goalProjectIds, {

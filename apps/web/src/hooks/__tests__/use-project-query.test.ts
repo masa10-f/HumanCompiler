@@ -216,6 +216,22 @@ describe('shared project collection', () => {
     expect(mockGetAll).toHaveBeenCalledTimes(1)
   })
 
+  it('should retry a temporary service-unavailable project page error', async () => {
+    const mockProjects = createMockProjects(2)
+    mockGetAll
+      .mockRejectedValueOnce(new ApiError(503, 'Service unavailable'))
+      .mockResolvedValueOnce(mockProjects)
+
+    const { result } = renderHookWithClient(() => useProjectOptions())
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+
+    expect(mockGetAll).toHaveBeenCalledTimes(2)
+    expect(result.current.data).toEqual(mockProjects)
+  })
+
   it('should fail visibly when a full page repeats without new records', async () => {
     const repeatedPage = createMockProjects(100)
     mockGetAll.mockResolvedValue(repeatedPage)
