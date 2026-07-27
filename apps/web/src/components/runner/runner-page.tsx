@@ -32,6 +32,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import type { Goal } from '@/types/goal';
 import type { Project } from '@/types/project';
+import {
+  GOAL_GC_TIME,
+  GOAL_STALE_TIME,
+} from '@/hooks/use-goals-query';
+import {
+  PROJECT_GC_TIME,
+  PROJECT_STALE_TIME,
+} from '@/hooks/use-project-query';
 
 export function RunnerPage() {
   const { user, loading: authLoading } = useAuth();
@@ -87,17 +95,33 @@ export function RunnerPage() {
     void (async () => {
       try {
         const task = await tasksApi.getById(taskId);
-        const goal =
-          queryClient.getQueryData<Goal>(queryKeys.goals.detail(task.goal_id)) ??
-          await goalsApi.getById(task.goal_id);
-        const project =
-          queryClient.getQueryData<Project>(
-            queryKeys.projects.detail(goal.project_id),
-          ) ??
-          queryClient
-            .getQueryData<Project[]>(queryKeys.projects.options())
-            ?.find((item) => item.id === goal.project_id) ??
-          await projectsApi.getById(goal.project_id);
+        const goal = await queryClient.fetchQuery<Goal>({
+          queryKey: queryKeys.goals.detail(task.goal_id),
+          queryFn: () => goalsApi.getById(task.goal_id),
+          staleTime: GOAL_STALE_TIME,
+          gcTime: GOAL_GC_TIME,
+        });
+        const projectDetailKey = queryKeys.projects.detail(goal.project_id);
+        if (!queryClient.getQueryData<Project>(projectDetailKey)) {
+          const projectOptionsKey = queryKeys.projects.options();
+          const cachedProject = queryClient
+            .getQueryData<Project[]>(projectOptionsKey)
+            ?.find((item) => item.id === goal.project_id);
+          const optionsUpdatedAt =
+            queryClient.getQueryState(projectOptionsKey)?.dataUpdatedAt;
+
+          if (cachedProject && optionsUpdatedAt) {
+            queryClient.setQueryData(projectDetailKey, cachedProject, {
+              updatedAt: optionsUpdatedAt,
+            });
+          }
+        }
+        const project = await queryClient.fetchQuery<Project>({
+          queryKey: projectDetailKey,
+          queryFn: () => projectsApi.getById(goal.project_id),
+          staleTime: PROJECT_STALE_TIME,
+          gcTime: PROJECT_GC_TIME,
+        });
         setSwitchTarget({
           ...task,
           project_id: project.id,

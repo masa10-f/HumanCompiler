@@ -42,7 +42,7 @@ function AuthenticatedQueryClient({
     resolvedIdentity:
       cacheIdentity === 'auth-loading' ? null : cacheIdentity,
     generation: 0,
-    retiredClient: null as QueryClient | null,
+    retiredClients: [] as QueryClient[],
   }))
 
   // Derive the boundary during render. An effect would let children render
@@ -63,23 +63,27 @@ function AuthenticatedQueryClient({
       generation: isInitialResolution
         ? clientState.generation
         : clientState.generation + 1,
-      retiredClient: isInitialResolution
-        ? clientState.retiredClient
-        : clientState.queryClient,
+      retiredClients: isInitialResolution
+        ? clientState.retiredClients
+        : [...clientState.retiredClients, clientState.queryClient],
     })
   }
 
   useEffect(() => {
-    const retiredClient = clientState.retiredClient
-    if (!retiredClient) return
+    const retiredClients = clientState.retiredClients
+    if (retiredClients.length === 0) return
 
-    retiredClient.clear()
-    setClientState((current) =>
-      current.retiredClient === retiredClient
-        ? { ...current, retiredClient: null }
-        : current,
-    )
-  }, [clientState.retiredClient])
+    retiredClients.forEach((client) => client.clear())
+    setClientState((current) => {
+      const pendingRetiredClients = current.retiredClients.filter(
+        (client) => !retiredClients.includes(client),
+      )
+
+      return pendingRetiredClients.length === current.retiredClients.length
+        ? current
+        : { ...current, retiredClients: pendingRetiredClients }
+    })
+  }, [clientState.retiredClients])
 
   return (
     <QueryClientProvider

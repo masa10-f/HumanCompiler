@@ -179,6 +179,30 @@ describe('shared project collection', () => {
     expect(result.current.data).toHaveLength(101)
   })
 
+  it('should retry only the failed project page once', async () => {
+    const mockProjects = createMockProjects(3)
+    mockGetAll
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce(mockProjects)
+
+    const { result } = renderHookWithClient(() => useProjectOptions())
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+
+    expect(mockGetAll).toHaveBeenCalledTimes(2)
+    expect(mockGetAll).toHaveBeenNthCalledWith(1, 0, 100, {
+      sortBy: 'created_at',
+      sortOrder: 'asc',
+    })
+    expect(mockGetAll).toHaveBeenNthCalledWith(2, 0, 100, {
+      sortBy: 'created_at',
+      sortOrder: 'asc',
+    })
+    expect(result.current.data).toEqual(mockProjects)
+  })
+
   it('should fail visibly when a full page repeats without new records', async () => {
     const repeatedPage = createMockProjects(100)
     mockGetAll.mockResolvedValue(repeatedPage)
