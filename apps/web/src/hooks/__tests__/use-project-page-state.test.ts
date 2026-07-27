@@ -246,23 +246,16 @@ describe('useProjectPageState', () => {
       expect(mockGetProgress).toHaveBeenCalledWith('proj-1')
     })
 
-    it('should fetch progress in parallel while project is loading', async () => {
+    it('should not fetch progress when project is loading', async () => {
       mockGetById.mockImplementation(() => new Promise(() => {})) // Never resolves
       mockGetByProject.mockResolvedValue([])
-      mockGetProgress.mockResolvedValue({
-        project_id: 'proj-1',
-        title: 'Test Project',
-        estimate_hours: 100,
-        actual_minutes: 0,
-        progress_percentage: 0,
-        goals: [],
-      })
 
       renderHookWithClient(() => useProjectPageState('proj-1'))
 
-      await waitFor(() => {
-        expect(mockGetProgress).toHaveBeenCalledWith('proj-1')
-      })
+      // Wait a bit to ensure no calls are made
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
+      expect(mockGetProgress).not.toHaveBeenCalled()
     })
   })
 

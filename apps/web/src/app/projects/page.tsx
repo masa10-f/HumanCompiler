@@ -144,7 +144,7 @@ export default function ProjectsPage() {
     isLoading: loading,
     error,
     refetch,
-  } = useProjects(0, Number.POSITIVE_INFINITY, sortOptions, {
+  } = useProjects(sortOptions, {
     enabled: Boolean(user),
   });
   const createProjectMutation = useCreateProject();

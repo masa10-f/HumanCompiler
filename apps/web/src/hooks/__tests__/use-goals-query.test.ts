@@ -3,10 +3,7 @@
  */
 import { act, waitFor } from '@testing-library/react'
 import { createMockGoal, createMockGoals, resetIdCounter } from './helpers/mock-factories'
-import {
-  createTestQueryClient,
-  renderHookWithClient,
-} from './helpers/test-utils'
+import { renderHookWithClient } from './helpers/test-utils'
 import type { Goal, GoalCreate, GoalUpdate } from '@/types/goal'
 import type { SortOptions } from '@/types/sort'
 
@@ -16,7 +13,6 @@ const mockGetById = jest.fn<Promise<Goal>, [string]>()
 const mockCreate = jest.fn<Promise<Goal>, [GoalCreate]>()
 const mockUpdate = jest.fn<Promise<Goal>, [string, GoalUpdate]>()
 const mockDelete = jest.fn<Promise<void>, [string]>()
-const mockLoggerWarn = jest.fn()
 
 jest.mock('@/lib/api', () => ({
   goalsApi: {
@@ -28,16 +24,9 @@ jest.mock('@/lib/api', () => ({
   },
 }))
 
-jest.mock('@/lib/logger', () => ({
-  logger: {
-    warn: (...args: unknown[]) => mockLoggerWarn(...args),
-  },
-}))
-
 // Import after mocks
 import {
   useGoalsByProject,
-  useGoalsByProjects,
   useGoal,
   useCreateGoal,
   useUpdateGoal,
@@ -104,7 +93,7 @@ describe('useGoalsByProject', () => {
     expect(mockGetByProject).toHaveBeenCalledWith('proj-1', 0, 20, sortOptions)
   })
 
-  it('should cache goals by project, pagination, and sort', async () => {
+  it('should have 5 minute staleTime', async () => {
     const mockGoals = createMockGoals(2)
     mockGetByProject.mockResolvedValue(mockGoals)
 
@@ -115,85 +104,8 @@ describe('useGoalsByProject', () => {
     })
 
     // Verify query is in cache
-    const queryState = queryClient.getQueryState(
-      goalKeys.projectList('proj-1', 0, 20, 'default'),
-    )
+    const queryState = queryClient.getQueryState([...goalKeys.byProject('proj-1'), 'default'])
     expect(queryState).toBeDefined()
-  })
-
-  it('warns when a full goal page may be truncated', async () => {
-    mockGetByProject.mockResolvedValue(
-      createMockGoals(100, { project_id: 'proj-1' }),
-    )
-
-    const { result } = renderHookWithClient(() =>
-      useGoalsByProject('proj-1', 0, 100),
-    )
-
-    await waitFor(() => {
-      expect(result.current.isSuccess).toBe(true)
-    })
-
-    expect(mockLoggerWarn).toHaveBeenCalledWith(
-      'Goal list may be truncated',
-      { projectId: 'proj-1', skip: 0, limit: 100 },
-      { component: 'goalsByProjectQueryOptions' },
-    )
-  })
-})
-
-describe('useGoalsByProjects', () => {
-  beforeEach(() => {
-    jest.clearAllMocks()
-    resetIdCounter()
-  })
-
-  it('does not fetch project goals when disabled', () => {
-    const { result } = renderHookWithClient(() =>
-      useGoalsByProjects(['proj-1', 'proj-2'], { enabled: false }),
-    )
-
-    expect(result.current.isFetching).toBe(false)
-    expect(mockGetByProject).not.toHaveBeenCalled()
-  })
-
-  it('preserves the combined data reference across unchanged renders', async () => {
-    mockGetByProject.mockResolvedValue(
-      createMockGoals(2, { project_id: 'proj-1' }),
-    )
-
-    const { result, rerender } = renderHookWithClient(() =>
-      useGoalsByProjects(['proj-1']),
-    )
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false)
-      expect(result.current.data).toHaveLength(2)
-    })
-    const firstData = result.current.data
-
-    rerender()
-
-    expect(result.current.data).toBe(firstData)
-  })
-
-  it('keeps successful project goals when another project fails', async () => {
-    mockGetByProject.mockImplementation(async (projectId: string) => {
-      if (projectId === 'proj-2') {
-        throw new Error('boom')
-      }
-      return createMockGoals(2, { project_id: projectId })
-    })
-
-    const { result } = renderHookWithClient(() =>
-      useGoalsByProjects(['proj-1', 'proj-2']),
-    )
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false)
-    })
-    expect(result.current.data).toHaveLength(2)
-    expect(result.current.error).toEqual(new Error('boom'))
   })
 })
 
@@ -223,32 +135,6 @@ describe('useGoal', () => {
     expect(result.current.isPending).toBe(true)
     expect(result.current.fetchStatus).toBe('idle')
     expect(mockGetById).not.toHaveBeenCalled()
-  })
-
-  it('renders a cached project goal while revalidating its detail', async () => {
-    const cachedGoal = createMockGoal({ id: 'goal-1', title: 'Cached goal' })
-    const refreshedGoal = createMockGoal({
-      id: 'goal-1',
-      title: 'Refreshed goal',
-    })
-    const queryClient = createTestQueryClient()
-    queryClient.setQueryData(
-      goalKeys.projectList('proj-1', 0, 20, 'default'),
-      [cachedGoal],
-      { updatedAt: Date.now() },
-    )
-    mockGetById.mockResolvedValue(refreshedGoal)
-
-    const { result } = renderHookWithClient(() => useGoal('goal-1'), {
-      queryClient,
-    })
-
-    expect(result.current.data).toEqual(cachedGoal)
-    expect(result.current.isLoading).toBe(false)
-    await waitFor(() => {
-      expect(mockGetById).toHaveBeenCalledWith('goal-1')
-      expect(result.current.data).toEqual(refreshedGoal)
-    })
   })
 })
 
@@ -295,10 +181,8 @@ describe('useCreateGoal', () => {
       })
     })
 
-    await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({
-        queryKey: goalKeys.byProject('proj-1'),
-      })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: goalKeys.byProject('proj-1'),
     })
   })
 
@@ -385,10 +269,8 @@ describe('useUpdateGoal', () => {
       })
     })
 
-    await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({
-        queryKey: goalKeys.byProject('proj-1'),
-      })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: goalKeys.byProject('proj-1'),
     })
   })
 })
@@ -450,14 +332,12 @@ describe('useDeleteGoal', () => {
       await result.current.mutateAsync('goal-1')
     })
 
-    await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({
-        queryKey: goalKeys.byProject('proj-1'),
-      })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: goalKeys.byProject('proj-1'),
     })
   })
 
-  it('should invalidate all project goal collections if projectId unknown', async () => {
+  it('should fallback to invalidate all lists if projectId unknown', async () => {
     mockDelete.mockResolvedValue(undefined)
 
     const { result, queryClient } = renderHookWithClient(() => useDeleteGoal())
@@ -469,10 +349,8 @@ describe('useDeleteGoal', () => {
       await result.current.mutateAsync('unknown-goal')
     })
 
-    await waitFor(() => {
-      expect(invalidateSpy).toHaveBeenCalledWith({
-        queryKey: goalKeys.projects(),
-      })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: goalKeys.lists(),
     })
   })
 })

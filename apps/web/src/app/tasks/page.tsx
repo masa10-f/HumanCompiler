@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDeferredValue, useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bot,
   CheckCircle2,
@@ -44,10 +44,8 @@ import {
   useTaskWorkspaceSummary,
   useUpdateTask,
 } from "@/hooks/use-tasks-query";
-import { quickTasksApi } from "@/lib/api";
+import { goalsApi, quickTasksApi } from "@/lib/api";
 import { useProjectOptions } from "@/hooks/use-project-query";
-import { useGoalsByProjects } from "@/hooks/use-goals-query";
-import { getGoalProjectIds } from "@/lib/project-filters";
 import {
   buildTaskWorkspaceFilters,
   DEFAULT_TASK_WORKSPACE_PRESET,
@@ -296,16 +294,21 @@ export default function TasksPage() {
   const { data: projects = [] } = useProjectOptions({
     enabled: Boolean(user),
   });
-  const goalProjectIds = useMemo(
-    () => getGoalProjectIds(projects, projectId),
-    [projects, projectId],
-  );
-  // Goal destination controls intentionally show projects that can receive
-  // active work. A selected archived project is included only so its existing
-  // tasks and goals can still be filtered and inspected.
-  const { data: goals } = useGoalsByProjects(goalProjectIds, {
-    enabled: goalProjectIds.length > 0,
-    limit: 100,
+  const { data: goals = [] } = useQuery({
+    queryKey: [
+      "goals",
+      "task-workspace",
+      projects.map((project) => project.id).join(","),
+    ],
+    queryFn: async () => {
+      const results = await Promise.allSettled(
+        projects.map((project) => goalsApi.getByProject(project.id, 0, 100)),
+      );
+      return results.flatMap((result) =>
+        result.status === "fulfilled" ? result.value : [],
+      );
+    },
+    enabled: projects.length > 0,
   });
 
   const filters = useMemo<TaskWorkspaceFilters>(() => {
