@@ -2,7 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { useAuthContext } from '@/components/auth-provider'
 import { useProjectOptions } from '@/hooks/use-project-query'
 
@@ -24,42 +24,37 @@ function createQueryClient() {
   })
 }
 
-function AuthenticatedQueryClient({
-  children,
-  warmProjects,
-}: {
-  children: React.ReactNode
-  warmProjects: boolean
-}) {
-  const [queryClient] = useState(createQueryClient)
-
-  return (
-    <QueryClientProvider client={queryClient}>
-      <ProjectCacheWarmer enabled={warmProjects} />
-      {children}
-      <ReactQueryDevtools initialIsOpen={false} />
-    </QueryClientProvider>
-  )
-}
-
 /**
  * React Query provider component.
- * Uses a fresh cache at authentication boundaries and warms project metadata
- * after sign-in. Normal client-side navigation keeps the same cache.
+ * Clears cached server data when the resolved identity changes and warms
+ * project metadata after sign-in. Normal navigation keeps component state.
  *
  * @param props - Component props
  * @param props.children - Child components to wrap with query context
  */
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthContext()
-  const cacheIdentity = loading ? 'auth-loading' : (user?.id ?? 'anonymous')
+  const [queryClient] = useState(createQueryClient)
+  const previousIdentity = useRef<string | null>(null)
+
+  useLayoutEffect(() => {
+    if (loading) return
+
+    const identity = user?.id ?? 'anonymous'
+    if (
+      previousIdentity.current !== null &&
+      previousIdentity.current !== identity
+    ) {
+      queryClient.clear()
+    }
+    previousIdentity.current = identity
+  }, [loading, queryClient, user?.id])
 
   return (
-    <AuthenticatedQueryClient
-      key={cacheIdentity}
-      warmProjects={!loading && Boolean(user)}
-    >
+    <QueryClientProvider client={queryClient}>
+      <ProjectCacheWarmer enabled={!loading && Boolean(user)} />
       {children}
-    </AuthenticatedQueryClient>
+      <ReactQueryDevtools initialIsOpen={false} />
+    </QueryClientProvider>
   )
 }

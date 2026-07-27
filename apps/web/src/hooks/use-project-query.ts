@@ -13,6 +13,7 @@ import { SortBy, SortOrder } from '@/types/sort'
 export const projectKeys = queryKeys.projects
 
 const PROJECT_OPTIONS_LIMIT = 100
+// TODO: Use a paginated collection if the UI needs to support over 100 projects.
 const PROJECT_STATUS_PRIORITY: Record<Project['status'], number> = {
   pending: 1,
   in_progress: 2,
@@ -20,6 +21,7 @@ const PROJECT_STATUS_PRIORITY: Record<Project['status'], number> = {
   cancelled: 4,
 }
 const PROJECT_STALE_TIME = 30 * 60 * 1000
+const PROJECT_DETAIL_STALE_TIME = 5 * 60 * 1000
 const PROJECT_GC_TIME = 24 * 60 * 60 * 1000
 
 export function projectOptionsQueryOptions() {
@@ -101,8 +103,9 @@ export function useProject(projectId: string) {
         ?.find((project) => project.id === projectId),
     initialDataUpdatedAt: () =>
       queryClient.getQueryState(projectKeys.options())?.dataUpdatedAt,
-    staleTime: PROJECT_STALE_TIME,
+    staleTime: PROJECT_DETAIL_STALE_TIME,
     gcTime: PROJECT_GC_TIME,
+    refetchOnWindowFocus: true,
   })
 }
 

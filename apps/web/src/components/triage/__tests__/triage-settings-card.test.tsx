@@ -11,6 +11,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 const mockUseProjectOptions = jest.fn()
 const mockGetSettings = jest.fn()
+const mockUpdateSettings = jest.fn()
 const mockRefetchProjects = jest.fn()
 
 jest.mock('@/hooks/use-auth', () => ({
@@ -24,7 +25,7 @@ jest.mock('@/hooks/use-project-query', () => ({
 jest.mock('@/lib/api', () => ({
   triageApi: {
     getSettings: (...args: unknown[]) => mockGetSettings(...args),
-    updateSettings: jest.fn(),
+    updateSettings: (...args: unknown[]) => mockUpdateSettings(...args),
   },
 }))
 
@@ -36,8 +37,8 @@ const settings = {
   cadence_days: 7,
   auto_generate_enabled: false,
   use_ai_rank_adjustment: false,
-  project_allocations: {},
-  inbox_allocation_percent: 100,
+  project_allocations: { 'project-1': 40 },
+  inbox_allocation_percent: 60,
   work_type_caps: {},
 }
 
@@ -63,7 +64,7 @@ describe('TriageSettingsCard', () => {
     expect(screen.queryByText('Loading...')).not.toBeInTheDocument()
   })
 
-  it('shows a safe error and lets the user retry', async () => {
+  it('shows a safe error, retries, and preserves allocations on save', async () => {
     mockUseProjectOptions.mockReturnValue({
       data: undefined,
       error: new Error('raw backend message'),
@@ -83,6 +84,17 @@ describe('TriageSettingsCard', () => {
     )
     await waitFor(() => {
       expect(mockRefetchProjects).toHaveBeenCalled()
+    })
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'トリアージ設定を保存' }),
+    )
+    await waitFor(() => {
+      expect(mockUpdateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          project_allocations: { 'project-1': 40 },
+        }),
+      )
     })
   })
 })
