@@ -283,14 +283,16 @@ export function TriageSettingsCard() {
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-sm font-semibold">配分</h3>
                 {projectsUnavailable ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void refetchProjects()}
-                  >
-                    プロジェクトを再取得
-                  </Button>
+                  projectsError ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void refetchProjects()}
+                    >
+                      プロジェクトを再取得
+                    </Button>
+                  ) : null
                 ) : (
                   <Button type="button" variant="outline" size="sm" onClick={balanceAllocations}>
                     均等配分

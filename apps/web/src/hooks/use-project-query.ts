@@ -31,6 +31,7 @@ export function projectOptionsQueryOptions() {
   return {
     queryKey: projectKeys.options(),
     queryFn: () => projectsApi.getAll(0, PROJECT_OPTIONS_LIMIT),
+    // Deliberately refresh stale shared metadata when the user returns.
     refetchOnWindowFocus: true,
     staleTime: PROJECT_STALE_TIME,
     gcTime: PROJECT_GC_TIME,
@@ -159,10 +160,13 @@ export function useCreateProject() {
 
       queryClient.setQueryData(projectKeys.detail(newProject.id), newProject)
       if (cachedOptions) {
-        queryClient.setQueryData<Project[]>(projectKeys.options(), [
-          ...cachedOptions.filter((project) => project.id !== newProject.id),
-          newProject,
-        ])
+        queryClient.setQueryData<Project[]>(
+          projectKeys.options(),
+          [
+            ...cachedOptions.filter((project) => project.id !== newProject.id),
+            newProject,
+          ].sort(compareProjects),
+        )
       } else {
         void queryClient.invalidateQueries({ queryKey: projectKeys.options() })
       }

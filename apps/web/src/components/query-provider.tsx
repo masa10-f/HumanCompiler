@@ -29,15 +29,15 @@ function createQueryClient() {
 
 /**
  * React Query provider component.
- * Clears cached server data when the resolved identity changes and warms
- * project metadata after sign-in. Normal navigation keeps component state.
+ * Replaces cached server data when the resolved user changes and warms project
+ * metadata after sign-in. Normal navigation keeps component state.
  *
  * @param props - Component props
  * @param props.children - Child components to wrap with query context
  */
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthContext()
-  const [queryClient] = useState(createQueryClient)
+  const [queryClient, setQueryClient] = useState(createQueryClient)
   const previousIdentity = useRef<string | null>(null)
 
   useIsomorphicLayoutEffect(() => {
@@ -48,11 +48,9 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       previousIdentity.current !== null &&
       previousIdentity.current !== identity
     ) {
-      if (identity === 'anonymous') {
-        queryClient.clear()
-      } else {
-        queryClient.getMutationCache().clear()
-        void queryClient.resetQueries()
+      queryClient.clear()
+      if (identity !== 'anonymous') {
+        setQueryClient(createQueryClient())
       }
     }
     previousIdentity.current = identity
