@@ -6,7 +6,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuthContext } from '@/components/auth-provider'
 import {
   projectKeys,
@@ -31,9 +31,11 @@ function ProjectCacheWarmer({ enabled }: { enabled: boolean }) {
 function AuthenticatedQueryClient({
   children,
   warmProjects,
+  cacheIdentity,
 }: {
   children: React.ReactNode
   warmProjects: boolean
+  cacheIdentity: string
 }) {
   const [queryClient] = useState(
     () =>
@@ -49,6 +51,14 @@ function AuthenticatedQueryClient({
         },
       }),
   )
+  const previousCacheIdentity = useRef(cacheIdentity)
+
+  if (previousCacheIdentity.current !== cacheIdentity) {
+    queryClient.clear()
+    previousCacheIdentity.current = cacheIdentity
+  }
+
+  useEffect(() => () => queryClient.clear(), [queryClient])
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -61,24 +71,21 @@ function AuthenticatedQueryClient({
 
 /**
  * React Query provider component.
- * Recreates the cache at authentication boundaries so one user's data can
- * never be shown to another user, and warms stable project metadata after
- * sign-in for instant client-side navigation.
+ * Clears the cache at authentication boundaries so one user's data can never
+ * be shown to another user without remounting the application subtree, and
+ * warms stable project metadata after sign-in for instant client navigation.
  *
  * @param props - Component props
  * @param props.children - Child components to wrap with query context
  */
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthContext()
-
-  if (loading) {
-    return null
-  }
+  const cacheIdentity = loading ? 'auth-loading' : (user?.id ?? 'anonymous')
 
   return (
     <AuthenticatedQueryClient
-      key={user?.id ?? 'anonymous'}
-      warmProjects={Boolean(user)}
+      cacheIdentity={cacheIdentity}
+      warmProjects={!loading && Boolean(user)}
     >
       {children}
     </AuthenticatedQueryClient>

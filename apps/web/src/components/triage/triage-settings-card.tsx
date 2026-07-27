@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { triageApi } from '@/lib/api';
+import { useAuth } from '@/hooks/use-auth';
 import { useProjectOptions } from '@/hooks/use-project-query';
 import { getSelectableProjects } from '@/lib/project-filters';
 import type { WorkType } from '@/types/task';
@@ -20,11 +21,12 @@ import { workTypeLabels } from '@/types/task';
 const workTypes: WorkType[] = ['focused_work', 'study', 'light_work'];
 
 export function TriageSettingsCard() {
+  const { user } = useAuth();
   const {
     data: projectData = [],
     isLoading: projectsLoading,
     error: projectsError,
-  } = useProjectOptions();
+  } = useProjectOptions({ enabled: Boolean(user) });
   const projects = useMemo(
     () => getSelectableProjects(projectData),
     [projectData]

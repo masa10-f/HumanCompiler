@@ -2,7 +2,8 @@
  * @jest-environment jsdom
  */
 import { useEffect } from 'react'
-import { render, waitFor } from '@testing-library/react'
+import { useQueryClient } from '@tanstack/react-query'
+import { act, render, waitFor } from '@testing-library/react'
 
 const mockGetAll = jest.fn()
 let authState: {
@@ -35,12 +36,17 @@ describe('QueryProvider', () => {
     mockGetAll.mockResolvedValue([])
   })
 
-  it('waits for auth before mounting the application subtree', async () => {
+  it('renders during auth loading without remounting when auth resolves', async () => {
     const mounted = jest.fn()
+    const unmounted = jest.fn()
+    let queryClient: ReturnType<typeof useQueryClient> | undefined
 
     function Child() {
+      queryClient = useQueryClient()
+
       useEffect(() => {
         mounted()
+        return unmounted
       }, [])
 
       return <div>Application</div>
@@ -52,8 +58,9 @@ describe('QueryProvider', () => {
       </QueryProvider>,
     )
 
-    expect(view.queryByText('Application')).not.toBeInTheDocument()
-    expect(mounted).not.toHaveBeenCalled()
+    expect(view.getByText('Application')).toBeInTheDocument()
+    expect(mounted).toHaveBeenCalledTimes(1)
+    expect(mockGetAll).not.toHaveBeenCalled()
 
     authState = {
       user: { id: 'user-1' },
@@ -67,8 +74,30 @@ describe('QueryProvider', () => {
 
     expect(view.getByText('Application')).toBeInTheDocument()
     expect(mounted).toHaveBeenCalledTimes(1)
+    expect(unmounted).not.toHaveBeenCalled()
     await waitFor(() => {
       expect(mockGetAll).toHaveBeenCalledTimes(1)
     })
+
+    act(() => {
+      queryClient?.setQueryData(['private-data'], 'user-1-data')
+    })
+
+    authState = {
+      user: { id: 'user-2' },
+      loading: false,
+    }
+    view.rerender(
+      <QueryProvider>
+        <Child />
+      </QueryProvider>,
+    )
+
+    expect(queryClient?.getQueryData(['private-data'])).toBeUndefined()
+    expect(mounted).toHaveBeenCalledTimes(1)
+    expect(unmounted).not.toHaveBeenCalled()
+
+    view.unmount()
+    expect(unmounted).toHaveBeenCalledTimes(1)
   })
 })

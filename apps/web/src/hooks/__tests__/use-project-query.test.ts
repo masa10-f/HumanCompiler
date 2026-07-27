@@ -251,6 +251,22 @@ describe('shared project collection', () => {
       'cancelled',
     ])
   })
+
+  it('should reject unsupported priority sorting explicitly', async () => {
+    mockGetAll.mockResolvedValue(createMockProjects(2))
+
+    const { result } = renderHookWithClient(() =>
+      useProjects(0, 20, { sortBy: 'priority', sortOrder: 'asc' }),
+    )
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true)
+    })
+
+    expect(result.current.error).toEqual(
+      new Error('Priority sorting is not supported for projects'),
+    )
+  })
 })
 
 describe('useCreateProject', () => {
@@ -303,12 +319,13 @@ describe('useCreateProject', () => {
     })
   })
 
-  it('should recover the collection when creation follows a load failure', async () => {
+  it('should not materialize a truncated collection after a cold-cache create', async () => {
     const newProject = createMockProject({ id: 'recovered-project' })
     mockCreate.mockResolvedValue(newProject)
 
     const { result, queryClient } = renderHookWithClient(() => useCreateProject())
     queryClient.setQueryDefaults(projectKeys.options(), { gcTime: Infinity })
+    queryClient.setQueryDefaults(projectKeys.details(), { gcTime: Infinity })
     const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries')
 
     await act(async () => {
@@ -318,7 +335,10 @@ describe('useCreateProject', () => {
       })
     })
 
-    expect(queryClient.getQueryData(projectKeys.options())).toEqual([newProject])
+    expect(queryClient.getQueryData(projectKeys.options())).toBeUndefined()
+    expect(queryClient.getQueryData(projectKeys.detail(newProject.id))).toEqual(
+      newProject,
+    )
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: projectKeys.options(),
     })
@@ -358,6 +378,30 @@ describe('useUpdateProject', () => {
     expect(queryClient.getQueryData(projectKeys.detail('proj-1'))).toEqual(updatedProject)
     expect(queryClient.getQueryData(projectKeys.options())).toEqual([updatedProject])
   })
+
+  it('should not materialize a partial collection after a cold-cache update', async () => {
+    const updatedProject = createMockProject({ id: 'proj-1', title: 'Updated' })
+    mockUpdate.mockResolvedValue(updatedProject)
+
+    const { result, queryClient } = renderHookWithClient(() => useUpdateProject())
+    queryClient.setQueryDefaults(projectKeys.details(), { gcTime: Infinity })
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries')
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        id: 'proj-1',
+        data: { title: 'Updated' },
+      })
+    })
+
+    expect(queryClient.getQueryData(projectKeys.options())).toBeUndefined()
+    expect(queryClient.getQueryData(projectKeys.detail('proj-1'))).toEqual(
+      updatedProject,
+    )
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: projectKeys.options(),
+    })
+  })
 })
 
 describe('useDeleteProject', () => {
@@ -391,5 +435,21 @@ describe('useDeleteProject', () => {
       queryKey: projectKeys.detail('proj-to-delete'),
     })
     expect(queryClient.getQueryData(projectKeys.options())).toEqual([])
+  })
+
+  it('should not materialize an empty collection after a cold-cache delete', async () => {
+    mockDelete.mockResolvedValue(undefined)
+
+    const { result, queryClient } = renderHookWithClient(() => useDeleteProject())
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries')
+
+    await act(async () => {
+      await result.current.mutateAsync('proj-to-delete')
+    })
+
+    expect(queryClient.getQueryData(projectKeys.options())).toBeUndefined()
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: projectKeys.options(),
+    })
   })
 })

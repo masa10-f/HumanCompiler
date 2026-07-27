@@ -4,6 +4,7 @@ import {
   useMutation,
   useQueryClient,
 } from '@tanstack/react-query'
+import { useCallback } from 'react'
 import { goalsApi } from '@/lib/api'
 import type { Goal, GoalCreate, GoalUpdate } from '@/types/goal'
 import type { SortOptions } from '@/types/sort'
@@ -77,18 +78,22 @@ export function useGoalsByProjects(
   const skip = options?.skip ?? 0
   const limit = options?.limit ?? 100
   const uniqueProjectIds = [...new Set(projectIds)]
+  const combine = useCallback(
+    (results: ReturnType<typeof useGoalsByProject>[]) => ({
+      data: results.flatMap((result) => result.data ?? []),
+      isLoading: results.some((result) => result.isLoading),
+      isFetching: results.some((result) => result.isFetching),
+      error: results.find((result) => result.error)?.error ?? null,
+    }),
+    [],
+  )
 
   return useQueries({
     queries: uniqueProjectIds.map((projectId) => ({
       ...goalsByProjectQueryOptions(projectId, skip, limit),
       enabled: enabled && Boolean(projectId),
     })),
-    combine: (results) => ({
-      data: results.flatMap((result) => result.data ?? []),
-      isLoading: results.some((result) => result.isLoading),
-      isFetching: results.some((result) => result.isFetching),
-      error: results.find((result) => result.error)?.error ?? null,
-    }),
+    combine,
   })
 }
 

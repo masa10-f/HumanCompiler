@@ -93,22 +93,15 @@ function compareProjects(
         new Date(left.updated_at).getTime() - new Date(right.updated_at).getTime()
       break
     case SortBy.STATUS:
-    default:
       comparison =
         PROJECT_STATUS_PRIORITY[left.status] -
         PROJECT_STATUS_PRIORITY[right.status]
       break
+    case SortBy.PRIORITY:
+      throw new Error('Priority sorting is not supported for projects')
   }
 
   return comparison * direction
-}
-
-function updateProjectOptions(
-  projects: Project[] | undefined,
-  updater: (projects: Project[]) => Project[],
-  fallback: Project[] = [],
-) {
-  return updater(projects ?? fallback)
 }
 
 /**
@@ -177,19 +170,17 @@ export function useCreateProject() {
   return useMutation({
     mutationFn: (projectData: ProjectCreate) => projectsApi.create(projectData),
     onSuccess: (newProject: Project) => {
-      const hasCachedOptions = Boolean(
-        queryClient.getQueryData<Project[]>(projectKeys.options()),
+      const cachedOptions = queryClient.getQueryData<Project[]>(
+        projectKeys.options(),
       )
 
       queryClient.setQueryData(projectKeys.detail(newProject.id), newProject)
-      queryClient.setQueryData<Project[]>(projectKeys.options(), (projects) =>
-        updateProjectOptions(projects, (current) => [
-          ...current.filter((project) => project.id !== newProject.id),
+      if (cachedOptions) {
+        queryClient.setQueryData<Project[]>(projectKeys.options(), [
+          ...cachedOptions.filter((project) => project.id !== newProject.id),
           newProject,
-        ]),
-      )
-
-      if (!hasCachedOptions) {
+        ])
+      } else {
         void queryClient.invalidateQueries({ queryKey: projectKeys.options() })
       }
     },
@@ -209,26 +200,22 @@ export function useUpdateProject() {
     mutationFn: ({ id, data }: { id: string; data: ProjectUpdate }) =>
       projectsApi.update(id, data),
     onSuccess: (updatedProject: Project) => {
-      const hasCachedOptions = Boolean(
-        queryClient.getQueryData<Project[]>(projectKeys.options()),
+      const cachedOptions = queryClient.getQueryData<Project[]>(
+        projectKeys.options(),
       )
 
       queryClient.setQueryData(
         projectKeys.detail(updatedProject.id),
         updatedProject,
       )
-      queryClient.setQueryData<Project[]>(projectKeys.options(), (projects) =>
-        updateProjectOptions(
-          projects,
-          (current) =>
-            current.map((project) =>
-              project.id === updatedProject.id ? updatedProject : project,
-            ),
-          [updatedProject],
-        ),
-      )
-
-      if (!hasCachedOptions) {
+      if (cachedOptions) {
+        queryClient.setQueryData<Project[]>(
+          projectKeys.options(),
+          cachedOptions.map((project) =>
+            project.id === updatedProject.id ? updatedProject : project,
+          ),
+        )
+      } else {
         void queryClient.invalidateQueries({ queryKey: projectKeys.options() })
       }
     },
@@ -249,18 +236,17 @@ export function useDeleteProject() {
   return useMutation({
     mutationFn: (projectId: string) => projectsApi.delete(projectId),
     onSuccess: (_, projectId) => {
-      const hasCachedOptions = Boolean(
-        queryClient.getQueryData<Project[]>(projectKeys.options()),
+      const cachedOptions = queryClient.getQueryData<Project[]>(
+        projectKeys.options(),
       )
 
       queryClient.removeQueries({ queryKey: projectKeys.detail(projectId) })
-      queryClient.setQueryData<Project[]>(projectKeys.options(), (projects) =>
-        updateProjectOptions(projects, (current) =>
-          current.filter((project) => project.id !== projectId),
-        ),
-      )
-
-      if (!hasCachedOptions) {
+      if (cachedOptions) {
+        queryClient.setQueryData<Project[]>(
+          projectKeys.options(),
+          cachedOptions.filter((project) => project.id !== projectId),
+        )
+      } else {
         void queryClient.invalidateQueries({ queryKey: projectKeys.options() })
       }
 
