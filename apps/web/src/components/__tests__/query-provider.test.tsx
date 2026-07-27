@@ -7,8 +7,8 @@
 /**
  * @jest-environment jsdom
  */
-import { useQueryClient } from '@tanstack/react-query'
-import { act, render, waitFor } from '@testing-library/react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { useEffect } from 'react'
 
 const mockGetAll = jest.fn()
@@ -96,7 +96,12 @@ describe('QueryProvider', () => {
 
     function Child() {
       queryClient = useQueryClient()
-      return null
+      const privateQuery = useQuery({
+        queryKey: ['private-data'],
+        queryFn: async () => 'fetched-data',
+        enabled: false,
+      })
+      return <div>{privateQuery.data ?? 'empty'}</div>
     }
 
     const view = render(
@@ -108,6 +113,9 @@ describe('QueryProvider', () => {
     act(() => {
       userOneClient?.setQueryData(['private-data'], 'user-1-data')
     })
+    await waitFor(() => {
+      expect(screen.getByText('user-1-data')).toBeInTheDocument()
+    })
 
     authState = { user: { id: 'user-2' }, loading: false }
     view.rerender(
@@ -118,7 +126,7 @@ describe('QueryProvider', () => {
 
     expect(queryClient).toBe(userOneClient)
     await waitFor(() => {
-      expect(queryClient?.getQueryData(['private-data'])).toBeUndefined()
+      expect(screen.getByText('empty')).toBeInTheDocument()
     })
   })
 })

@@ -75,7 +75,9 @@ describe('TriageSettingsCard', () => {
     render(<TriageSettingsCard />)
 
     expect(
-      await screen.findByText('予期しないエラーが発生しました。'),
+      await screen.findByText(
+        'プロジェクト一覧の取得に失敗しました: 予期しないエラーが発生しました。',
+      ),
     ).toBeInTheDocument()
     expect(screen.queryByText('raw backend message')).not.toBeInTheDocument()
 
