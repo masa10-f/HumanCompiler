@@ -10,6 +10,7 @@ import {
   getSelectableProjects,
   isOpenProject,
   isSelectableProject,
+  MAX_GOAL_PROJECT_QUERIES,
 } from '@/lib/project-filters'
 import type { ProjectStatus } from '@/types/project'
 
@@ -47,6 +48,27 @@ describe('project filters', () => {
       'in-progress',
       'completed',
     ])
+  })
+
+  it('caps goal query fan-out while prioritizing the selected project', () => {
+    const manyProjects = Array.from(
+      { length: MAX_GOAL_PROJECT_QUERIES + 1 },
+      (_, index) => ({
+        id: `project-${index}`,
+        status: 'in_progress' as const,
+      }),
+    )
+
+    const projectIds = getGoalProjectIds(
+      manyProjects,
+      'archived-project',
+    )
+
+    expect(projectIds).toHaveLength(MAX_GOAL_PROJECT_QUERIES)
+    expect(projectIds).toContain('archived-project')
+    expect(projectIds).not.toContain(
+      `project-${MAX_GOAL_PROJECT_QUERIES - 1}`,
+    )
   })
 
   it('keeps selectable projects limited to in-progress work', () => {

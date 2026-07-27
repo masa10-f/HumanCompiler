@@ -17,6 +17,8 @@ const PROJECT_PAGE_SIZE = 100
 const MAX_PROJECT_PAGES = 100
 const PROJECT_PAGINATION_ERROR_MESSAGE =
   'プロジェクト一覧を完全に取得できませんでした。再試行してください。'
+// The API base service appends id ASC to every ordered query, so offset page
+// boundaries remain deterministic when several projects share created_at.
 const PROJECT_FETCH_SORT_OPTIONS: SortOptions = {
   sortBy: SortBy.CREATED_AT,
   sortOrder: SortOrder.ASC,
@@ -99,10 +101,10 @@ export function projectOptionsQueryOptions() {
 function compareProjects(
   left: Project,
   right: Project,
-  sortOptions?: SortOptions,
+  sortBy = SortBy.STATUS,
+  sortOrder = SortOrder.ASC,
 ) {
-  const sortBy = sortOptions?.sortBy ?? SortBy.STATUS
-  const direction = sortOptions?.sortOrder === SortOrder.DESC ? -1 : 1
+  const direction = sortOrder === SortOrder.DESC ? -1 : 1
 
   let comparison = 0
   switch (sortBy) {
@@ -121,12 +123,13 @@ function compareProjects(
     // Projects have no priority field, so keep the workflow status order.
     case SortBy.PRIORITY:
       comparison =
-        PROJECT_STATUS_PRIORITY[left.status] -
-        PROJECT_STATUS_PRIORITY[right.status]
+        (PROJECT_STATUS_PRIORITY[left.status] ?? Number.MAX_SAFE_INTEGER) -
+        (PROJECT_STATUS_PRIORITY[right.status] ?? Number.MAX_SAFE_INTEGER)
       break
     default: {
       const exhaustive: never = sortBy
-      return exhaustive
+      void exhaustive
+      return 0
     }
   }
 
@@ -171,7 +174,7 @@ export function useProject(projectId: string) {
 }
 
 /**
- * Fetches all projects with pagination and sorting.
+ * Selects a client-side page from the shared complete project collection.
  *
  * @param skip - Number of records to skip (default: 0)
  * @param limit - Maximum records to return (default: 20)
@@ -185,12 +188,16 @@ export function useProjects(
   sortOptions?: SortOptions,
   options?: { enabled?: boolean },
 ) {
+  const sortBy = sortOptions?.sortBy
+  const sortOrder = sortOptions?.sortOrder
   const selectProjects = useCallback(
     (projects: Project[]) =>
       [...projects]
-        .sort((left, right) => compareProjects(left, right, sortOptions))
+        .sort((left, right) =>
+          compareProjects(left, right, sortBy, sortOrder),
+        )
         .slice(skip, skip + limit),
-    [limit, skip, sortOptions],
+    [limit, skip, sortBy, sortOrder],
   )
 
   return useQuery({

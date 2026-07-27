@@ -148,4 +148,47 @@ describe('QueryProvider', () => {
     expect(mockGetAll).toHaveBeenCalledTimes(1)
   })
 
+  it('does not remount when an anonymous initial resolution is corrected', async () => {
+    authState = {
+      user: null,
+      loading: false,
+    }
+    const mounted = jest.fn()
+    const unmounted = jest.fn()
+    let queryClient: ReturnType<typeof useQueryClient> | undefined
+
+    function Child() {
+      queryClient = useQueryClient()
+      useEffect(() => {
+        mounted()
+        return unmounted
+      }, [])
+      return null
+    }
+
+    const view = render(
+      <QueryProvider>
+        <Child />
+      </QueryProvider>,
+    )
+    const anonymousQueryClient = queryClient
+
+    authState = {
+      user: { id: 'user-1' },
+      loading: false,
+    }
+    view.rerender(
+      <QueryProvider>
+        <Child />
+      </QueryProvider>,
+    )
+
+    expect(queryClient).toBe(anonymousQueryClient)
+    expect(mounted).toHaveBeenCalledTimes(1)
+    expect(unmounted).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(mockGetAll).toHaveBeenCalledTimes(1)
+    })
+  })
+
 })

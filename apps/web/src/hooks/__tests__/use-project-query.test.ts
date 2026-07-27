@@ -282,6 +282,48 @@ describe('shared project collection', () => {
     ])
   })
 
+  it('preserves selected data identity when sort options are inline', async () => {
+    mockGetAll.mockResolvedValue(createMockProjects(3))
+
+    const { result, rerender } = renderHookWithClient(() =>
+      useProjects(0, 20, { sortBy: 'title', sortOrder: 'asc' }),
+    )
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+    const firstData = result.current.data
+
+    rerender()
+
+    expect(result.current.data).toBe(firstData)
+  })
+
+  it('sorts an unknown runtime status after known statuses', async () => {
+    const unknownStatusProject = createMockProject({
+      id: 'unknown',
+      status: 'pending',
+    })
+    ;(unknownStatusProject as Project & { status: string }).status = 'unknown'
+    mockGetAll.mockResolvedValue([
+      unknownStatusProject,
+      createMockProject({ id: 'pending', status: 'pending' }),
+    ])
+
+    const { result } = renderHookWithClient(() =>
+      useProjects(0, 20, { sortBy: 'status', sortOrder: 'asc' }),
+    )
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+
+    expect(result.current.data?.map((project) => project.id)).toEqual([
+      'pending',
+      'unknown',
+    ])
+  })
+
   it('should preserve the workflow status order', async () => {
     mockGetAll.mockResolvedValue([
       createMockProject({ id: 'cancelled', status: 'cancelled' }),
