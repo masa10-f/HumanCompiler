@@ -30,8 +30,8 @@ export const goalKeys = {
   ) => [...goalKeys.byProject(projectId), { skip, limit, sort: sortKey }] as const,
 }
 
-const GOAL_STALE_TIME = 10 * 60 * 1000
-const GOAL_GC_TIME = 24 * 60 * 60 * 1000
+export const GOAL_STALE_TIME = 10 * 60 * 1000
+export const GOAL_GC_TIME = 24 * 60 * 60 * 1000
 
 function goalsByProjectQueryOptions(
   projectId: string,

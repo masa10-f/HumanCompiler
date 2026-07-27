@@ -138,23 +138,12 @@ export default function SchedulingPage() {
     const loadInitialData = async () => {
       if (!user) return;
 
-      try {
-        const weeklyOptionsResult = await schedulingApi.getWeeklyScheduleOptions().catch(err => {
+      const weeklyOptionsResult =
+        await schedulingApi.getWeeklyScheduleOptions().catch(err => {
           logger.error('Weekly schedule options loading failed', err instanceof Error ? err : new Error(String(err)), { component: 'SchedulingPage' });
           return [];
         });
-        setWeeklyScheduleOptions(weeklyOptionsResult);
-
-      } catch (error) {
-        logger.error('Failed to load initial data', error instanceof Error ? error : new Error(String(error)), { component: 'SchedulingPage' });
-        toast({
-          title: 'データ読み込みエラー',
-          description: '初期データの読み込みに失敗しました',
-          variant: 'destructive',
-        });
-      } finally {
-        // Loading complete
-      }
+      setWeeklyScheduleOptions(weeklyOptionsResult);
     };
 
     loadInitialData();

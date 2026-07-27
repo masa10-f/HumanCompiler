@@ -15,6 +15,7 @@ export const projectKeys = queryKeys.projects
 
 const PROJECT_PAGE_SIZE = 100
 const MAX_PROJECT_PAGES = 100
+const PROJECT_PAGE_RETRY_COUNT = 1
 const PROJECT_PAGINATION_ERROR_MESSAGE =
   'プロジェクト一覧を完全に取得できませんでした。再試行してください。'
 // The API base service appends id ASC to every ordered query, so offset page
@@ -34,17 +35,31 @@ const PROJECT_STATUS_PRIORITY: Record<Project['status'], number> = {
 export const PROJECT_STALE_TIME = 30 * 60 * 1000
 export const PROJECT_GC_TIME = 24 * 60 * 60 * 1000
 
+async function fetchProjectPage(skip: number): Promise<Project[]> {
+  let lastError: unknown
+
+  for (let attempt = 0; attempt <= PROJECT_PAGE_RETRY_COUNT; attempt += 1) {
+    try {
+      return await projectsApi.getAll(
+        skip,
+        PROJECT_PAGE_SIZE,
+        PROJECT_FETCH_SORT_OPTIONS,
+      )
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError
+}
+
 async function fetchAllProjects(): Promise<Project[]> {
   const projects: Project[] = []
   const seenProjectIds = new Set<string>()
   let skip = 0
 
   for (let pageIndex = 0; pageIndex < MAX_PROJECT_PAGES; pageIndex += 1) {
-    const page = await projectsApi.getAll(
-      skip,
-      PROJECT_PAGE_SIZE,
-      PROJECT_FETCH_SORT_OPTIONS,
-    )
+    const page = await fetchProjectPage(skip)
     const previousProjectCount = projects.length
 
     page.forEach((project) => {
