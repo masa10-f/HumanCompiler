@@ -42,6 +42,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     generation: 0,
   }))
   const previousIdentity = useRef<string | null>(null)
+  const activeClient = useRef(queryClient)
 
   useIsomorphicLayoutEffect(() => {
     if (loading) return
@@ -59,7 +60,13 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     previousIdentity.current = identity
   }, [loading, user?.id])
 
-  useEffect(() => () => queryClient.clear(), [queryClient])
+  useEffect(() => {
+    const outgoingClient = activeClient.current
+    if (outgoingClient !== queryClient) {
+      outgoingClient.clear()
+      activeClient.current = queryClient
+    }
+  }, [queryClient])
 
   return (
     <QueryClientProvider client={queryClient} key={generation}>

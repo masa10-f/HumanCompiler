@@ -102,6 +102,8 @@ export function TriageSettingsCard() {
     (Boolean(user) && projectsLoading);
 
   const allocationTotal = useMemo(() => {
+    // Without project metadata, preserve and validate the stored map as-is;
+    // silently dropping unknown IDs could hide an invalid allocation total.
     const projectTotal = projectsUnavailable
       ? Object.values(projectAllocations).reduce(
           (total, allocation) => total + allocation,
@@ -282,22 +284,20 @@ export function TriageSettingsCard() {
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-sm font-semibold">配分</h3>
-                {projectsUnavailable ? (
-                  projectsError ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void refetchProjects()}
-                    >
-                      プロジェクトを再取得
-                    </Button>
-                  ) : null
-                ) : (
+                {projectsError ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void refetchProjects()}
+                  >
+                    プロジェクトを再取得
+                  </Button>
+                ) : !projectsUnavailable ? (
                   <Button type="button" variant="outline" size="sm" onClick={balanceAllocations}>
                     均等配分
                   </Button>
-                )}
+                ) : null}
               </div>
 
               {projectsUnavailable ? (
