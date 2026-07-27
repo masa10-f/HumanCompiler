@@ -37,7 +37,7 @@ const settings = {
   cadence_days: 7,
   auto_generate_enabled: false,
   use_ai_rank_adjustment: false,
-  project_allocations: { 'project-1': 40 },
+  project_allocations: { 'project-1': 50 },
   inbox_allocation_percent: 60,
   work_type_caps: {},
 }
@@ -92,7 +92,7 @@ describe('TriageSettingsCard', () => {
     await waitFor(() => {
       expect(mockUpdateSettings).toHaveBeenCalledWith(
         expect.objectContaining({
-          project_allocations: { 'project-1': 40 },
+          project_allocations: { 'project-1': 50 },
         }),
       )
     })
