@@ -296,9 +296,10 @@ export default function TasksPage() {
   const { data: projects = [] } = useProjectOptions({
     enabled: Boolean(user),
   });
+  const openProjects = useMemo(() => getOpenProjects(projects), [projects]);
   const goalProjectIds = useMemo(
-    () => getOpenProjects(projects).map((project) => project.id),
-    [projects],
+    () => openProjects.map((project) => project.id),
+    [openProjects],
   );
   const { data: goals } = useGoalsByProjects(goalProjectIds, {
     enabled: goalProjectIds.length > 0,
@@ -540,7 +541,7 @@ export default function TasksPage() {
                   }}
                 >
                   <option value="">全プロジェクト</option>
-                  {projects.map((project) => (
+                  {openProjects.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.title}
                     </option>

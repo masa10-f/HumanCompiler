@@ -142,7 +142,12 @@ export default function ProjectsPage() {
     sortOrder: SortOrder.ASC,
   });
 
-  const { data: projects = [], isLoading: loading, error, refetch } = useProjects(0, 20, sortOptions);
+  const {
+    data: projects = [],
+    isLoading: loading,
+    error,
+    refetch,
+  } = useProjects(0, 20, sortOptions, { enabled: Boolean(user) });
   const createProjectMutation = useCreateProject();
   const updateProjectMutation = useUpdateProject();
   const deleteProjectMutation = useDeleteProject();

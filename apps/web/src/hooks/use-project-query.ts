@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { projectsApi } from '@/lib/api'
+import { logger } from '@/lib/logger'
 import { queryKeys } from '@/lib/query-keys'
 import type { Project, ProjectCreate, ProjectUpdate } from '@/types/project'
 import type { SortOptions } from '@/types/sort'
@@ -53,13 +54,30 @@ async function fetchAllProjects(): Promise<Project[]> {
     }
 
     if (projects.length === previousProjectCount) {
-      throw new Error('Project pagination returned no new records')
+      logger.error(
+        'Project pagination returned no new records; returning partial collection',
+        new Error('Project pagination stalled'),
+        {
+          component: 'fetchAllProjects',
+          skip,
+          loaded: projects.length,
+        },
+      )
+      return projects
     }
 
     skip += page.length
   }
 
-  throw new Error(`Project pagination exceeded ${MAX_PROJECT_PAGES} pages`)
+  logger.error(
+    `Project pagination exceeded ${MAX_PROJECT_PAGES} pages; returning partial collection`,
+    new Error('Project pagination page limit reached'),
+    {
+      component: 'fetchAllProjects',
+      loaded: projects.length,
+    },
+  )
+  return projects
 }
 
 export function projectOptionsQueryOptions() {
@@ -98,7 +116,10 @@ function compareProjects(
         PROJECT_STATUS_PRIORITY[right.status]
       break
     case SortBy.PRIORITY:
-      throw new Error('Priority sorting is not supported for projects')
+      comparison =
+        PROJECT_STATUS_PRIORITY[left.status] -
+        PROJECT_STATUS_PRIORITY[right.status]
+      break
   }
 
   return comparison * direction
@@ -146,11 +167,18 @@ export function useProject(projectId: string) {
  * @param skip - Number of records to skip (default: 0)
  * @param limit - Maximum records to return (default: 20)
  * @param sortOptions - Optional sorting configuration
+ * @param options - Optional query controls
  * @returns UseQueryResult with project array
  */
-export function useProjects(skip = 0, limit = 20, sortOptions?: SortOptions) {
+export function useProjects(
+  skip = 0,
+  limit = 20,
+  sortOptions?: SortOptions,
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     ...projectOptionsQueryOptions(),
+    enabled: options?.enabled ?? true,
     select: (projects) =>
       [...projects]
         .sort((left, right) => compareProjects(left, right, sortOptions))
