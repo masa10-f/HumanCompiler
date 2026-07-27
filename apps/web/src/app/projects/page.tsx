@@ -144,7 +144,9 @@ export default function ProjectsPage() {
     isLoading: loading,
     error,
     refetch,
-  } = useProjects(0, 20, sortOptions, { enabled: Boolean(user) });
+  } = useProjects(0, Number.POSITIVE_INFINITY, sortOptions, {
+    enabled: Boolean(user),
+  });
   const createProjectMutation = useCreateProject();
   const updateProjectMutation = useUpdateProject();
   const deleteProjectMutation = useDeleteProject();

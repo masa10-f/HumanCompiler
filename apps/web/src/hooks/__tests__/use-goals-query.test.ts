@@ -121,6 +121,15 @@ describe('useGoalsByProjects', () => {
     resetIdCounter()
   })
 
+  it('does not fetch project goals when disabled', () => {
+    const { result } = renderHookWithClient(() =>
+      useGoalsByProjects(['proj-1', 'proj-2'], { enabled: false }),
+    )
+
+    expect(result.current.isFetching).toBe(false)
+    expect(mockGetByProject).not.toHaveBeenCalled()
+  })
+
   it('preserves the combined data reference across unchanged renders', async () => {
     mockGetByProject.mockResolvedValue(
       createMockGoals(2, { project_id: 'proj-1' }),

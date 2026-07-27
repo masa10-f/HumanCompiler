@@ -4,6 +4,7 @@ import {
   useMutation,
   useQueryClient,
 } from '@tanstack/react-query'
+import type { QueryKey } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import { goalsApi } from '@/lib/api'
 import type { Goal, GoalCreate, GoalUpdate } from '@/types/goal'
@@ -105,18 +106,27 @@ export function useGoalsByProjects(
  */
 export function useGoal(goalId: string) {
   const queryClient = useQueryClient()
-  const cachedGoalEntry = queryClient
-    .getQueriesData<Goal[]>({ queryKey: goalKeys.projects() })
-    .find(([, goals]) => goals?.some((goal) => goal.id === goalId))
+  let didLookUpCachedGoal = false
+  let cachedGoalEntry: [QueryKey, Goal[] | undefined] | undefined
+  const findCachedGoalEntry = () => {
+    if (!didLookUpCachedGoal) {
+      cachedGoalEntry = queryClient
+        .getQueriesData<Goal[]>({ queryKey: goalKeys.projects() })
+        .find(([, goals]) => goals?.some((goal) => goal.id === goalId))
+      didLookUpCachedGoal = true
+    }
+
+    return cachedGoalEntry
+  }
 
   return useQuery({
     queryKey: goalKeys.detail(goalId),
     queryFn: () => goalsApi.getById(goalId),
     enabled: !!goalId,
     initialData: () =>
-      cachedGoalEntry?.[1]?.find((goal) => goal.id === goalId),
+      findCachedGoalEntry()?.[1]?.find((goal) => goal.id === goalId),
     initialDataUpdatedAt: () => {
-      const queryKey = cachedGoalEntry?.[0]
+      const queryKey = findCachedGoalEntry()?.[0]
       return queryKey
         ? queryClient.getQueryState(queryKey)?.dataUpdatedAt
         : undefined

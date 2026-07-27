@@ -19,3 +19,15 @@ export function getOpenProjects<T extends Pick<Project, 'status'>>(
 ): T[] {
   return projects.filter(isOpenProject);
 }
+
+export function getGoalProjectIds<
+  T extends Pick<Project, 'id' | 'status'>
+>(projects: T[], selectedProjectId = ''): string[] {
+  const projectIds = getOpenProjects(projects).map((project) => project.id);
+
+  if (selectedProjectId && !projectIds.includes(selectedProjectId)) {
+    projectIds.push(selectedProjectId);
+  }
+
+  return projectIds;
+}

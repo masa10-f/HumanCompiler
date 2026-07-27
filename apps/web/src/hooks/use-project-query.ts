@@ -89,6 +89,8 @@ export function projectOptionsQueryOptions() {
   return {
     queryKey: projectKeys.options(),
     queryFn: fetchAllProjects,
+    retry: false,
+    refetchOnWindowFocus: true,
     staleTime: PROJECT_STALE_TIME,
     gcTime: PROJECT_GC_TIME,
   }
@@ -276,23 +278,24 @@ export function useDeleteProject() {
   return useMutation({
     mutationFn: (projectId: string) => projectsApi.delete(projectId),
     onSuccess: (_, projectId) => {
-      const cachedOptions = queryClient.getQueryData<Project[]>(
-        projectKeys.options(),
-      )
-
       queryClient.removeQueries({ queryKey: projectKeys.detail(projectId) })
-      if (cachedOptions) {
-        queryClient.setQueryData<Project[]>(
-          projectKeys.options(),
-          cachedOptions.filter((project) => project.id !== projectId),
-        )
-      } else {
-        void queryClient.invalidateQueries({ queryKey: projectKeys.options() })
-      }
 
-      // Radix dialog cleanup can leave body styles set when the dialog
-      // unmounts mid-delete, so restore them after the close animation.
+      // Updating the observed collection can unmount the Radix dialog. Wait
+      // for its close animation before doing that work and restoring styles.
       setTimeout(() => {
+        const cachedOptions = queryClient.getQueryData<Project[]>(
+          projectKeys.options(),
+        )
+
+        if (cachedOptions) {
+          queryClient.setQueryData<Project[]>(
+            projectKeys.options(),
+            cachedOptions.filter((project) => project.id !== projectId),
+          )
+        } else {
+          void queryClient.invalidateQueries({ queryKey: projectKeys.options() })
+        }
+
         if (typeof document !== 'undefined') {
           document.body.style.pointerEvents = ''
           document.body.style.overflow = ''

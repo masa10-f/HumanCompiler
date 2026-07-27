@@ -47,7 +47,7 @@ import {
 import { quickTasksApi } from "@/lib/api";
 import { useProjectOptions } from "@/hooks/use-project-query";
 import { useGoalsByProjects } from "@/hooks/use-goals-query";
-import { getOpenProjects } from "@/lib/project-filters";
+import { getGoalProjectIds } from "@/lib/project-filters";
 import {
   buildTaskWorkspaceFilters,
   DEFAULT_TASK_WORKSPACE_PRESET,
@@ -296,16 +296,9 @@ export default function TasksPage() {
   const { data: projects = [] } = useProjectOptions({
     enabled: Boolean(user),
   });
-  const openProjects = useMemo(() => getOpenProjects(projects), [projects]);
   const goalProjectIds = useMemo(
-    () => {
-      const projectIds = openProjects.map((project) => project.id);
-      if (projectId && !projectIds.includes(projectId)) {
-        projectIds.push(projectId);
-      }
-      return projectIds;
-    },
-    [openProjects, projectId],
+    () => getGoalProjectIds(projects, projectId),
+    [projects, projectId],
   );
   const { data: goals } = useGoalsByProjects(goalProjectIds, {
     enabled: goalProjectIds.length > 0,
