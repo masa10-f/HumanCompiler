@@ -129,4 +129,38 @@ describe('QueryProvider', () => {
       expect(screen.getByText('empty')).toBeInTheDocument()
     })
   })
+
+  it('clears cached data without resetting queries on sign-out', async () => {
+    authState = { user: { id: 'user-1' }, loading: false }
+    let queryClient: ReturnType<typeof useQueryClient> | undefined
+
+    function Child() {
+      queryClient = useQueryClient()
+      return null
+    }
+
+    const view = render(
+      <QueryProvider>
+        <Child />
+      </QueryProvider>,
+    )
+    await waitFor(() => {
+      expect(mockGetAll).toHaveBeenCalledTimes(1)
+    })
+    act(() => {
+      queryClient?.setQueryData(['private-data'], 'user-1-data')
+    })
+    const resetQueries = jest.spyOn(queryClient!, 'resetQueries')
+
+    authState = { user: null, loading: false }
+    view.rerender(
+      <QueryProvider>
+        <Child />
+      </QueryProvider>,
+    )
+
+    expect(queryClient?.getQueryData(['private-data'])).toBeUndefined()
+    expect(resetQueries).not.toHaveBeenCalled()
+    expect(mockGetAll).toHaveBeenCalledTimes(1)
+  })
 })
