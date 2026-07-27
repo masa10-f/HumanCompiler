@@ -3,7 +3,10 @@
  */
 import { act, waitFor } from '@testing-library/react'
 import { createMockProject, createMockProjects, resetIdCounter } from './helpers/mock-factories'
-import { renderHookWithClient } from './helpers/test-utils'
+import {
+  createTestQueryClient,
+  renderHookWithClient,
+} from './helpers/test-utils'
 import type { Project, ProjectCreate, ProjectUpdate } from '@/types/project'
 import type { SortOptions } from '@/types/sort'
 
@@ -27,6 +30,7 @@ jest.mock('@/lib/api', () => ({
 // Import after mocks
 import {
   useProject,
+  useProjectOptions,
   useProjects,
   useCreateProject,
   useUpdateProject,
@@ -41,6 +45,10 @@ describe('projectKeys', () => {
 
   it('should generate correct keys for lists', () => {
     expect(projectKeys.lists()).toEqual(['projects', 'list'])
+  })
+
+  it('should generate a shared options key', () => {
+    expect(projectKeys.options()).toEqual(['projects', 'options'])
   })
 
   it('should generate correct keys for list with filters', () => {
@@ -85,7 +93,7 @@ describe('useProject', () => {
     expect(mockGetById).not.toHaveBeenCalled()
   })
 
-  it('should have 5 minute staleTime', async () => {
+  it('should store project detail in the cache', async () => {
     const mockProject = createMockProject()
     mockGetById.mockResolvedValue(mockProject)
 
@@ -99,30 +107,83 @@ describe('useProject', () => {
     const queryState = queryClient.getQueryState(projectKeys.detail('proj-1'))
     expect(queryState).toBeDefined()
   })
+
+  it('should render cached project options without fetching detail again', async () => {
+    const cachedProject = createMockProject({ id: 'proj-1' })
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData(projectKeys.options(), [cachedProject], {
+      updatedAt: Date.now(),
+    })
+
+    const { result } = renderHookWithClient(() => useProject('proj-1'), {
+      queryClient,
+    })
+
+    expect(result.current.data).toEqual(cachedProject)
+    expect(result.current.isLoading).toBe(false)
+    expect(mockGetById).not.toHaveBeenCalled()
+  })
 })
 
-describe('useProjects', () => {
+describe('shared project collection', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     resetIdCounter()
   })
 
-  it('should fetch all projects with pagination', async () => {
+  it('should fetch project options in API-sized pages', async () => {
     const mockProjects = createMockProjects(5)
     mockGetAll.mockResolvedValue(mockProjects)
 
-    const { result } = renderHookWithClient(() => useProjects(0, 20))
+    const { result } = renderHookWithClient(() => useProjectOptions())
 
     await waitFor(() => {
       expect(result.current.isSuccess).toBe(true)
     })
 
-    expect(mockGetAll).toHaveBeenCalledWith(0, 20, undefined)
+    expect(mockGetAll).toHaveBeenCalledWith(0, 100)
     expect(result.current.data).toHaveLength(5)
   })
 
-  it('should include sort options', async () => {
-    const mockProjects = createMockProjects(3)
+  it('should continue fetching when a project page is full', async () => {
+    const firstPage = createMockProjects(100)
+    const lastPage = createMockProjects(1)
+    mockGetAll
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce(lastPage)
+
+    const { result } = renderHookWithClient(() => useProjectOptions())
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+
+    expect(mockGetAll).toHaveBeenNthCalledWith(1, 0, 100)
+    expect(mockGetAll).toHaveBeenNthCalledWith(2, 100, 100)
+    expect(result.current.data).toHaveLength(101)
+  })
+
+  it('should deduplicate option and list observers', async () => {
+    mockGetAll.mockResolvedValue(createMockProjects(3))
+
+    const { result } = renderHookWithClient(() => ({
+      options: useProjectOptions(),
+      list: useProjects(0, 20),
+    }))
+
+    await waitFor(() => {
+      expect(result.current.options.isSuccess).toBe(true)
+      expect(result.current.list.isSuccess).toBe(true)
+    })
+
+    expect(mockGetAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('should sort the shared collection without another API request', async () => {
+    const mockProjects = [
+      createMockProject({ title: 'Zulu' }),
+      createMockProject({ title: 'Alpha' }),
+    ]
     mockGetAll.mockResolvedValue(mockProjects)
 
     const sortOptions: SortOptions = { sortBy: 'title', sortOrder: 'asc' }
@@ -132,7 +193,11 @@ describe('useProjects', () => {
       expect(result.current.isSuccess).toBe(true)
     })
 
-    expect(mockGetAll).toHaveBeenCalledWith(0, 20, sortOptions)
+    expect(mockGetAll).toHaveBeenCalledWith(0, 100)
+    expect(result.current.data?.map((project) => project.title)).toEqual([
+      'Alpha',
+      'Zulu',
+    ])
   })
 })
 
@@ -142,13 +207,14 @@ describe('useCreateProject', () => {
     resetIdCounter()
   })
 
-  it('should create project and invalidate lists', async () => {
+  it('should create a project and update the shared collection', async () => {
     const newProject = createMockProject({ id: 'new-proj', title: 'New Project' })
     mockCreate.mockResolvedValue(newProject)
 
     const { result, queryClient } = renderHookWithClient(() => useCreateProject())
-
-    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries')
+    queryClient.setQueryDefaults(projectKeys.options(), { gcTime: Infinity })
+    queryClient.setQueryDefaults(projectKeys.details(), { gcTime: Infinity })
+    queryClient.setQueryData(projectKeys.options(), [])
 
     await act(async () => {
       await result.current.mutateAsync({
@@ -162,7 +228,8 @@ describe('useCreateProject', () => {
       status: 'pending',
     })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: projectKeys.lists() })
+    expect(queryClient.getQueryData(projectKeys.options())).toEqual([newProject])
+    expect(queryClient.getQueryData(projectKeys.detail('new-proj'))).toEqual(newProject)
   })
 
   it('should call API with correct data', async () => {
@@ -191,16 +258,20 @@ describe('useUpdateProject', () => {
     resetIdCounter()
   })
 
-  it('should update cache and invalidate lists', async () => {
+  it('should update detail and shared collection caches', async () => {
     const updatedProject = createMockProject({ id: 'proj-1', title: 'Updated' })
     mockUpdate.mockResolvedValue(updatedProject)
 
     const { result, queryClient } = renderHookWithClient(() => useUpdateProject())
 
     // Pre-populate cache
+    queryClient.setQueryDefaults(projectKeys.options(), { gcTime: Infinity })
+    queryClient.setQueryDefaults(projectKeys.details(), { gcTime: Infinity })
     queryClient.setQueryData(projectKeys.detail('proj-1'), createMockProject({ id: 'proj-1' }))
-
-    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries')
+    queryClient.setQueryData(
+      projectKeys.options(),
+      [createMockProject({ id: 'proj-1', title: 'Original' })],
+    )
 
     await act(async () => {
       await result.current.mutateAsync({
@@ -211,8 +282,8 @@ describe('useUpdateProject', () => {
 
     expect(mockUpdate).toHaveBeenCalledWith('proj-1', { title: 'Updated' })
 
-    // Check lists were invalidated
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: projectKeys.lists() })
+    expect(queryClient.getQueryData(projectKeys.detail('proj-1'))).toEqual(updatedProject)
+    expect(queryClient.getQueryData(projectKeys.options())).toEqual([updatedProject])
   })
 })
 
@@ -222,16 +293,20 @@ describe('useDeleteProject', () => {
     resetIdCounter()
   })
 
-  it('should remove from cache and invalidate lists', async () => {
+  it('should remove a project from detail and shared collection caches', async () => {
     mockDelete.mockResolvedValue(undefined)
 
     const { result, queryClient } = renderHookWithClient(() => useDeleteProject())
 
     // Pre-populate cache
+    queryClient.setQueryDefaults(projectKeys.options(), { gcTime: Infinity })
     queryClient.setQueryData(projectKeys.detail('proj-to-delete'), createMockProject())
+    queryClient.setQueryData(
+      projectKeys.options(),
+      [createMockProject({ id: 'proj-to-delete' })],
+    )
 
     const removeQueriesSpy = jest.spyOn(queryClient, 'removeQueries')
-    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries')
 
     await act(async () => {
       await result.current.mutateAsync('proj-to-delete')
@@ -242,6 +317,6 @@ describe('useDeleteProject', () => {
     expect(removeQueriesSpy).toHaveBeenCalledWith({
       queryKey: projectKeys.detail('proj-to-delete'),
     })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: projectKeys.lists() })
+    expect(queryClient.getQueryData(projectKeys.options())).toEqual([])
   })
 })

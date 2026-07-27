@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { useProjects } from "@/hooks/use-projects";
+import { useProjectOptions } from "@/hooks/use-project-query";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -94,7 +94,9 @@ function normalizeSavedTaskPlans(data: WeeklyScheduleData): TaskPlan[] {
 
 export default function AIPlanningPage() {
   const { user, session, loading: authLoading } = useAuth();
-  const { projects } = useProjects();
+  const { data: projects = [] } = useProjectOptions({
+    enabled: Boolean(user),
+  });
 
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [selectedRecurringTaskIds, setSelectedRecurringTaskIds] = useState<

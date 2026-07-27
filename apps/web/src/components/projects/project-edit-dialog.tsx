@@ -31,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useProjects } from '@/hooks/use-projects';
+import { useUpdateProject } from '@/hooks/use-project-query';
 import type { Project } from '@/types/project';
 
 const projectFormSchema = z.object({
@@ -50,7 +50,7 @@ interface ProjectEditDialogProps {
 export function ProjectEditDialog({ project, children }: ProjectEditDialogProps) {
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { updateProject } = useProjects();
+  const updateProject = useUpdateProject();
 
   const form = useForm<ProjectFormData>({
     resolver: zodResolver(projectFormSchema),
@@ -73,10 +73,13 @@ export function ProjectEditDialog({ project, children }: ProjectEditDialogProps)
   const onSubmit = async (data: ProjectFormData) => {
     try {
       setIsSubmitting(true);
-      await updateProject(project.id, {
-        title: data.title,
-        description: data.description || undefined,
-        status: data.status,
+      await updateProject.mutateAsync({
+        id: project.id,
+        data: {
+          title: data.title,
+          description: data.description || undefined,
+          status: data.status,
+        },
       });
       setOpen(false);
     } catch (error) {

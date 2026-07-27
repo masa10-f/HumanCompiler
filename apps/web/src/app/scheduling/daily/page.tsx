@@ -36,7 +36,8 @@ import {
 } from 'lucide-react';
 import { AppHeader } from '@/components/layout/app-header';
 import { toast } from '@/hooks/use-toast';
-import { schedulingApi, projectsApi, tasksApi, quickTasksApi, slotTemplatesApi } from '@/lib/api';
+import { schedulingApi, tasksApi, quickTasksApi, slotTemplatesApi } from '@/lib/api';
+import { useProjectOptions } from '@/hooks/use-project-query';
 import { getSlotKindLabel, getSlotKindColor, slotKinds } from '@/constants/schedule';
 import { DroppableSlot, TaskPool, DraggableTask } from '@/components/scheduling';
 import { getSelectableProjects } from '@/lib/project-filters';
@@ -52,7 +53,6 @@ import type {
   WeeklyScheduleOption,
   DayOfWeekTemplates,
 } from '@/types/ai-planning';
-import type { Project } from '@/types/project';
 import { getJSTDateString, getIsoDayOfWeek } from '@/lib/date-utils';
 import { logger } from '@/lib/logger';
 import { hasSchedulerSolverConfig, loadSchedulerSolverConfig } from '@/lib/scheduler-config';
@@ -65,6 +65,10 @@ interface ManualAssignment {
 
 export default function SchedulingPage() {
   const { user, loading: authLoading } = useAuth();
+  const {
+    data: projects = [],
+    error: projectsError,
+  } = useProjectOptions({ enabled: Boolean(user) });
 
   const [selectedDate, setSelectedDate] = useState(() => getJSTDateString());
 
@@ -81,7 +85,6 @@ export default function SchedulingPage() {
 
   // Task source configuration
   const [taskSource, setTaskSource] = useState<TaskSource>({ type: 'all_tasks' });
-  const [projects, setProjects] = useState<Project[]>([]);
   const [weeklyScheduleOptions, setWeeklyScheduleOptions] = useState<WeeklyScheduleOption[]>([]);
   const selectableProjects = useMemo(
     () => getSelectableProjects(projects),
@@ -136,15 +139,10 @@ export default function SchedulingPage() {
       if (!user) return;
 
       try {
-        const [projectsResult, weeklyOptionsResult] = await Promise.all([
-          projectsApi.getAll(),
-          schedulingApi.getWeeklyScheduleOptions().catch(err => {
-            logger.error('Weekly schedule options loading failed', err instanceof Error ? err : new Error(String(err)), { component: 'SchedulingPage' });
-            return [];
-          }),
-        ]);
-
-        setProjects(projectsResult);
+        const weeklyOptionsResult = await schedulingApi.getWeeklyScheduleOptions().catch(err => {
+          logger.error('Weekly schedule options loading failed', err instanceof Error ? err : new Error(String(err)), { component: 'SchedulingPage' });
+          return [];
+        });
         setWeeklyScheduleOptions(weeklyOptionsResult);
 
       } catch (error) {
@@ -161,6 +159,16 @@ export default function SchedulingPage() {
 
     loadInitialData();
   }, [user]);
+
+  useEffect(() => {
+    if (!projectsError) return;
+
+    toast({
+      title: 'プロジェクト読み込みエラー',
+      description: 'プロジェクト一覧の読み込みに失敗しました',
+      variant: 'destructive',
+    });
+  }, [projectsError]);
 
   useEffect(() => {
     if (

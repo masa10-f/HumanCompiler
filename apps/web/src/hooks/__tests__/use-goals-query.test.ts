@@ -93,7 +93,7 @@ describe('useGoalsByProject', () => {
     expect(mockGetByProject).toHaveBeenCalledWith('proj-1', 0, 20, sortOptions)
   })
 
-  it('should have 5 minute staleTime', async () => {
+  it('should cache goals by project, pagination, and sort', async () => {
     const mockGoals = createMockGoals(2)
     mockGetByProject.mockResolvedValue(mockGoals)
 
@@ -104,7 +104,9 @@ describe('useGoalsByProject', () => {
     })
 
     // Verify query is in cache
-    const queryState = queryClient.getQueryState([...goalKeys.byProject('proj-1'), 'default'])
+    const queryState = queryClient.getQueryState(
+      goalKeys.projectList('proj-1', 0, 20, 'default'),
+    )
     expect(queryState).toBeDefined()
   })
 })
@@ -181,8 +183,10 @@ describe('useCreateGoal', () => {
       })
     })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: goalKeys.byProject('proj-1'),
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: goalKeys.byProject('proj-1'),
+      })
     })
   })
 
@@ -269,8 +273,10 @@ describe('useUpdateGoal', () => {
       })
     })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: goalKeys.byProject('proj-1'),
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: goalKeys.byProject('proj-1'),
+      })
     })
   })
 })
@@ -332,8 +338,10 @@ describe('useDeleteGoal', () => {
       await result.current.mutateAsync('goal-1')
     })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: goalKeys.byProject('proj-1'),
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: goalKeys.byProject('proj-1'),
+      })
     })
   })
 
@@ -349,8 +357,10 @@ describe('useDeleteGoal', () => {
       await result.current.mutateAsync('unknown-goal')
     })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: goalKeys.lists(),
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: goalKeys.lists(),
+      })
     })
   })
 })
