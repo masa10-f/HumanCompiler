@@ -1,5 +1,4 @@
 import type { Project } from '@/types/project';
-import { logger } from '@/lib/logger';
 
 export function isSelectableProject(project: Pick<Project, 'status'>): boolean {
   return project.status === 'in_progress';
@@ -9,71 +8,4 @@ export function getSelectableProjects<T extends Pick<Project, 'status'>>(
   projects: T[]
 ): T[] {
   return projects.filter(isSelectableProject);
-}
-
-export function isOpenProject(project: Pick<Project, 'status'>): boolean {
-  return project.status === 'pending' || project.status === 'in_progress';
-}
-
-export function getOpenProjects<T extends Pick<Project, 'status'>>(
-  projects: T[]
-): T[] {
-  return projects.filter(isOpenProject);
-}
-
-export const MAX_GOAL_PROJECT_QUERIES = 100;
-
-/**
- * Bounds goal-query fan-out and keeps a selected archived project available
- * for inspecting its existing tasks.
- */
-export function getGoalProjectIds<
-  T extends Pick<Project, 'id' | 'status'>
->(
-  projects: T[],
-  selectedProjectId = '',
-  limit = MAX_GOAL_PROJECT_QUERIES
-): string[] {
-  const openProjects = getOpenProjects(projects);
-  if (openProjects.length > limit) {
-    logger.warn(
-      'Goal project query cap truncated open projects',
-      {
-        limit,
-        openProjectCount: openProjects.length,
-      },
-      { component: 'getGoalProjectIds' }
-    );
-  }
-
-  const projectIds = openProjects
-    .slice(0, limit)
-    .map((project) => project.id);
-  const hasSelectedProject = projects.some(
-    (project) => project.id === selectedProjectId
-  );
-
-  if (
-    selectedProjectId &&
-    hasSelectedProject &&
-    !projectIds.includes(selectedProjectId)
-  ) {
-    if (projectIds.length >= limit && limit > 0) {
-      const replacedProjectId = projectIds[projectIds.length - 1];
-      projectIds[projectIds.length - 1] = selectedProjectId;
-      logger.warn(
-        'Goal project query cap replaced an open project',
-        {
-          limit,
-          selectedProjectId,
-          replacedProjectId,
-        },
-        { component: 'getGoalProjectIds' }
-      );
-    } else if (limit > 0) {
-      projectIds.push(selectedProjectId);
-    }
-  }
-
-  return projectIds;
 }

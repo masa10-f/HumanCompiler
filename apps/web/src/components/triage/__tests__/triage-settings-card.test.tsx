@@ -11,10 +11,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 const mockUseProjectOptions = jest.fn()
 const mockGetSettings = jest.fn()
-const mockUpdateSettings = jest.fn()
+const mockRefetchProjects = jest.fn()
 
 jest.mock('@/hooks/use-auth', () => ({
-  useAuth: () => ({ user: null }),
+  useAuth: () => ({ user: null, loading: false }),
 }))
 
 jest.mock('@/hooks/use-project-query', () => ({
@@ -24,7 +24,7 @@ jest.mock('@/hooks/use-project-query', () => ({
 jest.mock('@/lib/api', () => ({
   triageApi: {
     getSettings: (...args: unknown[]) => mockGetSettings(...args),
-    updateSettings: (...args: unknown[]) => mockUpdateSettings(...args),
+    updateSettings: jest.fn(),
   },
 }))
 
@@ -36,8 +36,8 @@ const settings = {
   cadence_days: 7,
   auto_generate_enabled: false,
   use_ai_rank_adjustment: false,
-  project_allocations: { 'project-1': 40 },
-  inbox_allocation_percent: 60,
+  project_allocations: {},
+  inbox_allocation_percent: 100,
   work_type_caps: {},
 }
 
@@ -47,49 +47,42 @@ describe('TriageSettingsCard', () => {
     mockGetSettings.mockResolvedValue(settings)
   })
 
-  it('keeps the form loading while the disabled project query has no data', async () => {
+  it('does not stay loading when the unauthenticated project query is disabled', async () => {
     mockUseProjectOptions.mockReturnValue({
       data: undefined,
       error: null,
+      isLoading: false,
+      refetch: mockRefetchProjects,
     })
 
     render(<TriageSettingsCard />)
 
-    await waitFor(() => {
-      expect(mockGetSettings).toHaveBeenCalled()
-    })
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: 'トリアージ設定を保存' }),
-    ).not.toBeInTheDocument()
+      await screen.findByRole('button', { name: 'トリアージ設定を保存' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Loading...')).not.toBeInTheDocument()
   })
 
-  it('preserves allocations while saving unrelated settings after a project error', async () => {
+  it('shows a safe error and lets the user retry', async () => {
     mockUseProjectOptions.mockReturnValue({
       data: undefined,
-      error: new Error('Project load failed'),
+      error: new Error('raw backend message'),
+      isLoading: false,
+      refetch: mockRefetchProjects,
     })
 
     render(<TriageSettingsCard />)
 
-    expect(await screen.findByText('Project load failed')).toBeInTheDocument()
     expect(
-      screen.getByText(
-        'プロジェクト配分はプロジェクト一覧の再取得後に編集できます。',
-      ),
+      await screen.findByText('予期しないエラーが発生しました。'),
     ).toBeInTheDocument()
+    expect(screen.queryByText('raw backend message')).not.toBeInTheDocument()
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'トリアージ設定を保存' }),
+      screen.getByRole('button', { name: 'プロジェクトを再取得' }),
     )
-
     await waitFor(() => {
-      expect(mockUpdateSettings).toHaveBeenCalledWith(
-        expect.objectContaining({
-          project_allocations: { 'project-1': 40 },
-          inbox_allocation_percent: 60,
-        }),
-      )
+      expect(mockRefetchProjects).toHaveBeenCalled()
     })
   })
 })

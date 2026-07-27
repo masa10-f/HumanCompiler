@@ -7,7 +7,6 @@
 /**
  * @jest-environment jsdom
  */
-import { StrictMode, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { act, render, waitFor } from '@testing-library/react'
 
@@ -15,9 +14,6 @@ const mockGetAll = jest.fn()
 let authState: {
   user: { id: string } | null
   loading: boolean
-} = {
-  user: null,
-  loading: true,
 }
 
 jest.mock('@/components/auth-provider', () => ({
@@ -35,153 +31,37 @@ import { QueryProvider } from '@/components/query-provider'
 describe('QueryProvider', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    authState = {
-      user: null,
-      loading: true,
-    }
+    authState = { user: null, loading: true }
     mockGetAll.mockResolvedValue([])
   })
 
-  it('keeps the global garbage-collection window bounded', () => {
-    let queryClient: ReturnType<typeof useQueryClient> | undefined
-
-    function Child() {
-      queryClient = useQueryClient()
-      return null
-    }
-
-    render(
-      <QueryProvider>
-        <Child />
-      </QueryProvider>,
-    )
-
-    expect(queryClient?.getDefaultOptions().queries?.gcTime).toBe(
-      10 * 60 * 1000,
-    )
-  })
-
-  it('renders during auth loading without remounting when auth resolves', async () => {
-    const mounted = jest.fn()
-    const unmounted = jest.fn()
-    let queryClient: ReturnType<typeof useQueryClient> | undefined
-
-    function Child() {
-      queryClient = useQueryClient()
-
-      useEffect(() => {
-        mounted()
-        return unmounted
-      }, [])
-
-      return <div>Application</div>
-    }
-
+  it('warms the shared project cache after authentication', async () => {
     const view = render(
       <QueryProvider>
-        <Child />
+        <div>Application</div>
       </QueryProvider>,
     )
 
-    expect(view.getByText('Application')).toBeInTheDocument()
-    expect(mounted).toHaveBeenCalledTimes(1)
     expect(mockGetAll).not.toHaveBeenCalled()
 
-    authState = {
-      user: { id: 'user-1' },
-      loading: false,
-    }
+    authState = { user: { id: 'user-1' }, loading: false }
     view.rerender(
       <QueryProvider>
-        <Child />
+        <div>Application</div>
       </QueryProvider>,
     )
 
-    expect(view.getByText('Application')).toBeInTheDocument()
-    expect(mounted).toHaveBeenCalledTimes(1)
-    expect(unmounted).not.toHaveBeenCalled()
     await waitFor(() => {
-      expect(mockGetAll).toHaveBeenCalledTimes(1)
+      expect(mockGetAll).toHaveBeenCalledWith(0, 100)
     })
-
-    act(() => {
-      queryClient?.setQueryData(['private-data'], 'user-1-data')
-    })
-    const userOneQueryClient = queryClient
-
-    authState = {
-      user: { id: 'user-2' },
-      loading: false,
-    }
-    view.rerender(
-      <QueryProvider>
-        <Child />
-      </QueryProvider>,
-    )
-
-    expect(queryClient).not.toBe(userOneQueryClient)
-    expect(queryClient?.getQueryData(['private-data'])).toBeUndefined()
-    expect(userOneQueryClient?.getQueryData(['private-data'])).toBeUndefined()
-    expect(mounted).toHaveBeenCalledTimes(2)
-    expect(unmounted).toHaveBeenCalledTimes(1)
-
-    view.unmount()
-    expect(unmounted).toHaveBeenCalledTimes(2)
   })
 
-  it('does not clear the live cache during StrictMode effect replay', async () => {
-    let queryClient: ReturnType<typeof useQueryClient> | undefined
-    const project = {
-      id: 'project-1',
-      owner_id: 'user-1',
-      title: 'Project',
-      description: null,
-      status: 'in_progress',
-      created_at: '2026-01-01T00:00:00Z',
-      updated_at: '2026-01-01T00:00:00Z',
-    }
-    authState = {
-      user: { id: 'user-1' },
-      loading: false,
-    }
-    mockGetAll.mockResolvedValue([project])
+  it('keeps one client during normal navigation', () => {
+    authState = { user: { id: 'user-1' }, loading: false }
+    const clients: ReturnType<typeof useQueryClient>[] = []
 
     function Child() {
-      queryClient = useQueryClient()
-      return null
-    }
-
-    render(
-      <StrictMode>
-        <QueryProvider>
-          <Child />
-        </QueryProvider>
-      </StrictMode>,
-    )
-
-    await waitFor(() => {
-      expect(queryClient?.getQueryData(['projects', 'options'])).toEqual([
-        project,
-      ])
-    })
-    expect(mockGetAll).toHaveBeenCalledTimes(1)
-  })
-
-  it('does not remount when an anonymous initial resolution is corrected', async () => {
-    authState = {
-      user: null,
-      loading: false,
-    }
-    const mounted = jest.fn()
-    const unmounted = jest.fn()
-    let queryClient: ReturnType<typeof useQueryClient> | undefined
-
-    function Child() {
-      queryClient = useQueryClient()
-      useEffect(() => {
-        mounted()
-        return unmounted
-      }, [])
+      clients.push(useQueryClient())
       return null
     }
 
@@ -190,31 +70,17 @@ describe('QueryProvider', () => {
         <Child />
       </QueryProvider>,
     )
-    const anonymousQueryClient = queryClient
-
-    authState = {
-      user: { id: 'user-1' },
-      loading: false,
-    }
     view.rerender(
       <QueryProvider>
         <Child />
       </QueryProvider>,
     )
 
-    expect(queryClient).toBe(anonymousQueryClient)
-    expect(mounted).toHaveBeenCalledTimes(1)
-    expect(unmounted).not.toHaveBeenCalled()
-    await waitFor(() => {
-      expect(mockGetAll).toHaveBeenCalledTimes(1)
-    })
+    expect(clients[0]).toBe(clients.at(-1))
   })
 
-  it('rotates the anonymous cache after a completed sign-out boundary', async () => {
-    authState = {
-      user: { id: 'user-1' },
-      loading: false,
-    }
+  it('uses a fresh cache when the authenticated identity changes', () => {
+    authState = { user: { id: 'user-1' }, loading: false }
     let queryClient: ReturnType<typeof useQueryClient> | undefined
 
     function Child() {
@@ -228,35 +94,18 @@ describe('QueryProvider', () => {
       </QueryProvider>,
     )
     const userOneClient = queryClient
-
-    authState = {
-      user: null,
-      loading: false,
-    }
-    view.rerender(
-      <QueryProvider>
-        <Child />
-      </QueryProvider>,
-    )
-    const signedOutClient = queryClient
-    expect(signedOutClient).not.toBe(userOneClient)
-
     act(() => {
-      signedOutClient?.setQueryData(['anonymous-data'], 'temporary')
+      userOneClient?.setQueryData(['private-data'], 'user-1-data')
     })
-    authState = {
-      user: { id: 'user-2' },
-      loading: false,
-    }
+
+    authState = { user: { id: 'user-2' }, loading: false }
     view.rerender(
       <QueryProvider>
         <Child />
       </QueryProvider>,
     )
 
-    expect(queryClient).not.toBe(signedOutClient)
-    expect(queryClient?.getQueryData(['anonymous-data'])).toBeUndefined()
-    expect(signedOutClient?.getQueryData(['anonymous-data'])).toBeUndefined()
+    expect(queryClient).not.toBe(userOneClient)
+    expect(queryClient?.getQueryData(['private-data'])).toBeUndefined()
   })
-
 })

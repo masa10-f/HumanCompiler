@@ -14,13 +14,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { tasksApi } from '@/lib/api';
-import {
-  getGoalProjectIds,
-  getOpenProjects,
-} from '@/lib/project-filters';
+import { goalsApi, tasksApi } from '@/lib/api';
 import { useProjectOptions } from '@/hooks/use-project-query';
-import { useGoalsByProjects } from '@/hooks/use-goals-query';
 import type { TaskWorkspaceItem } from '@/types/task';
 
 type PickerView = 'recommended' | 'today' | 'recent' | 'all';
@@ -49,19 +44,19 @@ export function TaskPickerDialog({
   const projects = useProjectOptions({
     enabled: open,
   });
-  // Runner is for choosing the next actionable task, so archived projects
-  // intentionally stay out of both project and goal selectors.
-  const openProjects = useMemo(
-    () => getOpenProjects(projects.data ?? []),
-    [projects.data],
-  );
-  const goalProjectIds = useMemo(
-    () => getGoalProjectIds(openProjects),
-    [openProjects],
-  );
-  const goals = useGoalsByProjects(goalProjectIds, {
-    enabled: open && goalProjectIds.length > 0,
-    limit: 100,
+  const goals = useQuery({
+    queryKey: ['goals', 'task-picker', projects.data?.map((item) => item.id).join(',')],
+    queryFn: async () => {
+      const results = await Promise.allSettled(
+        (projects.data ?? []).map((project) =>
+          goalsApi.getByProject(project.id, 0, 100),
+        ),
+      );
+      return results.flatMap((result) =>
+        result.status === 'fulfilled' ? result.value : [],
+      );
+    },
+    enabled: open && Boolean(projects.data?.length),
   });
   const recommendations = useQuery({
     queryKey: ['tasks', 'picker', 'recommendations'],
@@ -151,7 +146,7 @@ export function TaskPickerDialog({
             }}
           >
             <option value="">全プロジェクト</option>
-            {openProjects.map((project) => (
+            {(projects.data ?? []).map((project) => (
               <option key={project.id} value={project.id}>{project.title}</option>
             ))}
           </select>
