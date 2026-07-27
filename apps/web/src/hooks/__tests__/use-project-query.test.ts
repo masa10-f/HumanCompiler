@@ -141,7 +141,10 @@ describe('shared project collection', () => {
       expect(result.current.isSuccess).toBe(true)
     })
 
-    expect(mockGetAll).toHaveBeenCalledWith(0, 100)
+    expect(mockGetAll).toHaveBeenCalledWith(0, 100, {
+      sortBy: 'created_at',
+      sortOrder: 'asc',
+    })
     expect(result.current.data).toHaveLength(5)
   })
 
@@ -158,9 +161,31 @@ describe('shared project collection', () => {
       expect(result.current.isSuccess).toBe(true)
     })
 
-    expect(mockGetAll).toHaveBeenNthCalledWith(1, 0, 100)
-    expect(mockGetAll).toHaveBeenNthCalledWith(2, 100, 100)
+    expect(mockGetAll).toHaveBeenNthCalledWith(1, 0, 100, {
+      sortBy: 'created_at',
+      sortOrder: 'asc',
+    })
+    expect(mockGetAll).toHaveBeenNthCalledWith(2, 100, 100, {
+      sortBy: 'created_at',
+      sortOrder: 'asc',
+    })
     expect(result.current.data).toHaveLength(101)
+  })
+
+  it('should stop when a full page repeats without new records', async () => {
+    const repeatedPage = createMockProjects(100)
+    mockGetAll.mockResolvedValue(repeatedPage)
+
+    const { result } = renderHookWithClient(() => useProjectOptions())
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true)
+    })
+
+    expect(result.current.error).toEqual(
+      new Error('Project pagination returned no new records'),
+    )
+    expect(mockGetAll).toHaveBeenCalledTimes(2)
   })
 
   it('should deduplicate option and list observers', async () => {
@@ -193,10 +218,37 @@ describe('shared project collection', () => {
       expect(result.current.isSuccess).toBe(true)
     })
 
-    expect(mockGetAll).toHaveBeenCalledWith(0, 100)
+    expect(mockGetAll).toHaveBeenCalledWith(0, 100, {
+      sortBy: 'created_at',
+      sortOrder: 'asc',
+    })
     expect(result.current.data?.map((project) => project.title)).toEqual([
       'Alpha',
       'Zulu',
+    ])
+  })
+
+  it('should preserve the workflow status order', async () => {
+    mockGetAll.mockResolvedValue([
+      createMockProject({ id: 'cancelled', status: 'cancelled' }),
+      createMockProject({ id: 'completed', status: 'completed' }),
+      createMockProject({ id: 'in-progress', status: 'in_progress' }),
+      createMockProject({ id: 'pending', status: 'pending' }),
+    ])
+
+    const { result } = renderHookWithClient(() =>
+      useProjects(0, 20, { sortBy: 'status', sortOrder: 'asc' }),
+    )
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+
+    expect(result.current.data?.map((project) => project.status)).toEqual([
+      'pending',
+      'in_progress',
+      'completed',
+      'cancelled',
     ])
   })
 })
@@ -248,6 +300,27 @@ describe('useCreateProject', () => {
     expect(mockCreate).toHaveBeenCalledWith({
       title: 'Cached Project',
       status: 'pending',
+    })
+  })
+
+  it('should recover the collection when creation follows a load failure', async () => {
+    const newProject = createMockProject({ id: 'recovered-project' })
+    mockCreate.mockResolvedValue(newProject)
+
+    const { result, queryClient } = renderHookWithClient(() => useCreateProject())
+    queryClient.setQueryDefaults(projectKeys.options(), { gcTime: Infinity })
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries')
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        title: newProject.title,
+        status: 'pending',
+      })
+    })
+
+    expect(queryClient.getQueryData(projectKeys.options())).toEqual([newProject])
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: projectKeys.options(),
     })
   })
 })
