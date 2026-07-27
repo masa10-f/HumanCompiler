@@ -132,7 +132,7 @@ export function TriageSettingsCard() {
     setError('');
     setSuccess('');
 
-    if (allocationTotal !== 100) {
+    if (!projectsError && allocationTotal !== 100) {
       setError(`配分の合計を100%にしてください（現在: ${allocationTotal}%）`);
       return;
     }
