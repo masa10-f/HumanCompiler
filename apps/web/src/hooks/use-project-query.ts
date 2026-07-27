@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import { projectsApi } from '@/lib/api'
+import { ApiError, isRetryableError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
 import { queryKeys } from '@/lib/query-keys'
 import type { Project, ProjectCreate, ProjectUpdate } from '@/types/project'
@@ -16,6 +17,7 @@ export const projectKeys = queryKeys.projects
 const PROJECT_PAGE_SIZE = 100
 const MAX_PROJECT_PAGES = 100
 const PROJECT_PAGE_RETRY_COUNT = 1
+const PROJECT_PAGE_RETRY_DELAY = 300
 const PROJECT_PAGINATION_ERROR_MESSAGE =
   'プロジェクト一覧を完全に取得できませんでした。再試行してください。'
 // The API base service appends id ASC to every ordered query, so offset page
@@ -47,6 +49,17 @@ async function fetchProjectPage(skip: number): Promise<Project[]> {
       )
     } catch (error) {
       lastError = error
+      const retryable =
+        (error instanceof ApiError && error.statusCode === 429) ||
+        (error instanceof Error && isRetryableError(error))
+
+      if (!retryable || attempt === PROJECT_PAGE_RETRY_COUNT) {
+        break
+      }
+
+      await new Promise((resolve) =>
+        setTimeout(resolve, PROJECT_PAGE_RETRY_DELAY),
+      )
     }
   }
 
