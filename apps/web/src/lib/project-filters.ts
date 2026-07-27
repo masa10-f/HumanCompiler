@@ -36,8 +36,15 @@ export function getGoalProjectIds<
   const projectIds = getOpenProjects(projects)
     .slice(0, limit)
     .map((project) => project.id);
+  const hasSelectedProject = projects.some(
+    (project) => project.id === selectedProjectId
+  );
 
-  if (selectedProjectId && !projectIds.includes(selectedProjectId)) {
+  if (
+    selectedProjectId &&
+    hasSelectedProject &&
+    !projectIds.includes(selectedProjectId)
+  ) {
     if (projectIds.length >= limit && limit > 0) {
       projectIds[projectIds.length - 1] = selectedProjectId;
     } else if (limit > 0) {

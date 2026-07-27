@@ -51,13 +51,17 @@ describe('project filters', () => {
   })
 
   it('caps goal query fan-out while prioritizing the selected project', () => {
-    const manyProjects = Array.from(
+    const manyProjects: Array<{ id: string; status: ProjectStatus }> = Array.from(
       { length: MAX_GOAL_PROJECT_QUERIES + 1 },
       (_, index) => ({
         id: `project-${index}`,
         status: 'in_progress' as const,
       }),
     )
+    manyProjects.push({
+      id: 'archived-project',
+      status: 'completed',
+    })
 
     const projectIds = getGoalProjectIds(
       manyProjects,
@@ -69,6 +73,13 @@ describe('project filters', () => {
     expect(projectIds).not.toContain(
       `project-${MAX_GOAL_PROJECT_QUERIES - 1}`,
     )
+  })
+
+  it('ignores a selected project that is no longer available', () => {
+    expect(getGoalProjectIds(projects, 'deleted-project')).toEqual([
+      'pending',
+      'in-progress',
+    ])
   })
 
   it('keeps selectable projects limited to in-progress work', () => {
