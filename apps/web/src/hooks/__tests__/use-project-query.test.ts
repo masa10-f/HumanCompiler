@@ -9,6 +9,7 @@ import {
 } from './helpers/test-utils'
 import type { Project, ProjectCreate, ProjectUpdate } from '@/types/project'
 import type { SortOptions } from '@/types/sort'
+import { ApiError } from '@/lib/errors'
 
 // Mock the API
 const mockGetAll = jest.fn<Promise<Project[]>, [number?, number?, SortOptions?]>()
@@ -182,7 +183,7 @@ describe('shared project collection', () => {
   it('should retry only the failed project page once', async () => {
     const mockProjects = createMockProjects(3)
     mockGetAll
-      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockRejectedValueOnce(new TypeError('temporary fetch failure'))
       .mockResolvedValueOnce(mockProjects)
 
     const { result } = renderHookWithClient(() => useProjectOptions())
@@ -201,6 +202,18 @@ describe('shared project collection', () => {
       sortOrder: 'asc',
     })
     expect(result.current.data).toEqual(mockProjects)
+  })
+
+  it('should not retry a non-retryable project page error', async () => {
+    mockGetAll.mockRejectedValue(new ApiError(401, 'Unauthorized'))
+
+    const { result } = renderHookWithClient(() => useProjectOptions())
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true)
+    })
+
+    expect(mockGetAll).toHaveBeenCalledTimes(1)
   })
 
   it('should fail visibly when a full page repeats without new records', async () => {

@@ -16,6 +16,7 @@ const mockGetById = jest.fn<Promise<Goal>, [string]>()
 const mockCreate = jest.fn<Promise<Goal>, [GoalCreate]>()
 const mockUpdate = jest.fn<Promise<Goal>, [string, GoalUpdate]>()
 const mockDelete = jest.fn<Promise<void>, [string]>()
+const mockLoggerWarn = jest.fn()
 
 jest.mock('@/lib/api', () => ({
   goalsApi: {
@@ -24,6 +25,12 @@ jest.mock('@/lib/api', () => ({
     create: (data: GoalCreate) => mockCreate(data),
     update: (id: string, data: GoalUpdate) => mockUpdate(id, data),
     delete: (id: string) => mockDelete(id),
+  },
+}))
+
+jest.mock('@/lib/logger', () => ({
+  logger: {
+    warn: (...args: unknown[]) => mockLoggerWarn(...args),
   },
 }))
 
@@ -112,6 +119,26 @@ describe('useGoalsByProject', () => {
       goalKeys.projectList('proj-1', 0, 20, 'default'),
     )
     expect(queryState).toBeDefined()
+  })
+
+  it('warns when a full goal page may be truncated', async () => {
+    mockGetByProject.mockResolvedValue(
+      createMockGoals(100, { project_id: 'proj-1' }),
+    )
+
+    const { result } = renderHookWithClient(() =>
+      useGoalsByProject('proj-1', 0, 100),
+    )
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      'Goal list may be truncated',
+      { projectId: 'proj-1', skip: 0, limit: 100 },
+      { component: 'goalsByProjectQueryOptions' },
+    )
   })
 })
 
@@ -430,7 +457,7 @@ describe('useDeleteGoal', () => {
     })
   })
 
-  it('should fallback to invalidate all lists if projectId unknown', async () => {
+  it('should invalidate all project goal collections if projectId unknown', async () => {
     mockDelete.mockResolvedValue(undefined)
 
     const { result, queryClient } = renderHookWithClient(() => useDeleteGoal())
@@ -444,7 +471,7 @@ describe('useDeleteGoal', () => {
 
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({
-        queryKey: goalKeys.lists(),
+        queryKey: goalKeys.projects(),
       })
     })
   })

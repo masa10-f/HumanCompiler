@@ -7,6 +7,7 @@ import {
 import type { QueryKey } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import { goalsApi } from '@/lib/api'
+import { logger } from '@/lib/logger'
 import type { Goal, GoalCreate, GoalUpdate } from '@/types/goal'
 import type { SortOptions } from '@/types/sort'
 
@@ -45,7 +46,24 @@ function goalsByProjectQueryOptions(
 
   return {
     queryKey: goalKeys.projectList(projectId, skip, limit, sortKey),
-    queryFn: () => goalsApi.getByProject(projectId, skip, limit, sortOptions),
+    queryFn: async () => {
+      const goals = await goalsApi.getByProject(
+        projectId,
+        skip,
+        limit,
+        sortOptions,
+      )
+
+      if (goals.length === limit) {
+        logger.warn(
+          'Goal list may be truncated',
+          { projectId, skip, limit },
+          { component: 'goalsByProjectQueryOptions' },
+        )
+      }
+
+      return goals
+    },
     staleTime: GOAL_STALE_TIME,
     gcTime: GOAL_GC_TIME,
   }
@@ -225,8 +243,8 @@ export function useDeleteGoal() {
             queryKey: goalKeys.byProject(projectId)
           })
         } else {
-          // Fallback: invalidate all goal lists
-          queryClient.invalidateQueries({ queryKey: goalKeys.lists() })
+          // Fallback: invalidate every per-project goal collection
+          queryClient.invalidateQueries({ queryKey: goalKeys.projects() })
         }
       }, 300)
     },
