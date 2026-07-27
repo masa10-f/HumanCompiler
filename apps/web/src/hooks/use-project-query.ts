@@ -228,8 +228,6 @@ export function useDeleteProject() {
   return useMutation({
     mutationFn: (projectId: string) => projectsApi.delete(projectId),
     onSuccess: (_, projectId) => {
-      queryClient.removeQueries({ queryKey: projectKeys.detail(projectId) })
-
       // Updating the observed collection can unmount the Radix dialog. Wait
       // for its close animation before doing that work and restoring styles.
       setTimeout(() => {
@@ -245,6 +243,8 @@ export function useDeleteProject() {
         } else {
           void queryClient.invalidateQueries({ queryKey: projectKeys.options() })
         }
+
+        queryClient.removeQueries({ queryKey: projectKeys.detail(projectId) })
 
         if (typeof document !== 'undefined') {
           document.body.style.pointerEvents = ''

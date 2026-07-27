@@ -45,6 +45,14 @@ describe('QueryProvider', () => {
 
     expect(mockGetAll).not.toHaveBeenCalled()
 
+    authState = { user: null, loading: false }
+    view.rerender(
+      <QueryProvider>
+        <div>Application</div>
+      </QueryProvider>,
+    )
+    expect(mockGetAll).not.toHaveBeenCalled()
+
     authState = { user: { id: 'user-1' }, loading: false }
     view.rerender(
       <QueryProvider>
