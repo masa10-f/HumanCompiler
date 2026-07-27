@@ -3,26 +3,14 @@
 import {
   QueryClient,
   QueryClientProvider,
-  useQueryClient,
 } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { useEffect, useState } from 'react'
 import { useAuthContext } from '@/components/auth-provider'
-import {
-  projectKeys,
-  useProjectOptions,
-} from '@/hooks/use-project-query'
+import { useProjectOptions } from '@/hooks/use-project-query'
 
 function ProjectCacheWarmer({ enabled }: { enabled: boolean }) {
-  const queryClient = useQueryClient()
-  const { data: projects } = useProjectOptions({ enabled })
-
-  useEffect(() => {
-    projects?.forEach((project) => {
-      queryClient.setQueryData(projectKeys.detail(project.id), project)
-    })
-  }, [projects, queryClient])
-
+  useProjectOptions({ enabled })
   return null
 }
 

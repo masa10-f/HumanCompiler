@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useCallback } from 'react'
 import { projectsApi } from '@/lib/api'
 import { logger } from '@/lib/logger'
 import { queryKeys } from '@/lib/query-keys'
@@ -14,6 +15,8 @@ export const projectKeys = queryKeys.projects
 
 const PROJECT_PAGE_SIZE = 100
 const MAX_PROJECT_PAGES = 100
+const PROJECT_PAGINATION_ERROR_MESSAGE =
+  'プロジェクト一覧を完全に取得できませんでした。再試行してください。'
 const PROJECT_FETCH_SORT_OPTIONS: SortOptions = {
   sortBy: SortBy.CREATED_AT,
   sortOrder: SortOrder.ASC,
@@ -54,30 +57,32 @@ async function fetchAllProjects(): Promise<Project[]> {
     }
 
     if (projects.length === previousProjectCount) {
+      const error = new Error(PROJECT_PAGINATION_ERROR_MESSAGE)
       logger.error(
-        'Project pagination returned no new records; returning partial collection',
-        new Error('Project pagination stalled'),
+        'Project pagination returned no new records',
+        error,
         {
           component: 'fetchAllProjects',
           skip,
           loaded: projects.length,
         },
       )
-      return projects
+      throw error
     }
 
     skip += page.length
   }
 
+  const error = new Error(PROJECT_PAGINATION_ERROR_MESSAGE)
   logger.error(
-    `Project pagination exceeded ${MAX_PROJECT_PAGES} pages; returning partial collection`,
-    new Error('Project pagination page limit reached'),
+    `Project pagination exceeded ${MAX_PROJECT_PAGES} pages`,
+    error,
     {
       component: 'fetchAllProjects',
       loaded: projects.length,
     },
   )
-  return projects
+  throw error
 }
 
 export function projectOptionsQueryOptions() {
@@ -176,13 +181,19 @@ export function useProjects(
   sortOptions?: SortOptions,
   options?: { enabled?: boolean },
 ) {
-  return useQuery({
-    ...projectOptionsQueryOptions(),
-    enabled: options?.enabled ?? true,
-    select: (projects) =>
+  const selectProjects = useCallback(
+    (projects: Project[]) =>
       [...projects]
         .sort((left, right) => compareProjects(left, right, sortOptions))
         .slice(skip, skip + limit),
+    [limit, skip, sortOptions],
+  )
+
+  return useQuery({
+    ...projectOptionsQueryOptions(),
+    enabled: options?.enabled ?? true,
+    refetchOnMount: 'always',
+    select: selectProjects,
   })
 }
 
