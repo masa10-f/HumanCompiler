@@ -42,6 +42,25 @@ describe('QueryProvider', () => {
     mockGetAll.mockResolvedValue([])
   })
 
+  it('keeps the global garbage-collection window bounded', () => {
+    let queryClient: ReturnType<typeof useQueryClient> | undefined
+
+    function Child() {
+      queryClient = useQueryClient()
+      return null
+    }
+
+    render(
+      <QueryProvider>
+        <Child />
+      </QueryProvider>,
+    )
+
+    expect(queryClient?.getDefaultOptions().queries?.gcTime).toBe(
+      10 * 60 * 1000,
+    )
+  })
+
   it('renders during auth loading without remounting when auth resolves', async () => {
     const mounted = jest.fn()
     const unmounted = jest.fn()

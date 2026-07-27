@@ -429,6 +429,18 @@ describe('shared project collection', () => {
     expect(result.current.fetchStatus).toBe('idle')
     expect(mockGetAll).not.toHaveBeenCalled()
   })
+
+  it('selects the complete cached collection by default', async () => {
+    mockGetAll.mockResolvedValue(createMockProjects(25))
+
+    const { result } = renderHookWithClient(() => useProjects())
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+
+    expect(result.current.data).toHaveLength(25)
+  })
 })
 
 describe('useCreateProject', () => {

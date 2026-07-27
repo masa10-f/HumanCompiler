@@ -205,14 +205,14 @@ export function useProject(projectId: string) {
  * Selects a client-side page from the shared complete project collection.
  *
  * @param skip - Number of records to skip (default: 0)
- * @param limit - Maximum records to return (default: 20)
+ * @param limit - Maximum cached records to select (default: all)
  * @param sortOptions - Optional sorting configuration
  * @param options - Optional query controls
  * @returns UseQueryResult with project array
  */
 export function useProjects(
   skip = 0,
-  limit = 20,
+  limit = Number.POSITIVE_INFINITY,
   sortOptions?: SortOptions,
   options?: { enabled?: boolean },
 ) {

@@ -23,12 +23,11 @@ const workTypes: WorkType[] = ['focused_work', 'study', 'light_work'];
 export function TriageSettingsCard() {
   const { user } = useAuth();
   const {
-    data: projectData = [],
-    isLoading: projectsLoading,
+    data: projectData,
     error: projectsError,
   } = useProjectOptions({ enabled: Boolean(user) });
   const projects = useMemo(
-    () => getSelectableProjects(projectData),
+    () => getSelectableProjects(projectData ?? []),
     [projectData]
   );
   const [weeklyCapacityHours, setWeeklyCapacityHours] = useState(40);
@@ -91,7 +90,8 @@ export function TriageSettingsCard() {
     };
   }, []);
 
-  const loading = projectsLoading || settingsLoading;
+  const loading =
+    settingsLoading || (!projectsError && projectData === undefined);
 
   const allocationTotal = useMemo(() => {
     const projectTotal = projects.reduce(
@@ -192,7 +192,7 @@ export function TriageSettingsCard() {
 
         {loading ? (
           <div className="text-sm text-muted-foreground">Loading...</div>
-        ) : (
+        ) : projectsError ? null : (
           <>
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
