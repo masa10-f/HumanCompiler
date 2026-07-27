@@ -62,6 +62,17 @@ describe('TriageSettingsCard', () => {
       await screen.findByRole('button', { name: 'トリアージ設定を保存' }),
     ).toBeInTheDocument()
     expect(screen.queryByText('Loading...')).not.toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'トリアージ設定を保存' }),
+    )
+    await waitFor(() => {
+      expect(mockUpdateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          project_allocations: { 'project-1': 50 },
+        }),
+      )
+    })
   })
 
   it('shows a safe error, retries, and preserves allocations on save', async () => {

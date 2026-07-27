@@ -2,9 +2,12 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useAuthContext } from '@/components/auth-provider'
 import { useProjectOptions } from '@/hooks/use-project-query'
+
+const useIsomorphicLayoutEffect =
+  typeof window === 'undefined' ? useEffect : useLayoutEffect
 
 function ProjectCacheWarmer({ enabled }: { enabled: boolean }) {
   useProjectOptions({ enabled })
@@ -37,7 +40,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(createQueryClient)
   const previousIdentity = useRef<string | null>(null)
 
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (loading) return
 
     const identity = user?.id ?? 'anonymous'
@@ -45,8 +48,12 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       previousIdentity.current !== null &&
       previousIdentity.current !== identity
     ) {
-      queryClient.getMutationCache().clear()
-      void queryClient.resetQueries()
+      if (identity === 'anonymous') {
+        queryClient.clear()
+      } else {
+        queryClient.getMutationCache().clear()
+        void queryClient.resetQueries()
+      }
     }
     previousIdentity.current = identity
   }, [loading, queryClient, user?.id])

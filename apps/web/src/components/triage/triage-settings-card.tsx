@@ -52,6 +52,7 @@ export function TriageSettingsCard() {
   const projectsErrorMessage = projectsError
     ? `プロジェクト一覧の取得に失敗しました: ${getErrorMessage(projectsError)}`
     : '';
+  const projectsUnavailable = Boolean(projectsError) || projectData === undefined;
   const displayError = error || projectsErrorMessage;
 
   useEffect(() => {
@@ -101,7 +102,7 @@ export function TriageSettingsCard() {
     (Boolean(user) && projectsLoading);
 
   const allocationTotal = useMemo(() => {
-    const projectTotal = projectsError
+    const projectTotal = projectsUnavailable
       ? Object.values(projectAllocations).reduce(
           (total, allocation) => total + allocation,
           0
@@ -111,7 +112,7 @@ export function TriageSettingsCard() {
           0
         );
     return projectTotal + inboxAllocationPercent;
-  }, [inboxAllocationPercent, projectAllocations, projects, projectsError]);
+  }, [inboxAllocationPercent, projectAllocations, projects, projectsUnavailable]);
 
   const effectiveCapacity = Math.max(0, weeklyCapacityHours - meetingBufferHours);
 
@@ -136,7 +137,7 @@ export function TriageSettingsCard() {
     setError('');
     setSuccess('');
 
-    if (!projectsError && allocationTotal !== 100) {
+    if (!projectsUnavailable && allocationTotal !== 100) {
       setError(`配分の合計を100%にしてください（現在: ${allocationTotal}%）`);
       return;
     }
@@ -158,7 +159,7 @@ export function TriageSettingsCard() {
       await triageApi.updateSettings({
         weekly_capacity_hours: weeklyCapacityHours,
         meeting_buffer_hours: meetingBufferHours,
-        project_allocations: projectsError
+        project_allocations: projectsUnavailable
           ? projectAllocations
           : projects.reduce<Record<string, number>>((acc, project) => {
               acc[project.id] = projectAllocations[project.id] || 0;
