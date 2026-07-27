@@ -93,7 +93,11 @@ export function RunnerPage() {
         const project =
           queryClient.getQueryData<Project>(
             queryKeys.projects.detail(goal.project_id),
-          ) ?? await projectsApi.getById(goal.project_id);
+          ) ??
+          queryClient
+            .getQueryData<Project[]>(queryKeys.projects.options())
+            ?.find((item) => item.id === goal.project_id) ??
+          await projectsApi.getById(goal.project_id);
         setSwitchTarget({
           ...task,
           project_id: project.id,

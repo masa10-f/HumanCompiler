@@ -162,10 +162,6 @@ export default function ProjectsPage() {
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
 
-  const openProject = (project: Project) => {
-    router.push(`/projects/${project.id}`);
-  };
-
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
@@ -432,7 +428,7 @@ export default function ProjectsPage() {
                   <div className="flex min-w-0 items-start justify-between gap-2">
                     <div
                       className="min-w-0 flex-1 cursor-pointer"
-                      onClick={() => openProject(project)}
+                      onClick={() => router.push(`/projects/${project.id}`)}
                     >
                       <CardTitle className="line-clamp-2">{project.title}</CardTitle>
                       <CardDescription className="line-clamp-2">

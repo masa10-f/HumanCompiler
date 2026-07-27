@@ -298,8 +298,14 @@ export default function TasksPage() {
   });
   const openProjects = useMemo(() => getOpenProjects(projects), [projects]);
   const goalProjectIds = useMemo(
-    () => openProjects.map((project) => project.id),
-    [openProjects],
+    () => {
+      const projectIds = openProjects.map((project) => project.id);
+      if (projectId && !projectIds.includes(projectId)) {
+        projectIds.push(projectId);
+      }
+      return projectIds;
+    },
+    [openProjects, projectId],
   );
   const { data: goals } = useGoalsByProjects(goalProjectIds, {
     enabled: goalProjectIds.length > 0,
@@ -541,7 +547,7 @@ export default function TasksPage() {
                   }}
                 >
                   <option value="">全プロジェクト</option>
-                  {openProjects.map((project) => (
+                  {projects.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.title}
                     </option>

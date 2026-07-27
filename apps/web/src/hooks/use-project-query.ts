@@ -161,6 +161,7 @@ export function useProject(projectId: string) {
         ?.find((project) => project.id === projectId),
     initialDataUpdatedAt: () =>
       queryClient.getQueryState(projectKeys.options())?.dataUpdatedAt,
+    refetchOnMount: 'always',
     staleTime: PROJECT_STALE_TIME,
     gcTime: PROJECT_GC_TIME,
   })
