@@ -143,7 +143,7 @@ describe('QueryProvider', () => {
     })
   })
 
-  it('clears cached data without resetting queries on sign-out', async () => {
+  it('replaces cached data without refetching projects on sign-out', async () => {
     authState = { user: { id: 'user-1' }, loading: false }
     let queryClient: ReturnType<typeof useQueryClient> | undefined
 
@@ -163,7 +163,7 @@ describe('QueryProvider', () => {
     act(() => {
       queryClient?.setQueryData(['private-data'], 'user-1-data')
     })
-    const resetQueries = jest.spyOn(queryClient!, 'resetQueries')
+    const userOneClient = queryClient
 
     authState = { user: null, loading: false }
     view.rerender(
@@ -172,8 +172,10 @@ describe('QueryProvider', () => {
       </QueryProvider>,
     )
 
-    expect(queryClient?.getQueryData(['private-data'])).toBeUndefined()
-    expect(resetQueries).not.toHaveBeenCalled()
-    expect(mockGetAll).toHaveBeenCalledTimes(1)
+    await waitFor(() => {
+      expect(queryClient).not.toBe(userOneClient)
+      expect(queryClient?.getQueryData(['private-data'])).toBeUndefined()
+      expect(mockGetAll).toHaveBeenCalledTimes(1)
+    })
   })
 })

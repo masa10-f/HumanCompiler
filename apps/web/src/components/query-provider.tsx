@@ -49,9 +49,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       previousIdentity.current !== identity
     ) {
       queryClient.clear()
-      if (identity !== 'anonymous') {
-        setQueryClient(createQueryClient())
-      }
+      setQueryClient(createQueryClient())
     }
     previousIdentity.current = identity
   }, [loading, queryClient, user?.id])
