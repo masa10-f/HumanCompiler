@@ -9,3 +9,13 @@ export function getSelectableProjects<T extends Pick<Project, 'status'>>(
 ): T[] {
   return projects.filter(isSelectableProject);
 }
+
+export function isOpenProject(project: Pick<Project, 'status'>): boolean {
+  return project.status === 'pending' || project.status === 'in_progress';
+}
+
+export function getOpenProjects<T extends Pick<Project, 'status'>>(
+  projects: T[]
+): T[] {
+  return projects.filter(isOpenProject);
+}

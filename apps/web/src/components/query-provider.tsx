@@ -53,6 +53,8 @@ function AuthenticatedQueryClient({
   )
   const previousCacheIdentity = useRef(cacheIdentity)
 
+  // This must happen during render: an effect would let children render once
+  // with the previous user's cache before the identity boundary was applied.
   if (previousCacheIdentity.current !== cacheIdentity) {
     queryClient.clear()
     previousCacheIdentity.current = cacheIdentity
