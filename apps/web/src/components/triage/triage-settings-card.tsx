@@ -50,9 +50,7 @@ export function TriageSettingsCard() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const projectsErrorMessage = projectsError
-    ? projectsError instanceof Error
-      ? getErrorMessage(projectsError)
-      : 'プロジェクトの取得に失敗しました'
+    ? getErrorMessage(projectsError)
     : '';
   const displayError = error || projectsErrorMessage;
 
@@ -99,12 +97,17 @@ export function TriageSettingsCard() {
     (Boolean(user) && projectsLoading);
 
   const allocationTotal = useMemo(() => {
-    const projectTotal = projects.reduce(
-      (total, project) => total + (projectAllocations[project.id] || 0),
-      0
-    );
+    const projectTotal = projectsError
+      ? Object.values(projectAllocations).reduce(
+          (total, allocation) => total + allocation,
+          0
+        )
+      : projects.reduce(
+          (total, project) => total + (projectAllocations[project.id] || 0),
+          0
+        );
     return projectTotal + inboxAllocationPercent;
-  }, [inboxAllocationPercent, projectAllocations, projects]);
+  }, [inboxAllocationPercent, projectAllocations, projects, projectsError]);
 
   const effectiveCapacity = Math.max(0, weeklyCapacityHours - meetingBufferHours);
 
@@ -151,10 +154,12 @@ export function TriageSettingsCard() {
       await triageApi.updateSettings({
         weekly_capacity_hours: weeklyCapacityHours,
         meeting_buffer_hours: meetingBufferHours,
-        project_allocations: projects.reduce<Record<string, number>>((acc, project) => {
-          acc[project.id] = projectAllocations[project.id] || 0;
-          return acc;
-        }, {}),
+        project_allocations: projectsError
+          ? projectAllocations
+          : projects.reduce<Record<string, number>>((acc, project) => {
+              acc[project.id] = projectAllocations[project.id] || 0;
+              return acc;
+            }, {}),
         inbox_allocation_percent: inboxAllocationPercent,
         work_type_caps: parsedWorkTypeCaps,
         cadence_days: cadenceDays,
@@ -197,14 +202,6 @@ export function TriageSettingsCard() {
 
         {loading ? (
           <div className="text-sm text-muted-foreground">Loading...</div>
-        ) : projectsError ? (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => void refetchProjects()}
-          >
-            プロジェクトを再取得
-          </Button>
         ) : (
           <>
             <div className="grid gap-4 sm:grid-cols-3">
@@ -276,41 +273,60 @@ export function TriageSettingsCard() {
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-sm font-semibold">配分</h3>
-                <Button type="button" variant="outline" size="sm" onClick={balanceAllocations}>
-                  均等配分
-                </Button>
+                {projectsError ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void refetchProjects()}
+                  >
+                    プロジェクトを再取得
+                  </Button>
+                ) : (
+                  <Button type="button" variant="outline" size="sm" onClick={balanceAllocations}>
+                    均等配分
+                  </Button>
+                )}
               </div>
 
-              {projects.map((project) => {
-                const allocation = projectAllocations[project.id] || 0;
-                return (
-                  <div key={project.id} className="space-y-2">
+              {projectsError ? (
+                <p className="text-sm text-muted-foreground">
+                  プロジェクト配分は再取得後に編集できます。
+                </p>
+              ) : (
+                <>
+                  {projects.map((project) => {
+                    const allocation = projectAllocations[project.id] || 0;
+                    return (
+                      <div key={project.id} className="space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <Label className="truncate">{project.title}</Label>
+                          <span className="text-sm font-medium">{allocation}%</span>
+                        </div>
+                        <Slider
+                          value={[allocation]}
+                          max={100}
+                          step={5}
+                          onValueChange={(values) => updateProjectAllocation(project.id, values[0] ?? 0)}
+                        />
+                      </div>
+                    );
+                  })}
+
+                  <div className="space-y-2">
                     <div className="flex items-center justify-between gap-3">
-                      <Label className="truncate">{project.title}</Label>
-                      <span className="text-sm font-medium">{allocation}%</span>
+                      <Label>Inbox</Label>
+                      <span className="text-sm font-medium">{inboxAllocationPercent}%</span>
                     </div>
                     <Slider
-                      value={[allocation]}
+                      value={[inboxAllocationPercent]}
                       max={100}
                       step={5}
-                      onValueChange={(values) => updateProjectAllocation(project.id, values[0] ?? 0)}
+                      onValueChange={(values) => setInboxAllocationPercent(values[0] ?? 0)}
                     />
                   </div>
-                );
-              })}
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <Label>Inbox</Label>
-                  <span className="text-sm font-medium">{inboxAllocationPercent}%</span>
-                </div>
-                <Slider
-                  value={[inboxAllocationPercent]}
-                  max={100}
-                  step={5}
-                  onValueChange={(values) => setInboxAllocationPercent(values[0] ?? 0)}
-                />
-              </div>
+                </>
+              )}
             </div>
 
             <div className="space-y-3">

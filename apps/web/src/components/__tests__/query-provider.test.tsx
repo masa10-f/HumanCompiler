@@ -9,6 +9,7 @@
  */
 import { useQueryClient } from '@tanstack/react-query'
 import { act, render, waitFor } from '@testing-library/react'
+import { useEffect } from 'react'
 
 const mockGetAll = jest.fn()
 let authState: {
@@ -56,12 +57,17 @@ describe('QueryProvider', () => {
     })
   })
 
-  it('keeps one client during normal navigation', () => {
-    authState = { user: { id: 'user-1' }, loading: false }
-    const clients: ReturnType<typeof useQueryClient>[] = []
+  it('does not remount children when initial authentication resolves', () => {
+    const mounted = jest.fn()
+    const unmounted = jest.fn()
+    let queryClient: ReturnType<typeof useQueryClient> | undefined
 
     function Child() {
-      clients.push(useQueryClient())
+      queryClient = useQueryClient()
+      useEffect(() => {
+        mounted()
+        return unmounted
+      }, [])
       return null
     }
 
@@ -70,16 +76,21 @@ describe('QueryProvider', () => {
         <Child />
       </QueryProvider>,
     )
+    const loadingClient = queryClient
+
+    authState = { user: { id: 'user-1' }, loading: false }
     view.rerender(
       <QueryProvider>
         <Child />
       </QueryProvider>,
     )
 
-    expect(clients[0]).toBe(clients.at(-1))
+    expect(queryClient).toBe(loadingClient)
+    expect(mounted).toHaveBeenCalledTimes(1)
+    expect(unmounted).not.toHaveBeenCalled()
   })
 
-  it('uses a fresh cache when the authenticated identity changes', () => {
+  it('clears the same client when the authenticated identity changes', async () => {
     authState = { user: { id: 'user-1' }, loading: false }
     let queryClient: ReturnType<typeof useQueryClient> | undefined
 
@@ -105,7 +116,9 @@ describe('QueryProvider', () => {
       </QueryProvider>,
     )
 
-    expect(queryClient).not.toBe(userOneClient)
-    expect(queryClient?.getQueryData(['private-data'])).toBeUndefined()
+    expect(queryClient).toBe(userOneClient)
+    await waitFor(() => {
+      expect(queryClient?.getQueryData(['private-data'])).toBeUndefined()
+    })
   })
 })
