@@ -28,9 +28,14 @@ import type { RescheduleSuggestion } from '@/types/reschedule';
 import type { TaskWorkspaceItem } from '@/types/task';
 import { goalsApi, projectsApi, tasksApi } from '@/lib/api';
 import { consumeRunnerTaskId } from '@/lib/runner/route-task-id';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query-keys';
+import type { Goal } from '@/types/goal';
+import type { Project } from '@/types/project';
 
 export function RunnerPage() {
   const { user, loading: authLoading } = useAuth();
+  const queryClient = useQueryClient();
   const {
     session,
     sessionDetails,
@@ -82,8 +87,13 @@ export function RunnerPage() {
     void (async () => {
       try {
         const task = await tasksApi.getById(taskId);
-        const goal = await goalsApi.getById(task.goal_id);
-        const project = await projectsApi.getById(goal.project_id);
+        const goal =
+          queryClient.getQueryData<Goal>(queryKeys.goals.detail(task.goal_id)) ??
+          await goalsApi.getById(task.goal_id);
+        const project =
+          queryClient.getQueryData<Project>(
+            queryKeys.projects.detail(goal.project_id),
+          ) ?? await projectsApi.getById(goal.project_id);
         setSwitchTarget({
           ...task,
           project_id: project.id,
@@ -102,7 +112,7 @@ export function RunnerPage() {
         setTaskPickerOpen(true);
       }
     })();
-  }, [isLoading, session, switchTarget?.id]);
+  }, [isLoading, queryClient, session, switchTarget?.id]);
 
   // Issue #227: Reschedule suggestion state
   const [lastRescheduleSuggestion, setLastRescheduleSuggestion] = useState<RescheduleSuggestion | null>(null);

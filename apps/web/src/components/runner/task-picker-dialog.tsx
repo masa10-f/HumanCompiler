@@ -14,7 +14,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { goalsApi, projectsApi, tasksApi } from '@/lib/api';
+import { tasksApi } from '@/lib/api';
+import { useProjectOptions } from '@/hooks/use-project-query';
+import { useGoalsByProjects } from '@/hooks/use-goals-query';
 import type { TaskWorkspaceItem } from '@/types/task';
 
 type PickerView = 'recommended' | 'today' | 'recent' | 'all';
@@ -40,25 +42,16 @@ export function TaskPickerDialog({
   const [projectId, setProjectId] = useState('');
   const [goalId, setGoalId] = useState('');
 
-  const projects = useQuery({
-    queryKey: ['projects', 'task-picker'],
-    queryFn: () => projectsApi.getAll(0, 100),
+  const projects = useProjectOptions({
     enabled: open,
   });
-  const goals = useQuery({
-    queryKey: ['goals', 'task-picker', projects.data?.map((item) => item.id).join(',')],
-    queryFn: async () => {
-      const results = await Promise.allSettled(
-        (projects.data ?? []).map((project) =>
-          goalsApi.getByProject(project.id, 0, 100),
-        ),
-      );
-      return results.flatMap((result) =>
-        result.status === 'fulfilled' ? result.value : [],
-      );
+  const goals = useGoalsByProjects(
+    (projects.data ?? []).map((project) => project.id),
+    {
+      enabled: open && Boolean(projects.data?.length),
+      limit: 100,
     },
-    enabled: open && Boolean(projects.data?.length),
-  });
+  );
   const recommendations = useQuery({
     queryKey: ['tasks', 'picker', 'recommendations'],
     queryFn: () => tasksApi.getRecommendations(),

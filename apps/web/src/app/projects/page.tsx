@@ -2,8 +2,15 @@
 
 import { useState, useEffect, memo } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/use-auth';
-import { useProjects, useCreateProject, useUpdateProject, useDeleteProject } from '@/hooks/use-project-query';
+import {
+  projectKeys,
+  useProjects,
+  useCreateProject,
+  useUpdateProject,
+  useDeleteProject,
+} from '@/hooks/use-project-query';
 import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -127,6 +134,7 @@ const ProjectStatusDropdown = memo(function ProjectStatusDropdown({ project }: {
 export default function ProjectsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   // Sort state
   const [sortOptions, setSortOptions] = useState<SortOptions>({
@@ -151,6 +159,11 @@ export default function ProjectsPage() {
   // Edit form state
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
+
+  const openProject = (project: Project) => {
+    queryClient.setQueryData(projectKeys.detail(project.id), project);
+    router.push(`/projects/${project.id}`);
+  };
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -418,7 +431,7 @@ export default function ProjectsPage() {
                   <div className="flex min-w-0 items-start justify-between gap-2">
                     <div
                       className="min-w-0 flex-1 cursor-pointer"
-                      onClick={() => router.push(`/projects/${project.id}`)}
+                      onClick={() => openProject(project)}
                     >
                       <CardTitle className="line-clamp-2">{project.title}</CardTitle>
                       <CardDescription className="line-clamp-2">

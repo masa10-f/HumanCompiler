@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDeferredValue, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Bot,
   CheckCircle2,
@@ -44,7 +44,9 @@ import {
   useTaskWorkspaceSummary,
   useUpdateTask,
 } from "@/hooks/use-tasks-query";
-import { goalsApi, projectsApi, quickTasksApi } from "@/lib/api";
+import { quickTasksApi } from "@/lib/api";
+import { useProjectOptions } from "@/hooks/use-project-query";
+import { useGoalsByProjects } from "@/hooks/use-goals-query";
 import {
   buildTaskWorkspaceFilters,
   DEFAULT_TASK_WORKSPACE_PRESET,
@@ -290,27 +292,16 @@ export default function TasksPage() {
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
 
-  const { data: projects = [] } = useQuery({
-    queryKey: ["projects", "task-workspace"],
-    queryFn: () => projectsApi.getAll(0, 100),
+  const { data: projects = [] } = useProjectOptions({
     enabled: Boolean(user),
   });
-  const { data: goals = [] } = useQuery({
-    queryKey: [
-      "goals",
-      "task-workspace",
-      projects.map((project) => project.id).join(","),
-    ],
-    queryFn: async () => {
-      const results = await Promise.allSettled(
-        projects.map((project) => goalsApi.getByProject(project.id, 0, 100)),
-      );
-      return results.flatMap((result) =>
-        result.status === "fulfilled" ? result.value : [],
-      );
+  const { data: goals } = useGoalsByProjects(
+    projects.map((project) => project.id),
+    {
+      enabled: projects.length > 0,
+      limit: 100,
     },
-    enabled: projects.length > 0,
-  });
+  );
 
   const filters = useMemo<TaskWorkspaceFilters>(() => {
     return buildTaskWorkspaceFilters({

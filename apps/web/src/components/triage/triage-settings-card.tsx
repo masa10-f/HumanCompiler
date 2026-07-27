@@ -11,16 +11,24 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
-import { projectsApi, triageApi } from '@/lib/api';
+import { triageApi } from '@/lib/api';
+import { useProjectOptions } from '@/hooks/use-project-query';
 import { getSelectableProjects } from '@/lib/project-filters';
-import type { Project } from '@/types/project';
 import type { WorkType } from '@/types/task';
 import { workTypeLabels } from '@/types/task';
 
 const workTypes: WorkType[] = ['focused_work', 'study', 'light_work'];
 
 export function TriageSettingsCard() {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const {
+    data: projectData = [],
+    isLoading: projectsLoading,
+    error: projectsError,
+  } = useProjectOptions();
+  const projects = useMemo(
+    () => getSelectableProjects(projectData),
+    [projectData]
+  );
   const [weeklyCapacityHours, setWeeklyCapacityHours] = useState(40);
   const [meetingBufferHours, setMeetingBufferHours] = useState(5);
   const [cadenceDays, setCadenceDays] = useState(7);
@@ -33,7 +41,7 @@ export function TriageSettingsCard() {
     study: '',
     light_work: '',
   });
-  const [loading, setLoading] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -42,32 +50,18 @@ export function TriageSettingsCard() {
     let cancelled = false;
 
     const load = async () => {
-      setLoading(true);
+      setSettingsLoading(true);
       setError('');
       try {
-        const [projectData, settings] = await Promise.all([
-          projectsApi.getAll(0, 100),
-          triageApi.getSettings(),
-        ]);
+        const settings = await triageApi.getSettings();
         if (cancelled) return;
 
-        const selectableProjects = getSelectableProjects(projectData);
-        const selectableProjectIds = new Set(
-          selectableProjects.map((project) => project.id)
-        );
-        setProjects(selectableProjects);
         setWeeklyCapacityHours(settings.weekly_capacity_hours);
         setMeetingBufferHours(settings.meeting_buffer_hours);
         setCadenceDays(settings.cadence_days);
         setAutoGenerateEnabled(settings.auto_generate_enabled);
         setUseAiRankAdjustment(settings.use_ai_rank_adjustment);
-        setProjectAllocations(
-          Object.fromEntries(
-            Object.entries(settings.project_allocations || {}).filter(([projectId]) =>
-              selectableProjectIds.has(projectId)
-            )
-          )
-        );
+        setProjectAllocations(settings.project_allocations || {});
         setInboxAllocationPercent(settings.inbox_allocation_percent || 0);
         setWorkTypeCaps({
           focused_work: settings.work_type_caps.focused_work?.toString() || '',
@@ -79,7 +73,7 @@ export function TriageSettingsCard() {
           setError(err instanceof Error ? err.message : 'トリアージ設定の取得に失敗しました');
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setSettingsLoading(false);
       }
     };
 
@@ -88,6 +82,18 @@ export function TriageSettingsCard() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (projectsError) {
+      setError(
+        projectsError instanceof Error
+          ? projectsError.message
+          : 'プロジェクトの取得に失敗しました'
+      );
+    }
+  }, [projectsError]);
+
+  const loading = projectsLoading || settingsLoading;
 
   const allocationTotal = useMemo(() => {
     const projectTotal = projects.reduce(

@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  useQueries,
+  useQuery,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { goalsApi } from '@/lib/api'
 import type { Goal, GoalCreate, GoalUpdate } from '@/types/goal'
 import type { SortOptions } from '@/types/sort'
@@ -13,7 +18,35 @@ export const goalKeys = {
   list: (filters: string) => [...goalKeys.lists(), { filters }] as const,
   details: () => [...goalKeys.all, 'detail'] as const,
   detail: (id: string) => [...goalKeys.details(), id] as const,
-  byProject: (projectId: string) => [...goalKeys.all, 'project', projectId] as const,
+  projects: () => [...goalKeys.all, 'project'] as const,
+  byProject: (projectId: string) => [...goalKeys.projects(), projectId] as const,
+  projectList: (
+    projectId: string,
+    skip: number,
+    limit: number,
+    sortKey: string,
+  ) => [...goalKeys.byProject(projectId), { skip, limit, sort: sortKey }] as const,
+}
+
+const GOAL_STALE_TIME = 10 * 60 * 1000
+const GOAL_GC_TIME = 24 * 60 * 60 * 1000
+
+function goalsByProjectQueryOptions(
+  projectId: string,
+  skip = 0,
+  limit = 20,
+  sortOptions?: SortOptions,
+) {
+  const sortKey = sortOptions
+    ? `${sortOptions.sortBy}-${sortOptions.sortOrder}`
+    : 'default'
+
+  return {
+    queryKey: goalKeys.projectList(projectId, skip, limit, sortKey),
+    queryFn: () => goalsApi.getByProject(projectId, skip, limit, sortOptions),
+    staleTime: GOAL_STALE_TIME,
+    gcTime: GOAL_GC_TIME,
+  }
 }
 
 /**
@@ -26,13 +59,36 @@ export const goalKeys = {
  * @returns UseQueryResult with goal array
  */
 export function useGoalsByProject(projectId: string, skip = 0, limit = 20, sortOptions?: SortOptions) {
-  const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
   return useQuery({
-    queryKey: [...goalKeys.byProject(projectId), sortKey],
-    queryFn: () => goalsApi.getByProject(projectId, skip, limit, sortOptions),
+    ...goalsByProjectQueryOptions(projectId, skip, limit, sortOptions),
     enabled: !!projectId,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+  })
+}
+
+/**
+ * Shares per-project goal queries between workspace and picker screens.
+ * Successful projects remain usable even if one project request fails.
+ */
+export function useGoalsByProjects(
+  projectIds: string[],
+  options?: { enabled?: boolean; skip?: number; limit?: number },
+) {
+  const enabled = options?.enabled ?? true
+  const skip = options?.skip ?? 0
+  const limit = options?.limit ?? 100
+  const uniqueProjectIds = [...new Set(projectIds)]
+
+  return useQueries({
+    queries: uniqueProjectIds.map((projectId) => ({
+      ...goalsByProjectQueryOptions(projectId, skip, limit),
+      enabled: enabled && Boolean(projectId),
+    })),
+    combine: (results) => ({
+      data: results.flatMap((result) => result.data ?? []),
+      isLoading: results.some((result) => result.isLoading),
+      isFetching: results.some((result) => result.isFetching),
+      error: results.find((result) => result.error)?.error ?? null,
+    }),
   })
 }
 
@@ -43,12 +99,26 @@ export function useGoalsByProject(projectId: string, skip = 0, limit = 20, sortO
  * @returns UseQueryResult with goal data
  */
 export function useGoal(goalId: string) {
+  const queryClient = useQueryClient()
+  const cachedGoalEntry = () =>
+    queryClient
+      .getQueriesData<Goal[]>({ queryKey: goalKeys.projects() })
+      .find(([, goals]) => goals?.some((goal) => goal.id === goalId))
+
   return useQuery({
     queryKey: goalKeys.detail(goalId),
     queryFn: () => goalsApi.getById(goalId),
     enabled: !!goalId,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    initialData: () =>
+      cachedGoalEntry()?.[1]?.find((goal) => goal.id === goalId),
+    initialDataUpdatedAt: () => {
+      const queryKey = cachedGoalEntry()?.[0]
+      return queryKey
+        ? queryClient.getQueryState(queryKey)?.dataUpdatedAt
+        : undefined
+    },
+    staleTime: GOAL_STALE_TIME,
+    gcTime: GOAL_GC_TIME,
   })
 }
 

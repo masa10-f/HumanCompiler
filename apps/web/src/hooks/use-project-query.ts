@@ -1,18 +1,91 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { projectsApi } from '@/lib/api'
+import { queryKeys } from '@/lib/query-keys'
 import type { Project, ProjectCreate, ProjectUpdate } from '@/types/project'
 import type { SortOptions } from '@/types/sort'
+import { SortBy, SortOrder } from '@/types/sort'
 
 /**
  * Query keys for project caching with React Query.
  * Provides consistent cache key structure for all project-related queries.
  */
-export const projectKeys = {
-  all: ['projects'] as const,
-  lists: () => [...projectKeys.all, 'list'] as const,
-  list: (filters: string) => [...projectKeys.lists(), { filters }] as const,
-  details: () => [...projectKeys.all, 'detail'] as const,
-  detail: (id: string) => [...projectKeys.details(), id] as const,
+export const projectKeys = queryKeys.projects
+
+const PROJECT_PAGE_SIZE = 100
+export const PROJECT_STALE_TIME = 30 * 60 * 1000
+export const PROJECT_GC_TIME = 24 * 60 * 60 * 1000
+
+async function fetchAllProjects(): Promise<Project[]> {
+  const projects: Project[] = []
+  let skip = 0
+
+  while (true) {
+    const page = await projectsApi.getAll(skip, PROJECT_PAGE_SIZE)
+    projects.push(...page)
+
+    if (page.length < PROJECT_PAGE_SIZE) {
+      return projects
+    }
+
+    skip += page.length
+  }
+}
+
+export function projectOptionsQueryOptions() {
+  return {
+    queryKey: projectKeys.options(),
+    queryFn: fetchAllProjects,
+    staleTime: PROJECT_STALE_TIME,
+    gcTime: PROJECT_GC_TIME,
+  }
+}
+
+function compareProjects(
+  left: Project,
+  right: Project,
+  sortOptions?: SortOptions,
+) {
+  const sortBy = sortOptions?.sortBy ?? SortBy.STATUS
+  const direction = sortOptions?.sortOrder === SortOrder.DESC ? -1 : 1
+
+  let comparison = 0
+  switch (sortBy) {
+    case SortBy.TITLE:
+      comparison = left.title.localeCompare(right.title, 'ja')
+      break
+    case SortBy.CREATED_AT:
+      comparison =
+        new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
+      break
+    case SortBy.UPDATED_AT:
+      comparison =
+        new Date(left.updated_at).getTime() - new Date(right.updated_at).getTime()
+      break
+    case SortBy.STATUS:
+    default:
+      comparison = left.status.localeCompare(right.status)
+      break
+  }
+
+  return comparison * direction
+}
+
+function updateProjectOptions(
+  projects: Project[] | undefined,
+  updater: (projects: Project[]) => Project[],
+) {
+  return projects ? updater(projects) : undefined
+}
+
+/**
+ * Fetches the shared, complete project collection used by selectors and pages.
+ * The authenticated query provider warms this cache immediately after sign-in.
+ */
+export function useProjectOptions(options?: { enabled?: boolean }) {
+  return useQuery({
+    ...projectOptionsQueryOptions(),
+    enabled: options?.enabled ?? true,
+  })
 }
 
 /**
@@ -23,12 +96,20 @@ export const projectKeys = {
  * @returns UseQueryResult with project data, loading state, and error
  */
 export function useProject(projectId: string) {
+  const queryClient = useQueryClient()
+
   return useQuery({
     queryKey: projectKeys.detail(projectId),
     queryFn: () => projectsApi.getById(projectId),
     enabled: !!projectId,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    initialData: () =>
+      queryClient
+        .getQueryData<Project[]>(projectKeys.options())
+        ?.find((project) => project.id === projectId),
+    initialDataUpdatedAt: () =>
+      queryClient.getQueryState(projectKeys.options())?.dataUpdatedAt,
+    staleTime: PROJECT_STALE_TIME,
+    gcTime: PROJECT_GC_TIME,
   })
 }
 
@@ -41,12 +122,12 @@ export function useProject(projectId: string) {
  * @returns UseQueryResult with project array
  */
 export function useProjects(skip = 0, limit = 20, sortOptions?: SortOptions) {
-  const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
   return useQuery({
-    queryKey: projectKeys.list(`skip-${skip}-limit-${limit}-${sortKey}`),
-    queryFn: () => projectsApi.getAll(skip, limit, sortOptions),
-    staleTime: 2 * 60 * 1000, // 2 minutes for list view
-    gcTime: 5 * 60 * 1000, // 5 minutes
+    ...projectOptionsQueryOptions(),
+    select: (projects) =>
+      [...projects]
+        .sort((left, right) => compareProjects(left, right, sortOptions))
+        .slice(skip, skip + limit),
   })
 }
 
@@ -62,13 +143,14 @@ export function useCreateProject() {
   return useMutation({
     mutationFn: (projectData: ProjectCreate) => projectsApi.create(projectData),
     onSuccess: (newProject: Project) => {
-      // Invalidate and refetch project lists
-      queryClient.invalidateQueries({ queryKey: projectKeys.lists() })
-
-      // Optionally add the new project to cache
-      queryClient.setQueryData(
-        projectKeys.detail(newProject.id),
-        newProject
+      queryClient.setQueryData(projectKeys.detail(newProject.id), newProject)
+      queryClient.setQueryData<Project[]>(
+        projectKeys.options(),
+        (projects) =>
+          updateProjectOptions(projects, (current) => [
+            ...current.filter((project) => project.id !== newProject.id),
+            newProject,
+          ]),
       )
     },
   })
@@ -87,14 +169,16 @@ export function useUpdateProject() {
     mutationFn: ({ id, data }: { id: string; data: ProjectUpdate }) =>
       projectsApi.update(id, data),
     onSuccess: (updatedProject: Project) => {
-      // Update the cached project
-      queryClient.setQueryData(
-        projectKeys.detail(updatedProject.id),
-        updatedProject
+      queryClient.setQueryData(projectKeys.detail(updatedProject.id), updatedProject)
+      queryClient.setQueryData<Project[]>(
+        projectKeys.options(),
+        (projects) =>
+          updateProjectOptions(projects, (current) =>
+            current.map((project) =>
+              project.id === updatedProject.id ? updatedProject : project,
+            ),
+          ),
       )
-
-      // Invalidate project lists to show updated data
-      queryClient.invalidateQueries({ queryKey: projectKeys.lists() })
     },
   })
 }
@@ -113,19 +197,20 @@ export function useDeleteProject() {
   return useMutation({
     mutationFn: (projectId: string) => projectsApi.delete(projectId),
     onSuccess: (_, projectId) => {
-      // Remove project from cache immediately
       queryClient.removeQueries({ queryKey: projectKeys.detail(projectId) })
+      queryClient.setQueryData<Project[]>(
+        projectKeys.options(),
+        (projects) =>
+          updateProjectOptions(projects, (current) =>
+            current.filter((project) => project.id !== projectId),
+          ),
+      )
 
-      // Delay cache invalidation to allow dialog close animation to complete
-      // This prevents Radix UI dialog cleanup issues that cause UI freeze
       setTimeout(() => {
-        // Force reset body styles in case Radix UI dialog cleanup failed
         if (typeof document !== 'undefined') {
           document.body.style.pointerEvents = ''
           document.body.style.overflow = ''
         }
-
-        queryClient.invalidateQueries({ queryKey: projectKeys.lists() })
       }, 300)
     },
   })

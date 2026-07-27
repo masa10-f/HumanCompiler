@@ -31,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useProjects } from '@/hooks/use-projects';
+import { useCreateProject } from '@/hooks/use-project-query';
 
 const projectFormSchema = z.object({
   title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
@@ -48,7 +48,7 @@ interface ProjectFormDialogProps {
 export function ProjectFormDialog({ children }: ProjectFormDialogProps) {
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { createProject } = useProjects();
+  const createProject = useCreateProject();
 
   const form = useForm<ProjectFormData>({
     resolver: zodResolver(projectFormSchema),
@@ -62,7 +62,7 @@ export function ProjectFormDialog({ children }: ProjectFormDialogProps) {
   const onSubmit = async (data: ProjectFormData) => {
     try {
       setIsSubmitting(true);
-      await createProject({
+      await createProject.mutateAsync({
         title: data.title,
         description: data.description || undefined,
         status: data.status,
