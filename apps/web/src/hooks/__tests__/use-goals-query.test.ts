@@ -27,6 +27,7 @@ jest.mock('@/lib/api', () => ({
 // Import after mocks
 import {
   useGoalsByProject,
+  useGoalsByProjects,
   useGoal,
   useCreateGoal,
   useUpdateGoal,
@@ -108,6 +109,33 @@ describe('useGoalsByProject', () => {
       goalKeys.projectList('proj-1', 0, 20, 'default'),
     )
     expect(queryState).toBeDefined()
+  })
+})
+
+describe('useGoalsByProjects', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    resetIdCounter()
+  })
+
+  it('preserves the combined data reference across unchanged renders', async () => {
+    mockGetByProject.mockResolvedValue(
+      createMockGoals(2, { project_id: 'proj-1' }),
+    )
+
+    const { result, rerender } = renderHookWithClient(() =>
+      useGoalsByProjects(['proj-1']),
+    )
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+      expect(result.current.data).toHaveLength(2)
+    })
+    const firstData = result.current.data
+
+    rerender()
+
+    expect(result.current.data).toBe(firstData)
   })
 })
 
