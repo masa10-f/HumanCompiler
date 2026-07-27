@@ -59,6 +59,8 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     previousIdentity.current = identity
   }, [loading, user?.id])
 
+  useEffect(() => () => queryClient.clear(), [queryClient])
+
   return (
     <QueryClientProvider client={queryClient} key={generation}>
       <ProjectCacheWarmer enabled={!loading && Boolean(user)} />
