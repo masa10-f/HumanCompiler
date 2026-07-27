@@ -7,7 +7,7 @@
 /**
  * @jest-environment jsdom
  */
-import { useEffect } from 'react'
+import { StrictMode, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { act, render, waitFor } from '@testing-library/react'
 
@@ -108,6 +108,44 @@ describe('QueryProvider', () => {
 
     view.unmount()
     expect(unmounted).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not clear the live cache during StrictMode effect replay', async () => {
+    let queryClient: ReturnType<typeof useQueryClient> | undefined
+    const project = {
+      id: 'project-1',
+      owner_id: 'user-1',
+      title: 'Project',
+      description: null,
+      status: 'in_progress',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    }
+    authState = {
+      user: { id: 'user-1' },
+      loading: false,
+    }
+    mockGetAll.mockResolvedValue([project])
+
+    function Child() {
+      queryClient = useQueryClient()
+      return null
+    }
+
+    render(
+      <StrictMode>
+        <QueryProvider>
+          <Child />
+        </QueryProvider>
+      </StrictMode>,
+    )
+
+    await waitFor(() => {
+      expect(queryClient?.getQueryData(['projects', 'options'])).toEqual([
+        project,
+      ])
+    })
+    expect(mockGetAll).toHaveBeenCalledTimes(1)
   })
 
 })

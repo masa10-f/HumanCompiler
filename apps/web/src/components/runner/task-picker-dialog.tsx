@@ -46,6 +46,8 @@ export function TaskPickerDialog({
   const projects = useProjectOptions({
     enabled: open,
   });
+  // Runner is for choosing the next actionable task, so archived projects
+  // intentionally stay out of both project and goal selectors.
   const openProjects = useMemo(
     () => getOpenProjects(projects.data ?? []),
     [projects.data],

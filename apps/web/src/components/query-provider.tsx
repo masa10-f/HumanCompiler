@@ -42,6 +42,7 @@ function AuthenticatedQueryClient({
     resolvedIdentity:
       cacheIdentity === 'auth-loading' ? null : cacheIdentity,
     generation: 0,
+    retiredClient: null as QueryClient | null,
   }))
 
   // Derive the boundary during render. An effect would let children render
@@ -60,13 +61,15 @@ function AuthenticatedQueryClient({
       generation: isInitialResolution
         ? clientState.generation
         : clientState.generation + 1,
+      retiredClient: isInitialResolution
+        ? clientState.retiredClient
+        : clientState.queryClient,
     })
   }
 
-  useEffect(
-    () => () => clientState.queryClient.clear(),
-    [clientState.queryClient],
-  )
+  useEffect(() => {
+    clientState.retiredClient?.clear()
+  }, [clientState.retiredClient])
 
   return (
     <QueryClientProvider

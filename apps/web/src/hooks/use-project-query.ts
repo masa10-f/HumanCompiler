@@ -116,15 +116,16 @@ function compareProjects(
         new Date(left.updated_at).getTime() - new Date(right.updated_at).getTime()
       break
     case SortBy.STATUS:
-      comparison =
-        PROJECT_STATUS_PRIORITY[left.status] -
-        PROJECT_STATUS_PRIORITY[right.status]
-      break
+    // Projects have no priority field, so keep the workflow status order.
     case SortBy.PRIORITY:
       comparison =
         PROJECT_STATUS_PRIORITY[left.status] -
         PROJECT_STATUS_PRIORITY[right.status]
       break
+    default: {
+      const exhaustive: never = sortBy
+      return exhaustive
+    }
   }
 
   return comparison * direction
@@ -193,7 +194,6 @@ export function useProjects(
   return useQuery({
     ...projectOptionsQueryOptions(),
     enabled: options?.enabled ?? true,
-    refetchOnMount: 'always',
     select: selectProjects,
   })
 }
@@ -290,6 +290,8 @@ export function useDeleteProject() {
         void queryClient.invalidateQueries({ queryKey: projectKeys.options() })
       }
 
+      // Radix dialog cleanup can leave body styles set when the dialog
+      // unmounts mid-delete, so restore them after the close animation.
       setTimeout(() => {
         if (typeof document !== 'undefined') {
           document.body.style.pointerEvents = ''

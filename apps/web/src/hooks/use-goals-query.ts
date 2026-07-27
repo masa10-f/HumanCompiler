@@ -105,23 +105,23 @@ export function useGoalsByProjects(
  */
 export function useGoal(goalId: string) {
   const queryClient = useQueryClient()
-  const cachedGoalEntry = () =>
-    queryClient
-      .getQueriesData<Goal[]>({ queryKey: goalKeys.projects() })
-      .find(([, goals]) => goals?.some((goal) => goal.id === goalId))
+  const cachedGoalEntry = queryClient
+    .getQueriesData<Goal[]>({ queryKey: goalKeys.projects() })
+    .find(([, goals]) => goals?.some((goal) => goal.id === goalId))
 
   return useQuery({
     queryKey: goalKeys.detail(goalId),
     queryFn: () => goalsApi.getById(goalId),
     enabled: !!goalId,
     initialData: () =>
-      cachedGoalEntry()?.[1]?.find((goal) => goal.id === goalId),
+      cachedGoalEntry?.[1]?.find((goal) => goal.id === goalId),
     initialDataUpdatedAt: () => {
-      const queryKey = cachedGoalEntry()?.[0]
+      const queryKey = cachedGoalEntry?.[0]
       return queryKey
         ? queryClient.getQueryState(queryKey)?.dataUpdatedAt
         : undefined
     },
+    refetchOnMount: 'always',
     staleTime: GOAL_STALE_TIME,
     gcTime: GOAL_GC_TIME,
   })
