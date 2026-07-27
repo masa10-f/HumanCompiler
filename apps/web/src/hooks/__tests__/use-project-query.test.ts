@@ -144,8 +144,11 @@ describe('project query cache', () => {
   })
 
   it('adds a created project to the shared cache', async () => {
-    const existing = createMockProject({ id: 'existing' })
-    const created = createMockProject({ id: 'created' })
+    const existing = createMockProject({
+      id: 'existing',
+      status: 'completed',
+    })
+    const created = createMockProject({ id: 'created', status: 'pending' })
     const queryClient = createProjectTestClient()
     queryClient.setQueryData(projectKeys.options(), [existing])
     mockCreate.mockResolvedValue(created)
@@ -161,8 +164,8 @@ describe('project query cache', () => {
     })
 
     expect(queryClient.getQueryData(projectKeys.options())).toEqual([
-      existing,
       created,
+      existing,
     ])
     expect(queryClient.getQueryData(projectKeys.detail(created.id))).toEqual(
       created,

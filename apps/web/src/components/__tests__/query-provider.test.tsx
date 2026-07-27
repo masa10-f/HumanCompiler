@@ -90,18 +90,25 @@ describe('QueryProvider', () => {
     expect(unmounted).not.toHaveBeenCalled()
   })
 
-  it('clears the same client when the authenticated identity changes', async () => {
+  it('replaces initial query data when the authenticated identity changes', async () => {
     authState = { user: { id: 'user-1' }, loading: false }
     let queryClient: ReturnType<typeof useQueryClient> | undefined
+    let showPrivateData = false
 
-    function Child() {
-      queryClient = useQueryClient()
+    function PrivateData() {
+      const client = useQueryClient()
       const privateQuery = useQuery({
         queryKey: ['private-data'],
         queryFn: async () => 'fetched-data',
+        initialData: () => client.getQueryData<string>(['private-seed']),
         enabled: false,
       })
       return <div>{privateQuery.data ?? 'empty'}</div>
+    }
+
+    function Child() {
+      queryClient = useQueryClient()
+      return showPrivateData ? <PrivateData /> : null
     }
 
     const view = render(
@@ -111,8 +118,14 @@ describe('QueryProvider', () => {
     )
     const userOneClient = queryClient
     act(() => {
-      userOneClient?.setQueryData(['private-data'], 'user-1-data')
+      userOneClient?.setQueryData(['private-seed'], 'user-1-data')
     })
+    showPrivateData = true
+    view.rerender(
+      <QueryProvider>
+        <Child />
+      </QueryProvider>,
+    )
     await waitFor(() => {
       expect(screen.getByText('user-1-data')).toBeInTheDocument()
     })
@@ -124,8 +137,8 @@ describe('QueryProvider', () => {
       </QueryProvider>,
     )
 
-    expect(queryClient).toBe(userOneClient)
     await waitFor(() => {
+      expect(queryClient).not.toBe(userOneClient)
       expect(screen.getByText('empty')).toBeInTheDocument()
     })
   })
