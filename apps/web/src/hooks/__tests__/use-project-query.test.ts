@@ -87,26 +87,38 @@ describe('project query cache', () => {
     expect(mockGetAll).not.toHaveBeenCalled()
   })
 
-  it('sorts a cached collection without another request', async () => {
-    const completed = createMockProject({
-      id: 'completed',
-      status: 'completed',
+  it.each([
+    [SortBy.TITLE, SortOrder.ASC, ['second', 'first']],
+    [SortBy.TITLE, SortOrder.DESC, ['first', 'second']],
+    [SortBy.CREATED_AT, SortOrder.ASC, ['second', 'first']],
+    [SortBy.CREATED_AT, SortOrder.DESC, ['first', 'second']],
+    [SortBy.UPDATED_AT, SortOrder.ASC, ['first', 'second']],
+    [SortBy.UPDATED_AT, SortOrder.DESC, ['second', 'first']],
+    [SortBy.STATUS, SortOrder.ASC, ['first', 'second']],
+    [SortBy.STATUS, SortOrder.DESC, ['second', 'first']],
+  ])('sorts by %s %s without another request', async (sortBy, sortOrder, ids) => {
+    const first = createMockProject({
+      id: 'first',
+      title: 'B',
+      status: 'pending',
+      created_at: '2025-01-02T00:00:00Z',
+      updated_at: '2025-01-01T00:00:00Z',
     })
-    const pending = createMockProject({ id: 'pending', status: 'pending' })
-    mockGetAll.mockResolvedValue([completed, pending])
+    const second = createMockProject({
+      id: 'second',
+      title: 'A',
+      status: 'completed',
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: '2025-01-02T00:00:00Z',
+    })
+    mockGetAll.mockResolvedValue([first, second])
 
     const { result } = renderHookWithClient(() =>
-      useProjects({
-        sortBy: SortBy.STATUS,
-        sortOrder: SortOrder.ASC,
-      }),
+      useProjects({ sortBy, sortOrder }),
     )
 
     await waitFor(() => {
-      expect(result.current.data?.map((project) => project.id)).toEqual([
-        'pending',
-        'completed',
-      ])
+      expect(result.current.data?.map((project) => project.id)).toEqual(ids)
     })
     expect(mockGetAll).toHaveBeenCalledTimes(1)
   })

@@ -52,7 +52,7 @@ export function TriageSettingsCard() {
   const projectsErrorMessage = projectsError
     ? `プロジェクト一覧の取得に失敗しました: ${getErrorMessage(projectsError)}`
     : '';
-  const projectsUnavailable = Boolean(projectsError) || projectData === undefined;
+  const projectsUnavailable = projectData === undefined;
   const displayError = error || projectsErrorMessage;
 
   useEffect(() => {
@@ -282,7 +282,7 @@ export function TriageSettingsCard() {
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-sm font-semibold">配分</h3>
-                {projectsError ? (
+                {projectsError && projectsUnavailable ? (
                   <Button
                     type="button"
                     variant="outline"
@@ -298,7 +298,7 @@ export function TriageSettingsCard() {
                 )}
               </div>
 
-              {projectsError ? (
+              {projectsError && projectsUnavailable ? (
                 <p className="text-sm text-muted-foreground">
                   プロジェクト配分は再取得後に編集できます。
                 </p>
