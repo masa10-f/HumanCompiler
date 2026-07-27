@@ -478,6 +478,7 @@ describe('useDeleteProject', () => {
   })
 
   it('should remove a project from detail and shared collection caches', async () => {
+    jest.useFakeTimers()
     mockDelete.mockResolvedValue(undefined)
 
     const { result, queryClient } = renderHookWithClient(() => useDeleteProject())
@@ -501,10 +502,18 @@ describe('useDeleteProject', () => {
     expect(removeQueriesSpy).toHaveBeenCalledWith({
       queryKey: projectKeys.detail('proj-to-delete'),
     })
+    expect(queryClient.getQueryData(projectKeys.options())).toHaveLength(1)
+
+    act(() => {
+      jest.advanceTimersByTime(300)
+    })
+
     expect(queryClient.getQueryData(projectKeys.options())).toEqual([])
+    jest.useRealTimers()
   })
 
   it('should not materialize an empty collection after a cold-cache delete', async () => {
+    jest.useFakeTimers()
     mockDelete.mockResolvedValue(undefined)
 
     const { result, queryClient } = renderHookWithClient(() => useDeleteProject())
@@ -515,8 +524,15 @@ describe('useDeleteProject', () => {
     })
 
     expect(queryClient.getQueryData(projectKeys.options())).toBeUndefined()
+    expect(invalidateSpy).not.toHaveBeenCalled()
+
+    act(() => {
+      jest.advanceTimersByTime(300)
+    })
+
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: projectKeys.options(),
     })
+    jest.useRealTimers()
   })
 })

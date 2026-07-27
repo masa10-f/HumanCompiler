@@ -5,6 +5,7 @@
 // For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
 import {
+  getGoalProjectIds,
   getOpenProjects,
   getSelectableProjects,
   isOpenProject,
@@ -33,6 +34,18 @@ describe('project filters', () => {
     expect(getOpenProjects(projects).map((project) => project.id)).toEqual([
       'pending',
       'in-progress',
+    ])
+  })
+
+  it('loads goals only for open projects by default', () => {
+    expect(getGoalProjectIds(projects)).toEqual(['pending', 'in-progress'])
+  })
+
+  it('also loads goals for a selected archived project', () => {
+    expect(getGoalProjectIds(projects, 'completed')).toEqual([
+      'pending',
+      'in-progress',
+      'completed',
     ])
   })
 
