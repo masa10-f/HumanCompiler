@@ -6,7 +6,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuthContext } from '@/components/auth-provider'
 import {
   projectKeys,
@@ -19,13 +19,25 @@ function ProjectCacheWarmer({ enabled }: { enabled: boolean }) {
 
   useEffect(() => {
     projects?.forEach((project) => {
-      if (!queryClient.getQueryData(projectKeys.detail(project.id))) {
-        queryClient.setQueryData(projectKeys.detail(project.id), project)
-      }
+      queryClient.setQueryData(projectKeys.detail(project.id), project)
     })
   }, [projects, queryClient])
 
   return null
+}
+
+function createQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 5 * 60 * 1000,
+        gcTime: 60 * 60 * 1000,
+        retry: 1,
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: true,
+      },
+    },
+  })
 }
 
 function AuthenticatedQueryClient({
@@ -37,33 +49,42 @@ function AuthenticatedQueryClient({
   warmProjects: boolean
   cacheIdentity: string
 }) {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: 5 * 60 * 1000,
-            gcTime: 60 * 60 * 1000,
-            retry: 1,
-            refetchOnWindowFocus: false,
-            refetchOnReconnect: true,
-          },
-        },
-      }),
-  )
-  const previousCacheIdentity = useRef(cacheIdentity)
+  const [clientState, setClientState] = useState(() => ({
+    queryClient: createQueryClient(),
+    resolvedIdentity:
+      cacheIdentity === 'auth-loading' ? null : cacheIdentity,
+    generation: 0,
+  }))
 
-  // This must happen during render: an effect would let children render once
-  // with the previous user's cache before the identity boundary was applied.
-  if (previousCacheIdentity.current !== cacheIdentity) {
-    queryClient.clear()
-    previousCacheIdentity.current = cacheIdentity
+  // Derive the boundary during render. An effect would let children render
+  // once with the previous user's cache. The initial auth resolution reuses
+  // the empty client; later identity changes receive a fresh keyed provider.
+  if (
+    cacheIdentity !== 'auth-loading' &&
+    clientState.resolvedIdentity !== cacheIdentity
+  ) {
+    const isInitialResolution = clientState.resolvedIdentity === null
+    setClientState({
+      queryClient: isInitialResolution
+        ? clientState.queryClient
+        : createQueryClient(),
+      resolvedIdentity: cacheIdentity,
+      generation: isInitialResolution
+        ? clientState.generation
+        : clientState.generation + 1,
+    })
   }
 
-  useEffect(() => () => queryClient.clear(), [queryClient])
+  useEffect(
+    () => () => clientState.queryClient.clear(),
+    [clientState.queryClient],
+  )
 
   return (
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider
+      key={clientState.generation}
+      client={clientState.queryClient}
+    >
       <ProjectCacheWarmer enabled={warmProjects} />
       {children}
       <ReactQueryDevtools initialIsOpen={false} />
@@ -73,9 +94,9 @@ function AuthenticatedQueryClient({
 
 /**
  * React Query provider component.
- * Clears the cache at authentication boundaries so one user's data can never
- * be shown to another user without remounting the application subtree, and
- * warms stable project metadata after sign-in for instant client navigation.
+ * Uses a fresh cache at resolved authentication boundaries so one user's data
+ * can never be shown to another user, while avoiding a subtree remount during
+ * the initial session lookup. Stable project metadata is warmed after sign-in.
  *
  * @param props - Component props
  * @param props.children - Child components to wrap with query context

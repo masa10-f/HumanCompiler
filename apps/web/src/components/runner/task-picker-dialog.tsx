@@ -46,9 +46,13 @@ export function TaskPickerDialog({
   const projects = useProjectOptions({
     enabled: open,
   });
-  const goalProjectIds = useMemo(
-    () => getOpenProjects(projects.data ?? []).map((project) => project.id),
+  const openProjects = useMemo(
+    () => getOpenProjects(projects.data ?? []),
     [projects.data],
+  );
+  const goalProjectIds = useMemo(
+    () => openProjects.map((project) => project.id),
+    [openProjects],
   );
   const goals = useGoalsByProjects(goalProjectIds, {
     enabled: open && goalProjectIds.length > 0,
@@ -142,7 +146,7 @@ export function TaskPickerDialog({
             }}
           >
             <option value="">全プロジェクト</option>
-            {(projects.data ?? []).map((project) => (
+            {openProjects.map((project) => (
               <option key={project.id} value={project.id}>{project.title}</option>
             ))}
           </select>

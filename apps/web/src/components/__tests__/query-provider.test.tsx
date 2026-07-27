@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2024-2025 Masato Fukushima <masa1063fuk@gmail.com>
+//
+// This file is part of HumanCompiler.
+// For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
+
 /**
  * @jest-environment jsdom
  */
@@ -82,6 +88,7 @@ describe('QueryProvider', () => {
     act(() => {
       queryClient?.setQueryData(['private-data'], 'user-1-data')
     })
+    const userOneQueryClient = queryClient
 
     authState = {
       user: { id: 'user-2' },
@@ -93,11 +100,66 @@ describe('QueryProvider', () => {
       </QueryProvider>,
     )
 
+    expect(queryClient).not.toBe(userOneQueryClient)
     expect(queryClient?.getQueryData(['private-data'])).toBeUndefined()
-    expect(mounted).toHaveBeenCalledTimes(1)
-    expect(unmounted).not.toHaveBeenCalled()
+    expect(userOneQueryClient?.getQueryData(['private-data'])).toBeUndefined()
+    expect(mounted).toHaveBeenCalledTimes(2)
+    expect(unmounted).toHaveBeenCalledTimes(1)
 
     view.unmount()
-    expect(unmounted).toHaveBeenCalledTimes(1)
+    expect(unmounted).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps detail entries synchronized with refreshed project options', async () => {
+    let queryClient: ReturnType<typeof useQueryClient> | undefined
+    const initialProject = {
+      id: 'project-1',
+      owner_id: 'user-1',
+      title: 'Initial title',
+      description: null,
+      status: 'in_progress',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    }
+    authState = {
+      user: { id: 'user-1' },
+      loading: false,
+    }
+    mockGetAll.mockResolvedValue([initialProject])
+
+    function Child() {
+      queryClient = useQueryClient()
+      return null
+    }
+
+    render(
+      <QueryProvider>
+        <Child />
+      </QueryProvider>,
+    )
+
+    await waitFor(() => {
+      expect(
+        queryClient?.getQueryData(['projects', 'detail', 'project-1']),
+      ).toEqual(initialProject)
+    })
+
+    const refreshedProject = {
+      ...initialProject,
+      title: 'Refreshed title',
+      updated_at: '2026-01-02T00:00:00Z',
+    }
+    mockGetAll.mockResolvedValue([refreshedProject])
+    await act(async () => {
+      await queryClient?.invalidateQueries({
+        queryKey: ['projects', 'options'],
+      })
+    })
+
+    await waitFor(() => {
+      expect(
+        queryClient?.getQueryData(['projects', 'detail', 'project-1']),
+      ).toEqual(refreshedProject)
+    })
   })
 })

@@ -16,6 +16,7 @@ const mockGetById = jest.fn<Promise<Project>, [string]>()
 const mockCreate = jest.fn<Promise<Project>, [ProjectCreate]>()
 const mockUpdate = jest.fn<Promise<Project>, [string, ProjectUpdate]>()
 const mockDelete = jest.fn<Promise<void>, [string]>()
+const mockLoggerError = jest.fn()
 
 jest.mock('@/lib/api', () => ({
   projectsApi: {
@@ -24,6 +25,12 @@ jest.mock('@/lib/api', () => ({
     create: (data: ProjectCreate) => mockCreate(data),
     update: (id: string, data: ProjectUpdate) => mockUpdate(id, data),
     delete: (id: string) => mockDelete(id),
+  },
+}))
+
+jest.mock('@/lib/logger', () => ({
+  logger: {
+    error: (...args: unknown[]) => mockLoggerError(...args),
   },
 }))
 
@@ -172,20 +179,55 @@ describe('shared project collection', () => {
     expect(result.current.data).toHaveLength(101)
   })
 
-  it('should stop when a full page repeats without new records', async () => {
+  it('should return partial data when a full page repeats without new records', async () => {
     const repeatedPage = createMockProjects(100)
     mockGetAll.mockResolvedValue(repeatedPage)
 
     const { result } = renderHookWithClient(() => useProjectOptions())
 
     await waitFor(() => {
-      expect(result.current.isError).toBe(true)
+      expect(result.current.isSuccess).toBe(true)
     })
 
-    expect(result.current.error).toEqual(
-      new Error('Project pagination returned no new records'),
+    expect(result.current.data).toHaveLength(100)
+    expect(mockLoggerError).toHaveBeenCalledWith(
+      'Project pagination returned no new records; returning partial collection',
+      new Error('Project pagination stalled'),
+      {
+        component: 'fetchAllProjects',
+        skip: 100,
+        loaded: 100,
+      },
     )
     expect(mockGetAll).toHaveBeenCalledTimes(2)
+  })
+
+  it('should return accumulated data when the page safety limit is reached', async () => {
+    mockGetAll.mockImplementation(async (skip = 0) =>
+      Array.from({ length: 100 }, (_, index) =>
+        createMockProject({ id: `project-${skip + index}` }),
+      ),
+    )
+
+    const { result } = renderHookWithClient(() => useProjectOptions())
+
+    await waitFor(
+      () => {
+        expect(result.current.isSuccess).toBe(true)
+      },
+      { timeout: 10000 },
+    )
+
+    expect(result.current.data).toHaveLength(10000)
+    expect(mockGetAll).toHaveBeenCalledTimes(100)
+    expect(mockLoggerError).toHaveBeenCalledWith(
+      'Project pagination exceeded 100 pages; returning partial collection',
+      new Error('Project pagination page limit reached'),
+      {
+        component: 'fetchAllProjects',
+        loaded: 10000,
+      },
+    )
   })
 
   it('should deduplicate option and list observers', async () => {
@@ -252,20 +294,33 @@ describe('shared project collection', () => {
     ])
   })
 
-  it('should reject unsupported priority sorting explicitly', async () => {
-    mockGetAll.mockResolvedValue(createMockProjects(2))
+  it('should fall back to status order for priority sorting', async () => {
+    mockGetAll.mockResolvedValue([
+      createMockProject({ id: 'completed', status: 'completed' }),
+      createMockProject({ id: 'pending', status: 'pending' }),
+    ])
 
     const { result } = renderHookWithClient(() =>
       useProjects(0, 20, { sortBy: 'priority', sortOrder: 'asc' }),
     )
 
     await waitFor(() => {
-      expect(result.current.isError).toBe(true)
+      expect(result.current.isSuccess).toBe(true)
     })
 
-    expect(result.current.error).toEqual(
-      new Error('Priority sorting is not supported for projects'),
+    expect(result.current.data?.map((project) => project.status)).toEqual([
+      'pending',
+      'completed',
+    ])
+  })
+
+  it('should not fetch the shared collection when disabled', () => {
+    const { result } = renderHookWithClient(() =>
+      useProjects(0, 20, undefined, { enabled: false }),
     )
+
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(mockGetAll).not.toHaveBeenCalled()
   })
 })
 
