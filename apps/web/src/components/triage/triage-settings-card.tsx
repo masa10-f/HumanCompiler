@@ -50,7 +50,7 @@ export function TriageSettingsCard() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const projectsErrorMessage = projectsError
-    ? getErrorMessage(projectsError)
+    ? `プロジェクト一覧の取得に失敗しました: ${getErrorMessage(projectsError)}`
     : '';
   const displayError = error || projectsErrorMessage;
 
@@ -78,7 +78,11 @@ export function TriageSettingsCard() {
         });
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'トリアージ設定の取得に失敗しました');
+          setError(
+            err instanceof Error
+              ? `トリアージ設定の取得に失敗しました: ${getErrorMessage(err)}`
+              : 'トリアージ設定の取得に失敗しました'
+          );
         }
       } finally {
         if (!cancelled) setSettingsLoading(false);
@@ -168,7 +172,11 @@ export function TriageSettingsCard() {
       });
       setSuccess('トリアージ設定を保存しました');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'トリアージ設定の保存に失敗しました');
+      setError(
+        err instanceof Error
+          ? `トリアージ設定の保存に失敗しました: ${getErrorMessage(err)}`
+          : 'トリアージ設定の保存に失敗しました'
+      );
     } finally {
       setSaving(false);
     }

@@ -14,6 +14,8 @@ export const projectKeys = queryKeys.projects
 
 const PROJECT_OPTIONS_LIMIT = 100
 // TODO: Use a paginated collection if the UI needs to support over 100 projects.
+// Keep this order aligned with STATUS_PRIORITY["project"] in
+// apps/api/src/humancompiler_api/models.py.
 const PROJECT_STATUS_PRIORITY: Record<Project['status'], number> = {
   pending: 1,
   in_progress: 2,

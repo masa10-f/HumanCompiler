@@ -45,7 +45,8 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       previousIdentity.current !== null &&
       previousIdentity.current !== identity
     ) {
-      queryClient.clear()
+      queryClient.getMutationCache().clear()
+      void queryClient.resetQueries()
     }
     previousIdentity.current = identity
   }, [loading, queryClient, user?.id])
