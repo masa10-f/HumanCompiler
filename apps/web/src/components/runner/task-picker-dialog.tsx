@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { tasksApi } from '@/lib/api';
+import { getOpenProjects } from '@/lib/project-filters';
 import { useProjectOptions } from '@/hooks/use-project-query';
 import { useGoalsByProjects } from '@/hooks/use-goals-query';
 import type { TaskWorkspaceItem } from '@/types/task';
@@ -45,13 +46,14 @@ export function TaskPickerDialog({
   const projects = useProjectOptions({
     enabled: open,
   });
-  const goals = useGoalsByProjects(
-    (projects.data ?? []).map((project) => project.id),
-    {
-      enabled: open && Boolean(projects.data?.length),
-      limit: 100,
-    },
+  const goalProjectIds = useMemo(
+    () => getOpenProjects(projects.data ?? []).map((project) => project.id),
+    [projects.data],
   );
+  const goals = useGoalsByProjects(goalProjectIds, {
+    enabled: open && goalProjectIds.length > 0,
+    limit: 100,
+  });
   const recommendations = useQuery({
     queryKey: ['tasks', 'picker', 'recommendations'],
     queryFn: () => tasksApi.getRecommendations(),
