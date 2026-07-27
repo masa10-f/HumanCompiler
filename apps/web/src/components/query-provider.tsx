@@ -54,7 +54,8 @@ function AuthenticatedQueryClient({
   ) {
     const isInitialResolution =
       clientState.resolvedIdentity === null ||
-      clientState.resolvedIdentity === 'anonymous'
+      (clientState.resolvedIdentity === 'anonymous' &&
+        clientState.generation === 0)
     setClientState({
       queryClient: isInitialResolution
         ? clientState.queryClient

@@ -210,4 +210,53 @@ describe('QueryProvider', () => {
     })
   })
 
+  it('rotates the anonymous cache after a completed sign-out boundary', async () => {
+    authState = {
+      user: { id: 'user-1' },
+      loading: false,
+    }
+    let queryClient: ReturnType<typeof useQueryClient> | undefined
+
+    function Child() {
+      queryClient = useQueryClient()
+      return null
+    }
+
+    const view = render(
+      <QueryProvider>
+        <Child />
+      </QueryProvider>,
+    )
+    const userOneClient = queryClient
+
+    authState = {
+      user: null,
+      loading: false,
+    }
+    view.rerender(
+      <QueryProvider>
+        <Child />
+      </QueryProvider>,
+    )
+    const signedOutClient = queryClient
+    expect(signedOutClient).not.toBe(userOneClient)
+
+    act(() => {
+      signedOutClient?.setQueryData(['anonymous-data'], 'temporary')
+    })
+    authState = {
+      user: { id: 'user-2' },
+      loading: false,
+    }
+    view.rerender(
+      <QueryProvider>
+        <Child />
+      </QueryProvider>,
+    )
+
+    expect(queryClient).not.toBe(signedOutClient)
+    expect(queryClient?.getQueryData(['anonymous-data'])).toBeUndefined()
+    expect(signedOutClient?.getQueryData(['anonymous-data'])).toBeUndefined()
+  })
+
 })
