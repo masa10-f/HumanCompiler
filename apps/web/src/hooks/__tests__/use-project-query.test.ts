@@ -194,10 +194,18 @@ describe('project query cache', () => {
   })
 
   it('updates the detail and shared collection caches', async () => {
-    const original = createMockProject({ id: 'project-1', title: 'Before' })
-    const updated = { ...original, title: 'After' }
+    const original = createMockProject({
+      id: 'project-1',
+      title: 'Before',
+      status: 'pending',
+    })
+    const other = createMockProject({
+      id: 'project-2',
+      status: 'in_progress',
+    })
+    const updated = { ...original, title: 'After', status: 'completed' as const }
     const queryClient = createProjectTestClient()
-    queryClient.setQueryData(projectKeys.options(), [original])
+    queryClient.setQueryData(projectKeys.options(), [original, other])
     mockUpdate.mockResolvedValue(updated)
 
     const { result } = renderHookWithClient(() => useUpdateProject(), {
@@ -206,11 +214,14 @@ describe('project query cache', () => {
     await act(async () => {
       await result.current.mutateAsync({
         id: original.id,
-        data: { title: updated.title },
+        data: { title: updated.title, status: updated.status },
       })
     })
 
-    expect(queryClient.getQueryData(projectKeys.options())).toEqual([updated])
+    expect(queryClient.getQueryData(projectKeys.options())).toEqual([
+      other,
+      updated,
+    ])
     expect(queryClient.getQueryData(projectKeys.detail(original.id))).toEqual(
       updated,
     )

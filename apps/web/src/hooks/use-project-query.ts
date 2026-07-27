@@ -76,6 +76,9 @@ function compareProjects(
   return comparison * direction
 }
 
+const sortProjectsCanonical = (projects: Project[]) =>
+  [...projects].sort(compareProjects)
+
 /**
  * Fetches the shared project option set used by selectors and pages.
  * The authenticated query provider warms the API's 100-item page after sign-in.
@@ -162,10 +165,10 @@ export function useCreateProject() {
       if (cachedOptions) {
         queryClient.setQueryData<Project[]>(
           projectKeys.options(),
-          [
+          sortProjectsCanonical([
             ...cachedOptions.filter((project) => project.id !== newProject.id),
             newProject,
-          ].sort(compareProjects),
+          ]),
         )
       } else {
         void queryClient.invalidateQueries({ queryKey: projectKeys.options() })
@@ -198,8 +201,10 @@ export function useUpdateProject() {
       if (cachedOptions) {
         queryClient.setQueryData<Project[]>(
           projectKeys.options(),
-          cachedOptions.map((project) =>
-            project.id === updatedProject.id ? updatedProject : project,
+          sortProjectsCanonical(
+            cachedOptions.map((project) =>
+              project.id === updatedProject.id ? updatedProject : project,
+            ),
           ),
         )
       } else {
