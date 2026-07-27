@@ -1,4 +1,5 @@
 import type { Project } from '@/types/project';
+import { logger } from '@/lib/logger';
 
 export function isSelectableProject(project: Pick<Project, 'status'>): boolean {
   return project.status === 'in_progress';
@@ -46,7 +47,17 @@ export function getGoalProjectIds<
     !projectIds.includes(selectedProjectId)
   ) {
     if (projectIds.length >= limit && limit > 0) {
+      const replacedProjectId = projectIds[projectIds.length - 1];
       projectIds[projectIds.length - 1] = selectedProjectId;
+      logger.warn(
+        'Goal project query cap replaced an open project',
+        {
+          limit,
+          selectedProjectId,
+          replacedProjectId,
+        },
+        { component: 'getGoalProjectIds' }
+      );
     } else if (limit > 0) {
       projectIds.push(selectedProjectId);
     }

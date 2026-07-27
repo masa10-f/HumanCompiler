@@ -92,14 +92,26 @@ export function TriageSettingsCard() {
 
   const loading =
     settingsLoading || (!projectsError && projectData === undefined);
+  const projectsAvailable =
+    projectData !== undefined && !projectsError;
 
   const allocationTotal = useMemo(() => {
-    const projectTotal = projects.reduce(
-      (total, project) => total + (projectAllocations[project.id] || 0),
-      0
-    );
+    const projectTotal = projectsAvailable
+      ? projects.reduce(
+          (total, project) => total + (projectAllocations[project.id] || 0),
+          0
+        )
+      : Object.values(projectAllocations).reduce(
+          (total, allocation) => total + allocation,
+          0
+        );
     return projectTotal + inboxAllocationPercent;
-  }, [inboxAllocationPercent, projectAllocations, projects]);
+  }, [
+    inboxAllocationPercent,
+    projectAllocations,
+    projects,
+    projectsAvailable,
+  ]);
 
   const effectiveCapacity = Math.max(0, weeklyCapacityHours - meetingBufferHours);
 
@@ -146,10 +158,12 @@ export function TriageSettingsCard() {
       await triageApi.updateSettings({
         weekly_capacity_hours: weeklyCapacityHours,
         meeting_buffer_hours: meetingBufferHours,
-        project_allocations: projects.reduce<Record<string, number>>((acc, project) => {
-          acc[project.id] = projectAllocations[project.id] || 0;
-          return acc;
-        }, {}),
+        project_allocations: projectsAvailable
+          ? projects.reduce<Record<string, number>>((acc, project) => {
+              acc[project.id] = projectAllocations[project.id] || 0;
+              return acc;
+            }, {})
+          : projectAllocations,
         inbox_allocation_percent: inboxAllocationPercent,
         work_type_caps: parsedWorkTypeCaps,
         cadence_days: cadenceDays,
@@ -192,7 +206,7 @@ export function TriageSettingsCard() {
 
         {loading ? (
           <div className="text-sm text-muted-foreground">Loading...</div>
-        ) : projectsError ? null : (
+        ) : (
           <>
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
@@ -263,41 +277,51 @@ export function TriageSettingsCard() {
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-sm font-semibold">配分</h3>
-                <Button type="button" variant="outline" size="sm" onClick={balanceAllocations}>
-                  均等配分
-                </Button>
+                {projectsAvailable && (
+                  <Button type="button" variant="outline" size="sm" onClick={balanceAllocations}>
+                    均等配分
+                  </Button>
+                )}
               </div>
 
-              {projects.map((project) => {
-                const allocation = projectAllocations[project.id] || 0;
-                return (
-                  <div key={project.id} className="space-y-2">
+              {projectsAvailable ? (
+                <>
+                  {projects.map((project) => {
+                    const allocation = projectAllocations[project.id] || 0;
+                    return (
+                      <div key={project.id} className="space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <Label className="truncate">{project.title}</Label>
+                          <span className="text-sm font-medium">{allocation}%</span>
+                        </div>
+                        <Slider
+                          value={[allocation]}
+                          max={100}
+                          step={5}
+                          onValueChange={(values) => updateProjectAllocation(project.id, values[0] ?? 0)}
+                        />
+                      </div>
+                    );
+                  })}
+
+                  <div className="space-y-2">
                     <div className="flex items-center justify-between gap-3">
-                      <Label className="truncate">{project.title}</Label>
-                      <span className="text-sm font-medium">{allocation}%</span>
+                      <Label>Inbox</Label>
+                      <span className="text-sm font-medium">{inboxAllocationPercent}%</span>
                     </div>
                     <Slider
-                      value={[allocation]}
+                      value={[inboxAllocationPercent]}
                       max={100}
                       step={5}
-                      onValueChange={(values) => updateProjectAllocation(project.id, values[0] ?? 0)}
+                      onValueChange={(values) => setInboxAllocationPercent(values[0] ?? 0)}
                     />
                   </div>
-                );
-              })}
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <Label>Inbox</Label>
-                  <span className="text-sm font-medium">{inboxAllocationPercent}%</span>
-                </div>
-                <Slider
-                  value={[inboxAllocationPercent]}
-                  max={100}
-                  step={5}
-                  onValueChange={(values) => setInboxAllocationPercent(values[0] ?? 0)}
-                />
-              </div>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  プロジェクト配分はプロジェクト一覧の再取得後に編集できます。
+                </p>
+              )}
             </div>
 
             <div className="space-y-3">

@@ -81,6 +81,19 @@ async function fetchAllProjects(): Promise<Project[]> {
         projects.push(project)
       }
     })
+    const addedProjectCount = projects.length - previousProjectCount
+
+    if (addedProjectCount < page.length) {
+      logger.warn(
+        'Project pagination window shifted; collection may be incomplete',
+        {
+          skip,
+          pageSize: page.length,
+          loaded: projects.length,
+        },
+        { component: 'fetchAllProjects' },
+      )
+    }
 
     if (page.length < PROJECT_PAGE_SIZE) {
       return projects

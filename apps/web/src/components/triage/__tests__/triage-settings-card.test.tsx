@@ -7,10 +7,11 @@
 /**
  * @jest-environment jsdom
  */
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 const mockUseProjectOptions = jest.fn()
 const mockGetSettings = jest.fn()
+const mockUpdateSettings = jest.fn()
 
 jest.mock('@/hooks/use-auth', () => ({
   useAuth: () => ({ user: null }),
@@ -23,6 +24,7 @@ jest.mock('@/hooks/use-project-query', () => ({
 jest.mock('@/lib/api', () => ({
   triageApi: {
     getSettings: (...args: unknown[]) => mockGetSettings(...args),
+    updateSettings: (...args: unknown[]) => mockUpdateSettings(...args),
   },
 }))
 
@@ -34,8 +36,8 @@ const settings = {
   cadence_days: 7,
   auto_generate_enabled: false,
   use_ai_rank_adjustment: false,
-  project_allocations: {},
-  inbox_allocation_percent: 100,
+  project_allocations: { 'project-1': 40 },
+  inbox_allocation_percent: 60,
   work_type_caps: {},
 }
 
@@ -62,7 +64,7 @@ describe('TriageSettingsCard', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('does not render a saveable empty form after a project error', async () => {
+  it('preserves allocations while saving unrelated settings after a project error', async () => {
     mockUseProjectOptions.mockReturnValue({
       data: undefined,
       error: new Error('Project load failed'),
@@ -72,7 +74,22 @@ describe('TriageSettingsCard', () => {
 
     expect(await screen.findByText('Project load failed')).toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: 'トリアージ設定を保存' }),
-    ).not.toBeInTheDocument()
+      screen.getByText(
+        'プロジェクト配分はプロジェクト一覧の再取得後に編集できます。',
+      ),
+    ).toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'トリアージ設定を保存' }),
+    )
+
+    await waitFor(() => {
+      expect(mockUpdateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          project_allocations: { 'project-1': 40 },
+          inbox_allocation_percent: 60,
+        }),
+      )
+    })
   })
 })
