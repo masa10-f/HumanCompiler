@@ -3,7 +3,10 @@
  */
 import { act, waitFor } from '@testing-library/react'
 import { createMockGoal, createMockGoals, resetIdCounter } from './helpers/mock-factories'
-import { renderHookWithClient } from './helpers/test-utils'
+import {
+  createTestQueryClient,
+  renderHookWithClient,
+} from './helpers/test-utils'
 import type { Goal, GoalCreate, GoalUpdate } from '@/types/goal'
 import type { SortOptions } from '@/types/sort'
 
@@ -184,6 +187,32 @@ describe('useGoal', () => {
     expect(result.current.isPending).toBe(true)
     expect(result.current.fetchStatus).toBe('idle')
     expect(mockGetById).not.toHaveBeenCalled()
+  })
+
+  it('renders a cached project goal while revalidating its detail', async () => {
+    const cachedGoal = createMockGoal({ id: 'goal-1', title: 'Cached goal' })
+    const refreshedGoal = createMockGoal({
+      id: 'goal-1',
+      title: 'Refreshed goal',
+    })
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData(
+      goalKeys.projectList('proj-1', 0, 20, 'default'),
+      [cachedGoal],
+      { updatedAt: Date.now() },
+    )
+    mockGetById.mockResolvedValue(refreshedGoal)
+
+    const { result } = renderHookWithClient(() => useGoal('goal-1'), {
+      queryClient,
+    })
+
+    expect(result.current.data).toEqual(cachedGoal)
+    expect(result.current.isLoading).toBe(false)
+    await waitFor(() => {
+      expect(mockGetById).toHaveBeenCalledWith('goal-1')
+      expect(result.current.data).toEqual(refreshedGoal)
+    })
   })
 })
 
