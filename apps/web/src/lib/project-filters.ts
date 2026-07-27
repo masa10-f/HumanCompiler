@@ -20,13 +20,29 @@ export function getOpenProjects<T extends Pick<Project, 'status'>>(
   return projects.filter(isOpenProject);
 }
 
+export const MAX_GOAL_PROJECT_QUERIES = 100;
+
+/**
+ * Bounds goal-query fan-out and keeps a selected archived project available
+ * for inspecting its existing tasks.
+ */
 export function getGoalProjectIds<
   T extends Pick<Project, 'id' | 'status'>
->(projects: T[], selectedProjectId = ''): string[] {
-  const projectIds = getOpenProjects(projects).map((project) => project.id);
+>(
+  projects: T[],
+  selectedProjectId = '',
+  limit = MAX_GOAL_PROJECT_QUERIES
+): string[] {
+  const projectIds = getOpenProjects(projects)
+    .slice(0, limit)
+    .map((project) => project.id);
 
   if (selectedProjectId && !projectIds.includes(selectedProjectId)) {
-    projectIds.push(selectedProjectId);
+    if (projectIds.length >= limit && limit > 0) {
+      projectIds[projectIds.length - 1] = selectedProjectId;
+    } else if (limit > 0) {
+      projectIds.push(selectedProjectId);
+    }
   }
 
   return projectIds;

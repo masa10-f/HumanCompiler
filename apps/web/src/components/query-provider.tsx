@@ -52,7 +52,9 @@ function AuthenticatedQueryClient({
     cacheIdentity !== 'auth-loading' &&
     clientState.resolvedIdentity !== cacheIdentity
   ) {
-    const isInitialResolution = clientState.resolvedIdentity === null
+    const isInitialResolution =
+      clientState.resolvedIdentity === null ||
+      clientState.resolvedIdentity === 'anonymous'
     setClientState({
       queryClient: isInitialResolution
         ? clientState.queryClient
@@ -68,7 +70,15 @@ function AuthenticatedQueryClient({
   }
 
   useEffect(() => {
-    clientState.retiredClient?.clear()
+    const retiredClient = clientState.retiredClient
+    if (!retiredClient) return
+
+    retiredClient.clear()
+    setClientState((current) =>
+      current.retiredClient === retiredClient
+        ? { ...current, retiredClient: null }
+        : current,
+    )
   }, [clientState.retiredClient])
 
   return (

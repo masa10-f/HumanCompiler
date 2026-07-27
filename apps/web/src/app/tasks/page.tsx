@@ -300,6 +300,9 @@ export default function TasksPage() {
     () => getGoalProjectIds(projects, projectId),
     [projects, projectId],
   );
+  // Goal destination controls intentionally show projects that can receive
+  // active work. A selected archived project is included only so its existing
+  // tasks and goals can still be filtered and inspected.
   const { data: goals } = useGoalsByProjects(goalProjectIds, {
     enabled: goalProjectIds.length > 0,
     limit: 100,
