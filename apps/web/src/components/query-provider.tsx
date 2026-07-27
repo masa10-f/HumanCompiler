@@ -37,7 +37,10 @@ function createQueryClient() {
  */
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthContext()
-  const [queryClient, setQueryClient] = useState(createQueryClient)
+  const [{ queryClient, generation }, setQueryState] = useState(() => ({
+    queryClient: createQueryClient(),
+    generation: 0,
+  }))
   const previousIdentity = useRef<string | null>(null)
 
   useIsomorphicLayoutEffect(() => {
@@ -48,14 +51,16 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       previousIdentity.current !== null &&
       previousIdentity.current !== identity
     ) {
-      queryClient.clear()
-      setQueryClient(createQueryClient())
+      setQueryState((previous) => ({
+        queryClient: createQueryClient(),
+        generation: previous.generation + 1,
+      }))
     }
     previousIdentity.current = identity
-  }, [loading, queryClient, user?.id])
+  }, [loading, user?.id])
 
   return (
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={queryClient} key={generation}>
       <ProjectCacheWarmer enabled={!loading && Boolean(user)} />
       {children}
       <ReactQueryDevtools initialIsOpen={false} />

@@ -251,11 +251,9 @@ export function TriageSettingsCard() {
 
             <div className="flex flex-wrap items-center gap-3">
               <Badge variant="secondary">実効 {effectiveCapacity.toFixed(1)}h</Badge>
-              {!projectsUnavailable && (
-                <Badge variant={allocationTotal === 100 ? 'default' : 'destructive'}>
-                  配分 {allocationTotal}%
-                </Badge>
-              )}
+              <Badge variant={allocationTotal === 100 ? 'default' : 'destructive'}>
+                配分 {allocationTotal}%
+              </Badge>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
