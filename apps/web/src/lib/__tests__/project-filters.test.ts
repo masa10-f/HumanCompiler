@@ -82,6 +82,14 @@ describe('project filters', () => {
       `project-${MAX_GOAL_PROJECT_QUERIES - 1}`,
     )
     expect(mockLoggerWarn).toHaveBeenCalledWith(
+      'Goal project query cap truncated open projects',
+      {
+        limit: MAX_GOAL_PROJECT_QUERIES,
+        openProjectCount: MAX_GOAL_PROJECT_QUERIES + 1,
+      },
+      { component: 'getGoalProjectIds' },
+    )
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
       'Goal project query cap replaced an open project',
       {
         limit: MAX_GOAL_PROJECT_QUERIES,

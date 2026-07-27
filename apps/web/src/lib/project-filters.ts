@@ -34,7 +34,19 @@ export function getGoalProjectIds<
   selectedProjectId = '',
   limit = MAX_GOAL_PROJECT_QUERIES
 ): string[] {
-  const projectIds = getOpenProjects(projects)
+  const openProjects = getOpenProjects(projects);
+  if (openProjects.length > limit) {
+    logger.warn(
+      'Goal project query cap truncated open projects',
+      {
+        limit,
+        openProjectCount: openProjects.length,
+      },
+      { component: 'getGoalProjectIds' }
+    );
+  }
+
+  const projectIds = openProjects
     .slice(0, limit)
     .map((project) => project.id);
   const hasSelectedProject = projects.some(

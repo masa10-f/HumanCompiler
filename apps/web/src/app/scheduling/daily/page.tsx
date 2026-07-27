@@ -149,15 +149,16 @@ export default function SchedulingPage() {
     loadInitialData();
   }, [user]);
 
-  useEffect(() => {
-    if (!projectsError) return;
+  const hasProjectsError = Boolean(projectsError);
 
+  useEffect(() => {
+    if (!hasProjectsError) return;
     toast({
       title: 'プロジェクト読み込みエラー',
       description: 'プロジェクト一覧の読み込みに失敗しました',
       variant: 'destructive',
     });
-  }, [projectsError]);
+  }, [hasProjectsError]);
 
   useEffect(() => {
     if (
