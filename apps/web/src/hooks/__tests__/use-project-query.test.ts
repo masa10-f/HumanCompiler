@@ -179,20 +179,26 @@ describe('shared project collection', () => {
     expect(result.current.data).toHaveLength(101)
   })
 
-  it('should return partial data when a full page repeats without new records', async () => {
+  it('should fail visibly when a full page repeats without new records', async () => {
     const repeatedPage = createMockProjects(100)
     mockGetAll.mockResolvedValue(repeatedPage)
 
     const { result } = renderHookWithClient(() => useProjectOptions())
 
     await waitFor(() => {
-      expect(result.current.isSuccess).toBe(true)
+      expect(result.current.isError).toBe(true)
     })
 
-    expect(result.current.data).toHaveLength(100)
+    expect(result.current.error).toEqual(
+      new Error(
+        'プロジェクト一覧を完全に取得できませんでした。再試行してください。',
+      ),
+    )
     expect(mockLoggerError).toHaveBeenCalledWith(
-      'Project pagination returned no new records; returning partial collection',
-      new Error('Project pagination stalled'),
+      'Project pagination returned no new records',
+      new Error(
+        'プロジェクト一覧を完全に取得できませんでした。再試行してください。',
+      ),
       {
         component: 'fetchAllProjects',
         skip: 100,
@@ -202,7 +208,7 @@ describe('shared project collection', () => {
     expect(mockGetAll).toHaveBeenCalledTimes(2)
   })
 
-  it('should return accumulated data when the page safety limit is reached', async () => {
+  it('should fail visibly when the page safety limit is reached', async () => {
     mockGetAll.mockImplementation(async (skip = 0) =>
       Array.from({ length: 100 }, (_, index) =>
         createMockProject({ id: `project-${skip + index}` }),
@@ -213,16 +219,22 @@ describe('shared project collection', () => {
 
     await waitFor(
       () => {
-        expect(result.current.isSuccess).toBe(true)
+        expect(result.current.isError).toBe(true)
       },
       { timeout: 10000 },
     )
 
-    expect(result.current.data).toHaveLength(10000)
+    expect(result.current.error).toEqual(
+      new Error(
+        'プロジェクト一覧を完全に取得できませんでした。再試行してください。',
+      ),
+    )
     expect(mockGetAll).toHaveBeenCalledTimes(100)
     expect(mockLoggerError).toHaveBeenCalledWith(
-      'Project pagination exceeded 100 pages; returning partial collection',
-      new Error('Project pagination page limit reached'),
+      'Project pagination exceeded 100 pages',
+      new Error(
+        'プロジェクト一覧を完全に取得できませんでした。再試行してください。',
+      ),
       {
         component: 'fetchAllProjects',
         loaded: 10000,

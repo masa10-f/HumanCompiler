@@ -2,10 +2,8 @@
 
 import { useState, useEffect, memo } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/use-auth';
 import {
-  projectKeys,
   useProjects,
   useCreateProject,
   useUpdateProject,
@@ -134,7 +132,6 @@ const ProjectStatusDropdown = memo(function ProjectStatusDropdown({ project }: {
 export default function ProjectsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const queryClient = useQueryClient();
 
   // Sort state
   const [sortOptions, setSortOptions] = useState<SortOptions>({
@@ -166,7 +163,6 @@ export default function ProjectsPage() {
   const [editDescription, setEditDescription] = useState('');
 
   const openProject = (project: Project) => {
-    queryClient.setQueryData(projectKeys.detail(project.id), project);
     router.push(`/projects/${project.id}`);
   };
 
