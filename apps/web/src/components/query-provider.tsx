@@ -70,12 +70,15 @@ function AuthenticatedQueryClient({
  */
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthContext()
-  const cacheIdentity = loading ? 'auth-loading' : (user?.id ?? 'anonymous')
+
+  if (loading) {
+    return null
+  }
 
   return (
     <AuthenticatedQueryClient
-      key={cacheIdentity}
-      warmProjects={!loading && Boolean(user)}
+      key={user?.id ?? 'anonymous'}
+      warmProjects={Boolean(user)}
     >
       {children}
     </AuthenticatedQueryClient>
