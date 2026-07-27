@@ -18,6 +18,7 @@ const mockCreate = jest.fn<Promise<Project>, [ProjectCreate]>()
 const mockUpdate = jest.fn<Promise<Project>, [string, ProjectUpdate]>()
 const mockDelete = jest.fn<Promise<void>, [string]>()
 const mockLoggerError = jest.fn()
+const mockLoggerWarn = jest.fn()
 
 jest.mock('@/lib/api', () => ({
   projectsApi: {
@@ -32,6 +33,7 @@ jest.mock('@/lib/api', () => ({
 jest.mock('@/lib/logger', () => ({
   logger: {
     error: (...args: unknown[]) => mockLoggerError(...args),
+    warn: (...args: unknown[]) => mockLoggerWarn(...args),
   },
 }))
 
@@ -178,6 +180,31 @@ describe('shared project collection', () => {
       sortOrder: 'asc',
     })
     expect(result.current.data).toHaveLength(101)
+  })
+
+  it('warns when pagination pages partially overlap', async () => {
+    const firstPage = createMockProjects(100)
+    const finalProject = createMockProject({ id: 'final-project' })
+    mockGetAll
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce([firstPage[99], finalProject])
+
+    const { result } = renderHookWithClient(() => useProjectOptions())
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true)
+    })
+
+    expect(result.current.data).toHaveLength(101)
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      'Project pagination window shifted; collection may be incomplete',
+      {
+        skip: 100,
+        pageSize: 2,
+        loaded: 101,
+      },
+      { component: 'fetchAllProjects' },
+    )
   })
 
   it('should retry only the failed project page once', async () => {

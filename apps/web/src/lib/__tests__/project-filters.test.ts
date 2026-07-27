@@ -14,6 +14,14 @@ import {
 } from '@/lib/project-filters'
 import type { ProjectStatus } from '@/types/project'
 
+const mockLoggerWarn = jest.fn()
+
+jest.mock('@/lib/logger', () => ({
+  logger: {
+    warn: (...args: unknown[]) => mockLoggerWarn(...args),
+  },
+}))
+
 const projects = [
   { id: 'pending', status: 'pending' as const },
   { id: 'in-progress', status: 'in_progress' as const },
@@ -72,6 +80,15 @@ describe('project filters', () => {
     expect(projectIds).toContain('archived-project')
     expect(projectIds).not.toContain(
       `project-${MAX_GOAL_PROJECT_QUERIES - 1}`,
+    )
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      'Goal project query cap replaced an open project',
+      {
+        limit: MAX_GOAL_PROJECT_QUERIES,
+        selectedProjectId: 'archived-project',
+        replacedProjectId: `project-${MAX_GOAL_PROJECT_QUERIES - 1}`,
+      },
+      { component: 'getGoalProjectIds' },
     )
   })
 
