@@ -126,7 +126,13 @@ export function getJSTDate(dateString: string): Date {
   const jstDate = new Date(jstISOString)
 
   // Final validation
-  if (isNaN(jstDate.getTime())) {
+  const normalizedJSTDate = new Date(jstDate.getTime() + JST_OFFSET_MS)
+  if (
+    isNaN(jstDate.getTime()) ||
+    normalizedJSTDate.getUTCFullYear() !== year ||
+    normalizedJSTDate.getUTCMonth() + 1 !== month ||
+    normalizedJSTDate.getUTCDate() !== day
+  ) {
     throw new Error(`Failed to create valid JST date from: ${dateString}`)
   }
 
@@ -204,8 +210,19 @@ export function toJSTDateInputValue(dateString: string | null): string {
  * Add the explicit JST offset before sending a calendar deadline to the API.
  */
 export function toJSTStartOfDayISOString(dateString: string): string {
+  // Validation only: reject malformed or impossible YYYY-MM-DD values.
   getJSTDate(dateString)
   return `${dateString}T00:00:00+09:00`
+}
+
+/** Check whether a date-input value is a real YYYY-MM-DD calendar date. */
+export function isValidJSTDateInput(dateString: string): boolean {
+  try {
+    getJSTDate(dateString)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**

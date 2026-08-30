@@ -203,6 +203,21 @@ describe('TimelineLayoutEngine', () => {
       })
     })
 
+    it('should keep overdue goals and task segments visible', () => {
+      const data = createMockTimelineData()
+      data.goals[0].start_date = null
+      data.goals[0].end_date = '2023-12-15T00:00:00Z'
+
+      const layout = engine.computeLayout(data)
+      const overdueGoal = layout.goals.find(
+        goal => goal.originalGoal.id === 'goal-1'
+      )
+
+      expect(overdueGoal).toBeDefined()
+      expect(overdueGoal!.x1).toBeGreaterThan(overdueGoal!.x0)
+      expect(overdueGoal!.segments).toHaveLength(data.goals[0].tasks.length)
+    })
+
     it('should create dependency arrows', () => {
       const data = createMockTimelineData()
       const layout = engine.computeLayout(data)

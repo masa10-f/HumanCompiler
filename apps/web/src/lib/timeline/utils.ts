@@ -165,30 +165,22 @@ export function calculateTimelineBounds(
   let maxEnd = fallbackEndDate || now
 
   goals.forEach(goal => {
-    const startDate = parseOptionalDate(goal.start_date)
+    const startDate =
+      parseOptionalDate(goal.start_date) || parseOptionalDate(goal.created_at)
     const endDate = parseOptionalDate(goal.end_date)
 
     if (startDate) {
       if (startDate < minStart) minStart = startDate
 
-      // If goal has explicit end date, use it
-      if (endDate && endDate > maxEnd) {
-        maxEnd = endDate
-      } else {
-        // Calculate end date based on estimate and weekly hours
-        const calculatedEnd = calculateGoalEndDate(startDate, goal.estimate_hours, weeklyWorkHours)
-        if (calculatedEnd > maxEnd) maxEnd = calculatedEnd
-      }
+      const calculatedEnd = calculateGoalEndDate(
+        startDate,
+        goal.estimate_hours,
+        weeklyWorkHours
+      )
+      const effectiveEnd = endDate && endDate > startDate ? endDate : calculatedEnd
+      if (effectiveEnd > maxEnd) maxEnd = effectiveEnd
     } else if (endDate) {
       if (endDate > maxEnd) maxEnd = endDate
-    } else {
-      // Use created_at as fallback for start
-      const createdDate = parseOptionalDate(goal.created_at)
-      if (createdDate) {
-        if (createdDate < minStart) minStart = createdDate
-        const calculatedEnd = calculateGoalEndDate(createdDate, goal.estimate_hours, weeklyWorkHours)
-        if (calculatedEnd > maxEnd) maxEnd = calculatedEnd
-      }
     }
   })
 

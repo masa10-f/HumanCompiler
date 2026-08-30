@@ -12,6 +12,7 @@ import {
   safeFormatJapaneseDate,
   toJSTDateInputValue,
   toJSTStartOfDayISOString,
+  isValidJSTDateInput,
 } from '../date-utils'
 
 describe('date-utils', () => {
@@ -189,6 +190,12 @@ describe('date-utils', () => {
       expect(toJSTStartOfDayISOString('2026-09-30')).toBe(
         '2026-09-30T00:00:00+09:00',
       )
+    })
+
+    it('should reject malformed and impossible calendar dates', () => {
+      expect(isValidJSTDateInput('2026-9-3')).toBe(false)
+      expect(isValidJSTDateInput('2025-02-29')).toBe(false)
+      expect(isValidJSTDateInput('2024-02-29')).toBe(true)
     })
 
     it('should safely fall back for malformed display dates', () => {

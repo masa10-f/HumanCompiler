@@ -278,9 +278,16 @@ export class TimelineLayoutEngine {
         minStart = actualStartDate
       }
 
-      // Calculate or use explicit end date
-      const actualEndDate = explicitEndDate ||
-                           this.calculateGoalEndDate(actualStartDate, goal.estimate_hours, weeklyWorkHours)
+      const calculatedEndDate = this.calculateGoalEndDate(
+        actualStartDate,
+        goal.estimate_hours,
+        weeklyWorkHours
+      )
+      // An overdue deadline must not invert the scheduled goal range.
+      const actualEndDate =
+        explicitEndDate && explicitEndDate > actualStartDate
+          ? explicitEndDate
+          : calculatedEndDate
 
       // Update max end time
       if (actualEndDate > maxEnd) {
@@ -345,8 +352,16 @@ export class TimelineLayoutEngine {
       // Use explicit start date if available, otherwise use dependency-based calculation
       const goalStart = parseOptionalDate(goal.start_date) || dependencyBasedStart
 
-      const goalEnd = parseOptionalDate(goal.end_date) ||
-                     this.calculateGoalEndDate(goalStart, goal.estimate_hours, weeklyWorkHours)
+      const explicitEnd = parseOptionalDate(goal.end_date)
+      const calculatedEnd = this.calculateGoalEndDate(
+        goalStart,
+        goal.estimate_hours,
+        weeklyWorkHours
+      )
+      // Keep overdue goals and their task segments visible on the timeline.
+      const goalEnd = explicitEnd && explicitEnd > goalStart
+        ? explicitEnd
+        : calculatedEnd
 
       const x0 = dateToPixels(goalStart, bounds.start_date, totalDays, this.config.canvas_width, this.config.padding)
       const x1 = dateToPixels(goalEnd, bounds.start_date, totalDays, this.config.canvas_width, this.config.padding)
