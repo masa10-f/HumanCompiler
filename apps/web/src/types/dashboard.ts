@@ -9,14 +9,18 @@ import type { TaskStatus } from '@/types/task';
 
 export type RecentDashboardItemKind = 'task' | 'goal';
 
-export interface RecentDashboardItem {
-  kind: RecentDashboardItemKind;
+interface RecentDashboardItemBase {
   id: string;
   title: string;
-  status: TaskStatus | GoalStatus;
   project_id: string;
   project_title: string;
   goal_id: string;
   goal_title: string;
   updated_at: string;
 }
+
+export type RecentDashboardItem = RecentDashboardItemBase &
+  (
+    | { kind: 'task'; status: TaskStatus }
+    | { kind: 'goal'; status: GoalStatus }
+  );

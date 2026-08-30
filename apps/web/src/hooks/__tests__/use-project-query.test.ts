@@ -8,6 +8,7 @@ import {
   renderHookWithClient,
 } from './helpers/test-utils'
 import type { Project, ProjectCreate, ProjectUpdate } from '@/types/project'
+import { queryKeys } from '@/lib/query-keys'
 import { SortBy, SortOrder } from '@/types/sort'
 
 const mockGetAll = jest.fn<Promise<Project[]>, [number?, number?]>()
@@ -205,6 +206,7 @@ describe('project query cache', () => {
     })
     const updated = { ...original, title: 'After', status: 'completed' as const }
     const queryClient = createProjectTestClient()
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries')
     queryClient.setQueryData(projectKeys.options(), [original, other])
     mockUpdate.mockResolvedValue(updated)
 
@@ -225,12 +227,16 @@ describe('project query cache', () => {
     expect(queryClient.getQueryData(projectKeys.detail(original.id))).toEqual(
       updated,
     )
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: queryKeys.dashboard.all,
+    })
   })
 
   it('removes a deleted project after the dialog close delay', async () => {
     jest.useFakeTimers()
     const project = createMockProject({ id: 'project-1' })
     const queryClient = createProjectTestClient()
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries')
     queryClient.setQueryData(projectKeys.options(), [project])
     queryClient.setQueryData(projectKeys.detail(project.id), project)
     mockDelete.mockResolvedValue(undefined)
@@ -247,5 +253,8 @@ describe('project query cache', () => {
 
     expect(queryClient.getQueryData(projectKeys.options())).toEqual([])
     expect(queryClient.getQueryData(projectKeys.detail(project.id))).toBeUndefined()
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: queryKeys.dashboard.all,
+    })
   })
 })

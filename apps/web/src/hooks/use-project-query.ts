@@ -210,6 +210,7 @@ export function useUpdateProject() {
       } else {
         void queryClient.invalidateQueries({ queryKey: projectKeys.options() })
       }
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
     },
   })
 }
@@ -245,6 +246,7 @@ export function useDeleteProject() {
         }
 
         queryClient.removeQueries({ queryKey: projectKeys.detail(projectId) })
+        void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
 
         if (typeof document !== 'undefined') {
           document.body.style.pointerEvents = ''

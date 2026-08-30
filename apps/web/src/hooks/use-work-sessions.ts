@@ -76,7 +76,6 @@ export function useStartWorkSession() {
   return useMutation({
     mutationFn: (data: WorkSessionStartRequest) => workSessionsApi.start(data),
     onSuccess: (_result, data) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
       // Invalidate session queries
       queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.current() });
       queryClient.invalidateQueries({
