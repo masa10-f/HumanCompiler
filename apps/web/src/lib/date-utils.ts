@@ -7,6 +7,12 @@
 
 // JST offset constant for performance optimization
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000 // 9 hours in milliseconds
+const JST_DATE_INPUT_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  timeZone: 'Asia/Tokyo',
+})
 
 /**
  * Get the current date in JST as YYYY-MM-DD string format
@@ -126,7 +132,13 @@ export function getJSTDate(dateString: string): Date {
   const jstDate = new Date(jstISOString)
 
   // Final validation
-  if (isNaN(jstDate.getTime())) {
+  const normalizedJSTDate = new Date(jstDate.getTime() + JST_OFFSET_MS)
+  if (
+    isNaN(jstDate.getTime()) ||
+    normalizedJSTDate.getUTCFullYear() !== year ||
+    normalizedJSTDate.getUTCMonth() + 1 !== month ||
+    normalizedJSTDate.getUTCDate() !== day
+  ) {
     throw new Error(`Failed to create valid JST date from: ${dateString}`)
   }
 
@@ -164,6 +176,54 @@ export function formatJapaneseDate(
   }
 
   return dateObj.toLocaleString('ja-JP', options)
+}
+
+/**
+ * Format a date for display without allowing malformed API data to break a page.
+ */
+export function safeFormatJapaneseDate(
+  date: Date | string,
+  fallback: string = '日付不明'
+): string {
+  try {
+    return formatJapaneseDate(date)
+  } catch {
+    return fallback
+  }
+}
+
+/**
+ * Convert an API datetime into the calendar date used by JST date inputs.
+ */
+export function toJSTDateInputValue(dateString: string | null): string {
+  if (!dateString) return ''
+
+  const date = new Date(dateString)
+  if (isNaN(date.getTime())) return ''
+
+  const parts = JST_DATE_INPUT_FORMATTER.formatToParts(date)
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+
+  return `${values.year}-${values.month}-${values.day}`
+}
+
+/**
+ * Add the explicit JST offset before sending a calendar deadline to the API.
+ */
+export function toJSTStartOfDayISOString(dateString: string): string {
+  // Validation only: reject malformed or impossible YYYY-MM-DD values.
+  getJSTDate(dateString)
+  return `${dateString}T00:00:00+09:00`
+}
+
+/** Check whether a date-input value is a real YYYY-MM-DD calendar date. */
+export function isValidJSTDateInput(dateString: string): boolean {
+  try {
+    getJSTDate(dateString)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**

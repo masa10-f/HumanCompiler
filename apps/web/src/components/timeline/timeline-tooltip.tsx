@@ -12,6 +12,7 @@ import { ja } from 'date-fns/locale'
 import { Badge } from '@/components/ui/badge'
 import { X, Target, Clock, Calendar, CheckCircle, AlertTriangle, XCircle, Circle, TrendingUp, FileText, Link2 } from 'lucide-react'
 import type { LayoutGoal, LayoutTaskSegment } from '@/lib/timeline/types'
+import { toJSTDateInputValue } from '@/lib/date-utils'
 
 interface TimelineTooltipProps {
   goal: LayoutGoal | null
@@ -176,9 +177,18 @@ export function TimelineTooltip({
     }
   }
 
+  const formatJSTDate = (dateString: string | null) => {
+    const inputValue = toJSTDateInputValue(dateString)
+    return inputValue ? formatDate(inputValue) : null
+  }
+
   const getStatusConfig = (status: string) => {
     return STATUS_CONFIG[status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.pending
   }
+
+  const formattedGoalDueDate = goal
+    ? formatJSTDate(goal.originalGoal.due_date)
+    : null
 
   return (
     <>
@@ -318,6 +328,17 @@ export function TimelineTooltip({
                     </span>
                     <span className="text-slate-700 font-medium">
                       {formatDate(goal.originalGoal.end_date)}
+                    </span>
+                  </div>
+                )}
+                {formattedGoalDueDate && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5" />
+                      期限
+                    </span>
+                    <span className="text-slate-700 font-medium">
+                      {formattedGoalDueDate}
                     </span>
                   </div>
                 )}

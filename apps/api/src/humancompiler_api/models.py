@@ -1,4 +1,5 @@
-from datetime import datetime, UTC
+import re
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum, StrEnum
 from typing import Any
@@ -16,6 +17,27 @@ from sqlalchemy import JSON, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
 from sqlmodel import Column, Relationship, SQLModel
 from sqlmodel import Field as SQLField
+
+
+GOAL_DUE_DATE_DESCRIPTION = (
+    "Goal deadline in ISO 8601 format. Date-only values are interpreted as "
+    "00:00 JST; datetime values must include a timezone offset."
+)
+GOAL_DUE_DATE_ONLY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def prepare_due_date(value: Any) -> Any:
+    """Convert an unambiguous calendar date into the start of that day in JST."""
+    if isinstance(value, str) and GOAL_DUE_DATE_ONLY_PATTERN.fullmatch(value):
+        return f"{value}T00:00:00+09:00"
+    return value
+
+
+def require_due_date_timezone(value: datetime | None) -> datetime | None:
+    """Reject ambiguous goal datetimes that do not include an offset."""
+    if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+        raise ValueError("due_date datetime must include a timezone offset")
+    return value
 
 
 class TaskStatus(StrEnum):
@@ -305,6 +327,9 @@ class GoalBase(SQLModel):
     title: str = SQLField(min_length=1, max_length=200)
     description: str | None = SQLField(default=None, max_length=1000)
     estimate_hours: Decimal = SQLField(gt=0, max_digits=5, decimal_places=2)
+    due_date: datetime | None = SQLField(
+        default=None, description=GOAL_DUE_DATE_DESCRIPTION
+    )
     status: GoalStatus = SQLField(
         default=GoalStatus.PENDING,
         sa_column=Column(
@@ -1008,6 +1033,16 @@ class GoalCreate(GoalBase):
 
     project_id: UUID
 
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def prepare_due_date(cls, value: Any) -> Any:
+        return prepare_due_date(value)
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date_timezone(cls, value: datetime | None) -> datetime | None:
+        return require_due_date_timezone(value)
+
 
 class GoalUpdate(BaseModel):
     """Goal update request"""
@@ -1015,7 +1050,18 @@ class GoalUpdate(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = Field(None, max_length=1000)
     estimate_hours: Decimal | None = Field(None, gt=0)
+    due_date: datetime | None = Field(None, description=GOAL_DUE_DATE_DESCRIPTION)
     status: GoalStatus | None = None
+
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def prepare_due_date(cls, value: Any) -> Any:
+        return prepare_due_date(value)
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date_timezone(cls, value: datetime | None) -> datetime | None:
+        return require_due_date_timezone(value)
 
     @field_validator("status")
     @classmethod

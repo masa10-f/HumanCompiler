@@ -8,7 +8,11 @@ import {
   parseUTCToJST,
   getJSTDate,
   formatJapaneseDate,
-  getJSTISOString
+  getJSTISOString,
+  safeFormatJapaneseDate,
+  toJSTDateInputValue,
+  toJSTStartOfDayISOString,
+  isValidJSTDateInput,
 } from '../date-utils'
 
 describe('date-utils', () => {
@@ -169,6 +173,33 @@ describe('date-utils', () => {
     it('should throw error for invalid date', () => {
       expect(() => formatJapaneseDate('invalid-date')).toThrow('Invalid date')
       expect(() => formatJapaneseDate(new Date('invalid'))).toThrow('Invalid date')
+    })
+  })
+
+  describe('goal deadline helpers', () => {
+    it('should derive the date input value using JST', () => {
+      expect(toJSTDateInputValue('2026-09-29T15:00:00Z')).toBe('2026-09-30')
+    })
+
+    it('should return an empty input value for missing or invalid dates', () => {
+      expect(toJSTDateInputValue(null)).toBe('')
+      expect(toJSTDateInputValue('invalid-date')).toBe('')
+    })
+
+    it('should submit calendar deadlines as the start of day in JST', () => {
+      expect(toJSTStartOfDayISOString('2026-09-30')).toBe(
+        '2026-09-30T00:00:00+09:00',
+      )
+    })
+
+    it('should reject malformed and impossible calendar dates', () => {
+      expect(isValidJSTDateInput('2026-9-3')).toBe(false)
+      expect(isValidJSTDateInput('2025-02-29')).toBe(false)
+      expect(isValidJSTDateInput('2024-02-29')).toBe(true)
+    })
+
+    it('should safely fall back for malformed display dates', () => {
+      expect(safeFormatJapaneseDate('invalid-date')).toBe('日付不明')
     })
   })
 

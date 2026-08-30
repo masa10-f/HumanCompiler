@@ -199,6 +199,7 @@ async def get_project_timeline(
                     estimate_hours=float(goal.estimate_hours),
                     start_date=None,
                     end_date=None,
+                    due_date=goal.due_date.isoformat() if goal.due_date else None,
                     dependencies=dependency_ids,
                     created_at=goal.created_at.isoformat(),
                     updated_at=goal.updated_at.isoformat(),

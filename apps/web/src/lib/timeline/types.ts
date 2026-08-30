@@ -6,6 +6,7 @@ export interface TimelineGoal {
   estimate_hours: number
   start_date: string | null
   end_date: string | null
+  due_date: string | null
   created_at: string
   updated_at: string
   dependencies: string[] // Goal IDs that this goal depends on

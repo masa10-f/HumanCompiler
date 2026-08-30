@@ -26,11 +26,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { useCreateGoal } from '@/hooks/use-goals-query';
 import { toast } from '@/hooks/use-toast';
+import { toJSTStartOfDayISOString } from '@/lib/date-utils';
+import { goalDueDateSchema } from '@/lib/validations/goal';
 
 const goalFormSchema = z.object({
   title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
   description: z.string().max(500, '500文字以内で入力してください').optional(),
   estimate_hours: z.number().min(0.1, '0.1時間以上で入力してください').max(1000, '1000時間以内で入力してください'),
+  due_date: goalDueDateSchema,
 });
 
 type GoalFormData = z.infer<typeof goalFormSchema>;
@@ -59,6 +62,7 @@ export function GoalFormDialog({ projectId, children }: GoalFormDialogProps) {
       title: '',
       description: '',
       estimate_hours: 1,
+      due_date: '',
     },
   });
 
@@ -68,6 +72,7 @@ export function GoalFormDialog({ projectId, children }: GoalFormDialogProps) {
         title: data.title,
         description: data.description || undefined,
         estimate_hours: data.estimate_hours,
+        due_date: data.due_date ? toJSTStartOfDayISOString(data.due_date) : undefined,
         project_id: projectId,
       });
 
@@ -152,6 +157,19 @@ export function GoalFormDialog({ projectId, children }: GoalFormDialogProps) {
                       {...field}
                       onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                     />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="due_date"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>期限</FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

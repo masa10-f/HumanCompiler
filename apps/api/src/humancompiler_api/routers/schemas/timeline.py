@@ -30,6 +30,7 @@ class GoalTimelineData(BaseModel):
     estimate_hours: float
     start_date: str | None
     end_date: str | None
+    due_date: str | None
     dependencies: list[str]
     created_at: str
     updated_at: str

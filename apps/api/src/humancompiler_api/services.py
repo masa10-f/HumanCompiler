@@ -304,6 +304,7 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
             title=data.title,
             description=data.description,
             estimate_hours=data.estimate_hours,
+            due_date=data.due_date,
         )
 
     def _get_user_filter(self, user_id: str | UUID):

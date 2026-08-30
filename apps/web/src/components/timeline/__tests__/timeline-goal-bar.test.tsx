@@ -47,6 +47,7 @@ const goal: LayoutGoal = {
     estimate_hours: 4,
     start_date: '2026-07-01T00:00:00Z',
     end_date: '2026-07-08T00:00:00Z',
+    due_date: null,
     created_at: '2026-07-01T00:00:00Z',
     updated_at: '2026-07-01T00:00:00Z',
     dependencies: [],

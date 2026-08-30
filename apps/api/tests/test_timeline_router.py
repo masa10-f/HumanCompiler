@@ -62,6 +62,7 @@ def create_test_goal(
     title: str = "Test Goal",
     estimate_hours: float = 8.0,
     status: GoalStatus = GoalStatus.PENDING,
+    due_date: datetime | None = None,
 ) -> Goal:
     """Create a test goal"""
     goal = Goal(
@@ -70,6 +71,7 @@ def create_test_goal(
         title=title,
         description="Test goal description",
         estimate_hours=estimate_hours,
+        due_date=due_date,
         status=status,
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
@@ -171,7 +173,8 @@ class TestTimelineRouter:
         # Create test data
         user = create_test_user(test_session)
         project = create_test_project(test_session, user.id)
-        goal = create_test_goal(test_session, project.id)
+        due_date = datetime(2026, 9, 30, tzinfo=UTC)
+        goal = create_test_goal(test_session, project.id, due_date=due_date)
         task = create_test_task(test_session, goal.id)
         log = create_test_log(test_session, task.id)
 
@@ -204,6 +207,11 @@ class TestTimelineRouter:
         assert len(data["goals"]) == 1
         assert data["goals"][0]["id"] == str(goal.id)
         assert data["goals"][0]["title"] == goal.title
+        assert data["goals"][0]["end_date"] is None
+        response_due_date = datetime.fromisoformat(data["goals"][0]["due_date"])
+        if response_due_date.tzinfo is None:
+            response_due_date = response_due_date.replace(tzinfo=UTC)
+        assert response_due_date.astimezone(UTC) == due_date
 
         # Verify tasks data
         assert len(data["goals"][0]["tasks"]) == 1
