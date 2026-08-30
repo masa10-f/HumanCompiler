@@ -22,6 +22,7 @@ const goal: LayoutGoal = {
     estimate_hours: 12,
     start_date: '2026-07-01T00:00:00Z',
     end_date: '2026-07-10T00:00:00Z',
+    due_date: '2026-07-15T00:00:00+09:00',
     created_at: '2026-07-01T00:00:00Z',
     updated_at: '2026-07-01T00:00:00Z',
     dependencies: [],
@@ -68,6 +69,21 @@ describe('calculateTooltipLayout', () => {
 })
 
 describe('TimelineTooltip dismissal', () => {
+  it('shows a goal deadline separately from its scheduled end date', () => {
+    render(
+      <TimelineTooltip
+        goal={goal}
+        task={null}
+        position={{ x: 100, y: 100 }}
+        onClose={jest.fn()}
+      />,
+    )
+
+    expect(screen.getByText('終了日')).toBeInTheDocument()
+    expect(screen.getByText('期限')).toBeInTheDocument()
+    expect(screen.getByText('2026年07月15日')).toBeInTheDocument()
+  })
+
   it('closes from the viewport backdrop', () => {
     const onClose = jest.fn()
     render(

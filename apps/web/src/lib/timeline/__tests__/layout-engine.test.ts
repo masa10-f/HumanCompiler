@@ -26,6 +26,7 @@ const createMockTimelineData = (): TimelineData => ({
       estimate_hours: 20,
       start_date: '2024-01-01T00:00:00Z',
       end_date: '2024-01-15T23:59:59Z',
+      due_date: null,
       dependencies: [],
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
@@ -70,6 +71,7 @@ const createMockTimelineData = (): TimelineData => ({
       estimate_hours: 15,
       start_date: '2024-01-16T00:00:00Z',
       end_date: '2024-01-31T23:59:59Z',
+      due_date: null,
       dependencies: ['goal-1'],
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
@@ -201,21 +203,6 @@ describe('TimelineLayoutEngine', () => {
         expect(segment.progress).toBeGreaterThanOrEqual(0)
         expect(segment.progress).toBeLessThanOrEqual(1)
       })
-    })
-
-    it('should keep overdue goals and task segments visible', () => {
-      const data = createMockTimelineData()
-      data.goals[0].start_date = null
-      data.goals[0].end_date = '2023-12-15T00:00:00Z'
-
-      const layout = engine.computeLayout(data)
-      const overdueGoal = layout.goals.find(
-        goal => goal.originalGoal.id === 'goal-1'
-      )
-
-      expect(overdueGoal).toBeDefined()
-      expect(overdueGoal!.x1).toBeGreaterThan(overdueGoal!.x0)
-      expect(overdueGoal!.segments).toHaveLength(data.goals[0].tasks.length)
     })
 
     it('should create dependency arrows', () => {

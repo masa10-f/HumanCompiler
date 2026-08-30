@@ -207,7 +207,8 @@ class TestTimelineRouter:
         assert len(data["goals"]) == 1
         assert data["goals"][0]["id"] == str(goal.id)
         assert data["goals"][0]["title"] == goal.title
-        assert data["goals"][0]["end_date"] == due_date.isoformat()
+        assert data["goals"][0]["end_date"] is None
+        assert data["goals"][0]["due_date"] == due_date.isoformat()
 
         # Verify tasks data
         assert len(data["goals"][0]["tasks"]) == 1

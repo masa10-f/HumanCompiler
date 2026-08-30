@@ -99,6 +99,7 @@ export const createMockTimelineGoal = (overrides: Partial<TimelineGoal> = {}): T
   estimate_hours: 10,
   start_date: '2025-01-01',
   end_date: '2025-01-15',
+  due_date: null,
   dependencies: [],
   created_at: '2025-01-01T00:00:00Z',
   updated_at: '2025-01-01T00:00:00Z',
