@@ -19,6 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { getGoalStatusLabel } from '@/constants/goal-status';
 import { dashboardApi } from '@/lib/api';
 import { formatJSTDateTime } from '@/lib/date-utils';
 import { queryKeys } from '@/lib/query-keys';
@@ -93,6 +94,10 @@ export function RecentItemShortcuts() {
             {recentItems.data.map((item) => {
               const Icon = item.kind === 'task' ? CheckSquare2 : Target;
               const itemLabel = item.kind === 'task' ? 'タスク' : 'ゴール';
+              const statusLabel =
+                item.kind === 'task'
+                  ? taskStatusLabels[item.status]
+                  : getGoalStatusLabel(item.status);
               const breadcrumb =
                 item.kind === 'task'
                   ? `${item.project_title} › ${item.goal_title}`
@@ -111,7 +116,7 @@ export function RecentItemShortcuts() {
                       {itemLabel}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
-                      {taskStatusLabels[item.status]}
+                      {statusLabel}
                     </span>
                   </div>
                   <p className="line-clamp-2 min-h-10 break-words text-sm font-medium group-hover:text-blue-700 dark:group-hover:text-blue-300">
