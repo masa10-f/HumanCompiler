@@ -31,6 +31,7 @@ from humancompiler_api.exceptions import (
 )
 from humancompiler_api.routers import (
     ai_planning,
+    dashboard,
     data_export,
     goal_dependencies,
     goals,
@@ -277,6 +278,7 @@ app.add_exception_handler(Exception, general_exception_handler)
 
 # Include API routers
 app.include_router(users.router, prefix="/api")
+app.include_router(dashboard.router, prefix="/api")
 app.include_router(projects.router, prefix="/api")
 app.include_router(goals.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
