@@ -2,12 +2,22 @@
 Tests for goal status functionality including status transitions and validation
 """
 
+from datetime import UTC, datetime
+
 import pytest
 from uuid import uuid4
 from fastapi import HTTPException
 from sqlmodel import Session, SQLModel, create_engine
 
-from humancompiler_api.models import Goal, GoalStatus, GoalUpdate, User, Project
+from humancompiler_api.models import (
+    Goal,
+    GoalCreate,
+    GoalResponse,
+    GoalStatus,
+    GoalUpdate,
+    Project,
+    User,
+)
 from humancompiler_api.services import GoalService
 
 
@@ -301,6 +311,68 @@ class TestGoalStatusValues:
         expected_statuses = {"pending", "in_progress", "completed", "cancelled"}
         actual_statuses = {status.value for status in GoalStatus}
         assert actual_statuses == expected_statuses
+
+
+class TestGoalDueDate:
+    """Test creating, updating, clearing, and serializing goal due dates."""
+
+    def test_create_goal_with_due_date(self, session: Session, test_user_and_project):
+        user, project = test_user_and_project
+        due_date = datetime(2026, 9, 30)
+
+        goal = GoalService().create_goal(
+            session,
+            GoalCreate.model_validate(
+                {
+                    "project_id": project.id,
+                    "title": "Dated Goal",
+                    "estimate_hours": 10,
+                    "due_date": "2026-09-30",
+                }
+            ),
+            user.id,
+        )
+
+        assert goal.due_date == due_date
+
+    def test_update_and_clear_goal_due_date(
+        self, session: Session, test_user_and_project
+    ):
+        user, project = test_user_and_project
+        goal = Goal(
+            id=uuid4(),
+            project_id=project.id,
+            title="Dated Goal",
+            estimate_hours=10,
+        )
+        session.add(goal)
+        session.commit()
+
+        due_date = datetime(2026, 10, 15)
+        service = GoalService()
+        updated_goal = service.update_goal(
+            session, goal.id, user.id, GoalUpdate(due_date=due_date)
+        )
+        assert updated_goal.due_date == due_date
+
+        cleared_goal = service.update_goal(
+            session, goal.id, user.id, GoalUpdate(due_date=None)
+        )
+        assert cleared_goal.due_date is None
+
+    def test_goal_response_includes_due_date(self):
+        due_date = datetime(2026, 11, 1, tzinfo=UTC)
+        goal_response = GoalResponse(
+            id=uuid4(),
+            project_id=uuid4(),
+            title="Dated Goal",
+            estimate_hours=10,
+            due_date=due_date,
+            created_at=datetime(2026, 8, 30, tzinfo=UTC),
+            updated_at=datetime(2026, 8, 30, tzinfo=UTC),
+        )
+
+        assert goal_response.model_dump()["due_date"] == due_date
 
 
 class TestConcurrentStatusUpdates:

@@ -63,6 +63,8 @@ export interface Goal {
   description: string | null;
   /** 見積もり時間（時間単位） */
   estimate_hours: number;
+  /** 期限日 (ISO 8601形式) */
+  due_date: string | null;
   /** ステータス */
   status: GoalStatus;
   /** 所属プロジェクトID */
@@ -86,6 +88,8 @@ export interface GoalCreate {
   description?: string;
   /** 見積もり時間（時間単位） */
   estimate_hours: number;
+  /** 期限日 (ISO 8601形式) */
+  due_date?: string;
   /** 初期ステータス（デフォルト: pending） */
   status?: GoalStatus;
   /** 所属プロジェクトID */
@@ -103,6 +107,8 @@ export interface GoalUpdate {
   description?: string;
   /** 見積もり時間（時間単位） */
   estimate_hours?: number;
+  /** 期限日。nullで期限を解除 */
+  due_date?: string | null;
   /** ステータス */
   status?: GoalStatus;
 }
@@ -120,6 +126,8 @@ export interface GoalResponse {
   description: string | null;
   /** 見積もり時間（時間単位） */
   estimate_hours: number;
+  /** 期限日 */
+  due_date: string | null;
   /** ステータス */
   status: GoalStatus;
   /** 所属プロジェクトID */
@@ -152,4 +160,6 @@ export interface GoalFormData {
   description: string;
   /** 見積もり時間（時間単位） */
   estimate_hours: number;
+  /** 期限日 */
+  due_date: string;
 }

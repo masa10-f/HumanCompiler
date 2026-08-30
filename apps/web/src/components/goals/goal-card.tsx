@@ -7,6 +7,8 @@ import { GoalStatusDropdown } from './goal-status-dropdown'
 import { GoalDependencies } from './goal-dependencies'
 import { GoalEditDialog } from './goal-edit-dialog'
 import { GoalDeleteDialog } from './goal-delete-dialog'
+import { CalendarDays } from 'lucide-react'
+import { formatJapaneseDate } from '@/lib/date-utils'
 import type { Goal } from '@/types/goal'
 
 interface GoalCardProps {
@@ -59,6 +61,12 @@ export const GoalCard = memo(function GoalCard({
               <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-info/10 text-info font-medium">
                 見積: {goal.estimate_hours}h
               </span>
+              {goal.due_date && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2.5 py-1 font-medium text-amber-700 dark:text-amber-300">
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  期限: {formatJapaneseDate(goal.due_date)}
+                </span>
+              )}
             </div>
             <div className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded">
               {new Date(goal.created_at).toLocaleDateString('ja-JP')}

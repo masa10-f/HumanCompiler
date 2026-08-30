@@ -38,6 +38,7 @@ export const createMockGoal = (overrides: Partial<Goal> = {}): Goal => ({
   title: 'Test Goal',
   description: 'Test goal description',
   estimate_hours: 10,
+  due_date: null,
   status: 'pending' as GoalStatus,
   project_id: 'project-123',
   created_at: '2025-01-01T00:00:00Z',

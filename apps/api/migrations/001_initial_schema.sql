@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS goals (
     title TEXT NOT NULL CHECK (length(title) <= 200),
     description TEXT CHECK (length(description) <= 1000),
     estimate_hours DECIMAL(5,2) CHECK (estimate_hours > 0),
+    due_date TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
