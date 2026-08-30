@@ -7,6 +7,12 @@
 
 // JST offset constant for performance optimization
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000 // 9 hours in milliseconds
+const JST_DATE_INPUT_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  timeZone: 'Asia/Tokyo',
+})
 
 /**
  * Get the current date in JST as YYYY-MM-DD string format
@@ -195,12 +201,7 @@ export function toJSTDateInputValue(dateString: string | null): string {
   const date = new Date(dateString)
   if (isNaN(date.getTime())) return ''
 
-  const parts = new Intl.DateTimeFormat('en-US', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    timeZone: 'Asia/Tokyo',
-  }).formatToParts(date)
+  const parts = JST_DATE_INPUT_FORMATTER.formatToParts(date)
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
 
   return `${values.year}-${values.month}-${values.day}`

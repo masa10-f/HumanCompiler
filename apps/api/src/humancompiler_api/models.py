@@ -1,4 +1,4 @@
-from datetime import datetime, UTC
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from enum import Enum, StrEnum
 from typing import Any
@@ -16,6 +16,16 @@ from sqlalchemy import JSON, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
 from sqlmodel import Column, Relationship, SQLModel
 from sqlmodel import Field as SQLField
+
+
+JST = timezone(timedelta(hours=9))
+
+
+def normalize_goal_due_date(value: datetime | None) -> datetime | None:
+    """Interpret timezone-naive goal deadlines as JST calendar dates."""
+    if value is not None and value.tzinfo is None:
+        return value.replace(tzinfo=JST)
+    return value
 
 
 class TaskStatus(StrEnum):
@@ -312,6 +322,11 @@ class GoalBase(SQLModel):
             SQLEnum(GoalStatus, values_callable=lambda x: [e.value for e in x])
         ),
     )
+
+    @field_validator("due_date")
+    @classmethod
+    def normalize_due_date(cls, value: datetime | None) -> datetime | None:
+        return normalize_goal_due_date(value)
 
 
 class Goal(GoalBase, table=True):  # type: ignore[call-arg]
@@ -1018,6 +1033,11 @@ class GoalUpdate(BaseModel):
     estimate_hours: Decimal | None = Field(None, gt=0)
     due_date: datetime | None = None
     status: GoalStatus | None = None
+
+    @field_validator("due_date")
+    @classmethod
+    def normalize_due_date(cls, value: datetime | None) -> datetime | None:
+        return normalize_goal_due_date(value)
 
     @field_validator("status")
     @classmethod

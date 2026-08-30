@@ -2,7 +2,7 @@
 Tests for goal status functionality including status transitions and validation
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from uuid import uuid4
@@ -334,6 +334,35 @@ class TestGoalDueDate:
         )
 
         assert goal.due_date == due_date
+
+    def test_goal_input_models_normalize_naive_due_dates_to_jst(self):
+        jst = timezone(timedelta(hours=9))
+        create_data = GoalCreate.model_validate(
+            {
+                "project_id": uuid4(),
+                "title": "Dated Goal",
+                "estimate_hours": 10,
+                "due_date": "2026-09-30",
+            }
+        )
+        update_data = GoalUpdate(due_date=datetime(2026, 10, 15))
+
+        assert create_data.due_date == datetime(2026, 9, 30, tzinfo=jst)
+        assert update_data.due_date == datetime(2026, 10, 15, tzinfo=jst)
+
+    def test_goal_input_models_preserve_aware_due_dates(self):
+        due_date = datetime(2026, 9, 30, tzinfo=UTC)
+
+        create_data = GoalCreate(
+            project_id=uuid4(),
+            title="Dated Goal",
+            estimate_hours=10,
+            due_date=due_date,
+        )
+        update_data = GoalUpdate(due_date=due_date)
+
+        assert create_data.due_date is due_date
+        assert update_data.due_date is due_date
 
     def test_update_and_clear_goal_due_date(
         self, session: Session, test_user_and_project

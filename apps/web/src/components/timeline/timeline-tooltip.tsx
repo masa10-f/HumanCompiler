@@ -186,6 +186,10 @@ export function TimelineTooltip({
     return STATUS_CONFIG[status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.pending
   }
 
+  const formattedGoalDueDate = goal
+    ? formatJSTDate(goal.originalGoal.due_date)
+    : null
+
   return (
     <>
       <div
@@ -327,14 +331,14 @@ export function TimelineTooltip({
                     </span>
                   </div>
                 )}
-                {formatJSTDate(goal.originalGoal.due_date) && (
+                {formattedGoalDueDate && (
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-slate-500 flex items-center gap-1.5">
                       <Calendar className="w-3.5 h-3.5" />
                       期限
                     </span>
                     <span className="text-slate-700 font-medium">
-                      {formatJSTDate(goal.originalGoal.due_date)}
+                      {formattedGoalDueDate}
                     </span>
                   </div>
                 )}
