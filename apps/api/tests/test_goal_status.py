@@ -5,6 +5,7 @@ Tests for goal status functionality including status transitions and validation
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
+from pydantic import ValidationError
 from uuid import uuid4
 from fastapi import HTTPException
 from sqlmodel import Session, SQLModel, create_engine
@@ -19,6 +20,17 @@ from humancompiler_api.models import (
     User,
 )
 from humancompiler_api.services import GoalService
+
+
+JST = timezone(timedelta(hours=9))
+
+
+def goal_due_date_as_utc(value: datetime | None) -> datetime:
+    """Normalize SQLite-naive and Postgres-aware goal deadlines for assertions."""
+    assert value is not None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=JST)
+    return value.astimezone(UTC)
 
 
 @pytest.fixture
@@ -318,7 +330,7 @@ class TestGoalDueDate:
 
     def test_create_goal_with_due_date(self, session: Session, test_user_and_project):
         user, project = test_user_and_project
-        due_date = datetime(2026, 9, 30)
+        due_date = datetime(2026, 9, 30, tzinfo=JST)
 
         goal = GoalService().create_goal(
             session,
@@ -333,10 +345,9 @@ class TestGoalDueDate:
             user.id,
         )
 
-        assert goal.due_date == due_date
+        assert goal_due_date_as_utc(goal.due_date) == due_date.astimezone(UTC)
 
-    def test_goal_input_models_normalize_naive_due_dates_to_jst(self):
-        jst = timezone(timedelta(hours=9))
+    def test_goal_input_models_accept_date_only_values_as_jst(self):
         create_data = GoalCreate.model_validate(
             {
                 "project_id": uuid4(),
@@ -345,10 +356,33 @@ class TestGoalDueDate:
                 "due_date": "2026-09-30",
             }
         )
-        update_data = GoalUpdate(due_date=datetime(2026, 10, 15))
+        update_data = GoalUpdate.model_validate({"due_date": "2026-10-15"})
 
-        assert create_data.due_date == datetime(2026, 9, 30, tzinfo=jst)
-        assert update_data.due_date == datetime(2026, 10, 15, tzinfo=jst)
+        assert create_data.due_date == datetime(2026, 9, 30, tzinfo=JST)
+        assert update_data.due_date == datetime(2026, 10, 15, tzinfo=JST)
+
+    def test_goal_input_models_reject_naive_datetimes(self):
+        with pytest.raises(ValidationError, match="timezone offset"):
+            GoalCreate(
+                project_id=uuid4(),
+                title="Dated Goal",
+                estimate_hours=10,
+                due_date=datetime(2026, 9, 30),
+            )
+
+        with pytest.raises(ValidationError, match="timezone offset"):
+            GoalUpdate(due_date=datetime(2026, 10, 15))
+
+    def test_goal_due_date_schema_documents_timezone_contract(self):
+        create_description = GoalCreate.model_json_schema()["properties"]["due_date"][
+            "description"
+        ]
+        update_description = GoalUpdate.model_json_schema()["properties"]["due_date"][
+            "description"
+        ]
+
+        assert "Date-only values are interpreted as 00:00 JST" in create_description
+        assert "datetime values must include a timezone offset" in update_description
 
     def test_goal_input_models_preserve_aware_due_dates(self):
         due_date = datetime(2026, 9, 30, tzinfo=UTC)
@@ -361,8 +395,8 @@ class TestGoalDueDate:
         )
         update_data = GoalUpdate(due_date=due_date)
 
-        assert create_data.due_date is due_date
-        assert update_data.due_date is due_date
+        assert create_data.due_date == due_date
+        assert update_data.due_date == due_date
 
     def test_update_and_clear_goal_due_date(
         self, session: Session, test_user_and_project
@@ -377,12 +411,12 @@ class TestGoalDueDate:
         session.add(goal)
         session.commit()
 
-        due_date = datetime(2026, 10, 15)
+        due_date = datetime(2026, 10, 15, tzinfo=JST)
         service = GoalService()
         updated_goal = service.update_goal(
             session, goal.id, user.id, GoalUpdate(due_date=due_date)
         )
-        assert updated_goal.due_date == due_date
+        assert goal_due_date_as_utc(updated_goal.due_date) == due_date.astimezone(UTC)
 
         cleared_goal = service.update_goal(
             session, goal.id, user.id, GoalUpdate(due_date=None)
