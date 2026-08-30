@@ -138,6 +138,7 @@ export function LightweightDailyPlanner({
   const [revision, setRevision] = useState(0);
   const revisionRef = useRef(0);
   const documentRef = useRef(document);
+  const saveInFlightRef = useRef<Promise<DailyPlanResponse> | null>(null);
   const [schedule, setSchedule] = useState<DailyPlanResponse["schedule"]>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -266,31 +267,49 @@ export function LightweightDailyPlanner({
     [],
   );
 
-  const saveNow = useCallback(async (): Promise<DailyPlanResponse> => {
-    if (!dirtyRef.current) {
-      return dailyPlansApi.get(selectedDate);
-    }
-    setSaving(true);
-    try {
-      const response = await dailyPlansApi.update(
-        selectedDate,
-        revisionRef.current,
-        documentRef.current,
-      );
-      setRevision(response.revision);
-      revisionRef.current = response.revision;
-      setDirty(false);
-      dirtyRef.current = false;
-      setConflict(false);
-      return response;
-    } catch (error) {
-      if (error instanceof ApiError && error.statusCode === 409) {
-        setConflict(true);
+  const saveNow = useCallback((): Promise<DailyPlanResponse> => {
+    if (saveInFlightRef.current) return saveInFlightRef.current;
+
+    const operation = async (): Promise<DailyPlanResponse> => {
+      if (!dirtyRef.current) {
+        return dailyPlansApi.get(selectedDate);
       }
-      throw error;
-    } finally {
-      setSaving(false);
-    }
+      setSaving(true);
+      try {
+        let response: DailyPlanResponse | undefined;
+        // An edit can arrive while a PUT is in flight. Keep saving snapshots until
+        // the server has the latest document instead of clearing the newer edit.
+        while (dirtyRef.current) {
+          const snapshot = documentRef.current;
+          response = await dailyPlansApi.update(
+            selectedDate,
+            revisionRef.current,
+            snapshot,
+          );
+          setRevision(response.revision);
+          revisionRef.current = response.revision;
+          if (documentRef.current === snapshot) {
+            setDirty(false);
+            dirtyRef.current = false;
+          }
+          setConflict(false);
+        }
+        return response ?? dailyPlansApi.get(selectedDate);
+      } catch (error) {
+        if (error instanceof ApiError && error.statusCode === 409) {
+          setConflict(true);
+        }
+        throw error;
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    const promise = operation().finally(() => {
+      saveInFlightRef.current = null;
+    });
+    saveInFlightRef.current = promise;
+    return promise;
   }, [selectedDate]);
 
   useEffect(() => {
@@ -417,10 +436,20 @@ export function LightweightDailyPlanner({
       await saveNow();
       const response = await dailyPlansApi.generate(selectedDate);
       setSchedule(response.schedule ?? null);
-      toast({
-        title: "予定を自動生成しました",
-        description: `${response.schedule?.assignments.length ?? 0}件を保存しました`,
-      });
+      if (response.schedule?.success) {
+        toast({
+          title: "予定を自動生成しました",
+          description: `${response.schedule.assignments.length}件を保存しました`,
+        });
+      } else {
+        const unscheduledCount =
+          response.schedule?.unscheduled_tasks?.length ?? 0;
+        toast({
+          title: "予定を生成できませんでした",
+          description: `${response.schedule?.optimization_status ?? "SOLVER_ERROR"}（未配置 ${unscheduledCount}件）`,
+          variant: "destructive",
+        });
+      }
     } catch (error) {
       toast({
         title: "自動生成に失敗しました",
@@ -441,6 +470,23 @@ export function LightweightDailyPlanner({
         title: "詳細モードへ切り替えられませんでした",
         description:
           error instanceof Error ? error.message : "保存状態を確認してください",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const changeSelectedDate = async (nextDate: string) => {
+    if (!nextDate || nextDate === selectedDate) return;
+    try {
+      if (dirtyRef.current || saveInFlightRef.current) await saveNow();
+      onSelectedDateChange(nextDate);
+    } catch (error) {
+      toast({
+        title: "日付を変更できませんでした",
+        description:
+          error instanceof Error
+            ? error.message
+            : "先に現在の文書を保存してください",
         variant: "destructive",
       });
     }
@@ -755,7 +801,9 @@ export function LightweightDailyPlanner({
               <Input
                 type="date"
                 value={selectedDate}
-                onChange={(event) => onSelectedDateChange(event.target.value)}
+                onChange={(event) =>
+                  void changeSelectedDate(event.target.value)
+                }
                 className="w-40"
               />
             </div>
@@ -876,6 +924,11 @@ export function LightweightDailyPlanner({
                 </p>
               </div>
             )}
+            {schedule?.unused_minutes !== undefined && (
+              <p className="text-right text-sm text-gray-500">
+                当日の未使用時間: {schedule.unused_minutes}分
+              </p>
+            )}
             {document.blocks.map((block, index) => {
               const assignments =
                 schedule?.assignments.filter(
@@ -943,7 +996,7 @@ export function LightweightDailyPlanner({
                     {diagnostic?.reason && (
                       <p className="mt-2 text-sm text-amber-700">
                         {diagnostic.reason}（候補 {diagnostic.eligible_count}
-                        件・未使用 {diagnostic.unused_minutes ?? 0}分）
+                        件）
                       </p>
                     )}
                   </div>
@@ -1022,9 +1075,14 @@ export function LightweightDailyPlanner({
                   type="number"
                   min={1}
                   value={actualMinutes}
-                  onChange={(event) =>
-                    setActualMinutes(Number(event.target.value))
-                  }
+                  onChange={(event) => {
+                    const parsed = Number.parseInt(event.target.value, 10);
+                    setActualMinutes(
+                      Number.isFinite(parsed) && parsed > 0
+                        ? Math.min(parsed, 1440)
+                        : 1,
+                    );
+                  }}
                 />
               </div>
             )}
@@ -1077,9 +1135,14 @@ export function LightweightDailyPlanner({
                   type="number"
                   min={1}
                   value={newTaskMinutes}
-                  onChange={(event) =>
-                    setNewTaskMinutes(Number(event.target.value))
-                  }
+                  onChange={(event) => {
+                    const parsed = Number.parseInt(event.target.value, 10);
+                    setNewTaskMinutes(
+                      Number.isFinite(parsed) && parsed > 0
+                        ? Math.min(parsed, 1440)
+                        : 1,
+                    );
+                  }}
                 />
               </div>
               <div className="space-y-1">
@@ -1299,7 +1362,14 @@ function DirectiveEditor({
             onChange({
               ...block,
               mode,
-              task_ref: mode === "task" ? block.task_ref : undefined,
+              task_ref:
+                mode === "task"
+                  ? (block.task_ref ?? taskOptions[0]?.ref)
+                  : undefined,
+              title:
+                mode === "task"
+                  ? (block.title ?? taskOptions[0]?.title)
+                  : block.title,
               filter: mode === "filter" ? filter : undefined,
             })
           }
@@ -1308,7 +1378,12 @@ function DirectiveEditor({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="task">特定タスク</SelectItem>
+            <SelectItem
+              value="task"
+              disabled={!block.task_ref && taskOptions.length === 0}
+            >
+              特定タスク
+            </SelectItem>
             <SelectItem value="filter">条件から選択</SelectItem>
           </SelectContent>
         </Select>
@@ -1325,13 +1400,19 @@ function DirectiveEditor({
           <Input
             type="number"
             min={1}
-            value={block.duration_override_minutes ?? 30}
-            onChange={(event) =>
+            max={1440}
+            placeholder="残り見積り"
+            value={block.duration_override_minutes ?? ""}
+            onChange={(event) => {
+              const parsed = Number.parseInt(event.target.value, 10);
               onChange({
                 ...block,
-                duration_override_minutes: Number(event.target.value),
-              })
-            }
+                duration_override_minutes:
+                  Number.isFinite(parsed) && parsed > 0
+                    ? Math.min(parsed, 1440)
+                    : undefined,
+              });
+            }}
             className="w-28"
           />
           <span className="self-center text-sm text-gray-500">分</span>

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, date as date_type, datetime, time
 from decimal import Decimal
 from typing import Annotated, Literal
@@ -46,6 +47,7 @@ from humancompiler_api.models import (
 )
 
 router = APIRouter(prefix="/daily-plans", tags=["daily-plans"])
+logger = logging.getLogger(__name__)
 
 JST = ZoneInfo("Asia/Tokyo")
 ACTIVE_TASK_STATUSES = {TaskStatus.PENDING, TaskStatus.IN_PROGRESS}
@@ -293,10 +295,16 @@ async def update_daily_plan(
 ) -> DailyPlanResponse:
     date_value = _parse_date(date)
     owner_id = UUID(user_id)
-    regular, quick, _actual_minutes = _load_owned_tasks(session, owner_id)
-    for block in request.document.blocks:
-        task_ref = getattr(block, "task_ref", None)
-        if task_ref is not None:
+    task_refs = [
+        task_ref
+        for block in request.document.blocks
+        if (task_ref := getattr(block, "task_ref", None)) is not None
+    ]
+    if task_refs:
+        regular, quick, _actual_minutes = _load_owned_tasks(
+            session, owner_id, include_actual_minutes=False
+        )
+        for task_ref in task_refs:
             _validate_task_ref(task_ref, regular, quick)
     existing = _get_document(session, owner_id, date_value)
     if existing is None:
@@ -333,13 +341,12 @@ async def update_daily_plan(
         )
         if result.rowcount != 1:  # type: ignore[attr-defined]
             session.rollback()
+            current = _get_document(session, owner_id, date_value)
             raise HTTPException(
                 status_code=409,
                 detail={
                     "message": "Daily plan revision conflict",
-                    "current_revision": _get_document(
-                        session, owner_id, date_value
-                    ).revision,
+                    "current_revision": current.revision if current else None,
                 },
             )
         session.commit()
@@ -358,7 +365,10 @@ def _work_kind(value: str | WorkType) -> HumanWorkKind:
 
 
 def _load_owned_tasks(
-    session: Session, owner_id: UUID
+    session: Session,
+    owner_id: UUID,
+    *,
+    include_actual_minutes: bool = True,
 ) -> tuple[
     dict[str, tuple[Task, Goal, Project]],
     dict[str, QuickTask],
@@ -375,13 +385,16 @@ def _load_owned_tasks(
         select(QuickTask).where(QuickTask.owner_id == owner_id)
     ).all()
     quick = {f"quick_{task.id}": task for task in quick_rows}
-    log_rows = session.exec(
-        select(Log).where(Log.task_id.in_([row[0].id for row in rows]))
-    ).all()
     actual_minutes: dict[str, int] = {}
-    for log in log_rows:
-        task_id = str(log.task_id)
-        actual_minutes[task_id] = actual_minutes.get(task_id, 0) + log.actual_minutes
+    if include_actual_minutes and rows:
+        log_rows = session.exec(
+            select(Log).where(Log.task_id.in_([row[0].id for row in rows]))
+        ).all()
+        for log in log_rows:
+            task_id = str(log.task_id)
+            actual_minutes[task_id] = (
+                actual_minutes.get(task_id, 0) + log.actual_minutes
+            )
     return regular, quick, actual_minutes
 
 
@@ -703,6 +716,27 @@ def _build_scheduler_input(
     return fixture, task_metadata, eligible_counts
 
 
+def _save_generated_schedule(
+    session: Session,
+    owner_id: UUID,
+    date_value: date_type,
+    plan_json: dict,
+) -> None:
+    schedule = _get_schedule(session, owner_id, date_value)
+    if schedule is None:
+        schedule = Schedule(
+            id=uuid4(),
+            user_id=owner_id,
+            date=datetime.combine(date_value, time.min),
+            plan_json=plan_json,
+        )
+    else:
+        schedule.plan_json = plan_json
+        schedule.updated_at = datetime.now(UTC)
+    session.add(schedule)
+    session.commit()
+
+
 @router.post("/{date}/generate", response_model=DailyPlanResponse)
 async def generate_daily_plan(
     date: str,
@@ -721,8 +755,35 @@ async def generate_daily_plan(
     fixture, task_metadata, eligible_counts = _build_scheduler_input(
         session, owner_id, date, document
     )
-    compiled_fixture = compile_human_flexible_daily_fixture(fixture)
-    report = plan_daily_schedule(compiled_fixture)
+    try:
+        compiled_fixture = compile_human_flexible_daily_fixture(fixture)
+        report = plan_daily_schedule(compiled_fixture)
+    except Exception:
+        logger.exception("humancompiler-scheduler failed for daily plan %s", date)
+        plan_json = {
+            "success": False,
+            "assignments": [],
+            "planned_task_ids": [],
+            "total_scheduled_hours": 0.0,
+            "optimization_status": "SOLVER_ERROR",
+            "solve_time_seconds": 0.0,
+            "objective_value": None,
+            "generated_at": datetime.now(UTC).isoformat(),
+            "source": "daily_plan_document",
+            "source_document_revision": source_document.revision,
+            "directive_diagnostics": [],
+            "unused_minutes": 0,
+            "unscheduled_tasks": [
+                {
+                    "task_id": task.id,
+                    "title": task.title,
+                    "reason": "solver_error",
+                }
+                for task in fixture.tasks
+            ],
+        }
+        _save_generated_schedule(session, owner_id, date_value, plan_json)
+        return _response(session, owner_id, date, source_document)
     slots_by_index = {slot.index: slot for slot in compiled_fixture.time_slots}
 
     assignments: list[dict] = []
@@ -802,7 +863,6 @@ async def generate_daily_plan(
                 "eligible_count": eligible_count,
                 "generated_count": generated_count,
                 "generated_minutes": generated_for_directive,
-                "unused_minutes": unused_minutes,
                 "reason": reason,
             }
         )
@@ -821,6 +881,7 @@ async def generate_daily_plan(
         "source": "daily_plan_document",
         "source_document_revision": source_document.revision,
         "directive_diagnostics": diagnostics,
+        "unused_minutes": unused_minutes,
         "unscheduled_tasks": [
             {
                 "task_id": item.task_id,
@@ -830,19 +891,7 @@ async def generate_daily_plan(
             for item in report.unscheduled_tasks
         ],
     }
-    schedule = _get_schedule(session, owner_id, date_value)
-    if schedule is None:
-        schedule = Schedule(
-            id=uuid4(),
-            user_id=owner_id,
-            date=datetime.combine(date_value, time.min),
-            plan_json=plan_json,
-        )
-    else:
-        schedule.plan_json = plan_json
-        schedule.updated_at = datetime.now(UTC)
-    session.add(schedule)
-    session.commit()
+    _save_generated_schedule(session, owner_id, date_value, plan_json)
     return _response(session, owner_id, date, source_document)
 
 
@@ -855,7 +904,9 @@ async def apply_task_action(
 ) -> TaskActionResponse:
     _parse_date(date)
     owner_id = UUID(user_id)
-    regular, quick, _actual = _load_owned_tasks(session, owner_id)
+    regular, quick, _actual = _load_owned_tasks(
+        session, owner_id, include_actual_minutes=False
+    )
     scheduler_id = _validate_task_ref(request.task_ref, regular, quick)
 
     if request.task_ref.source == "quick_task":

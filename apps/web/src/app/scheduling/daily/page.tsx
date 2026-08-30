@@ -42,6 +42,7 @@ import { getSlotKindLabel, getSlotKindColor, slotKinds } from '@/constants/sched
 import { DroppableSlot, TaskPool, DraggableTask } from '@/components/scheduling';
 import { LightweightDailyPlanner } from '@/components/scheduling/lightweight-daily-planner';
 import { getSelectableProjects } from '@/lib/project-filters';
+import { preserveUnconvertedDailyPlanBlocks } from '@/lib/daily-plan-adapter';
 import type { SlotKind } from '@/constants/schedule';
 import type {
   ScheduleRequest,
@@ -63,6 +64,8 @@ interface ManualAssignment {
   taskId: string;
   slotIndex: number;
   durationHours?: number;
+  start?: string;
+  sourceBlockId?: string;
 }
 
 function addMinutesToClock(clock: string, minutes: number): string {
@@ -84,6 +87,7 @@ export default function SchedulingPage() {
     date: string;
     document: DailyPlanDocumentV1;
     revision: number;
+    convertedBlockIds: string[];
   } | null>(null);
 
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([
@@ -393,8 +397,14 @@ export default function SchedulingPage() {
 
       // Remove from any previous slot
       setManualAssignments(prev => {
+        const previous = prev.find(a => a.taskId === taskId);
         const filtered = prev.filter(a => a.taskId !== taskId);
-        return [...filtered, { taskId, slotIndex }];
+        return [...filtered, {
+          taskId,
+          slotIndex,
+          durationHours: previous?.durationHours,
+          sourceBlockId: previous?.sourceBlockId,
+        }];
       });
     }
   }, [timeSlots]);
@@ -530,7 +540,7 @@ export default function SchedulingPage() {
       end: window.end,
       kind: window.work_type,
     }));
-    setDailyPlanAdapter({ date: selectedDate, document, revision });
+    const convertedBlockIds: string[] = [];
     setTimeSlots(slots);
     setManualAssignments(document.blocks.flatMap(block => {
       if (block.type !== 'timed_line' || !block.task_ref) return [];
@@ -538,6 +548,7 @@ export default function SchedulingPage() {
         slot => slot.start <= block.start && block.end <= slot.end
       );
       if (slotIndex < 0) return [];
+      convertedBlockIds.push(block.id);
       const [startHour = 0, startMinute = 0] = block.start.split(':').map(Number);
       const [endHour = 0, endMinute = 0] = block.end.split(':').map(Number);
       return [{
@@ -545,9 +556,17 @@ export default function SchedulingPage() {
           ? `quick_${block.task_ref.id}`
           : block.task_ref.id,
         slotIndex,
+        start: block.start,
+        sourceBlockId: block.id,
         durationHours: ((endHour * 60 + endMinute) - (startHour * 60 + startMinute)) / 60,
       }];
     }));
+    setDailyPlanAdapter({
+      date: selectedDate,
+      document,
+      revision,
+      convertedBlockIds,
+    });
     setPlannerMode('detailed');
   }, [selectedDate]);
 
@@ -559,20 +578,26 @@ export default function SchedulingPage() {
             date: selectedDate,
             document: response.document,
             revision: response.revision,
+            convertedBlockIds: [],
           }));
-      const preservedBlocks = base.document.blocks.filter(
-        block => !block.id.startsWith('detailed-fixed:') && !block.id.startsWith('detailed-event:')
+      const preservedBlocks = preserveUnconvertedDailyPlanBlocks(
+        base.document.blocks,
+        base.convertedBlockIds,
       );
       const fixedBlocks = manualAssignments.flatMap(assignment => {
         const slot = timeSlots[assignment.slotIndex];
         const task = availableTasks.find(item => item.id === assignment.taskId);
         if (!slot || !task) return [];
         return [{
-          id: `detailed-fixed:${assignment.taskId}`,
+          id: assignment.sourceBlockId
+            ?? `detailed-fixed:${assignment.taskId}:${assignment.slotIndex}`,
           type: 'timed_line' as const,
-          start: slot.start,
+          start: assignment.start ?? slot.start,
           end: assignment.durationHours
-            ? addMinutesToClock(slot.start, Math.round(assignment.durationHours * 60))
+            ? addMinutesToClock(
+                assignment.start ?? slot.start,
+                Math.round(assignment.durationHours * 60)
+              )
             : slot.end,
           title: task.title.replace(/^📥\s*/, ''),
           task_ref: {
@@ -618,6 +643,7 @@ export default function SchedulingPage() {
         date: selectedDate,
         document: response.document,
         revision: response.revision,
+        convertedBlockIds: [],
       });
       setPlannerMode('lightweight');
     } catch (error) {

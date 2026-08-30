@@ -225,7 +225,8 @@ async def test_generate_resolves_specific_and_filtered_directives(
         if item["directive_id"] == "project"
     )
     assert project_diagnostic["eligible_count"] == 2
-    assert "unused_minutes" in project_diagnostic
+    assert "unused_minutes" not in project_diagnostic
+    assert generated.schedule["unused_minutes"] >= 0
 
 
 @pytest.mark.asyncio
@@ -253,6 +254,46 @@ async def test_project_filter_excludes_quick_tasks_without_membership(
 
     task_ids = {item["task_id"] for item in generated.schedule["assignments"]}
     assert f"quick_{quick.id}" not in task_ids
+
+
+@pytest.mark.asyncio
+async def test_generate_persists_structured_solver_error(
+    session: Session, planning_data, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user, _project, _goal, first, _second, _quick = planning_data
+    await update_daily_plan(
+        "2030-01-05",
+        DailyPlanUpdateRequest(
+            expected_revision=0,
+            document=DailyPlanDocumentV1(
+                blocks=[
+                    ScheduleDirectiveBlock(
+                        id="specific",
+                        mode="task",
+                        task_ref=TaskRef(source="task", id=first.id),
+                    )
+                ]
+            ),
+        ),
+        str(user.id),
+        session,
+    )
+
+    def fail_solver(_fixture):
+        raise RuntimeError("solver unavailable")
+
+    monkeypatch.setattr(
+        "humancompiler_api.routers.daily_plans.plan_daily_schedule",
+        fail_solver,
+    )
+
+    generated = await generate_daily_plan("2030-01-05", str(user.id), session)
+
+    assert generated.schedule is not None
+    assert generated.schedule["success"] is False
+    assert generated.schedule["optimization_status"] == "SOLVER_ERROR"
+    assert generated.schedule["assignments"] == []
+    assert generated.schedule["unscheduled_tasks"][0]["task_id"] == str(first.id)
 
 
 @pytest.mark.asyncio

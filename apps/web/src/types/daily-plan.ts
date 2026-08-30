@@ -88,7 +88,6 @@ export interface DailyPlanDirectiveDiagnostic {
   eligible_count: number;
   generated_count: number;
   generated_minutes?: number;
-  unused_minutes?: number;
   reason?: string | null;
 }
 
@@ -101,6 +100,12 @@ export interface DailyPlanSchedule {
   source?: string;
   source_document_revision?: number;
   directive_diagnostics?: DailyPlanDirectiveDiagnostic[];
+  unused_minutes?: number;
+  unscheduled_tasks?: Array<{
+    task_id: string;
+    title: string;
+    reason: string;
+  }>;
 }
 
 export interface DailyPlanResponse {
