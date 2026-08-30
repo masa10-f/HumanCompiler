@@ -35,8 +35,13 @@ const UPDATED_AT_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {
   timeZone: 'Asia/Tokyo',
 };
 
-const formatUpdatedAt = (value: string) =>
-  formatJSTDateTime(value, UPDATED_AT_FORMAT_OPTIONS);
+const formatUpdatedAt = (value: string) => {
+  try {
+    return `${formatJSTDateTime(value, UPDATED_AT_FORMAT_OPTIONS)} 更新`;
+  } catch {
+    return '更新日時不明';
+  }
+};
 
 const getItemHref = (item: RecentDashboardItem) => {
   const goalHref = `/projects/${item.project_id}/goals/${item.goal_id}`;
@@ -76,6 +81,15 @@ export function RecentItemShortcuts() {
           </div>
         ) : recentItems.data?.length ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {recentItems.isError ? (
+              <p
+                className="text-xs text-destructive sm:col-span-2 lg:col-span-5"
+                role="status"
+                aria-live="polite"
+              >
+                最新の情報を取得できませんでした
+              </p>
+            ) : null}
             {recentItems.data.map((item) => {
               const Icon = item.kind === 'task' ? CheckSquare2 : Target;
               const itemLabel = item.kind === 'task' ? 'タスク' : 'ゴール';
@@ -110,7 +124,7 @@ export function RecentItemShortcuts() {
                     {breadcrumb}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {formatUpdatedAt(item.updated_at)} 更新
+                    {formatUpdatedAt(item.updated_at)}
                   </p>
                 </Link>
               );
