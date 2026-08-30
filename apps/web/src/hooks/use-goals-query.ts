@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { goalsApi } from '@/lib/api'
 import type { Goal, GoalCreate, GoalUpdate } from '@/types/goal'
 import type { SortOptions } from '@/types/sort'
+import { queryKeys } from '@/lib/query-keys'
 
 /**
  * Query keys for goal caching with React Query.
@@ -64,6 +65,8 @@ export function useCreateGoal() {
   return useMutation({
     mutationFn: (goalData: GoalCreate) => goalsApi.create(goalData),
     onSuccess: (newGoal: Goal) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
+
       // Invalidate goals for the specific project
       queryClient.invalidateQueries({
         queryKey: goalKeys.byProject(newGoal.project_id)
@@ -91,6 +94,8 @@ export function useUpdateGoal() {
     mutationFn: ({ id, data }: { id: string; data: GoalUpdate }) =>
       goalsApi.update(id, data),
     onSuccess: (updatedGoal: Goal) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
+
       // Update the cached goal
       queryClient.setQueryData(
         goalKeys.detail(updatedGoal.id),
@@ -129,6 +134,8 @@ export function useDeleteGoal() {
       // Delay cache invalidation to allow dialog close animation to complete
       // This prevents Radix UI dialog cleanup issues that cause UI freeze
       setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
+
         // Force reset body styles in case Radix UI dialog cleanup failed
         if (typeof document !== 'undefined') {
           document.body.style.pointerEvents = ''

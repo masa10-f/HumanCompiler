@@ -15,6 +15,7 @@ import type {
 } from '@/types/task'
 import { SortBy, SortOrder } from '@/types/sort'
 import type { SortOptions } from '@/types/sort'
+import { queryKeys } from '@/lib/query-keys'
 
 // Mock the API
 const mockGetByGoal = jest.fn<Promise<Task[]>, [string, number?, number?, SortOptions?]>()
@@ -288,6 +289,9 @@ describe('useCreateTask', () => {
     expect(mockCreate).toHaveBeenCalled()
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: taskKeys.byGoal('goal-1'),
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: queryKeys.dashboard.all,
     })
   })
 

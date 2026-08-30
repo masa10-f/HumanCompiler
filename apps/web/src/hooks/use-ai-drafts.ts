@@ -30,6 +30,7 @@ export function useApplyGoalTaskDraft() {
     mutationFn: (request: GoalTaskDraftApplyRequest) =>
       aiPlanningApi.applyGoalTaskDraft(request),
     onSuccess: (response: GoalTaskDraftApplyResponse, request) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
       queryClient.invalidateQueries({ queryKey: goalKeys.byProject(request.project_id) });
       queryClient.invalidateQueries({ queryKey: taskKeys.byProject(request.project_id) });
       queryClient.invalidateQueries({ queryKey: queryKeys.progress.project(request.project_id) });

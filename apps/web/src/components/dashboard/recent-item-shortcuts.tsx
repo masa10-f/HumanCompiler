@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2024-2025 Masato Fukushima <masa1063fuk@gmail.com>
+//
+// This file is part of HumanCompiler.
+// For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
+
 'use client';
 
 import Link from 'next/link';
@@ -14,24 +20,23 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { dashboardApi } from '@/lib/api';
+import { formatJSTDateTime } from '@/lib/date-utils';
+import { queryKeys } from '@/lib/query-keys';
 import type { RecentDashboardItem } from '@/types/dashboard';
+import { taskStatusLabels } from '@/types/task';
 
 const ITEM_LIMIT = 5;
 
-const statusLabels: Record<RecentDashboardItem['status'], string> = {
-  pending: '未着手',
-  in_progress: '進行中',
-  completed: '完了',
-  cancelled: 'キャンセル',
+const UPDATED_AT_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {
+  month: 'numeric',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'Asia/Tokyo',
 };
 
 const formatUpdatedAt = (value: string) =>
-  new Intl.DateTimeFormat('ja-JP', {
-    month: 'numeric',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
+  formatJSTDateTime(value, UPDATED_AT_FORMAT_OPTIONS);
 
 const getItemHref = (item: RecentDashboardItem) => {
   const goalHref = `/projects/${item.project_id}/goals/${item.goal_id}`;
@@ -40,10 +45,9 @@ const getItemHref = (item: RecentDashboardItem) => {
 
 export function RecentItemShortcuts() {
   const recentItems = useQuery({
-    queryKey: ['dashboard', 'recent-items', ITEM_LIMIT],
+    queryKey: queryKeys.dashboard.recentItems(ITEM_LIMIT),
     queryFn: () => dashboardApi.getRecentItems(ITEM_LIMIT),
     staleTime: 30 * 1000,
-    refetchOnMount: 'always',
   });
 
   return (
@@ -58,34 +62,27 @@ export function RecentItemShortcuts() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {recentItems.isLoading ? (
+        {recentItems.isLoading && !recentItems.data ? (
           <div
             className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"
-            aria-label="最近触った項目を読み込み中"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
           >
+            <span className="sr-only">最近触った項目を読み込み中</span>
             {Array.from({ length: ITEM_LIMIT }, (_, index) => (
               <div key={index} className="h-32 animate-pulse rounded-lg bg-muted" />
             ))}
-          </div>
-        ) : recentItems.isError ? (
-          <div className="flex flex-col items-center gap-3 py-4 text-center">
-            <p className="text-sm text-destructive">
-              最近触った項目を取得できませんでした
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => recentItems.refetch()}
-            >
-              <RefreshCw className="mr-1 h-4 w-4" />
-              再試行
-            </Button>
           </div>
         ) : recentItems.data?.length ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             {recentItems.data.map((item) => {
               const Icon = item.kind === 'task' ? CheckSquare2 : Target;
               const itemLabel = item.kind === 'task' ? 'タスク' : 'ゴール';
+              const breadcrumb =
+                item.kind === 'task'
+                  ? `${item.project_title} › ${item.goal_title}`
+                  : item.project_title;
 
               return (
                 <Link
@@ -100,7 +97,7 @@ export function RecentItemShortcuts() {
                       {itemLabel}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
-                      {statusLabels[item.status]}
+                      {taskStatusLabels[item.status]}
                     </span>
                   </div>
                   <p className="line-clamp-2 min-h-10 break-words text-sm font-medium group-hover:text-blue-700 dark:group-hover:text-blue-300">
@@ -108,11 +105,9 @@ export function RecentItemShortcuts() {
                   </p>
                   <p
                     className="mt-2 truncate text-xs text-muted-foreground"
-                    title={`${item.project_title} › ${item.goal_title}`}
+                    title={breadcrumb}
                   >
-                    {item.kind === 'task'
-                      ? `${item.project_title} › ${item.goal_title}`
-                      : item.project_title}
+                    {breadcrumb}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {formatUpdatedAt(item.updated_at)} 更新
@@ -120,6 +115,20 @@ export function RecentItemShortcuts() {
                 </Link>
               );
             })}
+          </div>
+        ) : recentItems.isError ? (
+          <div className="flex flex-col items-center gap-3 py-4 text-center">
+            <p className="text-sm text-destructive">
+              最近触った項目を取得できませんでした
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => recentItems.refetch()}
+            >
+              <RefreshCw className="mr-1 h-4 w-4" />
+              再試行
+            </Button>
           </div>
         ) : (
           <div className="py-6 text-center text-sm text-muted-foreground">

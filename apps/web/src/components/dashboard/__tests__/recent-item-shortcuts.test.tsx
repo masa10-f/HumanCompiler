@@ -1,8 +1,15 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2024-2025 Masato Fukushima <masa1063fuk@gmail.com>
+//
+// This file is part of HumanCompiler.
+// For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
+
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { RecentItemShortcuts } from '../recent-item-shortcuts';
 import { dashboardApi } from '@/lib/api';
+import { queryKeys } from '@/lib/query-keys';
 import type { RecentDashboardItem } from '@/types/dashboard';
 
 jest.mock('@/lib/api', () => ({
@@ -40,16 +47,21 @@ const items: RecentDashboardItem[] = [
   },
 ];
 
-function renderShortcuts() {
+function renderShortcuts(cachedItems?: RecentDashboardItem[]) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  if (cachedItems) {
+    queryClient.setQueryData(queryKeys.dashboard.recentItems(5), cachedItems);
+  }
 
-  return render(
+  const rendered = render(
     <QueryClientProvider client={queryClient}>
       <RecentItemShortcuts />
     </QueryClientProvider>,
   );
+
+  return { ...rendered, queryClient };
 }
 
 describe('RecentItemShortcuts', () => {
@@ -69,6 +81,8 @@ describe('RecentItemShortcuts', () => {
       '/projects/project-2/goals/goal-2',
     );
     expect(mockGetRecentItems).toHaveBeenCalledWith(5);
+    expect(screen.getByText('8/31 00:00 更新')).toBeInTheDocument();
+    expect(screen.getByTitle('次期リリース')).toHaveTextContent('次期リリース');
   });
 
   it('shows an empty-state message when no item has been updated', async () => {
@@ -79,5 +93,45 @@ describe('RecentItemShortcuts', () => {
     expect(
       await screen.findByText('タスクやゴールを更新すると、ここにショートカットが表示されます'),
     ).toBeInTheDocument();
+  });
+
+  it('keeps cached shortcuts visible when a background refresh fails', async () => {
+    mockGetRecentItems.mockRejectedValue(new Error('temporary failure'));
+    const { queryClient } = renderShortcuts(items);
+
+    await act(async () => {
+      await queryClient.refetchQueries({
+        queryKey: queryKeys.dashboard.recentItems(5),
+      });
+    });
+
+    await waitFor(() =>
+      expect(
+        queryClient.getQueryState(queryKeys.dashboard.recentItems(5))?.status,
+      ).toBe('error'),
+    );
+    expect(
+      screen.getByRole('link', { name: 'タスク「仕様を確認する」を開く' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('最近触った項目を取得できませんでした'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('retries an initial load failure', async () => {
+    mockGetRecentItems
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce(items);
+
+    renderShortcuts();
+
+    fireEvent.click(await screen.findByRole('button', { name: '再試行' }));
+
+    expect(
+      await screen.findByRole('link', {
+        name: 'タスク「仕様を確認する」を開く',
+      }),
+    ).toBeInTheDocument();
+    expect(mockGetRecentItems).toHaveBeenCalledTimes(2);
   });
 });
