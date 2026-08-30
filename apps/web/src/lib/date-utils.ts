@@ -167,6 +167,48 @@ export function formatJapaneseDate(
 }
 
 /**
+ * Format a date for display without allowing malformed API data to break a page.
+ */
+export function safeFormatJapaneseDate(
+  date: Date | string,
+  fallback: string = '日付不明'
+): string {
+  try {
+    return formatJapaneseDate(date)
+  } catch {
+    return fallback
+  }
+}
+
+/**
+ * Convert an API datetime into the calendar date used by JST date inputs.
+ */
+export function toJSTDateInputValue(dateString: string | null): string {
+  if (!dateString) return ''
+
+  const date = new Date(dateString)
+  if (isNaN(date.getTime())) return ''
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone: 'Asia/Tokyo',
+  }).formatToParts(date)
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+
+  return `${values.year}-${values.month}-${values.day}`
+}
+
+/**
+ * Add the explicit JST offset before sending a calendar deadline to the API.
+ */
+export function toJSTStartOfDayISOString(dateString: string): string {
+  getJSTDate(dateString)
+  return `${dateString}T00:00:00+09:00`
+}
+
+/**
  * Get the current JST time as ISO string
  * Useful for timestamps that need to be JST-based
  *

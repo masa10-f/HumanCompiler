@@ -49,4 +49,17 @@ describe('GoalCard', () => {
 
     expect(screen.queryByText(/^期限:/)).not.toBeInTheDocument()
   })
+
+  it('不正な期限でもカード一覧を表示し続ける', () => {
+    render(
+      <GoalCard
+        goal={{ ...baseGoal, due_date: 'invalid-date' }}
+        allGoals={[{ ...baseGoal, due_date: 'invalid-date' }]}
+        onNavigate={jest.fn()}
+      />,
+    )
+
+    expect(screen.getByText('期限: 日付不明')).toBeInTheDocument()
+    expect(screen.getByText(baseGoal.title)).toBeInTheDocument()
+  })
 })

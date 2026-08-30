@@ -44,6 +44,7 @@ import { toast } from '@/hooks/use-toast';
 import { goalsApi } from '@/lib/api';
 import { GitBranch, Trash2, Plus } from 'lucide-react';
 import type { Goal } from '@/types/goal';
+import { toJSTDateInputValue, toJSTStartOfDayISOString } from '@/lib/date-utils';
 
 const goalFormSchema = z.object({
   title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
@@ -130,7 +131,7 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
       title: goal.title,
       description: goal.description || '',
       estimate_hours: typeof goal.estimate_hours === 'string' ? parseFloat(goal.estimate_hours) : goal.estimate_hours,
-      due_date: goal.due_date?.split('T')[0] || '',
+      due_date: toJSTDateInputValue(goal.due_date),
     },
   });
 
@@ -140,7 +141,7 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
       title: goal.title,
       description: goal.description || '',
       estimate_hours: typeof goal.estimate_hours === 'string' ? parseFloat(goal.estimate_hours) : goal.estimate_hours,
-      due_date: goal.due_date?.split('T')[0] || '',
+      due_date: toJSTDateInputValue(goal.due_date),
     });
   }, [goal, form]);
 
@@ -152,7 +153,7 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
           title: data.title,
           description: data.description || undefined,
           estimate_hours: data.estimate_hours,
-          due_date: data.due_date || null,
+          due_date: data.due_date ? toJSTStartOfDayISOString(data.due_date) : null,
         }
       });
 

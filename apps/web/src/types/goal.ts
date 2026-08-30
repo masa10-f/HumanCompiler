@@ -161,5 +161,5 @@ export interface GoalFormData {
   /** 見積もり時間（時間単位） */
   estimate_hours: number;
   /** 期限日 */
-  due_date: string;
+  due_date?: string;
 }

@@ -21,7 +21,7 @@ import { ArrowLeft, Plus, Clock, FileText, Loader2, AlertCircle, Sparkles, Calen
 import { SortBy, SortOrder } from '@/types/sort';
 import type { SortOptions } from '@/types/sort';
 import { AppHeader } from '@/components/layout/app-header';
-import { formatJapaneseDate } from '@/lib/date-utils';
+import { safeFormatJapaneseDate } from '@/lib/date-utils';
 
 export default function GoalDetailPage() {
   const { user, loading: authLoading } = useAuth();
@@ -187,7 +187,7 @@ export default function GoalDetailPage() {
         {goal.due_date && (
           <div className="mb-4 flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-300">
             <CalendarDays className="h-4 w-4" />
-            期限: {formatJapaneseDate(goal.due_date)}
+            期限: {safeFormatJapaneseDate(goal.due_date)}
           </div>
         )}
 

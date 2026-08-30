@@ -26,6 +26,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { useCreateGoal } from '@/hooks/use-goals-query';
 import { toast } from '@/hooks/use-toast';
+import { toJSTStartOfDayISOString } from '@/lib/date-utils';
 
 const goalFormSchema = z.object({
   title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
@@ -70,7 +71,7 @@ export function GoalFormDialog({ projectId, children }: GoalFormDialogProps) {
         title: data.title,
         description: data.description || undefined,
         estimate_hours: data.estimate_hours,
-        due_date: data.due_date || undefined,
+        due_date: data.due_date ? toJSTStartOfDayISOString(data.due_date) : undefined,
         project_id: projectId,
       });
 
