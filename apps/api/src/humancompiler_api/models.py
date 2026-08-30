@@ -26,14 +26,14 @@ GOAL_DUE_DATE_DESCRIPTION = (
 GOAL_DUE_DATE_ONLY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-def prepare_goal_due_date(value: Any) -> Any:
+def prepare_due_date(value: Any) -> Any:
     """Convert an unambiguous calendar date into the start of that day in JST."""
     if isinstance(value, str) and GOAL_DUE_DATE_ONLY_PATTERN.fullmatch(value):
         return f"{value}T00:00:00+09:00"
     return value
 
 
-def require_goal_due_date_timezone(value: datetime | None) -> datetime | None:
+def require_due_date_timezone(value: datetime | None) -> datetime | None:
     """Reject ambiguous goal datetimes that do not include an offset."""
     if value is not None and (value.tzinfo is None or value.utcoffset() is None):
         raise ValueError("due_date datetime must include a timezone offset")
@@ -1036,12 +1036,12 @@ class GoalCreate(GoalBase):
     @field_validator("due_date", mode="before")
     @classmethod
     def prepare_due_date(cls, value: Any) -> Any:
-        return prepare_goal_due_date(value)
+        return prepare_due_date(value)
 
     @field_validator("due_date")
     @classmethod
     def validate_due_date_timezone(cls, value: datetime | None) -> datetime | None:
-        return require_goal_due_date_timezone(value)
+        return require_due_date_timezone(value)
 
 
 class GoalUpdate(BaseModel):
@@ -1056,12 +1056,12 @@ class GoalUpdate(BaseModel):
     @field_validator("due_date", mode="before")
     @classmethod
     def prepare_due_date(cls, value: Any) -> Any:
-        return prepare_goal_due_date(value)
+        return prepare_due_date(value)
 
     @field_validator("due_date")
     @classmethod
     def validate_due_date_timezone(cls, value: datetime | None) -> datetime | None:
-        return require_goal_due_date_timezone(value)
+        return require_due_date_timezone(value)
 
     @field_validator("status")
     @classmethod
