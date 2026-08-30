@@ -1,5 +1,5 @@
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date as Date, datetime
 from decimal import Decimal
 from enum import Enum, StrEnum
 from typing import Any
@@ -13,7 +13,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from sqlalchemy import JSON, text, UUID as SQLAlchemyUUID
+from sqlalchemy import JSON, UniqueConstraint, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
 from sqlmodel import Column, Relationship, SQLModel
 from sqlmodel import Field as SQLField
@@ -278,6 +278,9 @@ class User(UserBase, table=True):  # type: ignore[call-arg]
     # Relationships
     projects: list["Project"] = Relationship(back_populates="owner")
     schedules: list["Schedule"] = Relationship(back_populates="user")
+    daily_plan_documents: list["DailyPlanDocument"] = Relationship(
+        back_populates="user"
+    )
     weekly_schedules: list["WeeklySchedule"] = Relationship(back_populates="user")
     weekly_recurring_tasks: list["WeeklyRecurringTask"] = Relationship(
         back_populates="user"
@@ -574,6 +577,27 @@ class Schedule(ScheduleBase, table=True):  # type: ignore[call-arg]
 
     # Relationships
     user: User = Relationship(back_populates="schedules")
+
+
+class DailyPlanDocument(SQLModel, table=True):  # type: ignore[call-arg]
+    """Versioned source document for one user's lightweight daily plan."""
+
+    __tablename__ = "daily_plan_documents"
+    __table_args__ = (
+        UniqueConstraint("user_id", "date", name="uq_daily_plan_documents_user_date"),
+    )
+
+    id: UUID = SQLField(default_factory=uuid4, primary_key=True)
+    user_id: UUID = SQLField(foreign_key="users.id", index=True)
+    date: Date = SQLField(index=True)
+    revision: int = SQLField(default=1, ge=1)
+    document_json: dict[str, Any] = SQLField(
+        sa_column=Column(JSON), default_factory=dict
+    )
+    created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
+
+    user: User = Relationship(back_populates="daily_plan_documents")
 
 
 class WeeklyRecurringTaskBase(SQLModel):

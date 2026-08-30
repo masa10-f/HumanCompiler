@@ -555,7 +555,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=41.0.0" },
     { name = "fastapi", specifier = ">=0.104.0" },
     { name = "httpx", specifier = ">=0.25.0" },
-    { name = "humancompiler-scheduler", extras = ["cp-sat"], specifier = ">=0.3.1" },
+    { name = "humancompiler-scheduler", extras = ["cp-sat"], specifier = ">=0.4.0" },
     { name = "langgraph", specifier = ">=0.1.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.5.0" },
     { name = "openai", specifier = ">=2.44.0" },
@@ -579,14 +579,14 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "humancompiler-scheduler"
-version = "0.3.1"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/49/89/a9daf36b8f52a077b7a7ecc22c1d6d7234056d2b5115d8a03bbf0be9577c/humancompiler_scheduler-0.3.1.tar.gz", hash = "sha256:147e09668b5253aa68ce48e30eb27dcd9ee84c9dcb8f1144733781a314c9115c", size = 160681, upload-time = "2026-07-06T04:00:51.324Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a4/a6/cf762ea570139cd8f22ee9f728e06b8a888bb211ba7041cb4feb33a74a12/humancompiler_scheduler-0.4.0.tar.gz", hash = "sha256:23f145fb487602582457113969d5052413f91ec622b2d6b16579d31ccdafdabb", size = 164576, upload-time = "2026-08-30T13:12:23.748Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c9/17/84903b3e9a1dcad8791b73ac09336e602f0b5bcc87cb7abb08b632daf632/humancompiler_scheduler-0.3.1-py3-none-any.whl", hash = "sha256:f1ea1b50ce7951db10a53ea35549739458e0b37cdd522ae6143d1ad45ab5adf4", size = 33330, upload-time = "2026-07-06T04:00:49.845Z" },
+    { url = "https://files.pythonhosted.org/packages/bf/a2/0e3710b59da57e0c60f22bfe7eb63984de76889e0795839c6e5f2582cf9c/humancompiler_scheduler-0.4.0-py3-none-any.whl", hash = "sha256:d2ece6a9e3dcd55dd2e3f018538243c1f83d6e161c3bf0d1681f832a4a23bb2f", size = 35314, upload-time = "2026-08-30T13:12:22.62Z" },
 ]
 
 [package.optional-dependencies]

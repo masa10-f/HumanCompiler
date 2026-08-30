@@ -36,10 +36,11 @@ import {
 } from 'lucide-react';
 import { AppHeader } from '@/components/layout/app-header';
 import { toast } from '@/hooks/use-toast';
-import { schedulingApi, tasksApi, quickTasksApi, slotTemplatesApi } from '@/lib/api';
+import { dailyPlansApi, schedulingApi, tasksApi, quickTasksApi, slotTemplatesApi } from '@/lib/api';
 import { useProjectOptions } from '@/hooks/use-project-query';
 import { getSlotKindLabel, getSlotKindColor, slotKinds } from '@/constants/schedule';
 import { DroppableSlot, TaskPool, DraggableTask } from '@/components/scheduling';
+import { LightweightDailyPlanner } from '@/components/scheduling/lightweight-daily-planner';
 import { getSelectableProjects } from '@/lib/project-filters';
 import type { SlotKind } from '@/constants/schedule';
 import type {
@@ -56,11 +57,18 @@ import type {
 import { getJSTDateString, getIsoDayOfWeek } from '@/lib/date-utils';
 import { logger } from '@/lib/logger';
 import { hasSchedulerSolverConfig, loadSchedulerSolverConfig } from '@/lib/scheduler-config';
+import type { DailyPlanDocumentV1 } from '@/types/daily-plan';
 
 interface ManualAssignment {
   taskId: string;
   slotIndex: number;
   durationHours?: number;
+}
+
+function addMinutesToClock(clock: string, minutes: number): string {
+  const [hour = 0, minute = 0] = clock.split(':').map(Number);
+  const total = Math.min(24 * 60 - 1, hour * 60 + minute + minutes);
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
 export default function SchedulingPage() {
@@ -71,6 +79,12 @@ export default function SchedulingPage() {
   } = useProjectOptions({ enabled: Boolean(user) });
 
   const [selectedDate, setSelectedDate] = useState(() => getJSTDateString());
+  const [plannerMode, setPlannerMode] = useState<'lightweight' | 'detailed'>('lightweight');
+  const [dailyPlanAdapter, setDailyPlanAdapter] = useState<{
+    date: string;
+    document: DailyPlanDocumentV1;
+    revision: number;
+  } | null>(null);
 
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([
     { start: '09:00', end: '12:00', kind: slotKinds.focused_work },
@@ -109,6 +123,7 @@ export default function SchedulingPage() {
     const source = params.get('source');
     const weekStart = params.get('week_start');
     const date = params.get('date');
+    if (params.get('mode') === 'detailed') setPlannerMode('detailed');
     if (date) setSelectedDate(date);
     if (source === 'weekly_schedule' && weekStart) {
       setTaskSource({
@@ -506,11 +521,129 @@ export default function SchedulingPage() {
     }
   };
 
+  const openDetailedMode = useCallback((
+    document: DailyPlanDocumentV1,
+    revision: number,
+  ) => {
+    const slots: TimeSlot[] = document.availability_windows.map(window => ({
+      start: window.start,
+      end: window.end,
+      kind: window.work_type,
+    }));
+    setDailyPlanAdapter({ date: selectedDate, document, revision });
+    setTimeSlots(slots);
+    setManualAssignments(document.blocks.flatMap(block => {
+      if (block.type !== 'timed_line' || !block.task_ref) return [];
+      const slotIndex = slots.findIndex(
+        slot => slot.start <= block.start && block.end <= slot.end
+      );
+      if (slotIndex < 0) return [];
+      const [startHour = 0, startMinute = 0] = block.start.split(':').map(Number);
+      const [endHour = 0, endMinute = 0] = block.end.split(':').map(Number);
+      return [{
+        taskId: block.task_ref.source === 'quick_task'
+          ? `quick_${block.task_ref.id}`
+          : block.task_ref.id,
+        slotIndex,
+        durationHours: ((endHour * 60 + endMinute) - (startHour * 60 + startMinute)) / 60,
+      }];
+    }));
+    setPlannerMode('detailed');
+  }, [selectedDate]);
+
+  const openLightweightMode = useCallback(async () => {
+    try {
+      const base = dailyPlanAdapter?.date === selectedDate
+        ? dailyPlanAdapter
+        : await dailyPlansApi.get(selectedDate).then(response => ({
+            date: selectedDate,
+            document: response.document,
+            revision: response.revision,
+          }));
+      const preservedBlocks = base.document.blocks.filter(
+        block => !block.id.startsWith('detailed-fixed:') && !block.id.startsWith('detailed-event:')
+      );
+      const fixedBlocks = manualAssignments.flatMap(assignment => {
+        const slot = timeSlots[assignment.slotIndex];
+        const task = availableTasks.find(item => item.id === assignment.taskId);
+        if (!slot || !task) return [];
+        return [{
+          id: `detailed-fixed:${assignment.taskId}`,
+          type: 'timed_line' as const,
+          start: slot.start,
+          end: assignment.durationHours
+            ? addMinutesToClock(slot.start, Math.round(assignment.durationHours * 60))
+            : slot.end,
+          title: task.title.replace(/^📥\s*/, ''),
+          task_ref: {
+            source: assignment.taskId.startsWith('quick_')
+              ? 'quick_task' as const
+              : 'task' as const,
+            id: assignment.taskId.replace(/^quick_/, ''),
+          },
+          pinned: true,
+        }];
+      });
+      const eventBlocks = timeSlots.flatMap((slot, index) => slot.kind === 'meeting'
+        ? [{
+            id: `detailed-event:${index}`,
+            type: 'timed_line' as const,
+            start: slot.start,
+            end: slot.end,
+            title: '固定イベント',
+            pinned: true,
+          }]
+        : []
+      );
+      const document: DailyPlanDocumentV1 = {
+        ...base.document,
+        availability_windows: timeSlots
+          .filter(slot => slot.kind !== 'meeting')
+          .map(slot => ({
+            start: slot.start,
+            end: slot.end,
+            work_type: slot.kind === 'meeting' ? 'light_work' : slot.kind,
+          })),
+        blocks: [...preservedBlocks, ...eventBlocks, ...fixedBlocks],
+      };
+      if (document.availability_windows.length === 0) {
+        document.availability_windows = base.document.availability_windows;
+      }
+      const response = await dailyPlansApi.update(
+        selectedDate,
+        base.revision,
+        document,
+      );
+      setDailyPlanAdapter({
+        date: selectedDate,
+        document: response.document,
+        revision: response.revision,
+      });
+      setPlannerMode('lightweight');
+    } catch (error) {
+      toast({
+        title: '軽量モードへの同期に失敗しました',
+        description: error instanceof Error ? error.message : '不明なエラー',
+        variant: 'destructive',
+      });
+    }
+  }, [availableTasks, dailyPlanAdapter, manualAssignments, selectedDate, timeSlots]);
+
   if (authLoading || !user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-lg">Loading...</div>
       </div>
+    );
+  }
+
+  if (plannerMode === 'lightweight') {
+    return (
+      <LightweightDailyPlanner
+        selectedDate={selectedDate}
+        onSelectedDateChange={setSelectedDate}
+        onSwitchDetailed={openDetailedMode}
+      />
     );
   }
 
@@ -533,6 +666,9 @@ export default function SchedulingPage() {
                 日次スケジューラ
               </h1>
               <div className="flex items-center gap-2">
+                <Button onClick={openLightweightMode} variant="outline" size="sm">
+                  軽量モード
+                </Button>
                 {hasSchedulerSolverConfig(solverConfig) && (
                   <Badge variant="outline" className="hidden sm:inline-flex">
                     調整中
