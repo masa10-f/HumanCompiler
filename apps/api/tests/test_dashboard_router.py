@@ -1,7 +1,13 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2024-2025 Masato Fukushima <masa1063fuk@gmail.com>
+#
+# This file is part of HumanCompiler.
+# For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
+
 """Tests for dashboard shortcut endpoints."""
 
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -29,6 +35,7 @@ def test_session():
 
 @pytest.fixture(autouse=True)
 def reset_dependency_overrides():
+    app.dependency_overrides.clear()
     yield
     app.dependency_overrides.clear()
 
@@ -112,6 +119,53 @@ def test_recent_items_are_mixed_sorted_limited_and_owner_scoped(
     assert items[1]["goal_id"] == str(goals[0].id)
     assert items[1]["goal_title"] == goals[0].title
     assert not any("Other owner" in item["title"] for item in items)
+    assert all(item["updated_at"].endswith("+00:00") for item in items)
+
+
+def test_recent_items_use_consistent_descending_id_tiebreak(
+    test_session: Session,
+):
+    owner = User(id=uuid4(), email="ties@example.com")
+    project = Project(id=uuid4(), owner_id=owner.id, title="Tie project")
+    goal = Goal(
+        id=uuid4(),
+        project_id=project.id,
+        title="Container goal",
+        estimate_hours=1,
+        updated_at=datetime(2026, 8, 29, tzinfo=UTC),
+    )
+    test_session.add_all([owner, project, goal])
+    test_session.commit()
+
+    tied_at = datetime(2026, 8, 30, 12, tzinfo=UTC)
+    tasks = [
+        Task(
+            id=UUID(f"00000000-0000-0000-0000-{index:012d}"),
+            goal_id=goal.id,
+            title=f"Tied task {index}",
+            estimate_hours=1,
+            updated_at=tied_at,
+        )
+        for index in range(1, 8)
+    ]
+    test_session.add_all(tasks)
+    test_session.commit()
+
+    app.dependency_overrides[get_current_user] = lambda: AuthUser(
+        user_id=str(owner.id), email=owner.email
+    )
+    app.dependency_overrides[get_session] = lambda: test_session
+
+    response = TestClient(app).get("/api/dashboard/recent-items?limit=5")
+
+    assert response.status_code == 200
+    assert [item["title"] for item in response.json()] == [
+        "Tied task 7",
+        "Tied task 6",
+        "Tied task 5",
+        "Tied task 4",
+        "Tied task 3",
+    ]
 
 
 def test_recent_items_returns_empty_list_for_user_without_items(

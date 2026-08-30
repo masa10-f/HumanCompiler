@@ -45,6 +45,7 @@ import {
   useUpdateTask,
 } from "@/hooks/use-tasks-query";
 import { goalsApi, quickTasksApi } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
 import { useProjectOptions } from "@/hooks/use-project-query";
 import {
   buildTaskWorkspaceFilters,
@@ -741,7 +742,12 @@ export default function TasksPage() {
                     convertingTask.id,
                     convertGoalId,
                   );
-                  await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+                  await Promise.all([
+                    queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+                    queryClient.invalidateQueries({
+                      queryKey: queryKeys.dashboard.all,
+                    }),
+                  ]);
                   setConvertingTask(null);
                   setInboxVersion((value) => value + 1);
                   toast({ title: "通常タスクへ移動しました" });

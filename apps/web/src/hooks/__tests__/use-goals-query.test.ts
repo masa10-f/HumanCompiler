@@ -6,6 +6,7 @@ import { createMockGoal, createMockGoals, resetIdCounter } from './helpers/mock-
 import { renderHookWithClient } from './helpers/test-utils'
 import type { Goal, GoalCreate, GoalUpdate } from '@/types/goal'
 import type { SortOptions } from '@/types/sort'
+import { queryKeys } from '@/lib/query-keys'
 
 // Mock the API
 const mockGetByProject = jest.fn<Promise<Goal[]>, [string, number?, number?, SortOptions?]>()
@@ -184,6 +185,9 @@ describe('useCreateGoal', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: goalKeys.byProject('proj-1'),
     })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: queryKeys.dashboard.all,
+    })
   })
 
   it('should add goal to cache on success', async () => {
@@ -277,8 +281,14 @@ describe('useUpdateGoal', () => {
 
 describe('useDeleteGoal', () => {
   beforeEach(() => {
+    jest.useFakeTimers()
     jest.clearAllMocks()
     resetIdCounter()
+  })
+
+  afterEach(() => {
+    act(() => jest.runOnlyPendingTimers())
+    jest.useRealTimers()
   })
 
   it('should delete goal via API', async () => {
@@ -331,9 +341,13 @@ describe('useDeleteGoal', () => {
     await act(async () => {
       await result.current.mutateAsync('goal-1')
     })
+    act(() => jest.advanceTimersByTime(300))
 
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: goalKeys.byProject('proj-1'),
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: queryKeys.dashboard.all,
     })
   })
 
@@ -348,6 +362,7 @@ describe('useDeleteGoal', () => {
     await act(async () => {
       await result.current.mutateAsync('unknown-goal')
     })
+    act(() => jest.advanceTimersByTime(300))
 
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: goalKeys.lists(),

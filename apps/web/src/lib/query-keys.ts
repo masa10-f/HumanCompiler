@@ -4,6 +4,13 @@
  */
 
 export const queryKeys = {
+  // Dashboard keys
+  dashboard: {
+    all: ['dashboard'] as const,
+    recentItems: (limit = 5) =>
+      [...queryKeys.dashboard.all, 'recent-items', { limit }] as const,
+  },
+
   // Project keys
   projects: {
     all: ['projects'] as const,

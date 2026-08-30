@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { toast } from '@/hooks/use-toast';
 import { tasksApi } from '@/lib/api';
 import { getJSTDateString } from '@/lib/date-utils';
+import { queryKeys } from '@/lib/query-keys';
 import type { Goal } from '@/types/goal';
 import type {
   BulkTaskMutation,
@@ -225,6 +226,9 @@ export function TaskBulkToolbar({
                   await Promise.all([
                     queryClient.invalidateQueries({ queryKey: ['tasks'] }),
                     queryClient.invalidateQueries({ queryKey: ['schedule'] }),
+                    queryClient.invalidateQueries({
+                      queryKey: queryKeys.dashboard.all,
+                    }),
                   ]);
                   toast({ title: `${preview.affected_count}件を更新しました` });
                   setPreview(null);

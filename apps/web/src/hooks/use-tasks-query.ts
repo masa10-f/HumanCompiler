@@ -3,6 +3,7 @@ import { DEFAULT_TASK_PAGE_LIMIT, tasksApi } from '@/lib/api'
 import type { QueryClient, Query } from '@tanstack/react-query'
 import type { Task, TaskCreate, TaskUpdate, TaskDependency, TaskWorkspaceFilters } from '@/types/task'
 import type { SortOptions } from '@/types/sort'
+import { queryKeys } from '@/lib/query-keys'
 
 /**
  * Query keys for task caching with React Query.
@@ -26,6 +27,8 @@ const isTaskGoalQuery = (query: Query) => query.queryKey[0] === taskKeys.all[0] 
 const isTaskProjectQuery = (query: Query) => query.queryKey[0] === taskKeys.all[0] && query.queryKey[1] === 'project'
 
 const invalidateTaskCollections = (queryClient: QueryClient, goalId?: string) => {
+  queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
+
   if (goalId) {
     queryClient.invalidateQueries({ queryKey: taskKeys.byGoal(goalId) })
   } else {
