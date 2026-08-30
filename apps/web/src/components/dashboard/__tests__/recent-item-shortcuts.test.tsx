@@ -113,9 +113,20 @@ describe('RecentItemShortcuts', () => {
     expect(
       screen.getByRole('link', { name: 'タスク「仕様を確認する」を開く' }),
     ).toBeInTheDocument();
+    expect(screen.getByText('最新の情報を取得できませんでした')).toBeInTheDocument();
+  });
+
+  it('falls back when an item has an invalid update timestamp', async () => {
+    mockGetRecentItems.mockResolvedValue([
+      { ...items[0], updated_at: 'invalid-date' },
+    ]);
+
+    renderShortcuts();
+
+    expect(await screen.findByText('更新日時不明')).toBeInTheDocument();
     expect(
-      screen.queryByText('最近触った項目を取得できませんでした'),
-    ).not.toBeInTheDocument();
+      screen.getByRole('link', { name: 'タスク「仕様を確認する」を開く' }),
+    ).toBeInTheDocument();
   });
 
   it('retries an initial load failure', async () => {
