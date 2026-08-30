@@ -109,6 +109,7 @@ import type {
   GoalTaskDraftRequest,
   GoalTaskDraftResponse,
 } from "@/types/ai-drafts";
+import type { RecentDashboardItem } from "@/types/dashboard";
 
 export const DEFAULT_TASK_PAGE_LIMIT = 100;
 const AI_DRAFT_REQUEST_TIMEOUT_MS = 30000;
@@ -579,6 +580,15 @@ class ApiClient {
       limit: number;
     }>(`/api/tasks?${params.toString()}`);
     return { ...page, items: page.items.map(normalizeWorkspaceItem) };
+  }
+
+  async getRecentDashboardItems(
+    limit: number = 5,
+  ): Promise<RecentDashboardItem[]> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    return this.request<RecentDashboardItem[]>(
+      `/api/dashboard/recent-items?${params.toString()}`,
+    );
   }
 
   async getTaskRecommendations(): Promise<TaskRecommendation[]> {
@@ -1819,6 +1829,10 @@ class ApiClient {
 export const apiClient = new ApiClient();
 
 // === Convenience API wrappers ===
+
+export const dashboardApi = {
+  getRecentItems: (limit?: number) => apiClient.getRecentDashboardItems(limit),
+};
 
 /**
  * Project API convenience wrapper.
