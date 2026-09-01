@@ -1749,6 +1749,10 @@ function GeneratedAssignmentRow({
 }) {
   const [start, setStart] = useState(assignment.start_time);
   const [end, setEnd] = useState(assignment.slot_end);
+  const canPin = Boolean(
+    updateDailyPlanTimeRange({ start, end }, "start", start) &&
+      updateDailyPlanTimeRange({ start, end }, "end", end),
+  );
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md bg-blue-50 px-3 py-2 text-sm dark:bg-blue-950/30">
       <Input
@@ -1772,7 +1776,7 @@ function GeneratedAssignmentRow({
         <Button
           size="sm"
           variant="ghost"
-          disabled={start >= end}
+          disabled={!canPin}
           onClick={() => onPin(assignment, start, end)}
         >
           固定

@@ -61,6 +61,8 @@ describe("daily plan command parser", () => {
   it("parses per-day duration overrides", () => {
     expect(parseDurationMinutes("/schedule @paper (1h30m)")).toBe(90);
     expect(parseDurationMinutes("/schedule project:A")).toBeUndefined();
+    expect(parseDurationMinutes("/schedule @paper (0m)")).toBeUndefined();
+    expect(parseDurationMinutes("/schedule @paper (25h)")).toBeUndefined();
   });
 
   it("parses schedule allocation and allowed time window", () => {

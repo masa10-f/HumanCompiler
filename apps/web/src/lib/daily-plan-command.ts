@@ -19,8 +19,11 @@ export interface DailyPlanTimeRange {
 
 export function parseDurationMinutes(text: string): number | undefined {
   const match = text.match(/\((?:(\d+)h)?(?:(\d+)m)?\)/i);
-  if (!match || (!match[1] && !match[2])) return undefined;
-  return Number(match[1] || 0) * 60 + Number(match[2] || 0);
+  if (!match || (match[1] === undefined && match[2] === undefined)) {
+    return undefined;
+  }
+  const minutes = Number(match[1] || 0) * 60 + Number(match[2] || 0);
+  return minutes > 0 && minutes <= 1440 ? minutes : undefined;
 }
 
 export function normalizeDailyPlanClock(value: string): string | null {

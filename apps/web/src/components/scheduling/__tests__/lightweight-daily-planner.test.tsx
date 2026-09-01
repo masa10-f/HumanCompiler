@@ -323,4 +323,59 @@ describe("LightweightDailyPlanner", () => {
       ),
     );
   });
+
+  it("does not pin a generated row while its time range is incomplete", async () => {
+    jest.mocked(dailyPlansApi.get).mockResolvedValue({
+      ...blankResponse,
+      document: {
+        ...blankResponse.document,
+        blocks: [
+          {
+            id: "directive-1",
+            type: "schedule_directive",
+            mode: "filter",
+            filter: { work_types: [], project_ids: [], goal_ids: [] },
+          },
+        ],
+      },
+      schedule: {
+        success: true,
+        assignments: [
+          {
+            task_id: "task-1",
+            task_title: "Task",
+            goal_id: "goal-1",
+            project_id: "project-1",
+            slot_index: 0,
+            start_time: "09:00",
+            duration_hours: 1,
+            slot_start: "09:00",
+            slot_end: "10:00",
+            slot_kind: "light_work",
+            is_fixed: false,
+            directive_id: "directive-1",
+            source: "task",
+          },
+        ],
+        total_scheduled_hours: 1,
+        optimization_status: "OK",
+        generated_at: "2030-01-02T00:00:00Z",
+      },
+    });
+    render(
+      <LightweightDailyPlanner
+        selectedDate="2030-01-02"
+        onSelectedDateChange={jest.fn()}
+        onSwitchDetailed={jest.fn()}
+      />,
+    );
+
+    const start = await screen.findByLabelText("生成予定の開始時刻");
+    const pin = screen.getByRole("button", { name: "固定" });
+    expect(pin).toBeEnabled();
+
+    fireEvent.change(start, { target: { value: "" } });
+
+    expect(pin).toBeDisabled();
+  });
 });
