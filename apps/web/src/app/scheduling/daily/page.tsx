@@ -82,14 +82,30 @@ function addMinutesToClock(clock: string, minutes: number): string {
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
+function readSchedulingParams(): URLSearchParams {
+  return new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search);
+}
+
+function initialTaskSource(): TaskSource {
+  const params = readSchedulingParams();
+  const weekStart = params.get('week_start');
+  return params.get('source') === 'weekly_schedule' && weekStart
+    ? { type: 'weekly_schedule', weekly_schedule_date: weekStart }
+    : { type: 'all_tasks' };
+}
+
 export default function SchedulingPage() {
   const { user, loading: authLoading } = useAuth();
   const { data: projects = [], error: projectsError } = useProjectOptions({
     enabled: Boolean(user),
   });
 
-  const [selectedDate, setSelectedDate] = useState(() => getJSTDateString());
-  const [plannerMode, setPlannerMode] = useState<'lightweight' | 'detailed'>('lightweight');
+  const [selectedDate, setSelectedDate] = useState(
+    () => readSchedulingParams().get('date') ?? getJSTDateString(),
+  );
+  const [plannerMode, setPlannerMode] = useState<'lightweight' | 'detailed'>(() =>
+    readSchedulingParams().get('mode') === 'detailed' ? 'detailed' : 'lightweight',
+  );
   const [dailyPlanAdapter, setDailyPlanAdapter] = useState<{
     date: string;
     document: DailyPlanDocumentV1;
@@ -109,9 +125,7 @@ export default function SchedulingPage() {
   const [solverConfig, setSolverConfig] = useState<SchedulerSolverConfig | undefined>();
 
   // Task source configuration
-  const [taskSource, setTaskSource] = useState<TaskSource>({
-    type: 'all_tasks',
-  });
+  const [taskSource, setTaskSource] = useState<TaskSource>(initialTaskSource);
   const [weeklyScheduleOptions, setWeeklyScheduleOptions] = useState<WeeklyScheduleOption[]>([]);
   const selectableProjects = useMemo(() => getSelectableProjects(projects), [projects]);
 
@@ -147,21 +161,6 @@ export default function SchedulingPage() {
 
   // Active dragging state
   const [activeDragTask, setActiveDragTask] = useState<TaskInfo | null>(null);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const source = params.get('source');
-    const weekStart = params.get('week_start');
-    const date = params.get('date');
-    if (params.get('mode') === 'detailed') setPlannerMode('detailed');
-    if (date) setSelectedDate(date);
-    if (source === 'weekly_schedule' && weekStart) {
-      setTaskSource({
-        type: 'weekly_schedule',
-        weekly_schedule_date: weekStart,
-      });
-    }
-  }, []);
 
   // DnD sensors
   const sensors = useSensors(
@@ -498,7 +497,13 @@ export default function SchedulingPage() {
     // Also remove any manual assignments for this slot
     setManualAssignments((prev) => {
       markAssignmentsRemoved(prev.filter((a) => a.slotIndex === index));
-      return prev.filter((a) => a.slotIndex !== index);
+      return prev
+        .filter((a) => a.slotIndex !== index)
+        .map((assignment) =>
+          assignment.slotIndex > index
+            ? { ...assignment, slotIndex: assignment.slotIndex - 1 }
+            : assignment,
+        );
     });
   };
 
@@ -650,7 +655,7 @@ export default function SchedulingPage() {
             end: assignment.durationHours
               ? addMinutesToClock(assignment.start ?? slot.start, Math.round(assignment.durationHours * 60))
               : slot.end,
-            title: task.title.replace(/^📥\s*/, ''),
+            title: task.title.replace(/^📥\s*/, '').trim() || '無題のタスク',
             task_ref: {
               source: assignment.taskId.startsWith('quick_') ? ('quick_task' as const) : ('task' as const),
               id: assignment.taskId.replace(/^quick_/, ''),

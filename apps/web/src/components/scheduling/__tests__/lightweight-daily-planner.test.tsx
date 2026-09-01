@@ -375,6 +375,52 @@ describe("LightweightDailyPlanner", () => {
     expect(dailyPlansApi.update).not.toHaveBeenCalled();
   });
 
+  it("can complete a linked task that is outside the loaded task options", async () => {
+    const taskId = "11111111-1111-1111-1111-111111111111";
+    jest.mocked(dailyPlansApi.get).mockResolvedValue({
+      ...blankResponse,
+      document: {
+        ...blankResponse.document,
+        blocks: [
+          {
+            id: "older-task",
+            type: "checklist_item",
+            title: "候補外のタスク",
+            checked: false,
+            task_ref: { source: "task", id: taskId },
+            duration_override_minutes: 30,
+          },
+        ],
+      },
+    });
+    jest.mocked(dailyPlansApi.applyTaskAction).mockResolvedValue({
+      task_ref: { source: "task", id: taskId },
+      status: "completed",
+      actual_minutes: 30,
+    });
+
+    render(
+      <LightweightDailyPlanner
+        selectedDate="2030-01-02"
+        onSelectedDateChange={jest.fn()}
+        onSwitchDetailed={jest.fn()}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("checkbox"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "完了", exact: true }),
+    );
+
+    await waitFor(() =>
+      expect(dailyPlansApi.applyTaskAction).toHaveBeenCalledWith("2030-01-02", {
+        task_ref: { source: "task", id: taskId },
+        action: "complete",
+        actual_minutes: 30,
+      }),
+    );
+  });
+
   it("flushes pending changes before switching dates", async () => {
     const onSelectedDateChange = jest.fn();
     render(

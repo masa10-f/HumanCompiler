@@ -21,6 +21,7 @@ from humancompiler_api.models import (
     Schedule,
     Task,
     TaskDependency,
+    TaskStatus,
     User,
     WorkType,
 )
@@ -34,6 +35,8 @@ from humancompiler_api.routers.daily_plans import (
     TaskActionRequest,
     TaskRef,
     TimedLineBlock,
+    _build_scheduler_input,
+    _load_owned_tasks,
     apply_task_action,
     generate_daily_plan,
     get_daily_plan,
@@ -188,6 +191,16 @@ async def test_document_rejects_task_owned_by_another_user(
             session,
         )
     assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == {
+        "message": "Referenced task was not found",
+        "missing": [
+            {
+                "block_id": "foreign-task",
+                "source": "task",
+                "id": str(other_task.id),
+            }
+        ],
+    }
 
 
 @pytest.mark.asyncio
@@ -560,6 +573,115 @@ async def test_generate_deduplicates_existing_fixed_assignment(
     assert generated.schedule is not None
     fixed = [item for item in generated.schedule.assignments if item.is_fixed is True]
     assert [(item.start_time, item.slot_end) for item in fixed] == [("09:00", "09:30")]
+
+
+@pytest.mark.asyncio
+async def test_generate_drops_deleted_future_fixed_assignment(
+    session: Session, planning_data
+) -> None:
+    user, _project, _goal, first, _second, _quick = planning_data
+    date_text = "2030-01-10"
+    await update_daily_plan(
+        date_text,
+        DailyPlanUpdateRequest(
+            expected_revision=0,
+            document=DailyPlanDocumentV1(
+                blocks=[
+                    ScheduleDirectiveBlock(
+                        id="remaining-directive",
+                        mode="task",
+                        task_ref=TaskRef(source="task", id=first.id),
+                        duration_override_minutes=60,
+                    )
+                ]
+            ),
+        ),
+        str(user.id),
+        session,
+    )
+    session.add(
+        Schedule(
+            id=uuid4(),
+            user_id=user.id,
+            date=datetime(2030, 1, 10),
+            plan_json={
+                "assignments": [
+                    {
+                        "task_id": str(first.id),
+                        "start_time": "09:00",
+                        "slot_end": "10:00",
+                        "duration_hours": 1,
+                        "is_fixed": True,
+                        "directive_id": "deleted-pin",
+                    }
+                ]
+            },
+        )
+    )
+    session.commit()
+
+    generated = generate_daily_plan(date_text, str(user.id), session)
+
+    assert generated.schedule is not None
+    assert all(not assignment.is_fixed for assignment in generated.schedule.assignments)
+
+
+def test_owned_task_loader_limits_history_but_can_target_completed_tasks(
+    session: Session, planning_data
+) -> None:
+    user, _project, _goal, first, second, _quick = planning_data
+    second.status = TaskStatus.COMPLETED
+    session.add(second)
+    session.commit()
+
+    regular, _quick = _load_owned_tasks(session, user.id)
+    assert str(first.id) in regular
+    assert str(second.id) not in regular
+
+    regular, _quick = _load_owned_tasks(
+        session,
+        user.id,
+        additional_regular_ids={second.id},
+    )
+    assert str(second.id) in regular
+
+
+def test_multiple_frozen_lines_accumulate_requested_minutes(
+    session: Session, planning_data
+) -> None:
+    user, _project, _goal, first, _second, _quick = planning_data
+    first.estimate_hours = Decimal("0.5")
+    session.add(first)
+    session.commit()
+    document = DailyPlanDocumentV1(
+        blocks=[
+            TimedLineBlock(
+                id="morning",
+                start="09:00",
+                end="10:00",
+                title=first.title,
+                task_ref=TaskRef(source="task", id=first.id),
+            ),
+            TimedLineBlock(
+                id="afternoon",
+                start="14:00",
+                end="15:00",
+                title=first.title,
+                task_ref=TaskRef(source="task", id=first.id),
+            ),
+        ]
+    )
+
+    fixture, _metadata, _counts, _blocked = _build_scheduler_input(
+        session,
+        user.id,
+        "2030-01-11",
+        document,
+    )
+
+    task = next(item for item in fixture.tasks if item.id == str(first.id))
+    assert task.remaining_minutes == 120
+    assert len(fixture.frozen_blocks) == 2
 
 
 @pytest.mark.asyncio

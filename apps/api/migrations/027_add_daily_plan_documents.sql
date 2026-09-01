@@ -11,9 +11,6 @@ CREATE TABLE IF NOT EXISTS public.daily_plan_documents (
     CONSTRAINT uq_daily_plan_documents_user_date UNIQUE(user_id, date)
 );
 
-CREATE INDEX IF NOT EXISTS idx_daily_plan_documents_user_date
-    ON public.daily_plan_documents(user_id, date DESC);
-
 ALTER TABLE public.daily_plan_documents ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS daily_plan_documents_own_data

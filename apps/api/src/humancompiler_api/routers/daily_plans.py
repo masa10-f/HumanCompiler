@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy import update as sqlalchemy_update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
@@ -387,7 +387,7 @@ async def update_daily_plan(
     date_value = _parse_date(date)
     owner_id = UUID(user_id)
     task_refs = [
-        task_ref
+        (block.id, task_ref)
         for block in request.document.blocks
         if (task_ref := getattr(block, "task_ref", None)) is not None
     ]
@@ -454,19 +454,33 @@ def _work_kind(value: str | WorkType) -> HumanWorkKind:
 def _load_owned_tasks(
     session: Session,
     owner_id: UUID,
+    additional_regular_ids: set[UUID] | None = None,
+    additional_quick_ids: set[UUID] | None = None,
 ) -> tuple[
     dict[str, tuple[Task, Goal, Project]],
     dict[str, QuickTask],
 ]:
+    regular_filter = Task.status.in_(list(ACTIVE_TASK_STATUSES))
+    if additional_regular_ids:
+        regular_filter = or_(
+            regular_filter,
+            Task.id.in_(additional_regular_ids),
+        )
     rows = session.exec(
         select(Task, Goal, Project)
         .join(Goal, Task.goal_id == Goal.id)
         .join(Project, Goal.project_id == Project.id)
-        .where(Project.owner_id == owner_id)
+        .where(Project.owner_id == owner_id, regular_filter)
     ).all()
     regular = {str(task.id): (task, goal, project) for task, goal, project in rows}
+    quick_filter = QuickTask.status.in_(list(ACTIVE_TASK_STATUSES))
+    if additional_quick_ids:
+        quick_filter = or_(
+            quick_filter,
+            QuickTask.id.in_(additional_quick_ids),
+        )
     quick_rows = session.exec(
-        select(QuickTask).where(QuickTask.owner_id == owner_id)
+        select(QuickTask).where(QuickTask.owner_id == owner_id, quick_filter)
     ).all()
     quick = {f"quick_{task.id}": task for task in quick_rows}
     return regular, quick
@@ -475,10 +489,10 @@ def _load_owned_tasks(
 def _validate_owned_task_refs(
     session: Session,
     owner_id: UUID,
-    refs: list[TaskRef],
+    refs: list[tuple[str, TaskRef]],
 ) -> None:
-    regular_ids = {ref.id for ref in refs if ref.source == "task"}
-    quick_ids = {ref.id for ref in refs if ref.source == "quick_task"}
+    regular_ids = {ref.id for _, ref in refs if ref.source == "task"}
+    quick_ids = {ref.id for _, ref in refs if ref.source == "quick_task"}
     found_regular = (
         set(
             session.exec(
@@ -507,9 +521,22 @@ def _validate_owned_task_refs(
         else set()
     )
     if found_regular != regular_ids or found_quick != quick_ids:
+        missing = [
+            {
+                "block_id": block_id,
+                "source": ref.source,
+                "id": str(ref.id),
+            }
+            for block_id, ref in refs
+            if (ref.source == "task" and ref.id not in found_regular)
+            or (ref.source == "quick_task" and ref.id not in found_quick)
+        ]
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Referenced task was not found",
+            detail={
+                "message": "Referenced task was not found",
+                "missing": missing,
+            },
         )
 
 
@@ -579,6 +606,7 @@ def _validate_task_ref(
 
 def _build_task_dependencies(
     session: Session,
+    owner_id: UUID,
     selected_ids: set[str],
     regular: dict[str, tuple[Task, Goal, Project]],
 ) -> tuple[dict[str, list[str]], set[str]]:
@@ -591,6 +619,27 @@ def _build_task_dependencies(
         rows = session.exec(
             select(TaskDependency).where(TaskDependency.task_id.in_(regular_ids))
         ).all()
+        missing_prerequisite_ids = {
+            dependency.depends_on_task_id
+            for dependency in rows
+            if str(dependency.depends_on_task_id) not in regular
+        }
+        if missing_prerequisite_ids:
+            prerequisite_rows = session.exec(
+                select(Task, Goal, Project)
+                .join(Goal, Task.goal_id == Goal.id)
+                .join(Project, Goal.project_id == Project.id)
+                .where(
+                    Project.owner_id == owner_id,
+                    Task.id.in_(missing_prerequisite_ids),
+                )
+            ).all()
+            regular.update(
+                {
+                    str(task.id): (task, goal, project)
+                    for task, goal, project in prerequisite_rows
+                }
+            )
         for dependency in rows:
             dependent_id = str(dependency.task_id)
             prerequisite_id = str(dependency.depends_on_task_id)
@@ -658,7 +707,43 @@ def _build_scheduler_input(
     dict[str, int],
     set[str],
 ]:
-    regular, quick = _load_owned_tasks(session, owner_id)
+    existing_schedule = _get_schedule(
+        session,
+        owner_id,
+        _parse_date(date_text),
+    )
+    existing_assignments = (
+        existing_schedule.plan_json.get("assignments", [])
+        if existing_schedule and isinstance(existing_schedule.plan_json, dict)
+        else []
+    )
+    additional_regular_ids: set[UUID] = set()
+    additional_quick_ids: set[UUID] = set()
+    for block in document.blocks:
+        task_ref = getattr(block, "task_ref", None)
+        if task_ref is None:
+            continue
+        if task_ref.source == "task":
+            additional_regular_ids.add(task_ref.id)
+        else:
+            additional_quick_ids.add(task_ref.id)
+    for assignment in existing_assignments:
+        if not isinstance(assignment, dict):
+            continue
+        scheduler_id = str(assignment.get("task_id", ""))
+        try:
+            if scheduler_id.startswith("quick_"):
+                additional_quick_ids.add(UUID(scheduler_id.removeprefix("quick_")))
+            else:
+                additional_regular_ids.add(UUID(scheduler_id))
+        except ValueError:
+            continue
+    regular, quick = _load_owned_tasks(
+        session,
+        owner_id,
+        additional_regular_ids,
+        additional_quick_ids,
+    )
     active_ids = {
         task_id
         for task_id in [*regular, *quick]
@@ -666,6 +751,7 @@ def _build_scheduler_input(
     }
     selected_ids: set[str] = set()
     requested_by_task: dict[str, int] = {}
+    frozen_minutes_by_task: dict[str, int] = {}
     candidate_pools: list[HumanCandidatePool] = []
     frozen_blocks: list[HumanFrozenTaskBlock] = []
     fixed_events: list[HumanFixedEvent] = []
@@ -674,6 +760,7 @@ def _build_scheduler_input(
     current_jst = datetime.now(JST)
     now = current_jst if current_jst.date() == schedule_date else None
     frozen_keys: set[tuple[str, str, str]] = set()
+    document_block_ids = {block.id for block in document.blocks}
 
     for block in document.blocks:
         if isinstance(block, TimedLineBlock):
@@ -692,8 +779,8 @@ def _build_scheduler_input(
             scheduler_id = _validate_task_ref(block.task_ref, regular, quick)
             selected_ids.add(scheduler_id)
             duration = _minutes(end_value) - _minutes(start_value)
-            requested_by_task[scheduler_id] = max(
-                requested_by_task.get(scheduler_id, 0), duration
+            frozen_minutes_by_task[scheduler_id] = (
+                frozen_minutes_by_task.get(scheduler_id, 0) + duration
             )
             frozen_blocks.append(
                 HumanFrozenTaskBlock(
@@ -763,16 +850,6 @@ def _build_scheduler_input(
                 )
                 eligible_counts[block.id] = len(eligible_ids)
 
-    existing_schedule = _get_schedule(
-        session,
-        owner_id,
-        _parse_date(date_text),
-    )
-    existing_assignments = (
-        existing_schedule.plan_json.get("assignments", [])
-        if existing_schedule and isinstance(existing_schedule.plan_json, dict)
-        else []
-    )
     for assignment in existing_assignments:
         if not isinstance(assignment, dict):
             continue
@@ -802,7 +879,11 @@ def _build_scheduler_input(
                 continue
             duration = _minutes(end_value) - _minutes(start_value)
         is_past = now is not None and start_value < now.time()
-        if not is_past and not bool(assignment.get("is_fixed")):
+        directive_id = assignment.get("directive_id")
+        still_referenced = (
+            bool(directive_id) and str(directive_id) in document_block_ids
+        )
+        if not is_past and not (bool(assignment.get("is_fixed")) and still_referenced):
             continue
         if duration is None or duration <= 0:
             continue
@@ -810,9 +891,8 @@ def _build_scheduler_input(
         if key in frozen_keys:
             continue
         selected_ids.add(scheduler_id)
-        requested_by_task[scheduler_id] = max(
-            requested_by_task.get(scheduler_id, 0),
-            duration,
+        frozen_minutes_by_task[scheduler_id] = (
+            frozen_minutes_by_task.get(scheduler_id, 0) + duration
         )
         frozen_blocks.append(
             HumanFrozenTaskBlock(
@@ -830,8 +910,14 @@ def _build_scheduler_input(
         )
         frozen_keys.add(key)
 
+    for scheduler_id, frozen_minutes in frozen_minutes_by_task.items():
+        requested_by_task[scheduler_id] = max(
+            requested_by_task.get(scheduler_id, 0),
+            frozen_minutes,
+        )
+
     task_dependencies, dependency_blocked_ids = _build_task_dependencies(
-        session, selected_ids, regular
+        session, owner_id, selected_ids, regular
     )
     dependency_blocked_directives: set[str] = set()
     adjusted_candidate_pools: list[HumanCandidatePool] = []
@@ -1121,7 +1207,7 @@ async def apply_task_action(
 ) -> TaskActionResponse:
     _parse_date(date)
     owner_id = UUID(user_id)
-    _validate_owned_task_refs(session, owner_id, [request.task_ref])
+    _validate_owned_task_refs(session, owner_id, [("task-action", request.task_ref)])
 
     if request.task_ref.source == "quick_task":
         if request.action != "complete":

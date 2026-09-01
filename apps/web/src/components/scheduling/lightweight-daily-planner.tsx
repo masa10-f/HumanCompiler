@@ -93,6 +93,7 @@ interface TaskOption {
   goalId?: string;
   goalTitle?: string;
   remainingHours: number;
+  isFallback?: boolean;
 }
 
 const EMPTY_DOCUMENT: DailyPlanDocumentV1 = {
@@ -117,6 +118,17 @@ function createId(): string {
 
 function refKey(ref: DailyPlanTaskRef): string {
   return `${ref.source}:${ref.id}`;
+}
+
+function fallbackTaskOption(ref: DailyPlanTaskRef, title: string): TaskOption {
+  return {
+    key: refKey(ref),
+    ref,
+    title,
+    workType: "light_work",
+    remainingHours: 0.5,
+    isFallback: true,
+  };
 }
 
 function findMention(
@@ -161,6 +173,7 @@ export function LightweightDailyPlanner({
   const [dirty, setDirty] = useState(false);
   const dirtyRef = useRef(false);
   const [saveRetry, setSaveRetry] = useState(0);
+  const [saveSignal, setSaveSignal] = useState(0);
   const [conflict, setConflict] = useState(false);
   const [helpOpen, setHelpOpen] = useState(true);
   const [command, setCommand] = useState("");
@@ -301,26 +314,25 @@ export function LightweightDailyPlanner({
       }
       setSaving(true);
       try {
-        let response: DailyPlanResponse | undefined;
-        // An edit can arrive while a PUT is in flight. Keep saving snapshots until
-        // the server has the latest document instead of clearing the newer edit.
-        while (dirtyRef.current) {
-          const snapshot = documentRef.current;
-          response = await dailyPlansApi.update(
-            selectedDate,
-            revisionRef.current,
-            snapshot,
-          );
-          setRevision(response.revision);
-          revisionRef.current = response.revision;
-          if (documentRef.current === snapshot) {
-            setDirty(false);
-            dirtyRef.current = false;
-            setSaveRetry(0);
-          }
-          setConflict(false);
+        const snapshot = documentRef.current;
+        const response = await dailyPlansApi.update(
+          selectedDate,
+          revisionRef.current,
+          snapshot,
+        );
+        setRevision(response.revision);
+        revisionRef.current = response.revision;
+        setSaveRetry(0);
+        if (documentRef.current === snapshot) {
+          setDirty(false);
+          dirtyRef.current = false;
+        } else {
+          // Re-arm the debounce after the in-flight request settles. This avoids
+          // one PUT per network round-trip during continuous typing.
+          setSaveSignal((current) => current + 1);
         }
-        return response ?? dailyPlansApi.get(selectedDate);
+        setConflict(false);
+        return response;
       } catch (error) {
         if (error instanceof ApiError && error.statusCode === 409) {
           setConflict(true);
@@ -356,7 +368,16 @@ export function LightweightDailyPlanner({
       });
     }, 800);
     return () => window.clearTimeout(timer);
-  }, [conflict, dirty, loading, saveNow, saveRetry, toast]);
+  }, [
+    conflict,
+    dirty,
+    document,
+    loading,
+    saveNow,
+    saveRetry,
+    saveSignal,
+    toast,
+  ]);
 
   const replaceBlock = useCallback(
     (id: string, next: DailyPlanBlock) => {
@@ -1398,17 +1419,26 @@ function HelpExample({ code, label }: { code: string; label: string }) {
 function TaskSelect({
   value,
   options,
+  fallbackTitle,
   onChange,
 }: {
   value?: DailyPlanTaskRef | null;
   options: TaskOption[];
+  fallbackTitle?: string;
   onChange: (task: TaskOption | undefined) => void;
 }) {
+  const selectedKey = value ? refKey(value) : undefined;
+  const fallback =
+    value && !options.some((option) => option.key === selectedKey)
+      ? fallbackTaskOption(value, fallbackTitle || "参照タスク")
+      : undefined;
+  const selectableOptions = fallback ? [fallback, ...options] : options;
+
   return (
     <Select
-      value={value ? refKey(value) : "none"}
+      value={selectedKey ?? "none"}
       onValueChange={(key) =>
-        onChange(options.find((option) => option.key === key))
+        onChange(selectableOptions.find((option) => option.key === key))
       }
     >
       <SelectTrigger className="min-w-[220px] flex-1">
@@ -1416,10 +1446,14 @@ function TaskSelect({
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="none">タスクに紐づけない</SelectItem>
-        {options.map((option) => (
+        {selectableOptions.map((option) => (
           <SelectItem key={option.key} value={option.key}>
             {option.title}
-            {option.projectTitle ? ` · ${option.projectTitle}` : " · Quick"}
+            {option.isFallback
+              ? " · 候補外"
+              : option.projectTitle
+                ? ` · ${option.projectTitle}`
+                : " · Quick"}
           </SelectItem>
         ))}
       </SelectContent>
@@ -1515,6 +1549,7 @@ function TimedLineEditor({
           <TaskSelect
             value={block.task_ref}
             options={taskOptions}
+            fallbackTitle={block.title ?? undefined}
             onChange={(task) =>
               onChange({
                 ...block,
@@ -1610,6 +1645,7 @@ function DirectiveEditor({
           <TaskSelect
             value={block.task_ref}
             options={taskOptions}
+            fallbackTitle={block.title ?? undefined}
             onChange={(task) =>
               onChange(applyDirectiveTaskSelection(block, task))
             }
@@ -1935,7 +1971,8 @@ function ChecklistEditor({
   onComplete: (task: TaskOption) => void;
 }) {
   const linkedTask = block.task_ref
-    ? taskOptions.find((option) => option.key === refKey(block.task_ref!))
+    ? (taskOptions.find((option) => option.key === refKey(block.task_ref!)) ??
+      fallbackTaskOption(block.task_ref, block.title))
     : undefined;
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -1958,6 +1995,7 @@ function ChecklistEditor({
       <TaskSelect
         value={block.task_ref}
         options={taskOptions}
+        fallbackTitle={block.title}
         onChange={(task) =>
           onChange({
             ...block,
