@@ -29,6 +29,7 @@ from humancompiler_api.routers.daily_plans import (
     DailyPlanDocumentV1,
     DailyPlanUpdateRequest,
     DirectiveFilter,
+    DirectiveWindow,
     ScheduleDirectiveBlock,
     TaskActionRequest,
     TaskRef,
@@ -240,7 +241,8 @@ async def test_generate_resolves_specific_and_filtered_directives(
                 id="break",
                 start="10:00",
                 end="10:30",
-                title="Meeting",
+                title="Break",
+                kind="break",
             ),
             ScheduleDirectiveBlock(
                 id="specific",
@@ -314,6 +316,60 @@ async def test_project_filter_excludes_quick_tasks_without_membership(
 
     task_ids = {item["task_id"] for item in generated.schedule["assignments"]}
     assert f"quick_{quick.id}" not in task_ids
+
+
+@pytest.mark.asyncio
+async def test_filter_directive_limits_total_minutes_and_time_window(
+    session: Session, planning_data
+) -> None:
+    user, _project, goal, _first, _second, _quick = planning_data
+    document = DailyPlanDocumentV1(
+        availability_windows=[
+            AvailabilityWindow(
+                start="09:00",
+                end="18:00",
+                work_type="focused_work",
+            )
+        ],
+        blocks=[
+            ScheduleDirectiveBlock(
+                id="afternoon-goal",
+                mode="filter",
+                filter=DirectiveFilter(goal_ids=[goal.id]),
+                duration_override_minutes=90,
+                allowed_windows=[DirectiveWindow(start="13:00", end="15:00")],
+            )
+        ],
+    )
+    await update_daily_plan(
+        "2030-01-09",
+        DailyPlanUpdateRequest(expected_revision=0, document=document),
+        str(user.id),
+        session,
+    )
+
+    generated = await generate_daily_plan("2030-01-09", str(user.id), session)
+
+    assignments = [
+        item
+        for item in generated.schedule["assignments"]
+        if item["directive_id"] == "afternoon-goal"
+    ]
+    assert sum(round(item["duration_hours"] * 60) for item in assignments) == 90
+    assert all(
+        item["start_time"] >= "13:00" and item["slot_end"] <= "15:00"
+        for item in assignments
+    )
+
+
+def test_document_rejects_overlapping_availability_windows() -> None:
+    with pytest.raises(ValueError, match="availability windows must not overlap"):
+        DailyPlanDocumentV1(
+            availability_windows=[
+                AvailabilityWindow(start="09:00", end="12:00"),
+                AvailabilityWindow(start="11:00", end="13:00"),
+            ]
+        )
 
 
 @pytest.mark.asyncio

@@ -107,6 +107,108 @@ describe("LightweightDailyPlanner", () => {
     );
   });
 
+  it("saves allocation and allowed time for a filter directive", async () => {
+    render(
+      <LightweightDailyPlanner
+        selectedDate="2030-01-02"
+        onSelectedDateChange={jest.fn()}
+        onSwitchDetailed={jest.fn()}
+      />,
+    );
+    const command = await screen.findByRole("textbox", {
+      name: "日次プランの行入力",
+    });
+    fireEvent.paste(command, {
+      clipboardData: { getData: () => "/schedule 13:00-15:00 (90m)" },
+    });
+    fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
+
+    await waitFor(
+      () =>
+        expect(dailyPlansApi.update).toHaveBeenCalledWith(
+          "2030-01-02",
+          0,
+          expect.objectContaining({
+            blocks: [
+              expect.objectContaining({
+                type: "schedule_directive",
+                mode: "filter",
+                duration_override_minutes: 90,
+                allowed_windows: [{ start: "13:00", end: "15:00" }],
+              }),
+            ],
+          }),
+        ),
+      { timeout: 2500 },
+    );
+  });
+
+  it("creates a first-class break block", async () => {
+    render(
+      <LightweightDailyPlanner
+        selectedDate="2030-01-02"
+        onSelectedDateChange={jest.fn()}
+        onSwitchDetailed={jest.fn()}
+      />,
+    );
+    const command = await screen.findByRole("textbox", {
+      name: "日次プランの行入力",
+    });
+    fireEvent.paste(command, {
+      clipboardData: { getData: () => "/break 12:00-13:00 昼休み" },
+    });
+    fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
+
+    expect((await screen.findAllByText("休憩")).length).toBeGreaterThan(0);
+    await waitFor(
+      () =>
+        expect(dailyPlansApi.update).toHaveBeenCalledWith(
+          "2030-01-02",
+          0,
+          expect.objectContaining({
+            blocks: [
+              expect.objectContaining({
+                type: "timed_line",
+                kind: "break",
+                start: "12:00",
+                end: "13:00",
+              }),
+            ],
+          }),
+        ),
+      { timeout: 2500 },
+    );
+  });
+
+  it("shows inline usage help and adds a non-overlapping work window", async () => {
+    render(
+      <LightweightDailyPlanner
+        selectedDate="2030-01-02"
+        onSelectedDateChange={jest.fn()}
+        onSwitchDetailed={jest.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByText("/break 12:00-13:00 昼休み"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "作業可能時間を追加" }));
+
+    await waitFor(
+      () =>
+        expect(dailyPlansApi.update).toHaveBeenCalledWith(
+          "2030-01-02",
+          0,
+          expect.objectContaining({
+            availability_windows: expect.arrayContaining([
+              expect.objectContaining({ start: "18:00", end: "19:00" }),
+            ]),
+          }),
+        ),
+      { timeout: 2500 },
+    );
+  });
+
   it("saves edits made while an autosave request is in flight", async () => {
     let resolveFirstSave: (() => void) | undefined;
     jest

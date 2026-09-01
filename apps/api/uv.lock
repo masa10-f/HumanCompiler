@@ -555,7 +555,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=41.0.0" },
     { name = "fastapi", specifier = ">=0.104.0" },
     { name = "httpx", specifier = ">=0.25.0" },
-    { name = "humancompiler-scheduler", extras = ["cp-sat"], specifier = ">=0.4.0" },
+    { name = "humancompiler-scheduler", extras = ["cp-sat"], specifier = ">=0.5.0,<0.6.0" },
     { name = "langgraph", specifier = ">=0.1.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.5.0" },
     { name = "openai", specifier = ">=2.44.0" },
@@ -579,14 +579,14 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "humancompiler-scheduler"
-version = "0.4.0"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a4/a6/cf762ea570139cd8f22ee9f728e06b8a888bb211ba7041cb4feb33a74a12/humancompiler_scheduler-0.4.0.tar.gz", hash = "sha256:23f145fb487602582457113969d5052413f91ec622b2d6b16579d31ccdafdabb", size = 164576, upload-time = "2026-08-30T13:12:23.748Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/26/e01aa4540387f1694a32467673d3852f8a6260a06aef3ef377e67fbacd38/humancompiler_scheduler-0.5.0.tar.gz", hash = "sha256:70471251dca7d6037299cd8f39eef290aa6299b3d73db99c3448dfb63cb80060", size = 165894, upload-time = "2026-09-01T14:35:41.267Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bf/a2/0e3710b59da57e0c60f22bfe7eb63984de76889e0795839c6e5f2582cf9c/humancompiler_scheduler-0.4.0-py3-none-any.whl", hash = "sha256:d2ece6a9e3dcd55dd2e3f018538243c1f83d6e161c3bf0d1681f832a4a23bb2f", size = 35314, upload-time = "2026-08-30T13:12:22.62Z" },
+    { url = "https://files.pythonhosted.org/packages/73/f9/e66af76d93726be555e63783999d6f1ec4a37c1ddc010bb5edd0569fba6c/humancompiler_scheduler-0.5.0-py3-none-any.whl", hash = "sha256:e6c33c23f986024d05c719acfc3379f0ed9ea3afa56ec8aee318ec35ba89cea9", size = 35934, upload-time = "2026-09-01T14:35:40.195Z" },
 ]
 
 [package.optional-dependencies]

@@ -23,6 +23,7 @@ from sqlmodel import Session, select
 from humancompiler_scheduler.human import (
     HumanAvailabilityWindow,
     HumanCandidatePool,
+    HumanDirectiveWindow,
     HumanFixedEvent,
     HumanFlexibleDailyFixture,
     HumanFrozenTaskBlock,
@@ -135,6 +136,23 @@ class DirectiveFilter(BaseModel):
     goal_ids: list[UUID] = Field(default_factory=list)
 
 
+class DirectiveWindow(BaseModel):
+    start: str
+    end: str
+
+    @field_validator("start", "end")
+    @classmethod
+    def validate_time(cls, value: str) -> str:
+        _parse_time(value)
+        return value
+
+    @model_validator(mode="after")
+    def validate_range(self) -> DirectiveWindow:
+        if _minutes(_parse_time(self.start)) >= _minutes(_parse_time(self.end)):
+            raise ValueError("directive window start must be before end")
+        return self
+
+
 class ScheduleDirectiveBlock(BaseModel):
     id: str = Field(min_length=1, max_length=100)
     type: Literal["schedule_directive"] = "schedule_directive"
@@ -143,6 +161,7 @@ class ScheduleDirectiveBlock(BaseModel):
     task_ref: TaskRef | None = None
     filter: DirectiveFilter | None = None
     duration_override_minutes: int | None = Field(default=None, gt=0, le=1440)
+    allowed_windows: list[DirectiveWindow] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_mode_fields(self) -> ScheduleDirectiveBlock:
@@ -188,6 +207,15 @@ class DailyPlanDocumentV1(BaseModel):
     ) -> list[AvailabilityWindow]:
         if not value:
             raise ValueError("at least one availability window is required")
+        ordered = sorted(
+            value,
+            key=lambda window: _minutes(_parse_time(window.start)),
+        )
+        for previous, current in zip(ordered, ordered[1:], strict=False):
+            if _minutes(_parse_time(current.start)) < _minutes(
+                _parse_time(previous.end)
+            ):
+                raise ValueError("availability windows must not overlap")
         return value
 
     @field_validator("blocks")
@@ -602,7 +630,7 @@ def _build_scheduler_input(
                         title=block.title,
                         start=_parse_time(block.start),
                         end=_parse_time(block.end),
-                        metadata={"block_id": block.id},
+                        metadata={"block_id": block.id, "kind": block.kind},
                     )
                 )
                 continue
@@ -646,6 +674,13 @@ def _build_scheduler_input(
                         eligible_task_ids=frozenset(eligible_ids),
                         required_task_id=scheduler_id if eligible_ids else None,
                         requested_minutes=block.duration_override_minutes,
+                        allowed_windows=tuple(
+                            HumanDirectiveWindow(
+                                start=_parse_time(window.start),
+                                end=_parse_time(window.end),
+                            )
+                            for window in block.allowed_windows
+                        ),
                     )
                 )
                 eligible_counts[block.id] = len(eligible_ids)
@@ -661,6 +696,14 @@ def _build_scheduler_input(
                     HumanCandidatePool(
                         id=block.id,
                         eligible_task_ids=frozenset(eligible_ids),
+                        requested_minutes=block.duration_override_minutes,
+                        allowed_windows=tuple(
+                            HumanDirectiveWindow(
+                                start=_parse_time(window.start),
+                                end=_parse_time(window.end),
+                            )
+                            for window in block.allowed_windows
+                        ),
                     )
                 )
                 eligible_counts[block.id] = len(eligible_ids)
@@ -751,6 +794,7 @@ def _build_scheduler_input(
                     else None
                 ),
                 requested_minutes=pool.requested_minutes,
+                allowed_windows=pool.allowed_windows,
             )
         )
         eligible_counts[pool.id] = len(eligible_ids)
@@ -971,10 +1015,8 @@ async def generate_daily_plan(
                 reason = "候補がありません"
             else:
                 reason = "利用可能な時間が不足しています"
-        elif (
-            block.mode == "task"
-            and block.duration_override_minutes
-            and generated_for_directive < block.duration_override_minutes
+        elif block.duration_override_minutes and (
+            generated_for_directive < block.duration_override_minutes
         ):
             reason = "要求時間の一部だけを配置しました"
         diagnostics.append(

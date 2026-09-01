@@ -13,7 +13,9 @@ import {
   ChevronDown,
   ChevronUp,
   Clock3,
+  Coffee,
   GripVertical,
+  HelpCircle,
   Loader2,
   Plus,
   Save,
@@ -49,7 +51,11 @@ import { useProjectOptions } from "@/hooks/use-project-query";
 import { dailyPlansApi, goalsApi, quickTasksApi, tasksApi } from "@/lib/api";
 import { ApiError } from "@/lib/errors";
 import {
+  addDailyPlanClockMinutes,
+  dailyPlanTimeRangesOverlap,
+  parseBreakLine,
   parseDurationMinutes,
+  parseScheduleDirective,
   parseTimedLine,
   updateDailyPlanTimeRange,
 } from "@/lib/daily-plan-command";
@@ -59,6 +65,7 @@ import type { QuickTask } from "@/types/quick-task";
 import type { TaskWorkspaceItem, WorkType } from "@/types/task";
 import type {
   DailyPlanAssignment,
+  DailyPlanAvailabilityWindow,
   DailyPlanBlock,
   DailyPlanChecklistItem,
   DailyPlanDirectiveFilter,
@@ -151,6 +158,7 @@ export function LightweightDailyPlanner({
   const [dirty, setDirty] = useState(false);
   const dirtyRef = useRef(false);
   const [conflict, setConflict] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(true);
   const [command, setCommand] = useState("");
   const [regularTasks, setRegularTasks] = useState<TaskWorkspaceItem[]>([]);
   const [quickTasks, setQuickTasks] = useState<QuickTask[]>([]);
@@ -170,7 +178,10 @@ export function LightweightDailyPlanner({
   const [newTaskWorkType, setNewTaskWorkType] =
     useState<WorkType>("light_work");
   const [newTaskPriority, setNewTaskPriority] = useState("3");
-  const [newTaskProjectId, setNewTaskProjectId] = useState("quick");
+  const [newTaskDestination, setNewTaskDestination] = useState<
+    "quick" | "goal"
+  >("quick");
+  const [newTaskProjectId, setNewTaskProjectId] = useState("");
   const [newTaskGoalId, setNewTaskGoalId] = useState("");
   const [newTaskGoals, setNewTaskGoals] = useState<Goal[]>([]);
   const [creatingTask, setCreatingTask] = useState(false);
@@ -391,28 +402,34 @@ export function LightweightDailyPlanner({
     }
     let block: DailyPlanBlock;
     if (value.startsWith("/schedule")) {
+      const directive = parseScheduleDirective(value);
       block = {
         id: createId(),
         type: "schedule_directive",
         mode: mentioned ? "task" : "filter",
         title: mentioned?.title,
         task_ref: mentioned?.ref,
-        duration_override_minutes: parseDurationMinutes(value),
+        duration_override_minutes: directive?.durationMinutes,
+        allowed_windows: directive?.allowedWindow
+          ? [directive.allowedWindow]
+          : [],
         filter: mentioned
           ? undefined
           : { work_types: [], project_ids: [], goal_ids: [] },
       };
     } else {
-      const timed = parseTimedLine(value);
+      const breakLine = parseBreakLine(value);
+      const timed = breakLine ?? parseTimedLine(value);
       if (timed) {
         block = {
           id: createId(),
           type: "timed_line",
           start: timed.start,
           end: timed.end,
-          title: mentioned?.title ?? timed.title,
-          task_ref: mentioned?.ref,
+          title: breakLine ? timed.title : (mentioned?.title ?? timed.title),
+          task_ref: breakLine ? undefined : mentioned?.ref,
           pinned: true,
+          kind: breakLine ? "break" : "event",
         };
       } else if (/^-?\s*\[\s?\]/.test(value)) {
         const title = value.replace(/^-?\s*\[\s?\]\s*/, "");
@@ -607,7 +624,7 @@ export function LightweightDailyPlanner({
   };
 
   useEffect(() => {
-    if (newTaskProjectId === "quick") {
+    if (newTaskDestination === "quick" || !newTaskProjectId) {
       setNewTaskGoals([]);
       setNewTaskGoalId("");
       return;
@@ -618,11 +635,11 @@ export function LightweightDailyPlanner({
       .catch(() => {
         setNewTaskGoals([]);
       });
-  }, [newTaskProjectId]);
+  }, [newTaskDestination, newTaskProjectId]);
 
   const createTask = async () => {
     if (!newTaskTitle.trim()) return;
-    if (newTaskProjectId !== "quick" && !newTaskGoalId) {
+    if (newTaskDestination === "goal" && !newTaskGoalId) {
       toast({ title: "ゴールを選択してください", variant: "destructive" });
       return;
     }
@@ -630,7 +647,7 @@ export function LightweightDailyPlanner({
     try {
       let ref: DailyPlanTaskRef;
       let title: string;
-      if (newTaskProjectId === "quick") {
+      if (newTaskDestination === "quick") {
         const created = await quickTasksApi.create({
           title: newTaskTitle.trim(),
           estimate_hours: newTaskMinutes / 60,
@@ -677,6 +694,9 @@ export function LightweightDailyPlanner({
       setNewTaskTitle("");
       setCommand("");
       setNewTaskInsertKind("directive");
+      setNewTaskDestination("quick");
+      setNewTaskProjectId("");
+      setNewTaskGoalId("");
       toast({ title: "タスクを追加しました" });
     } catch (error) {
       toast({
@@ -773,6 +793,46 @@ export function LightweightDailyPlanner({
           </div>
         </div>
 
+        <Card className="mb-4 border-blue-100 bg-blue-50/40 dark:border-blue-900 dark:bg-blue-950/20">
+          <CardContent className="py-3">
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full justify-between px-1"
+              aria-expanded={helpOpen}
+              onClick={() => setHelpOpen((current) => !current)}
+            >
+              <span className="flex items-center gap-2 font-medium">
+                <HelpCircle className="h-4 w-4" />
+                このページの入力方法
+              </span>
+              {helpOpen ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </Button>
+            {helpOpen && (
+              <div className="mt-3 grid gap-2 text-sm text-gray-600 dark:text-gray-300 sm:grid-cols-2">
+                <HelpExample code="1100-1200 会議" label="固定予定" />
+                <HelpExample code="/break 12:00-13:00 昼休み" label="休憩" />
+                <HelpExample
+                  code="/schedule @論文読み (2h)"
+                  label="特定タスクを2時間配置"
+                />
+                <HelpExample
+                  code="/schedule 13:00-17:00 (90m)"
+                  label="条件型を時間帯内へ90分配置"
+                />
+                <HelpExample
+                  code="[ ] @メール返信 (30m)"
+                  label="チェックリスト"
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {conflict && (
           <Alert variant="destructive" className="mb-4">
             <AlertCircle className="h-4 w-4" />
@@ -831,10 +891,15 @@ export function LightweightDailyPlanner({
                       if (!next) return;
                       updateDocument((current) => ({
                         ...current,
-                        availability_windows: current.availability_windows.map(
-                          (item, itemIndex) =>
-                            itemIndex === index ? { ...item, ...next } : item,
-                        ),
+                        availability_windows: (() => {
+                          const windows = current.availability_windows.map(
+                            (item, itemIndex) =>
+                              itemIndex === index ? { ...item, ...next } : item,
+                          );
+                          return dailyPlanTimeRangesOverlap(windows)
+                            ? current.availability_windows
+                            : windows;
+                        })(),
                       }));
                     }}
                     className="w-28"
@@ -854,10 +919,15 @@ export function LightweightDailyPlanner({
                       if (!next) return;
                       updateDocument((current) => ({
                         ...current,
-                        availability_windows: current.availability_windows.map(
-                          (item, itemIndex) =>
-                            itemIndex === index ? { ...item, ...next } : item,
-                        ),
+                        availability_windows: (() => {
+                          const windows = current.availability_windows.map(
+                            (item, itemIndex) =>
+                              itemIndex === index ? { ...item, ...next } : item,
+                          );
+                          return dailyPlanTimeRangesOverlap(windows)
+                            ? current.availability_windows
+                            : windows;
+                        })(),
                       }));
                     }}
                     className="w-28"
@@ -911,17 +981,25 @@ export function LightweightDailyPlanner({
               variant="outline"
               size="sm"
               onClick={() =>
-                updateDocument((current) => ({
-                  ...current,
-                  availability_windows: [
-                    ...current.availability_windows,
-                    { start: "13:00", end: "18:00", work_type: "light_work" },
-                  ],
-                }))
+                updateDocument((current) => {
+                  const last = [...current.availability_windows]
+                    .sort((left, right) => left.end.localeCompare(right.end))
+                    .at(-1);
+                  const start = last?.end ?? "09:00";
+                  const end = addDailyPlanClockMinutes(start, 60);
+                  if (!end) return current;
+                  return {
+                    ...current,
+                    availability_windows: [
+                      ...current.availability_windows,
+                      { start, end, work_type: "light_work" },
+                    ],
+                  };
+                })
               }
             >
               <Plus className="mr-1 h-4 w-4" />
-              時間帯
+              作業可能時間を追加
             </Button>
           </CardContent>
         </Card>
@@ -969,6 +1047,7 @@ export function LightweightDailyPlanner({
                         block={block}
                         taskOptions={taskOptions}
                         projects={projects}
+                        availabilityWindows={document.availability_windows}
                         onChange={(next) => replaceBlock(block.id, next)}
                       />
                     )}
@@ -1128,8 +1207,8 @@ export function LightweightDailyPlanner({
           <DialogHeader>
             <DialogTitle>新しいタスク</DialogTitle>
             <DialogDescription>
-              保存先未指定ならQuick
-              Task、ゴール指定時は通常タスクとして作成します。
+              Quick
+              Taskとして保存するか、保存先ゴールを指定して通常タスクを作成します。
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
@@ -1196,27 +1275,50 @@ export function LightweightDailyPlanner({
               </div>
             </div>
             <div className="space-y-1">
-              <Label>保存先</Label>
+              <Label>作成先</Label>
               <Select
-                value={newTaskProjectId}
-                onValueChange={setNewTaskProjectId}
+                value={newTaskDestination}
+                onValueChange={(value: "quick" | "goal") => {
+                  setNewTaskDestination(value);
+                  setNewTaskProjectId("");
+                  setNewTaskGoalId("");
+                }}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="quick">Quick Task</SelectItem>
-                  {projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.title}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="goal">ゴールに紐づく通常タスク</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            {newTaskProjectId !== "quick" && (
+            {newTaskDestination === "goal" && (
               <div className="space-y-1">
-                <Label>ゴール</Label>
+                <Label>プロジェクト（ゴールの絞り込み）</Label>
+                <Select
+                  value={newTaskProjectId}
+                  onValueChange={(value) => {
+                    setNewTaskProjectId(value);
+                    setNewTaskGoalId("");
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="プロジェクトを選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {newTaskDestination === "goal" && newTaskProjectId && (
+              <div className="space-y-1">
+                <Label>保存先ゴール</Label>
                 <Select value={newTaskGoalId} onValueChange={setNewTaskGoalId}>
                   <SelectTrigger>
                     <SelectValue placeholder="ゴールを選択" />
@@ -1238,7 +1340,11 @@ export function LightweightDailyPlanner({
             </Button>
             <Button
               onClick={createTask}
-              disabled={creatingTask || !newTaskTitle.trim()}
+              disabled={
+                creatingTask ||
+                !newTaskTitle.trim() ||
+                (newTaskDestination === "goal" && !newTaskGoalId)
+              }
             >
               {creatingTask && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1248,6 +1354,17 @@ export function LightweightDailyPlanner({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function HelpExample({ code, label }: { code: string; label: string }) {
+  return (
+    <div className="rounded-md border border-blue-100 bg-white/80 p-2 dark:border-blue-900 dark:bg-gray-950/60">
+      <span className="block text-xs text-gray-500">{label}</span>
+      <code className="mt-1 block break-all font-mono text-xs text-gray-800 dark:text-gray-100">
+        {code}
+      </code>
     </div>
   );
 }
@@ -1327,18 +1444,27 @@ function TimedLineEditor({
         onChange={(event) => onChange({ ...block, title: event.target.value })}
         className="min-w-[220px] flex-1"
       />
-      <TaskSelect
-        value={block.task_ref}
-        options={taskOptions}
-        onChange={(task) =>
-          onChange({
-            ...block,
-            task_ref: task?.ref,
-            title: task?.title ?? block.title,
-          })
-        }
-      />
-      <Badge variant="outline">固定</Badge>
+      {block.kind === "break" ? (
+        <Badge className="gap-1 bg-amber-600">
+          <Coffee className="h-3 w-3" />
+          休憩
+        </Badge>
+      ) : (
+        <>
+          <TaskSelect
+            value={block.task_ref}
+            options={taskOptions}
+            onChange={(task) =>
+              onChange({
+                ...block,
+                task_ref: task?.ref,
+                title: task?.title ?? block.title,
+              })
+            }
+          />
+          <Badge variant="outline">固定</Badge>
+        </>
+      )}
     </div>
   );
 }
@@ -1347,11 +1473,13 @@ function DirectiveEditor({
   block,
   taskOptions,
   projects,
+  availabilityWindows,
   onChange,
 }: {
   block: DailyPlanScheduleDirective;
   taskOptions: TaskOption[];
   projects: Array<{ id: string; title: string }>;
+  availabilityWindows: DailyPlanAvailabilityWindow[];
   onChange: (block: DailyPlanScheduleDirective) => void;
 }) {
   const filter: DailyPlanDirectiveFilter = block.filter ?? {
@@ -1374,6 +1502,7 @@ function DirectiveEditor({
         ]),
     ).values(),
   );
+  const allowedWindow = block.allowed_windows?.[0];
   const toggle = <T extends string>(values: T[], value: T): T[] =>
     values.includes(value)
       ? values.filter((item) => item !== value)
@@ -1424,25 +1553,6 @@ function DirectiveEditor({
               onChange(applyDirectiveTaskSelection(block, task))
             }
           />
-          <Input
-            type="number"
-            min={1}
-            max={1440}
-            placeholder="残り見積り"
-            value={block.duration_override_minutes ?? ""}
-            onChange={(event) => {
-              const parsed = Number.parseInt(event.target.value, 10);
-              onChange({
-                ...block,
-                duration_override_minutes:
-                  Number.isFinite(parsed) && parsed > 0
-                    ? Math.min(parsed, 1440)
-                    : undefined,
-              });
-            }}
-            className="w-28"
-          />
-          <span className="self-center text-sm text-gray-500">分</span>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-3">
@@ -1497,6 +1607,94 @@ function DirectiveEditor({
           />
         </div>
       )}
+      <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-blue-100 pt-3 dark:border-blue-900">
+        <div className="space-y-1">
+          <Label className="text-xs">割当量（分）</Label>
+          <Input
+            aria-label="割当量（分）"
+            type="number"
+            min={1}
+            max={1440}
+            placeholder={block.mode === "task" ? "残り見積り" : "上限なし"}
+            value={block.duration_override_minutes ?? ""}
+            onChange={(event) => {
+              const parsed = Number.parseInt(event.target.value, 10);
+              onChange({
+                ...block,
+                duration_override_minutes:
+                  Number.isFinite(parsed) && parsed > 0
+                    ? Math.min(parsed, 1440)
+                    : undefined,
+              });
+            }}
+            className="w-32"
+          />
+        </div>
+        {allowedWindow ? (
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs">配置可能開始</Label>
+              <Input
+                aria-label="配置可能開始"
+                type="time"
+                value={allowedWindow.start}
+                onChange={(event) => {
+                  const next = updateDailyPlanTimeRange(
+                    allowedWindow,
+                    "start",
+                    event.target.value,
+                  );
+                  if (next) onChange({ ...block, allowed_windows: [next] });
+                }}
+                className="w-28"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">配置可能終了</Label>
+              <Input
+                aria-label="配置可能終了"
+                type="time"
+                value={allowedWindow.end}
+                onChange={(event) => {
+                  const next = updateDailyPlanTimeRange(
+                    allowedWindow,
+                    "end",
+                    event.target.value,
+                  );
+                  if (next) onChange({ ...block, allowed_windows: [next] });
+                }}
+                className="w-28"
+              />
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => onChange({ ...block, allowed_windows: [] })}
+            >
+              時間帯を解除
+            </Button>
+          </div>
+        ) : (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              const fallback = availabilityWindows[0] ?? {
+                start: "09:00",
+                end: "18:00",
+              };
+              onChange({
+                ...block,
+                allowed_windows: [{ start: fallback.start, end: fallback.end }],
+              });
+            }}
+          >
+            配置可能時間帯を指定
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

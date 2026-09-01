@@ -7,6 +7,11 @@ export interface ParsedTimedLine {
   title: string;
 }
 
+export interface ParsedScheduleDirective {
+  durationMinutes?: number;
+  allowedWindow?: DailyPlanTimeRange;
+}
+
 export interface DailyPlanTimeRange {
   start: string;
   end: string;
@@ -39,6 +44,31 @@ export function updateDailyPlanTimeRange(
   return next.start < next.end ? next : null;
 }
 
+export function dailyPlanTimeRangesOverlap(
+  ranges: DailyPlanTimeRange[],
+): boolean {
+  const ordered = [...ranges].sort((left, right) =>
+    left.start.localeCompare(right.start),
+  );
+  return ordered.some(
+    (range, index) => index > 0 && range.start < ordered[index - 1]!.end,
+  );
+}
+
+export function addDailyPlanClockMinutes(
+  value: string,
+  minutes: number,
+): string | null {
+  const normalized = normalizeDailyPlanClock(value);
+  if (!normalized) return null;
+  const [hour = 0, minute = 0] = normalized.split(":").map(Number);
+  const total = hour * 60 + minute + minutes;
+  if (total < 0 || total >= 24 * 60) return null;
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(
+    total % 60,
+  ).padStart(2, "0")}`;
+}
+
 export function parseTimedLine(text: string): ParsedTimedLine | null {
   const match = text.match(
     /^(\d{1,2}:?\d{2})\s*[-–]\s*(\d{1,2}:?\d{2})\s+(.+)$/,
@@ -49,4 +79,30 @@ export function parseTimedLine(text: string): ParsedTimedLine | null {
   const end = normalizeDailyPlanClock(rawEnd);
   if (!start || !end || start >= end || !title.trim()) return null;
   return { start, end, title: title.trim() };
+}
+
+export function parseScheduleDirective(
+  text: string,
+): ParsedScheduleDirective | null {
+  if (!text.trim().startsWith("/schedule")) return null;
+  const range = text.match(/(\d{1,2}:?\d{2})\s*[-–]\s*(\d{1,2}:?\d{2})/);
+  const start = range ? normalizeDailyPlanClock(range[1] ?? "") : null;
+  const end = range ? normalizeDailyPlanClock(range[2] ?? "") : null;
+  return {
+    durationMinutes: parseDurationMinutes(text),
+    allowedWindow: start && end && start < end ? { start, end } : undefined,
+  };
+}
+
+export function parseBreakLine(text: string): ParsedTimedLine | null {
+  const match = text
+    .trim()
+    .match(
+      /^\/break\s+(\d{1,2}:?\d{2})\s*[-–]\s*(\d{1,2}:?\d{2})(?:\s+(.+))?$/,
+    );
+  if (!match) return null;
+  const start = normalizeDailyPlanClock(match[1] ?? "");
+  const end = normalizeDailyPlanClock(match[2] ?? "");
+  if (!start || !end || start >= end) return null;
+  return { start, end, title: match[3]?.trim() || "休憩" };
 }
