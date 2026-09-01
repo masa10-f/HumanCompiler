@@ -5,6 +5,7 @@ import {
   normalizeDailyPlanClock,
   parseDurationMinutes,
   parseTimedLine,
+  updateDailyPlanTimeRange,
 } from "../daily-plan-command";
 
 describe("daily plan command parser", () => {
@@ -24,6 +25,17 @@ describe("daily plan command parser", () => {
   it("rejects invalid and reversed time ranges", () => {
     expect(normalizeDailyPlanClock("2500")).toBeNull();
     expect(parseTimedLine("1200-1100 invalid")).toBeNull();
+  });
+
+  it("keeps incomplete and reversed time edits out of saved ranges", () => {
+    const range = { start: "09:00", end: "18:00" };
+    expect(updateDailyPlanTimeRange(range, "start", "")).toBeNull();
+    expect(updateDailyPlanTimeRange(range, "start", "18:00")).toBeNull();
+    expect(updateDailyPlanTimeRange(range, "end", "08:00")).toBeNull();
+    expect(updateDailyPlanTimeRange(range, "start", "10:30")).toEqual({
+      start: "10:30",
+      end: "18:00",
+    });
   });
 
   it("parses per-day duration overrides", () => {

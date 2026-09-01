@@ -580,10 +580,6 @@ export default function SchedulingPage() {
             revision: response.revision,
             convertedBlockIds: [],
           }));
-      const preservedBlocks = preserveUnconvertedDailyPlanBlocks(
-        base.document.blocks,
-        base.convertedBlockIds,
-      );
       const fixedBlocks = manualAssignments.flatMap(assignment => {
         const slot = timeSlots[assignment.slotIndex];
         const task = availableTasks.find(item => item.id === assignment.taskId);
@@ -609,6 +605,15 @@ export default function SchedulingPage() {
           pinned: true,
         }];
       });
+      const replacedBlockIds = new Set(
+        fixedBlocks
+          .map(block => block.id)
+          .filter(blockId => base.convertedBlockIds.includes(blockId)),
+      );
+      const preservedBlocks = preserveUnconvertedDailyPlanBlocks(
+        base.document.blocks,
+        replacedBlockIds,
+      );
       const eventBlocks = timeSlots.flatMap((slot, index) => slot.kind === 'meeting'
         ? [{
             id: `detailed-event:${index}`,

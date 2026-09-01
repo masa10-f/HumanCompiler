@@ -14,11 +14,13 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 from humancompiler_api.models import (
     Goal,
+    GoalDependency,
     Log,
     Project,
     QuickTask,
     Schedule,
     Task,
+    TaskDependency,
     User,
     WorkType,
 )
@@ -167,6 +169,43 @@ async def test_document_rejects_task_owned_by_another_user(
 
 
 @pytest.mark.asyncio
+async def test_document_validates_only_referenced_task_ids(
+    session: Session,
+    planning_data,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, _project, _goal, first, _second, _quick = planning_data
+
+    def fail_full_graph_load(*_args, **_kwargs):
+        raise AssertionError("autosave must not load the full task graph")
+
+    monkeypatch.setattr(
+        "humancompiler_api.routers.daily_plans._load_owned_tasks",
+        fail_full_graph_load,
+    )
+
+    saved = await update_daily_plan(
+        "2030-01-06",
+        DailyPlanUpdateRequest(
+            expected_revision=0,
+            document=DailyPlanDocumentV1(
+                blocks=[
+                    ScheduleDirectiveBlock(
+                        id="specific",
+                        mode="task",
+                        task_ref=TaskRef(source="task", id=first.id),
+                    )
+                ]
+            ),
+        ),
+        str(user.id),
+        session,
+    )
+
+    assert saved.revision == 1
+
+
+@pytest.mark.asyncio
 async def test_generate_resolves_specific_and_filtered_directives(
     session: Session, planning_data
 ) -> None:
@@ -254,6 +293,101 @@ async def test_project_filter_excludes_quick_tasks_without_membership(
 
     task_ids = {item["task_id"] for item in generated.schedule["assignments"]}
     assert f"quick_{quick.id}" not in task_ids
+
+
+@pytest.mark.asyncio
+async def test_task_dependency_outside_directive_is_reported_as_blocked(
+    session: Session, planning_data
+) -> None:
+    user, _project, _goal, dependent, prerequisite, _quick = planning_data
+    session.add(
+        TaskDependency(
+            id=uuid4(),
+            task_id=dependent.id,
+            depends_on_task_id=prerequisite.id,
+        )
+    )
+    session.commit()
+    await update_daily_plan(
+        "2030-01-07",
+        DailyPlanUpdateRequest(
+            expected_revision=0,
+            document=DailyPlanDocumentV1(
+                blocks=[
+                    ScheduleDirectiveBlock(
+                        id="dependent-only",
+                        mode="task",
+                        task_ref=TaskRef(source="task", id=dependent.id),
+                    )
+                ]
+            ),
+        ),
+        str(user.id),
+        session,
+    )
+
+    generated = await generate_daily_plan("2030-01-07", str(user.id), session)
+
+    diagnostic = generated.schedule["directive_diagnostics"][0]
+    assert diagnostic["eligible_count"] == 0
+    assert diagnostic["generated_count"] == 0
+    assert diagnostic["reason"] == "依存タスクまたは依存ゴールが未完了です"
+
+
+@pytest.mark.asyncio
+async def test_goal_dependency_outside_filter_is_reported_as_blocked(
+    session: Session, planning_data
+) -> None:
+    user, project, prerequisite_goal, _first, _second, _quick = planning_data
+    dependent_goal = Goal(
+        id=uuid4(),
+        project_id=project.id,
+        title="Dependent goal",
+        estimate_hours=Decimal("1"),
+    )
+    dependent_task = Task(
+        id=uuid4(),
+        goal_id=dependent_goal.id,
+        title="Dependent task",
+        estimate_hours=Decimal("1"),
+        work_type=WorkType.FOCUSED_WORK,
+    )
+    session.add_all(
+        [
+            dependent_goal,
+            dependent_task,
+            GoalDependency(
+                id=uuid4(),
+                goal_id=dependent_goal.id,
+                depends_on_goal_id=prerequisite_goal.id,
+            ),
+        ]
+    )
+    session.commit()
+    await update_daily_plan(
+        "2030-01-08",
+        DailyPlanUpdateRequest(
+            expected_revision=0,
+            document=DailyPlanDocumentV1(
+                blocks=[
+                    ScheduleDirectiveBlock(
+                        id="dependent-goal-only",
+                        mode="filter",
+                        filter=DirectiveFilter(goal_ids=[dependent_goal.id]),
+                    )
+                ]
+            ),
+        ),
+        str(user.id),
+        session,
+    )
+
+    generated = await generate_daily_plan("2030-01-08", str(user.id), session)
+
+    diagnostic = generated.schedule["directive_diagnostics"][0]
+    assert diagnostic["eligible_count"] == 0
+    assert diagnostic["generated_count"] == 0
+    assert diagnostic["reason"] == "依存タスクまたは依存ゴールが未完了です"
 
 
 @pytest.mark.asyncio

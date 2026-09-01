@@ -9,7 +9,6 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { LightweightDailyPlanner } from "../lightweight-daily-planner";
 import { dailyPlansApi, quickTasksApi, tasksApi } from "@/lib/api";
-import type { DailyPlanDocumentV1 } from "@/types/daily-plan";
 
 const mockToast = jest.fn();
 
@@ -110,11 +109,9 @@ describe("LightweightDailyPlanner", () => {
 
   it("saves edits made while an autosave request is in flight", async () => {
     let resolveFirstSave: (() => void) | undefined;
-    let firstDocument: DailyPlanDocumentV1 = blankResponse.document;
     jest
       .mocked(dailyPlansApi.update)
       .mockImplementationOnce(async (date, _revision, document) => {
-        firstDocument = document;
         return new Promise((resolve) => {
           resolveFirstSave = () =>
             resolve({ date, revision: 1, document, schedule: null });

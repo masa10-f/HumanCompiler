@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator, model_validator
+from sqlalchemy import func
 from sqlalchemy import update as sqlalchemy_update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
@@ -301,11 +302,7 @@ async def update_daily_plan(
         if (task_ref := getattr(block, "task_ref", None)) is not None
     ]
     if task_refs:
-        regular, quick, _actual_minutes = _load_owned_tasks(
-            session, owner_id, include_actual_minutes=False
-        )
-        for task_ref in task_refs:
-            _validate_task_ref(task_ref, regular, quick)
+        _validate_owned_task_refs(session, owner_id, task_refs)
     existing = _get_document(session, owner_id, date_value)
     if existing is None:
         if request.expected_revision != 0:
@@ -367,12 +364,9 @@ def _work_kind(value: str | WorkType) -> HumanWorkKind:
 def _load_owned_tasks(
     session: Session,
     owner_id: UUID,
-    *,
-    include_actual_minutes: bool = True,
 ) -> tuple[
     dict[str, tuple[Task, Goal, Project]],
     dict[str, QuickTask],
-    dict[str, int],
 ]:
     rows = session.exec(
         select(Task, Goal, Project)
@@ -385,17 +379,65 @@ def _load_owned_tasks(
         select(QuickTask).where(QuickTask.owner_id == owner_id)
     ).all()
     quick = {f"quick_{task.id}": task for task in quick_rows}
-    actual_minutes: dict[str, int] = {}
-    if include_actual_minutes and rows:
-        log_rows = session.exec(
-            select(Log).where(Log.task_id.in_([row[0].id for row in rows]))
-        ).all()
-        for log in log_rows:
-            task_id = str(log.task_id)
-            actual_minutes[task_id] = (
-                actual_minutes.get(task_id, 0) + log.actual_minutes
-            )
-    return regular, quick, actual_minutes
+    return regular, quick
+
+
+def _validate_owned_task_refs(
+    session: Session,
+    owner_id: UUID,
+    refs: list[TaskRef],
+) -> None:
+    regular_ids = {ref.id for ref in refs if ref.source == "task"}
+    quick_ids = {ref.id for ref in refs if ref.source == "quick_task"}
+    found_regular = (
+        set(
+            session.exec(
+                select(Task.id)
+                .join(Goal, Task.goal_id == Goal.id)
+                .join(Project, Goal.project_id == Project.id)
+                .where(
+                    Project.owner_id == owner_id,
+                    Task.id.in_(regular_ids),
+                )
+            ).all()
+        )
+        if regular_ids
+        else set()
+    )
+    found_quick = (
+        set(
+            session.exec(
+                select(QuickTask.id).where(
+                    QuickTask.owner_id == owner_id,
+                    QuickTask.id.in_(quick_ids),
+                )
+            ).all()
+        )
+        if quick_ids
+        else set()
+    )
+    if found_regular != regular_ids or found_quick != quick_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Referenced task was not found",
+        )
+
+
+def _load_actual_minutes(
+    session: Session,
+    selected_ids: set[str],
+) -> dict[str, int]:
+    regular_ids = [
+        UUID(task_id) for task_id in selected_ids if not task_id.startswith("quick_")
+    ]
+    if not regular_ids:
+        return {}
+    rows = session.exec(
+        select(Log.task_id, func.sum(Log.actual_minutes))
+        .where(Log.task_id.in_(regular_ids))
+        .group_by(Log.task_id)
+    ).all()
+    return {str(task_id): int(total or 0) for task_id, total in rows}
 
 
 def _matches_filter(
@@ -449,11 +491,12 @@ def _build_task_dependencies(
     session: Session,
     selected_ids: set[str],
     regular: dict[str, tuple[Task, Goal, Project]],
-) -> dict[str, list[str]]:
+) -> tuple[dict[str, list[str]], set[str]]:
     regular_ids = [
         UUID(task_id) for task_id in selected_ids if not task_id.startswith("quick_")
     ]
     dependencies: dict[str, set[str]] = {}
+    blocked_task_ids: set[str] = set()
     if regular_ids:
         rows = session.exec(
             select(TaskDependency).where(TaskDependency.task_id.in_(regular_ids))
@@ -462,7 +505,17 @@ def _build_task_dependencies(
             dependent_id = str(dependency.task_id)
             prerequisite_id = str(dependency.depends_on_task_id)
             prerequisite = regular.get(prerequisite_id)
-            if prerequisite and prerequisite[0].status == TaskStatus.COMPLETED:
+            if prerequisite is None:
+                # Ignore stale/cross-owner edges rather than passing a permanently
+                # unsatisfiable prerequisite to the scheduler.
+                continue
+            if prerequisite[0].status == TaskStatus.COMPLETED:
+                continue
+            if (
+                prerequisite[0].status not in ACTIVE_TASK_STATUSES
+                or prerequisite_id not in selected_ids
+            ):
+                blocked_task_ids.add(dependent_id)
                 continue
             dependencies.setdefault(dependent_id, set()).add(prerequisite_id)
 
@@ -481,21 +534,27 @@ def _build_task_dependencies(
                 tasks_by_goal.setdefault(str(regular[task_id][1].id), []).append(
                     task_id
                 )
-        active_tasks_by_goal: dict[str, list[str]] = {}
+        active_tasks_by_goal: dict[str, set[str]] = {}
         for task_id, (task, goal, _project) in regular.items():
             if task.status in ACTIVE_TASK_STATUSES:
-                active_tasks_by_goal.setdefault(str(goal.id), []).append(task_id)
+                active_tasks_by_goal.setdefault(str(goal.id), set()).add(task_id)
         for dependency in goal_dependencies:
             dependent_tasks = tasks_by_goal.get(str(dependency.goal_id), [])
             prerequisite_tasks = active_tasks_by_goal.get(
-                str(dependency.depends_on_goal_id), []
+                str(dependency.depends_on_goal_id), set()
             )
             if not prerequisite_tasks:
                 continue
             for task_id in dependent_tasks:
+                if not prerequisite_tasks.issubset(selected_ids):
+                    blocked_task_ids.add(task_id)
+                    continue
                 dependencies.setdefault(task_id, set()).update(prerequisite_tasks)
 
-    return {task_id: sorted(values) for task_id, values in dependencies.items()}
+    return (
+        {task_id: sorted(values) for task_id, values in dependencies.items()},
+        blocked_task_ids,
+    )
 
 
 def _build_scheduler_input(
@@ -503,8 +562,13 @@ def _build_scheduler_input(
     owner_id: UUID,
     date_text: str,
     document: DailyPlanDocumentV1,
-) -> tuple[HumanFlexibleDailyFixture, dict[str, dict], dict[str, int]]:
-    regular, quick, actual_minutes = _load_owned_tasks(session, owner_id)
+) -> tuple[
+    HumanFlexibleDailyFixture,
+    dict[str, dict],
+    dict[str, int],
+    set[str],
+]:
+    regular, quick = _load_owned_tasks(session, owner_id)
     active_ids = {
         task_id
         for task_id in [*regular, *quick]
@@ -645,6 +709,30 @@ def _build_scheduler_input(
         )
         frozen_keys.add(key)
 
+    task_dependencies, dependency_blocked_ids = _build_task_dependencies(
+        session, selected_ids, regular
+    )
+    dependency_blocked_directives: set[str] = set()
+    adjusted_candidate_pools: list[HumanCandidatePool] = []
+    for pool in candidate_pools:
+        eligible_ids = pool.eligible_task_ids - dependency_blocked_ids
+        if pool.eligible_task_ids and not eligible_ids:
+            dependency_blocked_directives.add(pool.id)
+        adjusted_candidate_pools.append(
+            HumanCandidatePool(
+                id=pool.id,
+                eligible_task_ids=frozenset(eligible_ids),
+                required_task_id=(
+                    pool.required_task_id
+                    if pool.required_task_id in eligible_ids
+                    else None
+                ),
+                requested_minutes=pool.requested_minutes,
+            )
+        )
+        eligible_counts[pool.id] = len(eligible_ids)
+    actual_minutes = _load_actual_minutes(session, selected_ids)
+
     task_metadata: dict[str, dict] = {}
     scheduler_tasks: list[HumanTask] = []
     for scheduler_id in sorted(selected_ids):
@@ -708,12 +796,17 @@ def _build_scheduler_input(
         ],
         fixed_events=fixed_events,
         frozen_blocks=frozen_blocks,
-        candidate_pools=candidate_pools,
+        candidate_pools=adjusted_candidate_pools,
         now=now,
-        task_dependencies=_build_task_dependencies(session, selected_ids, regular),
+        task_dependencies=task_dependencies,
         metadata={"source": "daily_plan_document"},
     )
-    return fixture, task_metadata, eligible_counts
+    return (
+        fixture,
+        task_metadata,
+        eligible_counts,
+        dependency_blocked_directives,
+    )
 
 
 def _save_generated_schedule(
@@ -752,9 +845,12 @@ async def generate_daily_plan(
             detail="Save the daily plan document before generating",
         )
     document = DailyPlanDocumentV1.model_validate(source_document.document_json)
-    fixture, task_metadata, eligible_counts = _build_scheduler_input(
-        session, owner_id, date, document
-    )
+    (
+        fixture,
+        task_metadata,
+        eligible_counts,
+        dependency_blocked_directives,
+    ) = _build_scheduler_input(session, owner_id, date, document)
     try:
         compiled_fixture = compile_human_flexible_daily_fixture(fixture)
         report = plan_daily_schedule(compiled_fixture)
@@ -846,11 +942,12 @@ async def generate_daily_plan(
         reason = None
         generated_for_directive = generated_minutes.get(block.id, 0)
         if generated_count == 0:
-            reason = (
-                "候補がありません"
-                if eligible_count == 0
-                else "利用可能な時間が不足しています"
-            )
+            if block.id in dependency_blocked_directives:
+                reason = "依存タスクまたは依存ゴールが未完了です"
+            elif eligible_count == 0:
+                reason = "候補がありません"
+            else:
+                reason = "利用可能な時間が不足しています"
         elif (
             block.mode == "task"
             and block.duration_override_minutes
@@ -904,9 +1001,7 @@ async def apply_task_action(
 ) -> TaskActionResponse:
     _parse_date(date)
     owner_id = UUID(user_id)
-    regular, quick, _actual = _load_owned_tasks(
-        session, owner_id, include_actual_minutes=False
-    )
+    regular, quick = _load_owned_tasks(session, owner_id)
     scheduler_id = _validate_task_ref(request.task_ref, regular, quick)
 
     if request.task_ref.source == "quick_task":

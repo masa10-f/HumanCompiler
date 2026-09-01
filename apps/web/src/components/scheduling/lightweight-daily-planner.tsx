@@ -48,7 +48,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useProjectOptions } from "@/hooks/use-project-query";
 import { dailyPlansApi, goalsApi, quickTasksApi, tasksApi } from "@/lib/api";
 import { ApiError } from "@/lib/errors";
-import { parseDurationMinutes, parseTimedLine } from "@/lib/daily-plan-command";
+import {
+  parseDurationMinutes,
+  parseTimedLine,
+  updateDailyPlanTimeRange,
+} from "@/lib/daily-plan-command";
+import { applyDirectiveTaskSelection } from "@/lib/daily-plan-adapter";
 import type { Goal } from "@/types/goal";
 import type { QuickTask } from "@/types/quick-task";
 import type { TaskWorkspaceItem, WorkType } from "@/types/task";
@@ -817,17 +822,21 @@ export function LightweightDailyPlanner({
                   <Input
                     type="time"
                     value={window.start}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      const next = updateDailyPlanTimeRange(
+                        window,
+                        "start",
+                        event.target.value,
+                      );
+                      if (!next) return;
                       updateDocument((current) => ({
                         ...current,
                         availability_windows: current.availability_windows.map(
                           (item, itemIndex) =>
-                            itemIndex === index
-                              ? { ...item, start: event.target.value }
-                              : item,
+                            itemIndex === index ? { ...item, ...next } : item,
                         ),
-                      }))
-                    }
+                      }));
+                    }}
                     className="w-28"
                   />
                 </div>
@@ -836,17 +845,21 @@ export function LightweightDailyPlanner({
                   <Input
                     type="time"
                     value={window.end}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      const next = updateDailyPlanTimeRange(
+                        window,
+                        "end",
+                        event.target.value,
+                      );
+                      if (!next) return;
                       updateDocument((current) => ({
                         ...current,
                         availability_windows: current.availability_windows.map(
                           (item, itemIndex) =>
-                            itemIndex === index
-                              ? { ...item, end: event.target.value }
-                              : item,
+                            itemIndex === index ? { ...item, ...next } : item,
                         ),
-                      }))
-                    }
+                      }));
+                    }}
                     className="w-28"
                   />
                 </div>
@@ -1285,14 +1298,28 @@ function TimedLineEditor({
       <Input
         type="time"
         value={block.start}
-        onChange={(event) => onChange({ ...block, start: event.target.value })}
+        onChange={(event) => {
+          const next = updateDailyPlanTimeRange(
+            block,
+            "start",
+            event.target.value,
+          );
+          if (next) onChange({ ...block, ...next });
+        }}
         className="w-28 font-mono"
       />
       <span>–</span>
       <Input
         type="time"
         value={block.end}
-        onChange={(event) => onChange({ ...block, end: event.target.value })}
+        onChange={(event) => {
+          const next = updateDailyPlanTimeRange(
+            block,
+            "end",
+            event.target.value,
+          );
+          if (next) onChange({ ...block, ...next });
+        }}
         className="w-28 font-mono"
       />
       <Input
@@ -1394,7 +1421,7 @@ function DirectiveEditor({
             value={block.task_ref}
             options={taskOptions}
             onChange={(task) =>
-              onChange({ ...block, task_ref: task?.ref, title: task?.title })
+              onChange(applyDirectiveTaskSelection(block, task))
             }
           />
           <Input
