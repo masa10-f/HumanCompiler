@@ -130,10 +130,11 @@ class TimedLineBlock(BaseModel):
 
 class DirectiveFilter(BaseModel):
     work_types: list[Literal["light_work", "focused_work", "study"]] = Field(
-        default_factory=list
+        default_factory=list,
+        max_length=3,
     )
-    project_ids: list[UUID] = Field(default_factory=list)
-    goal_ids: list[UUID] = Field(default_factory=list)
+    project_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    goal_ids: list[UUID] = Field(default_factory=list, max_length=200)
 
 
 class DirectiveWindow(BaseModel):
@@ -161,7 +162,10 @@ class ScheduleDirectiveBlock(BaseModel):
     task_ref: TaskRef | None = None
     filter: DirectiveFilter | None = None
     duration_override_minutes: int | None = Field(default=None, gt=0, le=1440)
-    allowed_windows: list[DirectiveWindow] = Field(default_factory=list)
+    allowed_windows: list[DirectiveWindow] = Field(
+        default_factory=list,
+        max_length=24,
+    )
 
     @model_validator(mode="after")
     def validate_mode_fields(self) -> ScheduleDirectiveBlock:

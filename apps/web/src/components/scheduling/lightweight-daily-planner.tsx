@@ -137,10 +137,9 @@ function findMention(
 ): TaskOption | undefined {
   const mention = extractMention(text)?.toLocaleLowerCase();
   if (!mention) return undefined;
-  return options.find(
-    (option) =>
-      option.title.toLocaleLowerCase() === mention ||
-      option.title.toLocaleLowerCase().includes(mention),
+  return (
+    options.find((option) => option.title.toLocaleLowerCase() === mention) ??
+    options.find((option) => option.title.toLocaleLowerCase().includes(mention))
   );
 }
 
@@ -300,7 +299,6 @@ export function LightweightDailyPlanner({
       setDirty(true);
       dirtyRef.current = true;
       setSaveRetry(0);
-      setConflict(false);
     },
     [],
   );
@@ -687,10 +685,11 @@ export function LightweightDailyPlanner({
     try {
       let ref: DailyPlanTaskRef;
       let title: string;
+      const estimateHours = Math.round((newTaskMinutes / 60) * 100) / 100;
       if (newTaskDestination === "quick") {
         const created = await quickTasksApi.create({
           title: newTaskTitle.trim(),
-          estimate_hours: newTaskMinutes / 60,
+          estimate_hours: estimateHours,
           work_type: newTaskWorkType,
           priority: Number(newTaskPriority),
         });
@@ -699,7 +698,7 @@ export function LightweightDailyPlanner({
       } else {
         const created = await tasksApi.create({
           title: newTaskTitle.trim(),
-          estimate_hours: newTaskMinutes / 60,
+          estimate_hours: estimateHours,
           work_type: newTaskWorkType,
           priority: Number(newTaskPriority),
           goal_id: newTaskGoalId,
@@ -1846,6 +1845,10 @@ function GeneratedAssignmentRow({
 }) {
   const [start, setStart] = useState(assignment.start_time);
   const [end, setEnd] = useState(assignment.slot_end);
+  useEffect(() => {
+    setStart(assignment.start_time);
+    setEnd(assignment.slot_end);
+  }, [assignment.slot_end, assignment.start_time]);
   const canPin = Boolean(
     updateDailyPlanTimeRange({ start, end }, "start", start) &&
       updateDailyPlanTimeRange({ start, end }, "end", end),

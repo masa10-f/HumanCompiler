@@ -9,6 +9,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { LightweightDailyPlanner } from "../lightweight-daily-planner";
 import { dailyPlansApi, quickTasksApi, tasksApi } from "@/lib/api";
+import { ApiError } from "@/lib/errors";
 
 const mockToast = jest.fn();
 
@@ -143,6 +144,82 @@ describe("LightweightDailyPlanner", () => {
     );
   });
 
+  it("prefers an exact task mention over an earlier partial match", async () => {
+    const baseTask = {
+      description: null,
+      estimate_hours: 1,
+      due_date: null,
+      status: "pending" as const,
+      work_type: "light_work" as const,
+      priority: 3,
+      goal_id: "goal-1",
+      project_id: "project-1",
+      project_title: "Project",
+      goal_title: "Goal",
+      remaining_estimate_hours: 1,
+      is_blocked: false,
+      is_ready: true,
+      blocking_task_ids: [],
+      last_worked_at: null,
+      planned_today: false,
+      planned_today_unplaced: false,
+      planned_this_week: false,
+      created_at: "2030-01-01T00:00:00Z",
+      updated_at: "2030-01-01T00:00:00Z",
+    };
+    jest.mocked(tasksApi.getWorkspace).mockResolvedValue({
+      items: [
+        {
+          ...baseTask,
+          id: "11111111-1111-1111-1111-111111111111",
+          title: "コードレビュー準備",
+        },
+        {
+          ...baseTask,
+          id: "22222222-2222-2222-2222-222222222222",
+          title: "レビュー",
+        },
+      ],
+      total: 2,
+      skip: 0,
+      limit: 100,
+    });
+
+    render(
+      <LightweightDailyPlanner
+        selectedDate="2030-01-02"
+        onSelectedDateChange={jest.fn()}
+        onSwitchDetailed={jest.fn()}
+      />,
+    );
+    const command = await screen.findByRole("textbox", {
+      name: "日次プランの行入力",
+    });
+    fireEvent.paste(command, {
+      clipboardData: { getData: () => "/schedule @レビュー (30m)" },
+    });
+    fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
+
+    await waitFor(
+      () =>
+        expect(dailyPlansApi.update).toHaveBeenCalledWith(
+          "2030-01-02",
+          0,
+          expect.objectContaining({
+            blocks: [
+              expect.objectContaining({
+                task_ref: {
+                  source: "task",
+                  id: "22222222-2222-2222-2222-222222222222",
+                },
+              }),
+            ],
+          }),
+        ),
+      { timeout: 2500 },
+    );
+  });
+
   it("keeps the allowed window when creating an unknown mentioned task", async () => {
     jest.mocked(quickTasksApi.create).mockResolvedValue({
       id: "quick-1",
@@ -169,13 +246,17 @@ describe("LightweightDailyPlanner", () => {
     });
     fireEvent.paste(command, {
       clipboardData: {
-        getData: () => "/schedule 13:00-17:00 @新規タスク (90m)",
+        getData: () => "/schedule 13:00-17:00 @新規タスク (50m)",
       },
     });
     fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
 
     fireEvent.click(
       await screen.findByRole("button", { name: "作成して追加" }),
+    );
+
+    expect(quickTasksApi.create).toHaveBeenCalledWith(
+      expect.objectContaining({ estimate_hours: 0.83 }),
     );
 
     await waitFor(
@@ -187,7 +268,7 @@ describe("LightweightDailyPlanner", () => {
             blocks: [
               expect.objectContaining({
                 type: "schedule_directive",
-                duration_override_minutes: 90,
+                duration_override_minutes: 50,
                 allowed_windows: [{ start: "13:00", end: "17:00" }],
               }),
             ],
@@ -346,6 +427,39 @@ describe("LightweightDailyPlanner", () => {
     );
   });
 
+  it("keeps a revision conflict visible while the user continues editing", async () => {
+    jest
+      .mocked(dailyPlansApi.update)
+      .mockRejectedValue(new ApiError(409, "revision conflict"));
+
+    render(
+      <LightweightDailyPlanner
+        selectedDate="2030-01-02"
+        onSelectedDateChange={jest.fn()}
+        onSwitchDetailed={jest.fn()}
+      />,
+    );
+    const command = await screen.findByRole("textbox", {
+      name: "日次プランの行入力",
+    });
+    fireEvent.paste(command, {
+      clipboardData: { getData: () => "/schedule" },
+    });
+    fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
+    expect(
+      await screen.findByText("別の画面で内容が更新されています"),
+    ).toBeInTheDocument();
+
+    fireEvent.paste(command, {
+      clipboardData: { getData: () => "1100-1200 会議" },
+    });
+    fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
+
+    expect(
+      screen.getByText("別の画面で内容が更新されています"),
+    ).toBeInTheDocument();
+  });
+
   it("keeps the persisted title valid while the title field is cleared", async () => {
     render(
       <LightweightDailyPlanner
@@ -478,6 +592,70 @@ describe("LightweightDailyPlanner", () => {
           variant: "destructive",
         }),
       ),
+    );
+  });
+
+  it("refreshes a generated row when regeneration changes its end time", async () => {
+    const assignment = {
+      task_id: "task-1",
+      task_title: "Task",
+      goal_id: "goal-1",
+      project_id: "project-1",
+      slot_index: 0,
+      start_time: "10:00",
+      duration_hours: 2,
+      slot_start: "09:00",
+      slot_end: "12:00",
+      slot_kind: "light_work" as const,
+      is_fixed: false,
+      directive_id: "directive-1",
+      source: "task" as const,
+    };
+    const response = {
+      ...blankResponse,
+      document: {
+        ...blankResponse.document,
+        blocks: [
+          {
+            id: "directive-1",
+            type: "schedule_directive" as const,
+            mode: "filter" as const,
+            filter: { work_types: [], project_ids: [], goal_ids: [] },
+          },
+        ],
+      },
+      schedule: {
+        success: true,
+        assignments: [assignment],
+        total_scheduled_hours: 2,
+        optimization_status: "OK",
+        generated_at: "2030-01-02T00:00:00Z",
+      },
+    };
+    jest.mocked(dailyPlansApi.get).mockResolvedValue(response);
+    jest.mocked(dailyPlansApi.generate).mockResolvedValue({
+      ...response,
+      schedule: {
+        ...response.schedule,
+        assignments: [{ ...assignment, duration_hours: 1, slot_end: "11:00" }],
+      },
+    });
+
+    render(
+      <LightweightDailyPlanner
+        selectedDate="2030-01-02"
+        onSelectedDateChange={jest.fn()}
+        onSwitchDetailed={jest.fn()}
+      />,
+    );
+
+    expect(await screen.findByLabelText("生成予定の終了時刻")).toHaveValue(
+      "12:00",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "自動スケジュール" }));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("生成予定の終了時刻")).toHaveValue("11:00"),
     );
   });
 

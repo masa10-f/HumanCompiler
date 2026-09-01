@@ -386,6 +386,27 @@ def test_document_rejects_overlapping_availability_windows() -> None:
         )
 
 
+def test_directive_collections_have_safe_size_limits() -> None:
+    with pytest.raises(ValueError):
+        DirectiveFilter(
+            work_types=[
+                "light_work",
+                "focused_work",
+                "study",
+                "light_work",
+            ]
+        )
+
+    with pytest.raises(ValueError):
+        ScheduleDirectiveBlock(
+            id="too-many-windows",
+            mode="filter",
+            allowed_windows=[
+                DirectiveWindow(start="09:00", end="10:00") for _ in range(25)
+            ],
+        )
+
+
 @pytest.mark.asyncio
 async def test_task_dependency_outside_directive_is_reported_as_blocked(
     session: Session, planning_data

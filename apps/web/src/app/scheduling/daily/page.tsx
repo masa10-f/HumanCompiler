@@ -159,6 +159,13 @@ export default function SchedulingPage() {
     });
   }, [markAssignmentsRemoved]);
 
+  useEffect(() => {
+    resetManualAssignments();
+    setScheduleResult(null);
+    removedBlockIdsRef.current = new Set();
+    setDailyPlanAdapter(null);
+  }, [resetManualAssignments, selectedDate]);
+
   // Active dragging state
   const [activeDragTask, setActiveDragTask] = useState<TaskInfo | null>(null);
 
