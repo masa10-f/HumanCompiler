@@ -273,22 +273,22 @@ async def test_generate_resolves_specific_and_filtered_directives(
 
     assert generated.revision == saved.revision
     assert generated.schedule is not None
-    assignments = generated.schedule["assignments"]
+    assignments = generated.schedule.assignments
     assert assignments
-    assert assignments[0]["directive_id"] == "specific"
+    assert assignments[0].directive_id == "specific"
     assert all(
-        not (item["start_time"] < "10:30" and item["slot_end"] > "10:00")
+        not (item.start_time < "10:30" and item.slot_end > "10:00")
         for item in assignments
     )
-    assert generated.schedule["source_document_revision"] == 1
+    assert generated.schedule.source_document_revision == 1
     project_diagnostic = next(
         item
-        for item in generated.schedule["directive_diagnostics"]
-        if item["directive_id"] == "project"
+        for item in generated.schedule.directive_diagnostics
+        if item.directive_id == "project"
     )
-    assert project_diagnostic["eligible_count"] == 2
-    assert "unused_minutes" not in project_diagnostic
-    assert generated.schedule["unused_minutes"] >= 0
+    assert project_diagnostic.eligible_count == 2
+    assert "unused_minutes" not in project_diagnostic.model_dump()
+    assert generated.schedule.unused_minutes >= 0
 
 
 @pytest.mark.asyncio
@@ -314,7 +314,8 @@ async def test_project_filter_excludes_quick_tasks_without_membership(
 
     generated = await generate_daily_plan("2030-01-03", str(user.id), session)
 
-    task_ids = {item["task_id"] for item in generated.schedule["assignments"]}
+    assert generated.schedule is not None
+    task_ids = {item.task_id for item in generated.schedule.assignments}
     assert f"quick_{quick.id}" not in task_ids
 
 
@@ -350,15 +351,15 @@ async def test_filter_directive_limits_total_minutes_and_time_window(
 
     generated = await generate_daily_plan("2030-01-09", str(user.id), session)
 
+    assert generated.schedule is not None
     assignments = [
         item
-        for item in generated.schedule["assignments"]
-        if item["directive_id"] == "afternoon-goal"
+        for item in generated.schedule.assignments
+        if item.directive_id == "afternoon-goal"
     ]
-    assert sum(round(item["duration_hours"] * 60) for item in assignments) == 90
+    assert sum(round(item.duration_hours * 60) for item in assignments) == 90
     assert all(
-        item["start_time"] >= "13:00" and item["slot_end"] <= "15:00"
-        for item in assignments
+        item.start_time >= "13:00" and item.slot_end <= "15:00" for item in assignments
     )
 
 
@@ -405,10 +406,11 @@ async def test_task_dependency_outside_directive_is_reported_as_blocked(
 
     generated = await generate_daily_plan("2030-01-07", str(user.id), session)
 
-    diagnostic = generated.schedule["directive_diagnostics"][0]
-    assert diagnostic["eligible_count"] == 0
-    assert diagnostic["generated_count"] == 0
-    assert diagnostic["reason"] == "依存タスクまたは依存ゴールが未完了です"
+    assert generated.schedule is not None
+    diagnostic = generated.schedule.directive_diagnostics[0]
+    assert diagnostic.eligible_count == 0
+    assert diagnostic.generated_count == 0
+    assert diagnostic.reason == "依存タスクまたは依存ゴールが未完了です"
 
 
 @pytest.mark.asyncio
@@ -461,10 +463,11 @@ async def test_goal_dependency_outside_filter_is_reported_as_blocked(
 
     generated = await generate_daily_plan("2030-01-08", str(user.id), session)
 
-    diagnostic = generated.schedule["directive_diagnostics"][0]
-    assert diagnostic["eligible_count"] == 0
-    assert diagnostic["generated_count"] == 0
-    assert diagnostic["reason"] == "依存タスクまたは依存ゴールが未完了です"
+    assert generated.schedule is not None
+    diagnostic = generated.schedule.directive_diagnostics[0]
+    assert diagnostic.eligible_count == 0
+    assert diagnostic.generated_count == 0
+    assert diagnostic.reason == "依存タスクまたは依存ゴールが未完了です"
 
 
 @pytest.mark.asyncio
@@ -501,10 +504,10 @@ async def test_generate_persists_structured_solver_error(
     generated = await generate_daily_plan("2030-01-05", str(user.id), session)
 
     assert generated.schedule is not None
-    assert generated.schedule["success"] is False
-    assert generated.schedule["optimization_status"] == "SOLVER_ERROR"
-    assert generated.schedule["assignments"] == []
-    assert generated.schedule["unscheduled_tasks"][0]["task_id"] == str(first.id)
+    assert generated.schedule.success is False
+    assert generated.schedule.optimization_status == "SOLVER_ERROR"
+    assert generated.schedule.assignments == []
+    assert generated.schedule.unscheduled_tasks[0].task_id == str(first.id)
 
 
 @pytest.mark.asyncio
@@ -553,12 +556,9 @@ async def test_generate_preserves_existing_fixed_assignment(
 
     generated = await generate_daily_plan(date_text, str(user.id), session)
 
-    fixed = [
-        item for item in generated.schedule["assignments"] if item["is_fixed"] is True
-    ]
-    assert [(item["start_time"], item["slot_end"]) for item in fixed] == [
-        ("09:00", "09:30")
-    ]
+    assert generated.schedule is not None
+    fixed = [item for item in generated.schedule.assignments if item.is_fixed is True]
+    assert [(item.start_time, item.slot_end) for item in fixed] == [("09:00", "09:30")]
 
 
 @pytest.mark.asyncio

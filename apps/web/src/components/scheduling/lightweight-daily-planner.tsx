@@ -69,6 +69,7 @@ import type {
   DailyPlanBlock,
   DailyPlanChecklistItem,
   DailyPlanDirectiveFilter,
+  DailyPlanDirectiveWindow,
   DailyPlanDocumentV1,
   DailyPlanResponse,
   DailyPlanScheduleDirective,
@@ -175,6 +176,9 @@ export function LightweightDailyPlanner({
   >("directive");
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskMinutes, setNewTaskMinutes] = useState(30);
+  const [newTaskAllowedWindow, setNewTaskAllowedWindow] = useState<
+    DailyPlanDirectiveWindow | undefined
+  >();
   const [newTaskWorkType, setNewTaskWorkType] =
     useState<WorkType>("light_work");
   const [newTaskPriority, setNewTaskPriority] = useState("3");
@@ -392,8 +396,14 @@ export function LightweightDailyPlanner({
       !mentioned &&
       (value.startsWith("/schedule") || /^-?\s*\[\s?\]/.test(value))
     ) {
+      const directive = value.startsWith("/schedule")
+        ? parseScheduleDirective(value)
+        : null;
       setNewTaskTitle(mention);
-      setNewTaskMinutes(parseDurationMinutes(value) ?? 30);
+      setNewTaskMinutes(
+        directive?.durationMinutes ?? parseDurationMinutes(value) ?? 30,
+      );
+      setNewTaskAllowedWindow(directive?.allowedWindow);
       setNewTaskInsertKind(
         /^-?\s*\[\s?\]/.test(value) ? "checklist" : "directive",
       );
@@ -684,6 +694,9 @@ export function LightweightDailyPlanner({
               title,
               task_ref: ref,
               duration_override_minutes: newTaskMinutes,
+              allowed_windows: newTaskAllowedWindow
+                ? [newTaskAllowedWindow]
+                : [],
             };
       updateDocument((current) => ({
         ...current,
@@ -694,6 +707,7 @@ export function LightweightDailyPlanner({
       setNewTaskTitle("");
       setCommand("");
       setNewTaskInsertKind("directive");
+      setNewTaskAllowedWindow(undefined);
       setNewTaskDestination("quick");
       setNewTaskProjectId("");
       setNewTaskGoalId("");
@@ -1133,6 +1147,7 @@ export function LightweightDailyPlanner({
                 variant="outline"
                 onClick={() => {
                   setNewTaskInsertKind("directive");
+                  setNewTaskAllowedWindow(undefined);
                   setCreateOpen(true);
                 }}
               >

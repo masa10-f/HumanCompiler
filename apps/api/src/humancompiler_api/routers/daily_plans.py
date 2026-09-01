@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import func
 from sqlalchemy import update as sqlalchemy_update
 from sqlalchemy.exc import IntegrityError
@@ -232,12 +232,65 @@ class DailyPlanUpdateRequest(BaseModel):
     document: DailyPlanDocumentV1
 
 
+class DailyPlanScheduleAssignment(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    task_id: str = ""
+    task_title: str = ""
+    goal_id: str | None = ""
+    project_id: str | None = ""
+    slot_index: int = 0
+    start_time: str = ""
+    duration_hours: float = 0
+    slot_start: str = ""
+    slot_end: str = ""
+    slot_kind: str = "light_work"
+    is_fixed: bool = False
+    directive_id: str | None = None
+    source: Literal["task", "quick_task"] | None = None
+
+
+class DailyPlanDirectiveDiagnostic(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    directive_id: str
+    eligible_count: int = 0
+    generated_count: int = 0
+    generated_minutes: int = 0
+    reason: str | None = None
+
+
+class DailyPlanUnscheduledTask(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    task_id: str = ""
+    title: str = ""
+    reason: str = ""
+
+
+class DailyPlanScheduleResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    success: bool = False
+    assignments: list[DailyPlanScheduleAssignment] = Field(default_factory=list)
+    total_scheduled_hours: float = 0
+    optimization_status: str = ""
+    generated_at: str = ""
+    source: str | None = None
+    source_document_revision: int | None = None
+    directive_diagnostics: list[DailyPlanDirectiveDiagnostic] = Field(
+        default_factory=list
+    )
+    unused_minutes: int = 0
+    unscheduled_tasks: list[DailyPlanUnscheduledTask] = Field(default_factory=list)
+
+
 class DailyPlanResponse(BaseModel):
     id: UUID | None = None
     date: str
     revision: int
     document: DailyPlanDocumentV1
-    schedule: dict | None = None
+    schedule: DailyPlanScheduleResponse | None = None
     updated_at: datetime | None = None
 
 

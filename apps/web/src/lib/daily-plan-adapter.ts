@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
 
 import type {
+  DailyPlanAvailabilityWindow,
   DailyPlanBlock,
   DailyPlanDocumentV1,
   DailyPlanScheduleDirective,
@@ -9,6 +10,7 @@ import type {
   DailyPlanTimedLine,
 } from "@/types/daily-plan";
 import type { TimeSlot } from "@/types/ai-planning";
+import { normalizeDailyPlanClock } from "@/lib/daily-plan-command";
 
 export interface DetailedDailyPlanTimeSlot extends TimeSlot {
   sourceBlockId?: string;
@@ -72,6 +74,35 @@ export function detailedSlotForScheduler(
     capacity_hours: slot.capacity_hours,
     assigned_project_id: slot.assigned_project_id,
   };
+}
+
+export function detailedSlotsToAvailabilityWindows(
+  slots: DetailedDailyPlanTimeSlot[],
+): DailyPlanAvailabilityWindow[] {
+  const ordered = slots
+    .flatMap((slot) => {
+      if (slot.kind === "meeting") return [];
+      const start = normalizeDailyPlanClock(slot.start);
+      const end = normalizeDailyPlanClock(slot.end);
+      if (!start || !end || start >= end) return [];
+      return [{ start, end, work_type: slot.kind }];
+    })
+    .sort(
+      (left, right) =>
+        left.start.localeCompare(right.start) ||
+        left.end.localeCompare(right.end),
+    );
+
+  const result: DailyPlanAvailabilityWindow[] = [];
+  for (const window of ordered) {
+    const previous = result.at(-1);
+    const start =
+      previous && window.start < previous.end ? previous.end : window.start;
+    if (start >= window.end) continue;
+    result.push({ ...window, start });
+    if (result.length === 24) break;
+  }
+  return result;
 }
 
 export function preserveUnconvertedDailyPlanBlocks(

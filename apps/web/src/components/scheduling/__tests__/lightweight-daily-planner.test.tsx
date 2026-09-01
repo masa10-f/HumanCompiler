@@ -143,6 +143,60 @@ describe("LightweightDailyPlanner", () => {
     );
   });
 
+  it("keeps the allowed window when creating an unknown mentioned task", async () => {
+    jest.mocked(quickTasksApi.create).mockResolvedValue({
+      id: "quick-1",
+      owner_id: "user-1",
+      title: "新規タスク",
+      description: null,
+      estimate_hours: 1.5,
+      due_date: null,
+      status: "pending",
+      work_type: "light_work",
+      priority: 3,
+      created_at: "2030-01-02T00:00:00Z",
+      updated_at: "2030-01-02T00:00:00Z",
+    });
+    render(
+      <LightweightDailyPlanner
+        selectedDate="2030-01-02"
+        onSelectedDateChange={jest.fn()}
+        onSwitchDetailed={jest.fn()}
+      />,
+    );
+    const command = await screen.findByRole("textbox", {
+      name: "日次プランの行入力",
+    });
+    fireEvent.paste(command, {
+      clipboardData: {
+        getData: () => "/schedule 13:00-17:00 @新規タスク (90m)",
+      },
+    });
+    fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "作成して追加" }),
+    );
+
+    await waitFor(
+      () =>
+        expect(dailyPlansApi.update).toHaveBeenCalledWith(
+          "2030-01-02",
+          0,
+          expect.objectContaining({
+            blocks: [
+              expect.objectContaining({
+                type: "schedule_directive",
+                duration_override_minutes: 90,
+                allowed_windows: [{ start: "13:00", end: "17:00" }],
+              }),
+            ],
+          }),
+        ),
+      { timeout: 2500 },
+    );
+  });
+
   it("creates a first-class break block", async () => {
     render(
       <LightweightDailyPlanner

@@ -5,6 +5,7 @@ import {
   applyDirectiveTaskSelection,
   dailyPlanDocumentToDetailedSlots,
   detailedMeetingSlotsToDailyPlanBlocks,
+  detailedSlotsToAvailabilityWindows,
   preserveUnconvertedDailyPlanBlocks,
 } from "../daily-plan-adapter";
 import type { DailyPlanBlock } from "@/types/daily-plan";
@@ -133,5 +134,19 @@ describe("daily plan detail adapter", () => {
 
     expect(slots.filter((slot) => slot.kind === "meeting")).toHaveLength(2);
     expect(eventBlocks).toEqual(document.blocks);
+  });
+
+  it("normalizes detailed slots into valid non-overlapping availability", () => {
+    expect(
+      detailedSlotsToAvailabilityWindows([
+        { start: "09:00", end: "18:00", kind: "focused_work" },
+        { start: "09:00", end: "12:00", kind: "light_work" },
+        { start: "", end: "14:00", kind: "study" },
+        { start: "12:00", end: "13:00", kind: "meeting" },
+      ]),
+    ).toEqual([
+      { start: "09:00", end: "12:00", work_type: "light_work" },
+      { start: "12:00", end: "18:00", work_type: "focused_work" },
+    ]);
   });
 });

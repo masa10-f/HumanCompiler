@@ -46,8 +46,10 @@ import {
   dailyPlanDocumentToDetailedSlots,
   detailedMeetingSlotsToDailyPlanBlocks,
   detailedSlotForScheduler,
+  detailedSlotsToAvailabilityWindows,
   preserveUnconvertedDailyPlanBlocks,
 } from '@/lib/daily-plan-adapter';
+import { ApiError } from '@/lib/errors';
 import type { DetailedDailyPlanTimeSlot } from '@/lib/daily-plan-adapter';
 import type { SlotKind } from '@/constants/schedule';
 import type {
@@ -64,7 +66,7 @@ import type {
 import { getJSTDateString, getIsoDayOfWeek } from '@/lib/date-utils';
 import { logger } from '@/lib/logger';
 import { hasSchedulerSolverConfig, loadSchedulerSolverConfig } from '@/lib/scheduler-config';
-import type { DailyPlanDocumentV1 } from '@/types/daily-plan';
+import type { DailyPlanDocumentV1, DailyPlanResponse } from '@/types/daily-plan';
 
 interface ManualAssignment {
   taskId: string;
@@ -132,7 +134,11 @@ export default function SchedulingPage() {
     });
   }, []);
 
-  const clearManualAssignments = useCallback(() => {
+  const resetManualAssignments = useCallback(() => {
+    setManualAssignments([]);
+  }, []);
+
+  const removeAllManualAssignments = useCallback(() => {
     setManualAssignments((previous) => {
       markAssignmentsRemoved(previous);
       return [];
@@ -241,10 +247,10 @@ export default function SchedulingPage() {
     const dayData = templatesByDay.find((d) => d.day_of_week === isoDayOfWeek);
     if (dayData?.default_template) {
       setTimeSlots(dayData.default_template.slots);
-      clearManualAssignments();
+      resetManualAssignments();
       setScheduleResult(null);
     }
-  }, [clearManualAssignments, user, selectedDate, templatesByDay]);
+  }, [resetManualAssignments, user, selectedDate, templatesByDay]);
 
   // Load available tasks when task source changes
   useEffect(() => {
@@ -339,7 +345,7 @@ export default function SchedulingPage() {
 
         setAvailableTasks(tasks);
         // Clear manual assignments when task source changes
-        clearManualAssignments();
+        resetManualAssignments();
         setScheduleResult(null);
       } catch (error) {
         logger.error('Failed to load tasks', error instanceof Error ? error : new Error(String(error)), {
@@ -358,7 +364,7 @@ export default function SchedulingPage() {
     if (selectableProjects.length > 0 || taskSource.type === 'weekly_schedule') {
       loadTasks();
     }
-  }, [clearManualAssignments, user, taskSource, selectableProjects]);
+  }, [resetManualAssignments, user, taskSource, selectableProjects]);
 
   // Get assigned task IDs
   const assignedTaskIds = useMemo(() => {
@@ -449,14 +455,19 @@ export default function SchedulingPage() {
 
   // Slot management
   const addTimeSlot = () => {
-    setTimeSlots((prev) => [
-      ...prev,
-      {
-        start: '09:00',
-        end: '12:00',
-        kind: slotKinds.light_work,
-      },
-    ]);
+    const workSlots = timeSlots.filter((slot) => slot.kind !== 'meeting');
+    if (workSlots.length >= 24) {
+      toast({ title: '作業時間枠は24件までです', variant: 'destructive' });
+      return;
+    }
+    const latest = [...workSlots].sort((left, right) => left.end.localeCompare(right.end)).at(-1);
+    const start = latest?.end ?? '09:00';
+    const end = addMinutesToClock(start, 60);
+    if (end <= start) {
+      toast({ title: '追加できる時間がありません', variant: 'destructive' });
+      return;
+    }
+    setTimeSlots((previous) => [...previous, { start, end, kind: slotKinds.light_work }]);
   };
 
   const updateTimeSlot = (index: number, field: keyof TimeSlot, value: string | number | undefined) => {
@@ -503,7 +514,7 @@ export default function SchedulingPage() {
   };
 
   const clearAllAssignments = () => {
-    clearManualAssignments();
+    removeAllManualAssignments();
     setScheduleResult(null);
   };
 
@@ -625,15 +636,8 @@ export default function SchedulingPage() {
 
   const openLightweightMode = useCallback(async () => {
     try {
-      const base =
-        dailyPlanAdapter?.date === selectedDate
-          ? dailyPlanAdapter
-          : await dailyPlansApi.get(selectedDate).then((response) => ({
-              date: selectedDate,
-              document: response.document,
-              revision: response.revision,
-              convertedBlockIds: [],
-            }));
+      const convertedBlockIds =
+        dailyPlanAdapter?.date === selectedDate ? dailyPlanAdapter.convertedBlockIds : [];
       const fixedBlocks = manualAssignments.flatMap((assignment) => {
         const slot = timeSlots[assignment.slotIndex];
         const task = availableTasks.find((item) => item.id === assignment.taskId);
@@ -658,25 +662,30 @@ export default function SchedulingPage() {
       const eventBlocks = detailedMeetingSlotsToDailyPlanBlocks(timeSlots);
       const emittedBlockIds = [...fixedBlocks, ...eventBlocks].map((block) => block.id);
       const replacedBlockIds = new Set([
-        ...emittedBlockIds.filter((blockId) => base.convertedBlockIds.includes(blockId)),
+        ...emittedBlockIds.filter((blockId) => convertedBlockIds.includes(blockId)),
         ...removedBlockIdsRef.current,
       ]);
-      const preservedBlocks = preserveUnconvertedDailyPlanBlocks(base.document.blocks, replacedBlockIds);
-      const document: DailyPlanDocumentV1 = {
-        ...base.document,
-        availability_windows: timeSlots
-          .filter((slot) => slot.kind !== 'meeting')
-          .map((slot) => ({
-            start: slot.start,
-            end: slot.end,
-            work_type: slot.kind === 'meeting' ? 'light_work' : slot.kind,
-          })),
-        blocks: [...preservedBlocks, ...eventBlocks, ...fixedBlocks],
+      const availabilityWindows = detailedSlotsToAvailabilityWindows(timeSlots);
+
+      const saveLatest = async (retryOnConflict: boolean): Promise<DailyPlanResponse> => {
+        const latest = await dailyPlansApi.get(selectedDate);
+        const preservedBlocks = preserveUnconvertedDailyPlanBlocks(latest.document.blocks, replacedBlockIds);
+        const document: DailyPlanDocumentV1 = {
+          ...latest.document,
+          availability_windows:
+            availabilityWindows.length > 0 ? availabilityWindows : latest.document.availability_windows,
+          blocks: [...preservedBlocks, ...eventBlocks, ...fixedBlocks],
+        };
+        try {
+          return await dailyPlansApi.update(selectedDate, latest.revision, document);
+        } catch (error) {
+          if (retryOnConflict && error instanceof ApiError && error.statusCode === 409) {
+            return saveLatest(false);
+          }
+          throw error;
+        }
       };
-      if (document.availability_windows.length === 0) {
-        document.availability_windows = base.document.availability_windows;
-      }
-      const response = await dailyPlansApi.update(selectedDate, base.revision, document);
+      const response = await saveLatest(true);
       setDailyPlanAdapter({
         date: selectedDate,
         document: response.document,
@@ -873,7 +882,7 @@ export default function SchedulingPage() {
                           const template = templates.find((t) => t.id === templateId);
                           if (template) {
                             setTimeSlots(template.slots);
-                            clearManualAssignments();
+                            resetManualAssignments();
                             setScheduleResult(null);
                             toast({
                               title: 'テンプレート適用',
