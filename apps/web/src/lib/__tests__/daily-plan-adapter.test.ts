@@ -41,7 +41,7 @@ describe("daily plan detail adapter", () => {
 
     expect(
       preserveUnconvertedDailyPlanBlocks(blocks, ["original-task-line"]),
-    ).toEqual([blocks[1], blocks[2]]);
+    ).toEqual([blocks[1], blocks[2], blocks[3]]);
   });
 
   it("preserves a converted row when detailed mode cannot re-emit it", () => {

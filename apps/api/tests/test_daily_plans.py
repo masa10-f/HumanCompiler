@@ -706,6 +706,47 @@ def test_multiple_frozen_lines_accumulate_requested_minutes(
 
 
 @pytest.mark.asyncio
+async def test_generate_surfaces_overlapping_frozen_block_violations(
+    session: Session, planning_data
+) -> None:
+    user, _project, _goal, first, second, _quick = planning_data
+    date_text = "2030-01-12"
+    await update_daily_plan(
+        date_text,
+        DailyPlanUpdateRequest(
+            expected_revision=0,
+            document=DailyPlanDocumentV1(
+                blocks=[
+                    TimedLineBlock(
+                        id="first-pin",
+                        start="09:00",
+                        end="11:00",
+                        title=first.title,
+                        task_ref=TaskRef(source="task", id=first.id),
+                    ),
+                    TimedLineBlock(
+                        id="second-pin",
+                        start="10:00",
+                        end="12:00",
+                        title=second.title,
+                        task_ref=TaskRef(source="task", id=second.id),
+                    ),
+                ]
+            ),
+        ),
+        str(user.id),
+        session,
+    )
+
+    generated = generate_daily_plan(date_text, str(user.id), session)
+
+    assert generated.schedule is not None
+    assert generated.schedule.success is False
+    assert generated.schedule.violations
+    assert generated.schedule.violations[0].code == "overlapping_frozen_blocks"
+
+
+@pytest.mark.asyncio
 async def test_regular_task_action_records_time_and_completion(
     session: Session, planning_data, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -9,6 +9,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
   AlertCircle,
+  AlertTriangle,
   Check,
   ChevronDown,
   ChevronUp,
@@ -348,6 +349,20 @@ export function LightweightDailyPlanner({
     return promise;
   }, [selectedDate]);
 
+  const flushPendingSaves =
+    useCallback(async (): Promise<DailyPlanResponse> => {
+      let response = await saveNow();
+      for (let attempt = 0; dirtyRef.current && attempt < 5; attempt += 1) {
+        response = await saveNow();
+      }
+      if (dirtyRef.current) {
+        throw new Error(
+          "編集中の変更を保存できませんでした。入力を止めて再度お試しください。",
+        );
+      }
+      return response;
+    }, [saveNow]);
+
   useEffect(() => {
     if (!dirty || loading || conflict) return;
     const timer = window.setTimeout(() => {
@@ -493,7 +508,7 @@ export function LightweightDailyPlanner({
   const generate = async () => {
     setGenerating(true);
     try {
-      await saveNow();
+      await flushPendingSaves();
       const response = await dailyPlansApi.generate(selectedDate);
       setSchedule(response.schedule ?? null);
       if (response.schedule?.success) {
@@ -523,7 +538,7 @@ export function LightweightDailyPlanner({
 
   const switchToDetailed = async () => {
     try {
-      const response = await saveNow();
+      const response = await flushPendingSaves();
       onSwitchDetailed(response.document, response.revision);
     } catch (error) {
       toast({
@@ -538,7 +553,8 @@ export function LightweightDailyPlanner({
   const changeSelectedDate = async (nextDate: string) => {
     if (!nextDate || nextDate === selectedDate) return;
     try {
-      if (dirtyRef.current || saveInFlightRef.current) await saveNow();
+      if (dirtyRef.current || saveInFlightRef.current)
+        await flushPendingSaves();
       onSelectedDateChange(nextDate);
     } catch (error) {
       toast({
@@ -1064,6 +1080,23 @@ export function LightweightDailyPlanner({
               <p className="text-right text-sm text-gray-500">
                 当日の未使用時間: {schedule.unused_minutes}分
               </p>
+            )}
+            {Boolean(schedule?.violations?.length) && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>固定予定をすべて配置できませんでした</AlertTitle>
+                <AlertDescription>
+                  <ul className="list-disc pl-5">
+                    {schedule?.violations?.map((violation, index) => (
+                      <li
+                        key={`${violation.code}-${violation.task_id ?? index}`}
+                      >
+                        {violation.message}
+                      </li>
+                    ))}
+                  </ul>
+                </AlertDescription>
+              </Alert>
             )}
             {document.blocks.map((block, index) => {
               const assignments =

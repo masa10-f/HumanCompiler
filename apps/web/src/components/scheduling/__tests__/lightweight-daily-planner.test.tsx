@@ -344,7 +344,7 @@ describe("LightweightDailyPlanner", () => {
     );
   });
 
-  it("saves edits made while an autosave request is in flight", async () => {
+  it("flushes newer edits before generating while autosave is in flight", async () => {
     let resolveFirstSave: (() => void) | undefined;
     jest
       .mocked(dailyPlansApi.update)
@@ -360,6 +360,17 @@ describe("LightweightDailyPlanner", () => {
         document,
         schedule: null,
       }));
+    jest.mocked(dailyPlansApi.generate).mockResolvedValue({
+      ...blankResponse,
+      revision: 2,
+      schedule: {
+        success: true,
+        assignments: [],
+        total_scheduled_hours: 0,
+        optimization_status: "OK",
+        generated_at: "2030-01-02T00:00:00Z",
+      },
+    });
 
     render(
       <LightweightDailyPlanner
@@ -383,6 +394,8 @@ describe("LightweightDailyPlanner", () => {
       clipboardData: { getData: () => "1100-1200 会議" },
     });
     fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "自動スケジュール" }));
+    expect(dailyPlansApi.generate).not.toHaveBeenCalled();
     resolveFirstSave?.();
 
     await waitFor(() => {
@@ -397,6 +410,9 @@ describe("LightweightDailyPlanner", () => {
         }),
       );
     });
+    await waitFor(() =>
+      expect(dailyPlansApi.generate).toHaveBeenCalledWith("2030-01-02"),
+    );
   });
 
   it("retries autosave after a transient failure", async () => {

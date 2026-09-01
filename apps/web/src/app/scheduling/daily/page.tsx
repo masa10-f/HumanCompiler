@@ -650,18 +650,26 @@ export default function SchedulingPage() {
     try {
       const convertedBlockIds =
         dailyPlanAdapter?.date === selectedDate ? dailyPlanAdapter.convertedBlockIds : [];
+      const cursorBySlot = new Map<number, string>();
       const fixedBlocks = manualAssignments.flatMap((assignment) => {
         const slot = timeSlots[assignment.slotIndex];
         const task = availableTasks.find((item) => item.id === assignment.taskId);
         if (!slot || !task) return [];
+        const start = assignment.start ?? cursorBySlot.get(assignment.slotIndex) ?? slot.start;
+        if (start >= slot.end) return [];
+        const requestedEnd = addMinutesToClock(
+          start,
+          Math.round((assignment.durationHours ?? task.estimate_hours) * 60),
+        );
+        const end = requestedEnd < slot.end ? requestedEnd : slot.end;
+        if (end <= start) return [];
+        cursorBySlot.set(assignment.slotIndex, end);
         return [
           {
             id: assignment.sourceBlockId ?? `detailed-fixed:${assignment.taskId}:${assignment.slotIndex}`,
             type: 'timed_line' as const,
-            start: assignment.start ?? slot.start,
-            end: assignment.durationHours
-              ? addMinutesToClock(assignment.start ?? slot.start, Math.round(assignment.durationHours * 60))
-              : slot.end,
+            start,
+            end,
             title: task.title.replace(/^📥\s*/, '').trim() || '無題のタスク',
             task_ref: {
               source: assignment.taskId.startsWith('quick_') ? ('quick_task' as const) : ('task' as const),

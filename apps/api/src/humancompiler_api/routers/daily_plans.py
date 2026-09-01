@@ -272,6 +272,15 @@ class DailyPlanUnscheduledTask(BaseModel):
     reason: str = ""
 
 
+class DailyPlanConstraintViolation(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    code: str
+    message: str
+    task_id: str | None = None
+    slot_index: int | None = None
+
+
 class DailyPlanScheduleResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -287,6 +296,7 @@ class DailyPlanScheduleResponse(BaseModel):
     )
     unused_minutes: int = 0
     unscheduled_tasks: list[DailyPlanUnscheduledTask] = Field(default_factory=list)
+    violations: list[DailyPlanConstraintViolation] = Field(default_factory=list)
 
 
 class DailyPlanResponse(BaseModel):
@@ -598,12 +608,22 @@ def _validate_task_ref(
     ref: TaskRef,
     regular: dict[str, tuple[Task, Goal, Project]],
     quick: dict[str, QuickTask],
+    block_id: str,
 ) -> str:
     scheduler_id = ref.scheduler_id
     if scheduler_id not in regular and scheduler_id not in quick:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Referenced task was not found",
+            detail={
+                "message": "Referenced task was not found",
+                "missing": [
+                    {
+                        "block_id": block_id,
+                        "source": ref.source,
+                        "id": str(ref.id),
+                    }
+                ],
+            },
         )
     return scheduler_id
 
@@ -780,7 +800,12 @@ def _build_scheduler_input(
                     )
                 )
                 continue
-            scheduler_id = _validate_task_ref(block.task_ref, regular, quick)
+            scheduler_id = _validate_task_ref(
+                block.task_ref,
+                regular,
+                quick,
+                block.id,
+            )
             selected_ids.add(scheduler_id)
             duration = _minutes(end_value) - _minutes(start_value)
             frozen_minutes_by_task[scheduler_id] = (
@@ -800,7 +825,12 @@ def _build_scheduler_input(
             )
         elif isinstance(block, ScheduleDirectiveBlock):
             if block.mode == "task" and block.task_ref is not None:
-                scheduler_id = _validate_task_ref(block.task_ref, regular, quick)
+                scheduler_id = _validate_task_ref(
+                    block.task_ref,
+                    regular,
+                    quick,
+                    block.id,
+                )
                 if (
                     _task_status(scheduler_id, regular, quick)
                     not in ACTIVE_TASK_STATUSES
@@ -1089,6 +1119,7 @@ def generate_daily_plan(
                 }
                 for task in fixture.tasks
             ],
+            "violations": [],
         }
         _save_generated_schedule(session, owner_id, date_value, plan_json)
         return _response(session, owner_id, date, source_document)
@@ -1175,7 +1206,7 @@ def generate_daily_plan(
         )
 
     plan_json = {
-        "success": report.plan.status in {"ok", "partial"},
+        "success": report.plan.status in {"ok", "partial"} and not report.violations,
         "assignments": assignments,
         "planned_task_ids": list(
             dict.fromkeys(item["task_id"] for item in assignments)
@@ -1196,6 +1227,15 @@ def generate_daily_plan(
                 "reason": item.reason,
             }
             for item in report.unscheduled_tasks
+        ],
+        "violations": [
+            {
+                "code": item.code,
+                "message": item.message,
+                "task_id": item.task_id,
+                "slot_index": item.slot_index,
+            }
+            for item in report.violations
         ],
     }
     _save_generated_schedule(session, owner_id, date_value, plan_json)

@@ -110,12 +110,7 @@ export function preserveUnconvertedDailyPlanBlocks(
   replacedBlockIds: Iterable<string>,
 ): DailyPlanBlock[] {
   const replaced = new Set(replacedBlockIds);
-  return blocks.filter(
-    (block) =>
-      !replaced.has(block.id) &&
-      !block.id.startsWith("detailed-fixed:") &&
-      !block.id.startsWith("detailed-event:"),
-  );
+  return blocks.filter((block) => !replaced.has(block.id));
 }
 
 export function applyDirectiveTaskSelection(

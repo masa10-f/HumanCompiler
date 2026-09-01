@@ -108,6 +108,12 @@ export interface DailyPlanSchedule {
   source_document_revision?: number;
   directive_diagnostics?: DailyPlanDirectiveDiagnostic[];
   unused_minutes?: number;
+  violations?: Array<{
+    code: string;
+    message: string;
+    task_id?: string | null;
+    slot_index?: number | null;
+  }>;
   unscheduled_tasks?: Array<{
     task_id: string;
     title: string;
