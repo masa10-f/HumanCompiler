@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import {
   DndContext,
@@ -42,7 +42,13 @@ import { getSlotKindLabel, getSlotKindColor, slotKinds } from '@/constants/sched
 import { DroppableSlot, TaskPool, DraggableTask } from '@/components/scheduling';
 import { LightweightDailyPlanner } from '@/components/scheduling/lightweight-daily-planner';
 import { getSelectableProjects } from '@/lib/project-filters';
-import { preserveUnconvertedDailyPlanBlocks } from '@/lib/daily-plan-adapter';
+import {
+  dailyPlanDocumentToDetailedSlots,
+  detailedMeetingSlotsToDailyPlanBlocks,
+  detailedSlotForScheduler,
+  preserveUnconvertedDailyPlanBlocks,
+} from '@/lib/daily-plan-adapter';
+import type { DetailedDailyPlanTimeSlot } from '@/lib/daily-plan-adapter';
 import type { SlotKind } from '@/constants/schedule';
 import type {
   ScheduleRequest,
@@ -76,10 +82,9 @@ function addMinutesToClock(clock: string, minutes: number): string {
 
 export default function SchedulingPage() {
   const { user, loading: authLoading } = useAuth();
-  const {
-    data: projects = [],
-    error: projectsError,
-  } = useProjectOptions({ enabled: Boolean(user) });
+  const { data: projects = [], error: projectsError } = useProjectOptions({
+    enabled: Boolean(user),
+  });
 
   const [selectedDate, setSelectedDate] = useState(() => getJSTDateString());
   const [plannerMode, setPlannerMode] = useState<'lightweight' | 'detailed'>('lightweight');
@@ -90,7 +95,7 @@ export default function SchedulingPage() {
     convertedBlockIds: string[];
   } | null>(null);
 
-  const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([
+  const [timeSlots, setTimeSlots] = useState<DetailedDailyPlanTimeSlot[]>([
     { start: '09:00', end: '12:00', kind: slotKinds.focused_work },
     { start: '13:00', end: '17:00', kind: slotKinds.study },
     { start: '19:00', end: '21:00', kind: slotKinds.light_work },
@@ -102,12 +107,11 @@ export default function SchedulingPage() {
   const [solverConfig, setSolverConfig] = useState<SchedulerSolverConfig | undefined>();
 
   // Task source configuration
-  const [taskSource, setTaskSource] = useState<TaskSource>({ type: 'all_tasks' });
+  const [taskSource, setTaskSource] = useState<TaskSource>({
+    type: 'all_tasks',
+  });
   const [weeklyScheduleOptions, setWeeklyScheduleOptions] = useState<WeeklyScheduleOption[]>([]);
-  const selectableProjects = useMemo(
-    () => getSelectableProjects(projects),
-    [projects]
-  );
+  const selectableProjects = useMemo(() => getSelectableProjects(projects), [projects]);
 
   // Available tasks for scheduling
   const [availableTasks, setAvailableTasks] = useState<TaskInfo[]>([]);
@@ -118,6 +122,22 @@ export default function SchedulingPage() {
 
   // Manual assignments (user-defined fixed assignments)
   const [manualAssignments, setManualAssignments] = useState<ManualAssignment[]>([]);
+  const removedBlockIdsRef = useRef<Set<string>>(new Set());
+
+  const markAssignmentsRemoved = useCallback((assignments: ManualAssignment[]) => {
+    assignments.forEach((assignment) => {
+      if (assignment.sourceBlockId) {
+        removedBlockIdsRef.current.add(assignment.sourceBlockId);
+      }
+    });
+  }, []);
+
+  const clearManualAssignments = useCallback(() => {
+    setManualAssignments((previous) => {
+      markAssignmentsRemoved(previous);
+      return [];
+    });
+  }, [markAssignmentsRemoved]);
 
   // Active dragging state
   const [activeDragTask, setActiveDragTask] = useState<TaskInfo | null>(null);
@@ -144,7 +164,7 @@ export default function SchedulingPage() {
         distance: 8,
       },
     }),
-    useSensor(KeyboardSensor)
+    useSensor(KeyboardSensor),
   );
 
   // Load initial data
@@ -157,11 +177,12 @@ export default function SchedulingPage() {
     const loadInitialData = async () => {
       if (!user) return;
 
-      const weeklyOptionsResult =
-        await schedulingApi.getWeeklyScheduleOptions().catch(err => {
-          logger.error('Weekly schedule options loading failed', err instanceof Error ? err : new Error(String(err)), { component: 'SchedulingPage' });
-          return [];
+      const weeklyOptionsResult = await schedulingApi.getWeeklyScheduleOptions().catch((err) => {
+        logger.error('Weekly schedule options loading failed', err instanceof Error ? err : new Error(String(err)), {
+          component: 'SchedulingPage',
         });
+        return [];
+      });
       setWeeklyScheduleOptions(weeklyOptionsResult);
     };
 
@@ -198,7 +219,9 @@ export default function SchedulingPage() {
         const templates = await slotTemplatesApi.getByDay();
         setTemplatesByDay(templates);
       } catch (error) {
-        logger.error('Failed to load slot templates', error instanceof Error ? error : new Error(String(error)), { component: 'SchedulingPage' });
+        logger.error('Failed to load slot templates', error instanceof Error ? error : new Error(String(error)), {
+          component: 'SchedulingPage',
+        });
         toast({
           title: 'テンプレート読み込みエラー',
           description: 'スロットテンプレートの読み込みに失敗しました。デフォルトテンプレートは適用されません。',
@@ -215,13 +238,13 @@ export default function SchedulingPage() {
     if (!user || templatesByDay.length === 0) return;
 
     const isoDayOfWeek = getIsoDayOfWeek(selectedDate);
-    const dayData = templatesByDay.find(d => d.day_of_week === isoDayOfWeek);
+    const dayData = templatesByDay.find((d) => d.day_of_week === isoDayOfWeek);
     if (dayData?.default_template) {
       setTimeSlots(dayData.default_template.slots);
-      setManualAssignments([]);
+      clearManualAssignments();
       setScheduleResult(null);
     }
-  }, [user, selectedDate, templatesByDay]);
+  }, [clearManualAssignments, user, selectedDate, templatesByDay]);
 
   // Load available tasks when task source changes
   useEffect(() => {
@@ -236,8 +259,8 @@ export default function SchedulingPage() {
         if (taskSource.type === 'project' && taskSource.project_id) {
           const projectTasks = await tasksApi.getByProject(taskSource.project_id);
           tasks = projectTasks
-            .filter(t => t.status !== 'completed' && t.status !== 'cancelled')
-            .map(t => ({
+            .filter((t) => t.status !== 'completed' && t.status !== 'cancelled')
+            .map((t) => ({
               id: t.id,
               title: t.title,
               estimate_hours: Number(t.estimate_hours) || 1,
@@ -263,8 +286,8 @@ export default function SchedulingPage() {
                   due_date: t.due_date ?? undefined,
                   goal_id: t.goal_id,
                   project_id: project.id,
-                }))
-            )
+                })),
+            ),
           );
 
           const quickTasksPromise = quickTasksApi.getAll().then((quickTasks) =>
@@ -279,7 +302,7 @@ export default function SchedulingPage() {
                 due_date: qt.due_date ?? undefined,
                 goal_id: undefined,
                 project_id: undefined,
-              }))
+              })),
           );
 
           const [projectTaskResults, quickTasksResult] = await Promise.all([
@@ -295,7 +318,7 @@ export default function SchedulingPage() {
             } else {
               logger.error(
                 `Failed to load tasks for project ${selectableProjects[index]?.id}`,
-                result.reason instanceof Error ? result.reason : new Error(String(result.reason))
+                result.reason instanceof Error ? result.reason : new Error(String(result.reason)),
               );
             }
           });
@@ -307,7 +330,7 @@ export default function SchedulingPage() {
               'Failed to load quick tasks',
               quickTasksResult.reason instanceof Error
                 ? quickTasksResult.reason
-                : new Error(String(quickTasksResult.reason))
+                : new Error(String(quickTasksResult.reason)),
             );
           }
 
@@ -316,11 +339,12 @@ export default function SchedulingPage() {
 
         setAvailableTasks(tasks);
         // Clear manual assignments when task source changes
-        setManualAssignments([]);
+        clearManualAssignments();
         setScheduleResult(null);
-
       } catch (error) {
-        logger.error('Failed to load tasks', error instanceof Error ? error : new Error(String(error)), { component: 'SchedulingPage' });
+        logger.error('Failed to load tasks', error instanceof Error ? error : new Error(String(error)), {
+          component: 'SchedulingPage',
+        });
         toast({
           title: 'タスク読み込みエラー',
           description: 'タスクの読み込みに失敗しました',
@@ -334,27 +358,32 @@ export default function SchedulingPage() {
     if (selectableProjects.length > 0 || taskSource.type === 'weekly_schedule') {
       loadTasks();
     }
-  }, [user, taskSource, selectableProjects]);
+  }, [clearManualAssignments, user, taskSource, selectableProjects]);
 
   // Get assigned task IDs
   const assignedTaskIds = useMemo(() => {
     const ids = new Set<string>();
-    manualAssignments.forEach(a => ids.add(a.taskId));
+    manualAssignments.forEach((a) => ids.add(a.taskId));
     return ids;
   }, [manualAssignments]);
 
   // Get tasks assigned to each slot
-  const getSlotTasks = useCallback((slotIndex: number) => {
-    const assignments = manualAssignments.filter(a => a.slotIndex === slotIndex);
-    return assignments.map(a => {
-      const task = availableTasks.find(t => t.id === a.taskId);
-      return {
-        task: task!,
-        isFixed: false,  // Allow removal and re-dragging before optimization
-        duration_hours: a.durationHours,
-      };
-    }).filter(t => t.task);
-  }, [manualAssignments, availableTasks]);
+  const getSlotTasks = useCallback(
+    (slotIndex: number) => {
+      const assignments = manualAssignments.filter((a) => a.slotIndex === slotIndex);
+      return assignments
+        .map((a) => {
+          const task = availableTasks.find((t) => t.id === a.taskId);
+          return {
+            task: task!,
+            isFixed: false, // Allow removal and re-dragging before optimization
+            duration_hours: a.durationHours,
+          };
+        })
+        .filter((t) => t.task);
+    },
+    [manualAssignments, availableTasks],
+  );
 
   // Handle drag start
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -366,86 +395,115 @@ export default function SchedulingPage() {
   }, []);
 
   // Handle drag end
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveDragTask(null);
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      setActiveDragTask(null);
 
-    if (!over) return;
+      if (!over) return;
 
-    const taskId = active.id as string;
-    const overId = over.id as string;
+      const taskId = active.id as string;
+      const overId = over.id as string;
 
-    // Dropping on task pool (remove from slot)
-    if (overId === 'task-pool') {
-      setManualAssignments(prev => prev.filter(a => a.taskId !== taskId));
-      return;
-    }
-
-    // Dropping on a slot
-    if (overId.startsWith('slot-')) {
-      const slotIndex = parseInt(overId.replace('slot-', ''), 10);
-      const targetSlot = timeSlots[slotIndex];
-
-      if (targetSlot?.kind === 'meeting') {
-        toast({
-          title: '配置できません',
-          description: '会議枠にはタスクを配置できません',
-          variant: 'destructive',
+      // Dropping on task pool (remove from slot)
+      if (overId === 'task-pool') {
+        setManualAssignments((prev) => {
+          markAssignmentsRemoved(prev.filter((a) => a.taskId === taskId));
+          return prev.filter((a) => a.taskId !== taskId);
         });
         return;
       }
 
-      // Remove from any previous slot
-      setManualAssignments(prev => {
-        const previous = prev.find(a => a.taskId === taskId);
-        const filtered = prev.filter(a => a.taskId !== taskId);
-        return [...filtered, {
-          taskId,
-          slotIndex,
-          durationHours: previous?.durationHours,
-          sourceBlockId: previous?.sourceBlockId,
-        }];
-      });
-    }
-  }, [timeSlots]);
+      // Dropping on a slot
+      if (overId.startsWith('slot-')) {
+        const slotIndex = parseInt(overId.replace('slot-', ''), 10);
+        const targetSlot = timeSlots[slotIndex];
+
+        if (targetSlot?.kind === 'meeting') {
+          toast({
+            title: '配置できません',
+            description: '会議枠にはタスクを配置できません',
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        // Remove from any previous slot
+        setManualAssignments((prev) => {
+          const previous = prev.find((a) => a.taskId === taskId);
+          const filtered = prev.filter((a) => a.taskId !== taskId);
+          return [
+            ...filtered,
+            {
+              taskId,
+              slotIndex,
+              durationHours: previous?.durationHours,
+              sourceBlockId: previous?.sourceBlockId,
+            },
+          ];
+        });
+      }
+    },
+    [markAssignmentsRemoved, timeSlots],
+  );
 
   // Slot management
   const addTimeSlot = () => {
-    setTimeSlots(prev => [...prev, {
-      start: '09:00',
-      end: '12:00',
-      kind: slotKinds.light_work
-    }]);
+    setTimeSlots((prev) => [
+      ...prev,
+      {
+        start: '09:00',
+        end: '12:00',
+        kind: slotKinds.light_work,
+      },
+    ]);
   };
 
   const updateTimeSlot = (index: number, field: keyof TimeSlot, value: string | number | undefined) => {
-    setTimeSlots(prev => prev.map((slot, i) =>
-      i === index ? { ...slot, [field]: field === 'kind' ? value as SlotKind : value } : slot
-    ));
+    const currentSlot = timeSlots[index];
+    if (field === 'kind' && currentSlot?.kind === 'meeting' && value !== 'meeting' && currentSlot.sourceBlockId) {
+      removedBlockIdsRef.current.add(currentSlot.sourceBlockId);
+    }
+    setTimeSlots((prev) =>
+      prev.map((slot, i) =>
+        i === index ? { ...slot, [field]: field === 'kind' ? (value as SlotKind) : value } : slot,
+      ),
+    );
     if (field === 'kind' && value === 'meeting') {
-      setManualAssignments(prev => prev.filter(a => a.slotIndex !== index));
+      setManualAssignments((prev) => {
+        markAssignmentsRemoved(prev.filter((a) => a.slotIndex === index));
+        return prev.filter((a) => a.slotIndex !== index);
+      });
     }
     setScheduleResult(null);
   };
 
   const removeTimeSlot = (index: number) => {
-    setTimeSlots(prev => prev.filter((_, i) => i !== index));
+    const removedSlot = timeSlots[index];
+    if (removedSlot?.sourceBlockId) {
+      removedBlockIdsRef.current.add(removedSlot.sourceBlockId);
+    }
+    setTimeSlots((prev) => prev.filter((_, i) => i !== index));
     // Also remove any manual assignments for this slot
-    setManualAssignments(prev => prev.filter(a => a.slotIndex !== index));
+    setManualAssignments((prev) => {
+      markAssignmentsRemoved(prev.filter((a) => a.slotIndex === index));
+      return prev.filter((a) => a.slotIndex !== index);
+    });
   };
 
   const removeTaskFromSlot = (taskId: string) => {
-    setManualAssignments(prev => prev.filter(a => a.taskId !== taskId));
+    setManualAssignments((prev) => {
+      markAssignmentsRemoved(prev.filter((a) => a.taskId === taskId));
+      return prev.filter((a) => a.taskId !== taskId);
+    });
   };
 
   const updateTaskDuration = (taskId: string, durationHours: number | undefined) => {
-    setManualAssignments(prev => prev.map(a =>
-      a.taskId === taskId ? { ...a, durationHours } : a
-    ));
+    setManualAssignments((prev) => prev.map((a) => (a.taskId === taskId ? { ...a, durationHours } : a)));
   };
 
   const clearAllAssignments = () => {
-    setManualAssignments([]);
+    clearManualAssignments();
     setScheduleResult(null);
   };
 
@@ -455,7 +513,7 @@ export default function SchedulingPage() {
       setIsOptimizing(true);
 
       // Convert manual assignments to fixed assignments
-      const fixedAssignments: FixedAssignment[] = manualAssignments.map(a => ({
+      const fixedAssignments: FixedAssignment[] = manualAssignments.map((a) => ({
         task_id: a.taskId,
         slot_index: a.slotIndex,
         duration_hours: a.durationHours,
@@ -465,13 +523,11 @@ export default function SchedulingPage() {
 
       const request: ScheduleRequest = {
         date: selectedDate,
-        time_slots: timeSlots,
+        time_slots: timeSlots.map(detailedSlotForScheduler),
         task_source: taskSource,
         project_id: taskSource.type === 'project' ? taskSource.project_id : undefined,
         use_weekly_schedule: taskSource.type === 'weekly_schedule',
-        solver_config: hasSchedulerSolverConfig(activeSolverConfig)
-          ? activeSolverConfig
-          : undefined,
+        solver_config: hasSchedulerSolverConfig(activeSolverConfig) ? activeSolverConfig : undefined,
         fixed_assignments: fixedAssignments,
       };
 
@@ -511,7 +567,7 @@ export default function SchedulingPage() {
       const scheduleData = {
         ...scheduleResult,
         date: selectedDate,
-        generated_at: new Date().toISOString()
+        generated_at: new Date().toISOString(),
       };
 
       await schedulingApi.save(scheduleData);
@@ -531,105 +587,86 @@ export default function SchedulingPage() {
     }
   };
 
-  const openDetailedMode = useCallback((
-    document: DailyPlanDocumentV1,
-    revision: number,
-  ) => {
-    const slots: TimeSlot[] = document.availability_windows.map(window => ({
-      start: window.start,
-      end: window.end,
-      kind: window.work_type,
-    }));
-    const convertedBlockIds: string[] = [];
-    setTimeSlots(slots);
-    setManualAssignments(document.blocks.flatMap(block => {
-      if (block.type !== 'timed_line' || !block.task_ref) return [];
-      const slotIndex = slots.findIndex(
-        slot => slot.start <= block.start && block.end <= slot.end
+  const openDetailedMode = useCallback(
+    (document: DailyPlanDocumentV1, revision: number) => {
+      const slots = dailyPlanDocumentToDetailedSlots(document);
+      const convertedBlockIds: string[] = slots.flatMap((slot) => (slot.sourceBlockId ? [slot.sourceBlockId] : []));
+      removedBlockIdsRef.current = new Set();
+      setTimeSlots(slots);
+      setManualAssignments(
+        document.blocks.flatMap((block) => {
+          if (block.type !== 'timed_line' || !block.task_ref) return [];
+          const slotIndex = slots.findIndex((slot) => slot.start <= block.start && block.end <= slot.end);
+          if (slotIndex < 0) return [];
+          convertedBlockIds.push(block.id);
+          const [startHour = 0, startMinute = 0] = block.start.split(':').map(Number);
+          const [endHour = 0, endMinute = 0] = block.end.split(':').map(Number);
+          return [
+            {
+              taskId: block.task_ref.source === 'quick_task' ? `quick_${block.task_ref.id}` : block.task_ref.id,
+              slotIndex,
+              start: block.start,
+              sourceBlockId: block.id,
+              durationHours: (endHour * 60 + endMinute - (startHour * 60 + startMinute)) / 60,
+            },
+          ];
+        }),
       );
-      if (slotIndex < 0) return [];
-      convertedBlockIds.push(block.id);
-      const [startHour = 0, startMinute = 0] = block.start.split(':').map(Number);
-      const [endHour = 0, endMinute = 0] = block.end.split(':').map(Number);
-      return [{
-        taskId: block.task_ref.source === 'quick_task'
-          ? `quick_${block.task_ref.id}`
-          : block.task_ref.id,
-        slotIndex,
-        start: block.start,
-        sourceBlockId: block.id,
-        durationHours: ((endHour * 60 + endMinute) - (startHour * 60 + startMinute)) / 60,
-      }];
-    }));
-    setDailyPlanAdapter({
-      date: selectedDate,
-      document,
-      revision,
-      convertedBlockIds,
-    });
-    setPlannerMode('detailed');
-  }, [selectedDate]);
+      setDailyPlanAdapter({
+        date: selectedDate,
+        document,
+        revision,
+        convertedBlockIds,
+      });
+      setPlannerMode('detailed');
+    },
+    [selectedDate],
+  );
 
   const openLightweightMode = useCallback(async () => {
     try {
-      const base = dailyPlanAdapter?.date === selectedDate
-        ? dailyPlanAdapter
-        : await dailyPlansApi.get(selectedDate).then(response => ({
-            date: selectedDate,
-            document: response.document,
-            revision: response.revision,
-            convertedBlockIds: [],
-          }));
-      const fixedBlocks = manualAssignments.flatMap(assignment => {
+      const base =
+        dailyPlanAdapter?.date === selectedDate
+          ? dailyPlanAdapter
+          : await dailyPlansApi.get(selectedDate).then((response) => ({
+              date: selectedDate,
+              document: response.document,
+              revision: response.revision,
+              convertedBlockIds: [],
+            }));
+      const fixedBlocks = manualAssignments.flatMap((assignment) => {
         const slot = timeSlots[assignment.slotIndex];
-        const task = availableTasks.find(item => item.id === assignment.taskId);
+        const task = availableTasks.find((item) => item.id === assignment.taskId);
         if (!slot || !task) return [];
-        return [{
-          id: assignment.sourceBlockId
-            ?? `detailed-fixed:${assignment.taskId}:${assignment.slotIndex}`,
-          type: 'timed_line' as const,
-          start: assignment.start ?? slot.start,
-          end: assignment.durationHours
-            ? addMinutesToClock(
-                assignment.start ?? slot.start,
-                Math.round(assignment.durationHours * 60)
-              )
-            : slot.end,
-          title: task.title.replace(/^📥\s*/, ''),
-          task_ref: {
-            source: assignment.taskId.startsWith('quick_')
-              ? 'quick_task' as const
-              : 'task' as const,
-            id: assignment.taskId.replace(/^quick_/, ''),
-          },
-          pinned: true,
-        }];
-      });
-      const replacedBlockIds = new Set(
-        fixedBlocks
-          .map(block => block.id)
-          .filter(blockId => base.convertedBlockIds.includes(blockId)),
-      );
-      const preservedBlocks = preserveUnconvertedDailyPlanBlocks(
-        base.document.blocks,
-        replacedBlockIds,
-      );
-      const eventBlocks = timeSlots.flatMap((slot, index) => slot.kind === 'meeting'
-        ? [{
-            id: `detailed-event:${index}`,
+        return [
+          {
+            id: assignment.sourceBlockId ?? `detailed-fixed:${assignment.taskId}:${assignment.slotIndex}`,
             type: 'timed_line' as const,
-            start: slot.start,
-            end: slot.end,
-            title: '固定イベント',
+            start: assignment.start ?? slot.start,
+            end: assignment.durationHours
+              ? addMinutesToClock(assignment.start ?? slot.start, Math.round(assignment.durationHours * 60))
+              : slot.end,
+            title: task.title.replace(/^📥\s*/, ''),
+            task_ref: {
+              source: assignment.taskId.startsWith('quick_') ? ('quick_task' as const) : ('task' as const),
+              id: assignment.taskId.replace(/^quick_/, ''),
+            },
             pinned: true,
-          }]
-        : []
-      );
+          },
+        ];
+      });
+      const eventBlocks = detailedMeetingSlotsToDailyPlanBlocks(timeSlots);
+      const emittedBlockIds = [...fixedBlocks, ...eventBlocks].map((block) => block.id);
+      const replacedBlockIds = new Set([
+        ...emittedBlockIds.filter((blockId) => base.convertedBlockIds.includes(blockId)),
+        ...removedBlockIdsRef.current,
+      ]);
+      const preservedBlocks = preserveUnconvertedDailyPlanBlocks(base.document.blocks, replacedBlockIds);
       const document: DailyPlanDocumentV1 = {
         ...base.document,
         availability_windows: timeSlots
-          .filter(slot => slot.kind !== 'meeting')
-          .map(slot => ({
+          .filter((slot) => slot.kind !== 'meeting')
+          .map((slot) => ({
             start: slot.start,
             end: slot.end,
             work_type: slot.kind === 'meeting' ? 'light_work' : slot.kind,
@@ -639,17 +676,14 @@ export default function SchedulingPage() {
       if (document.availability_windows.length === 0) {
         document.availability_windows = base.document.availability_windows;
       }
-      const response = await dailyPlansApi.update(
-        selectedDate,
-        base.revision,
-        document,
-      );
+      const response = await dailyPlansApi.update(selectedDate, base.revision, document);
       setDailyPlanAdapter({
         date: selectedDate,
         document: response.document,
         revision: response.revision,
         convertedBlockIds: [],
       });
+      removedBlockIdsRef.current = new Set();
       setPlannerMode('lightweight');
     } catch (error) {
       toast({
@@ -756,9 +790,7 @@ export default function SchedulingPage() {
                   <Label className="text-xs text-gray-500">タスクソース</Label>
                   <Select
                     value={taskSource.type}
-                    onValueChange={(value: TaskSource['type']) =>
-                      setTaskSource({ type: value })
-                    }
+                    onValueChange={(value: TaskSource['type']) => setTaskSource({ type: value })}
                   >
                     <SelectTrigger className="w-[180px] h-9">
                       <SelectValue />
@@ -777,7 +809,10 @@ export default function SchedulingPage() {
                     <Select
                       value={taskSource.project_id || ''}
                       onValueChange={(value) =>
-                        setTaskSource(prev => ({ ...prev, project_id: value }))
+                        setTaskSource((prev) => ({
+                          ...prev,
+                          project_id: value,
+                        }))
                       }
                     >
                       <SelectTrigger className="w-[200px] h-9">
@@ -800,7 +835,10 @@ export default function SchedulingPage() {
                     <Select
                       value={taskSource.weekly_schedule_date || ''}
                       onValueChange={(value) =>
-                        setTaskSource(prev => ({ ...prev, weekly_schedule_date: value }))
+                        setTaskSource((prev) => ({
+                          ...prev,
+                          weekly_schedule_date: value,
+                        }))
                       }
                     >
                       <SelectTrigger className="w-[250px] h-9">
@@ -825,17 +863,17 @@ export default function SchedulingPage() {
                 {/* Template selector */}
                 {(() => {
                   const isoDayOfWeek = getIsoDayOfWeek(selectedDate);
-                  const dayData = templatesByDay.find(d => d.day_of_week === isoDayOfWeek);
+                  const dayData = templatesByDay.find((d) => d.day_of_week === isoDayOfWeek);
                   const templates = dayData?.templates || [];
 
                   if (templates.length > 0) {
                     return (
                       <Select
                         onValueChange={(templateId) => {
-                          const template = templates.find(t => t.id === templateId);
+                          const template = templates.find((t) => t.id === templateId);
                           if (template) {
                             setTimeSlots(template.slots);
-                            setManualAssignments([]);
+                            clearManualAssignments();
                             setScheduleResult(null);
                             toast({
                               title: 'テンプレート適用',
@@ -892,9 +930,7 @@ export default function SchedulingPage() {
                         <Calendar className="h-5 w-5 text-purple-600" />
                         タイムスロット
                       </CardTitle>
-                      <CardDescription>
-                        タスクをドロップして配置
-                      </CardDescription>
+                      <CardDescription>タスクをドロップして配置</CardDescription>
                     </div>
                     <Badge variant="outline" className="text-sm">
                       {manualAssignments.length}個 配置済み
@@ -942,17 +978,8 @@ export default function SchedulingPage() {
                         最適化結果
                       </CardTitle>
                       {scheduleResult.success && scheduleResult.assignments.length > 0 && (
-                        <Button
-                          onClick={saveSchedule}
-                          disabled={isSaving}
-                          size="sm"
-                          variant="outline"
-                        >
-                          {isSaving ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Save className="h-4 w-4" />
-                          )}
+                        <Button onClick={saveSchedule} disabled={isSaving} size="sm" variant="outline">
+                          {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         </Button>
                       )}
                     </div>
@@ -961,9 +988,7 @@ export default function SchedulingPage() {
                     {/* Summary Stats */}
                     <div className="grid grid-cols-2 gap-3">
                       <div className="bg-green-50 rounded-lg p-3 text-center">
-                        <div className="text-2xl font-bold text-green-700">
-                          {scheduleResult.assignments.length}
-                        </div>
+                        <div className="text-2xl font-bold text-green-700">{scheduleResult.assignments.length}</div>
                         <div className="text-xs text-green-600">タスク</div>
                       </div>
                       <div className="bg-blue-50 rounded-lg p-3 text-center">
@@ -988,7 +1013,7 @@ export default function SchedulingPage() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-500">手動配置</span>
-                        <span>{scheduleResult.assignments.filter(a => a.is_fixed).length}件</span>
+                        <span>{scheduleResult.assignments.filter((a) => a.is_fixed).length}件</span>
                       </div>
                     </div>
 
@@ -1001,9 +1026,10 @@ export default function SchedulingPage() {
                             .sort((a, b) => a.start_time.localeCompare(b.start_time))
                             .map((assignment, index) => {
                               const slotInfo = timeSlots[assignment.slot_index];
-                              const taskLink = assignment.project_id && assignment.goal_id
-                                ? `/projects/${assignment.project_id}/goals/${assignment.goal_id}`
-                                : null;
+                              const taskLink =
+                                assignment.project_id && assignment.goal_id
+                                  ? `/projects/${assignment.project_id}/goals/${assignment.goal_id}`
+                                  : null;
 
                               return (
                                 <div
@@ -1025,7 +1051,9 @@ export default function SchedulingPage() {
                                     <Clock className="h-3 w-3" />
                                     <span>{assignment.start_time}</span>
                                     <span>•</span>
-                                    <Badge className={`text-[10px] py-0 ${getSlotKindColor(slotInfo?.kind || 'light_work')}`}>
+                                    <Badge
+                                      className={`text-[10px] py-0 ${getSlotKindColor(slotInfo?.kind || 'light_work')}`}
+                                    >
                                       {getSlotKindLabel(slotInfo?.kind || 'light_work')}
                                     </Badge>
                                     <span>{assignment.duration_hours.toFixed(1)}h</span>
@@ -1045,9 +1073,7 @@ export default function SchedulingPage() {
                   <CardContent className="py-12 text-center text-gray-500">
                     <Sparkles className="h-12 w-12 mx-auto mb-3 opacity-30" />
                     <p className="font-medium">最適化結果がここに表示されます</p>
-                    <p className="text-sm mt-1">
-                      タスクを配置して「自動補完」をクリック
-                    </p>
+                    <p className="text-sm mt-1">タスクを配置して「自動補完」をクリック</p>
                   </CardContent>
                 </Card>
               )}

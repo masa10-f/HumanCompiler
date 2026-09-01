@@ -3,9 +3,76 @@
 
 import type {
   DailyPlanBlock,
+  DailyPlanDocumentV1,
   DailyPlanScheduleDirective,
   DailyPlanTaskRef,
+  DailyPlanTimedLine,
 } from "@/types/daily-plan";
+import type { TimeSlot } from "@/types/ai-planning";
+
+export interface DetailedDailyPlanTimeSlot extends TimeSlot {
+  sourceBlockId?: string;
+  sourceTitle?: string;
+  sourceKind?: "event" | "break";
+}
+
+export function dailyPlanDocumentToDetailedSlots(
+  document: DailyPlanDocumentV1,
+): DetailedDailyPlanTimeSlot[] {
+  const availability: DetailedDailyPlanTimeSlot[] =
+    document.availability_windows.map((window) => ({
+      start: window.start,
+      end: window.end,
+      kind: window.work_type,
+    }));
+  const events: DetailedDailyPlanTimeSlot[] = document.blocks.flatMap(
+    (block) => {
+      if (block.type !== "timed_line" || block.task_ref) return [];
+      return [
+        {
+          start: block.start,
+          end: block.end,
+          kind: "meeting" as const,
+          sourceBlockId: block.id,
+          sourceTitle: block.title,
+          sourceKind: block.kind ?? "event",
+        },
+      ];
+    },
+  );
+  return [...availability, ...events];
+}
+
+export function detailedMeetingSlotsToDailyPlanBlocks(
+  slots: DetailedDailyPlanTimeSlot[],
+): DailyPlanTimedLine[] {
+  return slots.flatMap((slot, index) => {
+    if (slot.kind !== "meeting") return [];
+    return [
+      {
+        id: slot.sourceBlockId ?? `detailed-event:${index}`,
+        type: "timed_line" as const,
+        start: slot.start,
+        end: slot.end,
+        title: slot.sourceTitle ?? "固定イベント",
+        pinned: true,
+        kind: slot.sourceKind ?? "event",
+      },
+    ];
+  });
+}
+
+export function detailedSlotForScheduler(
+  slot: DetailedDailyPlanTimeSlot,
+): TimeSlot {
+  return {
+    start: slot.start,
+    end: slot.end,
+    kind: slot.kind,
+    capacity_hours: slot.capacity_hours,
+    assigned_project_id: slot.assigned_project_id,
+  };
+}
 
 export function preserveUnconvertedDailyPlanBlocks(
   blocks: DailyPlanBlock[],

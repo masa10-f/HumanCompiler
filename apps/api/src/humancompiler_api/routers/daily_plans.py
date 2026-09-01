@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from datetime import UTC, date as date_type, datetime, time
 from decimal import Decimal
 from typing import Annotated, Literal
@@ -69,6 +70,13 @@ def _time_text(value: time) -> str:
     return value.strftime("%H:%M")
 
 
+def _add_minutes(value: time, duration: int) -> time | None:
+    total = _minutes(value) + duration
+    if duration <= 0 or total >= 24 * 60:
+        return None
+    return time(hour=total // 60, minute=total % 60)
+
+
 class TaskRef(BaseModel):
     source: Literal["task", "quick_task"]
     id: UUID
@@ -104,6 +112,7 @@ class TimedLineBlock(BaseModel):
     title: str = Field(min_length=1, max_length=500)
     task_ref: TaskRef | None = None
     pinned: bool = True
+    kind: Literal["event", "break"] = "event"
 
     @field_validator("start", "end")
     @classmethod
@@ -168,9 +177,9 @@ DailyPlanBlock = Annotated[
 class DailyPlanDocumentV1(BaseModel):
     schema_version: Literal[1] = 1
     availability_windows: list[AvailabilityWindow] = Field(
-        default_factory=lambda: [AvailabilityWindow()]
+        default_factory=lambda: [AvailabilityWindow()], max_length=24
     )
-    blocks: list[DailyPlanBlock] = Field(default_factory=list)
+    blocks: list[DailyPlanBlock] = Field(default_factory=list, max_length=500)
 
     @field_validator("availability_windows")
     @classmethod
@@ -676,17 +685,31 @@ def _build_scheduler_input(
             continue
         try:
             start_value = _parse_time(start_text)
-            end_value = _parse_time(end_text)
         except ValueError:
             continue
+        duration: int | None = None
+        end_value: time | None = None
+        duration_hours = assignment.get("duration_hours")
+        if (
+            isinstance(duration_hours, int | float)
+            and not isinstance(duration_hours, bool)
+            and math.isfinite(float(duration_hours))
+        ):
+            duration = round(float(duration_hours) * 60)
+            end_value = _add_minutes(start_value, duration)
+        if end_value is None:
+            try:
+                end_value = _parse_time(end_text)
+            except ValueError:
+                continue
+            duration = _minutes(end_value) - _minutes(start_value)
         is_past = now is not None and start_value < now.time()
         if not is_past and not bool(assignment.get("is_fixed")):
             continue
         key = (scheduler_id, start_text, end_text)
         if key in frozen_keys:
             continue
-        duration = _minutes(end_value) - _minutes(start_value)
-        if duration <= 0:
+        if duration is None or duration <= 0:
             continue
         selected_ids.add(scheduler_id)
         requested_by_task[scheduler_id] = max(
@@ -1001,8 +1024,7 @@ async def apply_task_action(
 ) -> TaskActionResponse:
     _parse_date(date)
     owner_id = UUID(user_id)
-    regular, quick = _load_owned_tasks(session, owner_id)
-    scheduler_id = _validate_task_ref(request.task_ref, regular, quick)
+    _validate_owned_task_refs(session, owner_id, [request.task_ref])
 
     if request.task_ref.source == "quick_task":
         if request.action != "complete":
@@ -1010,7 +1032,9 @@ async def apply_task_action(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Quick Tasks only support completion from the daily plan",
             )
-        quick_task = quick[scheduler_id]
+        quick_task = session.get(QuickTask, request.task_ref.id)
+        if quick_task is None:  # pragma: no cover - guarded by ownership validation
+            raise HTTPException(status_code=404, detail="Referenced task was not found")
         quick_task.status = TaskStatus.COMPLETED
         quick_task.updated_at = datetime.now(UTC)
         session.add(quick_task)
@@ -1025,7 +1049,9 @@ async def apply_task_action(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="actual_minutes is required for regular tasks",
         )
-    task = regular[scheduler_id][0]
+    task = session.get(Task, request.task_ref.id)
+    if task is None:  # pragma: no cover - guarded by ownership validation
+        raise HTTPException(status_code=404, detail="Referenced task was not found")
     log = Log(
         id=uuid4(),
         task_id=task.id,

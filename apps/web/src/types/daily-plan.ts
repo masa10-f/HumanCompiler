@@ -22,6 +22,12 @@ export interface DailyPlanTimedLine {
   title: string;
   task_ref?: DailyPlanTaskRef | null;
   pinned?: boolean;
+  kind?: "event" | "break";
+}
+
+export interface DailyPlanDirectiveWindow {
+  start: string;
+  end: string;
 }
 
 export interface DailyPlanDirectiveFilter {
@@ -38,6 +44,7 @@ export interface DailyPlanScheduleDirective {
   task_ref?: DailyPlanTaskRef | null;
   filter?: DailyPlanDirectiveFilter | null;
   duration_override_minutes?: number | null;
+  allowed_windows?: DailyPlanDirectiveWindow[];
 }
 
 export interface DailyPlanChecklistItem {

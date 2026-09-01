@@ -112,6 +112,27 @@ async def test_blank_plan_and_revision_conflict(
     )
     assert saved.revision == 1
 
+    updated = await update_daily_plan(
+        "2030-01-02",
+        DailyPlanUpdateRequest(
+            expected_revision=1,
+            document=DailyPlanDocumentV1(
+                blocks=[
+                    TimedLineBlock(
+                        id="meeting",
+                        start="10:00",
+                        end="10:30",
+                        title="Meeting",
+                    )
+                ]
+            ),
+        ),
+        str(user.id),
+        session,
+    )
+    assert updated.revision == 2
+    assert [block.id for block in updated.document.blocks] == ["meeting"]
+
     with pytest.raises(HTTPException) as exc_info:
         await update_daily_plan(
             "2030-01-02",
@@ -462,7 +483,8 @@ async def test_generate_preserves_existing_fixed_assignment(
                     {
                         "task_id": str(first.id),
                         "start_time": "09:00",
-                        "slot_end": "10:00",
+                        "slot_end": "12:00",
+                        "duration_hours": 0.5,
                         "slot_index": 7,
                         "is_fixed": True,
                         "directive_id": "specific",
@@ -479,15 +501,23 @@ async def test_generate_preserves_existing_fixed_assignment(
         item for item in generated.schedule["assignments"] if item["is_fixed"] is True
     ]
     assert [(item["start_time"], item["slot_end"]) for item in fixed] == [
-        ("09:00", "10:00")
+        ("09:00", "09:30")
     ]
 
 
 @pytest.mark.asyncio
 async def test_regular_task_action_records_time_and_completion(
-    session: Session, planning_data
+    session: Session, planning_data, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     user, _project, _goal, first, _second, _quick = planning_data
+
+    def fail_full_graph_load(*_args, **_kwargs):
+        raise AssertionError("task action must not load the full task graph")
+
+    monkeypatch.setattr(
+        "humancompiler_api.routers.daily_plans._load_owned_tasks",
+        fail_full_graph_load,
+    )
 
     response = await apply_task_action(
         datetime(2030, 1, 2).strftime("%Y-%m-%d"),
