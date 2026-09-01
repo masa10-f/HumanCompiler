@@ -677,34 +677,36 @@ def _build_scheduler_input(
 
     for block in document.blocks:
         if isinstance(block, TimedLineBlock):
+            start_value = _parse_time(block.start)
+            end_value = _parse_time(block.end)
             if block.task_ref is None:
                 fixed_events.append(
                     HumanFixedEvent(
                         title=block.title,
-                        start=_parse_time(block.start),
-                        end=_parse_time(block.end),
+                        start=start_value,
+                        end=end_value,
                         metadata={"block_id": block.id, "kind": block.kind},
                     )
                 )
                 continue
             scheduler_id = _validate_task_ref(block.task_ref, regular, quick)
             selected_ids.add(scheduler_id)
-            duration = _minutes(_parse_time(block.end)) - _minutes(
-                _parse_time(block.start)
-            )
+            duration = _minutes(end_value) - _minutes(start_value)
             requested_by_task[scheduler_id] = max(
                 requested_by_task.get(scheduler_id, 0), duration
             )
             frozen_blocks.append(
                 HumanFrozenTaskBlock(
                     task_id=scheduler_id,
-                    start=_parse_time(block.start),
-                    end=_parse_time(block.end),
+                    start=start_value,
+                    end=end_value,
                     directive_id=block.id,
                     metadata={"title": block.title},
                 )
             )
-            frozen_keys.add((scheduler_id, block.start, block.end))
+            frozen_keys.add(
+                (scheduler_id, _time_text(start_value), _time_text(end_value))
+            )
         elif isinstance(block, ScheduleDirectiveBlock):
             if block.mode == "task" and block.task_ref is not None:
                 scheduler_id = _validate_task_ref(block.task_ref, regular, quick)
@@ -802,10 +804,10 @@ def _build_scheduler_input(
         is_past = now is not None and start_value < now.time()
         if not is_past and not bool(assignment.get("is_fixed")):
             continue
-        key = (scheduler_id, start_text, end_text)
-        if key in frozen_keys:
-            continue
         if duration is None or duration <= 0:
+            continue
+        key = (scheduler_id, _time_text(start_value), _time_text(end_value))
+        if key in frozen_keys:
             continue
         selected_ids.add(scheduler_id)
         requested_by_task[scheduler_id] = max(
@@ -951,7 +953,7 @@ def _save_generated_schedule(
 
 
 @router.post("/{date}/generate", response_model=DailyPlanResponse)
-async def generate_daily_plan(
+def generate_daily_plan(
     date: str,
     user_id: str = Depends(get_current_user_id),
     session: Session = Depends(db.get_session),

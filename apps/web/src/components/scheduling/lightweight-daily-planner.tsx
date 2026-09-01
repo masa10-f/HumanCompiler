@@ -140,6 +140,8 @@ function assignmentMinutes(assignment: DailyPlanAssignment): number {
   return Math.max(1, Math.round(assignment.duration_hours * 60));
 }
 
+const MAX_AUTOSAVE_RETRIES = 3;
+
 export function LightweightDailyPlanner({
   selectedDate,
   onSelectedDateChange,
@@ -158,6 +160,7 @@ export function LightweightDailyPlanner({
   const [generating, setGenerating] = useState(false);
   const [dirty, setDirty] = useState(false);
   const dirtyRef = useRef(false);
+  const [saveRetry, setSaveRetry] = useState(0);
   const [conflict, setConflict] = useState(false);
   const [helpOpen, setHelpOpen] = useState(true);
   const [command, setCommand] = useState("");
@@ -232,6 +235,7 @@ export function LightweightDailyPlanner({
         setSchedule(response.schedule ?? null);
         setDirty(false);
         dirtyRef.current = false;
+        setSaveRetry(0);
       })
       .catch((error) => {
         if (cancelled) return;
@@ -282,6 +286,7 @@ export function LightweightDailyPlanner({
       });
       setDirty(true);
       dirtyRef.current = true;
+      setSaveRetry(0);
       setConflict(false);
     },
     [],
@@ -311,6 +316,7 @@ export function LightweightDailyPlanner({
           if (documentRef.current === snapshot) {
             setDirty(false);
             dirtyRef.current = false;
+            setSaveRetry(0);
           }
           setConflict(false);
         }
@@ -337,6 +343,9 @@ export function LightweightDailyPlanner({
     const timer = window.setTimeout(() => {
       void saveNow().catch((error) => {
         if (!(error instanceof ApiError && error.statusCode === 409)) {
+          setSaveRetry((current) =>
+            current < MAX_AUTOSAVE_RETRIES ? current + 1 : current,
+          );
           toast({
             title: "自動保存に失敗しました",
             description:
@@ -347,7 +356,7 @@ export function LightweightDailyPlanner({
       });
     }, 800);
     return () => window.clearTimeout(timer);
-  }, [conflict, dirty, loading, saveNow, toast]);
+  }, [conflict, dirty, loading, saveNow, saveRetry, toast]);
 
   const replaceBlock = useCallback(
     (id: string, next: DailyPlanBlock) => {
@@ -732,6 +741,7 @@ export function LightweightDailyPlanner({
     setSchedule(response.schedule ?? null);
     setDirty(false);
     dirtyRef.current = false;
+    setSaveRetry(0);
     setConflict(false);
   };
 
@@ -748,6 +758,7 @@ export function LightweightDailyPlanner({
       revisionRef.current = response.revision;
       setDirty(false);
       dirtyRef.current = false;
+      setSaveRetry(0);
       setConflict(false);
       setSchedule(response.schedule ?? null);
       toast({ title: "この画面の内容で保存しました" });
@@ -1416,6 +1427,40 @@ function TaskSelect({
   );
 }
 
+function ValidatedTitleInput({
+  value,
+  ariaLabel,
+  className,
+  onChange,
+}: {
+  value: string;
+  ariaLabel: string;
+  className?: string;
+  onChange: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  return (
+    <Input
+      aria-label={ariaLabel}
+      value={draft}
+      onChange={(event) => {
+        const next = event.target.value;
+        setDraft(next);
+        if (next.trim()) onChange(next);
+      }}
+      onBlur={() => {
+        if (!draft.trim()) setDraft(value);
+      }}
+      className={className}
+    />
+  );
+}
+
 function TimedLineEditor({
   block,
   taskOptions,
@@ -1454,9 +1499,10 @@ function TimedLineEditor({
         }}
         className="w-28 font-mono"
       />
-      <Input
+      <ValidatedTitleInput
+        ariaLabel="予定名"
         value={block.title}
-        onChange={(event) => onChange({ ...block, title: event.target.value })}
+        onChange={(title) => onChange({ ...block, title })}
         className="min-w-[220px] flex-1"
       />
       {block.kind === "break" ? (
@@ -1903,9 +1949,10 @@ function ChecklistEditor({
           onChange({ ...block, checked: checked === true });
         }}
       />
-      <Input
+      <ValidatedTitleInput
+        ariaLabel="チェック項目名"
         value={block.title}
-        onChange={(event) => onChange({ ...block, title: event.target.value })}
+        onChange={(title) => onChange({ ...block, title })}
         className={`min-w-[220px] flex-1 border-0 bg-transparent shadow-none focus-visible:ring-0 ${block.checked ? "text-gray-400 line-through" : ""}`}
       />
       <TaskSelect

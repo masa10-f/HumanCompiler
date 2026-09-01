@@ -269,7 +269,7 @@ async def test_generate_resolves_specific_and_filtered_directives(
         session,
     )
 
-    generated = await generate_daily_plan("2030-01-02", str(user.id), session)
+    generated = generate_daily_plan("2030-01-02", str(user.id), session)
 
     assert generated.revision == saved.revision
     assert generated.schedule is not None
@@ -312,7 +312,7 @@ async def test_project_filter_excludes_quick_tasks_without_membership(
         session,
     )
 
-    generated = await generate_daily_plan("2030-01-03", str(user.id), session)
+    generated = generate_daily_plan("2030-01-03", str(user.id), session)
 
     assert generated.schedule is not None
     task_ids = {item.task_id for item in generated.schedule.assignments}
@@ -349,7 +349,7 @@ async def test_filter_directive_limits_total_minutes_and_time_window(
         session,
     )
 
-    generated = await generate_daily_plan("2030-01-09", str(user.id), session)
+    generated = generate_daily_plan("2030-01-09", str(user.id), session)
 
     assert generated.schedule is not None
     assignments = [
@@ -404,7 +404,7 @@ async def test_task_dependency_outside_directive_is_reported_as_blocked(
         session,
     )
 
-    generated = await generate_daily_plan("2030-01-07", str(user.id), session)
+    generated = generate_daily_plan("2030-01-07", str(user.id), session)
 
     assert generated.schedule is not None
     diagnostic = generated.schedule.directive_diagnostics[0]
@@ -461,7 +461,7 @@ async def test_goal_dependency_outside_filter_is_reported_as_blocked(
         session,
     )
 
-    generated = await generate_daily_plan("2030-01-08", str(user.id), session)
+    generated = generate_daily_plan("2030-01-08", str(user.id), session)
 
     assert generated.schedule is not None
     diagnostic = generated.schedule.directive_diagnostics[0]
@@ -501,7 +501,7 @@ async def test_generate_persists_structured_solver_error(
         fail_solver,
     )
 
-    generated = await generate_daily_plan("2030-01-05", str(user.id), session)
+    generated = generate_daily_plan("2030-01-05", str(user.id), session)
 
     assert generated.schedule is not None
     assert generated.schedule.success is False
@@ -511,18 +511,19 @@ async def test_generate_persists_structured_solver_error(
 
 
 @pytest.mark.asyncio
-async def test_generate_preserves_existing_fixed_assignment(
+async def test_generate_deduplicates_existing_fixed_assignment(
     session: Session, planning_data
 ) -> None:
     user, _project, _goal, first, _second, _quick = planning_data
     date_text = "2030-01-04"
     document = DailyPlanDocumentV1(
         blocks=[
-            ScheduleDirectiveBlock(
-                id="specific",
-                mode="task",
+            TimedLineBlock(
+                id="fixed-task",
+                start="9:00",
+                end="9:30",
+                title=first.title,
                 task_ref=TaskRef(source="task", id=first.id),
-                duration_override_minutes=120,
             )
         ]
     )
@@ -554,7 +555,7 @@ async def test_generate_preserves_existing_fixed_assignment(
     )
     session.commit()
 
-    generated = await generate_daily_plan(date_text, str(user.id), session)
+    generated = generate_daily_plan(date_text, str(user.id), session)
 
     assert generated.schedule is not None
     fixed = [item for item in generated.schedule.assignments if item.is_fixed is True]

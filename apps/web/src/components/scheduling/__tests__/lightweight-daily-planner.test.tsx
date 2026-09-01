@@ -318,6 +318,63 @@ describe("LightweightDailyPlanner", () => {
     });
   });
 
+  it("retries autosave after a transient failure", async () => {
+    jest
+      .mocked(dailyPlansApi.update)
+      .mockRejectedValueOnce(new Error("temporary network failure"));
+
+    render(
+      <LightweightDailyPlanner
+        selectedDate="2030-01-02"
+        onSelectedDateChange={jest.fn()}
+        onSwitchDetailed={jest.fn()}
+      />,
+    );
+    const command = await screen.findByRole("textbox", {
+      name: "日次プランの行入力",
+    });
+    fireEvent.paste(command, {
+      clipboardData: { getData: () => "/schedule" },
+    });
+    fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
+
+    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalledTimes(2), {
+      timeout: 3500,
+    });
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "自動保存に失敗しました" }),
+    );
+  });
+
+  it("keeps the persisted title valid while the title field is cleared", async () => {
+    render(
+      <LightweightDailyPlanner
+        selectedDate="2030-01-02"
+        onSelectedDateChange={jest.fn()}
+        onSwitchDetailed={jest.fn()}
+      />,
+    );
+    const command = await screen.findByRole("textbox", {
+      name: "日次プランの行入力",
+    });
+    fireEvent.paste(command, {
+      clipboardData: { getData: () => "1100-1200 会議" },
+    });
+    fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalledTimes(1), {
+      timeout: 2500,
+    });
+    jest.mocked(dailyPlansApi.update).mockClear();
+
+    const title = screen.getByRole("textbox", { name: "予定名" });
+    fireEvent.change(title, { target: { value: "" } });
+    expect(title).toHaveValue("");
+    fireEvent.blur(title);
+
+    await waitFor(() => expect(title).toHaveValue("会議"));
+    expect(dailyPlansApi.update).not.toHaveBeenCalled();
+  });
+
   it("flushes pending changes before switching dates", async () => {
     const onSelectedDateChange = jest.fn();
     render(
