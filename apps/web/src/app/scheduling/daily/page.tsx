@@ -94,6 +94,14 @@ function initialTaskSource(): TaskSource {
     : { type: 'all_tasks' };
 }
 
+function initialTimeSlots(): DetailedDailyPlanTimeSlot[] {
+  return [
+    { start: '09:00', end: '12:00', kind: slotKinds.focused_work },
+    { start: '13:00', end: '17:00', kind: slotKinds.study },
+    { start: '19:00', end: '21:00', kind: slotKinds.light_work },
+  ];
+}
+
 export default function SchedulingPage() {
   const { user, loading: authLoading } = useAuth();
   const { data: projects = [], error: projectsError } = useProjectOptions({
@@ -110,14 +118,9 @@ export default function SchedulingPage() {
     date: string;
     document: DailyPlanDocumentV1;
     revision: number;
-    convertedBlockIds: string[];
   } | null>(null);
 
-  const [timeSlots, setTimeSlots] = useState<DetailedDailyPlanTimeSlot[]>([
-    { start: '09:00', end: '12:00', kind: slotKinds.focused_work },
-    { start: '13:00', end: '17:00', kind: slotKinds.study },
-    { start: '19:00', end: '21:00', kind: slotKinds.light_work },
-  ]);
+  const [timeSlots, setTimeSlots] = useState<DetailedDailyPlanTimeSlot[]>(initialTimeSlots);
 
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [scheduleResult, setScheduleResult] = useState<ScheduleResult | null>(null);
@@ -160,6 +163,8 @@ export default function SchedulingPage() {
   }, [markAssignmentsRemoved]);
 
   useEffect(() => {
+    // Neither fixed events nor document provenance may cross a date boundary.
+    setTimeSlots(initialTimeSlots());
     resetManualAssignments();
     setScheduleResult(null);
     removedBlockIdsRef.current = new Set();
@@ -247,7 +252,7 @@ export default function SchedulingPage() {
 
   // Apply default template when date changes
   useEffect(() => {
-    if (!user || templatesByDay.length === 0) return;
+    if (!user || templatesByDay.length === 0 || dailyPlanAdapter?.date === selectedDate) return;
 
     const isoDayOfWeek = getIsoDayOfWeek(selectedDate);
     const dayData = templatesByDay.find((d) => d.day_of_week === isoDayOfWeek);
@@ -256,7 +261,7 @@ export default function SchedulingPage() {
       resetManualAssignments();
       setScheduleResult(null);
     }
-  }, [resetManualAssignments, user, selectedDate, templatesByDay]);
+  }, [dailyPlanAdapter, resetManualAssignments, user, selectedDate, templatesByDay]);
 
   // Load available tasks when task source changes
   useEffect(() => {
@@ -613,7 +618,6 @@ export default function SchedulingPage() {
   const openDetailedMode = useCallback(
     (document: DailyPlanDocumentV1, revision: number) => {
       const slots = dailyPlanDocumentToDetailedSlots(document);
-      const convertedBlockIds: string[] = slots.flatMap((slot) => (slot.sourceBlockId ? [slot.sourceBlockId] : []));
       removedBlockIdsRef.current = new Set();
       setTimeSlots(slots);
       setManualAssignments(
@@ -621,7 +625,6 @@ export default function SchedulingPage() {
           if (block.type !== 'timed_line' || !block.task_ref) return [];
           const slotIndex = slots.findIndex((slot) => slot.start <= block.start && block.end <= slot.end);
           if (slotIndex < 0) return [];
-          convertedBlockIds.push(block.id);
           const [startHour = 0, startMinute = 0] = block.start.split(':').map(Number);
           const [endHour = 0, endMinute = 0] = block.end.split(':').map(Number);
           return [
@@ -639,7 +642,6 @@ export default function SchedulingPage() {
         date: selectedDate,
         document,
         revision,
-        convertedBlockIds,
       });
       setPlannerMode('detailed');
     },
@@ -648,8 +650,6 @@ export default function SchedulingPage() {
 
   const openLightweightMode = useCallback(async () => {
     try {
-      const convertedBlockIds =
-        dailyPlanAdapter?.date === selectedDate ? dailyPlanAdapter.convertedBlockIds : [];
       const cursorBySlot = new Map<number, string>();
       const fixedBlocks = manualAssignments.flatMap((assignment) => {
         const slot = timeSlots[assignment.slotIndex];
@@ -682,7 +682,7 @@ export default function SchedulingPage() {
       const eventBlocks = detailedMeetingSlotsToDailyPlanBlocks(timeSlots);
       const emittedBlockIds = [...fixedBlocks, ...eventBlocks].map((block) => block.id);
       const replacedBlockIds = new Set([
-        ...emittedBlockIds.filter((blockId) => convertedBlockIds.includes(blockId)),
+        ...emittedBlockIds,
         ...removedBlockIdsRef.current,
       ]);
       const availabilityWindows = detailedSlotsToAvailabilityWindows(timeSlots);
@@ -710,7 +710,6 @@ export default function SchedulingPage() {
         date: selectedDate,
         document: response.document,
         revision: response.revision,
-        convertedBlockIds: [],
       });
       removedBlockIdsRef.current = new Set();
       setPlannerMode('lightweight');
@@ -721,7 +720,7 @@ export default function SchedulingPage() {
         variant: 'destructive',
       });
     }
-  }, [availableTasks, dailyPlanAdapter, manualAssignments, selectedDate, timeSlots]);
+  }, [availableTasks, manualAssignments, selectedDate, timeSlots]);
 
   if (authLoading || !user) {
     return (

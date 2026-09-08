@@ -331,14 +331,15 @@ def _parse_date(value: str) -> date_type:
 
 
 def _get_document(
-    session: Session, user_id: UUID, date_value: date_type
+    session: Session, user_id: UUID, date_value: date_type, *, for_update: bool = False
 ) -> DailyPlanDocument | None:
-    return session.exec(
-        select(DailyPlanDocument).where(
-            DailyPlanDocument.user_id == user_id,
-            DailyPlanDocument.date == date_value,
-        )
-    ).first()
+    statement = select(DailyPlanDocument).where(
+        DailyPlanDocument.user_id == user_id,
+        DailyPlanDocument.date == date_value,
+    )
+    if for_update:
+        statement = statement.with_for_update()
+    return session.exec(statement).first()
 
 
 def _get_schedule(
@@ -785,6 +786,9 @@ def _build_scheduler_input(
     now = current_jst if current_jst.date() == schedule_date else None
     frozen_keys: set[tuple[str, str, str]] = set()
     document_block_ids = {block.id for block in document.blocks}
+    timed_line_ids = {
+        block.id for block in document.blocks if isinstance(block, TimedLineBlock)
+    }
 
     for block in document.blocks:
         if isinstance(block, TimedLineBlock):
@@ -914,6 +918,10 @@ def _build_scheduler_input(
             duration = _minutes(end_value) - _minutes(start_value)
         is_past = now is not None and start_value < now.time()
         directive_id = assignment.get("directive_id")
+        # Future fixed lines are owned by the current document. If their time
+        # or task changed, do not resurrect the old assignment as a second pin.
+        if not is_past and directive_id in timed_line_ids:
+            continue
         still_referenced = (
             bool(directive_id) and str(directive_id) in document_block_ids
         )
@@ -1038,7 +1046,10 @@ def _build_scheduler_input(
         ],
         fixed_events=fixed_events,
         frozen_blocks=frozen_blocks,
-        candidate_pools=adjusted_candidate_pools,
+        # An empty pool list means unrestricted scheduling to the package.
+        # A document without /schedule must emit only its fixed work instead.
+        candidate_pools=adjusted_candidate_pools
+        or [HumanCandidatePool(id="__no_directives__", eligible_task_ids=frozenset())],
         now=now,
         task_dependencies=task_dependencies,
         metadata={"source": "daily_plan_document"},
@@ -1080,7 +1091,9 @@ def generate_daily_plan(
 ) -> DailyPlanResponse:
     date_value = _parse_date(date)
     owner_id = UUID(user_id)
-    source_document = _get_document(session, owner_id, date_value)
+    # Serialize generation with document updates and other generations for this
+    # user/date, so a slow solve cannot overwrite a newer revision's schedule.
+    source_document = _get_document(session, owner_id, date_value, for_update=True)
     if source_document is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

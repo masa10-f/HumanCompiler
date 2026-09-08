@@ -10,6 +10,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 from sqlalchemy.pool import StaticPool
+from sqlalchemy.dialects import postgresql
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from humancompiler_api.models import (
@@ -594,6 +595,67 @@ async def test_generate_deduplicates_existing_fixed_assignment(
     assert generated.schedule is not None
     fixed = [item for item in generated.schedule.assignments if item.is_fixed is True]
     assert [(item.start_time, item.slot_end) for item in fixed] == [("09:00", "09:30")]
+
+
+@pytest.mark.asyncio
+async def test_editing_future_pin_replaces_previous_generated_time(
+    session: Session, planning_data, monkeypatch
+) -> None:
+    user, _project, _goal, first, _second, _quick = planning_data
+    date_text = "2030-01-04"
+    document = DailyPlanDocumentV1(
+        blocks=[
+            TimedLineBlock(
+                id="pin",
+                start="09:00",
+                end="10:00",
+                title=first.title,
+                task_ref=TaskRef(source="task", id=first.id),
+            )
+        ]
+    )
+    await update_daily_plan(
+        date_text,
+        DailyPlanUpdateRequest(
+            expected_revision=0,
+            document=document,
+        ),
+        str(user.id),
+        session,
+    )
+    statements = []
+    execute = session.exec
+
+    def capture_statement(statement, *args, **kwargs):
+        statements.append(str(statement.compile(dialect=postgresql.dialect())))
+        return execute(statement, *args, **kwargs)
+
+    monkeypatch.setattr(session, "exec", capture_statement)
+    initial = generate_daily_plan(date_text, str(user.id), session)
+    assert statements[0].endswith("FOR UPDATE")
+    assert initial.schedule is not None
+    assert all(item.is_fixed for item in initial.schedule.assignments)
+    document.blocks[0].start = "09:30"
+    document.blocks[0].end = "10:30"
+    await update_daily_plan(
+        date_text,
+        DailyPlanUpdateRequest(
+            expected_revision=1,
+            document=document,
+        ),
+        str(user.id),
+        session,
+    )
+
+    generated = generate_daily_plan(date_text, str(user.id), session)
+
+    assert generated.schedule is not None
+    assert generated.schedule.success
+    assert [
+        (item.start_time, item.slot_end) for item in generated.schedule.assignments
+    ] == [
+        ("09:30", "10:30"),
+    ]
 
 
 @pytest.mark.asyncio

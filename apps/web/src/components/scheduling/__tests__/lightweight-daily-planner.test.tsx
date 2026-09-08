@@ -10,6 +10,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { LightweightDailyPlanner } from "../lightweight-daily-planner";
 import { dailyPlansApi, quickTasksApi, tasksApi } from "@/lib/api";
 import { ApiError } from "@/lib/errors";
+import type { DailyPlanResponse } from "@/types/daily-plan";
 
 const mockToast = jest.fn();
 
@@ -396,6 +397,8 @@ describe("LightweightDailyPlanner", () => {
     fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
     fireEvent.click(screen.getByRole("button", { name: "自動スケジュール" }));
     expect(dailyPlansApi.generate).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue("2030-01-02")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "詳細モード" })).toBeDisabled();
     resolveFirstSave?.();
 
     await waitFor(() => {
@@ -503,6 +506,67 @@ describe("LightweightDailyPlanner", () => {
 
     await waitFor(() => expect(title).toHaveValue("会議"));
     expect(dailyPlansApi.update).not.toHaveBeenCalled();
+  });
+
+  it("autosaves edits made while resolving a revision conflict", async () => {
+    jest.mocked(dailyPlansApi.update).mockRejectedValueOnce(new ApiError(409, "conflict"));
+    let finishOverwrite: (response: DailyPlanResponse) => void = () => {};
+    jest.mocked(dailyPlansApi.update).mockImplementationOnce(() => new Promise((resolve) => {
+      finishOverwrite = resolve;
+    }));
+    render(<LightweightDailyPlanner selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    const command = await screen.findByRole("textbox", { name: "日次プランの行入力" });
+    fireEvent.paste(command, { clipboardData: { getData: () => "first note" } });
+    fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
+    fireEvent.click(await screen.findByRole("button", { name: "ローカル版で上書き" }));
+    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalledTimes(2));
+    const snapshot = jest.mocked(dailyPlansApi.update).mock.calls[1]![2];
+    fireEvent.paste(command, { clipboardData: { getData: () => "second note" } });
+    fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
+    finishOverwrite({ ...blankResponse, revision: 2, document: snapshot });
+    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalledTimes(3), { timeout: 2500 });
+    expect(jest.mocked(dailyPlansApi.update).mock.calls[2]).toEqual([
+      "2030-01-02", 2, expect.objectContaining({ blocks: [
+        expect.objectContaining({ text: "first note" }), expect.objectContaining({ text: "second note" }),
+      ] }),
+    ]);
+  });
+
+  it("pins only once before regeneration and disables re-pinning afterward", async () => {
+    const assignment = {
+      task_id: "11111111-1111-1111-1111-111111111111", task_title: "Task", goal_id: "", project_id: "",
+      slot_index: 0, start_time: "09:00", duration_hours: 1, slot_start: "09:00", slot_end: "10:00",
+      slot_kind: "light_work" as const, is_fixed: false, directive_id: "directive", source: "task" as const,
+    };
+    const response: DailyPlanResponse = {
+      ...blankResponse,
+      document: { ...blankResponse.document, blocks: [
+        { id: "directive", type: "schedule_directive", mode: "filter" },
+      ] },
+      schedule: { success: true, assignments: [assignment], total_scheduled_hours: 1,
+        optimization_status: "OK", generated_at: "2030-01-02T00:00:00Z" },
+    };
+    jest.mocked(dailyPlansApi.get).mockResolvedValue(response);
+    jest.mocked(dailyPlansApi.generate).mockImplementation(async () => {
+      const document = jest.mocked(dailyPlansApi.update).mock.calls.at(-1)![2];
+      const pinned = document.blocks.find((block) => block.type === "timed_line")!;
+      return { ...response, document, schedule: { ...response.schedule!,
+        assignments: [{ ...assignment, directive_id: pinned.id, is_fixed: true }],
+      } };
+    });
+    render(<LightweightDailyPlanner selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    const pin = await screen.findByRole("button", { name: "固定", exact: true });
+    fireEvent.click(pin);
+    fireEvent.click(pin);
+    expect(screen.queryByRole("button", { name: "固定", exact: true })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "自動スケジュール" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "固定", exact: true })).toBeDisabled());
+    expect(screen.getByLabelText("生成予定の開始時刻")).toBeDisabled();
+    expect(jest.mocked(dailyPlansApi.update).mock.calls.at(-1)![2].blocks.filter(
+      (block) => block.type === "timed_line",
+    )).toHaveLength(1);
   });
 
   it("can complete a linked task that is outside the loaded task options", async () => {

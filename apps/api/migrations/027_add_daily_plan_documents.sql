@@ -1,7 +1,7 @@
 -- Description: Add versioned source documents for lightweight daily planning
 
 CREATE TABLE IF NOT EXISTS public.daily_plan_documents (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     date DATE NOT NULL,
     revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),

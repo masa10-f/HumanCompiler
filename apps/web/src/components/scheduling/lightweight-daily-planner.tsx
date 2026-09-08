@@ -573,24 +573,42 @@ export function LightweightDailyPlanner({
     start = assignment.start_time,
     end = assignment.slot_end,
   ) => {
+    if (assignment.is_fixed) return;
     const pinned: DailyPlanTimedLine = {
       id: createId(),
       type: "timed_line",
       start,
       end,
       title: assignment.task_title,
-      task_ref: assignment.source
-        ? {
-            source: assignment.source,
-            id: assignment.task_id.replace(/^quick_/, ""),
-          }
-        : undefined,
+      task_ref: {
+        source: assignment.source ??
+          (assignment.task_id.startsWith("quick_") ? "quick_task" : "task"),
+        id: assignment.task_id.replace(/^quick_/, ""),
+      },
       pinned: true,
     };
     updateDocument((current) => ({
       ...current,
-      blocks: [...current.blocks, pinned],
+      blocks: current.blocks.some(
+        (block) =>
+          block.type === "timed_line" &&
+          block.start === start &&
+          block.end === end &&
+          block.task_ref?.source === pinned.task_ref?.source &&
+          block.task_ref?.id === pinned.task_ref?.id,
+      )
+        ? current.blocks
+        : [...current.blocks, pinned],
     }));
+    // The editable fixed line replaces this generated row immediately, even
+    // before regeneration. This also prevents repeated clicks from pinning it.
+    setSchedule((current) => current
+      ? {
+          ...current,
+          assignments: current.assignments.filter((item) => item !== assignment),
+        }
+      : current,
+    );
     toast({
       title: "固定行へ追加しました",
       description: "再生成時も時刻を維持します",
@@ -785,15 +803,20 @@ export function LightweightDailyPlanner({
     setSaving(true);
     try {
       const latest = await dailyPlansApi.get(selectedDate);
+      const snapshot = documentRef.current;
       const response = await dailyPlansApi.update(
         selectedDate,
         latest.revision,
-        documentRef.current,
+        snapshot,
       );
       setRevision(response.revision);
       revisionRef.current = response.revision;
-      setDirty(false);
-      dirtyRef.current = false;
+      if (documentRef.current === snapshot) {
+        setDirty(false);
+        dirtyRef.current = false;
+      } else {
+        setSaveSignal((current) => current + 1);
+      }
       setSaveRetry(0);
       setConflict(false);
       setSchedule(response.schedule ?? null);
@@ -840,7 +863,11 @@ export function LightweightDailyPlanner({
               )}
               {saving ? "保存中" : dirty ? "未保存" : "保存済み"}
             </Badge>
-            <Button variant="outline" onClick={switchToDetailed}>
+            <Button
+              variant="outline"
+              onClick={switchToDetailed}
+              disabled={generating || (saving && conflict)}
+            >
               詳細モード
             </Button>
             <Button onClick={generate} disabled={generating || conflict}>
@@ -905,6 +932,7 @@ export function LightweightDailyPlanner({
                   size="sm"
                   variant="outline"
                   onClick={reloadServerVersion}
+                  disabled={saving}
                 >
                   最新版を読み込む
                 </Button>
@@ -912,6 +940,7 @@ export function LightweightDailyPlanner({
                   size="sm"
                   variant="destructive"
                   onClick={overwriteServerVersion}
+                  disabled={saving}
                 >
                   ローカル版で上書き
                 </Button>
@@ -927,6 +956,7 @@ export function LightweightDailyPlanner({
               <Input
                 type="date"
                 value={selectedDate}
+                disabled={generating || (saving && conflict)}
                 onChange={(event) =>
                   void changeSelectedDate(event.target.value)
                 }
@@ -1890,6 +1920,7 @@ function GeneratedAssignmentRow({
     <div className="flex flex-wrap items-center gap-2 rounded-md bg-blue-50 px-3 py-2 text-sm dark:bg-blue-950/30">
       <Input
         aria-label="生成予定の開始時刻"
+        disabled={assignment.is_fixed}
         type="time"
         value={start}
         onChange={(event) => setStart(event.target.value)}
@@ -1898,18 +1929,19 @@ function GeneratedAssignmentRow({
       <span>–</span>
       <Input
         aria-label="生成予定の終了時刻"
+        disabled={assignment.is_fixed}
         type="time"
         value={end}
         onChange={(event) => setEnd(event.target.value)}
         className="h-8 w-28 font-mono"
       />
       <span className="font-medium">{assignment.task_title}</span>
-      <Badge variant="outline">自動</Badge>
+      <Badge variant="outline">{assignment.is_fixed ? "固定済み" : "自動"}</Badge>
       <div className="ml-auto flex gap-1">
         <Button
           size="sm"
           variant="ghost"
-          disabled={!canPin}
+          disabled={!canPin || assignment.is_fixed}
           onClick={() => onPin(assignment, start, end)}
         >
           固定
