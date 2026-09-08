@@ -61,6 +61,13 @@ import {
   updateDailyPlanTimeRange,
 } from "@/lib/daily-plan-command";
 import { applyDirectiveTaskSelection } from "@/lib/daily-plan-adapter";
+import {
+  extractDailyPlanMention,
+  isPermanentDailyPlanSaveError,
+  matchDailyPlanTasks,
+  missingDailyPlanBlockIds,
+  stripDailyPlanDuration,
+} from "@/lib/daily-plan-editor";
 import type { Goal } from "@/types/goal";
 import type { QuickTask } from "@/types/quick-task";
 import type { TaskWorkspaceItem, WorkType } from "@/types/task";
@@ -132,22 +139,6 @@ function fallbackTaskOption(ref: DailyPlanTaskRef, title: string): TaskOption {
   };
 }
 
-function findMention(
-  text: string,
-  options: TaskOption[],
-): TaskOption | undefined {
-  const mention = extractMention(text)?.toLocaleLowerCase();
-  if (!mention) return undefined;
-  return (
-    options.find((option) => option.title.toLocaleLowerCase() === mention) ??
-    options.find((option) => option.title.toLocaleLowerCase().includes(mention))
-  );
-}
-
-function extractMention(text: string): string | undefined {
-  return text.match(/@([^()]+)/)?.[1]?.trim();
-}
-
 function assignmentMinutes(assignment: DailyPlanAssignment): number {
   return Math.max(1, Math.round(assignment.duration_hours * 60));
 }
@@ -174,6 +165,9 @@ export function LightweightDailyPlanner({
   const dirtyRef = useRef(false);
   const [saveRetry, setSaveRetry] = useState(0);
   const [saveSignal, setSaveSignal] = useState(0);
+  const [saveError, setSaveError] = useState<Error | null>(null);
+  const [autosavePaused, setAutosavePaused] = useState(false);
+  const [ambiguousMention, setAmbiguousMention] = useState<{ input: string; options: TaskOption[] } | null>(null);
   const [conflict, setConflict] = useState(false);
   const [helpOpen, setHelpOpen] = useState(true);
   const [command, setCommand] = useState("");
@@ -220,13 +214,28 @@ export function LightweightDailyPlanner({
 
   const loadTasks = useCallback(async () => {
     const [workspace, quick] = await Promise.all([
-      tasksApi.getWorkspace({
-        limit: 100,
-        status: ["pending", "in_progress"],
-      }),
-      quickTasksApi.getAll(0, 100),
+      (async () => {
+        const items: TaskWorkspaceItem[] = [];
+        let skip = 0;
+        while (true) {
+          const page = await tasksApi.getWorkspace({ skip, limit: 100, status: ["pending", "in_progress"] });
+          items.push(...page.items);
+          skip += page.items.length;
+          if (!page.items.length || skip >= page.total) return items;
+        }
+      })(),
+      (async () => {
+        const items: QuickTask[] = [];
+        let skip = 0;
+        while (true) {
+          const page = await quickTasksApi.getAll(skip, 100);
+          items.push(...page);
+          skip += page.length;
+          if (page.length < 100) return items;
+        }
+      })(),
     ]);
-    setRegularTasks(workspace.items);
+    setRegularTasks(workspace);
     setQuickTasks(
       quick.filter(
         (item) => item.status !== "completed" && item.status !== "cancelled",
@@ -238,6 +247,8 @@ export function LightweightDailyPlanner({
     let cancelled = false;
     setLoading(true);
     setConflict(false);
+    setSaveError(null);
+    setAutosavePaused(false);
     Promise.all([dailyPlansApi.get(selectedDate), loadTasks()])
       .then(([response]) => {
         if (cancelled) return;
@@ -300,6 +311,8 @@ export function LightweightDailyPlanner({
       setDirty(true);
       dirtyRef.current = true;
       setSaveRetry(0);
+      setAutosavePaused(false);
+      setSaveError(null);
     },
     [],
   );
@@ -322,6 +335,8 @@ export function LightweightDailyPlanner({
         setRevision(response.revision);
         revisionRef.current = response.revision;
         setSaveRetry(0);
+        setSaveError(null);
+        setAutosavePaused(false);
         if (documentRef.current === snapshot) {
           setDirty(false);
           dirtyRef.current = false;
@@ -335,6 +350,9 @@ export function LightweightDailyPlanner({
       } catch (error) {
         if (error instanceof ApiError && error.statusCode === 409) {
           setConflict(true);
+        } else {
+          setSaveError(error instanceof Error ? error : new Error("保存に失敗しました"));
+          if (isPermanentDailyPlanSaveError(error)) setAutosavePaused(true);
         }
         throw error;
       } finally {
@@ -364,17 +382,17 @@ export function LightweightDailyPlanner({
     }, [saveNow]);
 
   useEffect(() => {
-    if (!dirty || loading || conflict) return;
+    if (!dirty || loading || conflict || autosavePaused) return;
     const timer = window.setTimeout(() => {
       void saveNow().catch((error) => {
         if (!(error instanceof ApiError && error.statusCode === 409)) {
-          setSaveRetry((current) =>
-            current < MAX_AUTOSAVE_RETRIES ? current + 1 : current,
-          );
-          toast({
-            title: "自動保存に失敗しました",
-            description:
-              error instanceof Error ? error.message : "不明なエラー",
+          if (isPermanentDailyPlanSaveError(error) || saveRetry >= MAX_AUTOSAVE_RETRIES) {
+            setAutosavePaused(true);
+          } else {
+            setSaveRetry((current) => current + 1);
+          }
+          if (saveRetry === 0) toast({
+            title: "自動保存に失敗しました", description: "内容はこの画面に残っています。保存エラーの表示を確認してください。",
             variant: "destructive",
           });
         }
@@ -383,6 +401,7 @@ export function LightweightDailyPlanner({
     return () => window.clearTimeout(timer);
   }, [
     conflict,
+    autosavePaused,
     dirty,
     document,
     loading,
@@ -412,6 +431,28 @@ export function LightweightDailyPlanner({
     [updateDocument],
   );
 
+  const detachMissingTask = (blockId: string) => {
+    updateDocument((current) => ({
+      ...current,
+      blocks: current.blocks.map((block) => {
+        if (block.id !== blockId) return block;
+        if (block.type === "schedule_directive") {
+          // Do not turn a missing specific task into an unrestricted filter.
+          // Keep its intent as a note until the user chooses a replacement.
+          return { id: block.id, type: "text" as const, text: [
+            "/schedule", block.title ?? "参照を解除したタスク",
+            block.duration_override_minutes ? `(${block.duration_override_minutes}m)` : "",
+            ...(block.allowed_windows ?? []).map((window) => `${window.start}-${window.end}`),
+          ].filter(Boolean).join(" ") };
+        }
+        if (block.type === "timed_line" || block.type === "checklist_item") {
+          return { ...block, task_ref: undefined };
+        }
+        return block;
+      }),
+    }));
+  };
+
   const moveBlock = useCallback(
     (index: number, direction: -1 | 1) => {
       updateDocument((current) => {
@@ -429,11 +470,16 @@ export function LightweightDailyPlanner({
     [updateDocument],
   );
 
-  const submitCommand = (input = command) => {
+  const submitCommand = (input = command, selectedTask?: TaskOption) => {
     const value = input.trim();
     if (!value) return;
-    const mention = extractMention(value);
-    const mentioned = findMention(value, taskOptions);
+    const mention = extractDailyPlanMention(value);
+    const matches = matchDailyPlanTasks(value, taskOptions);
+    if (!selectedTask && matches.length > 1) {
+      setAmbiguousMention({ input: value, options: matches });
+      return;
+    }
+    const mentioned = selectedTask ?? matches[0];
     if (
       mention &&
       !mentioned &&
@@ -485,7 +531,8 @@ export function LightweightDailyPlanner({
           kind: breakLine ? "break" : "event",
         };
       } else if (/^-?\s*\[\s?\]/.test(value)) {
-        const title = value.replace(/^-?\s*\[\s?\]\s*/, "");
+        const title = stripDailyPlanDuration(value.replace(/^-?\s*\[\s?\]\s*/, ""));
+        if (!title) return;
         block = {
           id: createId(),
           type: "checklist_item",
@@ -526,6 +573,9 @@ export function LightweightDailyPlanner({
         });
       }
     } catch (error) {
+      if (missingDailyPlanBlockIds(error).length) {
+        setSaveError(error instanceof Error ? error : new Error("参照タスクが見つかりません"));
+      }
       toast({
         title: "自動生成に失敗しました",
         description: error instanceof Error ? error.message : "不明なエラー",
@@ -797,6 +847,8 @@ export function LightweightDailyPlanner({
     dirtyRef.current = false;
     setSaveRetry(0);
     setConflict(false);
+    setSaveError(null);
+    setAutosavePaused(false);
   };
 
   const overwriteServerVersion = async () => {
@@ -819,6 +871,8 @@ export function LightweightDailyPlanner({
       }
       setSaveRetry(0);
       setConflict(false);
+      setSaveError(null);
+      setAutosavePaused(false);
       setSchedule(response.schedule ?? null);
       toast({ title: "この画面の内容で保存しました" });
     } catch (error) {
@@ -842,6 +896,9 @@ export function LightweightDailyPlanner({
       </div>
     );
   }
+
+  const scheduleStale = Boolean(schedule &&
+    (dirty || schedule.source_document_revision !== revision));
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -920,6 +977,36 @@ export function LightweightDailyPlanner({
             )}
           </CardContent>
         </Card>
+
+        {scheduleStale && (
+          <Alert className="mb-4">
+            <AlertDescription>再生成が必要です。表示中の予定・診断は以前の文書に対する結果です。</AlertDescription>
+          </Alert>
+        )}
+
+        {saveError && !conflict && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertTitle>保存・参照エラー</AlertTitle>
+            <AlertDescription>
+              <p>{saveError.message}。内容はこの画面に残っています。修正後に再試行してください。</p>
+              {missingDailyPlanBlockIds(saveError).map((blockId) => {
+                const block = document.blocks.find((item) => item.id === blockId);
+                if (!block || block.type === "text") return null;
+                return <div key={blockId} className="my-2">
+                  <span>参照先が見つかりません: {block.title ?? blockId}。制御行の参照解除はメモへ変換します。</span>
+                  <Button size="sm" variant="outline" disabled={saving}
+                    onClick={() => detachMissingTask(blockId)}>
+                    {block.title ?? blockId} の参照を解除
+                  </Button>
+                </div>;
+              })}
+              <Button size="sm" variant="outline" disabled={saving}
+                onClick={() => { void saveNow().catch(() => {}); }}>
+                保存を再試行
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {conflict && (
           <Alert variant="destructive" className="mb-4">
@@ -1251,6 +1338,26 @@ export function LightweightDailyPlanner({
           </CardContent>
         </Card>
       </main>
+
+      <Dialog open={Boolean(ambiguousMention)} onOpenChange={(open) => {
+        if (!open) setAmbiguousMention(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>紐づけるタスクを選択</DialogTitle>
+            <DialogDescription>複数のタスクが一致しました。自動では選択しません。</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-80 space-y-2 overflow-auto">
+            {ambiguousMention?.options.map((option) => <Button key={option.key}
+              variant="outline" className="w-full justify-start" onClick={() => {
+                submitCommand(ambiguousMention.input, option);
+                setAmbiguousMention(null);
+              }}>
+              {option.title} · {option.projectTitle ?? "Quick"} · {option.goalTitle ?? option.ref.id.slice(-8)}
+            </Button>)}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={Boolean(completionAssignment)}

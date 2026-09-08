@@ -635,6 +635,11 @@ def _build_task_dependencies(
     selected_ids: set[str],
     regular: dict[str, tuple[Task, Goal, Project]],
 ) -> tuple[dict[str, list[str]], set[str]]:
+    """Build dependency constraints, adding owned prerequisite rows to regular.
+
+    The caller-owned mapping is enriched in place so prerequisite status and
+    goal membership are available during the remaining input construction.
+    """
     regular_ids = [
         UUID(task_id) for task_id in selected_ids if not task_id.startswith("quick_")
     ]

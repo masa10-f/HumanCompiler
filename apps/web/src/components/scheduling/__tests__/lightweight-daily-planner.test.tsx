@@ -5,12 +5,29 @@
  * @jest-environment jsdom
  */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { LightweightDailyPlanner } from "../lightweight-daily-planner";
 import { dailyPlansApi, quickTasksApi, tasksApi } from "@/lib/api";
 import { ApiError } from "@/lib/errors";
 import type { DailyPlanResponse } from "@/types/daily-plan";
+import type { QuickTask } from "@/types/quick-task";
+import type { TaskWorkspaceItem } from "@/types/task";
+
+function quickTask(id: string, title: string): QuickTask {
+  return { id, title, owner_id: 'owner', description: null, estimate_hours: 1,
+    due_date: null, status: 'pending', work_type: 'light_work', priority: 3,
+    created_at: '2030-01-01', updated_at: '2030-01-01' };
+}
+
+function workspaceTask(id: string, title: string): TaskWorkspaceItem {
+  return { id, title, description: null, estimate_hours: 1, due_date: null,
+    status: 'pending', work_type: 'light_work', priority: 3, goal_id: 'goal',
+    project_id: 'project', project_title: 'Project', goal_title: 'Goal',
+    remaining_estimate_hours: 1, is_blocked: false, is_ready: true, blocking_task_ids: [],
+    last_worked_at: null, planned_today: false, planned_today_unplaced: false,
+    planned_this_week: false, created_at: '2030-01-01', updated_at: '2030-01-01' };
+}
 
 const mockToast = jest.fn();
 
@@ -477,6 +494,135 @@ describe("LightweightDailyPlanner", () => {
     expect(
       screen.getByText("別の画面で内容が更新されています"),
     ).toBeInTheDocument();
+  });
+
+  it("stops retrying 422 automatically and offers a manual save", async () => {
+    jest.mocked(dailyPlansApi.update).mockRejectedValueOnce(new ApiError(422, 'Invalid content'));
+    render(<LightweightDailyPlanner selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    const command = await screen.findByRole('textbox', { name: '日次プランの行入力' });
+    fireEvent.paste(command, { clipboardData: { getData: () => 'note' } });
+    fireEvent.keyDown(command, { key: 'Enter' });
+    const retry = await screen.findByRole('button', { name: '保存を再試行' });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1000)); });
+    expect(dailyPlansApi.update).toHaveBeenCalledTimes(1);
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.queryByText('保存・参照エラー')).not.toBeInTheDocument());
+    expect(dailyPlansApi.update).toHaveBeenCalledTimes(2);
+  });
+
+  it("identifies a missing reference and lets the user retain the row without it", async () => {
+    jest.mocked(dailyPlansApi.get).mockResolvedValue({ ...blankResponse, document: {
+      ...blankResponse.document, blocks: [{ id: 'missing', type: 'timed_line', title: 'Deleted task',
+        start: '10:00', end: '11:00', task_ref: { source: 'task', id: 'deleted' } }],
+    } });
+    jest.mocked(dailyPlansApi.update).mockRejectedValueOnce(new ApiError(404, 'Referenced task was not found', {
+      responseData: { detail: { missing: [{ block_id: 'missing', source: 'task', id: 'deleted' }] } },
+    }));
+    render(<LightweightDailyPlanner selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    const command = await screen.findByRole('textbox', { name: '日次プランの行入力' });
+    fireEvent.paste(command, { clipboardData: { getData: () => 'Keep this note' } });
+    fireEvent.keyDown(command, { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Deleted task の参照を解除' }));
+    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalledTimes(2), { timeout: 2500 });
+    const blocks = jest.mocked(dailyPlansApi.update).mock.calls[1]![2].blocks;
+    expect(blocks).toEqual([
+      expect.objectContaining({ id: 'missing', type: 'timed_line', title: 'Deleted task',
+        start: '10:00', end: '11:00', task_ref: undefined }),
+      expect.objectContaining({ text: 'Keep this note' }),
+    ]);
+  });
+
+  it("asks the user to resolve an ambiguous mention instead of creating or guessing", async () => {
+    jest.mocked(quickTasksApi.getAll).mockResolvedValue([
+      quickTask('code', 'コードレビュー'), quickTask('paper', '論文レビュー'),
+    ]);
+    render(<LightweightDailyPlanner selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    const command = await screen.findByRole('textbox', { name: '日次プランの行入力' });
+    fireEvent.paste(command, { clipboardData: { getData: () => '/schedule @レビュー (1h)' } });
+    fireEvent.keyDown(command, { key: 'Enter' });
+    expect(await screen.findByText('紐づけるタスクを選択')).toBeInTheDocument();
+    expect(dailyPlansApi.update).not.toHaveBeenCalled();
+    expect(screen.queryByText('新しいタスク')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /論文レビュー · Quick/ }));
+    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled(), { timeout: 2500 });
+    expect(jest.mocked(dailyPlansApi.update).mock.calls[0]![2].blocks[0]).toMatchObject({
+      task_ref: { source: 'quick_task', id: 'paper' }, duration_override_minutes: 60,
+    });
+  });
+
+  it("recovers a deleted directive reference as a note, never as an unrestricted filter", async () => {
+    jest.mocked(dailyPlansApi.get).mockResolvedValue({ ...blankResponse, document: {
+      ...blankResponse.document, blocks: [{ id: 'missing', type: 'schedule_directive', mode: 'task',
+        title: 'Deleted task', task_ref: { source: 'task', id: 'deleted' },
+        duration_override_minutes: 30, allowed_windows: [{ start: '10:00', end: '11:00' }] }],
+    } });
+    jest.mocked(dailyPlansApi.generate).mockRejectedValueOnce(new ApiError(404, 'Referenced task was not found', {
+      responseData: { detail: { missing: [{ block_id: 'missing' }] } },
+    }));
+    render(<LightweightDailyPlanner selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: '自動スケジュール' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Deleted task の参照を解除' }));
+    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled(), { timeout: 2500 });
+    expect(jest.mocked(dailyPlansApi.update).mock.calls[0]![2].blocks).toEqual([
+      { id: 'missing', type: 'text', text: '/schedule Deleted task (30m) 10:00-11:00' },
+    ]);
+  });
+
+  it.each(['task', 'quick_task'] as const)("loads later pages before resolving a %s mention", async (source) => {
+    if (source === 'task') {
+      jest.mocked(tasksApi.getWorkspace).mockImplementation(async (filters) => ({
+        items: filters?.skip === 0 ? Array.from({ length: 100 }, (_, index) => workspaceTask(`task-${index}`, `Task ${index}`))
+          : [workspaceTask('last', 'Later task')], total: 101, skip: filters?.skip ?? 0, limit: 100,
+      }));
+    } else {
+      jest.mocked(quickTasksApi.getAll).mockImplementation(async (skip) => skip === 0
+        ? Array.from({ length: 100 }, (_, index) => quickTask(`quick-${index}`, `Quick ${index}`))
+        : [quickTask('last', 'Later task')]);
+    }
+    render(<LightweightDailyPlanner selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    const command = await screen.findByRole('textbox', { name: '日次プランの行入力' });
+    fireEvent.paste(command, { clipboardData: { getData: () => '/schedule @Later task (30m)' } });
+    fireEvent.keyDown(command, { key: 'Enter' });
+    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled(), { timeout: 2500 });
+    expect(jest.mocked(dailyPlansApi.update).mock.calls[0]![2].blocks[0]).toMatchObject({
+      task_ref: { source, id: 'last' },
+    });
+  });
+
+  it("stores a checklist duration separately from its title", async () => {
+    render(<LightweightDailyPlanner selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    const command = await screen.findByRole('textbox', { name: '日次プランの行入力' });
+    fireEvent.paste(command, { clipboardData: { getData: () => '[ ] 買い物 (30m)' } });
+    fireEvent.keyDown(command, { key: 'Enter' });
+    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled(), { timeout: 2500 });
+    expect(jest.mocked(dailyPlansApi.update).mock.calls[0]![2].blocks[0]).toMatchObject({
+      type: 'checklist_item', title: '買い物', duration_override_minutes: 30,
+    });
+  });
+
+  it("labels a generated schedule as stale after a document edit", async () => {
+    jest.mocked(dailyPlansApi.update).mockImplementation(async (date, revision, document) => ({
+      date, revision: revision + 1, document,
+    }));
+    jest.mocked(dailyPlansApi.get).mockResolvedValue({ ...blankResponse, revision: 1, schedule: {
+      success: true, assignments: [], total_scheduled_hours: 0, optimization_status: 'OK',
+      generated_at: '2030-01-02T00:00:00Z', source_document_revision: 1,
+    } });
+    render(<LightweightDailyPlanner selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    const command = await screen.findByRole('textbox', { name: '日次プランの行入力' });
+    expect(screen.queryByText(/再生成が必要です/)).not.toBeInTheDocument();
+    fireEvent.paste(command, { clipboardData: { getData: () => '/schedule (2h)' } });
+    fireEvent.keyDown(command, { key: 'Enter' });
+    expect(await screen.findByText(/再生成が必要です/)).toBeInTheDocument();
+    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled(), { timeout: 2500 });
+    expect(screen.getByText(/再生成が必要です/)).toBeInTheDocument();
   });
 
   it("keeps the persisted title valid while the title field is cleared", async () => {
