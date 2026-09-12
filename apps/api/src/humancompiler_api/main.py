@@ -31,6 +31,7 @@ from humancompiler_api.exceptions import (
 )
 from humancompiler_api.routers import (
     ai_planning,
+    daily_plans,
     dashboard,
     data_export,
     goal_dependencies,
@@ -287,6 +288,7 @@ app.include_router(goal_dependencies.router)
 app.include_router(logs.router, prefix="/api")
 app.include_router(progress.router, prefix="/api")
 app.include_router(scheduler.router, prefix="/api")
+app.include_router(daily_plans.router, prefix="/api")
 app.include_router(timeline.router, prefix="/api/timeline", tags=["timeline"])
 app.include_router(weekly_schedule.router, prefix="/api")
 app.include_router(weekly_recurring_tasks.router, prefix="/api")
