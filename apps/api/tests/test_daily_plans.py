@@ -37,6 +37,7 @@ from humancompiler_api.routers.daily_plans import (
     TaskRef,
     TimedLineBlock,
     _build_scheduler_input,
+    _directive_availability,
     _load_owned_tasks,
     apply_task_action,
     generate_daily_plan,
@@ -242,6 +243,95 @@ async def test_document_validates_only_referenced_task_ids(
 
 
 @pytest.mark.asyncio
+async def test_explicit_two_three_two_hour_slots_ignore_legacy_global_window(
+    session: Session, planning_data
+) -> None:
+    user, project, goal, first, second, _quick = planning_data
+    first.estimate_hours = second.estimate_hours = Decimal("10")
+    session.add_all([first, second])
+    session.add_all(
+        [
+            Task(
+                id=uuid4(),
+                goal_id=goal.id,
+                title=f"Long task {index}",
+                estimate_hours=Decimal("10"),
+            )
+            for index in range(4)
+        ]
+    )
+    session.commit()
+    document = DailyPlanDocumentV1(
+        availability_windows=[AvailabilityWindow(start="01:00", end="02:00")],
+        blocks=[
+            ScheduleDirectiveBlock(
+                id=f"slot-{index}",
+                mode="filter",
+                filter=DirectiveFilter(project_ids=[project.id]),
+                allowed_windows=[DirectiveWindow(start=start, end=end)],
+                duration_override_minutes=minutes,
+            )
+            for index, (start, end, minutes) in enumerate(
+                [
+                    ("09:00", "11:00", 120),
+                    ("12:00", "15:00", 180),
+                    ("19:00", "21:00", 120),
+                ]
+            )
+        ],
+    )
+    await update_daily_plan(
+        "2030-01-12",
+        DailyPlanUpdateRequest(
+            expected_revision=0,
+            document=document,
+        ),
+        str(user.id),
+        session,
+    )
+    generated = generate_daily_plan("2030-01-12", str(user.id), session)
+    assert generated.schedule is not None
+    assert generated.schedule.success
+    assert generated.schedule.total_scheduled_hours == 7
+    assert [
+        item.generated_minutes for item in generated.schedule.directive_diagnostics
+    ] == [120, 180, 120]
+    assert all(
+        item.eligible_count == 6 for item in generated.schedule.directive_diagnostics
+    )
+    assert "availability_windows" not in generated.document.model_dump(mode="json")
+
+
+@pytest.mark.asyncio
+async def test_duration_only_draft_can_be_saved_but_cannot_generate(
+    session: Session, planning_data
+) -> None:
+    user = planning_data[0]
+    saved = await update_daily_plan(
+        "2030-01-13",
+        DailyPlanUpdateRequest(
+            expected_revision=0,
+            document=DailyPlanDocumentV1(
+                blocks=[
+                    ScheduleDirectiveBlock(
+                        id="no-time", mode="filter", duration_override_minutes=120
+                    ),
+                ]
+            ),
+        ),
+        str(user.id),
+        session,
+    )
+    assert saved.document.blocks[0].id == "no-time"
+    with pytest.raises(HTTPException) as failure:
+        generate_daily_plan("2030-01-13", str(user.id), session)
+    assert failure.value.status_code == 422
+    assert failure.value.detail["code"] == "SCHEDULE_TIME_REQUIRED"
+    assert failure.value.detail["block_ids"] == ["no-time"]
+    assert not session.exec(select(Schedule)).all()
+
+
+@pytest.mark.asyncio
 async def test_generate_resolves_specific_and_filtered_directives(
     session: Session, planning_data
 ) -> None:
@@ -260,6 +350,7 @@ async def test_generate_resolves_specific_and_filtered_directives(
             ),
             ScheduleDirectiveBlock(
                 id="specific",
+                allowed_windows=[DirectiveWindow(start="09:00", end="12:00")],
                 mode="task",
                 title=first.title,
                 task_ref=TaskRef(source="task", id=first.id),
@@ -267,6 +358,7 @@ async def test_generate_resolves_specific_and_filtered_directives(
             ),
             ScheduleDirectiveBlock(
                 id="project",
+                allowed_windows=[DirectiveWindow(start="09:00", end="12:00")],
                 mode="filter",
                 filter=DirectiveFilter(
                     work_types=["focused_work", "light_work"],
@@ -314,6 +406,7 @@ async def test_project_filter_excludes_quick_tasks_without_membership(
         blocks=[
             ScheduleDirectiveBlock(
                 id="project-only",
+                allowed_windows=[DirectiveWindow(start="09:00", end="18:00")],
                 mode="filter",
                 filter=DirectiveFilter(project_ids=[project.id]),
             )
@@ -377,14 +470,46 @@ async def test_filter_directive_limits_total_minutes_and_time_window(
     )
 
 
-def test_document_rejects_overlapping_availability_windows() -> None:
-    with pytest.raises(ValueError, match="availability windows must not overlap"):
-        DailyPlanDocumentV1(
-            availability_windows=[
-                AvailabilityWindow(start="09:00", end="12:00"),
-                AvailabilityWindow(start="11:00", end="13:00"),
-            ]
-        )
+def test_directive_availability_unions_overlap_without_filling_gaps() -> None:
+    document = DailyPlanDocumentV1(
+        blocks=[
+            ScheduleDirectiveBlock(
+                id=str(index),
+                mode="filter",
+                allowed_windows=[
+                    DirectiveWindow(start=start, end=end),
+                ],
+            )
+            for index, (start, end) in enumerate(
+                [
+                    ("09:00", "11:00"),
+                    ("10:00", "12:00"),
+                    ("19:00", "21:00"),
+                ]
+            )
+        ]
+    )
+    windows = _directive_availability(document)
+    assert [
+        (item.start.strftime("%H:%M"), item.end.strftime("%H:%M")) for item in windows
+    ] == [
+        ("09:00", "12:00"),
+        ("19:00", "21:00"),
+    ]
+
+
+def test_document_ignores_legacy_global_availability() -> None:
+    document = DailyPlanDocumentV1.model_validate(
+        {
+            "schema_version": 1,
+            "availability_windows": [
+                {"start": "09:00", "end": "12:00"},
+                {"start": "11:00", "end": "13:00"},
+            ],
+            "blocks": [],
+        }
+    )
+    assert document.model_dump() == {"schema_version": 1, "blocks": []}
 
 
 def test_directive_collections_have_safe_size_limits() -> None:
@@ -429,6 +554,7 @@ async def test_task_dependency_outside_directive_is_reported_as_blocked(
                 blocks=[
                     ScheduleDirectiveBlock(
                         id="dependent-only",
+                        allowed_windows=[DirectiveWindow(start="09:00", end="18:00")],
                         mode="task",
                         task_ref=TaskRef(source="task", id=dependent.id),
                     )
@@ -486,6 +612,7 @@ async def test_goal_dependency_outside_filter_is_reported_as_blocked(
                 blocks=[
                     ScheduleDirectiveBlock(
                         id="dependent-goal-only",
+                        allowed_windows=[DirectiveWindow(start="09:00", end="18:00")],
                         mode="filter",
                         filter=DirectiveFilter(goal_ids=[dependent_goal.id]),
                     )
@@ -518,6 +645,7 @@ async def test_generate_persists_structured_solver_error(
                 blocks=[
                     ScheduleDirectiveBlock(
                         id="specific",
+                        allowed_windows=[DirectiveWindow(start="09:00", end="18:00")],
                         mode="task",
                         task_ref=TaskRef(source="task", id=first.id),
                     )
@@ -672,6 +800,7 @@ async def test_generate_drops_deleted_future_fixed_assignment(
                 blocks=[
                     ScheduleDirectiveBlock(
                         id="remaining-directive",
+                        allowed_windows=[DirectiveWindow(start="09:00", end="18:00")],
                         mode="task",
                         task_ref=TaskRef(source="task", id=first.id),
                         duration_override_minutes=60,

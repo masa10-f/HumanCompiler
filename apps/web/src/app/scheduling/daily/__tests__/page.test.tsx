@@ -59,7 +59,7 @@ describe('daily planner mode and date transitions', () => {
     fireEvent.change(screen.getByDisplayValue('2030-01-02'), { target: { value: '2030-01-03' } });
     fireEvent.click(screen.getByRole('button', { name: '軽量モード' }));
     await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled());
-    expect(jest.mocked(dailyPlansApi.update).mock.calls[0]?.[2].blocks).toEqual([]);
+    expect(jest.mocked(dailyPlansApi.update).mock.calls[0]?.[2].blocks.filter((block) => block.type === 'timed_line')).toEqual([]);
     expect(mockToast).not.toHaveBeenCalled();
   });
 
@@ -70,7 +70,7 @@ describe('daily planner mode and date transitions', () => {
     fireEvent.change(screen.getByDisplayValue('2030-01-03'), { target: { value: '2030-01-02' } });
     fireEvent.click(screen.getByRole('button', { name: '軽量モード' }));
     await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled());
-    expect(jest.mocked(dailyPlansApi.update).mock.calls[0]?.[2].blocks).toEqual(mockDocument.blocks);
+    expect(jest.mocked(dailyPlansApi.update).mock.calls[0]?.[2].blocks.filter((block) => block.type === 'timed_line')).toEqual(mockDocument.blocks);
     expect(mockToast).not.toHaveBeenCalled();
   });
 

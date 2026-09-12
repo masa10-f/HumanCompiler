@@ -5,7 +5,7 @@ import {
   applyDirectiveTaskSelection,
   dailyPlanDocumentToDetailedSlots,
   detailedMeetingSlotsToDailyPlanBlocks,
-  detailedSlotsToAvailabilityWindows,
+  detailedWorkSlotsToDirectives,
   preserveUnconvertedDailyPlanBlocks,
 } from "../daily-plan-adapter";
 import type { DailyPlanBlock } from "@/types/daily-plan";
@@ -136,17 +136,20 @@ describe("daily plan detail adapter", () => {
     expect(eventBlocks).toEqual(document.blocks);
   });
 
-  it("normalizes detailed slots into valid non-overlapping availability", () => {
-    expect(
-      detailedSlotsToAvailabilityWindows([
-        { start: "09:00", end: "18:00", kind: "focused_work" },
-        { start: "09:00", end: "12:00", kind: "light_work" },
-        { start: "", end: "14:00", kind: "study" },
-        { start: "12:00", end: "13:00", kind: "meeting" },
-      ]),
-    ).toEqual([
-      { start: "09:00", end: "12:00", work_type: "light_work" },
-      { start: "12:00", end: "18:00", work_type: "focused_work" },
-    ]);
+  it("round-trips explicit slots and ignores the legacy global window", () => {
+    const directive = { id: "slot", type: "schedule_directive" as const, mode: "task" as const,
+      task_ref: { source: "task" as const, id: "task-1" }, work_type: "focused_work" as const,
+      duration_override_minutes: 90, allowed_windows: [{ start: "19:00", end: "21:00" }],
+    };
+    const slots = dailyPlanDocumentToDetailedSlots({ schema_version: 1,
+      availability_windows: [{ start: "09:00", end: "18:00", work_type: "light_work" }],
+      blocks: [directive],
+    });
+    expect(slots).toHaveLength(1);
+    expect(slots[0]).toMatchObject({ start: "19:00", end: "21:00", sourceBlockId: "slot" });
+    expect(detailedWorkSlotsToDirectives(slots)).toEqual([directive]);
+    expect(detailedWorkSlotsToDirectives([{ start: "10:00", end: "12:00", kind: "study" }])[0]).toMatchObject({
+      type: "schedule_directive", work_type: "study", allowed_windows: [{ start: "10:00", end: "12:00" }],
+    });
   });
 });

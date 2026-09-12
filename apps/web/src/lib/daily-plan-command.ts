@@ -9,7 +9,7 @@ export interface ParsedTimedLine {
 
 export interface ParsedScheduleDirective {
   durationMinutes?: number;
-  allowedWindow?: DailyPlanTimeRange;
+  allowedWindow: DailyPlanTimeRange;
 }
 
 export interface DailyPlanTimeRange {
@@ -91,9 +91,10 @@ export function parseScheduleDirective(
   const range = text.match(/(\d{1,2}:?\d{2})\s*[-–]\s*(\d{1,2}:?\d{2})/);
   const start = range ? normalizeDailyPlanClock(range[1] ?? "") : null;
   const end = range ? normalizeDailyPlanClock(range[2] ?? "") : null;
+  if (!start || !end || start >= end) return null;
   return {
     durationMinutes: parseDurationMinutes(text),
-    allowedWindow: start && end && start < end ? { start, end } : undefined,
+    allowedWindow: { start, end },
   };
 }
 

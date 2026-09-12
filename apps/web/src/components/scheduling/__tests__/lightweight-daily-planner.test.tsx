@@ -102,7 +102,7 @@ describe("LightweightDailyPlanner", () => {
       name: "日次プランの行入力",
     });
     fireEvent.paste(command, {
-      clipboardData: { getData: () => "/schedule" },
+      clipboardData: { getData: () => "/schedule 09:00-18:00" },
     });
     fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
 
@@ -162,6 +162,32 @@ describe("LightweightDailyPlanner", () => {
     );
   });
 
+  it("rejects duration-only commands and requires times for a bare schedule block", async () => {
+    const initialView = render(<LightweightDailyPlanner selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    const command = await screen.findByRole("textbox", { name: "日次プランの行入力" });
+    fireEvent.paste(command, { clipboardData: { getData: () => "/schedule (2h)" } });
+    fireEvent.keyDown(command, { key: "Enter" });
+    expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ title: "/scheduleには開始・終了時刻が必要です" }));
+    expect(dailyPlansApi.update).not.toHaveBeenCalled();
+    initialView.unmount();
+    render(<LightweightDailyPlanner selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    const freshCommand = await screen.findByRole("textbox", { name: "日次プランの行入力" });
+    fireEvent.paste(freshCommand, { clipboardData: { getData: () => "/schedule" } });
+    fireEvent.keyDown(freshCommand, { key: "Enter" });
+    expect(await screen.findByText(/開始・終了時刻を入力してください。この行/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "自動スケジュール" }));
+    expect(dailyPlansApi.generate).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("配置可能開始"), { target: { value: "19:00" } });
+    fireEvent.change(screen.getByLabelText("配置可能終了"), { target: { value: "21:00" } });
+    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled(), { timeout: 2500 });
+    expect(jest.mocked(dailyPlansApi.update).mock.calls.at(-1)![2].blocks[0]).toMatchObject({
+      allowed_windows: [{ start: "19:00", end: "21:00" }],
+    });
+    expect(screen.queryByRole("button", { name: "時間帯を解除" })).not.toBeInTheDocument();
+  });
+
   it("prefers an exact task mention over an earlier partial match", async () => {
     const baseTask = {
       description: null,
@@ -214,7 +240,7 @@ describe("LightweightDailyPlanner", () => {
       name: "日次プランの行入力",
     });
     fireEvent.paste(command, {
-      clipboardData: { getData: () => "/schedule @レビュー (30m)" },
+      clipboardData: { getData: () => "/schedule 09:00-11:00 @レビュー (30m)" },
     });
     fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
 
@@ -333,7 +359,7 @@ describe("LightweightDailyPlanner", () => {
     );
   });
 
-  it("shows inline usage help and adds a non-overlapping work window", async () => {
+  it("shows time-based usage help without global availability controls", async () => {
     render(
       <LightweightDailyPlanner
         selectedDate="2030-01-02"
@@ -345,21 +371,11 @@ describe("LightweightDailyPlanner", () => {
     expect(
       await screen.findByText("/break 12:00-13:00 昼休み"),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "作業可能時間を追加" }));
-
-    await waitFor(
-      () =>
-        expect(dailyPlansApi.update).toHaveBeenCalledWith(
-          "2030-01-02",
-          0,
-          expect.objectContaining({
-            availability_windows: expect.arrayContaining([
-              expect.objectContaining({ start: "18:00", end: "19:00" }),
-            ]),
-          }),
-        ),
-      { timeout: 2500 },
-    );
+    expect(screen.queryByRole("button", { name: "作業可能時間を追加" })).not.toBeInTheDocument();
+    expect(screen.queryByText("利用開始")).not.toBeInTheDocument();
+    expect(screen.queryByText("利用終了")).not.toBeInTheDocument();
+    expect(screen.getByText("/schedule 09:00-11:00 @論文読み")).toBeInTheDocument();
+    expect(dailyPlansApi.update).not.toHaveBeenCalled();
   });
 
   it("flushes newer edits before generating while autosave is in flight", async () => {
@@ -401,7 +417,7 @@ describe("LightweightDailyPlanner", () => {
       name: "日次プランの行入力",
     });
     fireEvent.paste(command, {
-      clipboardData: { getData: () => "/schedule" },
+      clipboardData: { getData: () => "/schedule 09:00-18:00" },
     });
     fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
     await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalledTimes(1), {
@@ -451,7 +467,7 @@ describe("LightweightDailyPlanner", () => {
       name: "日次プランの行入力",
     });
     fireEvent.paste(command, {
-      clipboardData: { getData: () => "/schedule" },
+      clipboardData: { getData: () => "/schedule 09:00-18:00" },
     });
     fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
 
@@ -479,7 +495,7 @@ describe("LightweightDailyPlanner", () => {
       name: "日次プランの行入力",
     });
     fireEvent.paste(command, {
-      clipboardData: { getData: () => "/schedule" },
+      clipboardData: { getData: () => "/schedule 09:00-18:00" },
     });
     fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
     expect(
@@ -541,7 +557,7 @@ describe("LightweightDailyPlanner", () => {
     render(<LightweightDailyPlanner selectedDate="2030-01-02"
       onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
     const command = await screen.findByRole('textbox', { name: '日次プランの行入力' });
-    fireEvent.paste(command, { clipboardData: { getData: () => '/schedule @レビュー (1h)' } });
+    fireEvent.paste(command, { clipboardData: { getData: () => '/schedule 09:00-11:00 @レビュー (1h)' } });
     fireEvent.keyDown(command, { key: 'Enter' });
     expect(await screen.findByText('紐づけるタスクを選択')).toBeInTheDocument();
     expect(dailyPlansApi.update).not.toHaveBeenCalled();
@@ -586,7 +602,7 @@ describe("LightweightDailyPlanner", () => {
     render(<LightweightDailyPlanner selectedDate="2030-01-02"
       onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
     const command = await screen.findByRole('textbox', { name: '日次プランの行入力' });
-    fireEvent.paste(command, { clipboardData: { getData: () => '/schedule @Later task (30m)' } });
+    fireEvent.paste(command, { clipboardData: { getData: () => '/schedule 09:00-11:00 @Later task (30m)' } });
     fireEvent.keyDown(command, { key: 'Enter' });
     await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled(), { timeout: 2500 });
     expect(jest.mocked(dailyPlansApi.update).mock.calls[0]![2].blocks[0]).toMatchObject({
@@ -618,7 +634,7 @@ describe("LightweightDailyPlanner", () => {
       onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
     const command = await screen.findByRole('textbox', { name: '日次プランの行入力' });
     expect(screen.queryByText(/再生成が必要です/)).not.toBeInTheDocument();
-    fireEvent.paste(command, { clipboardData: { getData: () => '/schedule (2h)' } });
+    fireEvent.paste(command, { clipboardData: { getData: () => '/schedule 09:00-11:00' } });
     fireEvent.keyDown(command, { key: 'Enter' });
     expect(await screen.findByText(/再生成が必要です/)).toBeInTheDocument();
     await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled(), { timeout: 2500 });
@@ -688,7 +704,7 @@ describe("LightweightDailyPlanner", () => {
     const response: DailyPlanResponse = {
       ...blankResponse,
       document: { ...blankResponse.document, blocks: [
-        { id: "directive", type: "schedule_directive", mode: "filter" },
+        { id: "directive", type: "schedule_directive", mode: "filter", allowed_windows: [{ start: "09:00", end: "18:00" }] },
       ] },
       schedule: { success: true, assignments: [assignment], total_scheduled_hours: 1,
         optimization_status: "OK", generated_at: "2030-01-02T00:00:00Z" },
@@ -774,7 +790,7 @@ describe("LightweightDailyPlanner", () => {
       name: "日次プランの行入力",
     });
     fireEvent.paste(command, {
-      clipboardData: { getData: () => "/schedule" },
+      clipboardData: { getData: () => "/schedule 09:00-18:00" },
     });
     fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
     fireEvent.change(screen.getByDisplayValue("2030-01-02"), {
@@ -846,6 +862,7 @@ describe("LightweightDailyPlanner", () => {
             id: "directive-1",
             type: "schedule_directive" as const,
             mode: "filter" as const,
+            allowed_windows: [{ start: "09:00", end: "18:00" }],
             filter: { work_types: [], project_ids: [], goal_ids: [] },
           },
         ],

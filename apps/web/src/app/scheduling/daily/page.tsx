@@ -46,7 +46,7 @@ import {
   dailyPlanDocumentToDetailedSlots,
   detailedMeetingSlotsToDailyPlanBlocks,
   detailedSlotForScheduler,
-  detailedSlotsToAvailabilityWindows,
+  detailedWorkSlotsToDirectives,
   preserveUnconvertedDailyPlanBlocks,
 } from '@/lib/daily-plan-adapter';
 import { ApiError } from '@/lib/errors';
@@ -623,7 +623,7 @@ export default function SchedulingPage() {
       setManualAssignments(
         document.blocks.flatMap((block) => {
           if (block.type !== 'timed_line' || !block.task_ref) return [];
-          const slotIndex = slots.findIndex((slot) => slot.start <= block.start && block.end <= slot.end);
+          const slotIndex = slots.findIndex((slot) => slot.kind !== 'meeting' && slot.start <= block.start && block.end <= slot.end);
           if (slotIndex < 0) return [];
           const [startHour = 0, startMinute = 0] = block.start.split(':').map(Number);
           const [endHour = 0, endMinute = 0] = block.end.split(':').map(Number);
@@ -680,21 +680,20 @@ export default function SchedulingPage() {
         ];
       });
       const eventBlocks = detailedMeetingSlotsToDailyPlanBlocks(timeSlots);
-      const emittedBlockIds = [...fixedBlocks, ...eventBlocks].map((block) => block.id);
+      const directives = detailedWorkSlotsToDirectives(timeSlots);
+      const emittedBlockIds = [...fixedBlocks, ...eventBlocks, ...directives].map((block) => block.id);
       const replacedBlockIds = new Set([
         ...emittedBlockIds,
         ...removedBlockIdsRef.current,
       ]);
-      const availabilityWindows = detailedSlotsToAvailabilityWindows(timeSlots);
 
       const saveLatest = async (retryOnConflict: boolean): Promise<DailyPlanResponse> => {
         const latest = await dailyPlansApi.get(selectedDate);
         const preservedBlocks = preserveUnconvertedDailyPlanBlocks(latest.document.blocks, replacedBlockIds);
         const document: DailyPlanDocumentV1 = {
           ...latest.document,
-          availability_windows:
-            availabilityWindows.length > 0 ? availabilityWindows : latest.document.availability_windows,
-          blocks: [...preservedBlocks, ...eventBlocks, ...fixedBlocks],
+          availability_windows: undefined,
+          blocks: [...preservedBlocks, ...eventBlocks, ...fixedBlocks, ...directives],
         };
         try {
           return await dailyPlansApi.update(selectedDate, latest.revision, document);

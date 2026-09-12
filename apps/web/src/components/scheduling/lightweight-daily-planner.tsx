@@ -52,8 +52,6 @@ import { useProjectOptions } from "@/hooks/use-project-query";
 import { dailyPlansApi, goalsApi, quickTasksApi, tasksApi } from "@/lib/api";
 import { ApiError } from "@/lib/errors";
 import {
-  addDailyPlanClockMinutes,
-  dailyPlanTimeRangesOverlap,
   parseBreakLine,
   parseDurationMinutes,
   parseScheduleDirective,
@@ -73,7 +71,6 @@ import type { QuickTask } from "@/types/quick-task";
 import type { TaskWorkspaceItem, WorkType } from "@/types/task";
 import type {
   DailyPlanAssignment,
-  DailyPlanAvailabilityWindow,
   DailyPlanBlock,
   DailyPlanChecklistItem,
   DailyPlanDirectiveFilter,
@@ -106,9 +103,6 @@ interface TaskOption {
 
 const EMPTY_DOCUMENT: DailyPlanDocumentV1 = {
   schema_version: 1,
-  availability_windows: [
-    { start: "09:00", end: "18:00", work_type: "light_work" },
-  ],
   blocks: [],
 };
 
@@ -473,6 +467,13 @@ export function LightweightDailyPlanner({
   const submitCommand = (input = command, selectedTask?: TaskOption) => {
     const value = input.trim();
     if (!value) return;
+    const scheduleCommand = value.startsWith("/schedule");
+    const parsedDirective = scheduleCommand ? parseScheduleDirective(value) : null;
+    if (scheduleCommand && value !== "/schedule" && !parsedDirective) {
+      toast({ title: "/scheduleには開始・終了時刻が必要です",
+        description: "例: /schedule 09:00-11:00", variant: "destructive" });
+      return;
+    }
     const mention = extractDailyPlanMention(value);
     const matches = matchDailyPlanTasks(value, taskOptions);
     if (!selectedTask && matches.length > 1) {
@@ -553,6 +554,10 @@ export function LightweightDailyPlanner({
   };
 
   const generate = async () => {
+    if (documentRef.current.blocks.some((block) => block.type === "schedule_directive" && !block.allowed_windows?.length)) {
+      toast({ title: "/scheduleの開始・終了時刻を入力してください", variant: "destructive" });
+      return;
+    }
     setGenerating(true);
     try {
       await flushPendingSaves();
@@ -962,8 +967,8 @@ export function LightweightDailyPlanner({
                 <HelpExample code="1100-1200 会議" label="固定予定" />
                 <HelpExample code="/break 12:00-13:00 昼休み" label="休憩" />
                 <HelpExample
-                  code="/schedule @論文読み (2h)"
-                  label="特定タスクを2時間配置"
+                  code="/schedule 09:00-11:00 @論文読み"
+                  label="指定した時間枠へ特定タスクを配置"
                 />
                 <HelpExample
                   code="/schedule 13:00-17:00 (90m)"
@@ -1050,135 +1055,6 @@ export function LightweightDailyPlanner({
                 className="w-40"
               />
             </div>
-            {document.availability_windows.map((window, index) => (
-              <div
-                key={index}
-                className="flex flex-wrap items-end gap-2 rounded-md border p-2"
-              >
-                <div>
-                  <Label className="text-xs">利用開始</Label>
-                  <Input
-                    type="time"
-                    value={window.start}
-                    onChange={(event) => {
-                      const next = updateDailyPlanTimeRange(
-                        window,
-                        "start",
-                        event.target.value,
-                      );
-                      if (!next) return;
-                      updateDocument((current) => ({
-                        ...current,
-                        availability_windows: (() => {
-                          const windows = current.availability_windows.map(
-                            (item, itemIndex) =>
-                              itemIndex === index ? { ...item, ...next } : item,
-                          );
-                          return dailyPlanTimeRangesOverlap(windows)
-                            ? current.availability_windows
-                            : windows;
-                        })(),
-                      }));
-                    }}
-                    className="w-28"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">利用終了</Label>
-                  <Input
-                    type="time"
-                    value={window.end}
-                    onChange={(event) => {
-                      const next = updateDailyPlanTimeRange(
-                        window,
-                        "end",
-                        event.target.value,
-                      );
-                      if (!next) return;
-                      updateDocument((current) => ({
-                        ...current,
-                        availability_windows: (() => {
-                          const windows = current.availability_windows.map(
-                            (item, itemIndex) =>
-                              itemIndex === index ? { ...item, ...next } : item,
-                          );
-                          return dailyPlanTimeRangesOverlap(windows)
-                            ? current.availability_windows
-                            : windows;
-                        })(),
-                      }));
-                    }}
-                    className="w-28"
-                  />
-                </div>
-                <Select
-                  value={window.work_type}
-                  onValueChange={(value: WorkType) =>
-                    updateDocument((current) => ({
-                      ...current,
-                      availability_windows: current.availability_windows.map(
-                        (item, itemIndex) =>
-                          itemIndex === index
-                            ? { ...item, work_type: value }
-                            : item,
-                      ),
-                    }))
-                  }
-                >
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(workTypeLabels).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {document.availability_windows.length > 1 && (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() =>
-                      updateDocument((current) => ({
-                        ...current,
-                        availability_windows:
-                          current.availability_windows.filter(
-                            (_, itemIndex) => itemIndex !== index,
-                          ),
-                      }))
-                    }
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            ))}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                updateDocument((current) => {
-                  const last = [...current.availability_windows]
-                    .sort((left, right) => left.end.localeCompare(right.end))
-                    .at(-1);
-                  const start = last?.end ?? "09:00";
-                  const end = addDailyPlanClockMinutes(start, 60);
-                  if (!end) return current;
-                  return {
-                    ...current,
-                    availability_windows: [
-                      ...current.availability_windows,
-                      { start, end, work_type: "light_work" },
-                    ],
-                  };
-                })
-              }
-            >
-              <Plus className="mr-1 h-4 w-4" />
-              作業可能時間を追加
-            </Button>
           </CardContent>
         </Card>
 
@@ -1189,7 +1065,7 @@ export function LightweightDailyPlanner({
                 <Clock3 className="mx-auto mb-2 h-10 w-10 opacity-40" />
                 <p>まだ行がありません</p>
                 <p className="text-sm">
-                  例: 1100-1200 会議 / /schedule @論文読み (1h)
+                  例: 1100-1200 会議 / /schedule 13:00-15:00 @論文読み
                 </p>
               </div>
             )}
@@ -1242,7 +1118,6 @@ export function LightweightDailyPlanner({
                         block={block}
                         taskOptions={taskOptions}
                         projects={projects}
-                        availabilityWindows={document.availability_windows}
                         onChange={(next) => replaceBlock(block.id, next)}
                       />
                     )}
@@ -1738,13 +1613,11 @@ function DirectiveEditor({
   block,
   taskOptions,
   projects,
-  availabilityWindows,
   onChange,
 }: {
   block: DailyPlanScheduleDirective;
   taskOptions: TaskOption[];
   projects: Array<{ id: string; title: string }>;
-  availabilityWindows: DailyPlanAvailabilityWindow[];
   onChange: (block: DailyPlanScheduleDirective) => void;
 }) {
   const filter: DailyPlanDirectiveFilter = block.filter ?? {
@@ -1768,6 +1641,19 @@ function DirectiveEditor({
     ).values(),
   );
   const allowedWindow = block.allowed_windows?.[0];
+  const [draftStart, setDraftStart] = useState(allowedWindow?.start ?? "");
+  const [draftEnd, setDraftEnd] = useState(allowedWindow?.end ?? "");
+  useEffect(() => {
+    setDraftStart(allowedWindow?.start ?? "");
+    setDraftEnd(allowedWindow?.end ?? "");
+  }, [allowedWindow?.start, allowedWindow?.end]);
+  const updateWindow = (field: "start" | "end", value: string) => {
+    if (field === "start") setDraftStart(value);
+    else setDraftEnd(value);
+    const start = field === "start" ? value : draftStart;
+    const end = field === "end" ? value : draftEnd;
+    if (start && end && start < end) onChange({ ...block, allowed_windows: [{ start, end }] });
+  };
   const toggle = <T extends string>(values: T[], value: T): T[] =>
     values.includes(value)
       ? values.filter((item) => item !== value)
@@ -1896,71 +1782,39 @@ function DirectiveEditor({
             className="w-32"
           />
         </div>
-        {allowedWindow ? (
           <div className="flex flex-wrap items-end gap-2">
             <div className="space-y-1">
-              <Label className="text-xs">配置可能開始</Label>
+              <Label className="text-xs">開始時刻（必須）</Label>
               <Input
                 aria-label="配置可能開始"
                 type="time"
-                value={allowedWindow.start}
-                onChange={(event) => {
-                  const next = updateDailyPlanTimeRange(
-                    allowedWindow,
-                    "start",
-                    event.target.value,
-                  );
-                  if (next) onChange({ ...block, allowed_windows: [next] });
-                }}
+                value={draftStart}
+                onChange={(event) => updateWindow("start", event.target.value)}
+                onBlur={() => { if (allowedWindow) setDraftStart(allowedWindow.start); }}
                 className="w-28"
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">配置可能終了</Label>
+              <Label className="text-xs">終了時刻（必須）</Label>
               <Input
                 aria-label="配置可能終了"
                 type="time"
-                value={allowedWindow.end}
-                onChange={(event) => {
-                  const next = updateDailyPlanTimeRange(
-                    allowedWindow,
-                    "end",
-                    event.target.value,
-                  );
-                  if (next) onChange({ ...block, allowed_windows: [next] });
-                }}
+                value={draftEnd}
+                onChange={(event) => updateWindow("end", event.target.value)}
+                onBlur={() => { if (allowedWindow) setDraftEnd(allowedWindow.end); }}
                 className="w-28"
               />
             </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => onChange({ ...block, allowed_windows: [] })}
-            >
-              時間帯を解除
-            </Button>
+            <Select value={block.work_type ?? "light_work"}
+              onValueChange={(work_type: WorkType) => onChange({ ...block, work_type })}>
+              <SelectTrigger className="w-32" aria-label="時間枠の作業タイプ"><SelectValue /></SelectTrigger>
+              <SelectContent>{Object.entries(workTypeLabels).map(([value, label]) =>
+                <SelectItem key={value} value={value}>{label}</SelectItem>,
+              )}</SelectContent>
+            </Select>
           </div>
-        ) : (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              const fallback = availabilityWindows[0] ?? {
-                start: "09:00",
-                end: "18:00",
-              };
-              onChange({
-                ...block,
-                allowed_windows: [{ start: fallback.start, end: fallback.end }],
-              });
-            }}
-          >
-            配置可能時間帯を指定
-          </Button>
-        )}
       </div>
+      {!allowedWindow && <p className="mt-2 text-sm text-amber-700">開始・終了時刻を入力してください。この行は時刻を指定するまで生成できません。</p>}
     </div>
   );
 }

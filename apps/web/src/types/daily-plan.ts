@@ -40,6 +40,7 @@ export interface DailyPlanScheduleDirective {
   id: string;
   type: "schedule_directive";
   mode: "task" | "filter";
+  work_type?: WorkType;
   title?: string | null;
   task_ref?: DailyPlanTaskRef | null;
   filter?: DailyPlanDirectiveFilter | null;
@@ -70,7 +71,8 @@ export type DailyPlanBlock =
 
 export interface DailyPlanDocumentV1 {
   schema_version: 1;
-  availability_windows: DailyPlanAvailabilityWindow[];
+  /** @deprecated Read compatibility only. Scheduling uses directive time ranges. */
+  availability_windows?: DailyPlanAvailabilityWindow[];
   blocks: DailyPlanBlock[];
 }
 

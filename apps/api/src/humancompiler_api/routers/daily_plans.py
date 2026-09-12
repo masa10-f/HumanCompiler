@@ -158,6 +158,7 @@ class ScheduleDirectiveBlock(BaseModel):
     id: str = Field(min_length=1, max_length=100)
     type: Literal["schedule_directive"] = "schedule_directive"
     mode: Literal["task", "filter"]
+    work_type: Literal["light_work", "focused_work", "study"] = "light_work"
     title: str | None = Field(default=None, max_length=500)
     task_ref: TaskRef | None = None
     filter: DirectiveFilter | None = None
@@ -199,28 +200,8 @@ DailyPlanBlock = Annotated[
 
 class DailyPlanDocumentV1(BaseModel):
     schema_version: Literal[1] = 1
-    availability_windows: list[AvailabilityWindow] = Field(
-        default_factory=lambda: [AvailabilityWindow()], max_length=24
-    )
+    # Legacy availability_windows is an ignored extra field, never a constraint.
     blocks: list[DailyPlanBlock] = Field(default_factory=list, max_length=500)
-
-    @field_validator("availability_windows")
-    @classmethod
-    def require_availability(
-        cls, value: list[AvailabilityWindow]
-    ) -> list[AvailabilityWindow]:
-        if not value:
-            raise ValueError("at least one availability window is required")
-        ordered = sorted(
-            value,
-            key=lambda window: _minutes(_parse_time(window.start)),
-        )
-        for previous, current in zip(ordered, ordered[1:], strict=False):
-            if _minutes(_parse_time(current.start)) < _minutes(
-                _parse_time(previous.end)
-            ):
-                raise ValueError("availability windows must not overlap")
-        return value
 
     @field_validator("blocks")
     @classmethod
@@ -726,6 +707,45 @@ def _build_task_dependencies(
     )
 
 
+def _directive_availability(
+    document: DailyPlanDocumentV1,
+) -> list[HumanAvailabilityWindow]:
+    """Derive usable time solely from explicit directive slots, never legacy globals."""
+    ranges = [
+        (
+            _minutes(_parse_time(window.start)),
+            _minutes(_parse_time(window.end)),
+            block.work_type,
+        )
+        for block in document.blocks
+        if isinstance(block, ScheduleDirectiveBlock)
+        for window in block.allowed_windows
+    ]
+    boundaries = sorted(
+        {point for start, end, _kind in ranges for point in (start, end)}
+    )
+    segments: list[tuple[int, int, str]] = []
+    for start, end in zip(boundaries, boundaries[1:], strict=False):
+        covering = next(
+            (kind for left, right, kind in ranges if left <= start and end <= right),
+            None,
+        )
+        if covering is None:
+            continue
+        if segments and segments[-1][1] == start and segments[-1][2] == covering:
+            segments[-1] = (segments[-1][0], end, covering)
+        else:
+            segments.append((start, end, covering))
+    return [
+        HumanAvailabilityWindow(
+            start=time(start // 60, start % 60),
+            end=time(end // 60, end % 60),
+            work_kind=_work_kind(kind),
+        )
+        for start, end, kind in segments
+    ]
+
+
 def _build_scheduler_input(
     session: Session,
     owner_id: UUID,
@@ -737,6 +757,20 @@ def _build_scheduler_input(
     dict[str, int],
     set[str],
 ]:
+    missing_windows = [
+        block.id
+        for block in document.blocks
+        if isinstance(block, ScheduleDirectiveBlock) and not block.allowed_windows
+    ]
+    if missing_windows:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "SCHEDULE_TIME_REQUIRED",
+                "message": "/scheduleには開始・終了時刻が必要です",
+                "block_ids": missing_windows,
+            },
+        )
     existing_schedule = _get_schedule(
         session,
         owner_id,
@@ -1041,14 +1075,7 @@ def _build_scheduler_input(
     fixture = HumanFlexibleDailyFixture(
         date=schedule_date,
         tasks=scheduler_tasks,
-        availability_windows=[
-            HumanAvailabilityWindow(
-                start=_parse_time(window.start),
-                end=_parse_time(window.end),
-                work_kind=_work_kind(window.work_type),
-            )
-            for window in document.availability_windows
-        ],
+        availability_windows=_directive_availability(document),
         fixed_events=fixed_events,
         frozen_blocks=frozen_blocks,
         # An empty pool list means unrestricted scheduling to the package.

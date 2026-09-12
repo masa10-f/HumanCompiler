@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
 
 import type {
-  DailyPlanAvailabilityWindow,
   DailyPlanBlock,
   DailyPlanDocumentV1,
   DailyPlanScheduleDirective,
@@ -16,17 +15,18 @@ export interface DetailedDailyPlanTimeSlot extends TimeSlot {
   sourceBlockId?: string;
   sourceTitle?: string;
   sourceKind?: "event" | "break";
+  sourceDirective?: DailyPlanScheduleDirective;
 }
 
 export function dailyPlanDocumentToDetailedSlots(
   document: DailyPlanDocumentV1,
 ): DetailedDailyPlanTimeSlot[] {
-  const availability: DetailedDailyPlanTimeSlot[] =
-    document.availability_windows.map((window) => ({
-      start: window.start,
-      end: window.end,
-      kind: window.work_type,
-    }));
+  const availability: DetailedDailyPlanTimeSlot[] = document.blocks.flatMap((block) =>
+    block.type === "schedule_directive" ? (block.allowed_windows ?? []).map((window) => ({
+      start: window.start, end: window.end, kind: block.work_type ?? "light_work",
+      sourceBlockId: block.id, sourceDirective: block,
+    })) : [],
+  );
   const events: DetailedDailyPlanTimeSlot[] = document.blocks.flatMap(
     (block) => {
       if (block.type !== "timed_line" || block.task_ref) return [];
@@ -43,6 +43,27 @@ export function dailyPlanDocumentToDetailedSlots(
     },
   );
   return [...availability, ...events];
+}
+
+export function detailedWorkSlotsToDirectives(slots: DetailedDailyPlanTimeSlot[]): DailyPlanScheduleDirective[] {
+  const directives = new Map<string, DailyPlanScheduleDirective>();
+  for (const slot of slots) {
+    if (slot.kind === "meeting") continue;
+    const start = normalizeDailyPlanClock(slot.start);
+    const end = normalizeDailyPlanClock(slot.end);
+    if (!start || !end || start >= end) throw new Error("各スロットの開始・終了時刻を確認してください");
+    const id = slot.sourceBlockId ?? `detailed-schedule:${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
+    const existing = directives.get(id);
+    if (existing) {
+      existing.allowed_windows!.push({ start, end });
+    } else {
+      directives.set(id, {
+        ...(slot.sourceDirective ?? { type: "schedule_directive", mode: "filter" }),
+        id, work_type: slot.kind, allowed_windows: [{ start, end }],
+      });
+    }
+  }
+  return [...directives.values()];
 }
 
 export function detailedMeetingSlotsToDailyPlanBlocks(
@@ -74,35 +95,6 @@ export function detailedSlotForScheduler(
     capacity_hours: slot.capacity_hours,
     assigned_project_id: slot.assigned_project_id,
   };
-}
-
-export function detailedSlotsToAvailabilityWindows(
-  slots: DetailedDailyPlanTimeSlot[],
-): DailyPlanAvailabilityWindow[] {
-  const ordered = slots
-    .flatMap((slot) => {
-      if (slot.kind === "meeting") return [];
-      const start = normalizeDailyPlanClock(slot.start);
-      const end = normalizeDailyPlanClock(slot.end);
-      if (!start || !end || start >= end) return [];
-      return [{ start, end, work_type: slot.kind }];
-    })
-    .sort(
-      (left, right) =>
-        left.start.localeCompare(right.start) ||
-        left.end.localeCompare(right.end),
-    );
-
-  const result: DailyPlanAvailabilityWindow[] = [];
-  for (const window of ordered) {
-    const previous = result.at(-1);
-    const start =
-      previous && window.start < previous.end ? previous.end : window.start;
-    if (start >= window.end) continue;
-    result.push({ ...window, start });
-    if (result.length === 24) break;
-  }
-  return result;
 }
 
 export function preserveUnconvertedDailyPlanBlocks(

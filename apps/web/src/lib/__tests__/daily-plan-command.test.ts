@@ -66,6 +66,10 @@ describe("daily plan command parser", () => {
   });
 
   it("parses schedule allocation and allowed time window", () => {
+    expect(parseScheduleDirective("/schedule (2h)")).toBeNull();
+    expect(parseScheduleDirective("/schedule @paper (2h)")).toBeNull();
+    expect(parseScheduleDirective("/schedule")).toBeNull();
+    expect(parseScheduleDirective("/schedule 12:00-09:00")).toBeNull();
     expect(parseScheduleDirective("/schedule 13:00-17:00 @paper (2h)")).toEqual(
       {
         durationMinutes: 120,
