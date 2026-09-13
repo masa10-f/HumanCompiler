@@ -6,6 +6,26 @@ import { extractDailyPlanMention, matchDailyPlanTasks, isPermanentDailyPlanSaveE
   missingDailyPlanBlockIds, stripDailyPlanDuration } from '../daily-plan-editor';
 
 describe('daily plan editor recovery and mention helpers', () => {
+  it.each([
+    '/schedule @論文読み 13:00-17:00 (2h)',
+    '/schedule @論文読み 1300-1700',
+    '/schedule @論文読み 9:00 – 11:00',
+    '/schedule 13:00-17:00 @論文読み (2h)',
+    '/schedule @論文読み (2h) 13:00-17:00',
+    '[] @論文読み (30m)',
+    '1100-1200 @論文読み',
+  ])('extracts the task name without schedule tokens from %s', (input) => {
+    const task = { title: '論文読み' };
+    expect(extractDailyPlanMention(input)).toBe(task.title);
+    expect(matchDailyPlanTasks(input, [task])).toEqual([task]);
+  });
+  it('preserves spaces and numbers in task titles', () => {
+    expect(extractDailyPlanMention('/schedule @Chapter 2 review 1300-1700')).toBe('Chapter 2 review');
+    expect(extractDailyPlanMention('/schedule 1300-1700 @Release 2026-09')).toBe('Release 2026-09');
+  });
+  it.each(['/schedule @ 13:00-17:00', '/schedule 1300-1700 @', '/schedule @ (30m)'])('ignores an empty mention in %s', (input) => {
+    expect(extractDailyPlanMention(input)).toBeUndefined();
+  });
   it('returns all ambiguous matches and prefers exact matches', () => {
     const options = [{ title: 'コードレビュー' }, { title: '論文レビュー' }];
     expect(matchDailyPlanTasks('/schedule @レビュー (1h)', options)).toEqual(options);

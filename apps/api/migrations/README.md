@@ -19,6 +19,8 @@ All database migrations are managed through SQL files and the MigrationManager. 
 - `009_add_project_status.sql` - Project status column
 - `022_add_capacity_triage.sql` - Capacity settings and task triage review runs
 - `026_add_goal_due_date.sql` - Optional due dates for goals
+- `027_add_daily_plan_documents.sql` - Versioned daily plan documents and ownership RLS
+- `028_scope_daily_plan_policy.sql` - Limit the daily plan RLS policy to `authenticated`; also required when 027 has already been applied. Changes no document data or ownership predicates.
 - `enable_rls_security.sql` - Row Level Security policies (manual application)
 
 ## Data Loss Prevention Policy

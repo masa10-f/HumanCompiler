@@ -721,6 +721,9 @@ def _directive_availability(
         if isinstance(block, ScheduleDirectiveBlock)
         for window in block.allowed_windows
     ]
+    # Prefer the narrower (more specific) window on overlap. Break ties by
+    # clock range and kind so moving document rows cannot change slot affinity.
+    ranges.sort(key=lambda item: (item[1] - item[0], item[0], item[1], item[2]))
     boundaries = sorted(
         {point for start, end, _kind in ranges for point in (start, end)}
     )
@@ -1332,6 +1335,8 @@ async def apply_task_action(
     )
     if request.action == "complete":
         task.status = TaskStatus.COMPLETED
+    elif task.status == TaskStatus.PENDING:
+        task.status = TaskStatus.IN_PROGRESS
     task.updated_at = datetime.now(UTC)
     session.add(log)
     session.add(task)

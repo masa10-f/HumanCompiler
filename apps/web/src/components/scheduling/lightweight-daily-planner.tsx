@@ -904,6 +904,10 @@ export function LightweightDailyPlanner({
 
   const scheduleStale = Boolean(schedule &&
     (dirty || schedule.source_document_revision !== revision));
+  const blockIds = new Set(document.blocks.map((block) => block.id));
+  const orphanAssignments = (schedule?.assignments ?? []).filter(
+    (assignment) => !assignment.directive_id || !blockIds.has(assignment.directive_id),
+  ).sort((left, right) => left.start_time.localeCompare(right.start_time));
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -978,6 +982,11 @@ export function LightweightDailyPlanner({
                   code="[ ] @メール返信 (30m)"
                   label="チェックリスト"
                 />
+                <p className="sm:col-span-2">@タスク名は時刻の前後どちらにも書けます。</p>
+                <p className="sm:col-span-2">
+                  重複する時間は一度だけ数え、短い時間枠の作業タイプを優先します。
+                  同じ長さなら開始が早い枠、開始・終了とも同じなら集中作業・軽作業・学習の順に優先します。
+                </p>
               </div>
             )}
           </CardContent>
@@ -1060,7 +1069,7 @@ export function LightweightDailyPlanner({
 
         <Card>
           <CardContent className="space-y-2 py-5">
-            {document.blocks.length === 0 && (
+            {document.blocks.length === 0 && orphanAssignments.length === 0 && (
               <div className="py-10 text-center text-gray-400">
                 <Clock3 className="mx-auto mb-2 h-10 w-10 opacity-40" />
                 <p>まだ行がありません</p>
@@ -1190,6 +1199,22 @@ export function LightweightDailyPlanner({
                 </div>
               );
             })}
+            {orphanAssignments.length > 0 && (
+              <section aria-label="文書外の予定" className="space-y-2 border-t pt-3">
+                <h2 className="text-sm font-medium">文書外の予定</h2>
+                <p className="text-xs text-gray-500">
+                  元の行がない予定です。過去の予定や固定予定は再生成しても保持されます。
+                </p>
+                {orphanAssignments.map((assignment, index) => (
+                  <GeneratedAssignmentRow
+                    key={`${assignment.task_id}-${assignment.start_time}-${index}`}
+                    assignment={assignment}
+                    onPin={pinAssignment}
+                    onComplete={openCompletion}
+                  />
+                ))}
+              </section>
+            )}
             <div className="mt-3 flex gap-2 border-t pt-4">
               <DailyPlanCommandComposer
                 value={command}

@@ -5,7 +5,7 @@
  * @jest-environment jsdom
  */
 
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { LightweightDailyPlanner } from "../lightweight-daily-planner";
 import { dailyPlansApi, quickTasksApi, tasksApi } from "@/lib/api";
@@ -188,6 +188,31 @@ describe("LightweightDailyPlanner", () => {
     expect(screen.queryByRole("button", { name: "時間帯を解除" })).not.toBeInTheDocument();
   });
 
+  it.each([
+    '/schedule @論文読み 13:00-17:00',
+    '/schedule @論文読み 1300-1700 (2h)',
+    '/schedule 13:00-17:00 @論文読み',
+  ])('links an existing task without opening creation for %s', async (input) => {
+    jest.mocked(tasksApi.getWorkspace).mockResolvedValue({
+      items: [workspaceTask('paper', '論文読み')], total: 1, skip: 0, limit: 100,
+    });
+    render(<LightweightDailyPlanner selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    const command = await screen.findByRole('textbox', { name: '日次プランの行入力' });
+    fireEvent.paste(command, { clipboardData: { getData: () => input } });
+    fireEvent.keyDown(command, { key: 'Enter' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalledWith(
+      '2030-01-02', 0, expect.objectContaining({ blocks: [expect.objectContaining({
+        type: 'schedule_directive', mode: 'task', title: '論文読み',
+        task_ref: { source: 'task', id: 'paper' },
+        allowed_windows: [{ start: '13:00', end: '17:00' }],
+      })] }),
+    ), { timeout: 2500 });
+    expect(tasksApi.create).not.toHaveBeenCalled();
+    expect(quickTasksApi.create).not.toHaveBeenCalled();
+  });
+
   it("prefers an exact task mention over an earlier partial match", async () => {
     const baseTask = {
       description: null,
@@ -290,7 +315,7 @@ describe("LightweightDailyPlanner", () => {
     });
     fireEvent.paste(command, {
       clipboardData: {
-        getData: () => "/schedule 13:00-17:00 @新規タスク (50m)",
+        getData: () => "/schedule @新規タスク 13:00-17:00 (50m)",
       },
     });
     fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
@@ -300,7 +325,7 @@ describe("LightweightDailyPlanner", () => {
     );
 
     expect(quickTasksApi.create).toHaveBeenCalledWith(
-      expect.objectContaining({ estimate_hours: 0.83 }),
+      expect.objectContaining({ title: "新規タスク", estimate_hours: 0.83 }),
     );
 
     await waitFor(
@@ -729,6 +754,40 @@ describe("LightweightDailyPlanner", () => {
     expect(jest.mocked(dailyPlansApi.update).mock.calls.at(-1)![2].blocks.filter(
       (block) => block.type === "timed_line",
     )).toHaveLength(1);
+  });
+
+  it('shows orphan schedules in time order and permits recording work', async () => {
+    const baseAssignment = {
+      task_id: 'paper', task_title: 'Past work', goal_id: '', project_id: '',
+      slot_index: 0, start_time: '09:00', slot_start: '09:00', slot_end: '10:00',
+      duration_hours: 1, slot_kind: 'light_work' as const, source: 'task' as const, is_fixed: true,
+    };
+    jest.mocked(dailyPlansApi.get).mockResolvedValue({
+      ...blankResponse,
+      document: { ...blankResponse.document, blocks: [{ id: 'live', type: 'text', text: 'note' }] },
+      schedule: { success: true, optimization_status: 'OK', total_scheduled_hours: 3,
+        generated_at: '2030-01-02T00:00:00Z', assignments: [
+          { ...baseAssignment, task_title: 'Later work', directive_id: null, start_time: '11:00', slot_start: '11:00', slot_end: '12:00' },
+          { ...baseAssignment, directive_id: 'deleted' },
+          { ...baseAssignment, task_title: 'Linked work', directive_id: 'live' },
+        ] },
+    });
+    jest.mocked(dailyPlansApi.applyTaskAction).mockResolvedValue({
+      task_ref: { source: 'task', id: 'paper' }, status: 'in_progress', actual_minutes: 60,
+    });
+    render(<LightweightDailyPlanner selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    const section = await screen.findByRole('region', { name: '文書外の予定' });
+    expect(within(section).getAllByLabelText('生成予定の開始時刻').map(
+      (input) => (input as HTMLInputElement).value,
+    )).toEqual(['09:00', '11:00']);
+    expect(within(section).queryByText('Linked work')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Linked work')).toHaveLength(1);
+    fireEvent.click(within(section).getAllByRole('button', { name: '実績' })[0]!);
+    fireEvent.click(await screen.findByRole('button', { name: '記録して継続' }));
+    await waitFor(() => expect(dailyPlansApi.applyTaskAction).toHaveBeenCalledWith('2030-01-02', {
+      task_ref: { source: 'task', id: 'paper' }, action: 'continue', actual_minutes: 60,
+    }));
   });
 
   it("can complete a linked task that is outside the loaded task options", async () => {

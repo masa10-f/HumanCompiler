@@ -15,6 +15,7 @@ from pydantic import (
 )
 from sqlalchemy import JSON, UniqueConstraint, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Column, Relationship, SQLModel
 from sqlmodel import Field as SQLField
 
@@ -588,11 +589,12 @@ class DailyPlanDocument(SQLModel, table=True):  # type: ignore[call-arg]
     )
 
     id: UUID = SQLField(default_factory=uuid4, primary_key=True)
-    user_id: UUID = SQLField(foreign_key="users.id", index=True)
-    date: Date = SQLField(index=True)
+    user_id: UUID = SQLField(foreign_key="users.id")
+    date: Date
     revision: int = SQLField(default=1, ge=1)
     document_json: dict[str, Any] = SQLField(
-        sa_column=Column(JSON), default_factory=dict
+        sa_column=Column(JSON().with_variant(JSONB(), "postgresql"), nullable=False),
+        default_factory=dict,
     )
     created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))

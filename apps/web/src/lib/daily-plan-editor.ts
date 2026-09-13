@@ -4,7 +4,10 @@
 import { ApiError } from '@/lib/errors';
 
 export function extractDailyPlanMention(text: string): string | undefined {
-  return text.match(/(?:^|\s)@([^()]+)/)?.[1]?.trim();
+  const mention = text.match(/(?:^|\s)@([^()]+)/)?.[1];
+  // A trailing schedule window is a separate token, not part of the task title.
+  // Keep spaces/numbers in titles and require a complete range at a token boundary.
+  return mention?.split(/\s+\d{1,2}:?\d{2}\s*[-–]\s*\d{1,2}:?\d{2}(?=\s|$)/, 1)[0]?.trim() || undefined;
 }
 
 export function matchDailyPlanTasks<T extends { title: string }>(text: string, options: T[]): T[] {

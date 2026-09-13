@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from sqlalchemy import text
 from sqlmodel import Session
 
@@ -60,5 +62,37 @@ def test_baseline_existing_schema_marks_legacy_migrations(tmp_path):
 
         assert baselined == ["001_initial_schema", "021_add_slot_templates"]
         assert pending == ["022_add_capacity_triage"]
+    finally:
+        manager.engine.dispose()
+
+
+def test_daily_plan_policy_upgrade_is_pending_after_baselining_027(tmp_path):
+    _use_sqlite_database(tmp_path)
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    real_migrations = Path(__file__).resolve().parents[1] / "migrations"
+    for name in (
+        "027_add_daily_plan_documents.sql",
+        "028_scope_daily_plan_policy.sql",
+        "028_scope_daily_plan_policy_rollback.sql",
+    ):
+        (migrations_dir / name).write_text((real_migrations / name).read_text())
+    manager = MigrationManager(str(migrations_dir))
+    try:
+        with Session(manager.engine) as session:
+            session.exec(
+                text("CREATE TABLE daily_plan_documents (id TEXT PRIMARY KEY)")
+            )
+            session.commit()
+        assert manager.baseline_existing_schema() == ["027_add_daily_plan_documents"]
+        assert [version for version, _path in manager.get_pending_migrations()] == [
+            "028_scope_daily_plan_policy"
+        ]
+        # Test discovery/splitting only; PostgreSQL RLS is not executed on SQLite.
+        statements = manager._split_sql_statements(
+            (migrations_dir / "028_scope_daily_plan_policy.sql").read_text()
+        )
+        assert len(statements) == 1
+        assert "TO authenticated" in statements[0]
     finally:
         manager.engine.dispose()

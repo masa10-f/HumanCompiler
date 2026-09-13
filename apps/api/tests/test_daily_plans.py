@@ -14,6 +14,7 @@ from sqlalchemy.dialects import postgresql
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from humancompiler_api.models import (
+    DailyPlanDocument,
     Goal,
     GoalDependency,
     Log,
@@ -498,6 +499,73 @@ def test_directive_availability_unions_overlap_without_filling_gaps() -> None:
     ]
 
 
+@pytest.mark.parametrize("reverse", [False, True])
+def test_overlapping_work_kinds_prefer_narrower_window_not_row_order(
+    reverse: bool,
+) -> None:
+    blocks = [
+        ScheduleDirectiveBlock(
+            id="focused",
+            mode="filter",
+            work_type="focused_work",
+            allowed_windows=[DirectiveWindow(start="09:00", end="12:00")],
+        ),
+        ScheduleDirectiveBlock(
+            id="light",
+            mode="filter",
+            work_type="light_work",
+            allowed_windows=[DirectiveWindow(start="10:00", end="11:00")],
+        ),
+    ]
+    if reverse:
+        blocks.reverse()
+    windows = _directive_availability(DailyPlanDocumentV1(blocks=blocks))
+    assert [
+        (item.start.strftime("%H:%M"), item.end.strftime("%H:%M"), item.work_kind.value)
+        for item in windows
+    ] == [
+        ("09:00", "10:00", "focused_work"),
+        ("10:00", "11:00", "light_work"),
+        ("11:00", "12:00", "focused_work"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "second_start,second_end", [("09:00", "12:00"), ("10:00", "13:00")]
+)
+def test_equal_length_overlaps_are_order_independent(
+    second_start: str, second_end: str
+) -> None:
+    first = ScheduleDirectiveBlock(
+        id="first",
+        mode="filter",
+        work_type="focused_work",
+        allowed_windows=[DirectiveWindow(start="09:00", end="12:00")],
+    )
+    second = ScheduleDirectiveBlock(
+        id="second",
+        mode="filter",
+        work_type="light_work",
+        allowed_windows=[DirectiveWindow(start=second_start, end=second_end)],
+    )
+    assert _directive_availability(DailyPlanDocumentV1(blocks=[first, second])) == (
+        _directive_availability(DailyPlanDocumentV1(blocks=[second, first]))
+    )
+
+
+def test_document_metadata_uses_postgres_jsonb_and_unique_lookup_index() -> None:
+    table = SQLModel.metadata.tables[DailyPlanDocument.__tablename__]
+    assert table.c.document_json.type.compile(dialect=postgresql.dialect()) == "JSONB"
+    assert not table.c.document_json.nullable
+    assert not table.indexes
+    unique = next(
+        item
+        for item in table.constraints
+        if item.name == "uq_daily_plan_documents_user_date"
+    )
+    assert list(unique.columns.keys()) == ["user_id", "date"]
+
+
 def test_document_ignores_legacy_global_availability() -> None:
     document = DailyPlanDocumentV1.model_validate(
         {
@@ -967,6 +1035,45 @@ async def test_regular_task_action_records_time_and_completion(
     assert response.status == "completed"
     assert first.status == "completed"
     assert [log.actual_minutes for log in logs] == [45]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "initial_status,expected_status",
+    [
+        (TaskStatus.PENDING, TaskStatus.IN_PROGRESS),
+        (TaskStatus.IN_PROGRESS, TaskStatus.IN_PROGRESS),
+        (TaskStatus.COMPLETED, TaskStatus.COMPLETED),
+        (TaskStatus.CANCELLED, TaskStatus.CANCELLED),
+    ],
+)
+async def test_continue_records_work_and_advances_only_pending_tasks(
+    session: Session,
+    planning_data,
+    initial_status: TaskStatus,
+    expected_status: TaskStatus,
+) -> None:
+    user, _project, _goal, first, _second, _quick = planning_data
+    first.status = initial_status
+    session.add(first)
+    session.commit()
+    response = await apply_task_action(
+        "2030-01-02",
+        TaskActionRequest(
+            task_ref=TaskRef(source="task", id=first.id),
+            action="continue",
+            actual_minutes=25,
+        ),
+        str(user.id),
+        session,
+    )
+    session.refresh(first)
+    assert response.status == expected_status
+    assert first.status == expected_status
+    assert [
+        log.actual_minutes
+        for log in session.exec(select(Log).where(Log.task_id == first.id)).all()
+    ] == [25]
 
 
 @pytest.mark.asyncio
