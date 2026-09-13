@@ -110,6 +110,12 @@ import type {
   GoalTaskDraftResponse,
 } from "@/types/ai-drafts";
 import type { RecentDashboardItem } from "@/types/dashboard";
+import type {
+  DailyPlanDocumentV1,
+  DailyPlanResponse,
+  DailyPlanTaskActionRequest,
+  DailyPlanTaskActionResponse,
+} from "@/types/daily-plan";
 
 export const DEFAULT_TASK_PAGE_LIMIT = 100;
 const AI_DRAFT_REQUEST_TIMEOUT_MS = 30000;
@@ -970,6 +976,41 @@ class ApiClient {
 
   async getDailySchedule(date: string): Promise<DailySchedule> {
     return this.request<DailySchedule>(`/api/schedule/daily/${date}/`);
+  }
+
+  async getDailyPlanDocument(date: string): Promise<DailyPlanResponse> {
+    return this.request<DailyPlanResponse>(`/api/daily-plans/${date}`);
+  }
+
+  async updateDailyPlanDocument(
+    date: string,
+    expectedRevision: number,
+    document: DailyPlanDocumentV1,
+  ): Promise<DailyPlanResponse> {
+    return this.request<DailyPlanResponse>(`/api/daily-plans/${date}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        expected_revision: expectedRevision,
+        document,
+      }),
+    });
+  }
+
+  async generateDailyPlanDocument(date: string): Promise<DailyPlanResponse> {
+    return this.request<DailyPlanResponse>(
+      `/api/daily-plans/${date}/generate`,
+      { method: "POST" },
+    );
+  }
+
+  async applyDailyPlanTaskAction(
+    date: string,
+    request: DailyPlanTaskActionRequest,
+  ): Promise<DailyPlanTaskActionResponse> {
+    return this.request<DailyPlanTaskActionResponse>(
+      `/api/daily-plans/${date}/task-action`,
+      { method: "POST", body: JSON.stringify(request) },
+    );
   }
 
   async listDailySchedules(
@@ -1973,6 +2014,18 @@ export const schedulingApi = {
   test: () => apiClient.testScheduler(),
   getTuningConfig: () => apiClient.getSchedulerTuningConfig(),
   getWeeklyScheduleOptions: () => apiClient.getWeeklyScheduleOptions(),
+};
+
+export const dailyPlansApi = {
+  get: (date: string) => apiClient.getDailyPlanDocument(date),
+  update: (
+    date: string,
+    expectedRevision: number,
+    document: DailyPlanDocumentV1,
+  ) => apiClient.updateDailyPlanDocument(date, expectedRevision, document),
+  generate: (date: string) => apiClient.generateDailyPlanDocument(date),
+  applyTaskAction: (date: string, request: DailyPlanTaskActionRequest) =>
+    apiClient.applyDailyPlanTaskAction(date, request),
 };
 
 /**

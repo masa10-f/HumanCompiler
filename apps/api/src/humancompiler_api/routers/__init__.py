@@ -1,6 +1,7 @@
 # API routers package
 from . import (
     ai_planning,
+    daily_plans,
     goals,
     hook_tokens,
     hooks,
@@ -20,6 +21,7 @@ from . import (
 
 __all__ = [
     "ai_planning",
+    "daily_plans",
     "goals",
     "hook_tokens",
     "hooks",

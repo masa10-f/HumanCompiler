@@ -368,6 +368,7 @@ class MigrationManager:
     def _detect_existing_schema_baseline_number(self) -> int | None:
         """Infer the newest already-present migration for legacy untracked DBs."""
         milestones: list[tuple[int, bool]] = [
+            (27, self._has_table("daily_plan_documents")),
             (21, self._has_table("slot_templates")),
             (20, self._has_column("work_sessions", "is_manual_execution")),
             (19, self._has_table("email_notification_logs")),
