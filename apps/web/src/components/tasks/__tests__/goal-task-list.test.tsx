@@ -82,6 +82,52 @@ describe('GoalTaskList', () => {
     }),
   ]
 
+  it('shows ready tasks first and sorts by priority in desktop, mobile, and filtered lists', () => {
+    const unorderedTasks = [
+      task({ id: 'blocked-low', title: 'Blocked low', priority: 5, dependencies: [dependency('pending', 'pending')] }),
+      task({ id: 'ready-low', title: 'Ready low', priority: 5 }),
+      task({ id: 'completed', title: 'Completed high', priority: 1, status: 'completed' }),
+      task({ id: 'ready-high', title: 'Ready high', priority: 1, status: 'in_progress' }),
+      task({ id: 'blocked-high', title: 'Blocked high', priority: 1, dependencies: [dependency('pending', 'pending')] }),
+      task({ id: 'ready-high-tie', title: 'Ready high tie', priority: 1, dependencies: [dependency('done', 'completed')] }),
+      task({ id: 'cancelled', title: 'Cancelled high', priority: 1, status: 'cancelled' }),
+      task({ id: 'ready-default', title: 'Ready default', priority: undefined }),
+    ]
+    const originalOrder = unorderedTasks.map((task) => task.id)
+
+    render(
+      <GoalTaskList
+        tasks={unorderedTasks}
+        projectId="project"
+        goalId="goal"
+        logsByTask={{}}
+        logsLoading={false}
+        logsError={null}
+        actualMinutesByTask={{}}
+      />,
+    )
+
+    // Both responsive layouts render the same ordered task links.
+    const expectTaskOrder = (titles: string[]) => {
+      expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
+        ...titles,
+        ...titles,
+      ])
+    }
+
+    expectTaskOrder([
+      'Ready high', 'Ready high tie', 'Ready default', 'Ready low',
+      'Completed high', 'Blocked high', 'Cancelled high', 'Blocked low',
+    ])
+    expect(unorderedTasks.map((task) => task.id)).toEqual(originalOrder)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ready 4' }))
+    expectTaskOrder(['Ready high', 'Ready high tie', 'Ready default', 'Ready low'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'ブロック中 2' }))
+    expectTaskOrder(['Blocked high', 'Blocked low'])
+  })
+
   it('filters tasks by decision state and opens dependency details', () => {
     render(
       <GoalTaskList

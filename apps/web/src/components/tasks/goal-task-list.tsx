@@ -216,9 +216,14 @@ export function GoalTaskList({
   )
   const visibleTasks = useMemo(
     () =>
-      view === 'all'
-        ? tasks
-        : tasks.filter((task) => summaries.get(task.id)?.state === view),
+      tasks
+        .filter((task) => view === 'all' || summaries.get(task.id)?.state === view)
+        .sort((a, b) => {
+          const aReady = summaries.get(a.id)?.state === 'ready'
+          const bReady = summaries.get(b.id)?.state === 'ready'
+          if (aReady !== bReady) return aReady ? -1 : 1
+          return (a.priority ?? 3) - (b.priority ?? 3)
+        }),
     [summaries, tasks, view],
   )
   const views: { value: TaskView; label: string; count: number }[] = [
