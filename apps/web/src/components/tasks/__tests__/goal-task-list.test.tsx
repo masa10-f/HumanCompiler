@@ -117,7 +117,7 @@ describe('GoalTaskList', () => {
 
     expectTaskOrder([
       'Ready high', 'Ready high tie', 'Ready default', 'Ready low',
-      'Completed high', 'Blocked high', 'Cancelled high', 'Blocked low',
+      'Blocked high', 'Blocked low', 'Completed high', 'Cancelled high',
     ])
     expect(unorderedTasks.map((task) => task.id)).toEqual(originalOrder)
 

@@ -29,10 +29,7 @@ export default function GoalDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const goalId = params.goalId as string;
-  const [taskSortOptions, setTaskSortOptions] = useState<SortOptions>({
-    sortBy: SortBy.STATUS,
-    sortOrder: SortOrder.ASC,
-  });
+  const [taskSortOptions, setTaskSortOptions] = useState<SortOptions>();
 
   const {
     data: tasks = [],
@@ -287,8 +284,13 @@ export default function GoalDetailPage() {
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <SortDropdown
-              currentSort={taskSortOptions}
+              currentSort={taskSortOptions ?? { sortBy: SortBy.STATUS, sortOrder: SortOrder.ASC }}
               onSortChange={setTaskSortOptions}
+              defaultSortOption={{
+                label: 'Ready・優先度順',
+                selected: taskSortOptions === undefined,
+                onSelect: () => setTaskSortOptions(undefined),
+              }}
               sortFields={[
                 { value: SortBy.STATUS, label: 'ステータス' },
                 { value: SortBy.PRIORITY, label: '優先度' },
@@ -373,6 +375,7 @@ export default function GoalDetailPage() {
         ) : (
           <GoalTaskList
             tasks={tasks}
+            useDefaultSort={taskSortOptions === undefined}
             projectId={id}
             goalId={goalId}
             logsByTask={logsByTask}
