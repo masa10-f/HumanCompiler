@@ -47,6 +47,7 @@ type TaskView = 'all' | TaskDecisionState
 
 interface GoalTaskListProps {
   tasks: Task[]
+  useDefaultSort?: boolean
   projectId: string
   goalId: string
   logsByTask: Record<string, Log[]>
@@ -60,6 +61,13 @@ const stateLabels: Record<TaskDecisionState, string> = {
   blocked: 'ブロック中',
   completed: '完了',
   cancelled: 'キャンセル',
+}
+
+const stateOrder: Record<TaskDecisionState, number> = {
+  ready: 0,
+  blocked: 1,
+  completed: 2,
+  cancelled: 3,
 }
 
 const stateVariants: Record<
@@ -191,6 +199,7 @@ function TaskActions({ task, tasks }: { task: Task; tasks: Task[] }) {
 
 export function GoalTaskList({
   tasks,
+  useDefaultSort = true,
   projectId,
   goalId,
   logsByTask,
@@ -214,13 +223,19 @@ export function GoalTaskList({
     }),
     [summaries, tasks],
   )
-  const visibleTasks = useMemo(
-    () =>
-      view === 'all'
-        ? tasks
-        : tasks.filter((task) => summaries.get(task.id)?.state === view),
-    [summaries, tasks, view],
-  )
+  const visibleTasks = useMemo(() => {
+    const filteredTasks = tasks.filter(
+      (task) => view === 'all' || summaries.get(task.id)?.state === view,
+    )
+    // Explicit sort selections are already applied by the API.
+    if (!useDefaultSort) return filteredTasks
+
+    return filteredTasks.sort((a, b) => {
+      const stateDiff = stateOrder[summaries.get(a.id)!.state] - stateOrder[summaries.get(b.id)!.state]
+      if (stateDiff !== 0) return stateDiff
+      return (a.priority ?? 3) - (b.priority ?? 3)
+    })
+  }, [summaries, tasks, view, useDefaultSort])
   const views: { value: TaskView; label: string; count: number }[] = [
     { value: 'all', label: 'すべて', count: counts.all },
     { value: 'ready', label: 'Ready', count: counts.ready },
