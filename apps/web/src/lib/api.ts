@@ -112,6 +112,8 @@ import type {
 import type { RecentDashboardItem } from "@/types/dashboard";
 import type {
   DailyPlanDocumentV1,
+  DailyPlanHistoryQuery,
+  DailyPlanHistoryResponse,
   DailyPlanResponse,
   DailyPlanTaskActionRequest,
   DailyPlanTaskActionResponse,
@@ -976,6 +978,14 @@ class ApiClient {
 
   async getDailySchedule(date: string): Promise<DailySchedule> {
     return this.request<DailySchedule>(`/api/schedule/daily/${date}/`);
+  }
+
+  async listDailyPlanDocuments(query: DailyPlanHistoryQuery = {}): Promise<DailyPlanHistoryResponse> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== "") params.set(key, String(value));
+    }
+    return this.request<DailyPlanHistoryResponse>(`/api/daily-plans?${params}`);
   }
 
   async getDailyPlanDocument(date: string): Promise<DailyPlanResponse> {
@@ -2017,6 +2027,7 @@ export const schedulingApi = {
 };
 
 export const dailyPlansApi = {
+  list: (query?: DailyPlanHistoryQuery) => apiClient.listDailyPlanDocuments(query),
   get: (date: string) => apiClient.getDailyPlanDocument(date),
   update: (
     date: string,

@@ -1,0 +1,222 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
+
+import { useState } from "react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { DailyPlanNoteEditor } from "../daily-plan-note-editor";
+import type { DailyPlanDocumentV1 } from "@/types/daily-plan";
+
+const changed = jest.fn();
+function Notebook({
+  initial = { schema_version: 1, blocks: [] },
+}: {
+  initial?: DailyPlanDocumentV1;
+}) {
+  const [document, setDocument] = useState(initial);
+  return (
+    <DailyPlanNoteEditor
+      document={document}
+      onChange={(next) => {
+        changed(next);
+        setDocument(next);
+      }}
+      taskOptions={[
+        {
+          key: "task:paper",
+          ref: { source: "task", id: "paper" },
+          title: "論文を読む",
+          workType: "study",
+          remainingHours: 2,
+          projectTitle: "研究",
+          goalTitle: "調査",
+        },
+      ]}
+      renderBlock={(block) => (
+        <div>
+          {block.type === "schedule_directive"
+            ? `予定: ${block.title ?? "自動配置"}`
+            : "固定予定"}
+        </div>
+      )}
+    />
+  );
+}
+
+beforeAll(() => {
+  Range.prototype.getBoundingClientRect = () => ({
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    width: 0,
+    height: 0,
+    x: 0,
+    y: 0,
+    toJSON: () => {},
+  });
+  Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+});
+
+it("inserts a rich task suggestion in place and keeps the surrounding note", async () => {
+  render(
+    <Notebook
+      initial={{
+        schema_version: 1,
+        blocks: [
+          { id: "before", type: "text", text: "今日のメモ" },
+          { id: "slash", type: "text", text: "/schedule 13:00-16:00 (45m)" },
+          { id: "after", type: "text", text: "振り返り" },
+        ],
+      }}
+    />,
+  );
+  const editor = await screen.findByRole("textbox", { name: "日次ノート" });
+  // Select the command paragraph as a user would, without moving to the end of the note.
+  const text = editor.querySelectorAll("p")[1]!.firstChild!;
+  const selection = window.getSelection()!;
+  act(() => {
+    editor.focus();
+    selection.collapse(text, text.textContent!.length);
+  });
+  fireEvent(document, new Event("selectionchange"));
+  const candidate = await screen.findByRole("option", { name: /論文を読む/ });
+  expect(candidate).toHaveTextContent("研究 / 調査 · 残り 120分");
+  fireEvent.click(candidate);
+  expect(await screen.findByText("予定: 論文を読む")).toBeInTheDocument();
+  const saved = changed.mock.calls.at(-1)![0] as DailyPlanDocumentV1;
+  expect(saved.blocks.map((block) => block.type)).toEqual([
+    "text",
+    "schedule_directive",
+    "text",
+    "text",
+  ]);
+  expect(saved.blocks[1]).toMatchObject({
+    task_ref: { source: "task", id: "paper" },
+    duration_override_minutes: 45,
+    allowed_windows: [{ start: "13:00", end: "16:00" }],
+  });
+  expect(editor).toHaveTextContent("今日のメモ");
+  expect(editor).toHaveTextContent("振り返り");
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+it("keeps headings and editable task progress when reopening a note", async () => {
+  render(
+    <Notebook
+      initial={{
+        schema_version: 1,
+        blocks: [
+          {
+            id: "heading",
+            type: "text",
+            text: "振り返り",
+            content: {
+              type: "heading",
+              attrs: { level: 2 },
+              content: [{ type: "text", text: "振り返り" }],
+            },
+          },
+          {
+            id: "list",
+            type: "text",
+            text: "調査済み",
+            content: {
+              type: "taskList",
+              content: [
+                {
+                  type: "taskItem",
+                  attrs: { checked: false },
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: "調査済み" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      }}
+    />,
+  );
+  expect(await screen.findByRole("heading", { level: 2 })).toHaveTextContent(
+    "振り返り",
+  );
+  fireEvent.click(screen.getByRole("checkbox"));
+  await waitFor(() =>
+    expect(
+      changed.mock.calls.at(-1)![0].blocks[1].content.content[0].attrs.checked,
+    ).toBe(true),
+  );
+  expect(changed.mock.calls.at(-1)![0].blocks[0].content.type).toBe("heading");
+});
+
+it("cancels suggestions without converting ordinary Enter to a form", async () => {
+  render(<Notebook />);
+  const editor = await screen.findByRole("textbox", { name: "日次ノート" });
+  fireEvent.paste(editor, {
+    clipboardData: {
+      getData: (type: string) => (type === "text/plain" ? "/schedule" : ""),
+    },
+  });
+  await screen.findByRole("dialog", { name: "スケジュールの提案" });
+  fireEvent.keyDown(editor, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(editor).toHaveTextContent("/schedule");
+  fireEvent.keyDown(editor, { key: "Enter" });
+  expect(screen.queryByText("予定: 自動配置")).not.toBeInTheDocument();
+});
+
+it("chooses tasks by keyboard and preserves the command on undo", async () => {
+  render(<Notebook />);
+  const editor = await screen.findByRole("textbox", { name: "日次ノート" });
+  fireEvent.paste(editor, {
+    clipboardData: {
+      getData: (type: string) =>
+        type === "text/plain" ? "/schedule 10:00-12:00" : "",
+    },
+  });
+  await screen.findByRole("dialog");
+  fireEvent.keyDown(editor, { key: "ArrowDown" });
+  fireEvent.keyDown(editor, { key: "Enter" });
+  expect(await screen.findByText("予定: 論文を読む")).toBeInTheDocument();
+  fireEvent.keyDown(editor, { key: "z", ctrlKey: true });
+  expect(screen.queryByText("予定: 論文を読む")).not.toBeInTheDocument();
+  expect(editor).toHaveTextContent("/schedule 10:00-12:00");
+});
+
+it("requires correction of an invalid time range instead of silently replacing it", async () => {
+  render(<Notebook />);
+  const editor = await screen.findByRole("textbox", { name: "日次ノート" });
+  fireEvent.paste(editor, {
+    clipboardData: {
+      getData: (type: string) =>
+        type === "text/plain" ? "/schedule 17:00-09:00" : "",
+    },
+  });
+  await screen.findByRole("alert");
+  expect(
+    screen.getByRole("option", {
+      name: "この時間帯を条件に合うタスクで埋める",
+    }),
+  ).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("提案の終了時刻"), {
+    target: { value: "18:00" },
+  });
+  fireEvent.click(
+    screen.getByRole("option", {
+      name: "この時間帯を条件に合うタスクで埋める",
+    })!,
+  );
+  expect(await screen.findByText("予定: 自動配置")).toBeInTheDocument();
+  expect(changed.mock.calls.at(-1)![0].blocks[0].allowed_windows).toEqual([
+    { start: "17:00", end: "18:00" },
+  ]);
+});

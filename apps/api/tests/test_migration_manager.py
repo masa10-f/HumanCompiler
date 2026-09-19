@@ -96,3 +96,17 @@ def test_daily_plan_policy_upgrade_is_pending_after_baselining_027(tmp_path):
         assert "TO authenticated" in statements[0]
     finally:
         manager.engine.dispose()
+
+
+def test_daily_notebook_search_migration_keeps_function_bodies_together():
+    manager = MigrationManager.__new__(MigrationManager)
+    path = (
+        Path(__file__).resolve().parents[1] / "migrations/029_add_daily_plan_search.sql"
+    )
+    statements = manager._split_sql_statements(path.read_text())
+    assert len(statements) == 5
+    assert "CREATE FUNCTION public.daily_plan_search_text" in statements[1]
+    assert "RETURN NEW;" in statements[2]
+    assert "END;" in statements[2]
+    assert "CREATE TRIGGER" in statements[3]
+    assert "UPDATE public.daily_plan_documents" in statements[4]
