@@ -1093,3 +1093,196 @@ async def test_quick_task_action_only_completes(
     )
 
     assert response.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_rich_daily_note_round_trip_preserves_formatting_and_schedule(
+    session: Session, planning_data
+) -> None:
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    user = planning_data[0]
+    document = DailyPlanDocumentV1(
+        blocks=[
+            ScheduleDirectiveBlock(
+                id="morning",
+                mode="filter",
+                allowed_windows=[DirectiveWindow(start="09:00", end="12:00")],
+            ),
+            TextBlock(
+                id="note",
+                text="振り返り",
+                content={
+                    "type": "heading",
+                    "attrs": {"level": 2},
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "振り返り",
+                            "marks": [{"type": "bold"}],
+                        }
+                    ],
+                },
+            ),
+        ]
+    )
+    await update_daily_plan(
+        "2030-01-02",
+        DailyPlanUpdateRequest(expected_revision=0, document=document),
+        str(user.id),
+        session,
+    )
+    generated = generate_daily_plan("2030-01-02", str(user.id), session)
+    assert generated.schedule is not None
+    assert generated.schedule.source_scheduling_blocks == document.blocks[:1]
+
+    document.blocks.append(
+        TextBlock(
+            id="progress",
+            text="完了",
+            content={
+                "type": "taskList",
+                "content": [
+                    {
+                        "type": "taskItem",
+                        "attrs": {"checked": True},
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "完了"}],
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+    )
+    await update_daily_plan(
+        "2030-01-02",
+        DailyPlanUpdateRequest(expected_revision=1, document=document),
+        str(user.id),
+        session,
+    )
+    loaded = await get_daily_plan("2030-01-02", str(user.id), session)
+    assert loaded.document == document
+    assert loaded.schedule == generated.schedule
+
+
+def test_rich_daily_note_rejects_oversized_and_embedded_schedule_nodes() -> None:
+    from pydantic import ValidationError
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    with pytest.raises(ValidationError):
+        TextBlock(id="oversized", content={"type": "text", "text": "a" * 50001})
+    with pytest.raises(ValidationError):
+        TextBlock(id="hidden-schedule", content={"type": "dailyPlanBlock", "attrs": {}})
+
+
+@pytest.mark.asyncio
+async def test_notebook_history_search_is_owned_literal_and_paginated(
+    session: Session, planning_data
+) -> None:
+    from datetime import date
+    from humancompiler_api.routers.daily_plans import TextBlock, list_daily_plans
+
+    user = planning_data[0]
+    other = User(id=uuid4(), email="other-note@example.com")
+    session.add(other)
+    session.commit()
+    for owner, day, body in [
+        (user, "2030-01-01", "論文を調査"),
+        (user, "2030-01-02", "進捗 100%_完了"),
+        (user, "2030-01-03", "論文の結果"),
+        (other, "2030-01-04", "論文 他のユーザーの秘密"),
+    ]:
+        await update_daily_plan(
+            day,
+            DailyPlanUpdateRequest(
+                expected_revision=0,
+                document=DailyPlanDocumentV1(
+                    blocks=[TextBlock(id="paragraph", text=body)]
+                ),
+            ),
+            str(owner.id),
+            session,
+        )
+    await update_daily_plan(
+        "2030-01-05",
+        DailyPlanUpdateRequest(expected_revision=0, document=DailyPlanDocumentV1()),
+        str(user.id),
+        session,
+    )
+
+    page = await list_daily_plans(limit=2, user_id=str(user.id), session=session)
+    assert [item.date for item in page.items] == ["2030-01-03", "2030-01-02"]
+    assert page.next_cursor == "2030-01-02"
+    older = await list_daily_plans(
+        before=date.fromisoformat(page.next_cursor),
+        limit=2,
+        user_id=str(user.id),
+        session=session,
+    )
+    assert [item.date for item in older.items] == ["2030-01-01"]
+    assert older.next_cursor is None
+    matched = await list_daily_plans(
+        query="論文", user_id=str(user.id), session=session
+    )
+    assert [item.date for item in matched.items] == ["2030-01-03", "2030-01-01"]
+    literal = await list_daily_plans(query="%_", user_id=str(user.id), session=session)
+    assert [item.date for item in literal.items] == ["2030-01-02"]
+    ranged = await list_daily_plans(
+        date_from=date(2030, 1, 2),
+        date_to=date(2030, 1, 2),
+        user_id=str(user.id),
+        session=session,
+    )
+    assert [item.date for item in ranged.items] == ["2030-01-02"]
+    with pytest.raises(HTTPException) as exc:
+        await list_daily_plans(
+            date_from=date(2030, 2, 1),
+            date_to=date(2030, 1, 1),
+            user_id=str(user.id),
+            session=session,
+        )
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_notebook_history_updates_search_and_shows_match_context(
+    session: Session, planning_data
+) -> None:
+    from humancompiler_api.routers.daily_plans import TextBlock, list_daily_plans
+
+    user = planning_data[0]
+    for revision, text in [
+        (0, "old keyword"),
+        (1, "導入 " * 100 + "調査結果 Match TARGET"),
+    ]:
+        await update_daily_plan(
+            "2030-01-02",
+            DailyPlanUpdateRequest(
+                expected_revision=revision,
+                document=DailyPlanDocumentV1(
+                    blocks=[TextBlock(id="internal-only-id", text=text)]
+                ),
+            ),
+            str(user.id),
+            session,
+        )
+    assert (
+        await list_daily_plans(
+            query="old keyword", user_id=str(user.id), session=session
+        )
+    ).items == []
+    assert (
+        await list_daily_plans(
+            query="internal-only-id", user_id=str(user.id), session=session
+        )
+    ).items == []
+    result = await list_daily_plans(
+        query="match target", user_id=str(user.id), session=session
+    )
+    assert len(result.items) == 1
+    assert "Match TARGET" in result.items[0].preview
+    assert result.items[0].preview.startswith("…")
+    assert result.items[0].revision == 2

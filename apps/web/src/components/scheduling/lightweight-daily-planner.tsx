@@ -12,6 +12,8 @@ import {
   AlertTriangle,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Clock3,
   Coffee,
@@ -24,6 +26,10 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { DailyPlanHistory } from "./daily-plan-history";
+import { getJSTDateString } from "@/lib/date-utils";
+import { DailyPlanNoteEditor } from "./daily-plan-note-editor";
+import { schedulingBlocks, sameSchedulingBlocks } from "@/lib/daily-plan-note";
 import { AppHeader } from "@/components/layout/app-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -152,7 +158,10 @@ export function LightweightDailyPlanner({
   const documentRef = useRef(document);
   const saveInFlightRef = useRef<Promise<DailyPlanResponse> | null>(null);
   const [schedule, setSchedule] = useState<DailyPlanResponse["schedule"]>(null);
+  const scheduleInputRef = useRef<DailyPlanBlock[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [loadSignal, setLoadSignal] = useState(0);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -163,7 +172,8 @@ export function LightweightDailyPlanner({
   const [autosavePaused, setAutosavePaused] = useState(false);
   const [ambiguousMention, setAmbiguousMention] = useState<{ input: string; options: TaskOption[] } | null>(null);
   const [conflict, setConflict] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(true);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [formMode, setFormMode] = useState(false);
   const [command, setCommand] = useState("");
   const [regularTasks, setRegularTasks] = useState<TaskWorkspaceItem[]>([]);
   const [quickTasks, setQuickTasks] = useState<QuickTask[]>([]);
@@ -240,23 +250,26 @@ export function LightweightDailyPlanner({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setLoadError(false);
     setConflict(false);
     setSaveError(null);
     setAutosavePaused(false);
-    Promise.all([dailyPlansApi.get(selectedDate), loadTasks()])
-      .then(([response]) => {
+    dailyPlansApi.get(selectedDate)
+      .then((response) => {
         if (cancelled) return;
         setDocument(response.document);
         documentRef.current = response.document;
         setRevision(response.revision);
         revisionRef.current = response.revision;
         setSchedule(response.schedule ?? null);
+        scheduleInputRef.current = response.schedule?.source_document_revision === response.revision ? schedulingBlocks(response.document) : null;
         setDirty(false);
         dirtyRef.current = false;
         setSaveRetry(0);
       })
       .catch((error) => {
         if (cancelled) return;
+        setLoadError(true);
         toast({
           title: "日次文書の読み込みに失敗しました",
           description: error instanceof Error ? error.message : "不明なエラー",
@@ -269,7 +282,15 @@ export function LightweightDailyPlanner({
     return () => {
       cancelled = true;
     };
-  }, [loadTasks, selectedDate, toast]);
+  }, [loadSignal, selectedDate, toast]);
+
+  useEffect(() => {
+    void loadTasks().catch(() => toast({
+      title: "タスク候補を読み込めませんでした",
+      description: "ノートは編集できます。候補を利用するには画面を再読み込みしてください。",
+      variant: "destructive",
+    }));
+  }, [loadTasks, toast]);
 
   const taskOptions = useMemo<TaskOption[]>(
     () => [
@@ -376,7 +397,7 @@ export function LightweightDailyPlanner({
     }, [saveNow]);
 
   useEffect(() => {
-    if (!dirty || loading || conflict || autosavePaused) return;
+    if (!dirty || loading || loadError || conflict || autosavePaused) return;
     const timer = window.setTimeout(() => {
       void saveNow().catch((error) => {
         if (!(error instanceof ApiError && error.statusCode === 409)) {
@@ -399,6 +420,7 @@ export function LightweightDailyPlanner({
     dirty,
     document,
     loading,
+    loadError,
     saveNow,
     saveRetry,
     saveSignal,
@@ -562,6 +584,7 @@ export function LightweightDailyPlanner({
     try {
       await flushPendingSaves();
       const response = await dailyPlansApi.generate(selectedDate);
+      scheduleInputRef.current = schedulingBlocks(response.document);
       setSchedule(response.schedule ?? null);
       if (response.schedule?.success) {
         toast({
@@ -848,6 +871,7 @@ export function LightweightDailyPlanner({
     setRevision(response.revision);
     revisionRef.current = response.revision;
     setSchedule(response.schedule ?? null);
+    scheduleInputRef.current = response.schedule?.source_document_revision === response.revision ? schedulingBlocks(response.document) : null;
     setDirty(false);
     dirtyRef.current = false;
     setSaveRetry(0);
@@ -891,19 +915,16 @@ export function LightweightDailyPlanner({
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-        <AppHeader currentPage="scheduling-daily" />
-        <div className="flex min-h-[70vh] items-center justify-center">
-          <Loader2 className="h-7 w-7 animate-spin text-blue-600" />
-        </div>
-      </div>
-    );
-  }
-
-  const scheduleStale = Boolean(schedule &&
-    (dirty || schedule.source_document_revision !== revision));
+  const noteUnavailable = loading || loadError;
+  const adjacentDate = (offset: number) => {
+    const date = new Date(`${selectedDate}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + offset);
+    return date.toISOString().slice(0, 10);
+  };
+  const scheduleInput = schedule?.source_scheduling_blocks ?? scheduleInputRef.current;
+  const scheduleStale = Boolean(schedule && (scheduleInput
+    ? !sameSchedulingBlocks(scheduleInput, schedulingBlocks(document))
+    : (dirty || schedule.source_document_revision !== revision)));
   const blockIds = new Set(document.blocks.map((block) => block.id));
   const orphanAssignments = (schedule?.assignments ?? []).filter(
     (assignment) => !assignment.directive_id || !blockIds.has(assignment.directive_id),
@@ -911,13 +932,15 @@ export function LightweightDailyPlanner({
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <AppHeader currentPage="scheduling-daily" />
-      <main className="container mx-auto max-w-5xl px-4 py-6">
+      <AppHeader currentPage="daily-notes" />
+      <main className="mx-auto max-w-7xl px-4 py-6">
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="order-1 min-w-0 lg:order-2">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold">日次プラン</h1>
+            <h1 className="text-2xl font-bold">{selectedDate === getJSTDateString() ? "今日のノート" : `${selectedDate} のノート`}</h1>
             <p className="text-sm text-gray-500">
-              時刻付きの行と /schedule を同じページに書けます
+              メモも予定も、このノートに。/schedule で予定を追加できます
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -932,11 +955,11 @@ export function LightweightDailyPlanner({
             <Button
               variant="outline"
               onClick={switchToDetailed}
-              disabled={generating || (saving && conflict)}
+              disabled={noteUnavailable || generating || (saving && conflict)}
             >
               詳細モード
             </Button>
-            <Button onClick={generate} disabled={generating || conflict}>
+            <Button onClick={generate} disabled={noteUnavailable || generating || conflict}>
               {generating ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -992,7 +1015,7 @@ export function LightweightDailyPlanner({
           </CardContent>
         </Card>
 
-        {scheduleStale && (
+        {!noteUnavailable && scheduleStale && (
           <Alert className="mb-4">
             <AlertDescription>再生成が必要です。表示中の予定・診断は以前の文書に対する結果です。</AlertDescription>
           </Alert>
@@ -1052,24 +1075,32 @@ export function LightweightDailyPlanner({
 
         <Card className="mb-4">
           <CardContent className="flex flex-wrap items-end gap-3 py-4">
+            <Button variant="ghost" size="icon" aria-label="前日のノート" disabled={noteUnavailable || generating} onClick={() => void changeSelectedDate(adjacentDate(-1))}><ChevronLeft className="h-4 w-4" /></Button>
             <div className="space-y-1">
-              <Label>対象日</Label>
+              <Label htmlFor="daily-note-date">対象日</Label>
               <Input
+                id="daily-note-date"
                 type="date"
                 value={selectedDate}
-                disabled={generating || (saving && conflict)}
+                disabled={noteUnavailable || generating || (saving && conflict)}
                 onChange={(event) =>
                   void changeSelectedDate(event.target.value)
                 }
                 className="w-40"
               />
             </div>
+            <Button variant="ghost" size="icon" aria-label="翌日のノート" disabled={noteUnavailable || generating} onClick={() => void changeSelectedDate(adjacentDate(1))}><ChevronRight className="h-4 w-4" /></Button>
+            <Button variant="outline" disabled={noteUnavailable || generating} onClick={() => void changeSelectedDate(getJSTDateString())}>今日</Button>
+            <Button variant="ghost" className="lg:hidden" onClick={() => globalThis.document.getElementById("daily-note-history")?.scrollIntoView({ behavior: "smooth" })}>履歴・検索</Button>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="space-y-2 py-5">
-            {document.blocks.length === 0 && orphanAssignments.length === 0 && (
+            {loading && <div className="flex min-h-64 items-center justify-center gap-2" role="status"><Loader2 className="h-5 w-5 animate-spin" />ノートを読み込み中…</div>}
+            {loadError && <Alert variant="destructive"><AlertTitle>ノートを読み込めませんでした</AlertTitle><AlertDescription>内容を取得できるまで編集を停止しています。<Button variant="outline" size="sm" onClick={() => setLoadSignal((value) => value + 1)}>ノートを再読み込み</Button></AlertDescription></Alert>}
+            {!noteUnavailable && <>
+            {formMode && document.blocks.length === 0 && orphanAssignments.length === 0 && (
               <div className="py-10 text-center text-gray-400">
                 <Clock3 className="mx-auto mb-2 h-10 w-10 opacity-40" />
                 <p>まだ行がありません</p>
@@ -1100,7 +1131,44 @@ export function LightweightDailyPlanner({
                 </AlertDescription>
               </Alert>
             )}
-            {document.blocks.map((block, index) => {
+            <div className="flex justify-end">
+              <Button variant="ghost" size="sm" onClick={() => setFormMode((current) => !current)}>
+                {formMode ? "ノートに戻る" : "行ごとの設定"}
+              </Button>
+            </div>
+            {!formMode && <DailyPlanNoteEditor
+              key={selectedDate}
+              document={document}
+              taskOptions={taskOptions}
+              onChange={(next) => updateDocument(() => next)}
+              renderBlock={(block) => {
+                if (block.type === "text") return null;
+                const assignments = schedule?.assignments.filter((item) => item.directive_id === block.id) ?? [];
+                const diagnostic = schedule?.directive_diagnostics?.find((item) => item.directive_id === block.id);
+                return <div className="group space-y-1">
+                  {block.type === "checklist_item" ? <ChecklistEditor block={block} taskOptions={taskOptions}
+                    onChange={(next) => replaceBlock(block.id, next)} onComplete={(task) => openChecklistCompletion(block, task)} compact /> :
+                    <details className="rounded-md">
+                      <summary className="cursor-pointer rounded px-2 py-1.5 text-sm hover:bg-muted">
+                        <span className="mr-2 font-mono text-muted-foreground">{block.type === "timed_line"
+                          ? `${block.start}–${block.end}`
+                          : (block.allowed_windows ?? []).map((window) => `${window.start}–${window.end}`).join(", ") || "時間帯を設定"}</span>
+                        {block.title || "タスクを自動配置"}
+                        {block.type === "schedule_directive" && <span className="ml-2 text-xs text-muted-foreground">/schedule{block.duration_override_minutes ? ` · ${block.duration_override_minutes}分` : ""}</span>}
+                      </summary>
+                      <div className="py-2">
+                        {block.type === "schedule_directive" ? <DirectiveEditor block={block} taskOptions={taskOptions} projects={projects} onChange={(next) => replaceBlock(block.id, next)} /> :
+                          <TimedLineEditor block={block} taskOptions={taskOptions} onChange={(next) => replaceBlock(block.id, next)} />}
+                        <Button variant="ghost" size="sm" onClick={() => removeBlock(block.id)}>この予定を削除</Button>
+                      </div>
+                    </details>}
+                  {assignments.map((assignment, index) => <GeneratedAssignmentRow key={`${assignment.task_id}-${assignment.start_time}-${index}`}
+                    assignment={assignment} onPin={pinAssignment} onComplete={openCompletion} compact />)}
+                  {diagnostic?.reason && <p className="text-xs text-amber-700">{diagnostic.reason}（候補 {diagnostic.eligible_count}件）</p>}
+                </div>;
+              }}
+            />}
+            {formMode && document.blocks.map((block, index) => {
               const assignments =
                 schedule?.assignments.filter(
                   (item) => item.directive_id === block.id,
@@ -1143,10 +1211,14 @@ export function LightweightDailyPlanner({
                     {block.type === "text" && (
                       <Input
                         value={block.text}
+                        readOnly={Boolean(block.content)}
+                        title={block.content ? "書式付きメモは「ノートに戻る」から編集できます" : undefined}
+                        aria-label={block.content ? "書式付きメモ（ノートで編集）" : "メモ"}
                         onChange={(event) =>
                           replaceBlock(block.id, {
                             ...block,
                             text: event.target.value,
+                            content: undefined,
                           })
                         }
                         className="border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
@@ -1208,6 +1280,7 @@ export function LightweightDailyPlanner({
                 {orphanAssignments.map((assignment, index) => (
                   <GeneratedAssignmentRow
                     key={`${assignment.task_id}-${assignment.start_time}-${index}`}
+                    compact={!formMode}
                     assignment={assignment}
                     onPin={pinAssignment}
                     onComplete={openCompletion}
@@ -1215,7 +1288,7 @@ export function LightweightDailyPlanner({
                 ))}
               </section>
             )}
-            <div className="mt-3 flex gap-2 border-t pt-4">
+            {formMode && <div className="mt-3 flex gap-2 border-t pt-4">
               <DailyPlanCommandComposer
                 value={command}
                 onChange={setCommand}
@@ -1234,9 +1307,16 @@ export function LightweightDailyPlanner({
               >
                 新規タスク
               </Button>
-            </div>
+            </div>}
+            </>}
           </CardContent>
         </Card>
+        </div>
+        <div id="daily-note-history" className="order-2 min-w-0 scroll-mt-20 lg:order-1">
+          <DailyPlanHistory selectedDate={selectedDate} revision={revision}
+            disabled={loading || generating || (saving && conflict)} onSelect={changeSelectedDate} />
+        </div>
+        </div>
       </main>
 
       <Dialog open={Boolean(ambiguousMention)} onOpenChange={(open) => {
@@ -1883,7 +1963,9 @@ function GeneratedAssignmentRow({
   assignment,
   onPin,
   onComplete,
+  compact = false,
 }: {
+  compact?: boolean;
   assignment: DailyPlanAssignment;
   onPin: (
     assignment: DailyPlanAssignment,
@@ -1892,6 +1974,7 @@ function GeneratedAssignmentRow({
   ) => void;
   onComplete: (assignment: DailyPlanAssignment) => void;
 }) {
+  const [editing, setEditing] = useState(false);
   const [start, setStart] = useState(assignment.start_time);
   const [end, setEnd] = useState(assignment.slot_end);
   useEffect(() => {
@@ -1904,6 +1987,7 @@ function GeneratedAssignmentRow({
   );
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md bg-blue-50 px-3 py-2 text-sm dark:bg-blue-950/30">
+      {compact && !editing ? <button type="button" className="font-mono text-muted-foreground" onClick={() => setEditing(true)} aria-label="予定の時刻を編集">{start}–{end}</button> : <>
       <Input
         aria-label="生成予定の開始時刻"
         disabled={assignment.is_fixed}
@@ -1921,8 +2005,9 @@ function GeneratedAssignmentRow({
         onChange={(event) => setEnd(event.target.value)}
         className="h-8 w-28 font-mono"
       />
+      </>}
       <span className="font-medium">{assignment.task_title}</span>
-      <Badge variant="outline">{assignment.is_fixed ? "固定済み" : "自動"}</Badge>
+      {!compact && <Badge variant="outline">{assignment.is_fixed ? "固定済み" : "自動"}</Badge>}
       <div className="ml-auto flex gap-1">
         <Button
           size="sm"
@@ -2018,7 +2103,9 @@ function ChecklistEditor({
   taskOptions,
   onChange,
   onComplete,
+  compact = false,
 }: {
+  compact?: boolean;
   block: DailyPlanChecklistItem;
   taskOptions: TaskOption[];
   onChange: (block: DailyPlanChecklistItem) => void;
@@ -2046,7 +2133,7 @@ function ChecklistEditor({
         onChange={(title) => onChange({ ...block, title })}
         className={`min-w-[220px] flex-1 border-0 bg-transparent shadow-none focus-visible:ring-0 ${block.checked ? "text-gray-400 line-through" : ""}`}
       />
-      <TaskSelect
+      {!compact && <TaskSelect
         value={block.task_ref}
         options={taskOptions}
         fallbackTitle={block.title}
@@ -2057,7 +2144,7 @@ function ChecklistEditor({
             title: task?.title ?? block.title,
           })
         }
-      />
+      />}
     </div>
   );
 }

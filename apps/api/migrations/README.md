@@ -21,6 +21,7 @@ All database migrations are managed through SQL files and the MigrationManager. 
 - `026_add_goal_due_date.sql` - Optional due dates for goals
 - `027_add_daily_plan_documents.sql` - Versioned daily plan documents and ownership RLS
 - `028_scope_daily_plan_policy.sql` - Limit the daily plan RLS policy to `authenticated`; also required when 027 has already been applied. Changes no document data or ownership predicates.
+- `029_add_daily_plan_search.sql` - Add visible-text search for daily notebooks, backfill existing notes, and keep older writers in sync with a trigger. Apply before the new API; rollback preserves document data.
 - `enable_rls_security.sql` - Row Level Security policies (manual application)
 
 ## Data Loss Prevention Policy

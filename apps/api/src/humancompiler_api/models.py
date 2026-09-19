@@ -13,7 +13,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from sqlalchemy import JSON, UniqueConstraint, text, UUID as SQLAlchemyUUID
+from sqlalchemy import JSON, Text, UniqueConstraint, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Column, Relationship, SQLModel
@@ -595,6 +595,9 @@ class DailyPlanDocument(SQLModel, table=True):  # type: ignore[call-arg]
     document_json: dict[str, Any] = SQLField(
         sa_column=Column(JSON().with_variant(JSONB(), "postgresql"), nullable=False),
         default_factory=dict,
+    )
+    search_text: str = SQLField(
+        default="", sa_column=Column(Text, nullable=False, server_default="")
     )
     created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))

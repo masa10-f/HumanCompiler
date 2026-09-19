@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 from datetime import UTC, date as date_type, datetime, time
@@ -13,8 +14,15 @@ from typing import Annotated, Literal
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    field_validator,
+    model_validator,
+)
 from sqlalchemy import func, or_
 from sqlalchemy import update as sqlalchemy_update
 from sqlalchemy.exc import IntegrityError
@@ -190,6 +198,46 @@ class TextBlock(BaseModel):
     id: str = Field(min_length=1, max_length=100)
     type: Literal["text"] = "text"
     text: str = Field(default="", max_length=5000)
+    content: dict[str, JsonValue] | None = None
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(
+        cls, value: dict[str, JsonValue] | None
+    ) -> dict[str, JsonValue] | None:
+        if value is None:
+            return value
+        if len(json.dumps(value, ensure_ascii=False)) > 50000:
+            raise ValueError("rich note content is too large")
+        allowed = {
+            "paragraph",
+            "heading",
+            "text",
+            "bulletList",
+            "orderedList",
+            "listItem",
+            "taskList",
+            "taskItem",
+            "blockquote",
+            "codeBlock",
+            "hardBreak",
+            "horizontalRule",
+        }
+
+        def check(node: JsonValue, depth: int = 0) -> None:
+            if depth > 20 or not isinstance(node, dict):
+                raise ValueError("unsupported rich note node")
+            node_type = node.get("type")
+            if not isinstance(node_type, str) or node_type not in allowed:
+                raise ValueError("unsupported rich note node")
+            children = node.get("content", [])
+            if not isinstance(children, list):
+                raise ValueError("rich note content must be a list")
+            for child in children:
+                check(child, depth + 1)
+
+        check(value)
+        return value
 
 
 DailyPlanBlock = Annotated[
@@ -272,6 +320,7 @@ class DailyPlanScheduleResponse(BaseModel):
     generated_at: str = ""
     source: str | None = None
     source_document_revision: int | None = None
+    source_scheduling_blocks: list[DailyPlanBlock] | None = None
     directive_diagnostics: list[DailyPlanDirectiveDiagnostic] = Field(
         default_factory=list
     )
@@ -287,6 +336,47 @@ class DailyPlanResponse(BaseModel):
     document: DailyPlanDocumentV1
     schedule: DailyPlanScheduleResponse | None = None
     updated_at: datetime | None = None
+
+
+class DailyPlanSummary(BaseModel):
+    date: str
+    revision: int
+    updated_at: datetime
+    title: str
+    preview: str
+
+
+class DailyPlanHistoryResponse(BaseModel):
+    items: list[DailyPlanSummary]
+    next_cursor: str | None = None
+
+
+def _document_search_text(document: DailyPlanDocumentV1) -> str:
+    """Visible note text only; never index task IDs or editor JSON metadata.
+
+    Keep in sync with the backfill/trigger in migration 029.
+    """
+    lines = []
+    for block in document.blocks:
+        parts = [getattr(block, "text", None), getattr(block, "title", None)]
+        if isinstance(block, TimedLineBlock):
+            parts.extend([block.start, block.end])
+        if isinstance(block, ScheduleDirectiveBlock):
+            parts.append("/schedule")
+            parts.extend(
+                f"{window.start}-{window.end}" for window in block.allowed_windows
+            )
+        line = " ".join(part for part in parts if part).strip()
+        if line:
+            lines.append(line)
+    return "\n".join(lines)
+
+
+def _history_preview(text: str, query: str) -> str:
+    match = text.lower().find(query.lower()) if query else 0
+    start = max(0, match - 45)
+    excerpt = text[start : start + 180].replace("\n", " ")
+    return ("…" if start else "") + excerpt + ("…" if start + 180 < len(text) else "")
 
 
 class TaskActionRequest(BaseModel):
@@ -360,6 +450,57 @@ def _response(
     )
 
 
+@router.get("", response_model=DailyPlanHistoryResponse)
+async def list_daily_plans(
+    query: Annotated[str, Query(max_length=200)] = "",
+    date_from: date_type | None = None,
+    date_to: date_type | None = None,
+    before: date_type | None = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(db.get_session),
+) -> DailyPlanHistoryResponse:
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="開始日は終了日以前にしてください")
+    query = query.strip()
+    statement = select(
+        DailyPlanDocument.date,
+        DailyPlanDocument.revision,
+        DailyPlanDocument.updated_at,
+        DailyPlanDocument.search_text,
+    ).where(
+        DailyPlanDocument.user_id == UUID(user_id),
+        DailyPlanDocument.search_text != "",
+    )
+    if query:
+        statement = statement.where(
+            DailyPlanDocument.search_text.icontains(query, autoescape=True)
+        )
+    if date_from:
+        statement = statement.where(DailyPlanDocument.date >= date_from)
+    if date_to:
+        statement = statement.where(DailyPlanDocument.date <= date_to)
+    if before:
+        statement = statement.where(DailyPlanDocument.date < before)
+    rows = session.exec(
+        statement.order_by(DailyPlanDocument.date.desc()).limit(limit + 1)
+    ).all()
+    items = [
+        DailyPlanSummary(
+            date=row.date.isoformat(),
+            revision=row.revision,
+            updated_at=row.updated_at,
+            title=row.search_text.splitlines()[0][:80],
+            preview=_history_preview(row.search_text, query),
+        )
+        for row in rows[:limit]
+    ]
+    return DailyPlanHistoryResponse(
+        items=items,
+        next_cursor=items[-1].date if len(rows) > limit else None,
+    )
+
+
 @router.get("/{date}", response_model=DailyPlanResponse)
 async def get_daily_plan(
     date: str,
@@ -398,6 +539,7 @@ async def update_daily_plan(
             date=date_value,
             revision=1,
             document_json=request.document.model_dump(mode="json"),
+            search_text=_document_search_text(request.document),
         )
         session.add(existing)
         try:
@@ -419,6 +561,7 @@ async def update_daily_plan(
             .values(
                 revision=request.expected_revision + 1,
                 document_json=request.document.model_dump(mode="json"),
+                search_text=_document_search_text(request.document),
                 updated_at=datetime.now(UTC),
             )
         )
@@ -1157,6 +1300,11 @@ def generate_daily_plan(
             "generated_at": datetime.now(UTC).isoformat(),
             "source": "daily_plan_document",
             "source_document_revision": source_document.revision,
+            "source_scheduling_blocks": [
+                block.model_dump(mode="json")
+                for block in document.blocks
+                if isinstance(block, ScheduleDirectiveBlock | TimedLineBlock)
+            ],
             "directive_diagnostics": [],
             "unused_minutes": 0,
             "unscheduled_tasks": [
@@ -1266,6 +1414,11 @@ def generate_daily_plan(
         "generated_at": datetime.now(UTC).isoformat(),
         "source": "daily_plan_document",
         "source_document_revision": source_document.revision,
+        "source_scheduling_blocks": [
+            block.model_dump(mode="json")
+            for block in document.blocks
+            if isinstance(block, ScheduleDirectiveBlock | TimedLineBlock)
+        ],
         "directive_diagnostics": diagnostics,
         "unused_minutes": unused_minutes,
         "unscheduled_tasks": [
