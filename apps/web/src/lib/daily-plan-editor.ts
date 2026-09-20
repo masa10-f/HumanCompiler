@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
 
+import { DailyPlanValidationError } from '@/lib/daily-plan-validation';
 import { ApiError } from '@/lib/errors';
 
 export function extractDailyPlanMention(text: string): string | undefined {
@@ -18,7 +19,7 @@ export function matchDailyPlanTasks<T extends { title: string }>(text: string, o
 }
 
 export function isPermanentDailyPlanSaveError(error: unknown): boolean {
-  return error instanceof ApiError && error.statusCode >= 400 && error.statusCode < 500 &&
+  return error instanceof DailyPlanValidationError || error instanceof ApiError && error.statusCode >= 400 && error.statusCode < 500 &&
     ![408, 429].includes(error.statusCode);
 }
 

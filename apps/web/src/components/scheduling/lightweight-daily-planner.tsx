@@ -3,6 +3,8 @@
 
 "use client";
 
+import { dailyPlanSaveMessage, validateDailyPlanNote } from "@/lib/daily-plan-validation";
+import { createDailyPlanId } from "@/lib/daily-plan-id";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -101,12 +103,6 @@ const workTypeLabels: Record<WorkType, string> = {
   focused_work: "集中作業",
   study: "学習",
 };
-
-function createId(): string {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `block-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
 
 function refKey(ref: DailyPlanTaskRef): string {
   return `${ref.source}:${ref.id}`;
@@ -303,6 +299,7 @@ export function LightweightDailyPlanner({
       setSaving(true);
       try {
         const snapshot = documentRef.current;
+        validateDailyPlanNote(snapshot);
         const response = await dailyPlansApi.update(
           selectedDate,
           revisionRef.current,
@@ -368,7 +365,7 @@ export function LightweightDailyPlanner({
             setSaveRetry((current) => current + 1);
           }
           if (saveRetry === 0) toast({
-            title: "自動保存に失敗しました", description: "内容はこの画面に残っています。保存エラーの表示を確認してください。",
+            title: "自動保存に失敗しました", description: dailyPlanSaveMessage(error, documentRef.current),
             variant: "destructive",
           });
         }
@@ -508,7 +505,7 @@ export function LightweightDailyPlanner({
   ) => {
     if (assignment.is_fixed) return;
     const pinned: DailyPlanTimedLine = {
-      id: createId(),
+      id: createDailyPlanId(),
       type: "timed_line",
       start,
       end,
@@ -789,7 +786,7 @@ export function LightweightDailyPlanner({
           <Alert variant="destructive" className="mb-4">
             <AlertTitle>保存・参照エラー</AlertTitle>
             <AlertDescription>
-              <p>{saveError.message}。内容はこの画面に残っています。修正後に再試行してください。</p>
+              <p className="whitespace-pre-wrap">{dailyPlanSaveMessage(saveError, document)}。内容はこの画面に残っています。修正後に再試行してください。</p>
               {missingDailyPlanBlockIds(saveError).map((blockId) => {
                 const block = document.blocks.find((item) => item.id === blockId);
                 if (!block || block.type === "text") return null;

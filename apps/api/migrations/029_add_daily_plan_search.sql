@@ -5,7 +5,7 @@ ALTER TABLE public.daily_plan_documents
     ADD COLUMN search_text text NOT NULL DEFAULT '';
 
 CREATE FUNCTION public.daily_plan_search_text(document jsonb)
-RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE AS '
+RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE SET search_path = pg_catalog, public AS '
     SELECT COALESCE(string_agg(line, E''\n'' ORDER BY ordinal), '''')
     FROM (
         SELECT ordinal, btrim(concat_ws('' '',
@@ -23,7 +23,7 @@ RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE AS '
 ';
 
 CREATE FUNCTION public.refresh_daily_plan_search_text()
-RETURNS trigger LANGUAGE plpgsql AS '
+RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog, public AS '
 BEGIN
     NEW.search_text := public.daily_plan_search_text(NEW.document_json);
     RETURN NEW;

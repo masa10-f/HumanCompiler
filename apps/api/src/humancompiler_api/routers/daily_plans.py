@@ -8,9 +8,11 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 from datetime import UTC, date as date_type, datetime, time
 from decimal import Decimal
 from typing import Annotated, Literal
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
@@ -23,6 +25,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic_core import PydanticCustomError
 from sqlalchemy import func, or_
 from sqlalchemy import update as sqlalchemy_update
 from sqlalchemy.exc import IntegrityError
@@ -197,7 +200,7 @@ class ChecklistItemBlock(BaseModel):
 class TextBlock(BaseModel):
     id: str = Field(min_length=1, max_length=100)
     type: Literal["text"] = "text"
-    text: str = Field(default="", max_length=5000)
+    text: str = Field(default="", max_length=50000)
     content: dict[str, JsonValue] | None = None
 
     @field_validator("content")
@@ -207,8 +210,10 @@ class TextBlock(BaseModel):
     ) -> dict[str, JsonValue] | None:
         if value is None:
             return value
-        if len(json.dumps(value, ensure_ascii=False)) > 50000:
-            raise ValueError("rich note content is too large")
+        if len(json.dumps(value, ensure_ascii=False, separators=(",", ":"))) > 50000:
+            raise PydanticCustomError(
+                "note_content_too_large", "rich note content exceeds 50000 characters"
+            )
         allowed = {
             "paragraph",
             "heading",
@@ -225,11 +230,66 @@ class TextBlock(BaseModel):
         }
 
         def check(node: JsonValue, depth: int = 0) -> None:
-            if depth > 20 or not isinstance(node, dict):
+            if depth > 20:
+                raise PydanticCustomError(
+                    "note_too_deep", "rich note nesting exceeds 20 levels"
+                )
+            if not isinstance(node, dict):
                 raise ValueError("unsupported rich note node")
             node_type = node.get("type")
             if not isinstance(node_type, str) or node_type not in allowed:
                 raise ValueError("unsupported rich note node")
+            attrs = node.get("attrs", {})
+            if not isinstance(attrs, dict):
+                raise ValueError("rich note attrs must be an object")
+            allowed_attrs = {
+                "heading": {"level"},
+                "orderedList": {"start", "type"},
+                "taskItem": {"checked"},
+                "codeBlock": {"language"},
+            }.get(node_type, set())
+            if set(attrs) - allowed_attrs:
+                raise ValueError("unsupported rich note attributes")
+            marks = node.get("marks", [])
+            if not isinstance(marks, list):
+                raise ValueError("rich note marks must be a list")
+            for mark in marks:
+                if not isinstance(mark, dict) or mark.get("type") not in (
+                    "bold",
+                    "italic",
+                    "strike",
+                    "code",
+                    "link",
+                ):
+                    raise ValueError("unsupported rich note mark")
+                mark_attrs = mark.get("attrs", {})
+                if not isinstance(mark_attrs, dict):
+                    raise ValueError("rich note mark attrs must be an object")
+                if mark.get("type") != "link":
+                    if mark_attrs:
+                        raise ValueError("unsupported rich note mark attributes")
+                    continue
+                if set(mark_attrs) - {"href", "target", "rel", "class"}:
+                    raise ValueError("unsupported link attributes")
+                href = mark_attrs.get("href")
+                if not isinstance(href, str):
+                    raise ValueError("link href must be text")
+                # Browsers ignore whitespace/control characters in URL schemes.
+                normalized_href = re.sub(r"[\s\x00-\x1f\x7f-\x9f]", "", href)
+                try:
+                    safe = urlsplit(normalized_href).scheme.lower() in (
+                        "",
+                        "http",
+                        "https",
+                        "mailto",
+                        "tel",
+                    )
+                except ValueError:
+                    safe = False
+                if not safe:
+                    raise PydanticCustomError(
+                        "note_unsafe_link", "unsupported link protocol"
+                    )
             children = node.get("content", [])
             if not isinstance(children, list):
                 raise ValueError("rich note content must be a list")
@@ -257,6 +317,20 @@ class DailyPlanDocumentV1(BaseModel):
         ids = [block.id for block in value]
         if len(ids) != len(set(ids)):
             raise ValueError("daily plan block ids must be unique")
+        size = len(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "blocks": [block.model_dump(mode="json") for block in value],
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
+        if size > 5_000_000:
+            raise PydanticCustomError(
+                "note_document_too_large", "daily note exceeds 5MB"
+            )
         return value
 
 
@@ -354,7 +428,10 @@ class DailyPlanHistoryResponse(BaseModel):
 def _document_search_text(document: DailyPlanDocumentV1) -> str:
     """Visible note text only; never index task IDs or editor JSON metadata.
 
-    Keep in sync with the backfill/trigger in migration 029.
+    PostgreSQL's migration 029 trigger is authoritative and overwrites this mirror
+    on every document write (including writes from older API versions). This
+    implementation supports SQLite and is checked against PostgreSQL in
+    test_daily_plan_search_postgres.py; keep both rules in sync.
     """
     lines = []
     for block in document.blocks:
@@ -366,15 +443,15 @@ def _document_search_text(document: DailyPlanDocumentV1) -> str:
             parts.extend(
                 f"{window.start}-{window.end}" for window in block.allowed_windows
             )
-        line = " ".join(part for part in parts if part).strip()
+        line = " ".join(part for part in parts if part).strip(" ")
         if line:
             lines.append(line)
     return "\n".join(lines)
 
 
 def _history_preview(text: str, query: str) -> str:
-    match = text.lower().find(query.lower()) if query else 0
-    start = max(0, match - 45)
+    match = re.search(re.escape(query), text, re.IGNORECASE) if query else None
+    start = max(0, (match.start() if match else 0) - 45)
     excerpt = text[start : start + 180].replace("\n", " ")
     return ("…" if start else "") + excerpt + ("…" if start + 180 < len(text) else "")
 

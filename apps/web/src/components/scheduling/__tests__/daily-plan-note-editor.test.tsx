@@ -220,3 +220,23 @@ it("requires correction of an invalid time range instead of silently replacing i
     { start: "17:00", end: "18:00" },
   ]);
 });
+
+it('edits and inserts schedules when randomUUID is unavailable on an HTTP origin', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis.crypto, 'randomUUID');
+  Object.defineProperty(globalThis.crypto, 'randomUUID', { configurable: true, value: undefined });
+  try {
+    render(<Notebook />);
+    const editor = await screen.findByRole('textbox', { name: '日次ノート' });
+    fireEvent.paste(editor, { clipboardData: { getData: (type: string) => type === 'text/plain' ? '/schedule 10:00-12:00' : '' } });
+    fireEvent.keyDown(editor, { key: 'Enter' });
+    expect(await screen.findByText('予定: 自動配置')).toBeInTheDocument();
+    fireEvent.paste(editor, { clipboardData: { getData: (type: string) => type === 'text/plain' ? '追記' : '' } });
+    const saved = changed.mock.calls.at(-1)![0] as DailyPlanDocumentV1;
+    expect(saved.blocks.map((block) => block.type)).toEqual(['schedule_directive', 'text']);
+    expect(new Set(saved.blocks.map((block) => block.id)).size).toBe(2);
+    expect(saved.blocks[1]).toMatchObject({ text: '追記' });
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis.crypto, 'randomUUID', descriptor);
+    else Reflect.deleteProperty(globalThis.crypto, 'randomUUID');
+  }
+});

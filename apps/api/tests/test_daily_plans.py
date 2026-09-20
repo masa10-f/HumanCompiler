@@ -1286,3 +1286,159 @@ async def test_notebook_history_updates_search_and_shows_match_context(
     assert "Match TARGET" in result.items[0].preview
     assert result.items[0].preview.startswith("…")
     assert result.items[0].revision == 2
+
+
+@pytest.mark.asyncio
+async def test_long_notebook_paragraph_is_saved_without_truncation(
+    session, planning_data
+):
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    body = "研究" * 4000
+    content = {"type": "paragraph", "content": [{"type": "text", "text": body}]}
+    document = DailyPlanDocumentV1(
+        blocks=[TextBlock(id="long", text=body, content=content)]
+    )
+    saved = await update_daily_plan(
+        "2030-02-01",
+        DailyPlanUpdateRequest(expected_revision=0, document=document),
+        str(planning_data[0].id),
+        session,
+    )
+    assert saved.document.blocks[0].text == body
+    loaded = await get_daily_plan("2030-02-01", str(planning_data[0].id), session)
+    assert loaded.document.blocks[0].content == content
+
+
+def test_notebook_limits_have_machine_readable_errors():
+    from pydantic import ValidationError
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    with pytest.raises(ValidationError) as error:
+        TextBlock(id="too-long", text="x" * 50001)
+    assert error.value.errors()[0]["type"] == "string_too_long"
+    with pytest.raises(ValidationError) as error:
+        TextBlock(id="rich-long", content={"type": "text", "text": "x" * 50000})
+    assert error.value.errors()[0]["type"] == "note_content_too_large"
+    content = {"type": "paragraph", "content": []}
+    for _ in range(22):
+        content = {"type": "blockquote", "content": [content]}
+    with pytest.raises(ValidationError) as error:
+        TextBlock(id="deep", content=content)
+    assert error.value.errors()[0]["type"] == "note_too_deep"
+    with pytest.raises(ValidationError) as error:
+        DailyPlanDocumentV1(
+            blocks=[
+                TextBlock(
+                    id=str(index),
+                    text="x" * 49000,
+                    content={"type": "text", "text": "x" * 49000},
+                )
+                for index in range(60)
+            ]
+        )
+    assert error.value.errors()[0]["type"] == "note_document_too_large"
+
+
+@pytest.mark.parametrize(
+    "href",
+    [
+        "javascript:alert(1)",
+        "java\nscript:alert(1)",
+        "\x00javascript:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+        "vbscript:msgbox(1)",
+    ],
+)
+def test_notebook_rejects_unsafe_links_from_json(href):
+    from pydantic import ValidationError
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    with pytest.raises(ValidationError) as error:
+        TextBlock(
+            id="link",
+            content={
+                "type": "paragraph",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "link",
+                        "marks": [{"type": "link", "attrs": {"href": href}}],
+                    }
+                ],
+            },
+        )
+    assert error.value.errors()[0]["type"] == "note_unsafe_link"
+
+
+@pytest.mark.parametrize(
+    "href",
+    [
+        "https://example.com/path",
+        "http://example.com",
+        "mailto:a@example.com",
+        "tel:+81123456",
+        "/notes",
+        "#section",
+    ],
+)
+def test_notebook_preserves_supported_link_and_formatting_marks(href):
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    content = {
+        "type": "paragraph",
+        "content": [
+            {
+                "type": "text",
+                "text": "link",
+                "marks": [
+                    {"type": "bold"},
+                    {"type": "italic"},
+                    {
+                        "type": "link",
+                        "attrs": {
+                            "href": href,
+                            "target": "_blank",
+                            "rel": "noopener noreferrer nofollow",
+                            "class": None,
+                        },
+                    },
+                ],
+            }
+        ],
+    }
+    assert TextBlock(id="link", content=content).content == content
+
+
+@pytest.mark.parametrize(
+    "node",
+    [
+        {"type": "paragraph", "attrs": {"onclick": "alert(1)"}},
+        {"type": "text", "text": "memo", "marks": [{"type": "script"}]},
+        {
+            "type": "text",
+            "text": "memo",
+            "marks": [
+                {
+                    "type": "link",
+                    "attrs": {"href": "https://example.com", "onclick": "alert(1)"},
+                }
+            ],
+        },
+    ],
+)
+def test_notebook_rejects_unsupported_marks_and_attributes(node):
+    from pydantic import ValidationError
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    with pytest.raises(ValidationError):
+        TextBlock(id="invalid", content=node)
+
+
+def test_history_preview_keeps_original_offsets_for_length_changing_lowercase():
+    from humancompiler_api.routers.daily_plans import _history_preview
+
+    text = "İ" * 160 + "TARGET" + "あ" * 200
+    preview = _history_preview(text, "target")
+    assert "TARGET" in preview
+    assert preview.startswith("…" + "İ" * 45 + "TARGET")

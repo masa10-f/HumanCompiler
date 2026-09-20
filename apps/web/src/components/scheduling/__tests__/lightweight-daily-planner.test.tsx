@@ -986,3 +986,18 @@ describe("LightweightDailyPlanner", () => {
     expect(pin).toBeDisabled();
   });
 });
+
+
+it('keeps a long paragraph editable and gives a specific API validation message', async () => {
+  const text = '調査'.repeat(3000);
+  jest.mocked(dailyPlansApi.get).mockResolvedValue(blankResponse);
+  jest.mocked(dailyPlansApi.update).mockRejectedValueOnce(new ApiError(422, 'Request validation failed', {
+    responseData: { errors: [{ type: 'note_content_too_large', field: 'body -> document -> blocks -> 0 -> text -> content' }] },
+  }));
+  renderUI(<LightweightDailyPlanner selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+  const editor = await screen.findByRole('textbox', { name: '日次ノート' });
+  fireEvent.paste(editor, { clipboardData: { getData: (type: string) => type === 'text/plain' ? text : '' } });
+  expect(await screen.findByText(/1番目の段落・項目.*書式を含む内容が上限/, {}, { timeout: 2500 })).toBeInTheDocument();
+  expect(editor).toHaveTextContent(text);
+  expect(jest.mocked(dailyPlansApi.update).mock.calls.at(-1)![2].blocks[0]).toMatchObject({ text });
+});

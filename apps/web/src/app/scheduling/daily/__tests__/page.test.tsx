@@ -97,3 +97,15 @@ describe('daily planner mode and date transitions', () => {
     expect(mockToast).not.toHaveBeenCalled();
   });
 });
+
+it('keeps the detailed date in the URL and restores it when reopening', async () => {
+  window.history.replaceState({ marker: 'keep' }, '', '/scheduling/daily?date=2030-01-02&mode=detailed&source=weekly_schedule&week_start=2029-12-31');
+  const view = render(<SchedulingPage />);
+  fireEvent.change(screen.getByDisplayValue('2030-01-02'), { target: { value: '2030-01-03' } });
+  await waitFor(() => expect(new URLSearchParams(window.location.search).get('date')).toBe('2030-01-03'));
+  expect(new URLSearchParams(window.location.search).get('source')).toBe('weekly_schedule');
+  expect(window.history.state).toEqual({ marker: 'keep' });
+  view.unmount();
+  render(<SchedulingPage />);
+  expect(screen.getByDisplayValue('2030-01-03')).toBeInTheDocument();
+});

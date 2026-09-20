@@ -3,6 +3,7 @@
 
 "use client";
 
+import { createDailyPlanId } from "@/lib/daily-plan-id";
 import {
   createContext,
   useContext,
@@ -118,7 +119,7 @@ const NoteIdentity = Extension.create({
           if (node.type.name === "dailyPlanBlock") return;
           let id = node.attrs.planId;
           if (!id || seen.has(id)) {
-            id = crypto.randomUUID();
+            id = createDailyPlanId();
             tr.setNodeMarkup(pos, undefined, { ...node.attrs, planId: id });
           }
           seen.add(id);
@@ -316,7 +317,7 @@ export function DailyPlanNoteEditor({
                   type: "dailyPlanBlock",
                   attrs: {
                     block: {
-                      id: crypto.randomUUID(),
+                      id: createDailyPlanId(),
                       type: "timed_line",
                       ...timed,
                       kind: pause ? "break" : "event",
@@ -406,7 +407,7 @@ function ScheduleSuggestions({
   const choose = (task?: NoteTaskOption) => {
     if (!valid) return;
     onInsert({
-      id: crypto.randomUUID(),
+      id: createDailyPlanId(),
       type: "schedule_directive",
       mode: task ? "task" : "filter",
       title: task?.title,

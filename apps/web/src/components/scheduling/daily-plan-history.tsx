@@ -39,6 +39,11 @@ export function DailyPlanHistory({
   const [retry, setRetry] = useState(0);
   const [opening, setOpening] = useState<string | null>(null);
   const request = useRef(0);
+  const previousSave = useRef({ selectedDate, revision });
+  const cursorRef = useRef(cursor);
+  cursorRef.current = cursor;
+  const loadingRef = useRef(loading);
+  loadingRef.current = loading;
   const invalidRange = Boolean(from && to && from > to);
 
   useEffect(() => {
@@ -65,7 +70,61 @@ export function DailyPlanHistory({
     return () => {
       request.current += 1;
     };
-  }, [filters, revision, selectedDate, retry]);
+  }, [filters, retry]);
+
+  // Update only the saved note. Keep loaded pages, their cursor, and scroll position.
+  useEffect(() => {
+    const previous = previousSave.current;
+    previousSave.current = { selectedDate, revision };
+    if (
+      previous.selectedDate !== selectedDate ||
+      previous.revision === revision ||
+      !revision
+    )
+      return;
+    if (
+      (filters.date_from && selectedDate < filters.date_from) ||
+      (filters.date_to && selectedDate > filters.date_to)
+    )
+      return;
+    const id = request.current;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void dailyPlansApi
+        .list({
+          ...filters,
+          date_from: selectedDate,
+          date_to: selectedDate,
+          limit: 1,
+        })
+        .then((result) => {
+          if (cancelled || id !== request.current || loadingRef.current) return;
+          setItems((current) => {
+            const note = result.items.find(
+              (item) => item.date === selectedDate,
+            );
+            // A selected older date must not skip over pages that haven't loaded yet.
+            if (
+              !current.some((item) => item.date === selectedDate) &&
+              cursorRef.current &&
+              selectedDate < cursorRef.current
+            )
+              return current;
+            return [
+              ...current.filter((item) => item.date !== selectedDate),
+              ...(note ? [note] : []),
+            ].sort((a, b) => b.date.localeCompare(a.date));
+          });
+        })
+        .catch(() => {
+          /* Keep the usable history; explicit search can retry. */
+        });
+    }, 2000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [filters, revision, selectedDate]);
 
   const more = async () => {
     if (!cursor || loadingMore) return;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
 
+import { createDailyPlanId } from "@/lib/daily-plan-id";
 import type { JSONContent } from "@tiptap/react";
 import type { DailyPlanBlock, DailyPlanDocumentV1 } from "@/types/daily-plan";
 
@@ -43,7 +44,7 @@ export function noteToDailyPlan(note: JSONContent): DailyPlanDocumentV1 {
     (node, index): DailyPlanBlock[] => {
       if (node.type === "dailyPlanBlock") {
         const block = node.attrs?.block as DailyPlanBlock;
-        const id = ids.has(block.id) ? crypto.randomUUID() : block.id;
+        const id = ids.has(block.id) ? createDailyPlanId() : block.id;
         ids.add(id);
         return [{ ...block, id }];
       }
@@ -55,7 +56,7 @@ export function noteToDailyPlan(note: JSONContent): DailyPlanDocumentV1 {
       )
         return [];
       let id = node.attrs?.planId as string | undefined;
-      if (!id || ids.has(id)) id = crypto.randomUUID();
+      if (!id || ids.has(id)) id = createDailyPlanId();
       ids.add(id);
       const attrs = { ...node.attrs };
       delete attrs.planId;

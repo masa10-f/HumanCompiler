@@ -114,6 +114,13 @@ export default function SchedulingPage() {
       return date && isValidJSTDateInput(date) ? date : getJSTDateString();
     },
   );
+  useEffect(() => {
+    if (!isValidJSTDateInput(selectedDate)) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('date', selectedDate);
+    window.history.replaceState(window.history.state, '', url);
+  }, [selectedDate]);
+
   const [plannerMode, setPlannerMode] = useState<'lightweight' | 'detailed'>(() =>
     readSchedulingParams().get('mode') === 'detailed' ? 'detailed' : 'lightweight',
   );
@@ -736,12 +743,7 @@ export default function SchedulingPage() {
     return (
       <LightweightDailyPlanner
         selectedDate={selectedDate}
-        onSelectedDateChange={(date) => {
-          setSelectedDate(date);
-          const url = new URL(window.location.href);
-          url.searchParams.set('date', date);
-          window.history.replaceState(window.history.state, '', url);
-        }}
+        onSelectedDateChange={setSelectedDate}
         onSwitchDetailed={openDetailedMode}
       />
     );
