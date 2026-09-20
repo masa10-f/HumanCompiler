@@ -4,9 +4,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Placeholder from "@tiptap/extension-placeholder";
-import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
 import {
   AlertCircle,
   AlertTriangle,
@@ -15,15 +12,11 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
-  Clock3,
   Coffee,
-  GripVertical,
   HelpCircle,
   Loader2,
-  Plus,
   Save,
   Sparkles,
-  Trash2,
 } from "lucide-react";
 
 import { DailyPlanHistory } from "./daily-plan-history";
@@ -55,24 +48,16 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useProjectOptions } from "@/hooks/use-project-query";
-import { dailyPlansApi, goalsApi, quickTasksApi, tasksApi } from "@/lib/api";
+import { dailyPlansApi, quickTasksApi, tasksApi } from "@/lib/api";
 import { ApiError } from "@/lib/errors";
 import {
-  parseBreakLine,
-  parseDurationMinutes,
-  parseScheduleDirective,
-  parseTimedLine,
   updateDailyPlanTimeRange,
 } from "@/lib/daily-plan-command";
 import { applyDirectiveTaskSelection } from "@/lib/daily-plan-adapter";
 import {
-  extractDailyPlanMention,
   isPermanentDailyPlanSaveError,
-  matchDailyPlanTasks,
   missingDailyPlanBlockIds,
-  stripDailyPlanDuration,
 } from "@/lib/daily-plan-editor";
-import type { Goal } from "@/types/goal";
 import type { QuickTask } from "@/types/quick-task";
 import type { TaskWorkspaceItem, WorkType } from "@/types/task";
 import type {
@@ -80,7 +65,6 @@ import type {
   DailyPlanBlock,
   DailyPlanChecklistItem,
   DailyPlanDirectiveFilter,
-  DailyPlanDirectiveWindow,
   DailyPlanDocumentV1,
   DailyPlanResponse,
   DailyPlanScheduleDirective,
@@ -170,11 +154,8 @@ export function LightweightDailyPlanner({
   const [saveSignal, setSaveSignal] = useState(0);
   const [saveError, setSaveError] = useState<Error | null>(null);
   const [autosavePaused, setAutosavePaused] = useState(false);
-  const [ambiguousMention, setAmbiguousMention] = useState<{ input: string; options: TaskOption[] } | null>(null);
   const [conflict, setConflict] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [formMode, setFormMode] = useState(false);
-  const [command, setCommand] = useState("");
   const [regularTasks, setRegularTasks] = useState<TaskWorkspaceItem[]>([]);
   const [quickTasks, setQuickTasks] = useState<QuickTask[]>([]);
   const [completionAssignment, setCompletionAssignment] =
@@ -184,26 +165,6 @@ export function LightweightDailyPlanner({
   >(null);
   const [actualMinutes, setActualMinutes] = useState(30);
   const [taskActionPending, setTaskActionPending] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [newTaskInsertKind, setNewTaskInsertKind] = useState<
-    "directive" | "checklist"
-  >("directive");
-  const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [newTaskMinutes, setNewTaskMinutes] = useState(30);
-  const [newTaskAllowedWindow, setNewTaskAllowedWindow] = useState<
-    DailyPlanDirectiveWindow | undefined
-  >();
-  const [newTaskWorkType, setNewTaskWorkType] =
-    useState<WorkType>("light_work");
-  const [newTaskPriority, setNewTaskPriority] = useState("3");
-  const [newTaskDestination, setNewTaskDestination] = useState<
-    "quick" | "goal"
-  >("quick");
-  const [newTaskProjectId, setNewTaskProjectId] = useState("");
-  const [newTaskGoalId, setNewTaskGoalId] = useState("");
-  const [newTaskGoals, setNewTaskGoals] = useState<Goal[]>([]);
-  const [creatingTask, setCreatingTask] = useState(false);
-
   useEffect(() => {
     documentRef.current = document;
   }, [document]);
@@ -469,112 +430,6 @@ export function LightweightDailyPlanner({
     }));
   };
 
-  const moveBlock = useCallback(
-    (index: number, direction: -1 | 1) => {
-      updateDocument((current) => {
-        const target = index + direction;
-        if (target < 0 || target >= current.blocks.length) return current;
-        const blocks = [...current.blocks];
-        const currentBlock = blocks[index];
-        const targetBlock = blocks[target];
-        if (!currentBlock || !targetBlock) return current;
-        blocks[index] = targetBlock;
-        blocks[target] = currentBlock;
-        return { ...current, blocks };
-      });
-    },
-    [updateDocument],
-  );
-
-  const submitCommand = (input = command, selectedTask?: TaskOption) => {
-    const value = input.trim();
-    if (!value) return;
-    const scheduleCommand = value.startsWith("/schedule");
-    const parsedDirective = scheduleCommand ? parseScheduleDirective(value) : null;
-    if (scheduleCommand && value !== "/schedule" && !parsedDirective) {
-      toast({ title: "/scheduleには開始・終了時刻が必要です",
-        description: "例: /schedule 09:00-11:00", variant: "destructive" });
-      return;
-    }
-    const mention = extractDailyPlanMention(value);
-    const matches = matchDailyPlanTasks(value, taskOptions);
-    if (!selectedTask && matches.length > 1) {
-      setAmbiguousMention({ input: value, options: matches });
-      return;
-    }
-    const mentioned = selectedTask ?? matches[0];
-    if (
-      mention &&
-      !mentioned &&
-      (value.startsWith("/schedule") || /^-?\s*\[\s?\]/.test(value))
-    ) {
-      const directive = value.startsWith("/schedule")
-        ? parseScheduleDirective(value)
-        : null;
-      setNewTaskTitle(mention);
-      setNewTaskMinutes(
-        directive?.durationMinutes ?? parseDurationMinutes(value) ?? 30,
-      );
-      setNewTaskAllowedWindow(directive?.allowedWindow);
-      setNewTaskInsertKind(
-        /^-?\s*\[\s?\]/.test(value) ? "checklist" : "directive",
-      );
-      setCreateOpen(true);
-      return;
-    }
-    let block: DailyPlanBlock;
-    if (value.startsWith("/schedule")) {
-      const directive = parseScheduleDirective(value);
-      block = {
-        id: createId(),
-        type: "schedule_directive",
-        mode: mentioned ? "task" : "filter",
-        title: mentioned?.title,
-        task_ref: mentioned?.ref,
-        duration_override_minutes: directive?.durationMinutes,
-        allowed_windows: directive?.allowedWindow
-          ? [directive.allowedWindow]
-          : [],
-        filter: mentioned
-          ? undefined
-          : { work_types: [], project_ids: [], goal_ids: [] },
-      };
-    } else {
-      const breakLine = parseBreakLine(value);
-      const timed = breakLine ?? parseTimedLine(value);
-      if (timed) {
-        block = {
-          id: createId(),
-          type: "timed_line",
-          start: timed.start,
-          end: timed.end,
-          title: breakLine ? timed.title : (mentioned?.title ?? timed.title),
-          task_ref: breakLine ? undefined : mentioned?.ref,
-          pinned: true,
-          kind: breakLine ? "break" : "event",
-        };
-      } else if (/^-?\s*\[\s?\]/.test(value)) {
-        const title = stripDailyPlanDuration(value.replace(/^-?\s*\[\s?\]\s*/, ""));
-        if (!title) return;
-        block = {
-          id: createId(),
-          type: "checklist_item",
-          title: mentioned?.title ?? title,
-          checked: false,
-          task_ref: mentioned?.ref,
-          duration_override_minutes: parseDurationMinutes(value),
-        };
-      } else {
-        block = { id: createId(), type: "text", text: value };
-      }
-    }
-    updateDocument((current) => ({
-      ...current,
-      blocks: [...current.blocks, block],
-    }));
-    setCommand("");
-  };
-
   const generate = async () => {
     if (documentRef.current.blocks.some((block) => block.type === "schedule_directive" && !block.allowed_windows?.length)) {
       toast({ title: "/scheduleの開始・終了時刻を入力してください", variant: "destructive" });
@@ -773,97 +628,6 @@ export function LightweightDailyPlanner({
     }
   };
 
-  useEffect(() => {
-    if (newTaskDestination === "quick" || !newTaskProjectId) {
-      setNewTaskGoals([]);
-      setNewTaskGoalId("");
-      return;
-    }
-    goalsApi
-      .getByProject(newTaskProjectId, 0, 100)
-      .then(setNewTaskGoals)
-      .catch(() => {
-        setNewTaskGoals([]);
-      });
-  }, [newTaskDestination, newTaskProjectId]);
-
-  const createTask = async () => {
-    if (!newTaskTitle.trim()) return;
-    if (newTaskDestination === "goal" && !newTaskGoalId) {
-      toast({ title: "ゴールを選択してください", variant: "destructive" });
-      return;
-    }
-    setCreatingTask(true);
-    try {
-      let ref: DailyPlanTaskRef;
-      let title: string;
-      const estimateHours = Math.round((newTaskMinutes / 60) * 100) / 100;
-      if (newTaskDestination === "quick") {
-        const created = await quickTasksApi.create({
-          title: newTaskTitle.trim(),
-          estimate_hours: estimateHours,
-          work_type: newTaskWorkType,
-          priority: Number(newTaskPriority),
-        });
-        ref = { source: "quick_task", id: created.id };
-        title = created.title;
-      } else {
-        const created = await tasksApi.create({
-          title: newTaskTitle.trim(),
-          estimate_hours: estimateHours,
-          work_type: newTaskWorkType,
-          priority: Number(newTaskPriority),
-          goal_id: newTaskGoalId,
-        });
-        ref = { source: "task", id: created.id };
-        title = created.title;
-      }
-      const insertedBlock: DailyPlanBlock =
-        newTaskInsertKind === "checklist"
-          ? {
-              id: createId(),
-              type: "checklist_item",
-              title,
-              checked: false,
-              task_ref: ref,
-              duration_override_minutes: newTaskMinutes,
-            }
-          : {
-              id: createId(),
-              type: "schedule_directive",
-              mode: "task",
-              title,
-              task_ref: ref,
-              duration_override_minutes: newTaskMinutes,
-              allowed_windows: newTaskAllowedWindow
-                ? [newTaskAllowedWindow]
-                : [],
-            };
-      updateDocument((current) => ({
-        ...current,
-        blocks: [...current.blocks, insertedBlock],
-      }));
-      await loadTasks();
-      setCreateOpen(false);
-      setNewTaskTitle("");
-      setCommand("");
-      setNewTaskInsertKind("directive");
-      setNewTaskAllowedWindow(undefined);
-      setNewTaskDestination("quick");
-      setNewTaskProjectId("");
-      setNewTaskGoalId("");
-      toast({ title: "タスクを追加しました" });
-    } catch (error) {
-      toast({
-        title: "タスク作成に失敗しました",
-        description: error instanceof Error ? error.message : "不明なエラー",
-        variant: "destructive",
-      });
-    } finally {
-      setCreatingTask(false);
-    }
-  };
-
   const reloadServerVersion = async () => {
     const response = await dailyPlansApi.get(selectedDate);
     setDocument(response.document);
@@ -1002,10 +766,10 @@ export function LightweightDailyPlanner({
                   label="条件型を時間帯内へ90分配置"
                 />
                 <HelpExample
-                  code="[ ] @メール返信 (30m)"
-                  label="チェックリスト"
+                  code="[ ] メール返信"
+                  label="ノート内のチェックリスト"
                 />
-                <p className="sm:col-span-2">@タスク名は時刻の前後どちらにも書けます。</p>
+                <p className="sm:col-span-2">/schedule の候補からタスクを選択できます。</p>
                 <p className="sm:col-span-2">
                   重複する時間は一度だけ数え、短い時間枠の作業タイプを優先します。
                   同じ長さなら開始が早い枠、開始・終了とも同じなら集中作業・軽作業・学習の順に優先します。
@@ -1100,15 +864,6 @@ export function LightweightDailyPlanner({
             {loading && <div className="flex min-h-64 items-center justify-center gap-2" role="status"><Loader2 className="h-5 w-5 animate-spin" />ノートを読み込み中…</div>}
             {loadError && <Alert variant="destructive"><AlertTitle>ノートを読み込めませんでした</AlertTitle><AlertDescription>内容を取得できるまで編集を停止しています。<Button variant="outline" size="sm" onClick={() => setLoadSignal((value) => value + 1)}>ノートを再読み込み</Button></AlertDescription></Alert>}
             {!noteUnavailable && <>
-            {formMode && document.blocks.length === 0 && orphanAssignments.length === 0 && (
-              <div className="py-10 text-center text-gray-400">
-                <Clock3 className="mx-auto mb-2 h-10 w-10 opacity-40" />
-                <p>まだ行がありません</p>
-                <p className="text-sm">
-                  例: 1100-1200 会議 / /schedule 13:00-15:00 @論文読み
-                </p>
-              </div>
-            )}
             {schedule?.unused_minutes !== undefined && (
               <p className="text-right text-sm text-gray-500">
                 当日の未使用時間: {schedule.unused_minutes}分
@@ -1131,12 +886,7 @@ export function LightweightDailyPlanner({
                 </AlertDescription>
               </Alert>
             )}
-            <div className="flex justify-end">
-              <Button variant="ghost" size="sm" onClick={() => setFormMode((current) => !current)}>
-                {formMode ? "ノートに戻る" : "行ごとの設定"}
-              </Button>
-            </div>
-            {!formMode && <DailyPlanNoteEditor
+            <DailyPlanNoteEditor
               key={selectedDate}
               document={document}
               taskOptions={taskOptions}
@@ -1147,7 +897,7 @@ export function LightweightDailyPlanner({
                 const diagnostic = schedule?.directive_diagnostics?.find((item) => item.directive_id === block.id);
                 return <div className="group space-y-1">
                   {block.type === "checklist_item" ? <ChecklistEditor block={block} taskOptions={taskOptions}
-                    onChange={(next) => replaceBlock(block.id, next)} onComplete={(task) => openChecklistCompletion(block, task)} compact /> :
+                    onChange={(next) => replaceBlock(block.id, next)} onComplete={(task) => openChecklistCompletion(block, task)} /> :
                     <details className="rounded-md">
                       <summary className="cursor-pointer rounded px-2 py-1.5 text-sm hover:bg-muted">
                         <span className="mr-2 font-mono text-muted-foreground">{block.type === "timed_line"
@@ -1163,114 +913,11 @@ export function LightweightDailyPlanner({
                       </div>
                     </details>}
                   {assignments.map((assignment, index) => <GeneratedAssignmentRow key={`${assignment.task_id}-${assignment.start_time}-${index}`}
-                    assignment={assignment} onPin={pinAssignment} onComplete={openCompletion} compact />)}
+                    assignment={assignment} onPin={pinAssignment} onComplete={openCompletion} />)}
                   {diagnostic?.reason && <p className="text-xs text-amber-700">{diagnostic.reason}（候補 {diagnostic.eligible_count}件）</p>}
                 </div>;
               }}
-            />}
-            {formMode && document.blocks.map((block, index) => {
-              const assignments =
-                schedule?.assignments.filter(
-                  (item) => item.directive_id === block.id,
-                ) ?? [];
-              const diagnostic = schedule?.directive_diagnostics?.find(
-                (item) => item.directive_id === block.id,
-              );
-              return (
-                <div
-                  key={block.id}
-                  className="group flex items-start gap-2 rounded-lg border border-transparent px-2 py-2 hover:border-gray-200 hover:bg-gray-50 dark:hover:border-gray-700 dark:hover:bg-gray-800/50"
-                >
-                  <GripVertical className="mt-2 h-4 w-4 shrink-0 text-gray-300" />
-                  <div className="min-w-0 flex-1">
-                    {block.type === "timed_line" && (
-                      <TimedLineEditor
-                        block={block}
-                        taskOptions={taskOptions}
-                        onChange={(next) => replaceBlock(block.id, next)}
-                      />
-                    )}
-                    {block.type === "schedule_directive" && (
-                      <DirectiveEditor
-                        block={block}
-                        taskOptions={taskOptions}
-                        projects={projects}
-                        onChange={(next) => replaceBlock(block.id, next)}
-                      />
-                    )}
-                    {block.type === "checklist_item" && (
-                      <ChecklistEditor
-                        block={block}
-                        taskOptions={taskOptions}
-                        onChange={(next) => replaceBlock(block.id, next)}
-                        onComplete={(task) =>
-                          openChecklistCompletion(block, task)
-                        }
-                      />
-                    )}
-                    {block.type === "text" && (
-                      <Input
-                        value={block.text}
-                        readOnly={Boolean(block.content)}
-                        title={block.content ? "書式付きメモは「ノートに戻る」から編集できます" : undefined}
-                        aria-label={block.content ? "書式付きメモ（ノートで編集）" : "メモ"}
-                        onChange={(event) =>
-                          replaceBlock(block.id, {
-                            ...block,
-                            text: event.target.value,
-                            content: undefined,
-                          })
-                        }
-                        className="border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
-                      />
-                    )}
-                    {assignments.length > 0 && (
-                      <div className="mt-2 space-y-1 border-l-2 border-blue-200 pl-3">
-                        {assignments.map((assignment, assignmentIndex) => (
-                          <GeneratedAssignmentRow
-                            key={`${assignment.task_id}-${assignment.start_time}-${assignmentIndex}`}
-                            assignment={assignment}
-                            onPin={pinAssignment}
-                            onComplete={openCompletion}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    {diagnostic?.reason && (
-                      <p className="mt-2 text-sm text-amber-700">
-                        {diagnostic.reason}（候補 {diagnostic.eligible_count}
-                        件）
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex opacity-0 transition-opacity group-hover:opacity-100">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      disabled={index === 0}
-                      onClick={() => moveBlock(index, -1)}
-                    >
-                      <ChevronUp className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      disabled={index === document.blocks.length - 1}
-                      onClick={() => moveBlock(index, 1)}
-                    >
-                      <ChevronDown className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => removeBlock(block.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
+            />
             {orphanAssignments.length > 0 && (
               <section aria-label="文書外の予定" className="space-y-2 border-t pt-3">
                 <h2 className="text-sm font-medium">文書外の予定</h2>
@@ -1280,7 +927,6 @@ export function LightweightDailyPlanner({
                 {orphanAssignments.map((assignment, index) => (
                   <GeneratedAssignmentRow
                     key={`${assignment.task_id}-${assignment.start_time}-${index}`}
-                    compact={!formMode}
                     assignment={assignment}
                     onPin={pinAssignment}
                     onComplete={openCompletion}
@@ -1288,26 +934,6 @@ export function LightweightDailyPlanner({
                 ))}
               </section>
             )}
-            {formMode && <div className="mt-3 flex gap-2 border-t pt-4">
-              <DailyPlanCommandComposer
-                value={command}
-                onChange={setCommand}
-                onSubmit={submitCommand}
-              />
-              <Button variant="outline" onClick={() => submitCommand()}>
-                <Plus className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setNewTaskInsertKind("directive");
-                  setNewTaskAllowedWindow(undefined);
-                  setCreateOpen(true);
-                }}
-              >
-                新規タスク
-              </Button>
-            </div>}
             </>}
           </CardContent>
         </Card>
@@ -1318,26 +944,6 @@ export function LightweightDailyPlanner({
         </div>
         </div>
       </main>
-
-      <Dialog open={Boolean(ambiguousMention)} onOpenChange={(open) => {
-        if (!open) setAmbiguousMention(null);
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>紐づけるタスクを選択</DialogTitle>
-            <DialogDescription>複数のタスクが一致しました。自動では選択しません。</DialogDescription>
-          </DialogHeader>
-          <div className="max-h-80 space-y-2 overflow-auto">
-            {ambiguousMention?.options.map((option) => <Button key={option.key}
-              variant="outline" className="w-full justify-start" onClick={() => {
-                submitCommand(ambiguousMention.input, option);
-                setAmbiguousMention(null);
-              }}>
-              {option.title} · {option.projectTitle ?? "Quick"} · {option.goalTitle ?? option.ref.id.slice(-8)}
-            </Button>)}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog
         open={Boolean(completionAssignment)}
@@ -1398,158 +1004,6 @@ export function LightweightDailyPlanner({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>新しいタスク</DialogTitle>
-            <DialogDescription>
-              Quick
-              Taskとして保存するか、保存先ゴールを指定して通常タスクを作成します。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3">
-            <div className="space-y-1">
-              <Label>タイトル</Label>
-              <Input
-                value={newTaskTitle}
-                onChange={(event) => setNewTaskTitle(event.target.value)}
-                autoFocus
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="space-y-1">
-                <Label>見積り（分）</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={newTaskMinutes}
-                  onChange={(event) => {
-                    const parsed = Number.parseInt(event.target.value, 10);
-                    setNewTaskMinutes(
-                      Number.isFinite(parsed) && parsed > 0
-                        ? Math.min(parsed, 1440)
-                        : 1,
-                    );
-                  }}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>種類</Label>
-                <Select
-                  value={newTaskWorkType}
-                  onValueChange={(value: WorkType) => setNewTaskWorkType(value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(workTypeLabels).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>優先度</Label>
-                <Select
-                  value={newTaskPriority}
-                  onValueChange={setNewTaskPriority}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {["1", "2", "3", "4", "5"].map((value) => (
-                      <SelectItem key={value} value={value}>
-                        {value}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label>作成先</Label>
-              <Select
-                value={newTaskDestination}
-                onValueChange={(value: "quick" | "goal") => {
-                  setNewTaskDestination(value);
-                  setNewTaskProjectId("");
-                  setNewTaskGoalId("");
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="quick">Quick Task</SelectItem>
-                  <SelectItem value="goal">ゴールに紐づく通常タスク</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {newTaskDestination === "goal" && (
-              <div className="space-y-1">
-                <Label>プロジェクト（ゴールの絞り込み）</Label>
-                <Select
-                  value={newTaskProjectId}
-                  onValueChange={(value) => {
-                    setNewTaskProjectId(value);
-                    setNewTaskGoalId("");
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="プロジェクトを選択" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {projects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            {newTaskDestination === "goal" && newTaskProjectId && (
-              <div className="space-y-1">
-                <Label>保存先ゴール</Label>
-                <Select value={newTaskGoalId} onValueChange={setNewTaskGoalId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="ゴールを選択" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {newTaskGoals.map((goal) => (
-                      <SelectItem key={goal.id} value={goal.id}>
-                        {goal.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              キャンセル
-            </Button>
-            <Button
-              onClick={createTask}
-              disabled={
-                creatingTask ||
-                !newTaskTitle.trim() ||
-                (newTaskDestination === "goal" && !newTaskGoalId)
-              }
-            >
-              {creatingTask && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              作成して追加
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -1963,9 +1417,7 @@ function GeneratedAssignmentRow({
   assignment,
   onPin,
   onComplete,
-  compact = false,
 }: {
-  compact?: boolean;
   assignment: DailyPlanAssignment;
   onPin: (
     assignment: DailyPlanAssignment,
@@ -1987,7 +1439,7 @@ function GeneratedAssignmentRow({
   );
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md bg-blue-50 px-3 py-2 text-sm dark:bg-blue-950/30">
-      {compact && !editing ? <button type="button" className="font-mono text-muted-foreground" onClick={() => setEditing(true)} aria-label="予定の時刻を編集">{start}–{end}</button> : <>
+      {!editing ? <button type="button" className="font-mono text-muted-foreground" onClick={() => setEditing(true)} aria-label="予定の時刻を編集">{start}–{end}</button> : <>
       <Input
         aria-label="生成予定の開始時刻"
         disabled={assignment.is_fixed}
@@ -2007,7 +1459,6 @@ function GeneratedAssignmentRow({
       />
       </>}
       <span className="font-medium">{assignment.task_title}</span>
-      {!compact && <Badge variant="outline">{assignment.is_fixed ? "固定済み" : "自動"}</Badge>}
       <div className="ml-auto flex gap-1">
         <Button
           size="sm"
@@ -2030,82 +1481,12 @@ function GeneratedAssignmentRow({
   );
 }
 
-function DailyPlanCommandComposer({
-  value,
-  onChange,
-  onSubmit,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  onSubmit: (value: string) => void;
-}) {
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        blockquote: false,
-        bulletList: false,
-        codeBlock: false,
-        heading: false,
-        horizontalRule: false,
-        orderedList: false,
-      }),
-      Placeholder.configure({
-        placeholder: "行を入力…  /schedule、1100-1200 会議、[] タスク",
-      }),
-    ],
-    content: { type: "doc", content: [{ type: "paragraph" }] },
-    immediatelyRender: false,
-    editorProps: {
-      attributes: {
-        "aria-label": "日次プランの行入力",
-        class:
-          "min-h-10 w-full px-3 py-2 text-sm outline-none [&_.is-editor-empty:first-child:before]:pointer-events-none [&_.is-editor-empty:first-child:before]:float-left [&_.is-editor-empty:first-child:before]:h-0 [&_.is-editor-empty:first-child:before]:text-muted-foreground [&_.is-editor-empty:first-child:before]:content-[attr(data-placeholder)]",
-        role: "textbox",
-      },
-    },
-    onUpdate: ({ editor: currentEditor }) => onChange(currentEditor.getText()),
-  });
-
-  useEffect(() => {
-    if (!editor || editor.getText() === value) return;
-    editor.commands.setContent({
-      type: "doc",
-      content: [
-        {
-          type: "paragraph",
-          content: value ? [{ type: "text", text: value }] : undefined,
-        },
-      ],
-    });
-  }, [editor, value]);
-
-  return (
-    <div
-      className="min-w-0 flex-1 rounded-md border border-input bg-background ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
-      onKeyDown={(event) => {
-        if (
-          event.key === "Enter" &&
-          !event.shiftKey &&
-          !event.nativeEvent.isComposing
-        ) {
-          event.preventDefault();
-          onSubmit(editor?.getText() ?? value);
-        }
-      }}
-    >
-      <EditorContent editor={editor} />
-    </div>
-  );
-}
-
 function ChecklistEditor({
   block,
   taskOptions,
   onChange,
   onComplete,
-  compact = false,
 }: {
-  compact?: boolean;
   block: DailyPlanChecklistItem;
   taskOptions: TaskOption[];
   onChange: (block: DailyPlanChecklistItem) => void;
@@ -2133,18 +1514,6 @@ function ChecklistEditor({
         onChange={(title) => onChange({ ...block, title })}
         className={`min-w-[220px] flex-1 border-0 bg-transparent shadow-none focus-visible:ring-0 ${block.checked ? "text-gray-400 line-through" : ""}`}
       />
-      {!compact && <TaskSelect
-        value={block.task_ref}
-        options={taskOptions}
-        fallbackTitle={block.title}
-        onChange={(task) =>
-          onChange({
-            ...block,
-            task_ref: task?.ref,
-            title: task?.title ?? block.title,
-          })
-        }
-      />}
     </div>
   );
 }
