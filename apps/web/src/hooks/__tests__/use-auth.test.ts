@@ -217,7 +217,7 @@ describe('useAuth', () => {
         })
       })
 
-      expect(mockPush).toHaveBeenCalledWith('/scheduling/daily')
+      expect(mockPush).toHaveBeenCalledWith('/dashboard')
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'ログインしました',
@@ -244,7 +244,7 @@ describe('useAuth', () => {
         })
       })
 
-      expect(mockPush).toHaveBeenCalledWith('/scheduling/daily')
+      expect(mockPush).toHaveBeenCalledWith('/dashboard')
     })
 
     it('should redirect to /dashboard on sign in from root page', async () => {
@@ -266,7 +266,7 @@ describe('useAuth', () => {
         })
       })
 
-      expect(mockPush).toHaveBeenCalledWith('/scheduling/daily')
+      expect(mockPush).toHaveBeenCalledWith('/dashboard')
     })
 
     it('should NOT redirect on sign in if already on dashboard', async () => {

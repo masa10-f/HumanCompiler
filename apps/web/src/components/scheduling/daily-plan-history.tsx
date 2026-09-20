@@ -19,7 +19,9 @@ export function DailyPlanHistory({
   revision,
   disabled,
   onSelect,
+  layout = "sidebar",
 }: {
+  layout?: "sidebar" | "collection";
   selectedDate: string;
   revision: number;
   disabled: boolean;
@@ -99,7 +101,7 @@ export function DailyPlanHistory({
   return (
     <aside
       aria-label="日次ノートの履歴"
-      className="space-y-4 rounded-xl border bg-card p-4 lg:sticky lg:top-20"
+      className={`space-y-4 rounded-xl border bg-card p-4 ${layout === "sidebar" ? "lg:sticky lg:top-20" : ""}`}
     >
       <div className="flex items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 font-semibold">
@@ -214,7 +216,13 @@ export function DailyPlanHistory({
                   : "保存したノートがここに並びます。"}
               </p>
             )}
-            <ol className="max-h-64 space-y-1 overflow-y-auto lg:max-h-[calc(100vh-370px)]">
+            <ol
+              className={
+                layout === "collection"
+                  ? "grid gap-3 sm:grid-cols-2"
+                  : "max-h-64 space-y-1 overflow-y-auto lg:max-h-[calc(100vh-370px)]"
+              }
+            >
               {items.map((item) => (
                 <li key={item.date}>
                   <button

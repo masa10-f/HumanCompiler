@@ -18,6 +18,7 @@ import { QuickTaskList } from '@/components/quick-tasks'
 import { useTimelineOverview } from '@/hooks/use-timeline'
 import { getSlotKindLabel } from '@/constants/schedule'
 import { getJSTDateString, getJSTDate } from '@/lib/date-utils'
+import { DailyNotesCard } from '@/components/dashboard/daily-notes-card'
 import { RecentItemShortcuts } from '@/components/dashboard/recent-item-shortcuts'
 
 export default function DashboardPage() {
@@ -82,6 +83,10 @@ export default function DashboardPage() {
           <p className="text-gray-600 dark:text-gray-300">
             ようこそ！プロジェクトとタスクを管理しましょう。
           </p>
+        </div>
+
+        <div className="mb-8">
+          <DailyNotesCard />
         </div>
 
         {/* Quick Actions */}

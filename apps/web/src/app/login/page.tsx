@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { APP_HOME } from '@/lib/app-home'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -34,7 +33,7 @@ export default function LoginPage() {
     try {
       setLoading(true)
       await signIn(email, password)
-      router.push(APP_HOME)
+      router.push('/dashboard')
     } catch (error: unknown) {
       toast({
         title: 'ログインに失敗しました',

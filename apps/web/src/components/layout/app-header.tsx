@@ -23,7 +23,6 @@ import {
 import { NotebookPen, TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play, Timer, ListChecks, MoreHorizontal, ChevronDown, CalendarDays, SlidersHorizontal, LayoutTemplate, ListTodo } from 'lucide-react'
 
 // Hooks
-import { APP_HOME } from '@/lib/app-home'
 import { useAuth } from '@/hooks/use-auth'
 
 interface AppHeaderProps {
@@ -31,13 +30,13 @@ interface AppHeaderProps {
 }
 
 const NAVIGATION_ITEMS = [
-  { id: 'daily-notes', label: '日次ノート', path: APP_HOME, icon: NotebookPen },
   { id: 'dashboard', label: 'ダッシュボード', path: '/dashboard', icon: Home },
   { id: 'runner', label: 'Runner', path: '/runner', icon: Play },
   { id: 'tasks', label: 'タスク', path: '/tasks', icon: ListTodo },
   { id: 'projects', label: 'プロジェクト', path: '/projects', icon: FolderOpen },
   { id: 'scheduling', label: 'スケジューリング', path: '/scheduling', icon: Calendar },
   { id: 'triage', label: 'トリアージ', path: '/triage', icon: ListChecks },
+  { id: 'daily-notes', label: 'ノート', path: '/notes', icon: NotebookPen },
   { id: 'work-session-history', label: 'セッション履歴', path: '/work-session-history', icon: Timer },
   { id: 'timeline', label: 'タイムライン', path: '/timeline', icon: TrendingUp },
   { id: 'settings', label: '設定', path: '/settings', icon: Settings },
@@ -53,7 +52,7 @@ const SCHEDULING_NAVIGATION_ITEMS = [
 ] as const
 
 const PRIMARY_NAVIGATION_IDS = new Set([
-  'daily-notes',
+  'dashboard',
   'runner',
   'tasks',
   'projects',
@@ -92,7 +91,7 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
       <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between gap-2 xl:gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden xl:gap-4">
-            <Link href={APP_HOME} aria-label="今日のノートを開く" className="flex shrink-0 items-center space-x-3">
+            <div className="flex shrink-0 items-center space-x-3">
               <Image
                 src="/logo.png"
                 alt="HumanCompiler Logo"
@@ -103,7 +102,7 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
               <h1 className="hidden text-xl font-bold text-foreground bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent sm:block">
                 HumanCompiler
               </h1>
-            </Link>
+            </div>
             {/* Desktop Navigation */}
             <nav className="hidden min-w-0 flex-1 items-center gap-1 overflow-hidden lg:flex">
               {PRIMARY_NAVIGATION_ITEMS.map((item) => {

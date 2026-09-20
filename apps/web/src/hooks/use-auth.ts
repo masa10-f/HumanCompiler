@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { APP_HOME } from '@/lib/app-home'
 import { useRouter, usePathname } from 'next/navigation'
 import type { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
@@ -55,14 +54,14 @@ export function useAuth() {
 
         // Only redirect on actual sign in/out events, not on session restoration
         if (event === 'SIGNED_IN' && !initialLoad) {
-          // Only redirect to the notebook home if we're on login/signup pages
+          // Only redirect to dashboard if we're on login/signup pages
           const isAuthPage = pathname === '/login' || pathname === '/signup' || pathname === '/'
           if (isAuthPage) {
             toast({
               title: 'ログインしました',
               description: 'TaskAgentへようこそ！',
             })
-            router.push(APP_HOME)
+            router.push('/dashboard')
           }
         } else if (event === 'SIGNED_OUT') {
           toast({

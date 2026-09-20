@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect } from 'react'
-import { APP_HOME } from '@/lib/app-home'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from '@/hooks/use-toast'
@@ -37,9 +36,9 @@ export default function AuthCallbackPage() {
         if (data.session) {
           toast({
             title: '認証完了',
-            description: 'メール認証が完了しました。今日のノートを開いています。',
+            description: 'メール認証が完了しました。ダッシュボードにリダイレクトしています。',
           })
-          router.push(APP_HOME)
+          router.push('/dashboard')
         } else {
           // No active session, redirect to login
           router.push('/login')

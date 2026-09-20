@@ -4,12 +4,6 @@
 // This file is part of HumanCompiler.
 // For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-'use client'
-
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { useAuth } from '@/hooks/use-auth'
-import { APP_HOME } from '@/lib/app-home'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowRight, Calendar, Clock, Target } from 'lucide-react'
@@ -17,12 +11,6 @@ import Link from 'next/link'
 import Image from 'next/image'
 
 export default function Home() {
-  const { user, loading } = useAuth()
-  const router = useRouter()
-  useEffect(() => {
-    if (!loading && user) router.replace(APP_HOME)
-  }, [loading, user, router])
-  if (loading || user) return <div className="flex min-h-screen items-center justify-center" role="status">今日のノートを開いています…</div>
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
       <div className="container mx-auto px-4 py-16">
