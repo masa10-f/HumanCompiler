@@ -5,6 +5,7 @@ on:
     paths:
       - 'apps/api/src/humancompiler_api/routers/daily_plans.py'
       - 'apps/api/migrations/029*'
+      - 'apps/api/migrations/030*'
       - 'apps/api/tests/test_daily_plan_search_postgres.py'
       - '.github/workflows/notebook-search.yml'
 

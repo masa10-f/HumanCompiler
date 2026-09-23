@@ -40,13 +40,15 @@ export function DailyNotesCard() {
     staleTime: 0,
   });
   const notes = useQuery({
-    queryKey: queryKeys.dashboard.dailyNotes(NOTE_LIMIT),
-    queryFn: () => dailyPlansApi.list({ limit: NOTE_LIMIT }),
+    queryKey: queryKeys.dashboard.dailyNotes(NOTE_LIMIT + 1),
+    queryFn: () => dailyPlansApi.list({ limit: NOTE_LIMIT + 1 }),
     // Revisit the dashboard after editing a note: refresh its preview immediately.
     staleTime: 0,
   });
 
-  const recentNotes = notes.data?.items.filter((note) => note.date !== today);
+  const recentNotes = notes.data?.items
+    .filter((note) => note.date !== today)
+    .slice(0, NOTE_LIMIT);
   return (
     <Card>
       <CardHeader className="gap-3 pb-3 sm:flex-row sm:items-center sm:justify-between">

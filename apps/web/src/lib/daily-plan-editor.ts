@@ -19,7 +19,8 @@ export function matchDailyPlanTasks<T extends { title: string }>(text: string, o
 }
 
 export function isPermanentDailyPlanSaveError(error: unknown): boolean {
-  return error instanceof DailyPlanValidationError || error instanceof ApiError && error.statusCode >= 400 && error.statusCode < 500 &&
+  if (error instanceof DailyPlanValidationError) return true;
+  return error instanceof ApiError && error.statusCode >= 400 && error.statusCode < 500 &&
     ![408, 429].includes(error.statusCode);
 }
 

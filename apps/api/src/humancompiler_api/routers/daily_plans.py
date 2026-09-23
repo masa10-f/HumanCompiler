@@ -9,6 +9,7 @@ import json
 import logging
 import math
 import re
+from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from datetime import UTC, date as date_type, datetime, time
 from decimal import Decimal
@@ -17,7 +18,8 @@ from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.routing import APIRoute
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -61,7 +63,26 @@ from humancompiler_api.models import (
     WorkType,
 )
 
-router = APIRouter(prefix="/daily-plans", tags=["daily-plans"])
+
+class DailyPlanRoute(APIRoute):
+    def get_route_handler(self) -> Callable[[Request], Awaitable[Response]]:
+        handler = super().get_route_handler()
+
+        async def check_size(request: Request) -> Response:
+            # Reject declared oversized bodies before FastAPI parses JSON/Pydantic.
+            length = request.headers.get("content-length", "")
+            if length.isdecimal() and int(length) > 6_000_000:
+                raise HTTPException(
+                    status_code=413, detail="daily note request exceeds 6MB"
+                )
+            return await handler(request)
+
+        return check_size
+
+
+router = APIRouter(
+    prefix="/daily-plans", tags=["daily-plans"], route_class=DailyPlanRoute
+)
 logger = logging.getLogger(__name__)
 
 JST = ZoneInfo("Asia/Tokyo")
@@ -243,6 +264,17 @@ class TextBlock(BaseModel):
             node_type = node.get("type")
             if not isinstance(node_type, str) or node_type not in allowed:
                 raise ValueError("unsupported rich note node")
+            if depth == 0 and node_type not in {
+                "paragraph",
+                "heading",
+                "bulletList",
+                "orderedList",
+                "taskList",
+                "blockquote",
+                "codeBlock",
+                "horizontalRule",
+            }:
+                raise ValueError("rich note root must be a block node")
             attrs = node.get("attrs", {})
             if not isinstance(attrs, dict):
                 raise ValueError("rich note attrs must be an object")
@@ -255,6 +287,29 @@ class TextBlock(BaseModel):
             }.get(node_type, set())
             if set(attrs) - allowed_attrs:
                 raise ValueError("unsupported rich note attributes")
+            if "level" in attrs and (
+                type(attrs["level"]) is not int or not 1 <= attrs["level"] <= 6
+            ):
+                raise ValueError("heading level must be an integer from 1 to 6")
+            if "checked" in attrs and not isinstance(attrs["checked"], bool):
+                raise ValueError("task checked must be a boolean")
+            if "start" in attrs and type(attrs["start"]) is not int:
+                raise ValueError("ordered list start must be an integer")
+            if (
+                "type" in attrs
+                and attrs["type"] is not None
+                and attrs["type"] not in ("1", "a", "A", "i", "I")
+            ):
+                raise ValueError("unsupported ordered list numbering type")
+            if (
+                "language" in attrs
+                and attrs["language"] is not None
+                and (
+                    not isinstance(attrs["language"], str)
+                    or len(attrs["language"]) > 100
+                )
+            ):
+                raise ValueError("code language must be short text")
             marks = node.get("marks", [])
             if not isinstance(marks, list):
                 raise ValueError("rich note marks must be a list")
@@ -448,7 +503,7 @@ def _document_search_text(document: DailyPlanDocumentV1) -> str:
             parts.extend(
                 f"{window.start}-{window.end}" for window in block.allowed_windows
             )
-        line = " ".join(part for part in parts if part).strip(" ")
+        line = " ".join(part for part in parts if part).strip()
         if line:
             lines.append(line)
     return "\n".join(lines)
@@ -572,7 +627,10 @@ async def list_daily_plans(
             date=row.date.isoformat(),
             revision=row.revision,
             updated_at=row.updated_at,
-            title=row.search_text.splitlines()[0][:80],
+            title=next(
+                (line.strip() for line in row.search_text.splitlines() if line.strip()),
+                "",
+            )[:80],
             preview=_history_preview(row.search_text, query),
         )
         for row in rows[:limit]

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
 
-"""Run migration 029 against an isolated PostgreSQL schema, including its trigger."""
+"""Run migrations 029/030 against an isolated PostgreSQL schema, including its trigger."""
 
 import os
 from pathlib import Path
@@ -53,6 +53,18 @@ SEARCH_DOCUMENTS = [
         ],
     },
     {"schema_version": 1, "blocks": [{"id": "space", "type": "text", "text": "   "}]},
+    {
+        "schema_version": 1,
+        "blocks": [
+            {"id": "whitespace", "type": "text", "text": "\t\n\r　\u00a0\u2009\x1c"}
+        ],
+    },
+    {
+        "schema_version": 1,
+        "blocks": [
+            {"id": "leading-break", "type": "text", "text": "\n買い物リスト\n牛乳"}
+        ],
+    },
 ]
 
 
@@ -83,8 +95,12 @@ def test_postgres_search_trigger_matches_python_mirror_and_preserves_documents()
                     f'INSERT INTO "{schema}".daily_plan_documents VALUES (%s, %s)',
                     (index, Json(document.model_dump(mode="json"))),
                 )
-            for statement in migration_statements("029_add_daily_plan_search.sql"):
-                cursor.execute(statement.replace("public.", f'"{schema}".'))
+            for migration in (
+                "029_add_daily_plan_search.sql",
+                "030_trim_daily_plan_search.sql",
+            ):
+                for statement in migration_statements(migration):
+                    cursor.execute(statement.replace("public.", f'"{schema}".'))
             cursor.execute(
                 f'SELECT search_text FROM "{schema}".daily_plan_documents ORDER BY id'
             )
@@ -110,10 +126,12 @@ def test_postgres_search_trigger_matches_python_mirror_and_preserves_documents()
                 f'SELECT search_text FROM "{schema}".daily_plan_documents WHERE id=100'
             )
             assert cursor.fetchone()[0] == _document_search_text(documents[1])
-            for statement in migration_statements(
-                "029_add_daily_plan_search_rollback.sql"
+            for migration in (
+                "030_trim_daily_plan_search_rollback.sql",
+                "029_add_daily_plan_search_rollback.sql",
             ):
-                cursor.execute(statement.replace("public.", f'"{schema}".'))
+                for statement in migration_statements(migration):
+                    cursor.execute(statement.replace("public.", f'"{schema}".'))
             cursor.execute(
                 f'SELECT document_json FROM "{schema}".daily_plan_documents WHERE id=100'
             )

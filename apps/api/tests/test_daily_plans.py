@@ -1332,7 +1332,10 @@ def test_notebook_limits_have_machine_readable_errors():
                 TextBlock(
                     id=str(index),
                     text="x" * 49000,
-                    content={"type": "text", "text": "x" * 49000},
+                    content={
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": "x" * 49000}],
+                    },
                 )
                 for index in range(60)
             ]
@@ -1432,7 +1435,7 @@ def test_notebook_rejects_unsupported_marks_and_attributes(node):
     from humancompiler_api.routers.daily_plans import TextBlock
 
     with pytest.raises(ValidationError):
-        TextBlock(id="invalid", content=node)
+        TextBlock(id="invalid", content={"type": "paragraph", "content": [node]})
 
 
 def test_history_preview_keeps_original_offsets_for_length_changing_lowercase():
@@ -1531,3 +1534,79 @@ async def test_loads_existing_notebook_with_nested_editor_metadata(
     assert loaded.document.blocks[0].id == "existing"
     assert "planId" not in str(loaded.document.model_dump())
     assert loaded.document.blocks[0].text == "過去の引用"
+
+
+@pytest.mark.parametrize(
+    "node",
+    [
+        {"type": "text", "text": "x"},
+        {"type": "listItem"},
+        {"type": "taskItem"},
+        {"type": "hardBreak"},
+        {"type": "heading", "attrs": {"level": 99}},
+        {"type": "heading", "attrs": {"level": True}},
+        {"type": "orderedList", "attrs": {"start": "1"}},
+        {
+            "type": "taskList",
+            "content": [{"type": "taskItem", "attrs": {"checked": "yes"}}],
+        },
+        {"type": "codeBlock", "attrs": {"language": ["python"]}},
+    ],
+)
+def test_notebook_rejects_invalid_root_and_attribute_values(node):
+    from pydantic import ValidationError
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    with pytest.raises(ValidationError):
+        TextBlock(id="invalid", content=node)
+
+
+def test_oversized_note_request_is_rejected_before_json_parsing():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from humancompiler_api.routers.daily_plans import router
+
+    app = FastAPI()
+    app.include_router(router)
+    response = TestClient(app).put(
+        "/daily-plans/2030-01-01",
+        content="invalid JSON",
+        headers={"content-length": "6000001"},
+    )
+    assert response.status_code == 413
+
+
+@pytest.mark.asyncio
+async def test_history_ignores_blank_notes_and_leading_blank_lines(
+    session, planning_data
+):
+    from humancompiler_api.routers.daily_plans import list_daily_plans
+
+    user_id = str(planning_data[0].id)
+    for day, text in [("2030-01-01", "\t　\n"), ("2030-01-02", "\n買い物リスト\n牛乳")]:
+        await update_daily_plan(
+            day,
+            DailyPlanUpdateRequest(
+                expected_revision=0,
+                document={
+                    "schema_version": 1,
+                    "blocks": [{"type": "text", "id": "memo", "text": text}],
+                },
+            ),
+            user_id,
+            session,
+        )
+    # Include a legacy index with a leading newline (before migration 030).
+    row = session.exec(
+        select(DailyPlanDocument).where(
+            DailyPlanDocument.date == datetime(2030, 1, 2).date()
+        )
+    ).one()
+    row.search_text = "\n買い物リスト\n牛乳"
+    session.add(row)
+    session.commit()
+    result = await list_daily_plans(
+        query="", before=None, limit=20, user_id=user_id, session=session
+    )
+    assert len(result.items) == 1
+    assert result.items[0].title == "買い物リスト"

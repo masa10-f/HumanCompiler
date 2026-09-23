@@ -22,14 +22,12 @@ jest.mock("@/lib/date-utils", () => ({
 
 beforeEach(() => {
   jest.mocked(getJSTDateString).mockReturnValue("2030-01-03");
-  jest
-    .mocked(dailyPlansApi.get)
-    .mockImplementation(async (date) => ({
-      date,
-      revision: 0,
-      document: { schema_version: 1, blocks: [] },
-      schedule: null,
-    }));
+  jest.mocked(dailyPlansApi.get).mockImplementation(async (date) => ({
+    date,
+    revision: 0,
+    document: { schema_version: 1, blocks: [] },
+    schedule: null,
+  }));
   jest
     .mocked(dailyPlansApi.list)
     .mockResolvedValue({ items: [], next_cursor: null });
@@ -70,7 +68,7 @@ it("links today, the separate notebook collection, and saved notes from the dash
     await screen.findByRole("link", { name: "2030-01-02 のノートを開く" }),
   ).toHaveAttribute("href", "/scheduling/daily?date=2030-01-02");
   expect(screen.getByText("実験の進捗")).toBeInTheDocument();
-  expect(dailyPlansApi.list).toHaveBeenCalledWith({ limit: 3 });
+  expect(dailyPlansApi.list).toHaveBeenCalledWith({ limit: 4 });
 });
 
 it("keeps the entry links usable before a first note exists", async () => {
@@ -105,18 +103,16 @@ it("keeps notebook navigation available if previews fail and supports retry", as
 });
 
 it("shows today's full rich note even when recent entries are future-dated", async () => {
-  jest
-    .mocked(dailyPlansApi.list)
-    .mockResolvedValue({
-      items: ["2030-01-04", "2030-01-05", "2030-01-06"].map((date) => ({
-        date,
-        revision: 1,
-        title: "未来",
-        preview: "未来のノート",
-        updated_at: date,
-      })),
-      next_cursor: "2030-01-04",
-    });
+  jest.mocked(dailyPlansApi.list).mockResolvedValue({
+    items: ["2030-01-04", "2030-01-05", "2030-01-06"].map((date) => ({
+      date,
+      revision: 1,
+      title: "未来",
+      preview: "未来のノート",
+      updated_at: date,
+    })),
+    next_cursor: "2030-01-04",
+  });
   jest.mocked(dailyPlansApi.get).mockResolvedValue({
     date: "2030-01-03",
     revision: 1,
@@ -175,20 +171,18 @@ it("shows today's full rich note even when recent entries are future-dated", asy
 
 it("retries today's load independently and never presents another day's note as today", async () => {
   jest.mocked(dailyPlansApi.get).mockRejectedValueOnce(new Error("offline"));
-  jest
-    .mocked(dailyPlansApi.list)
-    .mockResolvedValue({
-      items: [
-        {
-          date: "2030-01-02",
-          revision: 1,
-          title: "昨日",
-          preview: "昨日の内容",
-          updated_at: "2030-01-02",
-        },
-      ],
-      next_cursor: null,
-    });
+  jest.mocked(dailyPlansApi.list).mockResolvedValue({
+    items: [
+      {
+        date: "2030-01-02",
+        revision: 1,
+        title: "昨日",
+        preview: "昨日の内容",
+        updated_at: "2030-01-02",
+      },
+    ],
+    next_cursor: null,
+  });
   renderCard();
   const today = screen.getByRole("region", { name: "今日のノート" });
   expect(
@@ -214,4 +208,24 @@ it("switches today's request and edit link after midnight when returning to the 
   expect(
     screen.getByRole("link", { name: "今日のノートを開く" }),
   ).toHaveAttribute("href", "/scheduling/daily?date=2030-01-04");
+});
+
+it("shows three other dates even when today is in the recent results", async () => {
+  jest.mocked(dailyPlansApi.list).mockResolvedValue({
+    items: ["2030-01-03", "2030-01-02", "2030-01-01", "2029-12-31"].map(
+      (date) => ({
+        date,
+        revision: 1,
+        title: `記録 ${date}`,
+        preview: "本文",
+        updated_at: date,
+      }),
+    ),
+    next_cursor: null,
+  });
+  renderCard();
+  expect(await screen.findByText("記録 2029-12-31")).toBeInTheDocument();
+  expect(screen.getByText("記録 2030-01-02")).toBeInTheDocument();
+  expect(screen.getByText("記録 2030-01-01")).toBeInTheDocument();
+  expect(screen.queryByText("記録 2030-01-03")).not.toBeInTheDocument();
 });
