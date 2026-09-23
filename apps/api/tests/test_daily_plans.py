@@ -1442,3 +1442,92 @@ def test_history_preview_keeps_original_offsets_for_length_changing_lowercase():
     preview = _history_preview(text, "target")
     assert "TARGET" in preview
     assert preview.startswith("…" + "İ" * 45 + "TARGET")
+
+
+@pytest.mark.parametrize(
+    "node_type", ["bulletList", "orderedList", "taskList", "blockquote"]
+)
+@pytest.mark.asyncio
+async def test_editor_nested_metadata_is_normalized_on_save_and_load(
+    session, planning_data, node_type
+):
+    from copy import deepcopy
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    paragraph = {
+        "type": "paragraph",
+        "attrs": {"planId": None},
+        "content": [{"type": "text", "text": "追記メモ"}],
+    }
+    children = (
+        [paragraph]
+        if node_type == "blockquote"
+        else [
+            {
+                "type": "taskItem" if node_type == "taskList" else "listItem",
+                **({"attrs": {"checked": True}} if node_type == "taskList" else {}),
+                "content": [paragraph],
+            }
+        ]
+    )
+    raw = {"type": node_type, "attrs": {"planId": "editor-only"}, "content": children}
+    original = deepcopy(raw)
+    document = DailyPlanDocumentV1(
+        blocks=[TextBlock(id="stable-id", text="追記メモ", content=raw)]
+    )
+    saved = await update_daily_plan(
+        "2030-02-02",
+        DailyPlanUpdateRequest(expected_revision=0, document=document),
+        str(planning_data[0].id),
+        session,
+    )
+    assert saved.document.blocks[0].id == "stable-id"
+    assert "planId" not in str(saved.document.model_dump())
+    assert raw == original  # validation must not mutate caller-owned/stored JSON
+    loaded = await get_daily_plan("2030-02-02", str(planning_data[0].id), session)
+    assert loaded.document == saved.document
+    if node_type == "taskList":
+        assert (
+            loaded.document.blocks[0].content["content"][0]["attrs"]["checked"] is True
+        )
+
+
+@pytest.mark.asyncio
+async def test_loads_existing_notebook_with_nested_editor_metadata(
+    session, planning_data
+):
+    from datetime import date
+
+    content = {
+        "type": "blockquote",
+        "content": [
+            {
+                "type": "paragraph",
+                "attrs": {"planId": "old-editor-id"},
+                "content": [{"type": "text", "text": "過去の引用"}],
+            }
+        ],
+    }
+    session.add(
+        DailyPlanDocument(
+            user_id=planning_data[0].id,
+            date=date(2030, 2, 3),
+            revision=1,
+            document_json={
+                "schema_version": 1,
+                "blocks": [
+                    {
+                        "id": "existing",
+                        "type": "text",
+                        "text": "過去の引用",
+                        "content": content,
+                    }
+                ],
+            },
+        )
+    )
+    session.commit()
+    loaded = await get_daily_plan("2030-02-03", str(planning_data[0].id), session)
+    assert loaded.document.blocks[0].id == "existing"
+    assert "planId" not in str(loaded.document.model_dump())
+    assert loaded.document.blocks[0].text == "過去の引用"

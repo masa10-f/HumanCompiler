@@ -240,3 +240,14 @@ it('edits and inserts schedules when randomUUID is unavailable on an HTTP origin
     else Reflect.deleteProperty(globalThis.crypto, 'randomUUID');
   }
 });
+
+it.each(['bulletList', 'orderedList', 'taskList', 'blockquote'])('saves %s without leaking editor identity attributes into nested content', async (type) => {
+  const paragraph = { type: 'paragraph', content: [{ type: 'text', text: 'メモ' }] };
+  const content = type === 'blockquote' ? [paragraph] : [{ type: type === 'taskList' ? 'taskItem' : 'listItem', ...(type === 'taskList' ? { attrs: { checked: false } } : {}), content: [paragraph] }];
+  render(<Notebook initial={{ schema_version: 1, blocks: [{ id: 'list', type: 'text', text: 'メモ', content: { type, content } }] }} />);
+  const editor = await screen.findByRole('textbox', { name: '日次ノート' });
+  fireEvent.paste(editor, { clipboardData: { getData: (mime: string) => mime === 'text/plain' ? '追記' : '' } });
+  const saved = changed.mock.calls.at(-1)![0] as DailyPlanDocumentV1;
+  expect(JSON.stringify(saved)).not.toContain('planId');
+  expect(saved.blocks[0]).toMatchObject({ id: 'list', type: 'text', content: { type } });
+});

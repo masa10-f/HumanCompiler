@@ -4,6 +4,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { DailyNotePreview } from "./daily-note-preview";
 import { useQuery } from "@tanstack/react-query";
 import { NotebookPen, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,6 +23,22 @@ import { queryKeys } from "@/lib/query-keys";
 const NOTE_LIMIT = 3;
 
 export function DailyNotesCard() {
+  const [today, setToday] = useState(getJSTDateString);
+  useEffect(() => {
+    const refreshDate = () => setToday(getJSTDateString());
+    const timer = window.setInterval(refreshDate, 60000);
+    window.addEventListener("focus", refreshDate);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshDate);
+    };
+  }, []);
+  // Fetch today explicitly: future-dated notes can fill every recent-note slot.
+  const todayNote = useQuery({
+    queryKey: queryKeys.dashboard.dailyNote(today),
+    queryFn: () => dailyPlansApi.get(today),
+    staleTime: 0,
+  });
   const notes = useQuery({
     queryKey: queryKeys.dashboard.dailyNotes(NOTE_LIMIT),
     queryFn: () => dailyPlansApi.list({ limit: NOTE_LIMIT }),
@@ -28,6 +46,7 @@ export function DailyNotesCard() {
     staleTime: 0,
   });
 
+  const recentNotes = notes.data?.items.filter((note) => note.date !== today);
   return (
     <Card>
       <CardHeader className="gap-3 pb-3 sm:flex-row sm:items-center sm:justify-between">
@@ -42,7 +61,7 @@ export function DailyNotesCard() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild size="sm">
-            <Link href={`/scheduling/daily?date=${getJSTDateString()}`}>
+            <Link href={`/scheduling/daily?date=${today}`}>
               今日のノートを開く
             </Link>
           </Button>
@@ -54,7 +73,41 @@ export function DailyNotesCard() {
           </Button>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        <section aria-label="今日のノート" className="space-y-2">
+          <h3 className="text-sm font-semibold">
+            今日のノート{" "}
+            <time
+              dateTime={today}
+              className="ml-2 font-normal text-muted-foreground"
+            >
+              {today}
+            </time>
+          </h3>
+          {todayNote.isPending ? (
+            <p role="status" className="text-sm text-muted-foreground">
+              今日のノートを読み込み中…
+            </p>
+          ) : todayNote.isError ? (
+            <div role="status" className="text-sm text-destructive">
+              今日のノートを取得できませんでした。
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void todayNote.refetch()}
+              >
+                今日のノートを再読み込み
+              </Button>
+            </div>
+          ) : todayNote.data.document.blocks.length ? (
+            <DailyNotePreview document={todayNote.data.document} />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              今日のノートはまだ空です。「今日のノートを開く」から書き始められます。
+            </p>
+          )}
+        </section>
+        <h3 className="text-sm font-semibold">ほかの日のノート</h3>
         {notes.isPending && (
           <p role="status" className="text-sm text-muted-foreground">
             最近のノートを読み込み中…
@@ -75,9 +128,9 @@ export function DailyNotesCard() {
             </Button>
           </div>
         )}
-        {notes.data?.items.length ? (
+        {recentNotes?.length ? (
           <div className="grid gap-3 sm:grid-cols-3">
-            {notes.data.items.map((note) => (
+            {recentNotes.map((note) => (
               <Link
                 key={note.date}
                 href={`/scheduling/daily?date=${note.date}`}
@@ -103,7 +156,7 @@ export function DailyNotesCard() {
           !notes.isPending &&
           !notes.isError && (
             <p className="text-sm text-muted-foreground">
-              今日のノートから書き始めると、ここに保存したノートが並びます。
+              ほかの日に保存したノートはまだありません。
             </p>
           )
         )}

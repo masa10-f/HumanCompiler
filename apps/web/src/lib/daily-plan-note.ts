@@ -38,6 +38,18 @@ export function dailyPlanToNote(document: DailyPlanDocumentV1): JSONContent {
   return { type: "doc", content };
 }
 
+// planId belongs to the editor, including null/default IDs on nested paragraphs.
+// Persist stable IDs on document blocks only, never in rich content.
+function persistedNoteContent(node: JSONContent): JSONContent {
+  const attrs = { ...node.attrs };
+  delete attrs.planId;
+  return {
+    ...node,
+    ...(node.attrs ? { attrs } : {}),
+    ...(node.content ? { content: node.content.map(persistedNoteContent) } : {}),
+  };
+}
+
 export function noteToDailyPlan(note: JSONContent): DailyPlanDocumentV1 {
   const ids = new Set<string>();
   const blocks = (note.content ?? []).flatMap(
@@ -58,9 +70,7 @@ export function noteToDailyPlan(note: JSONContent): DailyPlanDocumentV1 {
       let id = node.attrs?.planId as string | undefined;
       if (!id || ids.has(id)) id = createDailyPlanId();
       ids.add(id);
-      const attrs = { ...node.attrs };
-      delete attrs.planId;
-      const content = { ...node, attrs };
+      const content = persistedNoteContent(node);
       return [{ id, type: "text", text: noteText(node), content }];
     },
   );

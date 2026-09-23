@@ -9,6 +9,7 @@ import json
 import logging
 import math
 import re
+from copy import deepcopy
 from datetime import UTC, date as date_type, datetime, time
 from decimal import Decimal
 from typing import Annotated, Literal
@@ -214,6 +215,9 @@ class TextBlock(BaseModel):
             raise PydanticCustomError(
                 "note_content_too_large", "rich note content exceeds 50000 characters"
             )
+        # Older editor builds included internal planId attrs on nested nodes.
+        # Normalize them on both reads and writes, without mutating stored JSON.
+        value = deepcopy(value)
         allowed = {
             "paragraph",
             "heading",
@@ -242,6 +246,7 @@ class TextBlock(BaseModel):
             attrs = node.get("attrs", {})
             if not isinstance(attrs, dict):
                 raise ValueError("rich note attrs must be an object")
+            attrs.pop("planId", None)
             allowed_attrs = {
                 "heading": {"level"},
                 "orderedList": {"start", "type"},
