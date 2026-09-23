@@ -703,7 +703,13 @@ export default function SchedulingPage() {
         const document: DailyPlanDocumentV1 = {
           ...latest.document,
           availability_windows: undefined,
-          blocks: [...preservedBlocks, ...eventBlocks, ...fixedBlocks, ...directives],
+          blocks: [...preservedBlocks, ...eventBlocks, ...fixedBlocks, ...directives].map((block) => {
+            if (block.type !== 'timed_line') return block;
+            const original = latest.document.blocks.find((item) => item.id === block.id);
+            return original?.type === 'timed_line'
+              ? { ...block, completed: original.completed }
+              : block;
+          }),
         };
         try {
           return await dailyPlansApi.update(selectedDate, latest.revision, document);

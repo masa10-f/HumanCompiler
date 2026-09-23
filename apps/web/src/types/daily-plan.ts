@@ -23,6 +23,7 @@ export interface DailyPlanTimedLine {
   title: string;
   task_ref?: DailyPlanTaskRef | null;
   pinned?: boolean;
+  completed?: boolean;
   kind?: "event" | "break";
 }
 
@@ -140,6 +141,7 @@ export interface DailyPlanTaskActionRequest {
   task_ref: DailyPlanTaskRef;
   action: "continue" | "complete";
   actual_minutes?: number;
+  comment?: string;
 }
 
 export interface DailyPlanTaskActionResponse {

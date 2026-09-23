@@ -85,3 +85,11 @@ it("does not invalidate a schedule for memo or checklist edits, but detects time
     ),
   ).toBe(false);
 });
+
+it("retains completion in note data but excludes it from schedule conditions", () => {
+  const fixed = { id: "fixed", type: "timed_line" as const, title: "Meeting", start: "09:00", end: "10:00" };
+  const done = { ...fixed, completed: true };
+  expect(sameSchedulingBlocks([fixed], [done])).toBe(true);
+  expect(sameSchedulingBlocks([done], [{ ...done, end: "10:30" }])).toBe(false);
+  expect(noteToDailyPlan(dailyPlanToNote({ schema_version: 1, blocks: [done] })).blocks[0]).toEqual(done);
+});

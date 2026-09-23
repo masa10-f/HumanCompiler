@@ -153,3 +153,10 @@ describe("daily plan detail adapter", () => {
     });
   });
 });
+
+it("preserves fixed event completion through detailed mode", () => {
+  const block = { id: "done", type: "timed_line" as const, title: "Meeting", start: "09:00", end: "10:00", completed: true };
+  const slots = dailyPlanDocumentToDetailedSlots({ schema_version: 1, blocks: [block] });
+  slots[0]!.end = "10:30";
+  expect(detailedMeetingSlotsToDailyPlanBlocks(slots)[0]).toMatchObject({ ...block, end: "10:30" });
+});
