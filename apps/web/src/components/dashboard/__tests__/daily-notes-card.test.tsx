@@ -399,3 +399,78 @@ it("loads candidates when a stored schedule's editor is expanded", async () => {
   fireEvent(details, new Event("toggle"));
   await waitFor(() => expect(tasksApi.getWorkspace).toHaveBeenCalledTimes(1));
 });
+
+
+it.each([
+  ["今日のノートを開く", "/scheduling/daily?date=2030-01-03"],
+  ["ノート一覧・検索", "/notes"],
+  ["2030-01-02 のノートを開く", "/scheduling/daily?date=2030-01-02"],
+])("queues %s behind a midnight save without switching the editor's date", async (label, href) => {
+  let resolveSave!: (value: Awaited<ReturnType<typeof dailyPlansApi.update>>) => void;
+  jest.mocked(dailyPlansApi.update).mockImplementationOnce(() => new Promise((resolve) => { resolveSave = resolve; }));
+  jest.mocked(dailyPlansApi.list).mockResolvedValue({ items: [{ date: "2030-01-02", title: "昨日", preview: "昨日の記録", revision: 1, updated_at: "2030-01-02" }], next_cursor: null });
+  renderCard();
+  const note = await screen.findByRole("textbox", { name: "日次ノート" });
+  typeMemo(note, "移動前");
+  jest.mocked(getJSTDateString).mockReturnValue("2030-01-04");
+  fireEvent(window, new Event("focus"));
+  await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByRole("link", { name: label }));
+  // The same flush must also save edits made after the first request started.
+  typeMemo(note, "保存中の追記");
+  fireEvent(window, new Event("focus"));
+  expect(mockPush).not.toHaveBeenCalled();
+  const [date, revision, document] = jest.mocked(dailyPlansApi.update).mock.calls[0]!;
+  await act(async () => resolveSave({ date, revision: revision + 1, document }));
+  await waitFor(() => expect(mockPush).toHaveBeenCalledWith(href));
+  expect(mockPush).toHaveBeenCalledTimes(1);
+  expect(dailyPlansApi.update).toHaveBeenCalledTimes(2);
+  expect(JSON.stringify(jest.mocked(dailyPlansApi.update).mock.calls[1]![2])).toContain("保存中の追記");
+  expect(dailyPlansApi.get).not.toHaveBeenCalledWith("2030-01-04");
+});
+
+it("keeps a queued destination after a failed save and retries it instead of the date refresh", async () => {
+  let rejectSave!: (error: Error) => void;
+  jest.mocked(dailyPlansApi.update).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectSave = reject; }));
+  renderCard();
+  typeMemo(await screen.findByRole("textbox", { name: "日次ノート" }), "失敗しても残す");
+  jest.mocked(getJSTDateString).mockReturnValue("2030-01-04");
+  fireEvent(window, new Event("focus"));
+  await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByRole("link", { name: "ノート一覧・検索" }));
+  await act(async () => rejectSave(new ApiError(422, "invalid")));
+  expect(mockPush).not.toHaveBeenCalled();
+  expect(screen.getByRole("textbox", { name: "日次ノート" })).toHaveTextContent("失敗しても残す");
+  fireEvent(window, new Event("focus"));
+  fireEvent.click(screen.getByRole("button", { name: "移動を再試行" }));
+  await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/notes"));
+  expect(dailyPlansApi.update).toHaveBeenCalledTimes(2);
+  expect(dailyPlansApi.get).not.toHaveBeenCalledWith("2030-01-04");
+});
+
+it("uses the latest clicked destination once while a transition is saving", async () => {
+  let resolveSave!: (value: Awaited<ReturnType<typeof dailyPlansApi.update>>) => void;
+  jest.mocked(dailyPlansApi.update).mockImplementationOnce(() => new Promise((resolve) => { resolveSave = resolve; }));
+  renderCard();
+  typeMemo(await screen.findByRole("textbox", { name: "日次ノート" }), "移動待ち");
+  fireEvent.click(screen.getByRole("link", { name: "今日のノートを開く" }));
+  await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByRole("link", { name: "ノート一覧・検索" }));
+  const [date, revision, document] = jest.mocked(dailyPlansApi.update).mock.calls[0]!;
+  await act(async () => resolveSave({ date, revision: revision + 1, document }));
+  expect(mockPush).toHaveBeenCalledTimes(1);
+  expect(mockPush).toHaveBeenCalledWith("/notes");
+});
+
+it("does not follow a queued link after the dashboard is unmounted", async () => {
+  let resolveSave!: (value: Awaited<ReturnType<typeof dailyPlansApi.update>>) => void;
+  jest.mocked(dailyPlansApi.update).mockImplementationOnce(() => new Promise((resolve) => { resolveSave = resolve; }));
+  const view = renderCard();
+  typeMemo(await screen.findByRole("textbox", { name: "日次ノート" }), "移動待ち");
+  fireEvent.click(screen.getByRole("link", { name: "ノート一覧・検索" }));
+  await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalledTimes(1));
+  view.unmount();
+  const [date, revision, document] = jest.mocked(dailyPlansApi.update).mock.calls[0]!;
+  await act(async () => resolveSave({ date, revision: revision + 1, document }));
+  expect(mockPush).not.toHaveBeenCalled();
+});

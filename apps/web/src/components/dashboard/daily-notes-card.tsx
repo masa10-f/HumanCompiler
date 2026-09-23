@@ -32,24 +32,42 @@ import { queryKeys } from "@/lib/query-keys";
 
 const NOTE_LIMIT = 3;
 
+type NoteTransition = {
+  kind: "date" | "navigation";
+  action: () => void;
+};
+
 export function DailyNotesCard() {
   const [today, setToday] = useState(getJSTDateString);
   const router = useRouter();
   const workspace = useRef<DailyPlanWorkspaceHandle>(null);
   const transitionPending = useRef(false);
   const [transitionError, setTransitionError] = useState("");
-  const retryTransition = useRef<() => void>(() => {});
+  const transitionTarget = useRef<NoteTransition | null>(null);
+  useEffect(
+    () => () => {
+      transitionTarget.current = null;
+    },
+    [],
+  );
   const transition = useCallback(
-    async (action: () => void, retryPausedSave = false) => {
+    async (next: NoteTransition, retryPausedSave = false) => {
+      // A click takes priority over date refreshes, including while saving or
+      // awaiting an explicit retry. Repeated clicks keep the latest destination.
+      if (
+        next.kind === "date" &&
+        transitionTarget.current?.kind === "navigation"
+      )
+        return;
+      transitionTarget.current = next;
       if (transitionPending.current) return;
       transitionPending.current = true;
-      retryTransition.current = () => {
-        void transition(action, true);
-      };
       try {
         await workspace.current?.beforeLeave({ retryPausedSave });
         setTransitionError("");
-        action();
+        const target = transitionTarget.current;
+        transitionTarget.current = null;
+        target?.action();
       } catch (error) {
         setTransitionError(
           error instanceof Error
@@ -65,7 +83,8 @@ export function DailyNotesCard() {
   useEffect(() => {
     const refreshDate = () => {
       const next = getJSTDateString();
-      if (next !== today) void transition(() => setToday(next));
+      if (next !== today)
+        void transition({ kind: "date", action: () => setToday(next) });
     };
     const timer = window.setInterval(refreshDate, 60000);
     window.addEventListener("focus", refreshDate);
@@ -86,7 +105,7 @@ export function DailyNotesCard() {
       return;
     event.preventDefault();
     const href = event.currentTarget.getAttribute("href")!;
-    void transition(() => router.push(href));
+    void transition({ kind: "navigation", action: () => router.push(href) });
   };
   const notes = useQuery({
     queryKey: queryKeys.dashboard.dailyNotes(NOTE_LIMIT + 1),
@@ -141,7 +160,10 @@ export function DailyNotesCard() {
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => retryTransition.current()}
+                onClick={() => {
+                  if (transitionTarget.current)
+                    void transition(transitionTarget.current, true);
+                }}
               >
                 移動を再試行
               </Button>
