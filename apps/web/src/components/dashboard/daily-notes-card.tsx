@@ -4,8 +4,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { DailyNotePreview } from "./daily-note-preview";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
+import { useRouter } from "next/navigation";
+import {
+  DailyPlanWorkspace,
+  type DailyPlanWorkspaceHandle,
+} from "@/components/scheduling/daily-plan-workspace";
 import { useQuery } from "@tanstack/react-query";
 import { NotebookPen, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,23 +32,81 @@ import { queryKeys } from "@/lib/query-keys";
 
 const NOTE_LIMIT = 3;
 
+type NoteTransition = {
+  kind: "date" | "navigation";
+  action: () => void;
+};
+
 export function DailyNotesCard() {
   const [today, setToday] = useState(getJSTDateString);
+  const router = useRouter();
+  const workspace = useRef<DailyPlanWorkspaceHandle>(null);
+  const transitionPending = useRef(false);
+  const [transitionError, setTransitionError] = useState("");
+  const transitionTarget = useRef<NoteTransition | null>(null);
+  useEffect(
+    () => () => {
+      transitionTarget.current = null;
+    },
+    [],
+  );
+  const transition = useCallback(
+    async (next: NoteTransition, retryPausedSave = false) => {
+      // A click takes priority over date refreshes, including while saving or
+      // awaiting an explicit retry. Repeated clicks keep the latest destination.
+      if (
+        next.kind === "date" &&
+        transitionTarget.current?.kind === "navigation"
+      )
+        return;
+      transitionTarget.current = next;
+      if (transitionPending.current) return;
+      transitionPending.current = true;
+      try {
+        await workspace.current?.beforeLeave({ retryPausedSave });
+        setTransitionError("");
+        const target = transitionTarget.current;
+        transitionTarget.current = null;
+        target?.action();
+      } catch (error) {
+        setTransitionError(
+          error instanceof Error
+            ? error.message
+            : "ノートを保存できませんでした。",
+        );
+      } finally {
+        transitionPending.current = false;
+      }
+    },
+    [],
+  );
   useEffect(() => {
-    const refreshDate = () => setToday(getJSTDateString());
+    const refreshDate = () => {
+      const next = getJSTDateString();
+      if (next !== today)
+        void transition({ kind: "date", action: () => setToday(next) });
+    };
     const timer = window.setInterval(refreshDate, 60000);
     window.addEventListener("focus", refreshDate);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("focus", refreshDate);
     };
-  }, []);
-  // Fetch today explicitly: future-dated notes can fill every recent-note slot.
-  const todayNote = useQuery({
-    queryKey: queryKeys.dashboard.dailyNote(today),
-    queryFn: () => dailyPlansApi.get(today),
-    staleTime: 0,
-  });
+  }, [today, transition]);
+  const openNote = (event: MouseEvent<HTMLAnchorElement>) => {
+    // New-tab navigation keeps this editor mounted and its autosave active.
+    if (
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      event.button !== 0
+    )
+      return;
+    event.preventDefault();
+    const href = event.currentTarget.getAttribute("href")!;
+    void transition({ kind: "navigation", action: () => router.push(href) });
+  };
   const notes = useQuery({
     queryKey: queryKeys.dashboard.dailyNotes(NOTE_LIMIT + 1),
     queryFn: () => dailyPlansApi.list({ limit: NOTE_LIMIT + 1 }),
@@ -63,12 +131,12 @@ export function DailyNotesCard() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild size="sm">
-            <Link href={`/scheduling/daily?date=${today}`}>
+            <Link href={`/scheduling/daily?date=${today}`} onClick={openNote}>
               今日のノートを開く
             </Link>
           </Button>
           <Button asChild size="sm" variant="outline">
-            <Link href="/notes">
+            <Link href="/notes" onClick={openNote}>
               <Search className="mr-1 h-4 w-4" />
               ノート一覧・検索
             </Link>
@@ -86,28 +154,22 @@ export function DailyNotesCard() {
               {today}
             </time>
           </h3>
-          {todayNote.isPending ? (
-            <p role="status" className="text-sm text-muted-foreground">
-              今日のノートを読み込み中…
-            </p>
-          ) : todayNote.isError ? (
-            <div role="status" className="text-sm text-destructive">
-              今日のノートを取得できませんでした。
+          {transitionError && (
+            <div role="alert" className="text-sm text-destructive">
+              {transitionError} 現在のノートを表示しています。
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => void todayNote.refetch()}
+                onClick={() => {
+                  if (transitionTarget.current)
+                    void transition(transitionTarget.current, true);
+                }}
               >
-                今日のノートを再読み込み
+                移動を再試行
               </Button>
             </div>
-          ) : todayNote.data.document.blocks.length ? (
-            <DailyNotePreview document={todayNote.data.document} />
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              今日のノートはまだ空です。「今日のノートを開く」から書き始められます。
-            </p>
           )}
+          <DailyPlanWorkspace ref={workspace} selectedDate={today} embedded />
         </section>
         <h3 className="text-sm font-semibold">ほかの日のノート</h3>
         {notes.isPending && (
@@ -136,6 +198,7 @@ export function DailyNotesCard() {
               <Link
                 key={note.date}
                 href={`/scheduling/daily?date=${note.date}`}
+                onClick={openNote}
                 aria-label={`${note.date} のノートを開く`}
                 className="min-w-0 rounded-lg border p-3 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >

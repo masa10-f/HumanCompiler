@@ -53,6 +53,19 @@ describe('daily planner mode and date transitions', () => {
     }));
   });
 
+  it('preserves the latest completion status when returning from detailed mode', async () => {
+    render(<SchedulingPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Open details' }));
+    jest.mocked(dailyPlansApi.get).mockResolvedValue({
+      date: '2030-01-02', revision: 2,
+      document: { ...mockDocument, blocks: mockDocument.blocks.map((block) =>
+        block.type === 'timed_line' ? { ...block, completed: true } : block) },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '軽量モード' }));
+    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled());
+    expect(jest.mocked(dailyPlansApi.update).mock.calls[0]?.[2].blocks.find((block) => block.id === 'meeting')).toMatchObject({ completed: true });
+  });
+
   it('does not copy fixed events to another date without a template', async () => {
     render(<SchedulingPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Open details' }));

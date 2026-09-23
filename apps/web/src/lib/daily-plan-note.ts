@@ -106,8 +106,11 @@ export function sameSchedulingBlocks(
     blocks.map((block) => {
       if (block.type === "schedule_directive")
         return { work_type: "light_work", allowed_windows: [], ...block };
-      if (block.type === "timed_line")
-        return { pinned: true, kind: "event", ...block };
+      if (block.type === "timed_line") {
+        const conditions = { ...block };
+        delete conditions.completed;
+        return { pinned: true, kind: "event", ...conditions };
+      }
       return block;
     });
   return (

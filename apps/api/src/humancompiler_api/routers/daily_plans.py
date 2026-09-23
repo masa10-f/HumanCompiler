@@ -146,6 +146,7 @@ class TimedLineBlock(BaseModel):
     title: str = Field(min_length=1, max_length=500)
     task_ref: TaskRef | None = None
     pinned: bool = True
+    completed: bool = False
     kind: Literal["event", "break"] = "event"
 
     @field_validator("start", "end")
@@ -520,6 +521,7 @@ class TaskActionRequest(BaseModel):
     task_ref: TaskRef
     action: Literal["continue", "complete"]
     actual_minutes: int | None = Field(default=None, ge=1, le=1440)
+    comment: str | None = Field(default=None, max_length=500)
 
 
 class TaskActionResponse(BaseModel):
@@ -1624,7 +1626,9 @@ async def apply_task_action(
         id=uuid4(),
         task_id=task.id,
         actual_minutes=request.actual_minutes,
-        comment=f"Daily plan {date}",
+        comment=request.comment
+        if request.comment is not None
+        else f"Daily plan {date}",
     )
     if request.action == "complete":
         task.status = TaskStatus.COMPLETED

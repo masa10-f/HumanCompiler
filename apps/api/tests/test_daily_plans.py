@@ -1610,3 +1610,113 @@ async def test_history_ignores_blank_notes_and_leading_blank_lines(
     )
     assert len(result.items) == 1
     assert result.items[0].title == "買い物リスト"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["continue", "complete"])
+@pytest.mark.parametrize("comment", [None, "", "研究の結果を整理した", "あ" * 500])
+async def test_task_action_persists_optional_comment(
+    session, planning_data, action, comment
+):
+    user, _, _, task, _, _ = planning_data
+    await apply_task_action(
+        "2030-01-02",
+        TaskActionRequest(
+            task_ref=TaskRef(source="task", id=task.id),
+            action=action,
+            actual_minutes=45,
+            comment=comment,
+        ),
+        str(user.id),
+        session,
+    )
+    logs = session.exec(select(Log).where(Log.task_id == task.id)).all()
+    assert len(logs) == 1
+    assert logs[0].actual_minutes == 45
+    assert logs[0].comment == (
+        comment if comment is not None else "Daily plan 2030-01-02"
+    )
+    session.refresh(task)
+    assert task.status == (
+        TaskStatus.COMPLETED if action == "complete" else TaskStatus.IN_PROGRESS
+    )
+
+
+def test_task_action_rejects_comment_over_500_characters():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        TaskActionRequest(
+            task_ref=TaskRef(source="task", id=uuid4()),
+            action="continue",
+            actual_minutes=30,
+            comment="あ" * 501,
+        )
+
+
+@pytest.mark.asyncio
+async def test_fixed_completion_round_trips_without_changing_task_or_logs(
+    session, planning_data
+):
+    user, _, _, task, _, _ = planning_data
+    block = TimedLineBlock(
+        id="meeting",
+        start="10:00",
+        end="11:00",
+        title="Meeting",
+        task_ref=TaskRef(source="task", id=task.id),
+    )
+    assert block.completed is False
+    revision = 0
+    for completed in [True, False]:
+        block.completed = completed
+        saved = await update_daily_plan(
+            "2030-01-02",
+            DailyPlanUpdateRequest(
+                expected_revision=revision, document=DailyPlanDocumentV1(blocks=[block])
+            ),
+            str(user.id),
+            session,
+        )
+        revision = saved.revision
+        loaded = await get_daily_plan("2030-01-02", str(user.id), session)
+        assert loaded.document.blocks[0].completed is completed
+    session.refresh(task)
+    assert task.status == TaskStatus.PENDING
+    assert session.exec(select(Log)).all() == []
+
+
+@pytest.mark.asyncio
+async def test_completed_fixed_task_keeps_its_time_when_regenerated(
+    session, planning_data
+):
+    user, _, _, task, _, _ = planning_data
+    await update_daily_plan(
+        "2030-01-04",
+        DailyPlanUpdateRequest(
+            expected_revision=0,
+            document=DailyPlanDocumentV1(
+                blocks=[
+                    TimedLineBlock(
+                        id="done",
+                        start="09:00",
+                        end="09:30",
+                        title=task.title,
+                        task_ref=TaskRef(source="task", id=task.id),
+                        completed=True,
+                    )
+                ]
+            ),
+        ),
+        str(user.id),
+        session,
+    )
+    for _ in range(2):
+        generated = generate_daily_plan("2030-01-04", str(user.id), session)
+        assert generated.document.blocks[0].completed is True
+        assert generated.schedule is not None
+        fixed = [item for item in generated.schedule.assignments if item.is_fixed]
+        assert [(item.start_time, item.slot_end) for item in fixed] == [
+            ("09:00", "09:30")
+        ]
+    assert session.exec(select(Log)).all() == []

@@ -15,6 +15,7 @@ import { normalizeDailyPlanClock } from "@/lib/daily-plan-command";
 export interface DetailedDailyPlanTimeSlot extends TimeSlot {
   sourceBlockId?: string;
   sourceTitle?: string;
+  sourceCompleted?: boolean;
   sourceKind?: "event" | "break";
   sourceDirective?: DailyPlanScheduleDirective;
 }
@@ -38,6 +39,7 @@ export function dailyPlanDocumentToDetailedSlots(
           kind: "meeting" as const,
           sourceBlockId: block.id,
           sourceTitle: block.title,
+          sourceCompleted: block.completed,
           sourceKind: block.kind ?? "event",
         },
       ];
@@ -80,6 +82,7 @@ export function detailedMeetingSlotsToDailyPlanBlocks(
         end: slot.end,
         title: slot.sourceTitle ?? "固定イベント",
         pinned: true,
+        ...(slot.sourceCompleted !== undefined ? { completed: slot.sourceCompleted } : {}),
         kind: slot.sourceKind ?? "event",
       },
     ];
