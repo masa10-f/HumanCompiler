@@ -18,6 +18,9 @@ from openai import (
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from humancompiler_api.openai_planning import create_planning_function_call
+from humancompiler_api.openai_models import DEFAULT_OPENAI_MODEL
+
 from humancompiler_api.ai.models import WeeklyPlanContext, WeeklyPlanResponse
 from humancompiler_api.ai.task_utils import filter_valid_tasks
 from humancompiler_api.crypto import get_crypto_service
@@ -27,12 +30,12 @@ logger = logging.getLogger(__name__)
 
 
 class OpenAIClient:
-    """OpenAI client using Responses API and Chat Completions API with GPT-5.5"""
+    """OpenAI client using Responses API and Chat Completions API with GPT-6 Sol"""
 
     def __init__(self, api_key: str | None = None, model: str | None = None):
         """Initialize OpenAI client with optional user-specific API key"""
-        # Use GPT-5.5 as default (latest flagship model)
-        default_model = "gpt-5.5"  # GPT-5.5 flagship model for advanced planning
+        # Use GPT-6 Sol as default (balanced planning model)
+        default_model = DEFAULT_OPENAI_MODEL
 
         if api_key:
             logger.info(
@@ -105,8 +108,7 @@ class OpenAIClient:
             # Create structured input for Chat Completions API
             planning_context = self._format_planning_context(context)
 
-            # Use Chat Completions API directly (Responses API is experimental/not available)
-            logger.info(f"Using Chat Completions API with model {self.model}")
+            # GPT-6 planning uses Responses to preserve reasoning with tools.
             return self._use_chat_completions_api(context, planning_context)
 
         except RateLimitError as e:
@@ -346,7 +348,7 @@ class OpenAIClient:
     def _parse_responses_api_output(
         self, response, context: WeeklyPlanContext
     ) -> WeeklyPlanResponse:
-        """Parse Responses API output (GPT-5.5 format)"""
+        """Parse legacy Responses API output"""
         try:
             logger.info(f"Parsing Responses API output: {type(response)}")
 
@@ -470,9 +472,9 @@ class OpenAIClient:
     def _use_chat_completions_api(
         self, context: WeeklyPlanContext, planning_context: str
     ) -> WeeklyPlanResponse:
-        """Use Chat Completions API for GPT-5.5 weekly planning"""
+        """Use Responses for GPT-6 tools and Chat Completions for legacy models."""
         try:
-            logger.info(f"Using Chat Completions API fallback for model {self.model}")
+            logger.info(f"Generating weekly plan with model {self.model}")
 
             # Debug - log the task context
             logger.info(f"Context has {len(context.tasks)} tasks:")
@@ -497,11 +499,23 @@ class OpenAIClient:
                 "max_completion_tokens": 8000,  # Increased to avoid truncation
             }
 
-            if self.model.startswith(("gpt-5.5", "gpt-5.4")):
+            if self.model.startswith("gpt-6-"):
+                function_call = create_planning_function_call(
+                    self.client,
+                    self.model,
+                    api_params["messages"],
+                    self._get_planning_tools()[0]["function"],
+                    api_params["max_completion_tokens"],
+                )
+                return self._create_weekly_plan_response(
+                    json.loads(function_call.arguments), context
+                )
+
+            if self.model.startswith(("gpt-6-", "gpt-5.5", "gpt-5.4")):
                 api_params["reasoning_effort"] = "high"
 
-            # GPT-5.x reasoning models use the default temperature.
-            if not self.model.startswith(("o1", "gpt-5.5", "gpt-5.4")):
+            # Reasoning models use the default temperature.
+            if not self.model.startswith(("o1", "gpt-6-", "gpt-5.5", "gpt-5.4")):
                 api_params["temperature"] = 0.7
 
             response = self.client.chat.completions.create(**api_params)
@@ -510,7 +524,7 @@ class OpenAIClient:
             return self._parse_chat_completions_response(response, context)
 
         except Exception as e:
-            logger.error(f"Chat Completions fallback failed: {e}")
+            logger.error(f"Weekly planning request failed: {e}")
             logger.error(f"Fallback error type: {type(e).__name__}")
             logger.error(
                 f"Model: {self.model}, Client available: {self.client is not None}"

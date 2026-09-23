@@ -6,6 +6,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 from sqlmodel import Session, select
 
+from humancompiler_api.openai_models import (
+    DEFAULT_OPENAI_MODEL,
+    LIGHTWEIGHT_OPENAI_MODEL,
+)
+
 from humancompiler_api.auth import get_current_user_id
 from humancompiler_api.crypto import get_crypto_service
 from humancompiler_api.database import get_session
@@ -22,26 +27,19 @@ router = APIRouter(prefix="/api/user", tags=["user-settings"])
 
 
 AVAILABLE_MODELS = {
-    "gpt-5.5": {
-        "name": "GPT-5.5",
-        "description": "最新フラッグシップモデル - 高度推論・エージェント・コーディング",
-        "max_context": "400k tokens",
+    DEFAULT_OPENAI_MODEL: {
+        "name": "GPT-6 Sol",
+        "description": "性能とコストのバランス重視 - 計画作成・複雑なタスク生成向け",
+        "max_context": "1,050k tokens",
         "max_output": "128k tokens",
         "modalities": ["text", "image_input"],
     },
-    "gpt-5.4-mini": {
-        "name": "GPT-5.4 mini",
-        "description": "高速・低コストのGPT-5.4モデル - 日常的なタスク生成向け",
-        "max_context": "400k tokens",
+    LIGHTWEIGHT_OPENAI_MODEL: {
+        "name": "GPT-6 Luna",
+        "description": "高速・低コスト - 日常的なタスク生成・分類・レポート向け",
+        "max_context": "1,050k tokens",
         "max_output": "128k tokens",
         "modalities": ["text", "image_input"],
-    },
-    "gpt-5.4-nano": {
-        "name": "GPT-5.4 nano",
-        "description": "最小コストのGPT-5.4モデル - 軽量な分類・整形向け",
-        "max_context": "400k tokens",
-        "max_output": "128k tokens",
-        "modalities": ["text"],
     },
 }
 
@@ -89,7 +87,11 @@ def validate_model_choice(model: str) -> bool:
 @router.get("/models")
 async def get_available_models() -> dict:
     """Get list of available OpenAI models with their specifications."""
-    return {"success": True, "models": AVAILABLE_MODELS, "default_model": "gpt-5.5"}
+    return {
+        "success": True,
+        "models": AVAILABLE_MODELS,
+        "default_model": DEFAULT_OPENAI_MODEL,
+    }
 
 
 @router.get("/settings", response_model=UserSettingsResponse)
@@ -110,7 +112,7 @@ async def get_user_settings(
         return UserSettingsResponse(
             id=UUID("00000000-0000-0000-0000-000000000000"),
             user_id=user_id,
-            openai_model="gpt-5.5",
+            openai_model=DEFAULT_OPENAI_MODEL,
             ai_features_enabled=False,
             has_api_key=False,
             created_at=default_timestamp,

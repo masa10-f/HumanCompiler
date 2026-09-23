@@ -21,6 +21,8 @@ from sqlmodel import Column, Relationship, SQLModel
 from sqlmodel import Field as SQLField
 
 
+from humancompiler_api.openai_models import DEFAULT_OPENAI_MODEL
+
 GOAL_DUE_DATE_DESCRIPTION = (
     "Goal deadline in ISO 8601 format. Date-only values are interpreted as "
     "00:00 JST; datetime values must include a timezone offset."
@@ -826,7 +828,7 @@ class UserSettingsBase(SQLModel):
     """Base user settings model"""
 
     openai_api_key_encrypted: str | None = SQLField(default=None, max_length=500)
-    openai_model: str = SQLField(default="gpt-5.5", max_length=50)
+    openai_model: str = SQLField(default=DEFAULT_OPENAI_MODEL, max_length=50)
     ai_features_enabled: bool = SQLField(default=False)
 
     # Email notification settings (Issue #261)
@@ -1613,7 +1615,7 @@ class UserSettingsCreate(BaseModel):
     """User settings creation request"""
 
     openai_api_key: str = Field(min_length=1)
-    openai_model: str = Field(default="gpt-5.5", max_length=50)
+    openai_model: str = Field(default=DEFAULT_OPENAI_MODEL, max_length=50)
 
 
 class UserSettingsUpdate(BaseModel):
