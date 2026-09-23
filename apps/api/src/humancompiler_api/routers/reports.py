@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlmodel import Session
 
+from humancompiler_api.openai_models import LIGHTWEIGHT_OPENAI_MODEL
+
 from humancompiler_api.auth import AuthUser, get_current_user
 from humancompiler_api.database import db
 from humancompiler_api.models import (
@@ -102,7 +104,7 @@ async def generate_weekly_report(
             request=request,
             user_id=str(current_user.user_id),
             openai_api_key=decrypted_api_key,
-            openai_model=user_settings.openai_model or "gpt-5.4-mini",
+            openai_model=user_settings.openai_model or LIGHTWEIGHT_OPENAI_MODEL,
         )
 
         return report

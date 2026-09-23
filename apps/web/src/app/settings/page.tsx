@@ -36,7 +36,7 @@ interface AvailableModels {
 const USER_API_KEY_REGEX = /^sk-[a-zA-Z0-9-_]{20,}$/
 
 // Default model from environment or fallback
-const DEFAULT_MODEL = process.env.NEXT_PUBLIC_DEFAULT_OPENAI_MODEL || "gpt-5.5"
+const DEFAULT_MODEL = process.env.NEXT_PUBLIC_DEFAULT_OPENAI_MODEL || "gpt-6-sol"
 
 const formatHookTokenDate = (value: string | null) => {
   if (!value) return "未使用"

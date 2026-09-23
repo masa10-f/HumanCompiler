@@ -86,7 +86,7 @@ def test_openai_service_initialization_without_user_api_key():
     """Test OpenAI service initialization without a user API key."""
     service = OpenAIService()
     assert service.client is None
-    assert service.model == "gpt-5.5"
+    assert service.model == "gpt-6-sol"
 
 
 def test_openai_service_initialization_with_explicit_user_api_key():
@@ -205,7 +205,8 @@ async def test_generate_weekly_plan_no_client(mock_context):
 
 
 @pytest.mark.asyncio
-async def test_generate_weekly_plan_success(mock_context):
+@pytest.mark.parametrize("model", ["gpt-6-sol", "gpt-6-luna", "gpt-5.5"])
+async def test_generate_weekly_plan_success(mock_context, model):
     """Test successful weekly plan generation"""
     mock_openai_response = Mock()
     mock_openai_response.choices = [Mock()]
@@ -232,10 +233,16 @@ async def test_generate_weekly_plan_success(mock_context):
 
     mock_client = Mock()
     mock_client.chat.completions.create.return_value = mock_openai_response
+    function_call = mock_openai_response.choices[0].message.function_call
+    function_call.type = "function_call"
+    mock_client.responses.create.return_value = Mock(
+        status="completed", output=[function_call]
+    )
 
     service = OpenAIService()
     service.client = mock_client
 
+    service.model = model
     response = await service.generate_weekly_plan(mock_context)
 
     assert response.success
@@ -243,21 +250,41 @@ async def test_generate_weekly_plan_success(mock_context):
     assert response.task_plans[0].task_id == "task-1"
     assert response.task_plans[0].estimated_hours == 5.0
     assert response.total_planned_hours == 5.0
+    if model.startswith("gpt-6-"):
+        mock_client.chat.completions.create.assert_not_called()
+        params = mock_client.responses.create.call_args.kwargs
+        assert params["model"] == model
+        assert params["reasoning"] == {"effort": "high"}
+        assert params["max_output_tokens"] == 8000
+        assert "temperature" not in params
+    else:
+        mock_client.responses.create.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_generate_weekly_plan_openai_error(mock_context):
+@pytest.mark.parametrize("model", ["gpt-6-sol", "gpt-6-luna", "gpt-5.5"])
+async def test_generate_weekly_plan_openai_error(mock_context, model):
     """Test weekly plan generation with OpenAI API error"""
     mock_client = Mock()
+    mock_client.responses.create.side_effect = Exception("OpenAI API error")
     mock_client.chat.completions.create.side_effect = Exception("OpenAI API error")
 
     service = OpenAIService()
     service.client = mock_client
+    service.model = model
 
     response = await service.generate_weekly_plan(mock_context)
 
     assert not response.success
     assert "Error generating plan" in response.recommendations[0]
+
+    assert "OpenAI API error" in response.recommendations[0]
+    if model.startswith("gpt-6-"):
+        mock_client.responses.create.assert_called_once()
+        mock_client.chat.completions.create.assert_not_called()
+    else:
+        mock_client.chat.completions.create.assert_called_once()
+        mock_client.responses.create.assert_not_called()
 
 
 @pytest.mark.skip("Complex external dependency - skipped for now")

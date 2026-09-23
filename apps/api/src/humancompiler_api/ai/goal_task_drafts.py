@@ -20,6 +20,8 @@ from openai import (
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from sqlmodel import Session, select
 
+from humancompiler_api.openai_models import DEFAULT_OPENAI_MODEL
+
 from humancompiler_api.crypto import get_crypto_service
 from humancompiler_api.models import (
     ContextNote,
@@ -37,7 +39,6 @@ from humancompiler_api.models import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_OPENAI_MODEL = "gpt-5.5"
 MAX_DRAFT_OUTPUT_TOKENS = 50000
 AI_DRAFT_OPENAI_TIMEOUT_SECONDS = 180.0
 MAX_CONTEXT_NOTE_CHARS = 6000
@@ -988,9 +989,9 @@ class GoalTaskDraftService:
             "response_format": {"type": "json_object"},
             "max_completion_tokens": MAX_DRAFT_OUTPUT_TOKENS,
         }
-        if model.startswith(("gpt-5.5", "gpt-5.4")):
+        if model.startswith(("gpt-6-", "gpt-5.5", "gpt-5.4")):
             api_params["reasoning_effort"] = "high"
-        if not model.startswith(("gpt-5.5", "gpt-5.4", "o1")):
+        if not model.startswith(("gpt-6-", "gpt-5.5", "gpt-5.4", "o1")):
             api_params["temperature"] = 0.2
         response = client.chat.completions.create(**api_params)
         choice = response.choices[0]

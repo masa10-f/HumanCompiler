@@ -12,6 +12,8 @@ from openai import OpenAI
 from pydantic import BaseModel, Field
 from sqlmodel import Session, or_, select
 
+from humancompiler_api.openai_models import DEFAULT_OPENAI_MODEL
+
 from humancompiler_api.auth import AuthUser, get_current_user
 from humancompiler_api.database import db
 from humancompiler_api.models import (
@@ -612,7 +614,7 @@ async def preview_natural_language_bulk_changes(
         ).all()
         allowed_goal_ids = {goal.id for goal, _project in goals if goal.id is not None}
         client = OpenAI(api_key=api_key, timeout=30.0)
-        model = settings.openai_model or "gpt-5.5"
+        model = settings.openai_model or DEFAULT_OPENAI_MODEL
         response = client.chat.completions.create(
             model=model,
             messages=[
@@ -683,7 +685,7 @@ async def preview_natural_language_bulk_changes(
             max_completion_tokens=2500,
             **(
                 {"reasoning_effort": "high"}
-                if model.startswith(("gpt-5.5", "gpt-5.4"))
+                if model.startswith(("gpt-6-", "gpt-5.5", "gpt-5.4"))
                 else {}
             ),
         )

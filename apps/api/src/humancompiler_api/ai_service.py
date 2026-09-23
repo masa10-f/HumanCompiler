@@ -14,6 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import Session, select
 from uuid import UUID
 
+from humancompiler_api.openai_planning import create_planning_function_call
+from humancompiler_api.openai_models import DEFAULT_OPENAI_MODEL
+
 from humancompiler_api.crypto import get_crypto_service
 from humancompiler_api.models import Goal, Project, Task, UserSettings
 from humancompiler_api.services import goal_service, project_service, task_service
@@ -81,13 +84,13 @@ class OpenAIService:
         """Initialize OpenAI client with optional user-specific API key."""
         if api_key:
             self.client = OpenAI(api_key=api_key)
-            self.model = model or "gpt-5.5"  # Default to GPT-5.5
+            self.model = model or DEFAULT_OPENAI_MODEL  # Default to GPT-6 Sol
         else:
             logger.warning(
                 "User OpenAI API key not configured - AI features will not be available"
             )
             self.client = None
-            self.model = "gpt-5.5"  # GPT-5.5 flagship model
+            self.model = DEFAULT_OPENAI_MODEL  # GPT-6 Sol balanced model
 
     @classmethod
     async def create_for_user(
@@ -395,43 +398,55 @@ Use the create_week_plan function to structure your response."""
                 "max_completion_tokens": 8000,  # Generous limit for complex project plans
             }
 
-            if self.model.startswith(("gpt-5.5", "gpt-5.4")):
+            if self.model.startswith(("gpt-6-", "gpt-5.5", "gpt-5.4")):
                 api_params["reasoning_effort"] = "high"
 
-            # GPT-5.x reasoning models use the default temperature.
-            if not self.model.startswith(("gpt-5.5", "gpt-5.4")):
+            # Reasoning models use the default temperature.
+            if not self.model.startswith(("gpt-6-", "gpt-5.5", "gpt-5.4")):
                 api_params["temperature"] = 0.7
 
-            response = self.client.chat.completions.create(**api_params)
-
-            # Debug: Log OpenAI response structure
-            logger.info(f"🔍 OpenAI Response: {len(response.choices)} choices")
-            for i, choice in enumerate(response.choices):
-                logger.info(f"🔍 Choice {i}: finish_reason = {choice.finish_reason}")
-                logger.info(f"🔍 Choice {i}: message.role = {choice.message.role}")
-                logger.info(
-                    f"🔍 Choice {i}: has function_call = {hasattr(choice.message, 'function_call')}"
+            if self.model.startswith("gpt-6-"):
+                function_call = create_planning_function_call(
+                    self.client,
+                    self.model,
+                    api_params["messages"],
+                    self.get_function_definitions()[0],
+                    api_params["max_completion_tokens"],
                 )
-                if hasattr(choice.message, "function_call"):
-                    fc = choice.message.function_call
-                    logger.info(f"🔍 Choice {i}: function_call = {fc}")
-                    logger.info(
-                        f"🔍 Choice {i}: function_call.name = {fc.name if fc else 'None'}"
-                    )
-                if hasattr(choice.message, "content"):
-                    content_preview = (
-                        str(choice.message.content)[:200]
-                        if choice.message.content
-                        else "None"
-                    )
-                    logger.info(f"🔍 Choice {i}: content preview = {content_preview}")
-                if hasattr(choice.message, "tool_calls"):
-                    logger.info(
-                        f"🔍 Choice {i}: tool_calls = {choice.message.tool_calls}"
-                    )
+            else:
+                response = self.client.chat.completions.create(**api_params)
 
-            # Parse function call response
-            function_call = response.choices[0].message.function_call
+                # Debug: Log OpenAI response structure
+                logger.info(f"🔍 OpenAI Response: {len(response.choices)} choices")
+                for i, choice in enumerate(response.choices):
+                    logger.info(
+                        f"🔍 Choice {i}: finish_reason = {choice.finish_reason}"
+                    )
+                    logger.info(f"🔍 Choice {i}: message.role = {choice.message.role}")
+                    logger.info(
+                        f"🔍 Choice {i}: has function_call = {hasattr(choice.message, 'function_call')}"
+                    )
+                    if hasattr(choice.message, "function_call"):
+                        fc = choice.message.function_call
+                        logger.info(f"🔍 Choice {i}: function_call = {fc}")
+                        logger.info(
+                            f"🔍 Choice {i}: function_call.name = {fc.name if fc else 'None'}"
+                        )
+                    if hasattr(choice.message, "content"):
+                        content_preview = (
+                            str(choice.message.content)[:200]
+                            if choice.message.content
+                            else "None"
+                        )
+                        logger.info(
+                            f"🔍 Choice {i}: content preview = {content_preview}"
+                        )
+                    if hasattr(choice.message, "tool_calls"):
+                        logger.info(
+                            f"🔍 Choice {i}: tool_calls = {choice.message.tool_calls}"
+                        )
+
+                function_call = response.choices[0].message.function_call
             if function_call and function_call.name == "create_week_plan":
                 function_args = json.loads(function_call.arguments)
 
