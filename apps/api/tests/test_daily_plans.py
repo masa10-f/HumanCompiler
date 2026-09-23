@@ -6,9 +6,11 @@
 from datetime import datetime
 from decimal import Decimal
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi import HTTPException
+from humancompiler_scheduler.human import HumanDailySolverConfig
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.dialects import postgresql
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -17,6 +19,7 @@ from humancompiler_api.models import (
     DailyPlanDocument,
     Goal,
     GoalDependency,
+    GoalStatus,
     Log,
     Project,
     QuickTask,
@@ -30,6 +33,7 @@ from humancompiler_api.models import (
 from humancompiler_api.routers.daily_plans import (
     AvailabilityWindow,
     DailyPlanDocumentV1,
+    DailyPlanGenerateRequest,
     DailyPlanUpdateRequest,
     DirectiveFilter,
     DirectiveWindow,
@@ -44,6 +48,9 @@ from humancompiler_api.routers.daily_plans import (
     generate_daily_plan,
     get_daily_plan,
     update_daily_plan,
+)
+from humancompiler_api.routers.schemas.scheduler_config import (
+    SchedulerSolverConfigInput,
 )
 
 
@@ -701,6 +708,68 @@ async def test_goal_dependency_outside_filter_is_reported_as_blocked(
 
 
 @pytest.mark.asyncio
+async def test_completed_prerequisite_goal_does_not_block_dependent_tasks(
+    session: Session, planning_data
+) -> None:
+    user, project, prerequisite_goal, _first, _second, _quick = planning_data
+    prerequisite_goal.status = GoalStatus.COMPLETED
+    dependent_goal = Goal(
+        id=uuid4(),
+        project_id=project.id,
+        title="Dependent goal",
+        estimate_hours=Decimal("1"),
+    )
+    dependent_task = Task(
+        id=uuid4(),
+        goal_id=dependent_goal.id,
+        title="Dependent task",
+        estimate_hours=Decimal("1"),
+        work_type=WorkType.FOCUSED_WORK,
+    )
+    session.add_all(
+        [
+            prerequisite_goal,
+            dependent_goal,
+            dependent_task,
+            GoalDependency(
+                id=uuid4(),
+                goal_id=dependent_goal.id,
+                depends_on_goal_id=prerequisite_goal.id,
+            ),
+        ]
+    )
+    session.commit()
+    await update_daily_plan(
+        "2030-01-08",
+        DailyPlanUpdateRequest(
+            expected_revision=0,
+            document=DailyPlanDocumentV1(
+                blocks=[
+                    ScheduleDirectiveBlock(
+                        id="dependent-goal-only",
+                        allowed_windows=[DirectiveWindow(start="09:00", end="18:00")],
+                        mode="filter",
+                        filter=DirectiveFilter(goal_ids=[dependent_goal.id]),
+                    )
+                ]
+            ),
+        ),
+        str(user.id),
+        session,
+    )
+
+    generated = generate_daily_plan("2030-01-08", str(user.id), session)
+
+    assert generated.schedule is not None
+    diagnostic = generated.schedule.directive_diagnostics[0]
+    assert diagnostic.eligible_count == 1
+    assert diagnostic.reason is None
+    assert {item.task_id for item in generated.schedule.assignments} == {
+        str(dependent_task.id)
+    }
+
+
+@pytest.mark.asyncio
 async def test_generate_persists_structured_solver_error(
     session: Session, planning_data, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -962,6 +1031,150 @@ def test_multiple_frozen_lines_accumulate_requested_minutes(
     task = next(item for item in fixture.tasks if item.id == str(first.id))
     assert task.remaining_minutes == 120
     assert len(fixture.frozen_blocks) == 2
+
+
+def test_scheduler_input_rounds_estimates_up_and_clamps_priority(
+    session: Session, planning_data
+) -> None:
+    user, _project, _goal, first, _second, quick = planning_data
+    first.estimate_hours = Decimal("0.33")
+    first.priority = 9
+    quick.estimate_hours = Decimal("0.1")
+    session.add_all([first, quick])
+    session.commit()
+    document = DailyPlanDocumentV1(
+        blocks=[
+            ScheduleDirectiveBlock(
+                id="all",
+                allowed_windows=[DirectiveWindow(start="09:00", end="12:00")],
+                mode="filter",
+            )
+        ]
+    )
+
+    fixture, _metadata, _counts, _blocked = _build_scheduler_input(
+        session,
+        user.id,
+        "2030-01-11",
+        document,
+    )
+
+    tasks = {item.id: item for item in fixture.tasks}
+    assert tasks[str(first.id)].remaining_minutes == 20
+    assert tasks[str(first.id)].priority == 5
+    assert tasks[f"quick_{quick.id}"].remaining_minutes == 6
+
+
+def test_scheduler_input_applies_solver_config_overrides(
+    session: Session, planning_data
+) -> None:
+    user = planning_data[0]
+    document = DailyPlanDocumentV1(
+        blocks=[
+            ScheduleDirectiveBlock(
+                id="all",
+                allowed_windows=[DirectiveWindow(start="09:00", end="12:00")],
+                mode="filter",
+            )
+        ]
+    )
+
+    default_fixture, *_ = _build_scheduler_input(
+        session, user.id, "2030-01-11", document
+    )
+    tuned_fixture, *_ = _build_scheduler_input(
+        session,
+        user.id,
+        "2030-01-11",
+        document,
+        solver_config=SchedulerSolverConfigInput(
+            priority_score_base=10, project_switch_penalty=0
+        ),
+    )
+
+    assert default_fixture.solver_config == HumanDailySolverConfig()
+    assert tuned_fixture.solver_config.priority_score_base == 10
+    assert tuned_fixture.solver_config.project_switch_penalty == 0
+    assert (
+        tuned_fixture.solver_config.min_block_minutes
+        == HumanDailySolverConfig().min_block_minutes
+    )
+
+
+@pytest.mark.asyncio
+async def test_generate_today_can_place_work_before_current_time(
+    session: Session, planning_data
+) -> None:
+    user, _project, _goal, first, _second, _quick = planning_data
+    today = datetime.now(ZoneInfo("Asia/Tokyo")).date().isoformat()
+    await update_daily_plan(
+        today,
+        DailyPlanUpdateRequest(
+            expected_revision=0,
+            document=DailyPlanDocumentV1(
+                blocks=[
+                    ScheduleDirectiveBlock(
+                        id="early",
+                        allowed_windows=[DirectiveWindow(start="00:00", end="03:00")],
+                        mode="task",
+                        task_ref=TaskRef(source="task", id=first.id),
+                    )
+                ]
+            ),
+        ),
+        str(user.id),
+        session,
+    )
+
+    generated = generate_daily_plan(today, str(user.id), session)
+
+    assert generated.schedule is not None
+    assert generated.schedule.assignments
+    assert generated.schedule.assignments[0].start_time == "00:00"
+
+
+@pytest.mark.asyncio
+async def test_generate_uses_requested_solver_config(
+    session: Session, planning_data
+) -> None:
+    user, _project, _goal, first, _second, _quick = planning_data
+    date_text = "2030-01-13"
+    await update_daily_plan(
+        date_text,
+        DailyPlanUpdateRequest(
+            expected_revision=0,
+            document=DailyPlanDocumentV1(
+                blocks=[
+                    ScheduleDirectiveBlock(
+                        id="specific",
+                        allowed_windows=[DirectiveWindow(start="09:00", end="12:00")],
+                        mode="task",
+                        task_ref=TaskRef(source="task", id=first.id),
+                    )
+                ]
+            ),
+        ),
+        str(user.id),
+        session,
+    )
+
+    default_plan = generate_daily_plan(date_text, str(user.id), session)
+    tuned_plan = generate_daily_plan(
+        date_text,
+        str(user.id),
+        session,
+        DailyPlanGenerateRequest(
+            solver_config=SchedulerSolverConfigInput(
+                min_block_minutes=15, max_candidate_block_minutes=30
+            )
+        ),
+    )
+
+    assert default_plan.schedule is not None
+    assert max(item.duration_hours for item in default_plan.schedule.assignments) > 0.5
+    assert tuned_plan.schedule is not None
+    assert tuned_plan.schedule.assignments
+    assert all(item.duration_hours <= 0.5 for item in tuned_plan.schedule.assignments)
 
 
 @pytest.mark.asyncio

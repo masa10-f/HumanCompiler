@@ -3,6 +3,7 @@
 
 import { DailyPlanValidationError } from '@/lib/daily-plan-validation';
 import { ApiError } from '@/lib/errors';
+import type { DailyPlanScheduleDirective, DailyPlanTaskRef } from '@/types/daily-plan';
 
 export function extractDailyPlanMention(text: string): string | undefined {
   const mention = text.match(/(?:^|\s)@([^()]+)/)?.[1];
@@ -38,4 +39,19 @@ export function missingDailyPlanBlockIds(error: unknown): string[] {
 
 export function stripDailyPlanDuration(text: string): string {
   return text.replace(/\(\d+(?:h(?:\d+m)?|m)\)\s*$/i, '').trim();
+}
+
+export function applyDirectiveTaskSelection(
+  block: DailyPlanScheduleDirective,
+  task?: { ref: DailyPlanTaskRef; title: string },
+): DailyPlanScheduleDirective {
+  if (task) {
+    return { ...block, mode: 'task', task_ref: task.ref, title: task.title, filter: undefined };
+  }
+  return {
+    ...block,
+    mode: 'filter',
+    task_ref: undefined,
+    filter: block.filter ?? { work_types: [], project_ids: [], goal_ids: [] },
+  };
 }

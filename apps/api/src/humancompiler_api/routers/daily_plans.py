@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
 
-"""Lightweight, document-oriented daily planning endpoints."""
+"""Document-oriented daily planning endpoints."""
 
 from __future__ import annotations
 
@@ -53,6 +53,7 @@ from humancompiler_api.models import (
     DailyPlanDocument,
     Goal,
     GoalDependency,
+    GoalStatus,
     Log,
     Project,
     QuickTask,
@@ -61,6 +62,10 @@ from humancompiler_api.models import (
     TaskDependency,
     TaskStatus,
     WorkType,
+)
+from humancompiler_api.routers.schemas.scheduler_config import (
+    SchedulerSolverConfigInput,
+    coerce_human_solver_config,
 )
 
 
@@ -400,6 +405,10 @@ class DailyPlanUpdateRequest(BaseModel):
     document: DailyPlanDocumentV1
 
 
+class DailyPlanGenerateRequest(BaseModel):
+    solver_config: SchedulerSolverConfigInput | None = None
+
+
 class DailyPlanScheduleAssignment(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -732,6 +741,18 @@ def _work_kind(value: str | WorkType) -> HumanWorkKind:
     }.get(raw, HumanWorkKind.LIGHT_WORK)
 
 
+def _estimate_minutes(estimate_hours: Decimal | float) -> int:
+    # Round up so a fractional-minute estimate is never under-allocated. The
+    # string round-trip keeps float inputs such as 0.1 from rounding to 7 min.
+    return max(0, math.ceil(Decimal(str(estimate_hours)) * 60))
+
+
+def _scheduler_priority(priority: int | None) -> int:
+    if priority is None:
+        return 3
+    return min(5, max(1, int(priority)))
+
+
 def _load_owned_tasks(
     session: Session,
     owner_id: UUID,
@@ -970,14 +991,18 @@ def _build_task_dependencies(
                     task_id
                 )
         active_tasks_by_goal: dict[str, set[str]] = {}
+        completed_goal_ids: set[str] = set()
         for task_id, (task, goal, _project) in regular.items():
+            if goal.status == GoalStatus.COMPLETED:
+                completed_goal_ids.add(str(goal.id))
             if task.status in ACTIVE_TASK_STATUSES:
                 active_tasks_by_goal.setdefault(str(goal.id), set()).add(task_id)
         for dependency in goal_dependencies:
+            prerequisite_goal_id = str(dependency.depends_on_goal_id)
+            if prerequisite_goal_id in completed_goal_ids:
+                continue
             dependent_tasks = tasks_by_goal.get(str(dependency.goal_id), [])
-            prerequisite_tasks = active_tasks_by_goal.get(
-                str(dependency.depends_on_goal_id), set()
-            )
+            prerequisite_tasks = active_tasks_by_goal.get(prerequisite_goal_id, set())
             if not prerequisite_tasks:
                 continue
             for task_id in dependent_tasks:
@@ -1039,6 +1064,7 @@ def _build_scheduler_input(
     owner_id: UUID,
     date_text: str,
     document: DailyPlanDocumentV1,
+    solver_config: SchedulerSolverConfigInput | None = None,
 ) -> tuple[
     HumanFlexibleDailyFixture,
     dict[str, dict],
@@ -1110,6 +1136,8 @@ def _build_scheduler_input(
     eligible_counts: dict[str, int] = {}
     schedule_date = _parse_date(date_text)
     current_jst = datetime.now(JST)
+    # Only keeps already-started generated rows on regeneration. Placement may
+    # still use windows before the current time; the user decides the timing.
     now = current_jst if current_jst.date() == schedule_date else None
     frozen_keys: set[tuple[str, str, str]] = set()
     document_block_ids = {block.id for block in document.blocks}
@@ -1315,14 +1343,14 @@ def _build_scheduler_input(
     for scheduler_id in sorted(selected_ids):
         if scheduler_id.startswith("quick_"):
             quick_task = quick[scheduler_id]
-            remaining = int(Decimal(quick_task.estimate_hours) * 60)
+            remaining = _estimate_minutes(quick_task.estimate_hours)
             remaining = max(remaining, requested_by_task.get(scheduler_id, 0))
             scheduler_tasks.append(
                 HumanTask(
                     id=scheduler_id,
                     title=quick_task.title,
                     remaining_minutes=remaining,
-                    priority=quick_task.priority,
+                    priority=_scheduler_priority(quick_task.priority),
                     work_kind=_work_kind(quick_task.work_type),
                     due_at=quick_task.due_date,
                     source="quick_task",
@@ -1336,7 +1364,7 @@ def _build_scheduler_input(
             }
         else:
             task, goal, project = regular[scheduler_id]
-            estimate_minutes = int(Decimal(task.estimate_hours) * 60)
+            estimate_minutes = _estimate_minutes(task.estimate_hours)
             remaining = max(0, estimate_minutes - actual_minutes.get(scheduler_id, 0))
             remaining = max(remaining, requested_by_task.get(scheduler_id, 0))
             scheduler_tasks.append(
@@ -1344,7 +1372,7 @@ def _build_scheduler_input(
                     id=scheduler_id,
                     title=task.title,
                     remaining_minutes=remaining,
-                    priority=task.priority,
+                    priority=_scheduler_priority(task.priority),
                     work_kind=_work_kind(task.work_type),
                     due_at=task.due_date,
                     project_id=str(project.id),
@@ -1370,8 +1398,8 @@ def _build_scheduler_input(
         # A document without /schedule must emit only its fixed work instead.
         candidate_pools=adjusted_candidate_pools
         or [HumanCandidatePool(id="__no_directives__", eligible_task_ids=frozenset())],
-        now=now,
         task_dependencies=task_dependencies,
+        solver_config=coerce_human_solver_config(solver_config),
         metadata={"source": "daily_plan_document"},
     )
     return (
@@ -1408,6 +1436,7 @@ def generate_daily_plan(
     date: str,
     user_id: str = Depends(get_current_user_id),
     session: Session = Depends(db.get_session),
+    request: DailyPlanGenerateRequest | None = None,
 ) -> DailyPlanResponse:
     date_value = _parse_date(date)
     owner_id = UUID(user_id)
@@ -1425,7 +1454,13 @@ def generate_daily_plan(
         task_metadata,
         eligible_counts,
         dependency_blocked_directives,
-    ) = _build_scheduler_input(session, owner_id, date, document)
+    ) = _build_scheduler_input(
+        session,
+        owner_id,
+        date,
+        document,
+        solver_config=request.solver_config if request else None,
+    )
     try:
         compiled_fixture = compile_human_flexible_daily_fixture(fixture)
         report = plan_daily_schedule(compiled_fixture)

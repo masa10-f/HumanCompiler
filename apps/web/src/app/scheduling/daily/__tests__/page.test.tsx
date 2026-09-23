@@ -3,122 +3,54 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import SchedulingPage from '../page';
-import { dailyPlansApi, slotTemplatesApi } from '@/lib/api';
-import type { DailyPlanDocumentV1 } from '@/types/daily-plan';
-import type { TimeSlot } from '@/types/ai-planning';
-import { getIsoDayOfWeek } from '@/lib/date-utils';
+import { getJSTDateString } from '@/lib/date-utils';
 
-const mockUser = { id: 'user-1' };
-const mockProjects: never[] = [];
-const mockToast = jest.fn();
-const mockDocument: DailyPlanDocumentV1 = {
-  schema_version: 1,
-  availability_windows: [{ start: '09:00', end: '18:00', work_type: 'light_work' }],
-  blocks: [{ id: 'meeting', type: 'timed_line', start: '12:00', end: '13:00', title: 'Day D meeting' }],
-};
+const mockAuth = { user: { id: 'user-1' } as { id: string } | null, loading: false };
 
-jest.mock('@/hooks/use-auth', () => ({ useAuth: () => ({ user: mockUser, loading: false }) }));
-jest.mock('@/hooks/use-project-query', () => ({ useProjectOptions: () => ({ data: mockProjects }) }));
-jest.mock('@/hooks/use-toast', () => ({ toast: (...args: unknown[]) => mockToast(...args) }));
-jest.mock('@/components/layout/app-header', () => ({ AppHeader: () => null }));
-jest.mock('@/components/scheduling', () => ({
-  DroppableSlot: ({ slot }: { slot: TimeSlot }) => <div data-testid="slot">{slot.kind}</div>,
-  TaskPool: () => null, DraggableTask: () => null,
-}));
-jest.mock('@/components/scheduling/lightweight-daily-planner', () => ({
-  LightweightDailyPlanner: ({ onSwitchDetailed }: {
-    onSwitchDetailed: (document: DailyPlanDocumentV1, revision: number) => void;
-  }) => <button onClick={() => onSwitchDetailed(mockDocument, 1)}>Open details</button>,
-}));
-jest.mock('@/lib/api', () => ({
-  dailyPlansApi: { get: jest.fn(), update: jest.fn() },
-  schedulingApi: { getWeeklyScheduleOptions: jest.fn().mockResolvedValue([]) },
-  slotTemplatesApi: { getByDay: jest.fn().mockResolvedValue([]) },
-  tasksApi: { getByProject: jest.fn().mockResolvedValue([]) },
-  quickTasksApi: { getAll: jest.fn().mockResolvedValue([]) },
+jest.mock('@/hooks/use-auth', () => ({ useAuth: () => mockAuth }));
+jest.mock('@/components/scheduling/daily-plan-workspace', () => ({
+  DailyPlanWorkspace: ({ selectedDate, onSelectedDateChange }: {
+    selectedDate: string;
+    onSelectedDateChange: (date: string) => void;
+  }) => (
+    <div>
+      <span data-testid="selected-date">{selectedDate}</span>
+      <button onClick={() => onSelectedDateChange('2030-01-03')}>Next day</button>
+    </div>
+  ),
 }));
 
-describe('daily planner mode and date transitions', () => {
+describe('daily planning page', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    window.history.replaceState({}, '', '/scheduling/daily?date=2030-01-02');
-    jest.mocked(slotTemplatesApi.getByDay).mockResolvedValue([]);
-    jest.mocked(dailyPlansApi.get).mockImplementation(async (date) => ({
-      date, revision: 1, document: date === '2030-01-02' ? mockDocument : {
-        ...mockDocument, blocks: [],
-      }, schedule: null,
-    }));
-    jest.mocked(dailyPlansApi.update).mockImplementation(async (date, revision, document) => ({
-      date, revision: revision + 1, document, schedule: null,
-    }));
+    mockAuth.user = { id: 'user-1' };
+    mockAuth.loading = false;
   });
 
-  it('preserves the latest completion status when returning from detailed mode', async () => {
+  it('keeps the selected date in the URL and restores it when reopening', async () => {
+    window.history.replaceState({ marker: 'keep' }, '', '/scheduling/daily?date=2030-01-02');
+    const view = render(<SchedulingPage />);
+    expect(screen.getByTestId('selected-date')).toHaveTextContent('2030-01-02');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next day' }));
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get('date')).toBe('2030-01-03'));
+    expect(window.history.state).toEqual({ marker: 'keep' });
+
+    view.unmount();
     render(<SchedulingPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Open details' }));
-    jest.mocked(dailyPlansApi.get).mockResolvedValue({
-      date: '2030-01-02', revision: 2,
-      document: { ...mockDocument, blocks: mockDocument.blocks.map((block) =>
-        block.type === 'timed_line' ? { ...block, completed: true } : block) },
-    });
-    fireEvent.click(screen.getByRole('button', { name: '軽量モード' }));
-    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled());
-    expect(jest.mocked(dailyPlansApi.update).mock.calls[0]?.[2].blocks.find((block) => block.id === 'meeting')).toMatchObject({ completed: true });
+    expect(screen.getByTestId('selected-date')).toHaveTextContent('2030-01-03');
   });
 
-  it('does not copy fixed events to another date without a template', async () => {
+  it('falls back to today for an invalid date parameter', () => {
+    window.history.replaceState({}, '', '/scheduling/daily?date=not-a-date');
     render(<SchedulingPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Open details' }));
-    fireEvent.change(screen.getByDisplayValue('2030-01-02'), { target: { value: '2030-01-03' } });
-    fireEvent.click(screen.getByRole('button', { name: '軽量モード' }));
-    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled());
-    expect(jest.mocked(dailyPlansApi.update).mock.calls[0]?.[2].blocks.filter((block) => block.type === 'timed_line')).toEqual([]);
-    expect(mockToast).not.toHaveBeenCalled();
+    expect(screen.getByTestId('selected-date')).toHaveTextContent(getJSTDateString());
   });
 
-  it('preserves one copy of a stored event after switching dates and back', async () => {
+  it('waits for authentication before rendering the note', () => {
+    mockAuth.user = null;
+    mockAuth.loading = true;
     render(<SchedulingPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Open details' }));
-    fireEvent.change(screen.getByDisplayValue('2030-01-02'), { target: { value: '2030-01-03' } });
-    fireEvent.change(screen.getByDisplayValue('2030-01-03'), { target: { value: '2030-01-02' } });
-    fireEvent.click(screen.getByRole('button', { name: '軽量モード' }));
-    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled());
-    expect(jest.mocked(dailyPlansApi.update).mock.calls[0]?.[2].blocks.filter((block) => block.type === 'timed_line')).toEqual(mockDocument.blocks);
-    expect(mockToast).not.toHaveBeenCalled();
+    expect(screen.getByText('Loading...')).toBeInTheDocument();
+    expect(screen.queryByTestId('selected-date')).not.toBeInTheDocument();
   });
-
-  it('replaces emitted event IDs even when entering detailed mode directly', async () => {
-    window.history.replaceState({}, '', '/scheduling/daily?date=2030-01-02&mode=detailed');
-    const event = { id: 'detailed-event:0', type: 'timed_line' as const,
-      start: '12:00', end: '13:00', title: 'Stored event' };
-    jest.mocked(dailyPlansApi.get).mockResolvedValue({
-      date: '2030-01-02', revision: 1,
-      document: { ...mockDocument, blocks: [event] },
-    });
-    jest.mocked(slotTemplatesApi.getByDay).mockResolvedValue([{
-      day_of_week: getIsoDayOfWeek('2030-01-02'), day_name: 'Wednesday', templates: [], default_template: {
-        id: 'template', name: 'Meeting', day_of_week: getIsoDayOfWeek('2030-01-02'), is_default: true,
-        user_id: 'user-1', created_at: '2030-01-01', updated_at: '2030-01-01',
-        slots: [{ start: '12:00', end: '13:00', kind: 'meeting' }],
-      },
-    }]);
-    render(<SchedulingPage />);
-    await waitFor(() => expect(screen.getAllByTestId('slot')).toHaveLength(1));
-    fireEvent.click(screen.getByRole('button', { name: '軽量モード' }));
-    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled());
-    expect(jest.mocked(dailyPlansApi.update).mock.calls[0]?.[2].blocks).toHaveLength(1);
-    expect(mockToast).not.toHaveBeenCalled();
-  });
-});
-
-it('keeps the detailed date in the URL and restores it when reopening', async () => {
-  window.history.replaceState({ marker: 'keep' }, '', '/scheduling/daily?date=2030-01-02&mode=detailed&source=weekly_schedule&week_start=2029-12-31');
-  const view = render(<SchedulingPage />);
-  fireEvent.change(screen.getByDisplayValue('2030-01-02'), { target: { value: '2030-01-03' } });
-  await waitFor(() => expect(new URLSearchParams(window.location.search).get('date')).toBe('2030-01-03'));
-  expect(new URLSearchParams(window.location.search).get('source')).toBe('weekly_schedule');
-  expect(window.history.state).toEqual({ marker: 'keep' });
-  view.unmount();
-  render(<SchedulingPage />);
-  expect(screen.getByDisplayValue('2030-01-03')).toBeInTheDocument();
 });

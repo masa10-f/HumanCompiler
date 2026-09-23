@@ -258,7 +258,6 @@ it("edits and autosaves a blank note in place without page chrome or history sid
   renderCard();
   const note = await screen.findByRole("textbox", { name: "日次ノート" });
   expect(screen.queryByRole("complementary", { name: "日次ノートの履歴" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "詳細モード" })).not.toBeInTheDocument();
   typeMemo(note, "ダッシュボードから記録");
   await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalledWith("2030-01-03", 0,
     expect.objectContaining({ blocks: expect.arrayContaining([expect.objectContaining({ text: "ダッシュボードから記録" })]) })), { timeout: 2500 });

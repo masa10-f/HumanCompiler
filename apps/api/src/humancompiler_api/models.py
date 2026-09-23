@@ -291,7 +291,6 @@ class User(UserBase, table=True):  # type: ignore[call-arg]
     work_sessions: list["WorkSession"] = Relationship(back_populates="user")
     push_subscriptions: list["PushSubscription"] = Relationship(back_populates="user")
     quick_tasks: list["QuickTask"] = Relationship(back_populates="owner")
-    slot_templates: list["SlotTemplate"] = Relationship(back_populates="user")
     hook_tokens: list["HookToken"] = Relationship(back_populates="user")
 
 
@@ -585,7 +584,7 @@ class Schedule(ScheduleBase, table=True):  # type: ignore[call-arg]
 
 
 class DailyPlanDocument(SQLModel, table=True):  # type: ignore[call-arg]
-    """Versioned source document for one user's lightweight daily plan."""
+    """Versioned source document for one user's daily plan note."""
 
     __tablename__ = "daily_plan_documents"
     __table_args__ = (
@@ -2249,50 +2248,6 @@ class ContentType(StrEnum):
     TIPTAP_JSON = "tiptap_json"
 
 
-class DayOfWeek(int, Enum):
-    """Day of week enum (ISO 8601: 0=Monday, 6=Sunday)"""
-
-    MONDAY = 0
-    TUESDAY = 1
-    WEDNESDAY = 2
-    THURSDAY = 3
-    FRIDAY = 4
-    SATURDAY = 5
-    SUNDAY = 6
-
-
-class SlotTemplateBase(SQLModel):
-    """Base slot template model for day-of-week slot presets"""
-
-    name: str = SQLField(min_length=1, max_length=100)
-    day_of_week: int = SQLField(
-        ge=0, le=6, description="Day of week (0=Monday, 6=Sunday)"
-    )
-    slots_json: list[dict[str, Any]] = SQLField(
-        sa_column=Column(JSON),
-        default_factory=list,
-        description="Array of TimeSlot objects",
-    )
-    is_default: bool = SQLField(
-        default=False,
-        description="Whether this template is the default for the day of week",
-    )
-
-
-class SlotTemplate(SlotTemplateBase, table=True):  # type: ignore[call-arg]
-    """Slot template database model for storing day-of-week slot presets"""
-
-    __tablename__ = "slot_templates"
-
-    id: UUID = SQLField(default_factory=uuid4, primary_key=True)
-    user_id: UUID = SQLField(foreign_key="users.id", index=True)
-    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
-
-    # Relationships
-    user: "User" = Relationship(back_populates="slot_templates")
-
-
 class TriageCapacitySettings(SQLModel, table=True):  # type: ignore[call-arg]
     """Per-user capacity settings for task triage."""
 
@@ -2562,110 +2517,3 @@ class ContextNoteResponse(BaseModel):
         return value.isoformat()
 
     model_config = ConfigDict(from_attributes=True)
-
-
-# Slot Template API Models
-class TimeSlotSchema(BaseModel):
-    """Time slot schema for validation"""
-
-    start: str = Field(..., pattern=r"^\d{2}:\d{2}$", description="Start time (HH:mm)")
-    end: str = Field(..., pattern=r"^\d{2}:\d{2}$", description="End time (HH:mm)")
-    kind: SlotKind = Field(
-        ..., description="Slot kind (study, focused_work, light_work, meeting)"
-    )
-    capacity_hours: float | None = Field(
-        None, ge=0, description="Slot capacity in hours"
-    )
-    assigned_project_id: str | None = Field(None, description="Assigned project ID")
-
-    @field_validator("start", "end")
-    @classmethod
-    def validate_time_value(cls, value: str) -> str:
-        """Validate HH:mm values are within a single calendar day."""
-        hour, minute = map(int, value.split(":"))
-        if not (0 <= hour <= 23 and 0 <= minute <= 59):
-            raise ValueError("Time must be between 00:00 and 23:59")
-        return value
-
-    @model_validator(mode="after")
-    def validate_start_before_end(self) -> "TimeSlotSchema":
-        """Validate that start time is before end time"""
-        start_parts = self.start.split(":")
-        end_parts = self.end.split(":")
-        start_minutes = int(start_parts[0]) * 60 + int(start_parts[1])
-        end_minutes = int(end_parts[0]) * 60 + int(end_parts[1])
-        if start_minutes >= end_minutes:
-            raise ValueError("Start time must be before end time")
-        return self
-
-
-class SlotTemplateCreate(BaseModel):
-    """Slot template creation request"""
-
-    name: str = Field(..., min_length=1, max_length=100)
-    day_of_week: int = Field(
-        ..., ge=0, le=6, description="Day of week (0=Monday, 6=Sunday)"
-    )
-    slots: list[TimeSlotSchema] = Field(default_factory=list)
-    is_default: bool = Field(default=False)
-
-
-class SlotTemplateUpdate(BaseModel):
-    """Slot template update request"""
-
-    name: str | None = Field(None, min_length=1, max_length=100)
-    day_of_week: int | None = Field(None, ge=0, le=6)
-    slots: list[TimeSlotSchema] | None = None
-    is_default: bool | None = None
-
-
-class SlotTemplateResponse(BaseModel):
-    """Slot template response model"""
-
-    id: UUID
-    user_id: UUID
-    name: str
-    day_of_week: int
-    slots: list[TimeSlotSchema]
-    is_default: bool
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-    @field_serializer("created_at", "updated_at")
-    def serialize_datetimes(self, value: datetime) -> str:
-        """Ensure datetime is serialized with UTC timezone info"""
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=UTC)
-        return value.isoformat()
-
-    @classmethod
-    def from_db_model(cls, template: "SlotTemplate") -> "SlotTemplateResponse":
-        """Create response from database model"""
-        return cls(
-            id=template.id,
-            user_id=template.user_id,
-            name=template.name,
-            day_of_week=template.day_of_week,
-            slots=[TimeSlotSchema.model_validate(slot) for slot in template.slots_json],
-            is_default=template.is_default,
-            created_at=template.created_at,
-            updated_at=template.updated_at,
-        )
-
-
-class SlotTemplateListResponse(BaseModel):
-    """Response for listing slot templates"""
-
-    templates: list[SlotTemplateResponse]
-    total: int
-
-
-class DayOfWeekTemplatesResponse(BaseModel):
-    """Response for getting templates grouped by day of week"""
-
-    day_of_week: int
-    day_name: str
-    templates: list[SlotTemplateResponse]
-    default_template: SlotTemplateResponse | None = None

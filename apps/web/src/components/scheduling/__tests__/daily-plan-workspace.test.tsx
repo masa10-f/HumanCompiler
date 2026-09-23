@@ -8,9 +8,10 @@
 import { act, fireEvent, render as renderUI, screen, waitFor, within } from "@testing-library/react";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { LightweightDailyPlanner } from "../lightweight-daily-planner";
+import { DailyPlanWorkspace } from "../daily-plan-workspace";
 import { goalsApi, dailyPlansApi, quickTasksApi, tasksApi } from "@/lib/api";
 import { ApiError } from "@/lib/errors";
+import { clearSchedulerSolverConfig, saveSchedulerSolverConfig } from "@/lib/scheduler-config";
 import type { DailyPlanResponse } from "@/types/daily-plan";
 import type { QuickTask } from "@/types/quick-task";
 import type { TaskWorkspaceItem } from "@/types/task";
@@ -91,7 +92,7 @@ const blankResponse = {
   schedule: null,
 };
 
-describe("LightweightDailyPlanner", () => {
+describe("DailyPlanWorkspace", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockProjects = [];
@@ -121,7 +122,7 @@ describe("LightweightDailyPlanner", () => {
       document: { schema_version: 1, blocks: [block] },
       schedule: { success: true, assignments: [], total_scheduled_hours: 1,
         optimization_status: "OK", generated_at: "2030-01-02T00:00:00Z", source_scheduling_blocks: [block] } });
-    await renderNotebook(<LightweightDailyPlanner selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
     fireEvent.click(screen.getByRole("checkbox", { name: "会議を終了済みにする" }));
     expect(screen.getByText("終了済み")).toBeInTheDocument();
     expect(screen.queryByText(/再生成が必要/)).not.toBeInTheDocument();
@@ -137,7 +138,7 @@ describe("LightweightDailyPlanner", () => {
     jest.mocked(dailyPlansApi.get).mockResolvedValue({ ...blankResponse,
       document: { schema_version: 1, blocks: [{ id: "fixed", type: "timed_line", title: "論文", start: "09:00", end: "10:00", task_ref: { source: "task", id: "paper" } }] } });
     jest.mocked(dailyPlansApi.applyTaskAction).mockRejectedValueOnce(new Error("offline"));
-    await renderNotebook(<LightweightDailyPlanner selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "実績" }));
     const comment = screen.getByLabelText("コメント（任意）");
     expect(comment).toHaveAttribute("maxlength", "500");
@@ -173,7 +174,7 @@ describe("LightweightDailyPlanner", () => {
       description: null, estimate_hours: 1, due_date: null,
       created_at: "2030-01-01", updated_at: "2030-01-01",
     }]);
-    await renderNotebook(<LightweightDailyPlanner selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
     expect(goalsApi.getByProject).not.toHaveBeenCalled();
     const note = screen.getByRole("textbox", { name: "日次ノート" });
     fireEvent.paste(note, { clipboardData: { getData: (type: string) => type === "text/plain" ? "1200-1400 /schedule" : "" } });
@@ -195,7 +196,7 @@ describe("LightweightDailyPlanner", () => {
       document: { schema_version: 1, blocks: [directive] },
       schedule: { success: true, assignments: [], total_scheduled_hours: 0, optimization_status: "OK", generated_at: "2030-01-02",
         source_document_revision: 1, source_scheduling_blocks: [directive] } });
-    renderUIWithQueries(<LightweightDailyPlanner selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    renderUIWithQueries(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
     const note = await screen.findByRole("textbox", { name: "日次ノート" });
     expect(screen.queryByRole("button", { name: "行ごとの設定" })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "日次プランの行入力" })).not.toBeInTheDocument();
@@ -210,17 +211,17 @@ describe("LightweightDailyPlanner", () => {
 
   it("shows the notebook without waiting for slow task suggestions", async () => {
     jest.mocked(tasksApi.getWorkspace).mockReturnValueOnce(new Promise(() => {}));
-    renderUIWithQueries(<LightweightDailyPlanner selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    renderUIWithQueries(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
     expect(await screen.findByRole("textbox", { name: "日次ノート" })).toBeInTheDocument();
   });
 
   it("does not expose the previous note for editing when a new date fails to load", async () => {
     jest.mocked(dailyPlansApi.get).mockResolvedValueOnce({ ...blankResponse,
       document: { schema_version: 1, blocks: [{ id: "old", type: "text", text: "前日の内容" }] } });
-    const view = renderUIWithQueries(<LightweightDailyPlanner selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    const view = renderUIWithQueries(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
     expect(await screen.findByRole("textbox", { name: "日次ノート" })).toHaveTextContent("前日の内容");
     jest.mocked(dailyPlansApi.get).mockRejectedValueOnce(new Error("offline"));
-    view.rerender(<LightweightDailyPlanner selectedDate="2030-01-03" onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    view.rerender(<DailyPlanWorkspace selectedDate="2030-01-03" onSelectedDateChange={jest.fn()} />);
     expect(await screen.findByText("ノートを読み込めませんでした")).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "日次ノート" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "自動スケジュール" })).toBeDisabled();
@@ -231,10 +232,10 @@ describe("LightweightDailyPlanner", () => {
 
   it("inserts a schedule directive and autosaves the typed document", async () => {
     await renderNotebook(
-      <LightweightDailyPlanner
+      <DailyPlanWorkspace
         selectedDate="2030-01-02"
         onSelectedDateChange={jest.fn()}
-        onSwitchDetailed={jest.fn()}
+
       />,
     );
 
@@ -268,10 +269,10 @@ describe("LightweightDailyPlanner", () => {
 
   it("saves allocation and allowed time for a filter directive", async () => {
     await renderNotebook(
-      <LightweightDailyPlanner
+      <DailyPlanWorkspace
         selectedDate="2030-01-02"
         onSelectedDateChange={jest.fn()}
-        onSwitchDetailed={jest.fn()}
+
       />,
     );
     const command = await screen.findByRole("textbox", {
@@ -311,8 +312,8 @@ describe("LightweightDailyPlanner", () => {
     jest.mocked(tasksApi.getWorkspace).mockResolvedValue({
       items: [workspaceTask('paper', '論文読み')], total: 1, skip: 0, limit: 100,
     });
-    await renderNotebook(<LightweightDailyPlanner selectedDate="2030-01-02"
-      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} />);
     const command = await screen.findByRole('textbox', { name: '日次ノート' });
     fireEvent.paste(command, { clipboardData: { getData: (type: string) => type === "text/plain" ? input  : ""} });
     fireEvent.keyDown(command, { key: 'Enter' });
@@ -370,10 +371,10 @@ describe("LightweightDailyPlanner", () => {
     });
 
     await renderNotebook(
-      <LightweightDailyPlanner
+      <DailyPlanWorkspace
         selectedDate="2030-01-02"
         onSelectedDateChange={jest.fn()}
-        onSwitchDetailed={jest.fn()}
+
       />,
     );
     const command = await screen.findByRole("textbox", {
@@ -407,10 +408,10 @@ describe("LightweightDailyPlanner", () => {
 
   it("creates a first-class break block", async () => {
     await renderNotebook(
-      <LightweightDailyPlanner
+      <DailyPlanWorkspace
         selectedDate="2030-01-02"
         onSelectedDateChange={jest.fn()}
-        onSwitchDetailed={jest.fn()}
+
       />,
     );
     const command = await screen.findByRole("textbox", {
@@ -444,10 +445,10 @@ describe("LightweightDailyPlanner", () => {
 
   it("shows time-based usage help without global availability controls", async () => {
     await renderNotebook(
-      <LightweightDailyPlanner
+      <DailyPlanWorkspace
         selectedDate="2030-01-02"
         onSelectedDateChange={jest.fn()}
-        onSwitchDetailed={jest.fn()}
+
       />,
     );
 
@@ -491,10 +492,10 @@ describe("LightweightDailyPlanner", () => {
     });
 
     await renderNotebook(
-      <LightweightDailyPlanner
+      <DailyPlanWorkspace
         selectedDate="2030-01-02"
         onSelectedDateChange={jest.fn()}
-        onSwitchDetailed={jest.fn()}
+
       />,
     );
     const command = await screen.findByRole("textbox", {
@@ -515,7 +516,6 @@ describe("LightweightDailyPlanner", () => {
     fireEvent.click(screen.getByRole("button", { name: "自動スケジュール" }));
     expect(dailyPlansApi.generate).not.toHaveBeenCalled();
     expect(screen.getByDisplayValue("2030-01-02")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "詳細モード" })).toBeDisabled();
     resolveFirstSave?.();
 
     await waitFor(() => {
@@ -531,8 +531,54 @@ describe("LightweightDailyPlanner", () => {
       );
     });
     await waitFor(() =>
-      expect(dailyPlansApi.generate).toHaveBeenCalledWith("2030-01-02"),
+      expect(dailyPlansApi.generate).toHaveBeenCalledWith("2030-01-02", undefined),
     );
+  });
+
+  it("generates with the saved scheduling preferences", async () => {
+    saveSchedulerSolverConfig({ priority_score_base: 10, project_switch_penalty: 0 });
+    jest.mocked(dailyPlansApi.get).mockResolvedValue({
+      ...blankResponse,
+      revision: 1,
+      document: {
+        schema_version: 1,
+        blocks: [
+          {
+            id: "directive",
+            type: "schedule_directive",
+            mode: "filter",
+            allowed_windows: [{ start: "09:00", end: "12:00" }],
+          },
+        ],
+      },
+    });
+    jest.mocked(dailyPlansApi.generate).mockResolvedValue({
+      ...blankResponse,
+      revision: 1,
+      schedule: {
+        success: true,
+        assignments: [],
+        total_scheduled_hours: 0,
+        optimization_status: "OK",
+        generated_at: "2030-01-02T00:00:00Z",
+      },
+    });
+
+    try {
+      await renderNotebook(
+        <DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "自動スケジュール" }));
+
+      await waitFor(() =>
+        expect(dailyPlansApi.generate).toHaveBeenCalledWith("2030-01-02", {
+          priority_score_base: 10,
+          project_switch_penalty: 0,
+        }),
+      );
+    } finally {
+      clearSchedulerSolverConfig();
+    }
   });
 
   it("retries autosave after a transient failure", async () => {
@@ -541,10 +587,10 @@ describe("LightweightDailyPlanner", () => {
       .mockRejectedValueOnce(new Error("temporary network failure"));
 
     await renderNotebook(
-      <LightweightDailyPlanner
+      <DailyPlanWorkspace
         selectedDate="2030-01-02"
         onSelectedDateChange={jest.fn()}
-        onSwitchDetailed={jest.fn()}
+
       />,
     );
     const command = await screen.findByRole("textbox", {
@@ -569,10 +615,10 @@ describe("LightweightDailyPlanner", () => {
       .mockRejectedValue(new ApiError(409, "revision conflict"));
 
     await renderNotebook(
-      <LightweightDailyPlanner
+      <DailyPlanWorkspace
         selectedDate="2030-01-02"
         onSelectedDateChange={jest.fn()}
-        onSwitchDetailed={jest.fn()}
+
       />,
     );
     const command = await screen.findByRole("textbox", {
@@ -598,8 +644,8 @@ describe("LightweightDailyPlanner", () => {
 
   it("stops retrying 422 automatically and offers a manual save", async () => {
     jest.mocked(dailyPlansApi.update).mockRejectedValueOnce(new ApiError(422, 'Invalid content'));
-    await renderNotebook(<LightweightDailyPlanner selectedDate="2030-01-02"
-      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} />);
     const command = await screen.findByRole('textbox', { name: '日次ノート' });
     fireEvent.paste(command, { clipboardData: { getData: (type: string) => type === "text/plain" ? 'note'  : ""} });
     fireEvent.keyDown(command, { key: 'Enter' });
@@ -619,8 +665,8 @@ describe("LightweightDailyPlanner", () => {
     jest.mocked(dailyPlansApi.update).mockRejectedValueOnce(new ApiError(404, 'Referenced task was not found', {
       responseData: { detail: { missing: [{ block_id: 'missing', source: 'task', id: 'deleted' }] } },
     }));
-    await renderNotebook(<LightweightDailyPlanner selectedDate="2030-01-02"
-      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} />);
     const command = await screen.findByRole('textbox', { name: '日次ノート' });
     fireEvent.paste(command, { clipboardData: { getData: (type: string) => type === "text/plain" ? 'Keep this note'  : ""} });
     fireEvent.keyDown(command, { key: 'Enter' });
@@ -638,8 +684,8 @@ describe("LightweightDailyPlanner", () => {
     jest.mocked(quickTasksApi.getAll).mockResolvedValue([
       quickTask('code', 'コードレビュー'), quickTask('paper', '論文レビュー'),
     ]);
-    await renderNotebook(<LightweightDailyPlanner selectedDate="2030-01-02"
-      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} />);
     const command = await screen.findByRole('textbox', { name: '日次ノート' });
     fireEvent.paste(command, { clipboardData: { getData: (type: string) => type === "text/plain" ? '/schedule 09:00-11:00 @レビュー (1h)'  : ""} });
     expect(await screen.findByRole("dialog", { name: "スケジュールの提案" })).toBeInTheDocument();
@@ -660,8 +706,8 @@ describe("LightweightDailyPlanner", () => {
     jest.mocked(dailyPlansApi.generate).mockRejectedValueOnce(new ApiError(404, 'Referenced task was not found', {
       responseData: { detail: { missing: [{ block_id: 'missing' }] } },
     }));
-    await renderNotebook(<LightweightDailyPlanner selectedDate="2030-01-02"
-      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: '自動スケジュール' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Deleted task の参照を解除' }));
     await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled(), { timeout: 2500 });
@@ -681,8 +727,8 @@ describe("LightweightDailyPlanner", () => {
         ? Array.from({ length: 100 }, (_, index) => quickTask(`quick-${index}`, `Quick ${index}`))
         : [quickTask('last', 'Later task')]);
     }
-    await renderNotebook(<LightweightDailyPlanner selectedDate="2030-01-02"
-      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} />);
     const command = await screen.findByRole('textbox', { name: '日次ノート' });
     fireEvent.paste(command, { clipboardData: { getData: (type: string) => type === "text/plain" ? '/schedule 09:00-11:00 @Later task (30m)'  : ""} });
     fireEvent.keyDown(command, { key: 'Enter' });
@@ -701,8 +747,8 @@ describe("LightweightDailyPlanner", () => {
       success: true, assignments: [], total_scheduled_hours: 0, optimization_status: 'OK',
       generated_at: '2030-01-02T00:00:00Z', source_document_revision: 1,
     } });
-    await renderNotebook(<LightweightDailyPlanner selectedDate="2030-01-02"
-      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} />);
     const command = await screen.findByRole('textbox', { name: '日次ノート' });
     expect(screen.queryByText(/再生成が必要です/)).not.toBeInTheDocument();
     fireEvent.paste(command, { clipboardData: { getData: (type: string) => type === "text/plain" ? '/schedule 09:00-11:00'  : ""} });
@@ -714,10 +760,10 @@ describe("LightweightDailyPlanner", () => {
 
   it("keeps the persisted title valid while the title field is cleared", async () => {
     await renderNotebook(
-      <LightweightDailyPlanner
+      <DailyPlanWorkspace
         selectedDate="2030-01-02"
         onSelectedDateChange={jest.fn()}
-        onSwitchDetailed={jest.fn()}
+
       />,
     );
     const command = await screen.findByRole("textbox", {
@@ -748,8 +794,8 @@ describe("LightweightDailyPlanner", () => {
     jest.mocked(dailyPlansApi.update).mockImplementationOnce(() => new Promise((resolve) => {
       finishOverwrite = resolve;
     }));
-    await renderNotebook(<LightweightDailyPlanner selectedDate="2030-01-02"
-      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} />);
     const command = await screen.findByRole("textbox", { name: "日次ノート" });
     fireEvent.paste(command, { clipboardData: { getData: (type: string) => type === "text/plain" ? "first note"  : ""} });
     fireEvent.keyDown(command, { key: "Enter", code: "Enter" });
@@ -789,8 +835,8 @@ describe("LightweightDailyPlanner", () => {
         assignments: [{ ...assignment, directive_id: pinned.id, is_fixed: true }],
       } };
     });
-    await renderNotebook(<LightweightDailyPlanner selectedDate="2030-01-02"
-      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} />);
     const pin = await screen.findByRole("button", { name: "固定", exact: true });
     fireEvent.click(pin);
     fireEvent.click(pin);
@@ -823,8 +869,8 @@ describe("LightweightDailyPlanner", () => {
     jest.mocked(dailyPlansApi.applyTaskAction).mockResolvedValue({
       task_ref: { source: 'task', id: 'paper' }, status: 'in_progress', actual_minutes: 60,
     });
-    await renderNotebook(<LightweightDailyPlanner selectedDate="2030-01-02"
-      onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02"
+      onSelectedDateChange={jest.fn()} />);
     const section = await screen.findByRole('region', { name: '文書外の予定' });
     openGeneratedTimes();
     expect(within(section).getAllByLabelText('生成予定の開始時刻').map(
@@ -865,10 +911,10 @@ describe("LightweightDailyPlanner", () => {
     });
 
     await renderNotebook(
-      <LightweightDailyPlanner
+      <DailyPlanWorkspace
         selectedDate="2030-01-02"
         onSelectedDateChange={jest.fn()}
-        onSwitchDetailed={jest.fn()}
+
       />,
     );
 
@@ -889,10 +935,10 @@ describe("LightweightDailyPlanner", () => {
   it("flushes pending changes before switching dates", async () => {
     const onSelectedDateChange = jest.fn();
     await renderNotebook(
-      <LightweightDailyPlanner
+      <DailyPlanWorkspace
         selectedDate="2030-01-02"
         onSelectedDateChange={onSelectedDateChange}
-        onSwitchDetailed={jest.fn()}
+
       />,
     );
     const command = await screen.findByRole("textbox", {
@@ -925,10 +971,10 @@ describe("LightweightDailyPlanner", () => {
       },
     });
     await renderNotebook(
-      <LightweightDailyPlanner
+      <DailyPlanWorkspace
         selectedDate="2030-01-02"
         onSelectedDateChange={jest.fn()}
-        onSwitchDetailed={jest.fn()}
+
       />,
     );
 
@@ -994,10 +1040,10 @@ describe("LightweightDailyPlanner", () => {
     });
 
     await renderNotebook(
-      <LightweightDailyPlanner
+      <DailyPlanWorkspace
         selectedDate="2030-01-02"
         onSelectedDateChange={jest.fn()}
-        onSwitchDetailed={jest.fn()}
+
       />,
     );
 
@@ -1051,10 +1097,10 @@ describe("LightweightDailyPlanner", () => {
       },
     });
     await renderNotebook(
-      <LightweightDailyPlanner
+      <DailyPlanWorkspace
         selectedDate="2030-01-02"
         onSelectedDateChange={jest.fn()}
-        onSwitchDetailed={jest.fn()}
+
       />,
     );
 
@@ -1076,7 +1122,7 @@ it('keeps a long paragraph editable and gives a specific API validation message'
   jest.mocked(dailyPlansApi.update).mockRejectedValueOnce(new ApiError(422, 'Request validation failed', {
     responseData: { errors: [{ type: 'note_content_too_large', field: 'body -> document -> blocks -> 0 -> text -> content' }] },
   }));
-  renderUIWithQueries(<LightweightDailyPlanner selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+  renderUIWithQueries(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
   const editor = await screen.findByRole('textbox', { name: '日次ノート' });
   fireEvent.paste(editor, { clipboardData: { getData: (type: string) => type === 'text/plain' ? text : '' } });
   expect(await screen.findByText(/1番目の段落・項目.*書式を含む内容が上限/, {}, { timeout: 2500 })).toBeInTheDocument();
