@@ -73,6 +73,7 @@ export function addDailyPlanClockMinutes(
 }
 
 export function parseTimedLine(text: string): ParsedTimedLine | null {
+  if (isScheduleCommand(text, true)) return null;
   const match = text.match(
     /^(\d{1,2}:?\d{2})\s*[-–]\s*(\d{1,2}:?\d{2})\s+(.+)$/,
   );
@@ -84,10 +85,21 @@ export function parseTimedLine(text: string): ParsedTimedLine | null {
   return { start, end, title: title.trim() };
 }
 
+/** A slash command may be preceded by its time window. */
+export function isScheduleCommand(text: string, partial = false): boolean {
+  const command = text
+    .trim()
+    .replace(/^\d{1,2}:?\d{2}\s*[-–]\s*\d{1,2}:?\d{2}\s+/, "");
+  const token = command.split(/\s/, 1)[0] ?? "";
+  return partial
+    ? token.startsWith("/") && "/schedule".startsWith(token)
+    : token === "/schedule";
+}
+
 export function parseScheduleDirective(
   text: string,
 ): ParsedScheduleDirective | null {
-  if (!text.trim().startsWith("/schedule")) return null;
+  if (!isScheduleCommand(text)) return null;
   const range = text.match(/(\d{1,2}:?\d{2})\s*[-–]\s*(\d{1,2}:?\d{2})/);
   const start = range ? normalizeDailyPlanClock(range[1] ?? "") : null;
   const end = range ? normalizeDailyPlanClock(range[2] ?? "") : null;

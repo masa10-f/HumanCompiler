@@ -1093,3 +1093,520 @@ async def test_quick_task_action_only_completes(
     )
 
     assert response.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_rich_daily_note_round_trip_preserves_formatting_and_schedule(
+    session: Session, planning_data
+) -> None:
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    user = planning_data[0]
+    document = DailyPlanDocumentV1(
+        blocks=[
+            ScheduleDirectiveBlock(
+                id="morning",
+                mode="filter",
+                allowed_windows=[DirectiveWindow(start="09:00", end="12:00")],
+            ),
+            TextBlock(
+                id="note",
+                text="振り返り",
+                content={
+                    "type": "heading",
+                    "attrs": {"level": 2},
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "振り返り",
+                            "marks": [{"type": "bold"}],
+                        }
+                    ],
+                },
+            ),
+        ]
+    )
+    await update_daily_plan(
+        "2030-01-02",
+        DailyPlanUpdateRequest(expected_revision=0, document=document),
+        str(user.id),
+        session,
+    )
+    generated = generate_daily_plan("2030-01-02", str(user.id), session)
+    assert generated.schedule is not None
+    assert generated.schedule.source_scheduling_blocks == document.blocks[:1]
+
+    document.blocks.append(
+        TextBlock(
+            id="progress",
+            text="完了",
+            content={
+                "type": "taskList",
+                "content": [
+                    {
+                        "type": "taskItem",
+                        "attrs": {"checked": True},
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "完了"}],
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+    )
+    await update_daily_plan(
+        "2030-01-02",
+        DailyPlanUpdateRequest(expected_revision=1, document=document),
+        str(user.id),
+        session,
+    )
+    loaded = await get_daily_plan("2030-01-02", str(user.id), session)
+    assert loaded.document == document
+    assert loaded.schedule == generated.schedule
+
+
+def test_rich_daily_note_rejects_oversized_and_embedded_schedule_nodes() -> None:
+    from pydantic import ValidationError
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    with pytest.raises(ValidationError):
+        TextBlock(id="oversized", content={"type": "text", "text": "a" * 50001})
+    with pytest.raises(ValidationError):
+        TextBlock(id="hidden-schedule", content={"type": "dailyPlanBlock", "attrs": {}})
+
+
+@pytest.mark.asyncio
+async def test_notebook_history_search_is_owned_literal_and_paginated(
+    session: Session, planning_data
+) -> None:
+    from datetime import date
+    from humancompiler_api.routers.daily_plans import TextBlock, list_daily_plans
+
+    user = planning_data[0]
+    other = User(id=uuid4(), email="other-note@example.com")
+    session.add(other)
+    session.commit()
+    for owner, day, body in [
+        (user, "2030-01-01", "論文を調査"),
+        (user, "2030-01-02", "進捗 100%_完了"),
+        (user, "2030-01-03", "論文の結果"),
+        (other, "2030-01-04", "論文 他のユーザーの秘密"),
+    ]:
+        await update_daily_plan(
+            day,
+            DailyPlanUpdateRequest(
+                expected_revision=0,
+                document=DailyPlanDocumentV1(
+                    blocks=[TextBlock(id="paragraph", text=body)]
+                ),
+            ),
+            str(owner.id),
+            session,
+        )
+    await update_daily_plan(
+        "2030-01-05",
+        DailyPlanUpdateRequest(expected_revision=0, document=DailyPlanDocumentV1()),
+        str(user.id),
+        session,
+    )
+
+    page = await list_daily_plans(limit=2, user_id=str(user.id), session=session)
+    assert [item.date for item in page.items] == ["2030-01-03", "2030-01-02"]
+    assert page.next_cursor == "2030-01-02"
+    older = await list_daily_plans(
+        before=date.fromisoformat(page.next_cursor),
+        limit=2,
+        user_id=str(user.id),
+        session=session,
+    )
+    assert [item.date for item in older.items] == ["2030-01-01"]
+    assert older.next_cursor is None
+    matched = await list_daily_plans(
+        query="論文", user_id=str(user.id), session=session
+    )
+    assert [item.date for item in matched.items] == ["2030-01-03", "2030-01-01"]
+    literal = await list_daily_plans(query="%_", user_id=str(user.id), session=session)
+    assert [item.date for item in literal.items] == ["2030-01-02"]
+    ranged = await list_daily_plans(
+        date_from=date(2030, 1, 2),
+        date_to=date(2030, 1, 2),
+        user_id=str(user.id),
+        session=session,
+    )
+    assert [item.date for item in ranged.items] == ["2030-01-02"]
+    with pytest.raises(HTTPException) as exc:
+        await list_daily_plans(
+            date_from=date(2030, 2, 1),
+            date_to=date(2030, 1, 1),
+            user_id=str(user.id),
+            session=session,
+        )
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_notebook_history_updates_search_and_shows_match_context(
+    session: Session, planning_data
+) -> None:
+    from humancompiler_api.routers.daily_plans import TextBlock, list_daily_plans
+
+    user = planning_data[0]
+    for revision, text in [
+        (0, "old keyword"),
+        (1, "導入 " * 100 + "調査結果 Match TARGET"),
+    ]:
+        await update_daily_plan(
+            "2030-01-02",
+            DailyPlanUpdateRequest(
+                expected_revision=revision,
+                document=DailyPlanDocumentV1(
+                    blocks=[TextBlock(id="internal-only-id", text=text)]
+                ),
+            ),
+            str(user.id),
+            session,
+        )
+    assert (
+        await list_daily_plans(
+            query="old keyword", user_id=str(user.id), session=session
+        )
+    ).items == []
+    assert (
+        await list_daily_plans(
+            query="internal-only-id", user_id=str(user.id), session=session
+        )
+    ).items == []
+    result = await list_daily_plans(
+        query="match target", user_id=str(user.id), session=session
+    )
+    assert len(result.items) == 1
+    assert "Match TARGET" in result.items[0].preview
+    assert result.items[0].preview.startswith("…")
+    assert result.items[0].revision == 2
+
+
+@pytest.mark.asyncio
+async def test_long_notebook_paragraph_is_saved_without_truncation(
+    session, planning_data
+):
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    body = "研究" * 4000
+    content = {"type": "paragraph", "content": [{"type": "text", "text": body}]}
+    document = DailyPlanDocumentV1(
+        blocks=[TextBlock(id="long", text=body, content=content)]
+    )
+    saved = await update_daily_plan(
+        "2030-02-01",
+        DailyPlanUpdateRequest(expected_revision=0, document=document),
+        str(planning_data[0].id),
+        session,
+    )
+    assert saved.document.blocks[0].text == body
+    loaded = await get_daily_plan("2030-02-01", str(planning_data[0].id), session)
+    assert loaded.document.blocks[0].content == content
+
+
+def test_notebook_limits_have_machine_readable_errors():
+    from pydantic import ValidationError
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    with pytest.raises(ValidationError) as error:
+        TextBlock(id="too-long", text="x" * 50001)
+    assert error.value.errors()[0]["type"] == "string_too_long"
+    with pytest.raises(ValidationError) as error:
+        TextBlock(id="rich-long", content={"type": "text", "text": "x" * 50000})
+    assert error.value.errors()[0]["type"] == "note_content_too_large"
+    content = {"type": "paragraph", "content": []}
+    for _ in range(22):
+        content = {"type": "blockquote", "content": [content]}
+    with pytest.raises(ValidationError) as error:
+        TextBlock(id="deep", content=content)
+    assert error.value.errors()[0]["type"] == "note_too_deep"
+    with pytest.raises(ValidationError) as error:
+        DailyPlanDocumentV1(
+            blocks=[
+                TextBlock(
+                    id=str(index),
+                    text="x" * 49000,
+                    content={
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": "x" * 49000}],
+                    },
+                )
+                for index in range(60)
+            ]
+        )
+    assert error.value.errors()[0]["type"] == "note_document_too_large"
+
+
+@pytest.mark.parametrize(
+    "href",
+    [
+        "javascript:alert(1)",
+        "java\nscript:alert(1)",
+        "\x00javascript:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+        "vbscript:msgbox(1)",
+    ],
+)
+def test_notebook_rejects_unsafe_links_from_json(href):
+    from pydantic import ValidationError
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    with pytest.raises(ValidationError) as error:
+        TextBlock(
+            id="link",
+            content={
+                "type": "paragraph",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "link",
+                        "marks": [{"type": "link", "attrs": {"href": href}}],
+                    }
+                ],
+            },
+        )
+    assert error.value.errors()[0]["type"] == "note_unsafe_link"
+
+
+@pytest.mark.parametrize(
+    "href",
+    [
+        "https://example.com/path",
+        "http://example.com",
+        "mailto:a@example.com",
+        "tel:+81123456",
+        "/notes",
+        "#section",
+    ],
+)
+def test_notebook_preserves_supported_link_and_formatting_marks(href):
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    content = {
+        "type": "paragraph",
+        "content": [
+            {
+                "type": "text",
+                "text": "link",
+                "marks": [
+                    {"type": "bold"},
+                    {"type": "italic"},
+                    {
+                        "type": "link",
+                        "attrs": {
+                            "href": href,
+                            "target": "_blank",
+                            "rel": "noopener noreferrer nofollow",
+                            "class": None,
+                        },
+                    },
+                ],
+            }
+        ],
+    }
+    assert TextBlock(id="link", content=content).content == content
+
+
+@pytest.mark.parametrize(
+    "node",
+    [
+        {"type": "paragraph", "attrs": {"onclick": "alert(1)"}},
+        {"type": "text", "text": "memo", "marks": [{"type": "script"}]},
+        {
+            "type": "text",
+            "text": "memo",
+            "marks": [
+                {
+                    "type": "link",
+                    "attrs": {"href": "https://example.com", "onclick": "alert(1)"},
+                }
+            ],
+        },
+    ],
+)
+def test_notebook_rejects_unsupported_marks_and_attributes(node):
+    from pydantic import ValidationError
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    with pytest.raises(ValidationError):
+        TextBlock(id="invalid", content={"type": "paragraph", "content": [node]})
+
+
+def test_history_preview_keeps_original_offsets_for_length_changing_lowercase():
+    from humancompiler_api.routers.daily_plans import _history_preview
+
+    text = "İ" * 160 + "TARGET" + "あ" * 200
+    preview = _history_preview(text, "target")
+    assert "TARGET" in preview
+    assert preview.startswith("…" + "İ" * 45 + "TARGET")
+
+
+@pytest.mark.parametrize(
+    "node_type", ["bulletList", "orderedList", "taskList", "blockquote"]
+)
+@pytest.mark.asyncio
+async def test_editor_nested_metadata_is_normalized_on_save_and_load(
+    session, planning_data, node_type
+):
+    from copy import deepcopy
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    paragraph = {
+        "type": "paragraph",
+        "attrs": {"planId": None},
+        "content": [{"type": "text", "text": "追記メモ"}],
+    }
+    children = (
+        [paragraph]
+        if node_type == "blockquote"
+        else [
+            {
+                "type": "taskItem" if node_type == "taskList" else "listItem",
+                **({"attrs": {"checked": True}} if node_type == "taskList" else {}),
+                "content": [paragraph],
+            }
+        ]
+    )
+    raw = {"type": node_type, "attrs": {"planId": "editor-only"}, "content": children}
+    original = deepcopy(raw)
+    document = DailyPlanDocumentV1(
+        blocks=[TextBlock(id="stable-id", text="追記メモ", content=raw)]
+    )
+    saved = await update_daily_plan(
+        "2030-02-02",
+        DailyPlanUpdateRequest(expected_revision=0, document=document),
+        str(planning_data[0].id),
+        session,
+    )
+    assert saved.document.blocks[0].id == "stable-id"
+    assert "planId" not in str(saved.document.model_dump())
+    assert raw == original  # validation must not mutate caller-owned/stored JSON
+    loaded = await get_daily_plan("2030-02-02", str(planning_data[0].id), session)
+    assert loaded.document == saved.document
+    if node_type == "taskList":
+        assert (
+            loaded.document.blocks[0].content["content"][0]["attrs"]["checked"] is True
+        )
+
+
+@pytest.mark.asyncio
+async def test_loads_existing_notebook_with_nested_editor_metadata(
+    session, planning_data
+):
+    from datetime import date
+
+    content = {
+        "type": "blockquote",
+        "content": [
+            {
+                "type": "paragraph",
+                "attrs": {"planId": "old-editor-id"},
+                "content": [{"type": "text", "text": "過去の引用"}],
+            }
+        ],
+    }
+    session.add(
+        DailyPlanDocument(
+            user_id=planning_data[0].id,
+            date=date(2030, 2, 3),
+            revision=1,
+            document_json={
+                "schema_version": 1,
+                "blocks": [
+                    {
+                        "id": "existing",
+                        "type": "text",
+                        "text": "過去の引用",
+                        "content": content,
+                    }
+                ],
+            },
+        )
+    )
+    session.commit()
+    loaded = await get_daily_plan("2030-02-03", str(planning_data[0].id), session)
+    assert loaded.document.blocks[0].id == "existing"
+    assert "planId" not in str(loaded.document.model_dump())
+    assert loaded.document.blocks[0].text == "過去の引用"
+
+
+@pytest.mark.parametrize(
+    "node",
+    [
+        {"type": "text", "text": "x"},
+        {"type": "listItem"},
+        {"type": "taskItem"},
+        {"type": "hardBreak"},
+        {"type": "heading", "attrs": {"level": 99}},
+        {"type": "heading", "attrs": {"level": True}},
+        {"type": "orderedList", "attrs": {"start": "1"}},
+        {
+            "type": "taskList",
+            "content": [{"type": "taskItem", "attrs": {"checked": "yes"}}],
+        },
+        {"type": "codeBlock", "attrs": {"language": ["python"]}},
+    ],
+)
+def test_notebook_rejects_invalid_root_and_attribute_values(node):
+    from pydantic import ValidationError
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    with pytest.raises(ValidationError):
+        TextBlock(id="invalid", content=node)
+
+
+def test_oversized_note_request_is_rejected_before_json_parsing():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from humancompiler_api.routers.daily_plans import router
+
+    app = FastAPI()
+    app.include_router(router)
+    response = TestClient(app).put(
+        "/daily-plans/2030-01-01",
+        content="invalid JSON",
+        headers={"content-length": "6000001"},
+    )
+    assert response.status_code == 413
+
+
+@pytest.mark.asyncio
+async def test_history_ignores_blank_notes_and_leading_blank_lines(
+    session, planning_data
+):
+    from humancompiler_api.routers.daily_plans import list_daily_plans
+
+    user_id = str(planning_data[0].id)
+    for day, text in [("2030-01-01", "\t　\n"), ("2030-01-02", "\n買い物リスト\n牛乳")]:
+        await update_daily_plan(
+            day,
+            DailyPlanUpdateRequest(
+                expected_revision=0,
+                document={
+                    "schema_version": 1,
+                    "blocks": [{"type": "text", "id": "memo", "text": text}],
+                },
+            ),
+            user_id,
+            session,
+        )
+    # Include a legacy index with a leading newline (before migration 030).
+    row = session.exec(
+        select(DailyPlanDocument).where(
+            DailyPlanDocument.date == datetime(2030, 1, 2).date()
+        )
+    ).one()
+    row.search_text = "\n買い物リスト\n牛乳"
+    session.add(row)
+    session.commit()
+    result = await list_daily_plans(
+        query="", before=None, limit=20, user_id=user_id, session=session
+    )
+    assert len(result.items) == 1
+    assert result.items[0].title == "買い物リスト"

@@ -20,13 +20,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 // Icons
-import { TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play, Timer, ListChecks, MoreHorizontal, ChevronDown, CalendarDays, SlidersHorizontal, LayoutTemplate, ListTodo } from 'lucide-react'
+import { NotebookPen, TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play, Timer, ListChecks, MoreHorizontal, ChevronDown, CalendarDays, SlidersHorizontal, LayoutTemplate, ListTodo } from 'lucide-react'
 
 // Hooks
 import { useAuth } from '@/hooks/use-auth'
 
 interface AppHeaderProps {
-  currentPage?: 'dashboard' | 'tasks' | 'projects' | 'ai-planning' | 'triage' | 'scheduling' | 'scheduling-daily' | 'scheduling-settings' | 'scheduler-tuning' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner'
+  currentPage?: 'daily-notes' | 'dashboard' | 'tasks' | 'projects' | 'ai-planning' | 'triage' | 'scheduling' | 'scheduling-daily' | 'scheduling-settings' | 'scheduler-tuning' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner'
 }
 
 const NAVIGATION_ITEMS = [
@@ -36,6 +36,7 @@ const NAVIGATION_ITEMS = [
   { id: 'projects', label: 'プロジェクト', path: '/projects', icon: FolderOpen },
   { id: 'scheduling', label: 'スケジューリング', path: '/scheduling', icon: Calendar },
   { id: 'triage', label: 'トリアージ', path: '/triage', icon: ListChecks },
+  { id: 'daily-notes', label: 'ノート', path: '/notes', icon: NotebookPen },
   { id: 'work-session-history', label: 'セッション履歴', path: '/work-session-history', icon: Timer },
   { id: 'timeline', label: 'タイムライン', path: '/timeline', icon: TrendingUp },
   { id: 'settings', label: '設定', path: '/settings', icon: Settings },

@@ -8,6 +8,7 @@ import {
   parseBreakLine,
   parseDurationMinutes,
   parseScheduleDirective,
+  isScheduleCommand,
   parseTimedLine,
   updateDailyPlanTimeRange,
 } from "../daily-plan-command";
@@ -91,3 +92,29 @@ describe("daily plan command parser", () => {
     });
   });
 });
+
+it.each([
+  "1200-1400 /schedule (45m)",
+  "/schedule 1200-1400 (45m)",
+  " 12:00 – 14:00 /schedule @研究 (45m)",
+])("parses %s", (text) => {
+  expect(parseScheduleDirective(text)).toEqual({
+    durationMinutes: 45,
+    allowedWindow: { start: "12:00", end: "14:00" },
+  });
+  expect(parseTimedLine(text)).toBeNull();
+});
+it.each([
+  "1200-1400 /scheduled",
+  "メモ /schedule 1200-1400",
+  "1200-1400 会議 /schedule",
+])("keeps non-command text %s", (text) => {
+  expect(isScheduleCommand(text, true)).toBe(false);
+  expect(parseScheduleDirective(text)).toBeNull();
+});
+it.each(["1400-1200 /schedule", "2500-2600 /schedule"])(
+  "rejects invalid prefix %s",
+  (text) => {
+    expect(parseScheduleDirective(text)).toBeNull();
+  },
+);

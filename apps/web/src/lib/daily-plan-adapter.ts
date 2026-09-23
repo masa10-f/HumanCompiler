@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
 
+import { createDailyPlanId } from "@/lib/daily-plan-id";
 import type {
   DailyPlanBlock,
   DailyPlanDocumentV1,
@@ -52,7 +53,7 @@ export function detailedWorkSlotsToDirectives(slots: DetailedDailyPlanTimeSlot[]
     const start = normalizeDailyPlanClock(slot.start);
     const end = normalizeDailyPlanClock(slot.end);
     if (!start || !end || start >= end) throw new Error("各スロットの開始・終了時刻を確認してください");
-    const id = slot.sourceBlockId ?? `detailed-schedule:${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
+    const id = slot.sourceBlockId ?? `detailed-schedule:${createDailyPlanId()}`;
     const existing = directives.get(id);
     if (existing) {
       existing.allowed_windows!.push({ start, end });

@@ -5,16 +5,30 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import math
+import re
+from collections.abc import Awaitable, Callable
+from copy import deepcopy
 from datetime import UTC, date as date_type, datetime, time
 from decimal import Decimal
 from typing import Annotated, Literal
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.routing import APIRoute
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    field_validator,
+    model_validator,
+)
+from pydantic_core import PydanticCustomError
 from sqlalchemy import func, or_
 from sqlalchemy import update as sqlalchemy_update
 from sqlalchemy.exc import IntegrityError
@@ -49,7 +63,26 @@ from humancompiler_api.models import (
     WorkType,
 )
 
-router = APIRouter(prefix="/daily-plans", tags=["daily-plans"])
+
+class DailyPlanRoute(APIRoute):
+    def get_route_handler(self) -> Callable[[Request], Awaitable[Response]]:
+        handler = super().get_route_handler()
+
+        async def check_size(request: Request) -> Response:
+            # Reject declared oversized bodies before FastAPI parses JSON/Pydantic.
+            length = request.headers.get("content-length", "")
+            if length.isdecimal() and int(length) > 6_000_000:
+                raise HTTPException(
+                    status_code=413, detail="daily note request exceeds 6MB"
+                )
+            return await handler(request)
+
+        return check_size
+
+
+router = APIRouter(
+    prefix="/daily-plans", tags=["daily-plans"], route_class=DailyPlanRoute
+)
 logger = logging.getLogger(__name__)
 
 JST = ZoneInfo("Asia/Tokyo")
@@ -189,7 +222,142 @@ class ChecklistItemBlock(BaseModel):
 class TextBlock(BaseModel):
     id: str = Field(min_length=1, max_length=100)
     type: Literal["text"] = "text"
-    text: str = Field(default="", max_length=5000)
+    text: str = Field(default="", max_length=50000)
+    content: dict[str, JsonValue] | None = None
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(
+        cls, value: dict[str, JsonValue] | None
+    ) -> dict[str, JsonValue] | None:
+        if value is None:
+            return value
+        if len(json.dumps(value, ensure_ascii=False, separators=(",", ":"))) > 50000:
+            raise PydanticCustomError(
+                "note_content_too_large", "rich note content exceeds 50000 characters"
+            )
+        # Older editor builds included internal planId attrs on nested nodes.
+        # Normalize them on both reads and writes, without mutating stored JSON.
+        value = deepcopy(value)
+        allowed = {
+            "paragraph",
+            "heading",
+            "text",
+            "bulletList",
+            "orderedList",
+            "listItem",
+            "taskList",
+            "taskItem",
+            "blockquote",
+            "codeBlock",
+            "hardBreak",
+            "horizontalRule",
+        }
+
+        def check(node: JsonValue, depth: int = 0) -> None:
+            if depth > 20:
+                raise PydanticCustomError(
+                    "note_too_deep", "rich note nesting exceeds 20 levels"
+                )
+            if not isinstance(node, dict):
+                raise ValueError("unsupported rich note node")
+            node_type = node.get("type")
+            if not isinstance(node_type, str) or node_type not in allowed:
+                raise ValueError("unsupported rich note node")
+            if depth == 0 and node_type not in {
+                "paragraph",
+                "heading",
+                "bulletList",
+                "orderedList",
+                "taskList",
+                "blockquote",
+                "codeBlock",
+                "horizontalRule",
+            }:
+                raise ValueError("rich note root must be a block node")
+            attrs = node.get("attrs", {})
+            if not isinstance(attrs, dict):
+                raise ValueError("rich note attrs must be an object")
+            attrs.pop("planId", None)
+            allowed_attrs = {
+                "heading": {"level"},
+                "orderedList": {"start", "type"},
+                "taskItem": {"checked"},
+                "codeBlock": {"language"},
+            }.get(node_type, set())
+            if set(attrs) - allowed_attrs:
+                raise ValueError("unsupported rich note attributes")
+            if "level" in attrs and (
+                type(attrs["level"]) is not int or not 1 <= attrs["level"] <= 6
+            ):
+                raise ValueError("heading level must be an integer from 1 to 6")
+            if "checked" in attrs and not isinstance(attrs["checked"], bool):
+                raise ValueError("task checked must be a boolean")
+            if "start" in attrs and type(attrs["start"]) is not int:
+                raise ValueError("ordered list start must be an integer")
+            if (
+                "type" in attrs
+                and attrs["type"] is not None
+                and attrs["type"] not in ("1", "a", "A", "i", "I")
+            ):
+                raise ValueError("unsupported ordered list numbering type")
+            if (
+                "language" in attrs
+                and attrs["language"] is not None
+                and (
+                    not isinstance(attrs["language"], str)
+                    or len(attrs["language"]) > 100
+                )
+            ):
+                raise ValueError("code language must be short text")
+            marks = node.get("marks", [])
+            if not isinstance(marks, list):
+                raise ValueError("rich note marks must be a list")
+            for mark in marks:
+                if not isinstance(mark, dict) or mark.get("type") not in (
+                    "bold",
+                    "italic",
+                    "strike",
+                    "code",
+                    "link",
+                ):
+                    raise ValueError("unsupported rich note mark")
+                mark_attrs = mark.get("attrs", {})
+                if not isinstance(mark_attrs, dict):
+                    raise ValueError("rich note mark attrs must be an object")
+                if mark.get("type") != "link":
+                    if mark_attrs:
+                        raise ValueError("unsupported rich note mark attributes")
+                    continue
+                if set(mark_attrs) - {"href", "target", "rel", "class"}:
+                    raise ValueError("unsupported link attributes")
+                href = mark_attrs.get("href")
+                if not isinstance(href, str):
+                    raise ValueError("link href must be text")
+                # Browsers ignore whitespace/control characters in URL schemes.
+                normalized_href = re.sub(r"[\s\x00-\x1f\x7f-\x9f]", "", href)
+                try:
+                    safe = urlsplit(normalized_href).scheme.lower() in (
+                        "",
+                        "http",
+                        "https",
+                        "mailto",
+                        "tel",
+                    )
+                except ValueError:
+                    safe = False
+                if not safe:
+                    raise PydanticCustomError(
+                        "note_unsafe_link", "unsupported link protocol"
+                    )
+            children = node.get("content", [])
+            if not isinstance(children, list):
+                raise ValueError("rich note content must be a list")
+            for child in children:
+                check(child, depth + 1)
+
+        check(value)
+        return value
 
 
 DailyPlanBlock = Annotated[
@@ -209,6 +377,20 @@ class DailyPlanDocumentV1(BaseModel):
         ids = [block.id for block in value]
         if len(ids) != len(set(ids)):
             raise ValueError("daily plan block ids must be unique")
+        size = len(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "blocks": [block.model_dump(mode="json") for block in value],
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
+        if size > 5_000_000:
+            raise PydanticCustomError(
+                "note_document_too_large", "daily note exceeds 5MB"
+            )
         return value
 
 
@@ -272,6 +454,7 @@ class DailyPlanScheduleResponse(BaseModel):
     generated_at: str = ""
     source: str | None = None
     source_document_revision: int | None = None
+    source_scheduling_blocks: list[DailyPlanBlock] | None = None
     directive_diagnostics: list[DailyPlanDirectiveDiagnostic] = Field(
         default_factory=list
     )
@@ -287,6 +470,50 @@ class DailyPlanResponse(BaseModel):
     document: DailyPlanDocumentV1
     schedule: DailyPlanScheduleResponse | None = None
     updated_at: datetime | None = None
+
+
+class DailyPlanSummary(BaseModel):
+    date: str
+    revision: int
+    updated_at: datetime
+    title: str
+    preview: str
+
+
+class DailyPlanHistoryResponse(BaseModel):
+    items: list[DailyPlanSummary]
+    next_cursor: str | None = None
+
+
+def _document_search_text(document: DailyPlanDocumentV1) -> str:
+    """Visible note text only; never index task IDs or editor JSON metadata.
+
+    PostgreSQL's migration 029 trigger is authoritative and overwrites this mirror
+    on every document write (including writes from older API versions). This
+    implementation supports SQLite and is checked against PostgreSQL in
+    test_daily_plan_search_postgres.py; keep both rules in sync.
+    """
+    lines = []
+    for block in document.blocks:
+        parts = [getattr(block, "text", None), getattr(block, "title", None)]
+        if isinstance(block, TimedLineBlock):
+            parts.extend([block.start, block.end])
+        if isinstance(block, ScheduleDirectiveBlock):
+            parts.append("/schedule")
+            parts.extend(
+                f"{window.start}-{window.end}" for window in block.allowed_windows
+            )
+        line = " ".join(part for part in parts if part).strip()
+        if line:
+            lines.append(line)
+    return "\n".join(lines)
+
+
+def _history_preview(text: str, query: str) -> str:
+    match = re.search(re.escape(query), text, re.IGNORECASE) if query else None
+    start = max(0, (match.start() if match else 0) - 45)
+    excerpt = text[start : start + 180].replace("\n", " ")
+    return ("…" if start else "") + excerpt + ("…" if start + 180 < len(text) else "")
 
 
 class TaskActionRequest(BaseModel):
@@ -360,6 +587,60 @@ def _response(
     )
 
 
+@router.get("", response_model=DailyPlanHistoryResponse)
+async def list_daily_plans(
+    query: Annotated[str, Query(max_length=200)] = "",
+    date_from: date_type | None = None,
+    date_to: date_type | None = None,
+    before: date_type | None = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(db.get_session),
+) -> DailyPlanHistoryResponse:
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="開始日は終了日以前にしてください")
+    query = query.strip()
+    statement = select(
+        DailyPlanDocument.date,
+        DailyPlanDocument.revision,
+        DailyPlanDocument.updated_at,
+        DailyPlanDocument.search_text,
+    ).where(
+        DailyPlanDocument.user_id == UUID(user_id),
+        DailyPlanDocument.search_text != "",
+    )
+    if query:
+        statement = statement.where(
+            DailyPlanDocument.search_text.icontains(query, autoescape=True)
+        )
+    if date_from:
+        statement = statement.where(DailyPlanDocument.date >= date_from)
+    if date_to:
+        statement = statement.where(DailyPlanDocument.date <= date_to)
+    if before:
+        statement = statement.where(DailyPlanDocument.date < before)
+    rows = session.exec(
+        statement.order_by(DailyPlanDocument.date.desc()).limit(limit + 1)
+    ).all()
+    items = [
+        DailyPlanSummary(
+            date=row.date.isoformat(),
+            revision=row.revision,
+            updated_at=row.updated_at,
+            title=next(
+                (line.strip() for line in row.search_text.splitlines() if line.strip()),
+                "",
+            )[:80],
+            preview=_history_preview(row.search_text, query),
+        )
+        for row in rows[:limit]
+    ]
+    return DailyPlanHistoryResponse(
+        items=items,
+        next_cursor=items[-1].date if len(rows) > limit else None,
+    )
+
+
 @router.get("/{date}", response_model=DailyPlanResponse)
 async def get_daily_plan(
     date: str,
@@ -398,6 +679,7 @@ async def update_daily_plan(
             date=date_value,
             revision=1,
             document_json=request.document.model_dump(mode="json"),
+            search_text=_document_search_text(request.document),
         )
         session.add(existing)
         try:
@@ -419,6 +701,7 @@ async def update_daily_plan(
             .values(
                 revision=request.expected_revision + 1,
                 document_json=request.document.model_dump(mode="json"),
+                search_text=_document_search_text(request.document),
                 updated_at=datetime.now(UTC),
             )
         )
@@ -1157,6 +1440,11 @@ def generate_daily_plan(
             "generated_at": datetime.now(UTC).isoformat(),
             "source": "daily_plan_document",
             "source_document_revision": source_document.revision,
+            "source_scheduling_blocks": [
+                block.model_dump(mode="json")
+                for block in document.blocks
+                if isinstance(block, ScheduleDirectiveBlock | TimedLineBlock)
+            ],
             "directive_diagnostics": [],
             "unused_minutes": 0,
             "unscheduled_tasks": [
@@ -1266,6 +1554,11 @@ def generate_daily_plan(
         "generated_at": datetime.now(UTC).isoformat(),
         "source": "daily_plan_document",
         "source_document_revision": source_document.revision,
+        "source_scheduling_blocks": [
+            block.model_dump(mode="json")
+            for block in document.blocks
+            if isinstance(block, ScheduleDirectiveBlock | TimedLineBlock)
+        ],
         "directive_diagnostics": diagnostics,
         "unused_minutes": unused_minutes,
         "unscheduled_tasks": [

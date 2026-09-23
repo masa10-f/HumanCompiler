@@ -18,6 +18,7 @@ import { QuickTaskList } from '@/components/quick-tasks'
 import { useTimelineOverview } from '@/hooks/use-timeline'
 import { getSlotKindLabel } from '@/constants/schedule'
 import { getJSTDateString, getJSTDate } from '@/lib/date-utils'
+import { DailyNotesCard } from '@/components/dashboard/daily-notes-card'
 import { RecentItemShortcuts } from '@/components/dashboard/recent-item-shortcuts'
 
 export default function DashboardPage() {
@@ -150,6 +151,10 @@ export default function DashboardPage() {
         {/* Quick Tasks Section */}
         <div className="mb-8">
           <QuickTaskList limit={5} />
+        </div>
+
+        <div className="mb-8">
+          <DailyNotesCard />
         </div>
 
         {/* Today's Schedule */}

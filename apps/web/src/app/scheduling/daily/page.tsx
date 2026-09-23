@@ -63,7 +63,7 @@ import type {
   WeeklyScheduleOption,
   DayOfWeekTemplates,
 } from '@/types/ai-planning';
-import { getJSTDateString, getIsoDayOfWeek } from '@/lib/date-utils';
+import { getJSTDateString, getIsoDayOfWeek, isValidJSTDateInput } from '@/lib/date-utils';
 import { logger } from '@/lib/logger';
 import { hasSchedulerSolverConfig, loadSchedulerSolverConfig } from '@/lib/scheduler-config';
 import type { DailyPlanDocumentV1, DailyPlanResponse } from '@/types/daily-plan';
@@ -109,8 +109,18 @@ export default function SchedulingPage() {
   });
 
   const [selectedDate, setSelectedDate] = useState(
-    () => readSchedulingParams().get('date') ?? getJSTDateString(),
+    () => {
+      const date = readSchedulingParams().get('date');
+      return date && isValidJSTDateInput(date) ? date : getJSTDateString();
+    },
   );
+  useEffect(() => {
+    if (!isValidJSTDateInput(selectedDate)) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('date', selectedDate);
+    window.history.replaceState(window.history.state, '', url);
+  }, [selectedDate]);
+
   const [plannerMode, setPlannerMode] = useState<'lightweight' | 'detailed'>(() =>
     readSchedulingParams().get('mode') === 'detailed' ? 'detailed' : 'lightweight',
   );

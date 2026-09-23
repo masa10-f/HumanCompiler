@@ -13,8 +13,9 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from sqlalchemy import JSON, UniqueConstraint, text, UUID as SQLAlchemyUUID
+from sqlalchemy import JSON, Text, UniqueConstraint, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
+from sqlalchemy import DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Column, Relationship, SQLModel
 from sqlmodel import Field as SQLField
@@ -562,7 +563,10 @@ class TaskDependency(TaskDependencyBase, table=True):  # type: ignore[call-arg]
 class ScheduleBase(SQLModel):
     """Base schedule model"""
 
-    date: datetime = SQLField()
+    # Calendar keys use naive midnight, independent of SQLModel's UTC datetime default.
+    date: datetime = SQLField(
+        sa_column=Column(DateTime(timezone=False), nullable=False)
+    )
     plan_json: dict[str, Any] = SQLField(sa_column=Column(JSON), default_factory=dict)
 
 
@@ -595,6 +599,9 @@ class DailyPlanDocument(SQLModel, table=True):  # type: ignore[call-arg]
     document_json: dict[str, Any] = SQLField(
         sa_column=Column(JSON().with_variant(JSONB(), "postgresql"), nullable=False),
         default_factory=dict,
+    )
+    search_text: str = SQLField(
+        default="", sa_column=Column(Text, nullable=False, server_default="")
     )
     created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
@@ -644,7 +651,10 @@ class WeeklyRecurringTask(WeeklyRecurringTaskBase, table=True):  # type: ignore[
 class WeeklyScheduleBase(SQLModel):
     """Base weekly schedule model"""
 
-    week_start_date: datetime = SQLField(description="Start date of the week (Monday)")
+    week_start_date: datetime = SQLField(
+        sa_column=Column(DateTime(timezone=False), nullable=False),
+        description="Start date of the week (Monday)",
+    )
     schedule_json: dict[str, Any] = SQLField(
         sa_column=Column(JSON),
         default_factory=dict,

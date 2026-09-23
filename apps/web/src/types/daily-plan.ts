@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
 
+import type { JSONContent } from "@tiptap/react";
 import type { TaskStatus, WorkType } from "./task";
 
 export interface DailyPlanTaskRef {
@@ -61,6 +62,8 @@ export interface DailyPlanTextBlock {
   id: string;
   type: "text";
   text: string;
+  /** Rich note node; text remains readable by older clients. */
+  content?: JSONContent | null;
 }
 
 export type DailyPlanBlock =
@@ -108,6 +111,7 @@ export interface DailyPlanSchedule {
   generated_at: string;
   source?: string;
   source_document_revision?: number;
+  source_scheduling_blocks?: DailyPlanBlock[] | null;
   directive_diagnostics?: DailyPlanDirectiveDiagnostic[];
   unused_minutes?: number;
   violations?: Array<{
@@ -142,4 +146,25 @@ export interface DailyPlanTaskActionResponse {
   task_ref: DailyPlanTaskRef;
   status: TaskStatus;
   actual_minutes?: number | null;
+}
+
+export interface DailyPlanSummary {
+  date: string;
+  revision: number;
+  updated_at: string;
+  title: string;
+  preview: string;
+}
+
+export interface DailyPlanHistoryQuery {
+  query?: string;
+  date_from?: string;
+  date_to?: string;
+  before?: string;
+  limit?: number;
+}
+
+export interface DailyPlanHistoryResponse {
+  items: DailyPlanSummary[];
+  next_cursor: string | null;
 }
