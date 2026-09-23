@@ -262,18 +262,29 @@ async def test_generate_weekly_plan_success(mock_context, model):
 
 
 @pytest.mark.asyncio
-async def test_generate_weekly_plan_openai_error(mock_context):
+@pytest.mark.parametrize("model", ["gpt-6-sol", "gpt-6-luna", "gpt-5.5"])
+async def test_generate_weekly_plan_openai_error(mock_context, model):
     """Test weekly plan generation with OpenAI API error"""
     mock_client = Mock()
     mock_client.responses.create.side_effect = Exception("OpenAI API error")
+    mock_client.chat.completions.create.side_effect = Exception("OpenAI API error")
 
     service = OpenAIService()
     service.client = mock_client
+    service.model = model
 
     response = await service.generate_weekly_plan(mock_context)
 
     assert not response.success
     assert "Error generating plan" in response.recommendations[0]
+
+    assert "OpenAI API error" in response.recommendations[0]
+    if model.startswith("gpt-6-"):
+        mock_client.responses.create.assert_called_once()
+        mock_client.chat.completions.create.assert_not_called()
+    else:
+        mock_client.chat.completions.create.assert_called_once()
+        mock_client.responses.create.assert_not_called()
 
 
 @pytest.mark.skip("Complex external dependency - skipped for now")

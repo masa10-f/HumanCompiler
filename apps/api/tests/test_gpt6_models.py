@@ -11,6 +11,7 @@ import pytest
 from humancompiler_api.ai.goal_task_drafts import goal_task_draft_service
 from humancompiler_api.ai.models import WeeklyPlanContext
 from humancompiler_api.ai.openai_client import OpenAIClient
+from humancompiler_api.ai_service import OpenAIService
 from humancompiler_api.models import (
     Task,
     UserSettings,
@@ -150,3 +151,50 @@ async def test_existing_model_selection_is_preserved_and_can_be_saved(model):
     assert updated.openai_model == model
     assert saved.openai_model == model
     session.commit.assert_called_once()
+
+
+@pytest.mark.parametrize("service_class", [OpenAIClient, OpenAIService])
+@pytest.mark.parametrize(
+    "response_status,reason,error,expected_message",
+    [
+        ("incomplete", "max_output_tokens", None, "対象タスクや入力を減らして"),
+        ("incomplete", "content_filter", None, "入力内容を調整してください"),
+        ("incomplete", None, None, "途中で停止しました"),
+        (
+            "failed",
+            None,
+            SimpleNamespace(code="server_error", message="Temporary upstream failure"),
+            "入力内容を確認し、もう一度生成してください",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_planning_failure_reason_reaches_user_and_logs(
+    service_class,
+    planning_context,
+    response_status,
+    reason,
+    error,
+    expected_message,
+    caplog,
+):
+    service = service_class()
+    service.client = Mock()
+    service.client.responses.create.return_value = SimpleNamespace(
+        status=response_status,
+        incomplete_details=SimpleNamespace(reason=reason) if reason else None,
+        error=error,
+        output=[],
+    )
+
+    result = await service.generate_weekly_plan(planning_context)
+
+    assert not result.success
+    assert expected_message in result.recommendations[0]
+    assert f"status={response_status}" in caplog.text
+    assert f"reason={reason}" in caplog.text
+    if error:
+        assert error.code in caplog.text
+        assert error.message in caplog.text
+    service.client.responses.create.assert_called_once()
+    service.client.chat.completions.create.assert_not_called()
