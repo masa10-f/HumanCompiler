@@ -24,7 +24,6 @@ All database migrations are managed through SQL files and the MigrationManager. 
 - `029_add_daily_plan_search.sql` - Add visible-text search for daily notebooks, backfill existing notes, and keep older writers in sync with a trigger. Apply before the new API; rollback preserves document data.
 - `030_trim_daily_plan_search.sql` - Normalize leading/trailing Unicode whitespace in notebook search text, including tabs and Japanese spaces. Rebuilds the index text for existing 029 installations; note content is unchanged.
 - `031_drop_slot_templates.sql` - Drop the unused `slot_templates` table. Deploy the API that no longer serves slot templates first. Stored templates are deleted, so back up the table beforehand if they should be kept; the rollback recreates an empty table.
-- `032_update_openai_models_gpt6.sql` - Move GPT-5.5 to GPT-6 Sol and GPT-5.4 mini/nano to GPT-6 Luna. Deploy with the GPT-6-compatible API. Saves original selections (no keys) in an RLS-protected backup table; rollback restores untouched migrated settings. New or subsequently edited selections are preserved by rollback and may require manual selection when reverting the API.
 - `enable_rls_security.sql` - Row Level Security policies (manual application)
 
 ## Data Loss Prevention Policy

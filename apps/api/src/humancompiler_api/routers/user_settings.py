@@ -41,6 +41,28 @@ AVAILABLE_MODELS = {
         "max_output": "128k tokens",
         "modalities": ["text", "image_input"],
     },
+    # Keep saved selections valid; users opt into GPT-6 from settings.
+    "gpt-5.5": {
+        "name": "GPT-5.5",
+        "description": "従来モデル - 高度な計画作成・タスク生成向け",
+        "max_context": "400k tokens",
+        "max_output": "128k tokens",
+        "modalities": ["text", "image_input"],
+    },
+    "gpt-5.4-mini": {
+        "name": "GPT-5.4 mini",
+        "description": "従来の軽量モデル - 日常的なタスク生成向け",
+        "max_context": "400k tokens",
+        "max_output": "128k tokens",
+        "modalities": ["text", "image_input"],
+    },
+    "gpt-5.4-nano": {
+        "name": "GPT-5.4 nano",
+        "description": "従来の軽量モデル - 分類・整形向け",
+        "max_context": "400k tokens",
+        "max_output": "128k tokens",
+        "modalities": ["text"],
+    },
 }
 
 

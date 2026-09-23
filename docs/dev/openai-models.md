@@ -8,7 +8,7 @@ selection still takes precedence, including for reports.
 
 Standard text pricing in USD per 1 million tokens, for short-context requests:
 
-| Previous selection | New selection | Input, before → after | Output, before → after |
+| Current selection | Suggested upgrade | Input, before → after | Output, before → after |
 | --- | --- | --- | --- |
 | GPT-5.5 | GPT-6 Sol | $5.00 → $2.00 | $30.00 → $10.00 |
 | GPT-5.4 mini | GPT-6 Luna | $0.75 → $0.10 | $4.50 → $0.50 |
@@ -47,20 +47,14 @@ See the [official migration guide](https://developers.openai.com/api/docs/guides
 
 ## Deployment
 
-Deploy the API changes together with migration
-`032_update_openai_models_gpt6.sql`. The migration changes the database default
-and the three previous active selections. It preserves custom/pinned model
-IDs and leaves historical migrations unchanged. Staging/production startup
-applies numbered migrations through MigrationManager.
-
-The migration stores only original model selections in an RLS-protected
-backup table. Run it transactionally through MigrationManager. Its rollback
-restores original selections only for settings untouched since migration;
-new or subsequently edited selections are preserved and may need manual
-selection if reverting to an older API.
+No database migration is required. Existing saved model selections and the
+SQL column default remain unchanged. The settings picker keeps GPT-5.5 and
+GPT-5.4 mini/nano available, so existing users can continue using and saving
+their current selection. Users switch to Sol or Luna themselves from settings.
+New settings created through the application use the GPT-6 Sol default.
 
 Update any deployment override of `NEXT_PUBLIC_DEFAULT_OPENAI_MODEL` to
 `gpt-6-sol` and rebuild the web app. Local mock tests cover request parameters,
 function-call parsing, invalid task filtering, failure handling, and defaults.
-Real-account model access, generated quality/latency, and production migration
-execution require verification in the deployment environment.
+Real-account model access and generated quality/latency require verification
+in the deployment environment.
