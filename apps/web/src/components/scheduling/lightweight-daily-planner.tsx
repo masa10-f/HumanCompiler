@@ -23,7 +23,7 @@ import {
 
 import { DailyPlanHistory } from "./daily-plan-history";
 import { getJSTDateString } from "@/lib/date-utils";
-import { DailyPlanNoteEditor } from "./daily-plan-note-editor";
+import { DailyPlanNoteEditor, type NoteGoalOption } from "./daily-plan-note-editor";
 import { schedulingBlocks, sameSchedulingBlocks } from "@/lib/daily-plan-note";
 import { AppHeader } from "@/components/layout/app-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -49,6 +49,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useScheduleGoals } from "@/hooks/use-schedule-goals";
 import { useProjectOptions } from "@/hooks/use-project-query";
 import { dailyPlansApi, quickTasksApi, tasksApi } from "@/lib/api";
 import { ApiError } from "@/lib/errors";
@@ -248,6 +249,18 @@ export function LightweightDailyPlanner({
       variant: "destructive",
     }));
   }, [loadTasks, toast]);
+
+  const [suggestionsUsed, setSuggestionsUsed] = useState(false);
+  const openSuggestions = useCallback(() => setSuggestionsUsed(true), []);
+  const needsGoals = suggestionsUsed || document.blocks.some((block) =>
+    block.type === "schedule_directive" && block.mode === "filter");
+  const goalQuery = useScheduleGoals(projects.map((project) => project.id), needsGoals);
+  const goalOptions: NoteGoalOption[] = goalQuery.goals.map((goal) => ({
+    id: goal.id,
+    title: goal.title,
+    projectId: goal.project_id,
+    projectTitle: projects.find((project) => project.id === goal.project_id)?.title,
+  }));
 
   const taskOptions = useMemo<TaskOption[]>(
     () => [
@@ -693,7 +706,7 @@ export function LightweightDailyPlanner({
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <AppHeader currentPage="daily-notes" />
+      <AppHeader currentPage="scheduling-daily" />
       <main className="mx-auto max-w-7xl px-4 py-6">
         <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
         <div className="order-1 min-w-0 lg:order-2">
@@ -887,6 +900,12 @@ export function LightweightDailyPlanner({
               key={selectedDate}
               document={document}
               taskOptions={taskOptions}
+              projectOptions={projects}
+              goalOptions={goalOptions}
+              goalsLoading={goalQuery.loading}
+              goalsError={goalQuery.error}
+              onRetryGoals={goalQuery.retry}
+              onSuggestionsOpen={openSuggestions}
               onChange={(next) => updateDocument(() => next)}
               renderBlock={(block) => {
                 if (block.type === "text") return null;
@@ -904,7 +923,7 @@ export function LightweightDailyPlanner({
                         {block.type === "schedule_directive" && <span className="ml-2 text-xs text-muted-foreground">/schedule{block.duration_override_minutes ? ` · ${block.duration_override_minutes}分` : ""}</span>}
                       </summary>
                       <div className="py-2">
-                        {block.type === "schedule_directive" ? <DirectiveEditor block={block} taskOptions={taskOptions} projects={projects} onChange={(next) => replaceBlock(block.id, next)} /> :
+                        {block.type === "schedule_directive" ? <DirectiveEditor block={block} taskOptions={taskOptions} projects={projects} goalOptions={goalOptions} onChange={(next) => replaceBlock(block.id, next)} /> :
                           <TimedLineEditor block={block} taskOptions={taskOptions} onChange={(next) => replaceBlock(block.id, next)} />}
                         <Button variant="ghost" size="sm" onClick={() => removeBlock(block.id)}>この予定を削除</Button>
                       </div>
@@ -1169,11 +1188,13 @@ function DirectiveEditor({
   block,
   taskOptions,
   projects,
+  goalOptions,
   onChange,
 }: {
   block: DailyPlanScheduleDirective;
   taskOptions: TaskOption[];
   projects: Array<{ id: string; title: string }>;
+  goalOptions: NoteGoalOption[];
   onChange: (block: DailyPlanScheduleDirective) => void;
 }) {
   const filter: DailyPlanDirectiveFilter = block.filter ?? {
@@ -1181,21 +1202,13 @@ function DirectiveEditor({
     project_ids: [],
     goal_ids: [],
   };
-  const goals = Array.from(
-    new Map(
-      taskOptions
-        .filter(
-          (task) =>
-            !filter.project_ids.length ||
-            (task.projectId && filter.project_ids.includes(task.projectId)),
-        )
-        .filter((task) => task.goalId)
-        .map((task) => [
-          task.goalId!,
-          { id: task.goalId!, title: task.goalTitle ?? task.goalId! },
-        ]),
-    ).values(),
-  );
+  const goals = Array.from(new Map([
+    ...taskOptions.filter((task) => task.goalId).map((task) => [task.goalId!, {
+      id: task.goalId!, title: task.goalTitle ?? task.goalId!, projectId: task.projectId,
+    }] as const),
+    ...goalOptions.map((goal) => [goal.id, goal] as const),
+  ]).values()).filter((goal) => !filter.project_ids.length ||
+    (goal.projectId && filter.project_ids.includes(goal.projectId)));
   const allowedWindow = block.allowed_windows?.[0];
   const [draftStart, setDraftStart] = useState(allowedWindow?.start ?? "");
   const [draftEnd, setDraftEnd] = useState(allowedWindow?.end ?? "");

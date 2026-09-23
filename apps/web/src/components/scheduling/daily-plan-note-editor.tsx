@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   parseScheduleDirective,
+  isScheduleCommand,
   parseTimedLine,
   parseBreakLine,
   normalizeDailyPlanClock,
@@ -54,6 +55,21 @@ export interface NoteTaskOption {
   projectTitle?: string;
   goalTitle?: string;
 }
+
+export interface NoteProjectOption {
+  id: string;
+  title: string;
+}
+
+export interface NoteGoalOption extends NoteProjectOption {
+  projectId: string;
+  projectTitle?: string;
+}
+
+type Suggestion =
+  | { key: string; kind: "project"; title: string; project: NoteProjectOption }
+  | { key: string; kind: "goal"; title: string; goal: NoteGoalOption }
+  | { key: string; kind: "task"; title: string; task: NoteTaskOption };
 
 const BlockRenderer = createContext<(block: DailyPlanBlock) => ReactNode>(
   () => null,
@@ -142,14 +158,30 @@ export function DailyPlanNoteEditor({
   document,
   onChange,
   taskOptions,
+  projectOptions = [],
+  goalOptions = [],
+  goalsLoading = false,
+  goalsError = false,
+  onRetryGoals,
+  onSuggestionsOpen,
   renderBlock,
 }: {
   document: DailyPlanDocumentV1;
   onChange: (document: DailyPlanDocumentV1) => void;
   taskOptions: NoteTaskOption[];
+  projectOptions?: NoteProjectOption[];
+  goalOptions?: NoteGoalOption[];
+  goalsLoading?: boolean;
+  goalsError?: boolean;
+  onRetryGoals?: () => void;
+  onSuggestionsOpen?: () => void;
   renderBlock: (block: DailyPlanBlock) => ReactNode;
 }) {
   const [command, setCommand] = useState<CommandRange | null>(null);
+  const suggestionsOpen = Boolean(command);
+  useEffect(() => {
+    if (suggestionsOpen) onSuggestionsOpen?.();
+  }, [suggestionsOpen, onSuggestionsOpen]);
   const dismissed = useRef<string | null>(null);
   const emitted = useRef<string>();
   const initialized = useRef(false);
@@ -189,13 +221,11 @@ export function DailyPlanNoteEditor({
     onTransaction: ({ editor: current }) => {
       const { $from, empty } = current.state.selection;
       const text = $from.parent.textContent;
-      const token = text.split(/\s/, 1)[0] ?? "";
       if (
         !empty ||
         $from.depth !== 1 ||
         $from.parent.type.name !== "paragraph" ||
-        !token.startsWith("/") ||
-        !"/schedule".startsWith(token)
+        !isScheduleCommand(text, true)
       ) {
         setCommand(null);
         dismissed.current = null;
@@ -340,6 +370,11 @@ export function DailyPlanNoteEditor({
             key={command.from}
             command={command}
             tasks={taskOptions}
+            projects={projectOptions}
+            goals={goalOptions}
+            goalsLoading={goalsLoading}
+            goalsError={goalsError}
+            onRetryGoals={onRetryGoals}
             onInsert={insert}
             keyboard={menuKeys}
           />
@@ -352,11 +387,21 @@ export function DailyPlanNoteEditor({
 function ScheduleSuggestions({
   command,
   tasks,
+  projects,
+  goals,
+  goalsLoading,
+  goalsError,
+  onRetryGoals,
   onInsert,
   keyboard,
 }: {
   command: CommandRange;
   tasks: NoteTaskOption[];
+  projects: NoteProjectOption[];
+  goals: NoteGoalOption[];
+  goalsLoading: boolean;
+  goalsError: boolean;
+  onRetryGoals?: () => void;
   onInsert: (block: DailyPlanBlock) => void;
   keyboard: { current: (key: string) => void };
 }) {
@@ -367,7 +412,8 @@ function ScheduleSuggestions({
     parsed?.durationMinutes?.toString() ?? "",
   );
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState(0);
+  const [selectedKey, setSelectedKey] = useState<string | null>("auto");
+  const [category, setCategory] = useState<"all" | Suggestion["kind"]>("all");
   const [workType, setWorkType] = useState<WorkType>("light_work");
   useEffect(() => {
     const directive = parseScheduleDirective(command.text);
@@ -386,15 +432,49 @@ function ScheduleSuggestions({
     );
     const mention = extractDailyPlanMention(command.text);
     setQuery(mention ?? "");
-    setSelected(mention ? 1 : 0);
+    setSelectedKey(mention ? null : "auto");
   }, [command.text]);
-  const matches = tasks
-    .filter((task) =>
-      `${task.title} ${task.projectTitle ?? ""} ${task.goalTitle ?? ""}`
-        .toLocaleLowerCase()
-        .includes(query.toLocaleLowerCase()),
-    )
-    .slice(0, 20);
+  const search = query.toLocaleLowerCase();
+  const candidates: Suggestion[] = [
+    ...projects.map(
+      (project): Suggestion => ({
+        key: `project:${project.id}`,
+        kind: "project",
+        title: project.title,
+        project,
+      }),
+    ),
+    ...goals.map(
+      (goal): Suggestion => ({
+        key: `goal:${goal.id}`,
+        kind: "goal",
+        title: goal.title,
+        goal,
+      }),
+    ),
+    ...tasks.map(
+      (task): Suggestion => ({
+        key: task.key,
+        kind: "task",
+        title: task.title,
+        task,
+      }),
+    ),
+  ];
+  const matches = candidates.filter((candidate) => {
+    if (category !== "all" && category !== candidate.kind) return false;
+    const context =
+      candidate.kind === "goal"
+        ? candidate.goal.projectTitle
+        : candidate.kind === "task"
+          ? `${candidate.task.projectTitle ?? ""} ${candidate.task.goalTitle ?? ""}`
+          : "";
+    return `${candidate.title} ${context ?? ""}`
+      .toLocaleLowerCase()
+      .includes(search);
+  });
+  const selected =
+    selectedKey === null ? (matches[0]?.key ?? "auto") : selectedKey;
   const valid = Boolean(
     start &&
       end &&
@@ -404,34 +484,44 @@ function ScheduleSuggestions({
           Number(minutes) > 0 &&
           Number(minutes) <= 1440)),
   );
-  const choose = (task?: NoteTaskOption) => {
+  const choose = (candidate?: Suggestion) => {
     if (!valid) return;
+    const task = candidate?.kind === "task" ? candidate.task : undefined;
     onInsert({
       id: createDailyPlanId(),
       type: "schedule_directive",
       mode: task ? "task" : "filter",
-      title: task?.title,
+      title: candidate?.title,
       task_ref: task?.ref,
       work_type: task?.workType ?? workType,
       filter: task
         ? undefined
-        : { work_types: [workType], project_ids: [], goal_ids: [] },
+        : {
+            work_types: candidate ? [] : [workType],
+            project_ids:
+              candidate?.kind === "project" ? [candidate.project.id] : [],
+            goal_ids: candidate?.kind === "goal" ? [candidate.goal.id] : [],
+          },
       duration_override_minutes: minutes ? Number(minutes) : undefined,
       allowed_windows: [{ start, end }],
     });
   };
   keyboard.current = (key) => {
+    const keys = ["auto", ...matches.map((candidate) => candidate.key)];
+    const index = Math.max(0, keys.indexOf(selected));
     if (key === "ArrowDown")
-      setSelected((value) => Math.min(value + 1, matches.length));
-    if (key === "ArrowUp") setSelected((value) => Math.max(0, value - 1));
-    if (key === "Enter" && (selected === 0 || matches[selected - 1]))
-      choose(selected > 0 ? matches[selected - 1] : undefined);
+      setSelectedKey(keys[Math.min(index + 1, keys.length - 1)]!);
+    if (key === "ArrowUp") setSelectedKey(keys[Math.max(0, index - 1)]!);
+    if (key === "Enter") {
+      const candidate = matches.find((item) => item.key === selected);
+      if (selected === "auto" || candidate) choose(candidate);
+    }
   };
   return (
     <div
       role="dialog"
       aria-label="スケジュールの提案"
-      className="fixed z-50 w-[440px] max-w-[calc(100vw-24px)] space-y-3 rounded-xl border bg-popover p-4 text-popover-foreground shadow-xl"
+      className="fixed z-50 w-[440px] max-w-[calc(100vw-24px)] max-h-[calc(100dvh-24px)] overflow-y-auto space-y-3 rounded-xl border bg-popover p-4 text-popover-foreground shadow-xl"
       style={{ top: command.top, left: command.left }}
     >
       <div>
@@ -491,14 +581,57 @@ function ScheduleSuggestions({
         </p>
       )}
       <Input
-        aria-label="予定に入れるタスクを検索"
-        placeholder="タスク・プロジェクトを検索…"
+        aria-label="予定に入れる候補を検索"
+        placeholder="プロジェクト・ゴール・タスクを検索…"
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
-          setSelected(0);
+          setSelectedKey("auto");
         }}
       />
+      <div
+        role="group"
+        aria-label="候補の種類"
+        className="flex flex-wrap gap-1"
+      >
+        {(
+          [
+            ["all", "すべて"],
+            ["project", "プロジェクト"],
+            ["goal", "ゴール"],
+            ["task", "タスク"],
+          ] as const
+        ).map(([value, label]) => (
+          <Button
+            key={value}
+            size="sm"
+            variant={category === value ? "secondary" : "ghost"}
+            aria-pressed={category === value}
+            onClick={() => {
+              setCategory(value);
+              setSelectedKey("auto");
+            }}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        プロジェクト・ゴールは、生成時に配下のタスクから自動選択します。
+      </p>
+      {goalsLoading && (
+        <p role="status" className="text-xs text-muted-foreground">
+          ゴールを読み込み中…
+        </p>
+      )}
+      {goalsError && (
+        <p role="alert" className="text-xs text-destructive">
+          一部のゴールを読み込めませんでした。
+          <button type="button" className="underline" onClick={onRetryGoals}>
+            再試行
+          </button>
+        </p>
+      )}
       <div
         role="listbox"
         aria-label="予定の候補"
@@ -506,37 +639,47 @@ function ScheduleSuggestions({
       >
         <Button
           role="option"
-          aria-selected={selected === 0}
-          variant={selected === 0 ? "secondary" : "ghost"}
+          aria-selected={selected === "auto"}
+          variant={selected === "auto" ? "secondary" : "ghost"}
           className="h-auto w-full justify-start py-2 text-left"
           disabled={!valid}
           onClick={() => choose()}
         >
           この時間帯を条件に合うタスクで埋める
         </Button>
-        {matches.map((task, index) => (
+        {matches.map((candidate) => (
           <Button
-            key={task.key}
+            key={candidate.key}
             role="option"
-            aria-selected={selected === index + 1}
-            variant={selected === index + 1 ? "secondary" : "ghost"}
+            aria-selected={selected === candidate.key}
+            variant={selected === candidate.key ? "secondary" : "ghost"}
             disabled={!valid}
             className="h-auto w-full items-start justify-start whitespace-normal py-2 text-left"
-            onClick={() => choose(task)}
+            onClick={() => choose(candidate)}
           >
             <span>
-              <span className="block">{task.title}</span>
+              <span className="block">{candidate.title}</span>
               <span className="text-xs font-normal text-muted-foreground">
-                {task.projectTitle ?? "Quick Task"}
-                {task.goalTitle ? ` / ${task.goalTitle}` : ""} · 残り{" "}
-                {Math.round(task.remainingHours * 60)}分
+                {candidate.kind === "project" ? (
+                  "プロジェクト · 配下のタスクを自動選択"
+                ) : candidate.kind === "goal" ? (
+                  `ゴール · ${candidate.goal.projectTitle ?? ""} · 配下のタスクを自動選択`
+                ) : (
+                  <>
+                    {candidate.task.projectTitle ?? "Quick Task"}
+                    {candidate.task.goalTitle
+                      ? ` / ${candidate.task.goalTitle}`
+                      : ""}{" "}
+                    · 残り {Math.round(candidate.task.remainingHours * 60)}分
+                  </>
+                )}
               </span>
             </span>
           </Button>
         ))}
         {query && !matches.length && (
           <p className="p-2 text-xs text-muted-foreground">
-            一致するタスクがありません。検索語を変えてください。
+            一致する候補がありません。検索語や候補の種類を変えてください。
           </p>
         )}
       </div>

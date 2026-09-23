@@ -8,7 +8,7 @@
 import { act, fireEvent, render as renderUI, screen, waitFor, within } from "@testing-library/react";
 
 import { LightweightDailyPlanner } from "../lightweight-daily-planner";
-import { dailyPlansApi, quickTasksApi, tasksApi } from "@/lib/api";
+import { goalsApi, dailyPlansApi, quickTasksApi, tasksApi } from "@/lib/api";
 import { ApiError } from "@/lib/errors";
 import type { DailyPlanResponse } from "@/types/daily-plan";
 import type { QuickTask } from "@/types/quick-task";
@@ -45,6 +45,7 @@ function workspaceTask(id: string, title: string): TaskWorkspaceItem {
 }
 
 const mockToast = jest.fn();
+let mockProjects: Array<{ id: string; title: string }> = [];
 
 jest.mock("@/components/layout/app-header", () => ({
   AppHeader: () => <div data-testid="app-header" />,
@@ -55,7 +56,7 @@ jest.mock("@/hooks/use-toast", () => ({
 }));
 
 jest.mock("@/hooks/use-project-query", () => ({
-  useProjectOptions: () => ({ data: [] }),
+  useProjectOptions: () => ({ data: mockProjects }),
 }));
 
 jest.mock("@/lib/api", () => ({
@@ -87,6 +88,8 @@ const blankResponse = {
 describe("LightweightDailyPlanner", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockProjects = [];
+    jest.mocked(goalsApi.getByProject).mockResolvedValue([]);
     jest.mocked(dailyPlansApi.list).mockResolvedValue({ items: [], next_cursor: null });
     jest.mocked(dailyPlansApi.get).mockResolvedValue(blankResponse);
     jest
@@ -104,6 +107,28 @@ describe("LightweightDailyPlanner", () => {
       limit: 100,
     });
     jest.mocked(quickTasksApi.getAll).mockResolvedValue([]);
+  });
+
+  it("loads and saves a goal scope when the project has no tasks", async () => {
+    mockProjects = [{ id: "project", title: "研究" }];
+    jest.mocked(goalsApi.getByProject).mockResolvedValue([{
+      id: "goal", title: "企画をまとめる", project_id: "project", status: "pending",
+      description: null, estimate_hours: 1, due_date: null,
+      created_at: "2030-01-01", updated_at: "2030-01-01",
+    }]);
+    await renderNotebook(<LightweightDailyPlanner selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} onSwitchDetailed={jest.fn()} />);
+    expect(goalsApi.getByProject).not.toHaveBeenCalled();
+    const note = screen.getByRole("textbox", { name: "日次ノート" });
+    fireEvent.paste(note, { clipboardData: { getData: (type: string) => type === "text/plain" ? "1200-1400 /schedule" : "" } });
+    expect(await screen.findByRole("option", { name: /研究.*プロジェクト/ })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("option", { name: /企画をまとめる/ }));
+    expect(await screen.findByText("企画をまとめる", { selector: "summary" })).toBeInTheDocument();
+    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled(), { timeout: 2500 });
+    expect(jest.mocked(dailyPlansApi.update).mock.calls.at(-1)![2].blocks[0]).toMatchObject({
+      mode: "filter", title: "企画をまとめる",
+      filter: { goal_ids: ["goal"], project_ids: [], work_types: [] },
+      allowed_windows: [{ start: "12:00", end: "14:00" }],
+    });
   });
 
   it("opens as a notebook and keeps a generated schedule current while adding notes", async () => {
