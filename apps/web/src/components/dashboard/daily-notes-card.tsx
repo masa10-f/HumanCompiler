@@ -39,26 +39,29 @@ export function DailyNotesCard() {
   const transitionPending = useRef(false);
   const [transitionError, setTransitionError] = useState("");
   const retryTransition = useRef<() => void>(() => {});
-  const transition = useCallback(async (action: () => void) => {
-    if (transitionPending.current) return;
-    transitionPending.current = true;
-    retryTransition.current = () => {
-      void transition(action);
-    };
-    try {
-      await workspace.current?.beforeLeave();
-      setTransitionError("");
-      action();
-    } catch (error) {
-      setTransitionError(
-        error instanceof Error
-          ? error.message
-          : "ノートを保存できませんでした。",
-      );
-    } finally {
-      transitionPending.current = false;
-    }
-  }, []);
+  const transition = useCallback(
+    async (action: () => void, retryPausedSave = false) => {
+      if (transitionPending.current) return;
+      transitionPending.current = true;
+      retryTransition.current = () => {
+        void transition(action, true);
+      };
+      try {
+        await workspace.current?.beforeLeave({ retryPausedSave });
+        setTransitionError("");
+        action();
+      } catch (error) {
+        setTransitionError(
+          error instanceof Error
+            ? error.message
+            : "ノートを保存できませんでした。",
+        );
+      } finally {
+        transitionPending.current = false;
+      }
+    },
+    [],
+  );
   useEffect(() => {
     const refreshDate = () => {
       const next = getJSTDateString();

@@ -7,8 +7,6 @@ export const queryKeys = {
   // Dashboard keys
   dashboard: {
     all: ['dashboard'] as const,
-    dailyNote: (date: string) =>
-      [...queryKeys.dashboard.all, 'daily-note', date] as const,
     dailyNotes: (limit: number) =>
       [...queryKeys.dashboard.all, 'daily-notes', { limit }] as const,
     recentItems: (limit = 5) =>

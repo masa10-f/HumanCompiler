@@ -279,7 +279,7 @@ it("waits for the pending save before following a notebook link", async () => {
 });
 
 it("keeps yesterday's draft on a failed midnight save and retries the transition", async () => {
-  jest.mocked(dailyPlansApi.update).mockRejectedValueOnce(new ApiError("invalid", 422));
+  jest.mocked(dailyPlansApi.update).mockRejectedValueOnce(new ApiError(422, "invalid"));
   renderCard();
   typeMemo(await screen.findByRole("textbox", { name: "日次ノート" }), "日付をまたぐメモ");
   jest.mocked(getJSTDateString).mockReturnValue("2030-01-04");
@@ -291,4 +291,111 @@ it("keeps yesterday's draft on a failed midnight save and retries the transition
   fireEvent.click(screen.getByRole("button", { name: "移動を再試行" }));
   await waitFor(() => expect(dailyPlansApi.get).toHaveBeenCalledWith("2030-01-04"));
   expect(jest.mocked(dailyPlansApi.update).mock.calls.every(([date]) => date === "2030-01-03")).toBe(true);
+});
+
+
+it("does not retry a paused validation failure on midnight ticks or focus, but permits explicit retry", async () => {
+  jest.useFakeTimers();
+  try {
+    jest.mocked(dailyPlansApi.update).mockRejectedValueOnce(new ApiError(422, "invalid"));
+    renderCard();
+    typeMemo(await screen.findByRole("textbox", { name: "日次ノート" }), "保存できないメモ");
+    await act(async () => { await jest.advanceTimersByTimeAsync(800); });
+    expect(dailyPlansApi.update).toHaveBeenCalledTimes(1);
+    jest.mocked(getJSTDateString).mockReturnValue("2030-01-04");
+    await act(async () => { await jest.advanceTimersByTimeAsync(180000); });
+    fireEvent(window, new Event("focus"));
+    await screen.findByText(/内容を修正するか「保存を再試行」/);
+    expect(dailyPlansApi.update).toHaveBeenCalledTimes(1);
+    expect(dailyPlansApi.get).not.toHaveBeenCalledWith("2030-01-04");
+    fireEvent.click(screen.getByRole("button", { name: "移動を再試行" }));
+    await waitFor(() => expect(dailyPlansApi.get).toHaveBeenCalledWith("2030-01-04"));
+    expect(dailyPlansApi.update).toHaveBeenCalledTimes(2);
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+it("does not restart exhausted transient retries when the date changes", async () => {
+  jest.useFakeTimers();
+  try {
+    jest.mocked(dailyPlansApi.update).mockRejectedValue(new Error("offline"));
+    renderCard();
+    typeMemo(await screen.findByRole("textbox", { name: "日次ノート" }), "オフラインのメモ");
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await act(async () => { await jest.advanceTimersByTimeAsync(800); });
+    }
+    expect(dailyPlansApi.update).toHaveBeenCalledTimes(4);
+    jest.mocked(getJSTDateString).mockReturnValue("2030-01-04");
+    await act(async () => { await jest.advanceTimersByTimeAsync(180000); });
+    expect(dailyPlansApi.update).toHaveBeenCalledTimes(4);
+    expect(dailyPlansApi.get).not.toHaveBeenCalledWith("2030-01-04");
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+function dispatchBeforeUnload() {
+  const event = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+it("warns before unloading only while a draft is unsaved or its save is in flight", async () => {
+  let resolveSave!: (value: Awaited<ReturnType<typeof dailyPlansApi.update>>) => void;
+  jest.mocked(dailyPlansApi.update).mockImplementation(() => new Promise((resolve) => { resolveSave = resolve; }));
+  const view = renderCard();
+  const note = await screen.findByRole("textbox", { name: "日次ノート" });
+  expect(dispatchBeforeUnload()).toBe(false);
+  typeMemo(note, "保存前");
+  expect(dispatchBeforeUnload()).toBe(true);
+  await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled(), { timeout: 2500 });
+  expect(dispatchBeforeUnload()).toBe(true);
+  const [date, revision, document] = jest.mocked(dailyPlansApi.update).mock.calls[0]!;
+  await act(async () => resolveSave({ date, revision: revision + 1, document }));
+  expect(dispatchBeforeUnload()).toBe(false);
+  typeMemo(note, "次のメモ");
+  expect(dispatchBeforeUnload()).toBe(true);
+  view.unmount();
+  expect(dispatchBeforeUnload()).toBe(false);
+});
+
+it("retains the unload warning after a save failure", async () => {
+  jest.mocked(dailyPlansApi.update).mockRejectedValueOnce(new ApiError(422, "invalid"));
+  renderCard();
+  typeMemo(await screen.findByRole("textbox", { name: "日次ノート" }), "未保存");
+  await screen.findByRole("button", { name: "保存を再試行" });
+  expect(dispatchBeforeUnload()).toBe(true);
+});
+
+it("defers task candidates until the schedule suggestion menu is used", async () => {
+  jest.mocked(quickTasksApi.getAll).mockResolvedValue([{
+    id: "quick", title: "候補タスク", owner_id: "owner", description: null, estimate_hours: 1,
+    due_date: null, status: "pending", work_type: "light_work", priority: 3,
+    created_at: "2030-01-01", updated_at: "2030-01-01",
+  }]);
+  renderCard();
+  const note = await screen.findByRole("textbox", { name: "日次ノート" });
+  expect(tasksApi.getWorkspace).not.toHaveBeenCalled();
+  expect(quickTasksApi.getAll).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "ノートの入力方法" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "自動スケジュール" })).toBeEnabled();
+  typeMemo(note, "/schedule 09:00-10:00");
+  expect(await screen.findByRole("option", { name: /候補タスク/ })).toBeInTheDocument();
+  expect(tasksApi.getWorkspace).toHaveBeenCalledTimes(1);
+  expect(quickTasksApi.getAll).toHaveBeenCalledTimes(1);
+});
+
+it("loads candidates when a stored schedule's editor is expanded", async () => {
+  jest.mocked(dailyPlansApi.get).mockResolvedValue({ date: "2030-01-03", revision: 1,
+    document: { schema_version: 1, blocks: [{ id: "event", type: "timed_line", title: "会議", start: "09:00", end: "10:00" }] } });
+  renderCard();
+  const summary = await screen.findByText("会議", { selector: "summary" });
+  expect(tasksApi.getWorkspace).not.toHaveBeenCalled();
+  const details = summary.closest("details")!;
+  fireEvent(details, new Event("toggle"));
+  expect(tasksApi.getWorkspace).not.toHaveBeenCalled();
+  details.open = true;
+  fireEvent(details, new Event("toggle"));
+  await waitFor(() => expect(tasksApi.getWorkspace).toHaveBeenCalledTimes(1));
 });

@@ -141,7 +141,14 @@ describe("LightweightDailyPlanner", () => {
     fireEvent.click(screen.getByRole("button", { name: "実績" }));
     const comment = screen.getByLabelText("コメント（任意）");
     expect(comment).toHaveAttribute("maxlength", "500");
+    fireEvent.change(comment, { target: { value: "あ".repeat(501) } });
+    expect(screen.getByRole("alert")).toHaveTextContent("コメントは500文字以内で入力してください");
+    expect(comment).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("button", { name: "記録して継続" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "記録して完了" })).toBeDisabled();
+    expect(dailyPlansApi.applyTaskAction).not.toHaveBeenCalled();
     fireEvent.change(comment, { target: { value: "結果を整理した" } });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("実働時間（分）"), { target: { value: "45" } });
     fireEvent.click(screen.getByRole("button", { name: "記録して継続" }));
     await waitFor(() => expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ title: "タスクの更新に失敗しました" })));

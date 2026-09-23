@@ -91,7 +91,7 @@ import type {
 } from "@/types/daily-plan";
 
 export interface DailyPlanWorkspaceHandle {
-  beforeLeave: () => Promise<void>;
+  beforeLeave: (options?: { retryPausedSave?: boolean }) => Promise<void>;
 }
 
 interface DailyPlanWorkspaceProps {
@@ -185,6 +185,7 @@ export const DailyPlanWorkspace = forwardRef<
   >(null);
   const [actualMinutes, setActualMinutes] = useState(30);
   const [comment, setComment] = useState("");
+  const commentTooLong = comment.length > 500;
   const taskActionInFlight = useRef(false);
   const [taskActionPending, setTaskActionPending] = useState(false);
   useEffect(() => {
@@ -275,7 +276,18 @@ export const DailyPlanWorkspace = forwardRef<
     };
   }, [loadSignal, selectedDate, toast]);
 
+  const [suggestionsUsed, setSuggestionsUsed] = useState(false);
+  const [blockEditorUsed, setBlockEditorUsed] = useState(false);
+  const openSuggestions = useCallback(() => setSuggestionsUsed(true), []);
+  const needsTasks =
+    !embedded ||
+    suggestionsUsed ||
+    blockEditorUsed ||
+    document.blocks.some(
+      (block) => block.type === "checklist_item" && Boolean(block.task_ref),
+    );
   useEffect(() => {
+    if (!needsTasks) return;
     void loadTasks().catch(() =>
       toast({
         title: "タスク候補を読み込めませんでした",
@@ -284,10 +296,8 @@ export const DailyPlanWorkspace = forwardRef<
         variant: "destructive",
       }),
     );
-  }, [loadTasks, toast]);
+  }, [needsTasks, loadTasks, toast]);
 
-  const [suggestionsUsed, setSuggestionsUsed] = useState(false);
-  const openSuggestions = useCallback(() => setSuggestionsUsed(true), []);
   const needsGoals =
     suggestionsUsed ||
     document.blocks.some(
@@ -345,18 +355,11 @@ export const DailyPlanWorkspace = forwardRef<
     [],
   );
 
-  const refreshSavedNote = useCallback(
-    (response: DailyPlanResponse) => {
-      queryClient.setQueryData(
-        queryKeys.dashboard.dailyNote(response.date),
-        response,
-      );
-      void queryClient.invalidateQueries({
-        queryKey: [...queryKeys.dashboard.all, "daily-notes"],
-      });
-    },
-    [queryClient],
-  );
+  const refreshSavedNote = useCallback(() => {
+    void queryClient.invalidateQueries({
+      queryKey: [...queryKeys.dashboard.all, "daily-notes"],
+    });
+  }, [queryClient]);
 
   const saveNow = useCallback((): Promise<DailyPlanResponse> => {
     if (saveInFlightRef.current) return saveInFlightRef.current;
@@ -374,7 +377,7 @@ export const DailyPlanWorkspace = forwardRef<
           revisionRef.current,
           snapshot,
         );
-        refreshSavedNote(response);
+        refreshSavedNote();
         setRevision(response.revision);
         revisionRef.current = response.revision;
         setSaveRetry(0);
@@ -429,18 +432,29 @@ export const DailyPlanWorkspace = forwardRef<
   useImperativeHandle(
     ref,
     () => ({
-      beforeLeave: async () => {
+      beforeLeave: async ({ retryPausedSave = false } = {}) => {
         if (generating || taskActionInFlight.current || completionAssignment)
           throw new Error(
             "予定の生成や実績の入力を終えてから再試行してください。",
           );
         if (conflict)
           throw new Error("保存の競合を解決してから再試行してください。");
+        if (autosavePaused && !retryPausedSave && !saveInFlightRef.current)
+          throw new Error(
+            `${saveError ? dailyPlanSaveMessage(saveError, documentRef.current) : "ノートを保存できませんでした"}。内容を修正するか「保存を再試行」してください。`,
+          );
         if (dirtyRef.current || saveInFlightRef.current)
           await flushPendingSaves();
       },
     }),
-    [generating, completionAssignment, conflict, flushPendingSaves],
+    [
+      generating,
+      completionAssignment,
+      conflict,
+      autosavePaused,
+      saveError,
+      flushPendingSaves,
+    ],
   );
 
   useEffect(() => {
@@ -478,6 +492,18 @@ export const DailyPlanWorkspace = forwardRef<
     saveSignal,
     toast,
   ]);
+
+  useEffect(() => {
+    if (!dirty && !saving) return;
+    // Browsers cannot wait for an asynchronous save while closing/reloading.
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!dirtyRef.current && !saveInFlightRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [dirty, saving]);
 
   const replaceBlock = useCallback(
     (id: string, next: DailyPlanBlock) => {
@@ -730,11 +756,7 @@ export const DailyPlanWorkspace = forwardRef<
   };
 
   const applyTaskAction = async (action: "continue" | "complete") => {
-    if (
-      !completionAssignment ||
-      taskActionInFlight.current ||
-      comment.length > 500
-    )
+    if (!completionAssignment || taskActionInFlight.current || commentTooLong)
       return;
     taskActionInFlight.current = true;
     const source =
@@ -828,7 +850,7 @@ export const DailyPlanWorkspace = forwardRef<
         latest.revision,
         snapshot,
       );
-      refreshSavedNote(response);
+      refreshSavedNote();
       setRevision(response.revision);
       revisionRef.current = response.revision;
       if (documentRef.current === snapshot) {
@@ -951,7 +973,7 @@ export const DailyPlanWorkspace = forwardRef<
                 >
                   <span className="flex items-center gap-2 font-medium">
                     <HelpCircle className="h-4 w-4" />
-                    このページの入力方法
+                    {embedded ? "ノートの入力方法" : "このページの入力方法"}
                   </span>
                   {helpOpen ? (
                     <ChevronUp className="h-4 w-4" />
@@ -1246,7 +1268,13 @@ export const DailyPlanWorkspace = forwardRef<
                                     )}
                                   </div>
                                 )}
-                                <details className="min-w-0 flex-1 rounded-md">
+                                <details
+                                  className="min-w-0 flex-1 rounded-md"
+                                  onToggle={(event) => {
+                                    if (event.currentTarget.open)
+                                      setBlockEditorUsed(true);
+                                  }}
+                                >
                                   <summary className="cursor-pointer rounded px-2 py-1.5 text-sm hover:bg-muted">
                                     <span className="mr-2 font-mono text-muted-foreground">
                                       {block.type === "timed_line"
@@ -1398,10 +1426,24 @@ export const DailyPlanWorkspace = forwardRef<
                   id="daily-log-comment"
                   value={comment}
                   maxLength={500}
+                  aria-invalid={commentTooLong}
+                  aria-describedby={
+                    commentTooLong ? "daily-log-comment-error" : undefined
+                  }
                   disabled={taskActionPending}
                   placeholder="作業内容や感想を記録…"
                   onChange={(event) => setComment(event.target.value)}
                 />
+                {commentTooLong && (
+                  <p
+                    id="daily-log-comment-error"
+                    role="alert"
+                    className="text-sm text-destructive"
+                  >
+                    コメントは500文字以内で入力してください（{comment.length}
+                    /500）。
+                  </p>
+                )}
               </div>
             )}
           <DialogFooter>
@@ -1409,14 +1451,14 @@ export const DailyPlanWorkspace = forwardRef<
               !completionAssignment?.task_id.startsWith("quick_") && (
                 <Button
                   variant="outline"
-                  disabled={taskActionPending}
+                  disabled={taskActionPending || commentTooLong}
                   onClick={() => applyTaskAction("continue")}
                 >
                   記録して継続
                 </Button>
               )}
             <Button
-              disabled={taskActionPending}
+              disabled={taskActionPending || commentTooLong}
               onClick={() => applyTaskAction("complete")}
             >
               {taskActionPending && (
