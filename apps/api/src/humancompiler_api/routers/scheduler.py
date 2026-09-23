@@ -29,7 +29,6 @@ from humancompiler_scheduler.human import (
     HumanTask,
     HumanTimeSlot,
     HumanWorkKind,
-    human_daily_solver_config_from_dict,
     plan_daily_schedule,
 )
 
@@ -55,6 +54,11 @@ from humancompiler_api.models import (
 )
 from humancompiler_api.services import goal_service, task_service, quick_task_service
 from humancompiler_api.models import QuickTask
+from humancompiler_api.routers.schemas.scheduler_config import (
+    SchedulerSolverConfigInput,
+    coerce_human_solver_config,
+    human_solver_config_to_dict,
+)
 from uuid import UUID
 from sqlalchemy.exc import SQLAlchemyError, DatabaseError
 
@@ -380,43 +384,6 @@ SCHEDULER_CONFIG_CONTROLS: tuple[dict[str, Any], ...] = (
 )
 
 
-class SchedulerSolverConfigInput(BaseModel):
-    """Optional Human daily solver config override."""
-
-    kind_match_score: int | None = Field(None, ge=0, le=30)
-    kind_mismatch_score: int | None = Field(None, ge=0, le=30)
-    priority_score_base: int | None = Field(None, ge=1, le=20)
-    deadline_soon_days: int | None = Field(None, ge=0, le=14)
-    deadline_score: int | None = Field(None, ge=0, le=30)
-    overdue_score: int | None = Field(None, ge=0, le=80)
-    fixed_assignment_score: int | None = Field(None, ge=0, le=200)
-    dependency_unlock_score: int | None = Field(None, ge=0, le=30)
-    min_block_minutes: int | None = Field(None, ge=1, le=120)
-    block_granularity_minutes: int | None = Field(None, ge=1, le=60)
-    max_candidate_block_minutes: int | None = Field(None, ge=1, le=480)
-    project_switch_penalty: int | None = Field(None, ge=0, le=30)
-    project_switch_reset_gap_minutes: int | None = Field(None, ge=0, le=180)
-    long_continuous_threshold_minutes: int | None = Field(None, ge=0, le=360)
-    long_continuous_penalty: int | None = Field(None, ge=0, le=40)
-    break_reset_gap_minutes: int | None = Field(None, ge=0, le=180)
-    small_gap_minutes: int | None = Field(None, ge=0, le=120)
-    small_gap_fill_score: int | None = Field(None, ge=0, le=30)
-
-    model_config = ConfigDict(extra="forbid")
-
-    @model_validator(mode="after")
-    def validate_block_candidate_settings(self) -> "SchedulerSolverConfigInput":
-        min_block = self.min_block_minutes if self.min_block_minutes is not None else 15
-        if (
-            self.max_candidate_block_minutes is not None
-            and self.max_candidate_block_minutes < min_block
-        ):
-            raise ValueError(
-                "max_candidate_block_minutes must be at least min_block_minutes"
-            )
-        return self
-
-
 class SchedulerConfigControl(BaseModel):
     """UI control metadata for a scheduler solver parameter."""
 
@@ -643,27 +610,6 @@ def _scheduler_package_version() -> str:
         return "unknown"
 
 
-def _human_solver_config_to_dict(config: HumanDailySolverConfig) -> dict[str, int]:
-    return {field.name: int(getattr(config, field.name)) for field in fields(config)}
-
-
-def _coerce_human_solver_config(
-    config: SchedulerSolverConfigInput | HumanDailySolverConfig | dict[str, Any] | None,
-) -> HumanDailySolverConfig:
-    if isinstance(config, HumanDailySolverConfig):
-        return config
-
-    defaults = _human_solver_config_to_dict(HumanDailySolverConfig())
-    if config is None:
-        return HumanDailySolverConfig()
-
-    if isinstance(config, SchedulerSolverConfigInput):
-        overrides = config.model_dump(exclude_none=True)
-    else:
-        overrides = {key: value for key, value in config.items() if value is not None}
-    return human_daily_solver_config_from_dict({**defaults, **overrides})
-
-
 def _to_human_work_kind(
     kind: TaskKind | OptimizerSlotKind | SlotKind | str,
 ) -> HumanWorkKind:
@@ -847,7 +793,7 @@ def _build_human_daily_fixture(
             task_dependencies,
             goal_dependencies,
         ),
-        solver_config=_coerce_human_solver_config(solver_config),
+        solver_config=coerce_human_solver_config(solver_config),
         metadata={"backend": "humancompiler-scheduler"},
     )
 
@@ -1521,7 +1467,7 @@ async def get_scheduler_tuning_config():
         backend_version=_scheduler_package_version(),
         defaults={
             key: value
-            for key, value in _human_solver_config_to_dict(default_config).items()
+            for key, value in human_solver_config_to_dict(default_config).items()
             if key in schema_keys
         },
         schema=schema,

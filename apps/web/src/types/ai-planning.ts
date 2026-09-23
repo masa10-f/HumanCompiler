@@ -430,19 +430,6 @@ export interface SavedWeeklySchedule {
 }
 
 /**
- * 週次スケジュール選択肢
- * @description 週次スケジュール選択UIで使用する選択肢
- */
-export interface WeeklyScheduleOption {
-  /** 週の開始日 */
-  week_start_date: string;
-  /** タスク数 */
-  task_count: number;
-  /** 表示タイトル */
-  title: string;
-}
-
-/**
  * スロットテンプレート
  * @description 曜日ごとのスロットプリセット
  */

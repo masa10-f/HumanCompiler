@@ -585,7 +585,7 @@ class Schedule(ScheduleBase, table=True):  # type: ignore[call-arg]
 
 
 class DailyPlanDocument(SQLModel, table=True):  # type: ignore[call-arg]
-    """Versioned source document for one user's lightweight daily plan."""
+    """Versioned source document for one user's daily plan note."""
 
     __tablename__ = "daily_plan_documents"
     __table_args__ = (

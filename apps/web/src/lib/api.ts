@@ -44,6 +44,7 @@ import type {
   PrioritySuggestions,
   ScheduleRequest,
   ScheduleResult,
+  SchedulerSolverConfig,
   SchedulerTuningConfig,
   SavedWeeklySchedule,
   SlotTemplate,
@@ -53,7 +54,6 @@ import type {
 } from "@/types/ai-planning";
 import type {
   TestAIIntegrationResponse,
-  SaveDailyScheduleResponse,
   DailySchedule,
   TestSchedulerResponse,
 } from "@/types/api-responses";
@@ -967,15 +967,6 @@ class ApiClient {
     });
   }
 
-  async saveDailySchedule(
-    scheduleData: ScheduleResult & { date: string; generated_at: string },
-  ): Promise<SaveDailyScheduleResponse> {
-    return this.request<SaveDailyScheduleResponse>("/api/schedule/daily/save", {
-      method: "POST",
-      body: JSON.stringify(scheduleData),
-    });
-  }
-
   async getDailySchedule(date: string): Promise<DailySchedule> {
     return this.request<DailySchedule>(`/api/schedule/daily/${date}/`);
   }
@@ -1006,10 +997,18 @@ class ApiClient {
     });
   }
 
-  async generateDailyPlanDocument(date: string): Promise<DailyPlanResponse> {
+  async generateDailyPlanDocument(
+    date: string,
+    solverConfig?: SchedulerSolverConfig,
+  ): Promise<DailyPlanResponse> {
     return this.request<DailyPlanResponse>(
       `/api/daily-plans/${date}/generate`,
-      { method: "POST" },
+      solverConfig
+        ? {
+            method: "POST",
+            body: JSON.stringify({ solver_config: solverConfig }),
+          }
+        : { method: "POST" },
     );
   }
 
@@ -1042,14 +1041,6 @@ class ApiClient {
 
   async getSchedulerTuningConfig(): Promise<SchedulerTuningConfig> {
     return this.request<SchedulerTuningConfig>("/api/schedule/tuning/config");
-  }
-
-  async getWeeklyScheduleOptions(): Promise<
-    import("@/types/ai-planning").WeeklyScheduleOption[]
-  > {
-    return this.request<import("@/types/ai-planning").WeeklyScheduleOption[]>(
-      "/api/schedule/weekly-schedule-options",
-    );
   }
 
   // === Log API methods ===
@@ -2015,15 +2006,11 @@ export const triageApi = {
 export const schedulingApi = {
   optimizeDaily: (request: ScheduleRequest) =>
     apiClient.optimizeDailySchedule(request),
-  save: (
-    scheduleData: ScheduleResult & { date: string; generated_at: string },
-  ) => apiClient.saveDailySchedule(scheduleData),
   getByDate: (date: string) => apiClient.getDailySchedule(date),
   list: (skip?: number, limit?: number) =>
     apiClient.listDailySchedules(skip, limit),
   test: () => apiClient.testScheduler(),
   getTuningConfig: () => apiClient.getSchedulerTuningConfig(),
-  getWeeklyScheduleOptions: () => apiClient.getWeeklyScheduleOptions(),
 };
 
 export const dailyPlansApi = {
@@ -2034,7 +2021,8 @@ export const dailyPlansApi = {
     expectedRevision: number,
     document: DailyPlanDocumentV1,
   ) => apiClient.updateDailyPlanDocument(date, expectedRevision, document),
-  generate: (date: string) => apiClient.generateDailyPlanDocument(date),
+  generate: (date: string, solverConfig?: SchedulerSolverConfig) =>
+    apiClient.generateDailyPlanDocument(date, solverConfig),
   applyTaskAction: (date: string, request: DailyPlanTaskActionRequest) =>
     apiClient.applyDailyPlanTaskAction(date, request),
 };

@@ -71,8 +71,9 @@ import { useProjectOptions } from "@/hooks/use-project-query";
 import { dailyPlansApi, quickTasksApi, tasksApi } from "@/lib/api";
 import { ApiError } from "@/lib/errors";
 import { updateDailyPlanTimeRange } from "@/lib/daily-plan-command";
-import { applyDirectiveTaskSelection } from "@/lib/daily-plan-adapter";
+import { loadSchedulerSolverConfig } from "@/lib/scheduler-config";
 import {
+  applyDirectiveTaskSelection,
   isPermanentDailyPlanSaveError,
   missingDailyPlanBlockIds,
 } from "@/lib/daily-plan-editor";
@@ -98,7 +99,6 @@ interface DailyPlanWorkspaceProps {
   embedded?: boolean;
   selectedDate: string;
   onSelectedDateChange?: (date: string) => void;
-  onSwitchDetailed?: (document: DailyPlanDocumentV1, revision: number) => void;
 }
 
 interface TaskOption {
@@ -150,7 +150,7 @@ export const DailyPlanWorkspace = forwardRef<
   DailyPlanWorkspaceHandle,
   DailyPlanWorkspaceProps
 >(function DailyPlanWorkspace(
-  { selectedDate, onSelectedDateChange, onSwitchDetailed, embedded = false },
+  { selectedDate, onSelectedDateChange, embedded = false },
   ref,
 ) {
   const queryClient = useQueryClient();
@@ -574,7 +574,10 @@ export const DailyPlanWorkspace = forwardRef<
     setGenerating(true);
     try {
       await flushPendingSaves();
-      const response = await dailyPlansApi.generate(selectedDate);
+      const response = await dailyPlansApi.generate(
+        selectedDate,
+        loadSchedulerSolverConfig(),
+      );
       scheduleInputRef.current = schedulingBlocks(response.document);
       setSchedule(response.schedule ?? null);
       if (response.schedule?.success) {
@@ -606,20 +609,6 @@ export const DailyPlanWorkspace = forwardRef<
       });
     } finally {
       setGenerating(false);
-    }
-  };
-
-  const switchToDetailed = async () => {
-    try {
-      const response = await flushPendingSaves();
-      onSwitchDetailed?.(response.document, response.revision);
-    } catch (error) {
-      toast({
-        title: "詳細モードへ切り替えられませんでした",
-        description:
-          error instanceof Error ? error.message : "保存状態を確認してください",
-        variant: "destructive",
-      });
     }
   };
 
@@ -937,17 +926,6 @@ export const DailyPlanWorkspace = forwardRef<
                   )}
                   {saving ? "保存中" : dirty ? "未保存" : "保存済み"}
                 </Badge>
-                {!embedded && (
-                  <Button
-                    variant="outline"
-                    onClick={switchToDetailed}
-                    disabled={
-                      noteUnavailable || generating || (saving && conflict)
-                    }
-                  >
-                    詳細モード
-                  </Button>
-                )}
                 <Button
                   onClick={generate}
                   disabled={noteUnavailable || generating || conflict}

@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
 
 import { ApiError } from '../errors';
-import { extractDailyPlanMention, matchDailyPlanTasks, isPermanentDailyPlanSaveError,
-  missingDailyPlanBlockIds, stripDailyPlanDuration } from '../daily-plan-editor';
+import { applyDirectiveTaskSelection, extractDailyPlanMention, matchDailyPlanTasks,
+  isPermanentDailyPlanSaveError, missingDailyPlanBlockIds, stripDailyPlanDuration } from '../daily-plan-editor';
 
 describe('daily plan editor recovery and mention helpers', () => {
   it.each([
@@ -52,5 +52,43 @@ describe('daily plan editor recovery and mention helpers', () => {
     expect(stripDailyPlanDuration('買い物 (30m)')).toBe('買い物');
     expect(stripDailyPlanDuration('調査 (1h30m)')).toBe('調査');
     expect(stripDailyPlanDuration('調査 (資料)')).toBe('調査 (資料)');
+  });
+});
+
+describe('applyDirectiveTaskSelection', () => {
+  it('falls back to a valid filter directive when task selection is cleared', () => {
+    const directive = {
+      id: 'directive',
+      type: 'schedule_directive' as const,
+      mode: 'task' as const,
+      task_ref: { source: 'task' as const, id: 'task-1' },
+      title: 'Task',
+    };
+
+    expect(applyDirectiveTaskSelection(directive)).toEqual({
+      ...directive,
+      mode: 'filter',
+      task_ref: undefined,
+      filter: { work_types: [], project_ids: [], goal_ids: [] },
+    });
+  });
+
+  it('switches to a specific-task directive when a task is chosen', () => {
+    const directive = {
+      id: 'directive',
+      type: 'schedule_directive' as const,
+      mode: 'filter' as const,
+      filter: { work_types: ['study' as const], project_ids: [], goal_ids: [] },
+    };
+
+    expect(
+      applyDirectiveTaskSelection(directive, { ref: { source: 'quick_task', id: 'q-1' }, title: 'Inbox' }),
+    ).toEqual({
+      ...directive,
+      mode: 'task',
+      task_ref: { source: 'quick_task', id: 'q-1' },
+      title: 'Inbox',
+      filter: undefined,
+    });
   });
 });

@@ -19,19 +19,6 @@ export interface TestAIIntegrationResponse {
 }
 
 /**
- * デイリースケジュール保存レスポンス
- * @description スケジュール保存結果
- */
-export interface SaveDailyScheduleResponse {
-  /** 成功したかどうか */
-  success: boolean;
-  /** 保存されたスケジュールID */
-  schedule_id: string;
-  /** 結果メッセージ */
-  message: string;
-}
-
-/**
  * デイリースケジュール
  * @description 日次スケジュールの保存データ
  */
