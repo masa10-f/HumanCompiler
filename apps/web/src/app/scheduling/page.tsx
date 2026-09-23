@@ -5,7 +5,6 @@ import {
   CalendarDays,
   CalendarRange,
   History,
-  LayoutTemplate,
   SlidersHorizontal,
 } from 'lucide-react';
 import { AppHeader } from '@/components/layout/app-header';
@@ -31,12 +30,6 @@ const schedulingItems = [
     path: '/scheduling/tuning',
     icon: SlidersHorizontal,
     action: '調整',
-  },
-  {
-    title: 'スロットテンプレート',
-    path: '/scheduling/settings',
-    icon: LayoutTemplate,
-    action: '編集',
   },
   {
     title: 'スケジュール履歴',

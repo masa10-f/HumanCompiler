@@ -47,10 +47,6 @@ import type {
   SchedulerSolverConfig,
   SchedulerTuningConfig,
   SavedWeeklySchedule,
-  SlotTemplate,
-  SlotTemplateCreate,
-  SlotTemplateUpdate,
-  DayOfWeekTemplates,
 } from "@/types/ai-planning";
 import type {
   TestAIIntegrationResponse,
@@ -1761,111 +1757,6 @@ class ApiClient {
       method: "DELETE",
     });
   }
-
-  // === Slot Template Methods ===
-
-  /**
-   * Get all slot templates for the current user.
-   *
-   * @param dayOfWeek - Optional filter for day of week (0=Monday, 6=Sunday)
-   * @param skip - Number of templates to skip
-   * @param limit - Maximum number of templates to return
-   * @returns List of SlotTemplate objects
-   */
-  async getSlotTemplates(
-    dayOfWeek?: number,
-    skip: number = 0,
-    limit: number = 50,
-  ): Promise<{ templates: SlotTemplate[]; total: number }> {
-    const params = new URLSearchParams({
-      skip: skip.toString(),
-      limit: limit.toString(),
-    });
-
-    if (dayOfWeek !== undefined) {
-      params.set("day_of_week", dayOfWeek.toString());
-    }
-
-    return this.request<{ templates: SlotTemplate[]; total: number }>(
-      `/api/slot-templates/?${params.toString()}`,
-    );
-  }
-
-  /**
-   * Get all slot templates grouped by day of week.
-   *
-   * @returns Templates organized by day (Monday-Sunday)
-   */
-  async getSlotTemplatesByDay(): Promise<DayOfWeekTemplates[]> {
-    return this.request<DayOfWeekTemplates[]>("/api/slot-templates/by-day");
-  }
-
-  /**
-   * Get the default template for a specific day of week.
-   *
-   * @param dayOfWeek - Day of week (0=Monday, 6=Sunday)
-   * @returns The default SlotTemplate or null
-   */
-  async getDefaultSlotTemplate(
-    dayOfWeek: number,
-  ): Promise<SlotTemplate | null> {
-    return this.request<SlotTemplate | null>(
-      `/api/slot-templates/default/${dayOfWeek}`,
-    );
-  }
-
-  /**
-   * Get a specific slot template by ID.
-   *
-   * @param templateId - The slot template UUID
-   * @returns The SlotTemplate object
-   */
-  async getSlotTemplate(templateId: string): Promise<SlotTemplate> {
-    return this.request<SlotTemplate>(`/api/slot-templates/${templateId}`);
-  }
-
-  /**
-   * Create a new slot template.
-   *
-   * @param templateData - Slot template creation data
-   * @returns The created SlotTemplate object
-   */
-  async createSlotTemplate(
-    templateData: SlotTemplateCreate,
-  ): Promise<SlotTemplate> {
-    return this.request<SlotTemplate>("/api/slot-templates/", {
-      method: "POST",
-      body: JSON.stringify(templateData),
-    });
-  }
-
-  /**
-   * Update a slot template.
-   *
-   * @param templateId - The slot template UUID
-   * @param templateData - Slot template update data
-   * @returns The updated SlotTemplate object
-   */
-  async updateSlotTemplate(
-    templateId: string,
-    templateData: SlotTemplateUpdate,
-  ): Promise<SlotTemplate> {
-    return this.request<SlotTemplate>(`/api/slot-templates/${templateId}`, {
-      method: "PUT",
-      body: JSON.stringify(templateData),
-    });
-  }
-
-  /**
-   * Delete a slot template.
-   *
-   * @param templateId - The slot template UUID
-   */
-  async deleteSlotTemplate(templateId: string): Promise<void> {
-    return this.request<void>(`/api/slot-templates/${templateId}`, {
-      method: "DELETE",
-    });
-  }
 }
 
 export const apiClient = new ApiClient();
@@ -2216,24 +2107,6 @@ export const hookTokensApi = {
   getAll: () => apiClient.getHookTokens(),
   create: (tokenData: HookTokenCreate) => apiClient.createHookToken(tokenData),
   revoke: (tokenId: string) => apiClient.revokeHookToken(tokenId),
-};
-
-/**
- * Slot Templates API convenience wrapper.
- * Provides methods for managing day-of-week slot presets.
- */
-export const slotTemplatesApi = {
-  getAll: (dayOfWeek?: number, skip?: number, limit?: number) =>
-    apiClient.getSlotTemplates(dayOfWeek, skip, limit),
-  getByDay: () => apiClient.getSlotTemplatesByDay(),
-  getDefault: (dayOfWeek: number) =>
-    apiClient.getDefaultSlotTemplate(dayOfWeek),
-  getById: (templateId: string) => apiClient.getSlotTemplate(templateId),
-  create: (templateData: SlotTemplateCreate) =>
-    apiClient.createSlotTemplate(templateData),
-  update: (templateId: string, templateData: SlotTemplateUpdate) =>
-    apiClient.updateSlotTemplate(templateId, templateData),
-  delete: (templateId: string) => apiClient.deleteSlotTemplate(templateId),
 };
 
 // === Helper functions ===

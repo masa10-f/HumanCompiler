@@ -196,7 +196,7 @@ export function WeeklyPlanEditor({
         />
         {canRecalculate ? (
           <Button asChild variant="outline">
-            <Link href={`/scheduling/daily?date=${encodeURIComponent(recalculateDate)}`}>
+            <Link href={`/scheduling/daily?source=weekly_schedule&week_start=${encodeURIComponent(plan.week_start_date)}&date=${encodeURIComponent(recalculateDate)}`}>
               <CalendarClock className="mr-2 h-4 w-4" />
               日次計画を再計算
             </Link>

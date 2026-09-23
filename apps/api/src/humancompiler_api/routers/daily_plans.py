@@ -1136,6 +1136,8 @@ def _build_scheduler_input(
     eligible_counts: dict[str, int] = {}
     schedule_date = _parse_date(date_text)
     current_jst = datetime.now(JST)
+    # Only keeps already-started generated rows on regeneration. Placement may
+    # still use windows before the current time; the user decides the timing.
     now = current_jst if current_jst.date() == schedule_date else None
     frozen_keys: set[tuple[str, str, str]] = set()
     document_block_ids = {block.id for block in document.blocks}
@@ -1396,7 +1398,6 @@ def _build_scheduler_input(
         # A document without /schedule must emit only its fixed work instead.
         candidate_pools=adjusted_candidate_pools
         or [HumanCandidatePool(id="__no_directives__", eligible_task_ids=frozenset())],
-        now=now,
         task_dependencies=task_dependencies,
         solver_config=coerce_human_solver_config(solver_config),
         metadata={"source": "daily_plan_document"},

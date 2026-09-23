@@ -6,6 +6,7 @@
 from datetime import datetime
 from decimal import Decimal
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi import HTTPException
@@ -1098,6 +1099,38 @@ def test_scheduler_input_applies_solver_config_overrides(
         tuned_fixture.solver_config.min_block_minutes
         == HumanDailySolverConfig().min_block_minutes
     )
+
+
+@pytest.mark.asyncio
+async def test_generate_today_can_place_work_before_current_time(
+    session: Session, planning_data
+) -> None:
+    user, _project, _goal, first, _second, _quick = planning_data
+    today = datetime.now(ZoneInfo("Asia/Tokyo")).date().isoformat()
+    await update_daily_plan(
+        today,
+        DailyPlanUpdateRequest(
+            expected_revision=0,
+            document=DailyPlanDocumentV1(
+                blocks=[
+                    ScheduleDirectiveBlock(
+                        id="early",
+                        allowed_windows=[DirectiveWindow(start="00:00", end="03:00")],
+                        mode="task",
+                        task_ref=TaskRef(source="task", id=first.id),
+                    )
+                ]
+            ),
+        ),
+        str(user.id),
+        session,
+    )
+
+    generated = generate_daily_plan(today, str(user.id), session)
+
+    assert generated.schedule is not None
+    assert generated.schedule.assignments
+    assert generated.schedule.assignments[0].start_time == "00:00"
 
 
 @pytest.mark.asyncio

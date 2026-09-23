@@ -20,13 +20,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 // Icons
-import { NotebookPen, TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play, Timer, ListChecks, MoreHorizontal, ChevronDown, CalendarDays, SlidersHorizontal, LayoutTemplate, ListTodo } from 'lucide-react'
+import { NotebookPen, TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play, Timer, ListChecks, MoreHorizontal, ChevronDown, CalendarDays, SlidersHorizontal, ListTodo } from 'lucide-react'
 
 // Hooks
 import { useAuth } from '@/hooks/use-auth'
 
 interface AppHeaderProps {
-  currentPage?: 'daily-notes' | 'dashboard' | 'tasks' | 'projects' | 'ai-planning' | 'triage' | 'scheduling' | 'scheduling-daily' | 'scheduling-settings' | 'scheduler-tuning' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner'
+  currentPage?: 'daily-notes' | 'dashboard' | 'tasks' | 'projects' | 'ai-planning' | 'triage' | 'scheduling' | 'scheduling-daily' | 'scheduler-tuning' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner'
 }
 
 const NAVIGATION_ITEMS = [
@@ -47,7 +47,6 @@ const SCHEDULING_NAVIGATION_ITEMS = [
   { id: 'scheduling-daily', label: '日次計画', path: '/scheduling/daily', icon: Clock },
   { id: 'ai-planning', label: '週次計画', path: '/scheduling/weekly', icon: CalendarDays },
   { id: 'scheduler-tuning', label: '調整', path: '/scheduling/tuning', icon: SlidersHorizontal },
-  { id: 'scheduling-settings', label: 'テンプレート', path: '/scheduling/settings', icon: LayoutTemplate },
   { id: 'schedule-history', label: 'スケジュール履歴', path: '/scheduling/history', icon: History },
 ] as const
 
