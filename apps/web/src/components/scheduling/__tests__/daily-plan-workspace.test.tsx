@@ -232,6 +232,29 @@ describe("DailyPlanWorkspace", () => {
         { timeout: 2500 });
     });
 
+    it("keeps the link when candidates shrink while the list is open", async () => {
+      let finishRefresh: (value: Awaited<ReturnType<typeof tasksApi.getWorkspace>>) => void = () => {};
+      jest.mocked(dailyPlansApi.applyTaskAction).mockResolvedValue({
+        task_ref: { source: "task", id: "data" }, status: "completed", actual_minutes: 30 });
+      const input = await openFixedLine([{ ...fixed, title: "論文を読む", task_ref: { source: "task", id: "paper" } }]);
+      jest.mocked(tasksApi.getWorkspace).mockImplementationOnce(() => new Promise((resolve) => { finishRefresh = resolve; }));
+      fireEvent.blur(input);
+      fireEvent.click(screen.getByRole("button", { name: "実績" }));
+      fireEvent.click(screen.getByRole("button", { name: "記録して完了" }));
+      await waitFor(() => expect(tasksApi.getWorkspace).toHaveBeenCalledTimes(2));
+      fireEvent.focus(input);
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      expect(screen.getByRole("option", { name: /買い物/ })).toHaveAttribute("aria-selected", "true");
+      await act(async () => finishRefresh({ items: [
+        { ...workspaceTask("paper", "論文を読む"), project_title: "研究", goal_title: "調査" },
+      ], total: 1, skip: 0, limit: 100 }));
+      expect(screen.getByRole("option", { name: /論文を読む/ })).toHaveAttribute("aria-selected", "true");
+      fireEvent.keyDown(input, { key: "Enter" });
+      await waitFor(() => expect(lastSavedFixed()).toMatchObject({ task_ref: { source: "task", id: "paper" } }),
+        { timeout: 2500 });
+    });
+
     it("does not turn a time-like note paragraph into a fixed line when Enter picks a task", async () => {
       const input = await openFixedLine([
         { id: "draft", type: "text", text: "1100-1200 下書き" },

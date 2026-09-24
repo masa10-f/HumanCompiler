@@ -1544,6 +1544,9 @@ function TaskSearchSelect({
   const matches = candidates(query);
   // Index 0 unlinks; candidates follow.
   const items: Array<TaskOption | undefined> = [undefined, ...matches];
+  // Candidates can shrink while open (e.g. after a task is completed), so an
+  // old index must not fall through to the unlink entry.
+  const current = Math.min(active, items.length - 1);
   const choose = (task: TaskOption | undefined) => {
     onChange(task);
     setQuery("");
@@ -1552,9 +1555,9 @@ function TaskSearchSelect({
   useEffect(() => {
     if (open)
       document
-        .getElementById(`${listId}-${active}`)
+        .getElementById(`${listId}-${current}`)
         ?.scrollIntoView?.({ block: "nearest" });
-  }, [active, listId, open]);
+  }, [current, listId, open]);
 
   return (
     <div className="relative min-w-[220px] flex-1">
@@ -1564,7 +1567,7 @@ function TaskSearchSelect({
         aria-autocomplete="list"
         aria-expanded={open}
         aria-controls={listId}
-        aria-activedescendant={open ? `${listId}-${active}` : undefined}
+        aria-activedescendant={open ? `${listId}-${current}` : undefined}
         placeholder={
           selected ? taskOptionLabel(selected) : "タスクを検索して紐づけ"
         }
@@ -1596,14 +1599,14 @@ function TaskSearchSelect({
             event.preventDefault();
             if (!open) setOpen(true);
             else
-              setActive((index) =>
+              setActive(
                 event.key === "ArrowDown"
-                  ? Math.min(index + 1, items.length - 1)
-                  : Math.max(index - 1, 0),
+                  ? Math.min(current + 1, items.length - 1)
+                  : Math.max(current - 1, 0),
               );
           } else if (event.key === "Enter" && open) {
             event.preventDefault();
-            choose(items[active]);
+            choose(items[current]);
           } else if (event.key === "Escape" && open) {
             event.preventDefault();
             setQuery("");
@@ -1625,9 +1628,11 @@ function TaskSearchSelect({
               key={task?.key ?? "none"}
               id={`${listId}-${index}`}
               role="option"
-              aria-selected={index === active}
+              aria-selected={index === current}
               className={`cursor-pointer rounded px-2 py-1.5 text-sm ${
-                index === active ? "bg-secondary text-secondary-foreground" : ""
+                index === current
+                  ? "bg-secondary text-secondary-foreground"
+                  : ""
               }`}
               onMouseEnter={() => setActive(index)}
               onClick={() => choose(task)}
