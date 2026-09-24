@@ -216,6 +216,18 @@ describe("DailyPlanWorkspace", () => {
         title: "データ整理", task_ref: { source: "task", id: "data" } }), { timeout: 2500 });
     });
 
+    it("keeps the link when Enter is pressed on a search with no match", async () => {
+      const input = await openFixedLine([{ ...fixed, title: "論文を読む", task_ref: { source: "task", id: "paper" } }]);
+      fireEvent.change(input, { target: { value: "会議" } });
+      expect(screen.getByText("一致するタスクがありません")).toBeInTheDocument();
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(screen.getByRole("listbox", { name: "紐づけるタスクの候補" })).toBeInTheDocument();
+      fireEvent.blur(input);
+      expect(input).toHaveValue("論文を読む · 研究");
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1000)); });
+      expect(dailyPlansApi.update).not.toHaveBeenCalled();
+    });
+
     it("unlinks with the keyboard and keeps Escape from changing the link", async () => {
       const input = await openFixedLine([{ ...fixed, title: "論文を読む", task_ref: { source: "task", id: "paper" } }]);
       expect(screen.getByRole("option", { name: /論文を読む/ })).toHaveAttribute("aria-selected", "true");
@@ -253,6 +265,41 @@ describe("DailyPlanWorkspace", () => {
       fireEvent.keyDown(input, { key: "Enter" });
       fireEvent.blur(input);
       expect(input).toHaveValue("論文を読む · 研究");
+    });
+
+    it("keeps the highlighted task when an earlier candidate disappears", async () => {
+      let finishRefresh: (value: Awaited<ReturnType<typeof tasksApi.getWorkspace>>) => void = () => {};
+      jest.mocked(dailyPlansApi.applyTaskAction).mockResolvedValue({
+        task_ref: { source: "task", id: "shopping" }, status: "in_progress", actual_minutes: 30 });
+      const input = await openFixedLine([{ ...fixed, title: "買い物", task_ref: { source: "task", id: "shopping" } }]);
+      jest.mocked(tasksApi.getWorkspace).mockImplementationOnce(() => new Promise((resolve) => { finishRefresh = resolve; }));
+      fireEvent.blur(input);
+      fireEvent.click(screen.getByRole("button", { name: "実績" }));
+      fireEvent.click(screen.getByRole("button", { name: "記録して継続" }));
+      await waitFor(() => expect(tasksApi.getWorkspace).toHaveBeenCalledTimes(2));
+      fireEvent.focus(input);
+      expect(screen.getByRole("option", { name: /買い物/ })).toHaveAttribute("aria-selected", "true");
+      fireEvent.keyDown(input, { key: "ArrowUp" });
+      expect(screen.getByRole("option", { name: /データ整理/ })).toHaveAttribute("aria-selected", "true");
+      await act(async () => finishRefresh({ items: [
+        { ...workspaceTask("data", "データ整理"), project_title: "研究", goal_title: "実験" },
+        workspaceTask("shopping", "買い物"),
+      ], total: 2, skip: 0, limit: 100 }));
+      expect(screen.getByRole("option", { name: /データ整理/ })).toHaveAttribute("aria-selected", "true");
+      fireEvent.keyDown(input, { key: "Enter" });
+      await waitFor(() => expect(lastSavedFixed()).toMatchObject({ task_ref: { source: "task", id: "data" } }),
+        { timeout: 2500 });
+    });
+
+    it("keeps a renamed line's title when the current link is chosen again", async () => {
+      const input = await openFixedLine([{ ...fixed, title: "論文を読む（2章）", task_ref: { source: "task", id: "paper" } }]);
+      expect(screen.getByRole("option", { name: /論文を読む/ })).toHaveAttribute("aria-selected", "true");
+      fireEvent.keyDown(input, { key: "Enter" });
+      fireEvent.blur(input);
+      expect(input).toHaveValue("論文を読む · 研究");
+      expect(screen.getByRole("textbox", { name: "予定名" })).toHaveValue("論文を読む（2章）");
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1000)); });
+      expect(dailyPlansApi.update).not.toHaveBeenCalled();
     });
 
     it("keeps a link to a task outside the candidates and does not rewrite a re-picked link", async () => {

@@ -1507,6 +1507,8 @@ function TaskSelect({
   );
 }
 
+const UNLINK_KEY = "none";
+
 function taskOptionLabel(option: TaskOption): string {
   return `${option.title}${
     option.isFallback
@@ -1533,7 +1535,9 @@ function TaskSearchSelect({
   const [focused, setFocused] = useState(false);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
+  // null follows the default row, so a refresh never moves the highlight
+  // onto a different task.
+  const [activeKey, setActiveKey] = useState<string | null>(null);
   const selectedKey = value ? refKey(value) : undefined;
   const selected = value
     ? (options.find((option) => option.key === selectedKey) ??
@@ -1542,14 +1546,20 @@ function TaskSearchSelect({
   // Keep a linked task that is no longer loaded (e.g. completed) choosable,
   // so opening the list never defaults to unlinking it.
   const selectable = selected?.isFallback ? [selected, ...options] : options;
-  const candidates = (text: string) =>
-    text.trim() ? searchDailyPlanTasks(selectable, text) : selectable;
-  const matches = candidates(query);
+  const matches = query.trim()
+    ? searchDailyPlanTasks(selectable, query)
+    : selectable;
   // Index 0 unlinks; candidates follow.
   const items: Array<TaskOption | undefined> = [undefined, ...matches];
-  // Candidates can shrink while open (e.g. after a task is completed), so an
-  // old index must not fall through to the unlink entry.
-  const current = Math.min(active, items.length - 1);
+  const itemKeys = items.map((task) => task?.key ?? UNLINK_KEY);
+  // The default row is the first match while searching, else the current link.
+  const defaultIndex = query.trim()
+    ? Math.min(1, items.length - 1)
+    : Math.max(0, itemKeys.indexOf(selectedKey ?? UNLINK_KEY));
+  // Candidates can change while open (e.g. after a task is completed); a
+  // highlighted task that disappears falls back to the default row.
+  const activeIndex = activeKey === null ? -1 : itemKeys.indexOf(activeKey);
+  const current = activeIndex >= 0 ? activeIndex : defaultIndex;
   const choose = (task: TaskOption | undefined) => {
     // Re-picking the current link must not rewrite the title or autosave.
     if (task?.key !== selectedKey) onChange(task);
@@ -1580,22 +1590,16 @@ function TaskSearchSelect({
           setFocused(true);
           setQuery("");
           setOpen(true);
-          setActive(
-            Math.max(
-              0,
-              selectable.findIndex((option) => option.key === selectedKey) + 1,
-            ),
-          );
+          setActiveKey(null);
         }}
         onBlur={() => {
           setFocused(false);
           setOpen(false);
         }}
         onChange={(event) => {
-          const next = event.target.value;
-          setQuery(next);
+          setQuery(event.target.value);
           setOpen(true);
-          setActive(next.trim() && candidates(next).length ? 1 : 0);
+          setActiveKey(null);
         }}
         onKeyDown={(event) => {
           if (event.nativeEvent.isComposing || event.keyCode === 229) return;
@@ -1603,14 +1607,17 @@ function TaskSearchSelect({
             event.preventDefault();
             if (!open) setOpen(true);
             else
-              setActive(
-                event.key === "ArrowDown"
-                  ? Math.min(current + 1, items.length - 1)
-                  : Math.max(current - 1, 0),
+              setActiveKey(
+                itemKeys[
+                  event.key === "ArrowDown"
+                    ? Math.min(current + 1, items.length - 1)
+                    : Math.max(current - 1, 0)
+                ]!,
               );
           } else if (event.key === "Enter" && open) {
             event.preventDefault();
-            choose(items[current]);
+            // A search with no match must not fall through to unlinking.
+            if (!query.trim() || matches.length) choose(items[current]);
           } else if (event.key === "Escape" && open) {
             event.preventDefault();
             setQuery("");
@@ -1638,7 +1645,7 @@ function TaskSearchSelect({
                   ? "bg-secondary text-secondary-foreground"
                   : ""
               }`}
-              onMouseEnter={() => setActive(index)}
+              onMouseEnter={() => setActiveKey(itemKeys[index]!)}
               onClick={() => choose(task)}
             >
               {task ? (
