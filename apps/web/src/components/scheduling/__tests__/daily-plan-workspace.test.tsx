@@ -251,8 +251,23 @@ describe("DailyPlanWorkspace", () => {
       ], total: 1, skip: 0, limit: 100 }));
       expect(screen.getByRole("option", { name: /論文を読む/ })).toHaveAttribute("aria-selected", "true");
       fireEvent.keyDown(input, { key: "Enter" });
-      await waitFor(() => expect(lastSavedFixed()).toMatchObject({ task_ref: { source: "task", id: "paper" } }),
-        { timeout: 2500 });
+      fireEvent.blur(input);
+      expect(input).toHaveValue("論文を読む · 研究");
+    });
+
+    it("keeps a link to a task outside the candidates and does not rewrite a re-picked link", async () => {
+      const input = await openFixedLine([{ ...fixed, title: "完了した調査", task_ref: { source: "task", id: "done" } }]);
+      const linked = screen.getByRole("option", { name: /完了した調査/ });
+      expect(linked).toHaveTextContent("候補外");
+      expect(linked).toHaveAttribute("aria-selected", "true");
+      fireEvent.keyDown(input, { key: "Enter" });
+      fireEvent.change(input, { target: { value: "完了" } });
+      fireEvent.click(screen.getByRole("option", { name: /完了した調査/ }));
+      fireEvent.blur(input);
+      expect(input).toHaveValue("完了した調査 · 候補外");
+      expect(screen.getByRole("textbox", { name: "予定名" })).toHaveValue("完了した調査");
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1000)); });
+      expect(dailyPlansApi.update).not.toHaveBeenCalled();
     });
 
     it("does not turn a time-like note paragraph into a fixed line when Enter picks a task", async () => {

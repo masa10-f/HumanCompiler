@@ -1539,8 +1539,11 @@ function TaskSearchSelect({
     ? (options.find((option) => option.key === selectedKey) ??
       fallbackTaskOption(value, fallbackTitle || "参照タスク"))
     : undefined;
+  // Keep a linked task that is no longer loaded (e.g. completed) choosable,
+  // so opening the list never defaults to unlinking it.
+  const selectable = selected?.isFallback ? [selected, ...options] : options;
   const candidates = (text: string) =>
-    text.trim() ? searchDailyPlanTasks(options, text) : options;
+    text.trim() ? searchDailyPlanTasks(selectable, text) : selectable;
   const matches = candidates(query);
   // Index 0 unlinks; candidates follow.
   const items: Array<TaskOption | undefined> = [undefined, ...matches];
@@ -1548,7 +1551,8 @@ function TaskSearchSelect({
   // old index must not fall through to the unlink entry.
   const current = Math.min(active, items.length - 1);
   const choose = (task: TaskOption | undefined) => {
-    onChange(task);
+    // Re-picking the current link must not rewrite the title or autosave.
+    if (task?.key !== selectedKey) onChange(task);
     setQuery("");
     setOpen(false);
   };
@@ -1579,7 +1583,7 @@ function TaskSearchSelect({
           setActive(
             Math.max(
               0,
-              options.findIndex((option) => option.key === selectedKey) + 1,
+              selectable.findIndex((option) => option.key === selectedKey) + 1,
             ),
           );
         }}
@@ -1641,7 +1645,9 @@ function TaskSearchSelect({
                 <>
                   <span className="block">{task.title}</span>
                   <span className="text-xs text-muted-foreground">
-                    {task.projectTitle ?? "Quick Task"}
+                    {task.isFallback
+                      ? "候補外"
+                      : (task.projectTitle ?? "Quick Task")}
                     {task.goalTitle ? ` / ${task.goalTitle}` : ""}
                   </span>
                 </>
