@@ -4,7 +4,6 @@
 "use client";
 
 import {
-  DAILY_PLAN_LINE_NOTE_MAX_LENGTH,
   dailyPlanSaveMessage,
   validateDailyPlanNote,
 } from "@/lib/daily-plan-validation";
@@ -1755,7 +1754,8 @@ function LineNoteEditor({
         id={id}
         value={draft}
         rows={3}
-        maxLength={DAILY_PLAN_LINE_NOTE_MAX_LENGTH}
+        // No native maxLength: it counts UTF-16 units, while the memo limit counts
+        // characters. validateDailyPlanNote enforces it before saving.
         placeholder="作業中のメモ（ノート一覧で検索できます）"
         onChange={(event) => {
           setDraft(event.target.value);

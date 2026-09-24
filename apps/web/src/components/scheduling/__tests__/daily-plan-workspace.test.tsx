@@ -397,6 +397,25 @@ describe("DailyPlanWorkspace", () => {
     await waitFor(() => expect(lastSaved()).toMatchObject({ ...fixed, note: undefined }), { timeout: 2500 });
   });
 
+  it("limits a line memo by characters, not UTF-16 units", async () => {
+    const fixed = { id: "fixed", type: "timed_line" as const, title: "設計レビュー", start: "10:00", end: "11:00" };
+    jest.mocked(dailyPlansApi.get).mockResolvedValue({ ...blankResponse, revision: 1,
+      document: { schema_version: 1, blocks: [fixed] } });
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
+    fireEvent.click(await screen.findByText("設計レビュー", { selector: "summary" }));
+    const memo = screen.getByRole("textbox", { name: "メモ" });
+    expect(memo).not.toHaveAttribute("maxlength");
+    // 10,000 emoji are 20,000 UTF-16 units but within the 10,000-character limit.
+    const emoji = "😀".repeat(10000);
+    fireEvent.change(memo, { target: { value: emoji } });
+    await waitFor(() => expect(jest.mocked(dailyPlansApi.update).mock.calls.at(-1)?.[2].blocks[0])
+      .toMatchObject({ note: emoji }), { timeout: 2500 });
+    const saves = jest.mocked(dailyPlansApi.update).mock.calls.length;
+    fireEvent.change(memo, { target: { value: emoji + "😀" } });
+    expect(await screen.findByText(/メモが上限の10,000文字を超えています/, {}, { timeout: 2500 })).toBeInTheDocument();
+    expect(dailyPlansApi.update).toHaveBeenCalledTimes(saves);
+  });
+
   it("shows the notebook without waiting for slow task suggestions", async () => {
     jest.mocked(tasksApi.getWorkspace).mockReturnValueOnce(new Promise(() => {}));
     renderUIWithQueries(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
