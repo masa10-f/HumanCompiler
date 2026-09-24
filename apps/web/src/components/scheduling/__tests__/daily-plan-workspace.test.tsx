@@ -397,6 +397,27 @@ describe("DailyPlanWorkspace", () => {
     await waitFor(() => expect(lastSaved()).toMatchObject({ ...fixed, note: undefined }), { timeout: 2500 });
   });
 
+  it("keeps a cleared memo cleared after the note body is edited", async () => {
+    const fixed = { id: "fixed", type: "timed_line" as const, title: "設計レビュー", start: "10:00", end: "11:00" };
+    jest.mocked(dailyPlansApi.get).mockResolvedValue({ ...blankResponse, revision: 1,
+      document: { schema_version: 1, blocks: [fixed, { id: "body", type: "text", text: "本文" }] } });
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
+    const note = screen.getByRole("textbox", { name: "日次ノート" });
+    const paste = (text: string) =>
+      fireEvent.paste(note, { clipboardData: { getData: (type: string) => type === "text/plain" ? text : "" } });
+    paste("追記");
+    fireEvent.click(await screen.findByText("設計レビュー", { selector: "summary" }));
+    const memo = screen.getByRole("textbox", { name: "メモ" });
+    fireEvent.change(memo, { target: { value: "消すメモ" } });
+    // Back to the document the editor last reported; the editor must still drop the memo.
+    fireEvent.change(memo, { target: { value: "" } });
+    paste("もう一度");
+    const lastSaved = () => jest.mocked(dailyPlansApi.update).mock.calls.at(-1)?.[2];
+    await waitFor(() => expect(JSON.stringify(lastSaved())).toContain("もう一度"), { timeout: 2500 });
+    expect(lastSaved()!.blocks.find((block) => block.id === "fixed")).toMatchObject({ ...fixed, note: undefined });
+    expect(memo).toHaveValue("");
+  });
+
   it("limits a line memo by characters, not UTF-16 units", async () => {
     const fixed = { id: "fixed", type: "timed_line" as const, title: "設計レビュー", start: "10:00", end: "11:00" };
     jest.mocked(dailyPlansApi.get).mockResolvedValue({ ...blankResponse, revision: 1,

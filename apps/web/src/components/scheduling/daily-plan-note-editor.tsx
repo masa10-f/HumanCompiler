@@ -266,7 +266,12 @@ export function DailyPlanNoteEditor({
       if (selection)
         editor.view.dispatch(editor.state.tr.setSelection(selection));
     }
-    if (JSON.stringify(document) === emitted.current) return;
+    const serialized = JSON.stringify(document);
+    if (serialized === emitted.current) return;
+    // Track changes made outside the editor (such as a line memo) as well. Otherwise
+    // reverting to the last emitted document is skipped, and the next edit in the
+    // editor saves the stale value again.
+    emitted.current = serialized;
     const next = dailyPlanToNote(document);
     if (JSON.stringify(editor.getJSON()) === JSON.stringify(next)) return;
     const position = editor.state.selection.from;
