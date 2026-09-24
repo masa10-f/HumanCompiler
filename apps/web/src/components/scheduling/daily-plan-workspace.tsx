@@ -76,6 +76,7 @@ import {
   applyDirectiveTaskSelection,
   isPermanentDailyPlanSaveError,
   missingDailyPlanBlockIds,
+  searchDailyPlanTasks,
 } from "@/lib/daily-plan-editor";
 import type { QuickTask } from "@/types/quick-task";
 import type { TaskWorkspaceItem, WorkType } from "@/types/task";
@@ -278,11 +279,14 @@ export const DailyPlanWorkspace = forwardRef<
 
   const [suggestionsUsed, setSuggestionsUsed] = useState(false);
   const [blockEditorUsed, setBlockEditorUsed] = useState(false);
+  const [taskSearchUsed, setTaskSearchUsed] = useState(false);
   const openSuggestions = useCallback(() => setSuggestionsUsed(true), []);
+  const startTaskSearch = useCallback(() => setTaskSearchUsed(true), []);
   const needsTasks =
     !embedded ||
     suggestionsUsed ||
     blockEditorUsed ||
+    taskSearchUsed ||
     document.blocks.some(
       (block) => block.type === "checklist_item" && Boolean(block.task_ref),
     );
@@ -1190,6 +1194,7 @@ export const DailyPlanWorkspace = forwardRef<
                       goalsError={goalQuery.error}
                       onRetryGoals={goalQuery.retry}
                       onSuggestionsOpen={openSuggestions}
+                      onTaskSearch={startTaskSearch}
                       onChange={(next) => updateDocument(() => next)}
                       renderBlock={(block) => {
                         if (block.type === "text") return null;
@@ -1553,6 +1558,10 @@ function TimedLineEditor({
   taskOptions: TaskOption[];
   onChange: (block: DailyPlanTimedLine) => void;
 }) {
+  const suggestions =
+    block.kind === "break" || block.task_ref
+      ? []
+      : searchDailyPlanTasks(taskOptions, block.title).slice(0, 3);
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Input
@@ -1608,6 +1617,38 @@ function TimedLineEditor({
             }
           />
           <Badge variant="outline">固定</Badge>
+          {suggestions.length > 0 && (
+            <div
+              role="group"
+              aria-label="予定名に一致するタスク"
+              className="flex w-full flex-wrap items-center gap-1"
+            >
+              <span className="text-xs text-muted-foreground">
+                予定名に一致するタスク:
+              </span>
+              {suggestions.map((task) => (
+                <Button
+                  key={task.key}
+                  size="sm"
+                  variant="outline"
+                  className="h-auto whitespace-normal py-1 text-left text-xs"
+                  onClick={() =>
+                    onChange({
+                      ...block,
+                      task_ref: task.ref,
+                      title: task.title,
+                    })
+                  }
+                >
+                  {task.title}
+                  <span className="ml-1 text-muted-foreground">
+                    · {task.projectTitle ?? "Quick"}
+                    {task.goalTitle ? ` / ${task.goalTitle}` : ""}
+                  </span>
+                </Button>
+              ))}
+            </div>
+          )}
         </>
       )}
     </div>

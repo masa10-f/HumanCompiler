@@ -3,7 +3,8 @@
 
 import { ApiError } from '../errors';
 import { applyDirectiveTaskSelection, extractDailyPlanMention, matchDailyPlanTasks,
-  isPermanentDailyPlanSaveError, missingDailyPlanBlockIds, stripDailyPlanDuration } from '../daily-plan-editor';
+  isPermanentDailyPlanSaveError, missingDailyPlanBlockIds, searchDailyPlanTasks,
+  stripDailyPlanDuration } from '../daily-plan-editor';
 
 describe('daily plan editor recovery and mention helpers', () => {
   it.each([
@@ -90,5 +91,34 @@ describe('applyDirectiveTaskSelection', () => {
       title: 'Inbox',
       filter: undefined,
     });
+  });
+});
+
+describe('fixed line task search', () => {
+  const paper = { title: '論文を読む', projectTitle: '研究', goalTitle: '調査' };
+  const review = { title: 'コードレビュー', projectTitle: '開発', goalTitle: 'リリース準備' };
+  const quick = { title: '研究室の掃除' };
+
+  it('matches task, goal and project titles', () => {
+    expect(searchDailyPlanTasks([paper, review, quick], '論文')).toEqual([paper]);
+    expect(searchDailyPlanTasks([paper, review, quick], 'リリース')).toEqual([review]);
+    expect(searchDailyPlanTasks([paper, review, quick], '研究')).toEqual([quick, paper]);
+  });
+
+  it('requires every word and ignores width, case and a leading mention', () => {
+    expect(searchDailyPlanTasks([paper, review, quick], '研究　読む')).toEqual([paper]);
+    expect(searchDailyPlanTasks([paper, review, quick], '研究 レビュー')).toEqual([]);
+    expect(searchDailyPlanTasks([{ title: 'API design' }], 'ＡＰＩ')).toHaveLength(1);
+    expect(searchDailyPlanTasks([paper], '@論文')).toEqual([paper]);
+  });
+
+  it('ranks exact and prefix title matches first and keeps the rest in order', () => {
+    const exact = { title: 'レビュー' };
+    const prefix = { title: 'レビュー会の準備' };
+    expect(searchDailyPlanTasks([review, prefix, exact], 'レビュー')).toEqual([exact, prefix, review]);
+  });
+
+  it.each(['', '   ', '@'])('returns no candidates for %j', (query) => {
+    expect(searchDailyPlanTasks([paper, review], query)).toEqual([]);
   });
 });
