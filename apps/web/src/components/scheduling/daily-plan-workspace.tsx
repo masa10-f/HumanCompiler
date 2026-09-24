@@ -13,6 +13,7 @@ import {
   useImperativeHandle,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -76,6 +77,7 @@ import {
   applyDirectiveTaskSelection,
   isPermanentDailyPlanSaveError,
   missingDailyPlanBlockIds,
+  searchDailyPlanTasks,
 } from "@/lib/daily-plan-editor";
 import type { QuickTask } from "@/types/quick-task";
 import type { TaskWorkspaceItem, WorkType } from "@/types/task";
@@ -1497,16 +1499,178 @@ function TaskSelect({
         <SelectItem value="none">タスクに紐づけない</SelectItem>
         {selectableOptions.map((option) => (
           <SelectItem key={option.key} value={option.key}>
-            {option.title}
-            {option.isFallback
-              ? " · 候補外"
-              : option.projectTitle
-                ? ` · ${option.projectTitle}`
-                : " · Quick"}
+            {taskOptionLabel(option)}
           </SelectItem>
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+const UNLINK_KEY = "none";
+
+function taskOptionLabel(option: TaskOption): string {
+  return `${option.title}${
+    option.isFallback
+      ? " · 候補外"
+      : option.projectTitle
+        ? ` · ${option.projectTitle}`
+        : " · Quick"
+  }`;
+}
+
+// Links a task by typing: words narrow candidates by task, goal and project title.
+function TaskSearchSelect({
+  value,
+  options,
+  fallbackTitle,
+  onChange,
+}: {
+  value?: DailyPlanTaskRef | null;
+  options: TaskOption[];
+  fallbackTitle?: string;
+  onChange: (task: TaskOption | undefined) => void;
+}) {
+  const listId = useId();
+  const [focused, setFocused] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  // null follows the default row, so a refresh never moves the highlight
+  // onto a different task.
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const selectedKey = value ? refKey(value) : undefined;
+  const selected = value
+    ? (options.find((option) => option.key === selectedKey) ??
+      fallbackTaskOption(value, fallbackTitle || "参照タスク"))
+    : undefined;
+  // Keep a linked task that is no longer loaded (e.g. completed) choosable,
+  // so opening the list never defaults to unlinking it.
+  const selectable = selected?.isFallback ? [selected, ...options] : options;
+  const matches = query.trim()
+    ? searchDailyPlanTasks(selectable, query)
+    : selectable;
+  // Index 0 unlinks; candidates follow.
+  const items: Array<TaskOption | undefined> = [undefined, ...matches];
+  const itemKeys = items.map((task) => task?.key ?? UNLINK_KEY);
+  // The default row is the first match while searching, else the current link.
+  const defaultIndex = query.trim()
+    ? Math.min(1, items.length - 1)
+    : Math.max(0, itemKeys.indexOf(selectedKey ?? UNLINK_KEY));
+  // Candidates can change while open (e.g. after a task is completed); a
+  // highlighted task that disappears falls back to the default row.
+  const activeIndex = activeKey === null ? -1 : itemKeys.indexOf(activeKey);
+  const current = activeIndex >= 0 ? activeIndex : defaultIndex;
+  const choose = (task: TaskOption | undefined) => {
+    // Re-picking the current link must not rewrite the title or autosave.
+    if (task?.key !== selectedKey) onChange(task);
+    setQuery("");
+    setOpen(false);
+  };
+  useEffect(() => {
+    if (open)
+      document
+        .getElementById(`${listId}-${current}`)
+        ?.scrollIntoView?.({ block: "nearest" });
+  }, [current, listId, open]);
+
+  return (
+    <div className="relative min-w-[220px] flex-1">
+      <Input
+        role="combobox"
+        aria-label="紐づけるタスク"
+        aria-autocomplete="list"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-activedescendant={open ? `${listId}-${current}` : undefined}
+        placeholder={
+          selected ? taskOptionLabel(selected) : "タスクを検索して紐づけ"
+        }
+        value={focused ? query : selected ? taskOptionLabel(selected) : ""}
+        onFocus={() => {
+          setFocused(true);
+          setQuery("");
+          setOpen(true);
+          setActiveKey(null);
+        }}
+        onBlur={() => {
+          setFocused(false);
+          setOpen(false);
+        }}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          setOpen(true);
+          setActiveKey(null);
+        }}
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            if (!open) setOpen(true);
+            else
+              setActiveKey(
+                itemKeys[
+                  event.key === "ArrowDown"
+                    ? Math.min(current + 1, items.length - 1)
+                    : Math.max(current - 1, 0)
+                ]!,
+              );
+          } else if (event.key === "Enter" && open) {
+            event.preventDefault();
+            // A search with no match must not fall through to unlinking.
+            if (!query.trim() || matches.length) choose(items[current]);
+          } else if (event.key === "Escape" && open) {
+            event.preventDefault();
+            setQuery("");
+            setOpen(false);
+          }
+        }}
+      />
+      {open && (
+        <div
+          id={listId}
+          role="listbox"
+          aria-label="紐づけるタスクの候補"
+          className="absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+          // Keep focus in the input so a click is not lost to its blur.
+          onMouseDown={(event) => event.preventDefault()}
+        >
+          {items.map((task, index) => (
+            <div
+              key={task?.key ?? "none"}
+              id={`${listId}-${index}`}
+              role="option"
+              aria-selected={index === current}
+              className={`cursor-pointer rounded px-2 py-1.5 text-sm ${
+                index === current
+                  ? "bg-secondary text-secondary-foreground"
+                  : ""
+              }`}
+              onMouseEnter={() => setActiveKey(itemKeys[index]!)}
+              onClick={() => choose(task)}
+            >
+              {task ? (
+                <>
+                  <span className="block">{task.title}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {task.isFallback
+                      ? "候補外"
+                      : (task.projectTitle ?? "Quick Task")}
+                    {task.goalTitle ? ` / ${task.goalTitle}` : ""}
+                  </span>
+                </>
+              ) : (
+                "タスクに紐づけない"
+              )}
+            </div>
+          ))}
+          {!matches.length && (
+            <p className="px-2 py-1.5 text-xs text-muted-foreground">
+              一致するタスクがありません
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1595,7 +1759,7 @@ function TimedLineEditor({
         </Badge>
       ) : (
         <>
-          <TaskSelect
+          <TaskSearchSelect
             value={block.task_ref}
             options={taskOptions}
             fallbackTitle={block.title ?? undefined}

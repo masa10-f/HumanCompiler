@@ -313,7 +313,9 @@ export function DailyPlanNoteEditor({
             !editor ||
             event.nativeEvent.isComposing ||
             event.keyCode === 229 ||
-            !(event.target as HTMLElement).closest(".tiptap")
+            !(event.target as HTMLElement).closest(".tiptap") ||
+            // Keys typed into a schedule's own controls are not note input.
+            (event.target as HTMLElement).closest("[data-node-view-wrapper]")
           )
             return;
           if (

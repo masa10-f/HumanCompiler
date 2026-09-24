@@ -19,6 +19,36 @@ export function matchDailyPlanTasks<T extends { title: string }>(text: string, o
   return exact.length ? exact : options.filter((option) => option.title.toLocaleLowerCase().includes(mention));
 }
 
+function normalizeDailyPlanSearch(value: string): string {
+  // NFKC folds full-width letters and spaces typed with a Japanese IME.
+  return value.normalize('NFKC').toLocaleLowerCase();
+}
+
+/**
+ * Narrows task candidates from free text such as a fixed line's title.
+ * Every word must appear in the task, goal or project title; tasks whose own
+ * title matches more words (then exactly, then as a prefix) come first.
+ */
+export function searchDailyPlanTasks<T extends { title: string; projectTitle?: string; goalTitle?: string }>(
+  options: T[],
+  query: string,
+): T[] {
+  const normalized = normalizeDailyPlanSearch(query).replace(/(^|\s)@/g, '$1').trim();
+  const words = normalized.split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  return options
+    .flatMap((option, index) => {
+      const title = normalizeDailyPlanSearch(option.title);
+      const context = normalizeDailyPlanSearch(`${option.projectTitle ?? ''} ${option.goalTitle ?? ''}`);
+      if (!words.every((word) => title.includes(word) || context.includes(word))) return [];
+      const score = words.filter((word) => title.includes(word)).length * 4 +
+        (title === normalized ? 2 : 0) + (title.startsWith(words[0]!) ? 1 : 0);
+      return [{ option, index, score }];
+    })
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .map(({ option }) => option);
+}
+
 export function isPermanentDailyPlanSaveError(error: unknown): boolean {
   if (error instanceof DailyPlanValidationError) return true;
   return error instanceof ApiError && error.statusCode >= 400 && error.statusCode < 500 &&
