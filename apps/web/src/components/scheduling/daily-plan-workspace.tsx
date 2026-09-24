@@ -34,6 +34,7 @@ import {
   Loader2,
   Save,
   Sparkles,
+  StickyNote,
 } from "lucide-react";
 
 import { DailyPlanHistory } from "./daily-plan-history";
@@ -1275,6 +1276,19 @@ export const DailyPlanWorkspace = forwardRef<
                                           : ""}
                                       </span>
                                     )}
+                                    {block.note?.trim() && (
+                                      <span
+                                        role="img"
+                                        aria-label="メモあり"
+                                        title="メモあり"
+                                        className="ml-2 inline-flex align-middle text-muted-foreground"
+                                      >
+                                        <StickyNote
+                                          aria-hidden="true"
+                                          className="h-3.5 w-3.5"
+                                        />
+                                      </span>
+                                    )}
                                   </summary>
                                   <div className="py-2">
                                     {block.type === "schedule_directive" ? (
@@ -1296,6 +1310,15 @@ export const DailyPlanWorkspace = forwardRef<
                                         }
                                       />
                                     )}
+                                    <LineNoteEditor
+                                      value={block.note ?? ""}
+                                      onChange={(note) =>
+                                        replaceBlock(block.id, {
+                                          ...block,
+                                          note: note || undefined,
+                                        })
+                                      }
+                                    />
                                     <Button
                                       variant="ghost"
                                       size="sm"
@@ -1705,6 +1728,41 @@ function ValidatedTitleInput({
       }}
       className={className}
     />
+  );
+}
+
+function LineNoteEditor({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const id = useId();
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  return (
+    <div className="mt-3 space-y-1">
+      <Label htmlFor={id} className="text-xs text-muted-foreground">
+        メモ
+      </Label>
+      <Textarea
+        id={id}
+        value={draft}
+        rows={3}
+        // No native maxLength: it counts UTF-16 units, while the memo limit counts
+        // characters. validateDailyPlanNote enforces it before saving.
+        placeholder="作業中のメモ（ノート一覧で検索できます）"
+        onChange={(event) => {
+          setDraft(event.target.value);
+          onChange(event.target.value);
+        }}
+      />
+    </div>
   );
 }
 

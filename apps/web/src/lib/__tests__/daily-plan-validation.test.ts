@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
 
 import {
+  DAILY_PLAN_LINE_NOTE_MAX_LENGTH,
   dailyPlanSaveMessage,
   validateDailyPlanNote,
 } from "../daily-plan-validation";
@@ -89,5 +90,42 @@ it("maps API validation locations to the affected note item without exposing raw
   });
   expect(dailyPlanSaveMessage(error, note("調査メモ"))).toBe(
     "1番目の段落・項目「調査メモ」: リストなどの入れ子が深すぎます。階層を浅くしてください。",
+  );
+});
+
+it("limits memos under schedule lines and explains API rejections", () => {
+  const line = (text: string): DailyPlanDocumentV1 => ({
+    schema_version: 1,
+    blocks: [
+      {
+        id: "line",
+        type: "timed_line",
+        title: "設計レビュー",
+        start: "10:00",
+        end: "11:00",
+        note: text,
+      },
+    ],
+  });
+  expect(() =>
+    validateDailyPlanNote(line("メ".repeat(DAILY_PLAN_LINE_NOTE_MAX_LENGTH))),
+  ).not.toThrow();
+  const invalid = line("メ".repeat(DAILY_PLAN_LINE_NOTE_MAX_LENGTH + 1));
+  expect(() => validateDailyPlanNote(invalid)).toThrow(
+    "1番目の段落・項目「設計レビュー」: メモが上限の10,000文字",
+  );
+  const error = new ApiError(422, "validation failed", {
+    responseData: {
+      detail: "Request validation failed",
+      errors: [
+        {
+          type: "string_too_long",
+          field: "body -> document -> blocks -> 0 -> timed_line -> note",
+        },
+      ],
+    },
+  });
+  expect(dailyPlanSaveMessage(error, invalid)).toMatch(
+    /^1番目の段落・項目「設計レビュー」: メモが上限の10,000文字/,
   );
 });

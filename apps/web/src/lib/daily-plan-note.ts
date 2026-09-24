@@ -104,11 +104,16 @@ export function sameSchedulingBlocks(
   };
   const defaults = (blocks: DailyPlanBlock[]) =>
     blocks.map((block) => {
-      if (block.type === "schedule_directive")
-        return { work_type: "light_work", allowed_windows: [], ...block };
+      // Line memos are not scheduling input, so editing one keeps the schedule current.
+      if (block.type === "schedule_directive") {
+        const conditions = { ...block };
+        delete conditions.note;
+        return { work_type: "light_work", allowed_windows: [], ...conditions };
+      }
       if (block.type === "timed_line") {
         const conditions = { ...block };
         delete conditions.completed;
+        delete conditions.note;
         return { pinned: true, kind: "event", ...conditions };
       }
       return block;

@@ -1502,6 +1502,71 @@ async def test_notebook_history_updates_search_and_shows_match_context(
 
 
 @pytest.mark.asyncio
+async def test_schedule_line_notes_are_saved_and_searchable(
+    session: Session, planning_data
+) -> None:
+    from humancompiler_api.routers.daily_plans import (
+        ScheduleDirectiveBlock,
+        TimedLineBlock,
+        list_daily_plans,
+    )
+
+    user_id = str(planning_data[0].id)
+    document = DailyPlanDocumentV1(
+        blocks=[
+            TimedLineBlock(
+                id="review",
+                start="10:00",
+                end="11:00",
+                title="設計レビュー",
+                note="命名は /v2 に揃える\n認可の件は確認中",
+            ),
+            ScheduleDirectiveBlock(
+                id="afternoon",
+                mode="filter",
+                allowed_windows=[{"start": "13:00", "end": "15:00"}],
+                note="午後はテストを書く",
+            ),
+        ]
+    )
+    await update_daily_plan(
+        "2030-03-01",
+        DailyPlanUpdateRequest(expected_revision=0, document=document),
+        user_id,
+        session,
+    )
+
+    loaded = await get_daily_plan("2030-03-01", user_id, session)
+    assert [block.note for block in loaded.document.blocks] == [
+        "命名は /v2 に揃える\n認可の件は確認中",
+        "午後はテストを書く",
+    ]
+    result = await list_daily_plans(query="認可の件", user_id=user_id, session=session)
+    assert [item.date for item in result.items] == ["2030-03-01"]
+    assert "認可の件は確認中" in result.items[0].preview
+    result = await list_daily_plans(
+        query="テストを書く", user_id=user_id, session=session
+    )
+    assert [item.date for item in result.items] == ["2030-03-01"]
+
+
+def test_schedule_line_note_length_is_limited():
+    from pydantic import ValidationError
+    from humancompiler_api.routers.daily_plans import (
+        LINE_NOTE_MAX_LENGTH,
+        TimedLineBlock,
+    )
+
+    base = {"id": "line", "start": "10:00", "end": "11:00", "title": "作業"}
+    note = "メ" * LINE_NOTE_MAX_LENGTH
+    assert TimedLineBlock(**base, note=note).note == note
+    with pytest.raises(ValidationError) as error:
+        TimedLineBlock(**base, note=note + "モ")
+    assert error.value.errors()[0]["type"] == "string_too_long"
+    assert error.value.errors()[0]["loc"] == ("note",)
+
+
+@pytest.mark.asyncio
 async def test_long_notebook_paragraph_is_saved_without_truncation(
     session, planning_data
 ):

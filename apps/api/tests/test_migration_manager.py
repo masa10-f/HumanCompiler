@@ -110,3 +110,19 @@ def test_daily_notebook_search_migration_keeps_function_bodies_together():
     assert "END;" in statements[2]
     assert "CREATE TRIGGER" in statements[3]
     assert "UPDATE public.daily_plan_documents" in statements[4]
+
+
+def test_line_note_search_migrations_keep_function_body_together():
+    manager = MigrationManager.__new__(MigrationManager)
+    migrations = Path(__file__).resolve().parents[1] / "migrations"
+    for name in (
+        "032_add_daily_plan_line_note_search.sql",
+        "032_add_daily_plan_line_note_search_rollback.sql",
+    ):
+        statements = manager._split_sql_statements((migrations / name).read_text())
+        assert len(statements) == 2
+        assert "FUNCTION public.daily_plan_search_text" in statements[0]
+        assert "WHERE line <> ''''" in statements[0]
+        assert "UPDATE public.daily_plan_documents" in statements[1]
+    upgrade = (migrations / "032_add_daily_plan_line_note_search.sql").read_text()
+    assert "NULLIF(block->>''note'', '''')" in upgrade

@@ -143,6 +143,10 @@ class AvailabilityWindow(BaseModel):
         return self
 
 
+# Free-form memo written under a schedule line; indexed for notebook search.
+LINE_NOTE_MAX_LENGTH = 10000
+
+
 class TimedLineBlock(BaseModel):
     id: str = Field(min_length=1, max_length=100)
     type: Literal["timed_line"] = "timed_line"
@@ -153,6 +157,7 @@ class TimedLineBlock(BaseModel):
     pinned: bool = True
     completed: bool = False
     kind: Literal["event", "break"] = "event"
+    note: str | None = Field(default=None, max_length=LINE_NOTE_MAX_LENGTH)
 
     @field_validator("start", "end")
     @classmethod
@@ -206,6 +211,7 @@ class ScheduleDirectiveBlock(BaseModel):
         default_factory=list,
         max_length=24,
     )
+    note: str | None = Field(default=None, max_length=LINE_NOTE_MAX_LENGTH)
 
     @model_validator(mode="after")
     def validate_mode_fields(self) -> ScheduleDirectiveBlock:
@@ -498,10 +504,11 @@ class DailyPlanHistoryResponse(BaseModel):
 def _document_search_text(document: DailyPlanDocumentV1) -> str:
     """Visible note text only; never index task IDs or editor JSON metadata.
 
-    PostgreSQL's migration 029 trigger is authoritative and overwrites this mirror
-    on every document write (including writes from older API versions). This
-    implementation supports SQLite and is checked against PostgreSQL in
-    test_daily_plan_search_postgres.py; keep both rules in sync.
+    PostgreSQL's migration 029 trigger (search function last replaced by 032) is
+    authoritative and overwrites this mirror on every document write (including
+    writes from older API versions). This implementation supports SQLite and is
+    checked against PostgreSQL in test_daily_plan_search_postgres.py; keep both
+    rules in sync.
     """
     lines = []
     for block in document.blocks:
@@ -513,6 +520,7 @@ def _document_search_text(document: DailyPlanDocumentV1) -> str:
             parts.extend(
                 f"{window.start}-{window.end}" for window in block.allowed_windows
             )
+        parts.append(getattr(block, "note", None))
         line = " ".join(part for part in parts if part).strip()
         if line:
             lines.append(line)
