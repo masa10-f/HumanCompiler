@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
 
-"""Run migrations 029/030 against an isolated PostgreSQL schema, including its trigger."""
+"""Run migrations 029/030/032 against an isolated PostgreSQL schema, including its trigger."""
 
 import os
 from pathlib import Path
@@ -65,6 +65,34 @@ SEARCH_DOCUMENTS = [
             {"id": "leading-break", "type": "text", "text": "\n買い物リスト\n牛乳"}
         ],
     },
+    {
+        "schema_version": 1,
+        "blocks": [
+            {
+                "id": "fixed-note",
+                "type": "timed_line",
+                "title": "設計レビュー",
+                "start": "10:00",
+                "end": "11:00",
+                "note": "認可の件は確認中\n次回 100%_対応　",
+            },
+            {
+                "id": "directive-note",
+                "type": "schedule_directive",
+                "mode": "filter",
+                "allowed_windows": [{"start": "13:00", "end": "14:00"}],
+                "note": "午後は実装",
+            },
+            {
+                "id": "blank-note",
+                "type": "timed_line",
+                "title": "休憩",
+                "start": "12:00",
+                "end": "13:00",
+                "note": " \t",
+            },
+        ],
+    },
 ]
 
 
@@ -98,6 +126,7 @@ def test_postgres_search_trigger_matches_python_mirror_and_preserves_documents()
             for migration in (
                 "029_add_daily_plan_search.sql",
                 "030_trim_daily_plan_search.sql",
+                "032_add_daily_plan_line_note_search.sql",
             ):
                 for statement in migration_statements(migration):
                     cursor.execute(statement.replace("public.", f'"{schema}".'))
@@ -127,6 +156,7 @@ def test_postgres_search_trigger_matches_python_mirror_and_preserves_documents()
             )
             assert cursor.fetchone()[0] == _document_search_text(documents[1])
             for migration in (
+                "032_add_daily_plan_line_note_search_rollback.sql",
                 "030_trim_daily_plan_search_rollback.sql",
                 "029_add_daily_plan_search_rollback.sql",
             ):

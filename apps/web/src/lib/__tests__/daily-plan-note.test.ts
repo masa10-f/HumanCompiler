@@ -93,3 +93,13 @@ it("retains completion in note data but excludes it from schedule conditions", (
   expect(sameSchedulingBlocks([done], [{ ...done, end: "10:30" }])).toBe(false);
   expect(noteToDailyPlan(dailyPlanToNote({ schema_version: 1, blocks: [done] })).blocks[0]).toEqual(done);
 });
+
+it("keeps line memos in note data but excludes them from schedule conditions", () => {
+  const fixed = { id: "fixed", type: "timed_line" as const, title: "Meeting", start: "09:00", end: "10:00" };
+  const withMemo = { ...fixed, note: "議題を確認" };
+  expect(sameSchedulingBlocks([fixed], [withMemo])).toBe(true);
+  expect(sameSchedulingBlocks([withMemo], [{ ...withMemo, start: "08:30" }])).toBe(false);
+  const schedule = schedulingBlocks(plan)[0]!;
+  expect(sameSchedulingBlocks([schedule], [{ ...schedule, note: "午後は実装" } as typeof schedule])).toBe(true);
+  expect(noteToDailyPlan(dailyPlanToNote({ schema_version: 1, blocks: [withMemo] })).blocks[0]).toEqual(withMemo);
+});

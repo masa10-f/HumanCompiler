@@ -375,6 +375,28 @@ describe("DailyPlanWorkspace", () => {
     expect(screen.queryByText(/再生成が必要です/)).not.toBeInTheDocument();
   });
 
+  it("saves a memo under a schedule line without making the schedule stale", async () => {
+    const fixed = { id: "fixed", type: "timed_line" as const, title: "設計レビュー", start: "10:00", end: "11:00" };
+    jest.mocked(dailyPlansApi.get).mockResolvedValue({ ...blankResponse, revision: 1,
+      document: { schema_version: 1, blocks: [fixed] },
+      schedule: { success: true, assignments: [], total_scheduled_hours: 0, optimization_status: "OK", generated_at: "2030-01-02",
+        source_document_revision: 1, source_scheduling_blocks: [fixed] } });
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
+    const summary = await screen.findByText("設計レビュー", { selector: "summary" });
+    expect(within(summary).queryByRole("img", { name: "メモあり" })).not.toBeInTheDocument();
+    fireEvent.click(summary);
+    const memo = screen.getByRole("textbox", { name: "メモ" });
+    fireEvent.change(memo, { target: { value: "認可の件は確認中\n命名は /v2 に揃える" } });
+    expect(within(summary).getByRole("img", { name: "メモあり" })).toBeInTheDocument();
+    const lastSaved = () => jest.mocked(dailyPlansApi.update).mock.calls.at(-1)?.[2].blocks[0];
+    await waitFor(() => expect(lastSaved()).toMatchObject({ ...fixed, note: "認可の件は確認中\n命名は /v2 に揃える" }),
+      { timeout: 2500 });
+    expect(screen.queryByText(/再生成が必要です/)).not.toBeInTheDocument();
+    fireEvent.change(memo, { target: { value: "" } });
+    expect(within(summary).queryByRole("img", { name: "メモあり" })).not.toBeInTheDocument();
+    await waitFor(() => expect(lastSaved()).toMatchObject({ ...fixed, note: undefined }), { timeout: 2500 });
+  });
+
   it("shows the notebook without waiting for slow task suggestions", async () => {
     jest.mocked(tasksApi.getWorkspace).mockReturnValueOnce(new Promise(() => {}));
     renderUIWithQueries(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);

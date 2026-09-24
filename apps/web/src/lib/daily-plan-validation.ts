@@ -6,6 +6,11 @@ import { ApiError } from "@/lib/errors";
 
 export class DailyPlanValidationError extends Error {}
 
+/** Matches the API limit on memos written under schedule lines. */
+export const DAILY_PLAN_LINE_NOTE_MAX_LENGTH = 10000;
+const lineNoteTooLong =
+  "メモが上限の10,000文字を超えています。長い内容は本文の段落に分けてください。";
+
 const reasons: Record<string, string> = {
   note_content_too_large:
     "書式を含む内容が上限の50,000文字を超えています。段落やリストを分けてください。",
@@ -28,10 +33,18 @@ export function validateDailyPlanNote(document: DailyPlanDocumentV1): void {
       "段落・項目は1日500件までです。不要な空行を減らすか、別の日のノートへ内容を分けてください。",
     );
   document.blocks.forEach((block, index) => {
-    if (block.type !== "text") return;
     const fail = (message: string): never => {
       throw new DailyPlanValidationError(blockLabel(document, index) + message);
     };
+    if (block.type === "timed_line" || block.type === "schedule_directive") {
+      if (
+        block.note &&
+        Array.from(block.note).length > DAILY_PLAN_LINE_NOTE_MAX_LENGTH
+      )
+        fail(lineNoteTooLong);
+      return;
+    }
+    if (block.type !== "text") return;
     if (Array.from(block.text).length > 50000)
       fail(
         "本文が上限の50,000文字を超えています。段落やリストを分けてください。",
@@ -76,6 +89,8 @@ export function dailyPlanSaveMessage(
               : "";
           const reason = reasons[entry.type ?? ""];
           if (reason) return prefix + reason;
+          if (entry.type === "string_too_long" && location.at(-1) === "note")
+            return prefix + lineNoteTooLong;
           if (entry.type === "string_too_long" && location.at(-1) === "text")
             return (
               prefix +

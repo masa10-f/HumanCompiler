@@ -25,6 +25,8 @@ export interface DailyPlanTimedLine {
   pinned?: boolean;
   completed?: boolean;
   kind?: "event" | "break";
+  /** Memo written under the line; included in notebook search. */
+  note?: string | null;
 }
 
 export interface DailyPlanDirectiveWindow {
@@ -48,6 +50,8 @@ export interface DailyPlanScheduleDirective {
   filter?: DailyPlanDirectiveFilter | null;
   duration_override_minutes?: number | null;
   allowed_windows?: DailyPlanDirectiveWindow[];
+  /** Memo written under the line; included in notebook search. */
+  note?: string | null;
 }
 
 export interface DailyPlanChecklistItem {
