@@ -385,25 +385,6 @@ it("defers task candidates until the schedule suggestion menu is used", async ()
   expect(quickTasksApi.getAll).toHaveBeenCalledTimes(1);
 });
 
-it("loads task candidates when a fixed line is typed", async () => {
-  jest.mocked(quickTasksApi.getAll).mockResolvedValue([{
-    id: "quick", title: "候補タスク", owner_id: "owner", description: null, estimate_hours: 1,
-    due_date: null, status: "pending", work_type: "light_work", priority: 3,
-    created_at: "2030-01-01", updated_at: "2030-01-01",
-  }]);
-  renderCard();
-  const note = await screen.findByRole("textbox", { name: "日次ノート" });
-  typeMemo(note, "候補のメモ");
-  fireEvent.keyDown(note, { key: "Enter" });
-  expect(tasksApi.getWorkspace).not.toHaveBeenCalled();
-  expect(quickTasksApi.getAll).not.toHaveBeenCalled();
-  typeMemo(note, "1100-1200 候補");
-  const suggestions = await screen.findByRole("listbox", { name: "固定予定に紐づけるタスク" });
-  expect(within(suggestions).getByRole("option", { name: /候補タスク/ })).toBeInTheDocument();
-  expect(tasksApi.getWorkspace).toHaveBeenCalledTimes(1);
-  expect(quickTasksApi.getAll).toHaveBeenCalledTimes(1);
-});
-
 it("loads candidates when a stored schedule's editor is expanded", async () => {
   jest.mocked(dailyPlansApi.get).mockResolvedValue({ date: "2030-01-03", revision: 1,
     document: { schema_version: 1, blocks: [{ id: "event", type: "timed_line", title: "会議", start: "09:00", end: "10:00" }] } });

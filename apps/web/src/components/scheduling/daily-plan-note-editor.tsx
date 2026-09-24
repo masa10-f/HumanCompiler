@@ -8,7 +8,6 @@ import {
   createContext,
   useContext,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -38,10 +37,7 @@ import {
   parseBreakLine,
   normalizeDailyPlanClock,
 } from "@/lib/daily-plan-command";
-import {
-  extractDailyPlanMention,
-  searchDailyPlanTasks,
-} from "@/lib/daily-plan-editor";
+import { extractDailyPlanMention } from "@/lib/daily-plan-editor";
 import { dailyPlanToNote, noteToDailyPlan } from "@/lib/daily-plan-note";
 import type {
   DailyPlanBlock,
@@ -158,8 +154,6 @@ interface CommandRange {
   left: number;
 }
 
-const MAX_TIMED_TASK_SUGGESTIONS = 8;
-
 export function DailyPlanNoteEditor({
   document,
   onChange,
@@ -170,7 +164,6 @@ export function DailyPlanNoteEditor({
   goalsError = false,
   onRetryGoals,
   onSuggestionsOpen,
-  onTaskSearch,
   renderBlock,
 }: {
   document: DailyPlanDocumentV1;
@@ -182,8 +175,6 @@ export function DailyPlanNoteEditor({
   goalsError?: boolean;
   onRetryGoals?: () => void;
   onSuggestionsOpen?: () => void;
-  /** Called when a fixed line is typed and needs task candidates. */
-  onTaskSearch?: () => void;
   renderBlock: (block: DailyPlanBlock) => ReactNode;
 }) {
   const [command, setCommand] = useState<CommandRange | null>(null);
@@ -192,24 +183,6 @@ export function DailyPlanNoteEditor({
     if (suggestionsOpen) onSuggestionsOpen?.();
   }, [suggestionsOpen, onSuggestionsOpen]);
   const dismissed = useRef<string | null>(null);
-  // A paragraph such as "1100-1200 論文" that becomes a fixed line on Enter.
-  const [timedDraft, setTimedDraft] = useState<CommandRange | null>(null);
-  const timedDismissed = useRef<string | null>(null);
-  const timedKeys = useRef<(key: string) => boolean>(() => false);
-  const typingTimedLine = Boolean(timedDraft);
-  useEffect(() => {
-    if (typingTimedLine) onTaskSearch?.();
-  }, [typingTimedLine, onTaskSearch]);
-  const timedQuery = timedDraft ? parseTimedLine(timedDraft.text)?.title : "";
-  const timedMatches = useMemo(
-    () =>
-      searchDailyPlanTasks(taskOptions, timedQuery ?? "").slice(
-        0,
-        MAX_TIMED_TASK_SUGGESTIONS,
-      ),
-    [taskOptions, timedQuery],
-  );
-  const timedSuggestionsOpen = Boolean(timedDraft && timedMatches.length);
   const emitted = useRef<string>();
   const initialized = useRef(false);
   const changeRef = useRef(onChange);
@@ -248,22 +221,18 @@ export function DailyPlanNoteEditor({
     onTransaction: ({ editor: current }) => {
       const { $from, empty } = current.state.selection;
       const text = $from.parent.textContent;
-      const paragraph =
-        empty && $from.depth === 1 && $from.parent.type.name === "paragraph";
-      const scheduling = paragraph && isScheduleCommand(text, true);
-      const timed = paragraph && !scheduling && Boolean(parseTimedLine(text));
-      if (!scheduling) {
+      if (
+        !empty ||
+        $from.depth !== 1 ||
+        $from.parent.type.name !== "paragraph" ||
+        !isScheduleCommand(text, true)
+      ) {
         setCommand(null);
         dismissed.current = null;
-      }
-      if (!timed) {
-        setTimedDraft(null);
-        timedDismissed.current = null;
-      }
-      if (!scheduling && !timed) return;
-      const identity = `${$from.before()}:${text}`;
-      if ((scheduling ? dismissed : timedDismissed).current === identity)
         return;
+      }
+      const identity = `${$from.before()}:${text}`;
+      if (dismissed.current === identity) return;
       let top = 120,
         left = 24;
       try {
@@ -273,15 +242,13 @@ export function DailyPlanNoteEditor({
       } catch {
         /* No layout in server/test environments. */
       }
-      const range = {
+      setCommand({
         from: $from.before(),
         to: $from.after(),
         text,
         top: Math.max(12, top),
         left,
-      };
-      if (scheduling) setCommand(range);
-      else setTimedDraft(range);
+      });
     },
   });
 
@@ -329,39 +296,6 @@ export function DailyPlanNoteEditor({
     setCommand(null);
   };
 
-  const insertTimedLine = (
-    range: { from: number; to: number },
-    text: string,
-    task?: NoteTaskOption,
-  ): boolean => {
-    const pause = parseBreakLine(text);
-    const timed = pause ?? parseTimedLine(text);
-    if (!editor || !timed) return false;
-    editor
-      .chain()
-      .focus()
-      .insertContentAt(range, [
-        {
-          type: "dailyPlanBlock",
-          attrs: {
-            block: {
-              id: createDailyPlanId(),
-              type: "timed_line",
-              ...timed,
-              ...(task && !pause
-                ? { title: task.title, task_ref: task.ref }
-                : {}),
-              kind: pause ? "break" : "event",
-              pinned: true,
-            },
-          },
-        },
-        { type: "paragraph" },
-      ])
-      .run();
-    return true;
-  };
-
   return (
     <BlockRenderer.Provider value={renderBlock}>
       <div
@@ -371,17 +305,17 @@ export function DailyPlanNoteEditor({
             !event.currentTarget.contains(
               event.relatedTarget as globalThis.Node | null,
             )
-          ) {
+          )
             setCommand(null);
-            setTimedDraft(null);
-          }
         }}
         onKeyDownCapture={(event) => {
           if (
             !editor ||
             event.nativeEvent.isComposing ||
             event.keyCode === 229 ||
-            !(event.target as HTMLElement).closest(".tiptap")
+            !(event.target as HTMLElement).closest(".tiptap") ||
+            // Keys typed into a schedule's own controls are not note input.
+            (event.target as HTMLElement).closest("[data-node-view-wrapper]")
           )
             return;
           if (
@@ -397,33 +331,35 @@ export function DailyPlanNoteEditor({
             } else menuKeys.current(event.key);
             return;
           }
-          if (
-            timedDraft &&
-            timedSuggestionsOpen &&
-            !event.shiftKey &&
-            (event.key === "Escape" || timedKeys.current(event.key))
-          ) {
-            event.preventDefault();
-            event.stopPropagation();
-            if (event.key === "Escape") {
-              timedDismissed.current = `${timedDraft.from}:${timedDraft.text}`;
-              setTimedDraft(null);
-            }
-            return;
-          }
           if (event.key === "Enter" && !event.shiftKey) {
             const { $from } = editor.state.selection;
             if ($from.depth !== 1 || $from.parent.type.name !== "paragraph")
               return;
-            if (
-              insertTimedLine(
-                { from: $from.before(), to: $from.after() },
-                $from.parent.textContent,
-              )
-            ) {
-              event.preventDefault();
-              event.stopPropagation();
-            }
+            const value = $from.parent.textContent;
+            const pause = parseBreakLine(value);
+            const timed = pause ?? parseTimedLine(value);
+            if (!timed) return;
+            event.preventDefault();
+            event.stopPropagation();
+            editor
+              .chain()
+              .focus()
+              .insertContentAt({ from: $from.before(), to: $from.after() }, [
+                {
+                  type: "dailyPlanBlock",
+                  attrs: {
+                    block: {
+                      id: createDailyPlanId(),
+                      type: "timed_line",
+                      ...timed,
+                      kind: pause ? "break" : "event",
+                      pinned: true,
+                    },
+                  },
+                },
+                { type: "paragraph" },
+              ])
+              .run();
           }
         }}
       >
@@ -445,93 +381,8 @@ export function DailyPlanNoteEditor({
             keyboard={menuKeys}
           />
         )}
-        {timedDraft && timedSuggestionsOpen && (
-          <TimedTaskSuggestions
-            key={`${timedDraft.from}:${timedDraft.text}`}
-            draft={timedDraft}
-            tasks={timedMatches}
-            onInsert={(task) =>
-              insertTimedLine(timedDraft, timedDraft.text, task)
-            }
-            keyboard={timedKeys}
-          />
-        )}
       </div>
     </BlockRenderer.Provider>
-  );
-}
-
-function TimedTaskSuggestions({
-  draft,
-  tasks,
-  onInsert,
-  keyboard,
-}: {
-  draft: CommandRange;
-  tasks: NoteTaskOption[];
-  onInsert: (task?: NoteTaskOption) => void;
-  keyboard: { current: (key: string) => boolean };
-}) {
-  // Enter keeps adding an unlinked fixed line unless a task is chosen.
-  const [selected, setSelected] = useState(-1);
-  keyboard.current = (key) => {
-    if (key === "ArrowDown") {
-      setSelected(Math.min(selected + 1, tasks.length - 1));
-      return true;
-    }
-    // Without a chosen task, ArrowUp still moves the cursor through the note.
-    if (key === "ArrowUp" && selected >= 0) {
-      setSelected(selected - 1);
-      return true;
-    }
-    if (key === "Enter") {
-      onInsert(tasks[selected]);
-      return true;
-    }
-    return false;
-  };
-  return (
-    <div
-      className="fixed z-50 w-[360px] max-w-[calc(100vw-24px)] space-y-1 rounded-xl border bg-popover p-2 text-popover-foreground shadow-xl"
-      style={{ top: draft.top, left: draft.left }}
-    >
-      <p className="px-2 pt-1 text-xs text-muted-foreground">
-        ↑↓ でタスクを選択 · Enter で固定予定を追加 · Esc で閉じる
-      </p>
-      <div
-        role="listbox"
-        aria-label="固定予定に紐づけるタスク"
-        className="max-h-64 space-y-1 overflow-y-auto"
-      >
-        <Button
-          role="option"
-          aria-selected={selected === -1}
-          variant={selected === -1 ? "secondary" : "ghost"}
-          className="h-auto w-full justify-start py-2 text-left"
-          onClick={() => onInsert()}
-        >
-          タスクに紐づけずに追加
-        </Button>
-        {tasks.map((task, index) => (
-          <Button
-            key={task.key}
-            role="option"
-            aria-selected={selected === index}
-            variant={selected === index ? "secondary" : "ghost"}
-            className="h-auto w-full items-start justify-start whitespace-normal py-2 text-left"
-            onClick={() => onInsert(task)}
-          >
-            <span>
-              <span className="block">{task.title}</span>
-              <span className="text-xs font-normal text-muted-foreground">
-                {task.projectTitle ?? "Quick Task"}
-                {task.goalTitle ? ` / ${task.goalTitle}` : ""}
-              </span>
-            </span>
-          </Button>
-        ))}
-      </div>
-    </div>
   );
 }
 

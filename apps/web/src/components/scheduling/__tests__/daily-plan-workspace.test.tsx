@@ -167,24 +167,85 @@ describe("DailyPlanWorkspace", () => {
     expect(screen.getByRole("checkbox", { name: "論文を終了済みにする" })).not.toBeChecked();
   });
 
-  it("suggests tasks from an unlinked fixed line's title and links the chosen one", async () => {
-    jest.mocked(tasksApi.getWorkspace).mockResolvedValue({ items: [
-      { ...workspaceTask("paper", "論文を読む"), project_title: "研究", goal_title: "調査" },
-      workspaceTask("shopping", "買い物"),
-    ], total: 2, skip: 0, limit: 100 });
-    jest.mocked(dailyPlansApi.get).mockResolvedValue({ ...blankResponse, revision: 1,
-      document: { schema_version: 1, blocks: [{ id: "fixed", type: "timed_line", title: "定例", start: "09:00", end: "10:00" }] } });
-    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
-    await waitFor(() => expect(tasksApi.getWorkspace).toHaveBeenCalled());
-    fireEvent.click(screen.getByText("定例", { selector: "summary" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "予定名" }), { target: { value: "研究 論文" } });
-    const suggestions = await screen.findByRole("group", { name: "予定名に一致するタスク" });
-    expect(within(suggestions).getAllByRole("button")).toHaveLength(1);
-    fireEvent.click(within(suggestions).getByRole("button", { name: /論文を読む/ }));
-    expect(screen.queryByRole("group", { name: "予定名に一致するタスク" })).not.toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "予定名" })).toHaveValue("論文を読む");
-    await waitFor(() => expect(jest.mocked(dailyPlansApi.update).mock.calls.at(-1)?.[2].blocks[0]).toMatchObject({
-      title: "論文を読む", task_ref: { source: "task", id: "paper" } }), { timeout: 2500 });
+  describe("fixed line task link", () => {
+    const fixed = { id: "fixed", type: "timed_line" as const, title: "定例", start: "09:00", end: "10:00" };
+    const lastSavedFixed = () =>
+      jest.mocked(dailyPlansApi.update).mock.calls.at(-1)?.[2].blocks.find((block) => block.id === "fixed");
+
+    async function openFixedLine(blocks: DailyPlanResponse["document"]["blocks"] = [fixed]) {
+      jest.mocked(tasksApi.getWorkspace).mockResolvedValue({ items: [
+        { ...workspaceTask("paper", "論文を読む"), project_title: "研究", goal_title: "調査" },
+        { ...workspaceTask("data", "データ整理"), project_title: "研究", goal_title: "実験" },
+        workspaceTask("shopping", "買い物"),
+      ], total: 3, skip: 0, limit: 100 });
+      jest.mocked(dailyPlansApi.get).mockResolvedValue({ ...blankResponse, revision: 1,
+        document: { schema_version: 1, blocks } });
+      await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
+      await waitFor(() => expect(tasksApi.getWorkspace).toHaveBeenCalled());
+      fireEvent.click(screen.getByText(blocks.find((block) => block.id === "fixed")!.title!, { selector: "summary" }));
+      const input = screen.getByRole("combobox", { name: "紐づけるタスク" });
+      fireEvent.focus(input);
+      return input;
+    }
+
+    it("narrows candidates by task, goal and project words and links with Enter", async () => {
+      const input = await openFixedLine();
+      const list = screen.getByRole("listbox", { name: "紐づけるタスクの候補" });
+      expect(within(list).getAllByRole("option")).toHaveLength(4);
+      fireEvent.change(input, { target: { value: "研究　読む" } });
+      expect(within(list).getAllByRole("option").map((option) => option.textContent)).toEqual([
+        "タスクに紐づけない", "論文を読む研究 / 調査",
+      ]);
+      expect(within(list).getByRole("option", { name: /論文を読む/ })).toHaveAttribute("aria-selected", "true");
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: "予定名" })).toHaveValue("論文を読む");
+      await waitFor(() => expect(lastSavedFixed()).toMatchObject({
+        title: "論文を読む", task_ref: { source: "task", id: "paper" } }), { timeout: 2500 });
+    });
+
+    it("links a task found by its goal with a click and reports no match", async () => {
+      const input = await openFixedLine();
+      fireEvent.change(input, { target: { value: "会議" } });
+      expect(screen.getByText("一致するタスクがありません")).toBeInTheDocument();
+      fireEvent.change(input, { target: { value: "実験" } });
+      fireEvent.click(screen.getByRole("option", { name: /データ整理/ }));
+      fireEvent.blur(input);
+      expect(input).toHaveValue("データ整理 · 研究");
+      await waitFor(() => expect(lastSavedFixed()).toMatchObject({
+        title: "データ整理", task_ref: { source: "task", id: "data" } }), { timeout: 2500 });
+    });
+
+    it("unlinks with the keyboard and keeps Escape from changing the link", async () => {
+      const input = await openFixedLine([{ ...fixed, title: "論文を読む", task_ref: { source: "task", id: "paper" } }]);
+      expect(screen.getByRole("option", { name: /論文を読む/ })).toHaveAttribute("aria-selected", "true");
+      fireEvent.change(input, { target: { value: "データ" } });
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      fireEvent.blur(input);
+      expect(input).toHaveValue("論文を読む · 研究");
+      expect(dailyPlansApi.update).not.toHaveBeenCalled();
+      fireEvent.focus(input);
+      fireEvent.keyDown(input, { key: "ArrowUp" });
+      fireEvent.keyDown(input, { key: "Enter" });
+      await waitFor(() => expect(lastSavedFixed()).toMatchObject({ title: "論文を読む", task_ref: undefined }),
+        { timeout: 2500 });
+    });
+
+    it("does not turn a time-like note paragraph into a fixed line when Enter picks a task", async () => {
+      const input = await openFixedLine([
+        { id: "draft", type: "text", text: "1100-1200 下書き" },
+        fixed,
+      ]);
+      const text = screen.getByText("1100-1200 下書き").firstChild!;
+      act(() => { window.getSelection()!.collapse(text, text.textContent!.length); });
+      fireEvent(document, new Event("selectionchange"));
+      fireEvent.change(input, { target: { value: "買い物" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      await waitFor(() => expect(lastSavedFixed()).toMatchObject({ task_ref: { id: "shopping" } }), { timeout: 2500 });
+      expect(jest.mocked(dailyPlansApi.update).mock.calls.at(-1)![2].blocks[0]).toMatchObject({
+        id: "draft", type: "text", text: "1100-1200 下書き" });
+    });
   });
 
   it("loads and saves a goal scope when the project has no tasks", async () => {

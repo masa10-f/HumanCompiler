@@ -13,6 +13,7 @@ import {
   useImperativeHandle,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -279,14 +280,11 @@ export const DailyPlanWorkspace = forwardRef<
 
   const [suggestionsUsed, setSuggestionsUsed] = useState(false);
   const [blockEditorUsed, setBlockEditorUsed] = useState(false);
-  const [taskSearchUsed, setTaskSearchUsed] = useState(false);
   const openSuggestions = useCallback(() => setSuggestionsUsed(true), []);
-  const startTaskSearch = useCallback(() => setTaskSearchUsed(true), []);
   const needsTasks =
     !embedded ||
     suggestionsUsed ||
     blockEditorUsed ||
-    taskSearchUsed ||
     document.blocks.some(
       (block) => block.type === "checklist_item" && Boolean(block.task_ref),
     );
@@ -1194,7 +1192,6 @@ export const DailyPlanWorkspace = forwardRef<
                       goalsError={goalQuery.error}
                       onRetryGoals={goalQuery.retry}
                       onSuggestionsOpen={openSuggestions}
-                      onTaskSearch={startTaskSearch}
                       onChange={(next) => updateDocument(() => next)}
                       renderBlock={(block) => {
                         if (block.type === "text") return null;
@@ -1502,16 +1499,160 @@ function TaskSelect({
         <SelectItem value="none">タスクに紐づけない</SelectItem>
         {selectableOptions.map((option) => (
           <SelectItem key={option.key} value={option.key}>
-            {option.title}
-            {option.isFallback
-              ? " · 候補外"
-              : option.projectTitle
-                ? ` · ${option.projectTitle}`
-                : " · Quick"}
+            {taskOptionLabel(option)}
           </SelectItem>
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+function taskOptionLabel(option: TaskOption): string {
+  return `${option.title}${
+    option.isFallback
+      ? " · 候補外"
+      : option.projectTitle
+        ? ` · ${option.projectTitle}`
+        : " · Quick"
+  }`;
+}
+
+// Links a task by typing: words narrow candidates by task, goal and project title.
+function TaskSearchSelect({
+  value,
+  options,
+  fallbackTitle,
+  onChange,
+}: {
+  value?: DailyPlanTaskRef | null;
+  options: TaskOption[];
+  fallbackTitle?: string;
+  onChange: (task: TaskOption | undefined) => void;
+}) {
+  const listId = useId();
+  const [focused, setFocused] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+  const selectedKey = value ? refKey(value) : undefined;
+  const selected = value
+    ? (options.find((option) => option.key === selectedKey) ??
+      fallbackTaskOption(value, fallbackTitle || "参照タスク"))
+    : undefined;
+  const candidates = (text: string) =>
+    text.trim() ? searchDailyPlanTasks(options, text) : options;
+  const matches = candidates(query);
+  // Index 0 unlinks; candidates follow.
+  const items: Array<TaskOption | undefined> = [undefined, ...matches];
+  const choose = (task: TaskOption | undefined) => {
+    onChange(task);
+    setQuery("");
+    setOpen(false);
+  };
+  useEffect(() => {
+    if (open)
+      document
+        .getElementById(`${listId}-${active}`)
+        ?.scrollIntoView?.({ block: "nearest" });
+  }, [active, listId, open]);
+
+  return (
+    <div className="relative min-w-[220px] flex-1">
+      <Input
+        role="combobox"
+        aria-label="紐づけるタスク"
+        aria-autocomplete="list"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-activedescendant={open ? `${listId}-${active}` : undefined}
+        placeholder={
+          selected ? taskOptionLabel(selected) : "タスクを検索して紐づけ"
+        }
+        value={focused ? query : selected ? taskOptionLabel(selected) : ""}
+        onFocus={() => {
+          setFocused(true);
+          setQuery("");
+          setOpen(true);
+          setActive(
+            Math.max(
+              0,
+              options.findIndex((option) => option.key === selectedKey) + 1,
+            ),
+          );
+        }}
+        onBlur={() => {
+          setFocused(false);
+          setOpen(false);
+        }}
+        onChange={(event) => {
+          const next = event.target.value;
+          setQuery(next);
+          setOpen(true);
+          setActive(next.trim() && candidates(next).length ? 1 : 0);
+        }}
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            if (!open) setOpen(true);
+            else
+              setActive((index) =>
+                event.key === "ArrowDown"
+                  ? Math.min(index + 1, items.length - 1)
+                  : Math.max(index - 1, 0),
+              );
+          } else if (event.key === "Enter" && open) {
+            event.preventDefault();
+            choose(items[active]);
+          } else if (event.key === "Escape" && open) {
+            event.preventDefault();
+            setQuery("");
+            setOpen(false);
+          }
+        }}
+      />
+      {open && (
+        <div
+          id={listId}
+          role="listbox"
+          aria-label="紐づけるタスクの候補"
+          className="absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+          // Keep focus in the input so a click is not lost to its blur.
+          onMouseDown={(event) => event.preventDefault()}
+        >
+          {items.map((task, index) => (
+            <div
+              key={task?.key ?? "none"}
+              id={`${listId}-${index}`}
+              role="option"
+              aria-selected={index === active}
+              className={`cursor-pointer rounded px-2 py-1.5 text-sm ${
+                index === active ? "bg-secondary text-secondary-foreground" : ""
+              }`}
+              onMouseEnter={() => setActive(index)}
+              onClick={() => choose(task)}
+            >
+              {task ? (
+                <>
+                  <span className="block">{task.title}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {task.projectTitle ?? "Quick Task"}
+                    {task.goalTitle ? ` / ${task.goalTitle}` : ""}
+                  </span>
+                </>
+              ) : (
+                "タスクに紐づけない"
+              )}
+            </div>
+          ))}
+          {!matches.length && (
+            <p className="px-2 py-1.5 text-xs text-muted-foreground">
+              一致するタスクがありません
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1558,10 +1699,6 @@ function TimedLineEditor({
   taskOptions: TaskOption[];
   onChange: (block: DailyPlanTimedLine) => void;
 }) {
-  const suggestions =
-    block.kind === "break" || block.task_ref
-      ? []
-      : searchDailyPlanTasks(taskOptions, block.title).slice(0, 3);
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Input
@@ -1604,7 +1741,7 @@ function TimedLineEditor({
         </Badge>
       ) : (
         <>
-          <TaskSelect
+          <TaskSearchSelect
             value={block.task_ref}
             options={taskOptions}
             fallbackTitle={block.title ?? undefined}
@@ -1617,38 +1754,6 @@ function TimedLineEditor({
             }
           />
           <Badge variant="outline">固定</Badge>
-          {suggestions.length > 0 && (
-            <div
-              role="group"
-              aria-label="予定名に一致するタスク"
-              className="flex w-full flex-wrap items-center gap-1"
-            >
-              <span className="text-xs text-muted-foreground">
-                予定名に一致するタスク:
-              </span>
-              {suggestions.map((task) => (
-                <Button
-                  key={task.key}
-                  size="sm"
-                  variant="outline"
-                  className="h-auto whitespace-normal py-1 text-left text-xs"
-                  onClick={() =>
-                    onChange({
-                      ...block,
-                      task_ref: task.ref,
-                      title: task.title,
-                    })
-                  }
-                >
-                  {task.title}
-                  <span className="ml-1 text-muted-foreground">
-                    · {task.projectTitle ?? "Quick"}
-                    {task.goalTitle ? ` / ${task.goalTitle}` : ""}
-                  </span>
-                </Button>
-              ))}
-            </div>
-          )}
         </>
       )}
     </div>
