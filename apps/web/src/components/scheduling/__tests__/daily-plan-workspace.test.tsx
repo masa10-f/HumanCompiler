@@ -327,14 +327,16 @@ describe("DailyPlanWorkspace", () => {
 
     it("keeps a link to a task outside the candidates and does not rewrite a re-picked link", async () => {
       const input = await openFixedLine([{ ...fixed, title: "完了した調査", task_ref: { source: "task", id: "done" } }]);
-      const linked = screen.getByRole("option", { name: /完了した調査/ });
+      // The line's own name is not the task's, so the unloaded task gets a generic label.
+      expect(screen.queryByRole("option", { name: /完了した調査/ })).not.toBeInTheDocument();
+      const linked = screen.getByRole("option", { name: /参照タスク/ });
       expect(linked).toHaveTextContent("候補外");
       expect(linked).toHaveAttribute("aria-selected", "true");
       fireEvent.keyDown(input, { key: "Enter" });
-      fireEvent.change(input, { target: { value: "完了" } });
-      fireEvent.click(screen.getByRole("option", { name: /完了した調査/ }));
+      fireEvent.change(input, { target: { value: "参照" } });
+      fireEvent.click(screen.getByRole("option", { name: /参照タスク/ }));
       fireEvent.blur(input);
-      expect(input).toHaveValue("完了した調査 · 候補外");
+      expect(input).toHaveValue("参照タスク · 候補外");
       expect(screen.getByRole("textbox", { name: "予定名" })).toHaveValue("完了した調査");
       await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1000)); });
       expect(dailyPlansApi.update).not.toHaveBeenCalled();

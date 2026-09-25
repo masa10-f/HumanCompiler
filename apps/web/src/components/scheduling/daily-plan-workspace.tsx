@@ -1557,12 +1557,10 @@ function taskOptionLabel(option: TaskOption): string {
 function TaskSearchSelect({
   value,
   options,
-  fallbackTitle,
   onChange,
 }: {
   value?: DailyPlanTaskRef | null;
   options: TaskOption[];
-  fallbackTitle?: string;
   onChange: (task: TaskOption | undefined) => void;
 }) {
   const listId = useId();
@@ -1573,9 +1571,10 @@ function TaskSearchSelect({
   // onto a different task.
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const selectedKey = value ? refKey(value) : undefined;
+  // A line keeps its own name, so it cannot name a task that is not loaded.
   const selected = value
     ? (options.find((option) => option.key === selectedKey) ??
-      fallbackTaskOption(value, fallbackTitle || "参照タスク"))
+      fallbackTaskOption(value, "参照タスク"))
     : undefined;
   // Keep a linked task that is no longer loaded (e.g. completed) choosable,
   // so opening the list never defaults to unlinking it.
@@ -1831,7 +1830,6 @@ function TimedLineEditor({
           <TaskSearchSelect
             value={block.task_ref}
             options={taskOptions}
-            fallbackTitle={block.title ?? undefined}
             // The line keeps its own name; the note reads better that way.
             onChange={(task) => onChange({ ...block, task_ref: task?.ref })}
           />
