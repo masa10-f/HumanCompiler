@@ -10,6 +10,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 #   https://human-compiler-git-<branch>-masato-fukushimas-projects.vercel.app
 # Anchored on both ends: *.vercel.app names are first-come, first-served, so a
 # prefix-only or substring check can be satisfied by anyone's Vercel project.
+# Known gap: this can't stop another account from naming a project
+# "human-compiler-x-masato-fukushimas-projects". That is tolerable only because
+# the API authenticates via the Authorization header alone (no cookies), so a
+# credentialed CORS response gives another origin nothing without the user's
+# token. Before adding cookie auth, move previews to a domain we own.
 VERCEL_PREVIEW_ORIGIN_RE = re.compile(
     r"https://(?:human-compiler|humancompiler)-[a-z0-9-]+"
     r"-masato-fukushimas-projects\.vercel\.app"
