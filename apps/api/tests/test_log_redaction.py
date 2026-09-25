@@ -11,7 +11,8 @@ from uvicorn.logging import AccessFormatter
 
 import humancompiler_api.main  # noqa: F401  (installs the uvicorn log filters)
 
-TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ2aWN0aW0ifQ.c2lnbmF0dXJl"
+# Deliberately not JWT-shaped so secret scanners don't flag the fixture
+TOKEN = "fake-access-token-for-redaction-test"
 
 
 def test_websocket_log_line_masks_token(caplog: pytest.LogCaptureFixture):
