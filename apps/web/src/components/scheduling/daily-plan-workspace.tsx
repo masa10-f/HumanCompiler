@@ -730,10 +730,14 @@ export const DailyPlanWorkspace = forwardRef<
       const [hours, mins] = clock.split(":").map(Number);
       return hours! * 60 + mins!;
     };
+    const linkedTask = taskOptions.find(
+      (option) => option.key === refKey(block.task_ref!),
+    );
     openCompletion({
       task_id: block.task_ref.id,
       source: block.task_ref.source,
-      task_title: block.title,
+      // The line title can differ from the task, so name the task being recorded.
+      task_title: linkedTask?.title ?? block.title,
       goal_id: "",
       project_id: "",
       slot_index: 0,
@@ -1821,13 +1825,8 @@ function TimedLineEditor({
             value={block.task_ref}
             options={taskOptions}
             fallbackTitle={block.title ?? undefined}
-            onChange={(task) =>
-              onChange({
-                ...block,
-                task_ref: task?.ref,
-                title: task?.title ?? block.title,
-              })
-            }
+            // The line keeps its own name; the note reads better that way.
+            onChange={(task) => onChange({ ...block, task_ref: task?.ref })}
           />
           <Badge variant="outline">固定</Badge>
         </>

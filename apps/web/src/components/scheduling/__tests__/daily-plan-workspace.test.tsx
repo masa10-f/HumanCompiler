@@ -199,9 +199,18 @@ describe("DailyPlanWorkspace", () => {
       expect(within(list).getByRole("option", { name: /論文を読む/ })).toHaveAttribute("aria-selected", "true");
       fireEvent.keyDown(input, { key: "Enter" });
       expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
-      expect(screen.getByRole("textbox", { name: "予定名" })).toHaveValue("論文を読む");
+      // Linking keeps the fixed line's own name in the note.
+      expect(screen.getByRole("textbox", { name: "予定名" })).toHaveValue("定例");
+      expect(screen.getByText("定例", { selector: "summary" })).toBeInTheDocument();
       await waitFor(() => expect(lastSavedFixed()).toMatchObject({
-        title: "論文を読む", task_ref: { source: "task", id: "paper" } }), { timeout: 2500 });
+        title: "定例", task_ref: { source: "task", id: "paper" } }), { timeout: 2500 });
+    });
+
+    it("names the linked task when recording a fixed line's result", async () => {
+      await openFixedLine([{ ...fixed, task_ref: { source: "task", id: "paper" } }]);
+      expect(screen.getByRole("checkbox", { name: "定例を終了済みにする" })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "実績" }));
+      expect(screen.getByRole("dialog", { name: "論文を読む" })).toBeInTheDocument();
     });
 
     it("links a task found by its goal with a click and reports no match", async () => {
@@ -213,7 +222,7 @@ describe("DailyPlanWorkspace", () => {
       fireEvent.blur(input);
       expect(input).toHaveValue("データ整理 · 研究");
       await waitFor(() => expect(lastSavedFixed()).toMatchObject({
-        title: "データ整理", task_ref: { source: "task", id: "data" } }), { timeout: 2500 });
+        title: "定例", task_ref: { source: "task", id: "data" } }), { timeout: 2500 });
     });
 
     it("keeps the link when Enter is pressed on a search with no match", async () => {
