@@ -213,6 +213,20 @@ describe("DailyPlanWorkspace", () => {
       expect(screen.getByRole("dialog", { name: "論文を読む" })).toBeInTheDocument();
     });
 
+    it("loads a linked line's task on the dashboard and names it once loaded", async () => {
+      let finishLoad: (value: Awaited<ReturnType<typeof tasksApi.getWorkspace>>) => void = () => {};
+      jest.mocked(tasksApi.getWorkspace).mockImplementation(() => new Promise((resolve) => { finishLoad = resolve; }));
+      jest.mocked(dailyPlansApi.get).mockResolvedValue({ ...blankResponse, revision: 1,
+        document: { schema_version: 1, blocks: [{ ...fixed, task_ref: { source: "task", id: "paper" } }] } });
+      await renderNotebook(<DailyPlanWorkspace embedded selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
+      await waitFor(() => expect(tasksApi.getWorkspace).toHaveBeenCalled());
+      fireEvent.click(screen.getByRole("button", { name: "実績" }));
+      // Never label the task with the line's own name while it is loading.
+      expect(screen.getByRole("dialog", { name: "「定例」に紐づけたタスク" })).toBeInTheDocument();
+      await act(async () => finishLoad({ items: [workspaceTask("paper", "論文を読む")], total: 1, skip: 0, limit: 100 }));
+      expect(screen.getByRole("dialog", { name: "論文を読む" })).toBeInTheDocument();
+    });
+
     it("links a task found by its goal with a click and reports no match", async () => {
       const input = await openFixedLine();
       fireEvent.change(input, { target: { value: "会議" } });
