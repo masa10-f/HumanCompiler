@@ -81,7 +81,8 @@ def test_endpoints_require_authentication(session: Session):
         client.delete(f"/api/goal-dependencies/{dependency.id}"),
     ]
 
-    assert [r.status_code for r in responses] == [401, 401, 401]
+    # HTTPBearer returns 403 on older FastAPI (uv.lock) and 401 on newer releases
+    assert all(r.status_code in (401, 403) for r in responses)
     assert session.get(GoalDependency, dependency.id) is not None
 
 
