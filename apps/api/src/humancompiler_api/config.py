@@ -1,7 +1,19 @@
 import os
+import re
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+# Vercel preview URLs for this project, e.g.
+#   https://human-compiler-<hash>-masato-fukushimas-projects.vercel.app
+#   https://human-compiler-git-<branch>-masato-fukushimas-projects.vercel.app
+# Anchored on both ends: *.vercel.app names are first-come, first-served, so a
+# prefix-only or substring check can be satisfied by anyone's Vercel project.
+VERCEL_PREVIEW_ORIGIN_RE = re.compile(
+    r"https://(?:human-compiler|humancompiler)-[a-z0-9-]+"
+    r"-masato-fukushimas-projects\.vercel\.app"
+)
 
 
 class Settings(BaseSettings):
@@ -143,63 +155,8 @@ class Settings(BaseSettings):
         return expanded_origins
 
     def is_vercel_domain_allowed(self, origin: str) -> bool:
-        """Check if a Vercel domain matches our security patterns"""
-        import logging
-
-        logger = logging.getLogger(__name__)
-
-        logger.info(f"CORS: Checking Vercel domain allowance for origin: {origin}")
-
-        if not origin.endswith(".vercel.app"):
-            logger.info(f"CORS: {origin} not a vercel.app domain")
-            return False
-
-        # Extract subdomain
-        subdomain = (
-            origin.replace("https://", "")
-            .replace("http://", "")
-            .replace(".vercel.app", "")
-        )
-
-        logger.info(f"CORS: Vercel domain check - subdomain: '{subdomain}'")
-
-        # Allow humancompiler-related domains only
-        allowed_patterns = [
-            "humancompiler",  # Main production domain (no hyphen)
-            "human-compiler",  # Main production domain (with hyphen)
-            "humancompiler-",  # For dynamic deployments (humancompiler-*)
-            "humancompiler-git-",  # For feature branch deployments (humancompiler-git-*)
-        ]
-
-        # Allow all Vercel preview domains for masato-fukushimas-projects account
-        # This covers all possible patterns:
-        # - humancompiler-[hash]-masato-fukushimas-projects
-        # - humancompiler-[hash] (from masato-fukushimas-projects account)
-        # - Any domain containing masato-fukushimas-projects
-        if "masato-fukushimas-projects" in subdomain:
-            logger.info(f"CORS: Allowed masato-fukushimas-projects domain: {subdomain}")
-            return True
-
-        # Check for humancompiler preview domains (with hash)
-        # Patterns:
-        # - humancompiler-[9char_hash] (e.g., humancompiler-9qbeqspf7)
-        # - humancompiler-[hash]-masato-fukushimas-projects (full pattern)
-        if subdomain.startswith("humancompiler-") and len(subdomain) > 15:
-            # Likely a Vercel preview domain with hash
-            logger.info(f"CORS: Allowed humancompiler preview domain: {subdomain}")
-            return True
-
-        # Also check for git feature branch domains
-        # Patterns: humancompiler-git-feature-*, etc.
-        if subdomain.startswith("humancompiler-git-"):
-            logger.info(f"CORS: Allowed humancompiler git feature domain: {subdomain}")
-            return True
-
-        for pattern in allowed_patterns:
-            if subdomain.startswith(pattern):
-                return True
-
-        return False
+        """Check if an origin is a Vercel preview deployment of this project"""
+        return VERCEL_PREVIEW_ORIGIN_RE.fullmatch(origin) is not None
 
     def is_fly_domain_allowed(self, origin: str) -> bool:
         """Check if a Fly.io domain is allowed for preview API access"""
