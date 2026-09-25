@@ -467,7 +467,7 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
 
         # Create dependency
         dependency = GoalDependency(
-            goal_id=goal_id, depends_on_goal_id=depends_on_goal_id
+            id=uuid4(), goal_id=goal_id, depends_on_goal_id=depends_on_goal_id
         )
         session.add(dependency)
         session.commit()
@@ -517,6 +517,36 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
 
         dependency = session.get(GoalDependency, dependency_id)
         if not dependency or dependency.goal_id != UUID(str(goal_id)):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Dependency not found"
+            )
+
+        session.delete(dependency)
+        session.commit()
+
+        return True
+
+    def delete_goal_dependency_by_id(
+        self,
+        session: Session,
+        dependency_id: str | UUID,
+        owner_id: str | UUID,
+    ) -> bool:
+        """Delete a goal dependency by ID if its goal belongs to the owner"""
+        dependency = session.get(
+            GoalDependency, validate_uuid(dependency_id, "dependency_id")
+        )
+        owned_goal_id = None
+        if dependency:
+            owned_goal_id = session.exec(
+                select(Goal.id).where(
+                    Goal.id == dependency.goal_id,
+                    self._get_user_filter(validate_uuid(owner_id, "owner_id")),
+                )
+            ).first()
+
+        # Same response for missing and not-owned so IDs can't be probed
+        if not owned_goal_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Dependency not found"
             )
