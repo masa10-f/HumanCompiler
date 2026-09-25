@@ -422,3 +422,56 @@ it.each([
     expect(changed.mock.calls.at(-1)![0].blocks[0].task_ref).toBeUndefined();
   },
 );
+
+it.each(["bulletList", "orderedList", "taskList", "blockquote"])(
+  "shows the note guide once, and not inside an empty %s",
+  async (type) => {
+    const content =
+      type === "blockquote"
+        ? [{ type: "paragraph" }]
+        : [
+            {
+              type: type === "taskList" ? "taskItem" : "listItem",
+              ...(type === "taskList" ? { attrs: { checked: false } } : {}),
+              content: [{ type: "paragraph" }],
+            },
+          ];
+    render(
+      <Notebook
+        initial={{
+          schema_version: 1,
+          blocks: [
+            { id: "list", type: "text", text: "", content: { type, content } },
+            { id: "memo", type: "text", text: "" },
+          ],
+        }}
+      />,
+    );
+    const editor = await screen.findByRole("textbox", { name: "日次ノート" });
+    const guides = () => editor.querySelectorAll("[data-placeholder]");
+    const line = editor.querySelector("p")!;
+    act(() => {
+      editor.focus();
+      window.getSelection()!.collapse(line, 0);
+    });
+    fireEvent(document, new Event("selectionchange"));
+    // Nested nodes are never decorated, so the guide cannot repeat per level.
+    await waitFor(() => expect(guides()).toHaveLength(1));
+    expect(guides()[0]!.parentElement).toBe(editor);
+    expect(editor.querySelector(":scope > p.is-empty")).toBeNull();
+
+    const paragraph = editor.lastElementChild!;
+    expect(paragraph.tagName).toBe("P");
+    act(() => {
+      window.getSelection()!.collapse(paragraph, 0);
+    });
+    fireEvent(document, new Event("selectionchange"));
+    await waitFor(() =>
+      expect(editor.querySelector(":scope > p.is-empty")).toHaveAttribute(
+        "data-placeholder",
+        "自由にメモを書く…  /schedule で予定を追加",
+      ),
+    );
+    expect(guides()).toHaveLength(1);
+  },
+);

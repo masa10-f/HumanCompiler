@@ -198,9 +198,10 @@ export function DailyPlanNoteEditor({
       Link.configure({ openOnClick: false }),
       ScheduleNode,
       NoteIdentity,
+      // Only top-level nodes are decorated, and only paragraphs show the guide:
+      // /schedule works there, and nested list items or quotes would repeat it.
       Placeholder.configure({
         placeholder: "自由にメモを書く…  /schedule で予定を追加",
-        includeChildren: true,
       }),
     ],
     content: dailyPlanToNote(document),
@@ -210,7 +211,7 @@ export function DailyPlanNoteEditor({
         "aria-label": "日次ノート",
         "aria-multiline": "true",
         class:
-          "context-note-content prose prose-sm dark:prose-invert max-w-none min-h-[320px] px-2 py-3 outline-none [&_.is-empty:before]:text-muted-foreground [&_.is-empty:before]:content-[attr(data-placeholder)] [&_.is-empty:before]:float-left [&_.is-empty:before]:h-0 [&_.is-empty:before]:pointer-events-none",
+          "context-note-content prose prose-sm dark:prose-invert max-w-none min-h-[320px] px-2 py-3 outline-none [&>p.is-empty:before]:text-muted-foreground [&>p.is-empty:before]:content-[attr(data-placeholder)] [&>p.is-empty:before]:float-left [&>p.is-empty:before]:h-0 [&>p.is-empty:before]:pointer-events-none",
       },
     },
     onUpdate: ({ editor: current }) => {
