@@ -199,9 +199,32 @@ describe("DailyPlanWorkspace", () => {
       expect(within(list).getByRole("option", { name: /論文を読む/ })).toHaveAttribute("aria-selected", "true");
       fireEvent.keyDown(input, { key: "Enter" });
       expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
-      expect(screen.getByRole("textbox", { name: "予定名" })).toHaveValue("論文を読む");
+      // Linking keeps the fixed line's own name in the note.
+      expect(screen.getByRole("textbox", { name: "予定名" })).toHaveValue("定例");
+      expect(screen.getByText("定例", { selector: "summary" })).toBeInTheDocument();
       await waitFor(() => expect(lastSavedFixed()).toMatchObject({
-        title: "論文を読む", task_ref: { source: "task", id: "paper" } }), { timeout: 2500 });
+        title: "定例", task_ref: { source: "task", id: "paper" } }), { timeout: 2500 });
+    });
+
+    it("names the linked task when recording a fixed line's result", async () => {
+      await openFixedLine([{ ...fixed, task_ref: { source: "task", id: "paper" } }]);
+      expect(screen.getByRole("checkbox", { name: "定例を終了済みにする" })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "実績" }));
+      expect(screen.getByRole("dialog", { name: "論文を読む" })).toBeInTheDocument();
+    });
+
+    it("loads a linked line's task on the dashboard and names it once loaded", async () => {
+      let finishLoad: (value: Awaited<ReturnType<typeof tasksApi.getWorkspace>>) => void = () => {};
+      jest.mocked(tasksApi.getWorkspace).mockImplementation(() => new Promise((resolve) => { finishLoad = resolve; }));
+      jest.mocked(dailyPlansApi.get).mockResolvedValue({ ...blankResponse, revision: 1,
+        document: { schema_version: 1, blocks: [{ ...fixed, task_ref: { source: "task", id: "paper" } }] } });
+      await renderNotebook(<DailyPlanWorkspace embedded selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
+      await waitFor(() => expect(tasksApi.getWorkspace).toHaveBeenCalled());
+      fireEvent.click(screen.getByRole("button", { name: "実績" }));
+      // Never label the task with the line's own name while it is loading.
+      expect(screen.getByRole("dialog", { name: "「定例」に紐づけたタスク" })).toBeInTheDocument();
+      await act(async () => finishLoad({ items: [workspaceTask("paper", "論文を読む")], total: 1, skip: 0, limit: 100 }));
+      expect(screen.getByRole("dialog", { name: "論文を読む" })).toBeInTheDocument();
     });
 
     it("links a task found by its goal with a click and reports no match", async () => {
@@ -213,7 +236,7 @@ describe("DailyPlanWorkspace", () => {
       fireEvent.blur(input);
       expect(input).toHaveValue("データ整理 · 研究");
       await waitFor(() => expect(lastSavedFixed()).toMatchObject({
-        title: "データ整理", task_ref: { source: "task", id: "data" } }), { timeout: 2500 });
+        title: "定例", task_ref: { source: "task", id: "data" } }), { timeout: 2500 });
     });
 
     it("keeps the link when Enter is pressed on a search with no match", async () => {
@@ -304,14 +327,16 @@ describe("DailyPlanWorkspace", () => {
 
     it("keeps a link to a task outside the candidates and does not rewrite a re-picked link", async () => {
       const input = await openFixedLine([{ ...fixed, title: "完了した調査", task_ref: { source: "task", id: "done" } }]);
-      const linked = screen.getByRole("option", { name: /完了した調査/ });
+      // The line's own name is not the task's, so the unloaded task gets a generic label.
+      expect(screen.queryByRole("option", { name: /完了した調査/ })).not.toBeInTheDocument();
+      const linked = screen.getByRole("option", { name: /参照タスク/ });
       expect(linked).toHaveTextContent("候補外");
       expect(linked).toHaveAttribute("aria-selected", "true");
       fireEvent.keyDown(input, { key: "Enter" });
-      fireEvent.change(input, { target: { value: "完了" } });
-      fireEvent.click(screen.getByRole("option", { name: /完了した調査/ }));
+      fireEvent.change(input, { target: { value: "参照" } });
+      fireEvent.click(screen.getByRole("option", { name: /参照タスク/ }));
       fireEvent.blur(input);
-      expect(input).toHaveValue("完了した調査 · 候補外");
+      expect(input).toHaveValue("参照タスク · 候補外");
       expect(screen.getByRole("textbox", { name: "予定名" })).toHaveValue("完了した調査");
       await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1000)); });
       expect(dailyPlansApi.update).not.toHaveBeenCalled();

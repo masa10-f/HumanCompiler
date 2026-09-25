@@ -132,6 +132,15 @@ function refKey(ref: DailyPlanTaskRef): string {
   return `${ref.source}:${ref.id}`;
 }
 
+function assignmentTaskRef(assignment: DailyPlanAssignment): DailyPlanTaskRef {
+  return {
+    source:
+      assignment.source ??
+      (assignment.task_id.startsWith("quick_") ? "quick_task" : "task"),
+    id: assignment.task_id.replace(/^quick_/, ""),
+  };
+}
+
 function fallbackTaskOption(ref: DailyPlanTaskRef, title: string): TaskOption {
   return {
     key: refKey(ref),
@@ -282,12 +291,15 @@ export const DailyPlanWorkspace = forwardRef<
   const [suggestionsUsed, setSuggestionsUsed] = useState(false);
   const [blockEditorUsed, setBlockEditorUsed] = useState(false);
   const openSuggestions = useCallback(() => setSuggestionsUsed(true), []);
+  // Linked lines need their task's title to name the 実績 dialog.
   const needsTasks =
     !embedded ||
     suggestionsUsed ||
     blockEditorUsed ||
     document.blocks.some(
-      (block) => block.type === "checklist_item" && Boolean(block.task_ref),
+      (block) =>
+        (block.type === "checklist_item" || block.type === "timed_line") &&
+        Boolean(block.task_ref),
     );
   useEffect(() => {
     if (!needsTasks) return;
@@ -651,12 +663,7 @@ export const DailyPlanWorkspace = forwardRef<
       start,
       end,
       title: assignment.task_title,
-      task_ref: {
-        source:
-          assignment.source ??
-          (assignment.task_id.startsWith("quick_") ? "quick_task" : "task"),
-        id: assignment.task_id.replace(/^quick_/, ""),
-      },
+      task_ref: assignmentTaskRef(assignment),
       pinned: true,
     };
     updateDocument((current) => ({
@@ -733,7 +740,9 @@ export const DailyPlanWorkspace = forwardRef<
     openCompletion({
       task_id: block.task_ref.id,
       source: block.task_ref.source,
-      task_title: block.title,
+      // The line title can differ from the task. The dialog shows the task's
+      // title once it is loaded, so never label the task with the line name.
+      task_title: `「${block.title}」に紐づけたタスク`,
       goal_id: "",
       project_id: "",
       slot_index: 0,
@@ -751,18 +760,12 @@ export const DailyPlanWorkspace = forwardRef<
     if (!completionAssignment || taskActionInFlight.current || commentTooLong)
       return;
     taskActionInFlight.current = true;
-    const source =
-      completionAssignment.source ??
-      (completionAssignment.task_id.startsWith("quick_")
-        ? "quick_task"
-        : "task");
+    const taskRef = assignmentTaskRef(completionAssignment);
+    const source = taskRef.source;
     setTaskActionPending(true);
     try {
       await dailyPlansApi.applyTaskAction(selectedDate, {
-        task_ref: {
-          source,
-          id: completionAssignment.task_id.replace(/^quick_/, ""),
-        },
+        task_ref: taskRef,
         action,
         actual_minutes: source === "task" ? actualMinutes : undefined,
         ...(source === "task" && comment ? { comment } : {}),
@@ -883,6 +886,14 @@ export const DailyPlanWorkspace = forwardRef<
         : dirty || schedule.source_document_revision !== revision),
   );
   const blockIds = new Set(document.blocks.map((block) => block.id));
+  // Tasks can finish loading after the dialog opens; name the task being
+  // recorded as soon as it is known.
+  const completionTitle = completionAssignment
+    ? (taskOptions.find(
+        (option) =>
+          option.key === refKey(assignmentTaskRef(completionAssignment)),
+      )?.title ?? completionAssignment.task_title)
+    : undefined;
   const orphanAssignments = (schedule?.assignments ?? [])
     .filter(
       (assignment) =>
@@ -1399,7 +1410,7 @@ export const DailyPlanWorkspace = forwardRef<
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{completionAssignment?.task_title}</DialogTitle>
+            <DialogTitle>{completionTitle}</DialogTitle>
             <DialogDescription>
               実働時間を記録し、タスクを継続または完了にします。
             </DialogDescription>
@@ -1546,12 +1557,10 @@ function taskOptionLabel(option: TaskOption): string {
 function TaskSearchSelect({
   value,
   options,
-  fallbackTitle,
   onChange,
 }: {
   value?: DailyPlanTaskRef | null;
   options: TaskOption[];
-  fallbackTitle?: string;
   onChange: (task: TaskOption | undefined) => void;
 }) {
   const listId = useId();
@@ -1562,9 +1571,10 @@ function TaskSearchSelect({
   // onto a different task.
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const selectedKey = value ? refKey(value) : undefined;
+  // A line keeps its own name, so it cannot name a task that is not loaded.
   const selected = value
     ? (options.find((option) => option.key === selectedKey) ??
-      fallbackTaskOption(value, fallbackTitle || "参照タスク"))
+      fallbackTaskOption(value, "参照タスク"))
     : undefined;
   // Keep a linked task that is no longer loaded (e.g. completed) choosable,
   // so opening the list never defaults to unlinking it.
@@ -1820,14 +1830,8 @@ function TimedLineEditor({
           <TaskSearchSelect
             value={block.task_ref}
             options={taskOptions}
-            fallbackTitle={block.title ?? undefined}
-            onChange={(task) =>
-              onChange({
-                ...block,
-                task_ref: task?.ref,
-                title: task?.title ?? block.title,
-              })
-            }
+            // The line keeps its own name; the note reads better that way.
+            onChange={(task) => onChange({ ...block, task_ref: task?.ref })}
           />
           <Badge variant="outline">固定</Badge>
         </>
