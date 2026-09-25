@@ -5,6 +5,7 @@
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 
@@ -143,6 +144,31 @@ async def lifespan(app: FastAPI):
 
     # Simple backup system - no scheduler to stop
     logger.info("✅ Server shutdown complete")
+
+
+# Browsers can't set headers on WebSocket, so the client sends its access token
+# as ?token=..., and uvicorn logs the full path with query string. Mask it so
+# valid tokens never land in the logs.
+_TOKEN_QUERY_RE = re.compile(r"(?<=[?&]token=)[^&\s\"]+")
+
+
+class RedactTokenFilter(logging.Filter):
+    """Mask ?token=... query values in log records"""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = _TOKEN_QUERY_RE.sub("[REDACTED]", record.msg)
+        # Keep args as a tuple: uvicorn's AccessFormatter unpacks it
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                _TOKEN_QUERY_RE.sub("[REDACTED]", arg) if isinstance(arg, str) else arg
+                for arg in record.args
+            )
+        return True
+
+
+for _logger_name in ("uvicorn.error", "uvicorn.access"):
+    logging.getLogger(_logger_name).addFilter(RedactTokenFilter())
 
 
 # Initialize FastAPI app
