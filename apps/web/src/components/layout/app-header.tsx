@@ -90,7 +90,12 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
       <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between gap-2 xl:gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden xl:gap-4">
-            <div className="flex shrink-0 items-center space-x-3">
+            <Link
+              href="/dashboard"
+              aria-label="HumanCompiler ホーム（ダッシュボード）"
+              title="ホーム"
+              className="flex shrink-0 items-center space-x-3 rounded-lg ring-offset-background transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
               <Image
                 src="/logo.png"
                 alt="HumanCompiler Logo"
@@ -101,7 +106,7 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
               <h1 className="hidden text-xl font-bold text-foreground bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent sm:block">
                 HumanCompiler
               </h1>
-            </div>
+            </Link>
             {/* Desktop Navigation */}
             <nav className="hidden min-w-0 flex-1 items-center gap-1 overflow-hidden lg:flex">
               {PRIMARY_NAVIGATION_ITEMS.map((item) => {
