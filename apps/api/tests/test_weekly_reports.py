@@ -798,6 +798,67 @@ class TestWeeklyReportBackground:
             task["title"] for task in background.upcoming_tasks[str(project.id)]
         ] == ["プロンプト改修", "フロント表示", "レビュー依頼", "ドキュメント"]
 
+    def test_upcoming_tasks_rank_relevance_per_project(self, session):
+        """Many open tasks in one project must not crowd out another project."""
+        from decimal import Decimal
+        from uuid import uuid4
+
+        user = User(id=uuid4(), email="report-busy@example.com")
+        busy_project = Project(id=uuid4(), owner_id=user.id, title="Busy")
+        quiet_project = Project(id=uuid4(), owner_id=user.id, title="Quiet")
+        busy_goal = Goal(
+            id=uuid4(),
+            project_id=busy_project.id,
+            title="Backlog",
+            estimate_hours=Decimal("100.00"),
+        )
+        quiet_goal = Goal(
+            id=uuid4(),
+            project_id=quiet_project.id,
+            title="Current",
+            estimate_hours=Decimal("5.00"),
+        )
+        backlog = [
+            Task(
+                id=uuid4(),
+                goal_id=busy_goal.id,
+                title=f"Backlog {index:03d}",
+                estimate_hours=Decimal("1.00"),
+                priority=1,
+            )
+            for index in range(300)
+        ]
+        started = Task(
+            id=uuid4(),
+            goal_id=busy_goal.id,
+            title="Started",
+            estimate_hours=Decimal("1.00"),
+            status=TaskStatus.IN_PROGRESS,
+            priority=5,
+        )
+        quiet_task = Task(
+            id=uuid4(),
+            goal_id=quiet_goal.id,
+            title="Quiet next step",
+            estimate_hours=Decimal("1.00"),
+            priority=5,
+        )
+        session.add_all([user, busy_project, quiet_project, busy_goal, quiet_goal])
+        session.commit()
+        session.add_all([*backlog, started, quiet_task])
+        session.commit()
+
+        upcoming = WeeklyReportGenerator()._get_upcoming_tasks(
+            session, user.id, [busy_project.id, quiet_project.id], set()
+        )
+
+        busy_titles = [task.title for task in upcoming[busy_project.id]]
+        assert busy_titles[0] == "Started"
+        assert busy_titles[1:] == [f"Backlog {index:03d}" for index in range(7)]
+        assert [task.title for task in upcoming[quiet_project.id]] == [
+            "Quiet next step"
+        ]
+
 
 class TestWeeklyReportThreePartOutput:
     """The report is organized as background / done this week / next steps."""

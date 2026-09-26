@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 from openai import OpenAI
 from sqlmodel import Session, select, and_, or_
+from sqlalchemy import case, func
 from sqlalchemy.orm import selectinload
 
 from humancompiler_api.ai.note_text import note_to_plain_text, truncate_text
@@ -37,7 +38,6 @@ MAX_GOAL_NOTE_CHARS = 1000
 MAX_TASK_NOTE_CHARS = 600
 MAX_UPCOMING_TASK_NOTE_CHARS = 200
 MAX_UPCOMING_TASKS_PER_PROJECT = 8
-MAX_UPCOMING_TASK_CANDIDATES = 300
 MAX_WORK_LOG_HIGHLIGHTS = 5
 MAX_REPORT_COMPLETION_TOKENS = 16000
 JST = ZoneInfo("Asia/Tokyo")
@@ -385,9 +385,34 @@ class WeeklyReportGenerator:
         if not project_ids:
             return {}
 
-        statement = (
-            select(Task)
-            .options(selectinload(Task.goal))
+        # Rank within each project in SQL so the per-project cap keeps the most
+        # relevant tasks: in progress, then goals worked this week, then due
+        # date (undated last), then priority.
+        relevance_rank = (
+            func.row_number()
+            .over(
+                partition_by=Goal.project_id,
+                order_by=(
+                    case((Task.status == TaskStatus.IN_PROGRESS, 0), else_=1),
+                    case(
+                        (Task.goal_id.in_(list(worked_goal_ids)), 0),  # type: ignore[attr-defined]
+                        else_=1,
+                    ),
+                    case((Task.due_date.is_(None), 1), else_=0),  # type: ignore[union-attr]
+                    Task.due_date,
+                    Task.priority,
+                    Task.title,
+                    Task.id,
+                ),
+            )
+            .label("relevance_rank")
+        )
+        ranked = (
+            select(
+                Task.id.label("task_id"),  # type: ignore[union-attr]
+                Goal.project_id.label("project_id"),  # type: ignore[attr-defined]
+                relevance_rank,
+            )
             .join(Goal, Task.goal_id == Goal.id)
             .join(Project, Goal.project_id == Project.id)
             .where(
@@ -402,28 +427,20 @@ class WeeklyReportGenerator:
                     ),
                 )
             )
-            .order_by(Task.priority, Task.created_at)  # type: ignore[arg-type]
-            .limit(MAX_UPCOMING_TASK_CANDIDATES)
+            .subquery()
         )
-        candidates = session.exec(statement).all()
-
-        def sort_key(task: Task) -> tuple[bool, bool, bool, float, int, str]:
-            return (
-                self._enum_value(task.status) != TaskStatus.IN_PROGRESS.value,
-                task.goal_id not in worked_goal_ids,
-                task.due_date is None,
-                self._timestamp(task.due_date),
-                task.priority,
-                task.title,
-            )
+        statement = (
+            select(Task)
+            .options(selectinload(Task.goal))
+            .join(ranked, Task.id == ranked.c.task_id)
+            .where(ranked.c.relevance_rank <= MAX_UPCOMING_TASKS_PER_PROJECT)
+            .order_by(ranked.c.project_id, ranked.c.relevance_rank)
+        )
 
         upcoming: dict[UUID, list[Task]] = {}
-        for task in sorted(candidates, key=sort_key):
-            if not task.goal:
-                continue
-            project_tasks = upcoming.setdefault(task.goal.project_id, [])
-            if len(project_tasks) < MAX_UPCOMING_TASKS_PER_PROJECT:
-                project_tasks.append(task)
+        for task in session.exec(statement).all():
+            if task.goal:
+                upcoming.setdefault(task.goal.project_id, []).append(task)
         return upcoming
 
     def _get_note_texts(
@@ -485,14 +502,6 @@ class WeeklyReportGenerator:
     @staticmethod
     def _enum_value(value: Any) -> Any:
         return getattr(value, "value", value)
-
-    @staticmethod
-    def _timestamp(value: datetime | None) -> float:
-        if value is None:
-            return 0.0
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=UTC)
-        return value.timestamp()
 
     @staticmethod
     def _format_due_date(value: datetime | None) -> str | None:
