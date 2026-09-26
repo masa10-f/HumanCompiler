@@ -138,7 +138,6 @@ export interface TaskWorkspaceItem extends Task {
   last_worked_at: string | null;
   planned_today: boolean;
   planned_today_unplaced: boolean;
-  planned_this_week: boolean;
 }
 
 export interface TaskWorkspaceSummary {
@@ -206,13 +205,13 @@ export interface TaskWorkspaceFilters {
   dueAfter?: string;
   search?: string;
   blocked?: boolean;
-  plan?: 'today' | 'week' | 'unplanned';
+  plan?: 'today' | 'unplanned';
   sortBy?: 'due_date' | 'priority' | 'status' | 'title' | 'updated_at' | 'last_worked_at';
   sortOrder?: 'asc' | 'desc';
 }
 
 export interface PlanMembershipMutation {
-  scope: 'daily' | 'weekly';
+  scope: 'daily';
   action: 'add' | 'remove';
   target_date: string;
 }

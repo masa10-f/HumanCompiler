@@ -1,115 +1,10 @@
 /**
- * @fileoverview 週次計画関連の型定義
- * @description 週次計画・スケジュール最適化に使用する型を定義
+ * @fileoverview AI計画・スケジュール関連の型定義
+ * @description 作業負荷分析・日次スケジュール最適化に使用する型を定義
  */
 
 import type { SlotKind } from "@/constants/schedule";
 import type { WorkType } from "./task";
-
-/**
- * 週次計画リクエスト
- * @description 週次計画生成時のパラメータ
- */
-export interface WeeklyPlanRequest {
-  /** 週の開始日 (ISO 8601形式、月曜日) */
-  week_start_date: string;
-  /** 週の作業キャパシティ（時間単位） */
-  capacity_hours: number;
-  /** フィルター対象プロジェクトID一覧 */
-  project_filter?: string[];
-  /** 選択された定期タスクID一覧 */
-  selected_recurring_task_ids?: string[];
-  /** プロジェクト別配分（キー: プロジェクトID, 値: 割合%） */
-  project_allocations?: Record<string, number>;
-  /** その他の設定 */
-  preferences?: Record<string, unknown>;
-}
-
-/**
- * タスク計画
- * @description 週次計画による個別タスクの割り当て情報
- */
-export interface TaskPlan {
-  /** タスクID */
-  task_id: string;
-  /** タスクタイトル */
-  task_title: string;
-  /** 見積もり時間（時間単位）- 残り時間（見積もり - 実績）を表す */
-  estimated_hours: number;
-  /** 優先度 (1:最高 〜 5:最低) */
-  priority: number;
-  /** 割り当て理由・根拠 */
-  rationale: string;
-}
-
-/**
- * ソルバーメトリクス
- * @description OR-Tools最適化エンジンの実行結果メトリクス
- */
-export interface SolverMetrics {
-  /** キャパシティ使用率（0-100%） */
-  capacity_utilization?: number;
-  /** プロジェクトバランススコア */
-  project_balance_score?: number;
-  /** 関与プロジェクト数 */
-  projects_involved?: number;
-  /** 平均タスク時間 */
-  avg_task_hours?: number;
-  /** タスク数 */
-  task_count?: number;
-  /** プロジェクト別配分（キー: プロジェクトID, 値: 時間） */
-  project_distribution?: Record<string, number>;
-  /** その他のメトリクス */
-  [key: string]: unknown;
-}
-
-/**
- * 制約分析
- * @description ソルバーによる制約条件の分析結果
- */
-export interface ConstraintAnalysis {
-  /** キャパシティ使用率（0-100%） */
-  capacity_utilization?: number;
-  /** 緊急タスク数 */
-  urgent_task_count?: number;
-  /** 過負荷リスクがあるか */
-  overload_risk?: boolean;
-  /** その他の分析結果 */
-  [key: string]: unknown;
-}
-
-/**
- * 週次計画レスポンス
- * @description 週次計画の生成結果
- */
-export interface WeeklyPlanResponse {
-  /** 成功したかどうか */
-  success: boolean;
-  /** 週の開始日 */
-  week_start_date: string;
-  /** 総計画時間（時間単位） */
-  total_planned_hours: number;
-  /** タスク計画一覧 */
-  task_plans: TaskPlan[];
-  /** 手動編集で固定したタスクID */
-  pinned_task_ids?: string[];
-  /** 通常タスクの割り当て時間（キー: タスクID, 値: 時間） */
-  assigned_task_hours?: Record<string, number>;
-  /** 週課の割り当て時間（キー: 週課ID, 値: 時間） */
-  assigned_recurring_task_hours?: Record<string, number>;
-  /** 推奨事項 */
-  recommendations: string[];
-  /** 最適化インサイト */
-  insights: string[];
-  /** プロジェクト別配分 */
-  project_allocations?: ProjectAllocation[];
-  /** 制約分析結果 */
-  constraint_analysis?: ConstraintAnalysis;
-  /** ソルバーメトリクス */
-  solver_metrics?: SolverMetrics;
-  /** 生成日時 (ISO 8601形式) */
-  generated_at: string;
-}
 
 /**
  * 作業負荷分析
@@ -205,11 +100,9 @@ export interface TimeSlot {
  */
 export interface TaskSource {
   /** ソースタイプ */
-  type: "all_tasks" | "project" | "weekly_schedule";
+  type: "all_tasks" | "project";
   /** プロジェクトID（type='project'の場合） */
   project_id?: string;
-  /** 週次スケジュール日付（type='weekly_schedule'の場合） */
-  weekly_schedule_date?: string;
 }
 
 /**
@@ -225,8 +118,6 @@ export interface ScheduleRequest {
   task_source?: TaskSource;
   /** プロジェクトID（レガシー互換） */
   project_id?: string;
-  /** 週次スケジュールを使用するか（レガシー互換） */
-  use_weekly_schedule?: boolean;
   /** その他の設定 */
   preferences?: Record<string, unknown>;
   /** Scheduler solver parameter overrides */
@@ -356,75 +247,4 @@ export interface ScheduleResult {
   solve_time_seconds: number;
   /** 目的関数値 */
   objective_value?: number;
-}
-
-/**
- * 週次スケジュールデータ
- * @description 保存される週次スケジュールの内容
- */
-export interface WeeklyScheduleData {
-  /** 成功したかどうか */
-  success: boolean;
-  /** 週の開始日 */
-  week_start_date: string;
-  /** 選択されたタスク一覧 */
-  selected_tasks: TaskPlan[];
-  /** 手動編集で固定されたタスク */
-  pinned_task_ids?: string[];
-  /** 通常タスクの割り当て時間（キー: タスクID, 値: 時間） */
-  assigned_task_hours?: Record<string, number>;
-  /** 週課の割り当て時間（キー: 週課ID, 値: 時間） */
-  assigned_recurring_task_hours?: Record<string, number>;
-  /** 総配分時間（時間単位） */
-  total_allocated_hours: number;
-  /** プロジェクト別配分 */
-  project_allocations: ProjectAllocation[];
-  /** 最適化インサイト */
-  optimization_insights: string[];
-  /** 計画生成・編集時の推奨事項 */
-  recommendations?: string[];
-  /** 設定した週間容量 */
-  capacity_hours?: number;
-  /** 制約分析結果 */
-  constraint_analysis: ConstraintAnalysis;
-  /** ソルバーメトリクス */
-  solver_metrics: SolverMetrics;
-  /** 生成日時 (ISO 8601形式) */
-  generated_at: string;
-}
-
-/**
- * プロジェクト配分
- * @description プロジェクトごとの時間配分設定
- */
-export interface ProjectAllocation {
-  /** プロジェクトID */
-  project_id: string;
-  /** プロジェクトタイトル */
-  project_title: string;
-  /** 目標時間（時間単位） */
-  target_hours: number;
-  /** 最大時間（時間単位） */
-  max_hours: number;
-  /** 優先度重み */
-  priority_weight: number;
-}
-
-/**
- * 保存済み週次スケジュール
- * @description データベースに保存された週次スケジュール
- */
-export interface SavedWeeklySchedule {
-  /** スケジュールID */
-  id: string;
-  /** ユーザーID */
-  user_id: string;
-  /** 週の開始日 */
-  week_start_date: string;
-  /** スケジュールJSON */
-  schedule_json: WeeklyScheduleData;
-  /** 作成日時 */
-  created_at: string;
-  /** 更新日時 */
-  updated_at: string;
 }

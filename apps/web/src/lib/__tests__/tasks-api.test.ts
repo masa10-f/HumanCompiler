@@ -121,7 +121,6 @@ describe('tasksApi', () => {
             blocking_task_ids: [],
             last_worked_at: null,
             planned_today: true,
-            planned_this_week: true,
           }),
         ],
         total: 1,

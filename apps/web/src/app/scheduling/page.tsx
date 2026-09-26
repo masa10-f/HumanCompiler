@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import {
+  BarChart3,
   CalendarDays,
-  CalendarRange,
   History,
   SlidersHorizontal,
 } from 'lucide-react';
@@ -20,9 +20,9 @@ const schedulingItems = [
     action: '開く',
   },
   {
-    title: '週次スケジュール',
-    path: '/scheduling/weekly',
-    icon: CalendarRange,
+    title: '週間作業報告',
+    path: '/scheduling/weekly-report',
+    icon: BarChart3,
     action: '開く',
   },
   {
@@ -58,7 +58,7 @@ export default function SchedulingHomePage() {
           <div>
             <h1 className="text-3xl font-bold">スケジューリング</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              日次・週次・調整・履歴
+              日次・週間報告・調整・履歴
             </p>
           </div>
           <Button asChild>

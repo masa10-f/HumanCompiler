@@ -82,7 +82,6 @@ export default function SettingsPage() {
       tasks: number
       quick_tasks?: number
       schedules: number
-      weekly_schedules: number
       triage_capacity_settings?: number
       task_triage_runs?: number
       task_triage_items?: number
@@ -648,7 +647,7 @@ export default function SettingsPage() {
               )}
             </div>
             <p className="text-sm text-muted-foreground">
-              週次計画生成と洞察に使用するモデルを選択してください
+              ゴール・タスク案の作成や週間報告などのAI機能に使用するモデルを選択してください
             </p>
           </div>
 
@@ -720,7 +719,7 @@ export default function SettingsPage() {
             <ul className="text-sm text-muted-foreground space-y-1">
               <li>• Your API key is encrypted and stored securely</li>
               <li>• You pay OpenAI directly for your usage</li>
-              <li>• AI features include weekly planning, workload analysis, and task prioritization</li>
+              <li>• AI features include goal and task drafts, weekly work reports, and capacity triage</li>
               <li>• You can delete your key anytime to disable AI features</li>
             </ul>
           </div>
@@ -860,10 +859,6 @@ export default function SettingsPage() {
                 <div>
                   <div className="font-medium">{exportInfo.current_data_summary.schedules}</div>
                   <div className="text-muted-foreground">スケジュール</div>
-                </div>
-                <div>
-                  <div className="font-medium">{exportInfo.current_data_summary.weekly_schedules}</div>
-                  <div className="text-muted-foreground">週次スケジュール</div>
                 </div>
                 <div>
                   <div className="font-medium">{exportInfo.current_data_summary.task_triage_runs ?? 0}</div>

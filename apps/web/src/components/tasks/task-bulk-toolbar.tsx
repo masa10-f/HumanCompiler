@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Bot, Layers3 } from 'lucide-react';
 
@@ -33,17 +33,7 @@ type BulkAction =
   | 'cancel'
   | 'daily_add'
   | 'daily_remove'
-  | 'weekly_add'
-  | 'weekly_remove'
   | 'natural';
-
-function currentWeekStart(): string {
-  const today = getJSTDateString();
-  const date = new Date(`${today}T12:00:00+09:00`);
-  const day = (date.getUTCDay() + 6) % 7;
-  date.setUTCDate(date.getUTCDate() - day);
-  return date.toISOString().slice(0, 10);
-}
 
 interface TaskBulkToolbarProps {
   selectedTaskIds: string[];
@@ -66,7 +56,6 @@ export function TaskBulkToolbar({
   const [preview, setPreview] = useState<BulkTaskPreview | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
-  const weekStart = useMemo(currentWeekStart, []);
 
   if (selectedTaskIds.length === 0) return null;
 
@@ -80,15 +69,11 @@ export function TaskBulkToolbar({
       }
       if (action === 'goal') mutation.patch = { goal_id: value };
       if (action === 'cancel') mutation.patch = { status: 'cancelled' };
-      if (action.startsWith('daily_') || action.startsWith('weekly_')) {
-        const [scope, operation] = action.split('_') as [
-          'daily' | 'weekly',
-          'add' | 'remove',
-        ];
+      if (action === 'daily_add' || action === 'daily_remove') {
         mutation.plans = [
           {
-            scope,
-            action: operation,
+            scope: 'daily',
+            action: action === 'daily_add' ? 'add' : 'remove',
             target_date: targetDate,
           },
         ];
@@ -135,8 +120,6 @@ export function TaskBulkToolbar({
               if (next === 'goal') setValue(goals[0]?.id ?? '');
               if (next === 'daily_add' || next === 'daily_remove')
                 setTargetDate(getJSTDateString());
-              if (next === 'weekly_add' || next === 'weekly_remove')
-                setTargetDate(weekStart);
             }}
           >
             <option value="status">ステータス変更</option>
@@ -145,8 +128,6 @@ export function TaskBulkToolbar({
             <option value="goal">所属ゴール変更</option>
             <option value="daily_add">今日／指定日に追加</option>
             <option value="daily_remove">今日／指定日から除外</option>
-            <option value="weekly_add">週次計画に追加</option>
-            <option value="weekly_remove">週次計画から除外</option>
             <option value="cancel">キャンセル</option>
             <option value="natural">AIに自然言語で依頼</option>
           </select>
@@ -172,7 +153,7 @@ export function TaskBulkToolbar({
           {action === 'due_date' && (
             <Input className="h-9 w-40" type="date" value={value} onChange={(e) => setValue(e.target.value)} />
           )}
-          {(action.startsWith('daily_') || action.startsWith('weekly_')) && (
+          {(action === 'daily_add' || action === 'daily_remove') && (
             <Input className="h-9 w-40" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
           )}
           {action === 'natural' && (

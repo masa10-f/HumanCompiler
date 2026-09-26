@@ -88,7 +88,6 @@ const defaultExportInfo = {
     tasks: 0,
     quick_tasks: 0,
     schedules: 0,
-    weekly_schedules: 0,
   },
 }
 

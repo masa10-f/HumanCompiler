@@ -36,14 +36,10 @@ from humancompiler_api.models import (
     Task,
     TaskCreate,
     TaskUpdate,
-    TaskCategory,
     TaskDependency,
     User,
     UserCreate,
     UserUpdate,
-    WeeklyRecurringTask,
-    WeeklyRecurringTaskCreate,
-    WeeklyRecurringTaskUpdate,
     WorkSession,
     WorkSessionStartRequest,
     WorkSessionCheckoutRequest,
@@ -1298,115 +1294,6 @@ class LogService(BaseService[Log, LogCreate, LogUpdate]):
         return self.delete(session, log_id, owner_id)
 
 
-class WeeklyRecurringTaskService(
-    BaseService[
-        WeeklyRecurringTask, WeeklyRecurringTaskCreate, WeeklyRecurringTaskUpdate
-    ]
-):
-    """Weekly recurring task service using base service"""
-
-    def __init__(self):
-        super().__init__(WeeklyRecurringTask)
-
-    def _create_instance(
-        self, data: WeeklyRecurringTaskCreate, user_id: str | UUID, **kwargs
-    ) -> WeeklyRecurringTask:
-        """Create a new weekly recurring task instance"""
-        return WeeklyRecurringTask(
-            user_id=user_id,
-            title=data.title,
-            description=data.description,
-            estimate_hours=data.estimate_hours,
-            category=data.category,
-            is_active=data.is_active,
-        )
-
-    def _get_user_filter(self, user_id: str | UUID):
-        """Get filter for weekly recurring task ownership"""
-        return WeeklyRecurringTask.user_id == user_id
-
-    def get_weekly_recurring_tasks(
-        self,
-        session: Session,
-        user_id: str | UUID,
-        skip: int = 0,
-        limit: int = 100,
-        category: TaskCategory | None = None,
-        is_active: bool | None = None,
-    ) -> list[WeeklyRecurringTask]:
-        """Get weekly recurring tasks for specific user with optional filters"""
-        user_id_validated = validate_uuid(user_id, "user_id")
-        statement = select(WeeklyRecurringTask).where(
-            WeeklyRecurringTask.user_id == user_id_validated,
-            WeeklyRecurringTask.deleted_at.is_(None),  # Exclude soft deleted tasks
-        )
-
-        if category is not None:
-            statement = statement.where(WeeklyRecurringTask.category == category)
-
-        if is_active is not None:
-            statement = statement.where(WeeklyRecurringTask.is_active == is_active)
-
-        statement = (
-            statement.order_by(WeeklyRecurringTask.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
-
-        return list(session.exec(statement).all())
-
-    def get_weekly_recurring_task(
-        self, session: Session, task_id: str | UUID, user_id: str | UUID
-    ) -> WeeklyRecurringTask | None:
-        """Get weekly recurring task by ID for specific user"""
-        task = session.exec(
-            select(WeeklyRecurringTask).where(
-                WeeklyRecurringTask.id == task_id,
-                WeeklyRecurringTask.user_id == user_id,
-                WeeklyRecurringTask.deleted_at.is_(None),  # Exclude soft deleted tasks
-            )
-        ).first()
-        return task
-
-    def create_weekly_recurring_task(
-        self,
-        session: Session,
-        task_data: WeeklyRecurringTaskCreate,
-        user_id: str | UUID,
-    ) -> WeeklyRecurringTask:
-        """Create a new weekly recurring task"""
-        return self.create(session, task_data, user_id)
-
-    def update_weekly_recurring_task(
-        self,
-        session: Session,
-        task_id: str | UUID,
-        user_id: str | UUID,
-        task_data: WeeklyRecurringTaskUpdate,
-    ) -> WeeklyRecurringTask:
-        """Update weekly recurring task"""
-        return self.update(session, task_id, task_data, user_id)
-
-    def delete_weekly_recurring_task(
-        self, session: Session, task_id: str | UUID, user_id: str | UUID
-    ) -> bool:
-        """Soft delete weekly recurring task"""
-        task = self.get_weekly_recurring_task(session, task_id, user_id)
-        if not task:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Weekly recurring task not found",
-            )
-
-        # Soft delete: set deleted_at timestamp
-        task.deleted_at = datetime.now(UTC)
-        task.updated_at = datetime.now(UTC)
-        session.add(task)
-        session.commit()
-
-        return True
-
-
 class WorkSessionService(
     BaseService[WorkSession, WorkSessionStartRequest, WorkSessionCheckoutRequest]
 ):
@@ -2299,7 +2186,6 @@ project_service = ProjectService()
 goal_service = GoalService()
 task_service = TaskService()
 log_service = LogService()
-weekly_recurring_task_service = WeeklyRecurringTaskService()
 work_session_service = WorkSessionService()
 hook_token_service = HookTokenService()
 quick_task_service = QuickTaskService()

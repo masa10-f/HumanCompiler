@@ -2,14 +2,14 @@
 
 **AI-Powered Task Management System with Automated Scheduling**
 
-HumanCompiler is an intelligent task management web application that helps you manage research and development projects using a 4-layer hierarchy: Projects → Goals → Tasks → Actuals. It features AI-powered weekly planning with OpenAI GPT-4 and constraint-based optimization using OR-Tools CP-SAT solver.
+HumanCompiler is an intelligent task management web application that helps you manage research and development projects using a 4-layer hierarchy: Projects → Goals → Tasks → Actuals. It features AI-assisted goal/task drafting and weekly work reports with OpenAI, and constraint-based scheduling using OR-Tools CP-SAT solver.
 
 ---
 
 ## ✨ Key Features
 
 - 📊 **4-Layer Project Management**: Projects → Goals → Tasks → Actuals hierarchy
-- 🤖 **AI-Powered Planning**: Weekly plan generation using OpenAI GPT-4 Assistants API
+- 🤖 **AI Assistance**: Goal/task draft generation and weekly work reports using OpenAI
 - 🎯 **Smart Scheduling**: OR-Tools constraint solver for optimal task scheduling
 - 📈 **Workload Analysis**: AI-driven task volume, deadline, and distribution analysis
 - 🔄 **Dynamic Rescheduling**: Real-time progress tracking and plan adjustment
@@ -161,7 +161,7 @@ Interactive API documentation available at:
 - `GET/POST/PUT/DELETE /api/tasks/`
 
 **AI Features:**
-- `POST /api/ai/weekly-plan` - Generate AI-powered weekly plans
+- `POST /api/reports/weekly` - Generate a weekly work report from logs
 - `POST /api/ai/analyze-workload` - Analyze task workload
 - `POST /api/ai/suggest-priorities` - Get AI priority suggestions
 

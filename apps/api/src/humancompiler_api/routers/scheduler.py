@@ -5,7 +5,7 @@ Scheduler API endpoints for task scheduling optimization.
 import logging
 import math
 from dataclasses import dataclass, field, fields
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time
 from enum import Enum
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
@@ -39,7 +39,6 @@ from humancompiler_api.models import (
     Schedule,
     ScheduleResponse,
     ErrorResponse,
-    WeeklySchedule,
     Task,
     Goal,
     Project,
@@ -48,8 +47,6 @@ from humancompiler_api.models import (
     TaskStatus,
     GoalStatus,
     SlotKind,
-    TaskCategory,
-    WeeklyRecurringTask,
     WorkType,
 )
 from humancompiler_api.services import goal_service, task_service, quick_task_service
@@ -87,101 +84,12 @@ class SchedulerTask:
     due_date: datetime | None = None
     kind: TaskKind = TaskKind.LIGHT_WORK
     goal_id: str | None = None
-    is_weekly_recurring: bool = False
     actual_hours: float = 0.0
     project_id: str | None = None
 
     @property
     def remaining_hours(self) -> float:
         return max(0.0, self.estimate_hours - self.actual_hours)
-
-
-WEEKLY_SCHEDULE_ASSIGNED_HOURS_ATTR = "_weekly_schedule_assigned_hours"
-WEEKLY_SCHEDULE_LOG_START_ATTR = "_weekly_schedule_log_start"
-
-
-def _set_weekly_schedule_assigned_hours(
-    task: Any,
-    assigned_hours: float | int | str | None,
-) -> None:
-    if assigned_hours is None:
-        return
-
-    try:
-        hours = float(assigned_hours)
-    except (TypeError, ValueError):
-        return
-
-    if hours <= 0:
-        return
-
-    try:
-        setattr(task, WEEKLY_SCHEDULE_ASSIGNED_HOURS_ATTR, hours)
-    except Exception:
-        try:
-            task.__dict__[WEEKLY_SCHEDULE_ASSIGNED_HOURS_ATTR] = hours
-        except Exception:
-            logger.warning(
-                "Could not attach weekly assigned hours to task %s",
-                getattr(task, "id", "unknown"),
-            )
-
-
-def _get_weekly_schedule_assigned_hours(task: Any) -> float | None:
-    value = getattr(task, WEEKLY_SCHEDULE_ASSIGNED_HOURS_ATTR, None)
-    if value is None:
-        value = getattr(task, "__dict__", {}).get(WEEKLY_SCHEDULE_ASSIGNED_HOURS_ATTR)
-    if value is None:
-        return None
-
-    try:
-        hours = float(value)
-    except (TypeError, ValueError):
-        return None
-    return hours if hours > 0 else None
-
-
-def _set_weekly_schedule_log_start(
-    task: Any,
-    log_start: datetime | None,
-) -> None:
-    if log_start is None:
-        return
-
-    try:
-        setattr(task, WEEKLY_SCHEDULE_LOG_START_ATTR, log_start)
-    except Exception:
-        try:
-            task.__dict__[WEEKLY_SCHEDULE_LOG_START_ATTR] = log_start
-        except Exception:
-            logger.warning(
-                "Could not attach weekly log start to task %s",
-                getattr(task, "id", "unknown"),
-            )
-
-
-def _get_weekly_schedule_log_start(task: Any) -> datetime | None:
-    value = getattr(task, WEEKLY_SCHEDULE_LOG_START_ATTR, None)
-    if value is None:
-        value = getattr(task, "__dict__", {}).get(WEEKLY_SCHEDULE_LOG_START_ATTR)
-    return value if isinstance(value, datetime) else None
-
-
-def _calculate_weekly_schedule_remaining_hours(
-    estimate_hours: float,
-    actual_hours: float,
-    weekly_assigned_hours: float | None,
-    weekly_actual_hours: float | None = None,
-) -> float:
-    full_remaining_hours = max(0.0, estimate_hours - actual_hours)
-    if weekly_assigned_hours is None:
-        return full_remaining_hours
-
-    cap_consumed_hours = (
-        actual_hours if weekly_actual_hours is None else weekly_actual_hours
-    )
-    weekly_remaining_hours = max(0.0, weekly_assigned_hours - cap_consumed_hours)
-    return min(full_remaining_hours, weekly_remaining_hours)
 
 
 @dataclass
@@ -411,7 +319,6 @@ class SchedulerTuningConfigResponse(BaseModel):
 def _get_task_actual_hours(
     session: Session,
     task_ids: list[str],
-    created_at_gte: datetime | None = None,
 ) -> dict[str, float]:
     """
     Get actual hours logged for each task from the logs table.
@@ -451,8 +358,6 @@ def _get_task_actual_hours(
             cast(Log.task_id, String),
             func.sum(Log.actual_minutes).label("total_minutes"),
         ).where(cast(Log.task_id, String).in_(task_uuid_strs))
-        if created_at_gte is not None:
-            query = query.where(Log.created_at >= created_at_gte)  # type: ignore[operator]
         query = query.group_by(cast(Log.task_id, String))
 
         results = session.exec(query).all()
@@ -541,14 +446,8 @@ def _get_goal_dependencies(
     Returns:
         Dict mapping goal_id to list of goal_ids it depends on
     """
-    # Get unique goal IDs from tasks (excluding weekly recurring tasks)
-    goal_ids = list(
-        {
-            task.goal_id
-            for task in tasks
-            if task.goal_id and not task.is_weekly_recurring
-        }
-    )
+    # Get unique goal IDs from tasks
+    goal_ids = list({task.goal_id for task in tasks if task.goal_id})
     if not goal_ids:
         return {}
 
@@ -647,8 +546,6 @@ def _clamp_priority(priority: int | None) -> int:
 
 
 def _task_source_for_scheduler(task: SchedulerTask) -> str:
-    if task.is_weekly_recurring:
-        return "weekly_recurring_task"
     if task.id.startswith("quick_"):
         return "quick_task"
     return "task"
@@ -668,7 +565,7 @@ def _build_scheduler_task_dependencies(
 
     goal_to_task_ids: dict[str, list[str]] = {}
     for task in tasks:
-        if task.goal_id and not task.is_weekly_recurring:
+        if task.goal_id:
             goal_to_task_ids.setdefault(task.goal_id, []).append(task.id)
 
     for goal_id, prerequisite_goal_ids in goal_dependencies.items():
@@ -1291,7 +1188,6 @@ def optimize_schedule(
         )
 
         # Track filtering reasons for better logging
-        weekly_recurring_count = 0
         task_dependency_blocked = 0
         goal_dependency_blocked = 0
         fixed_assignment_included = 0
@@ -1308,12 +1204,6 @@ def optimize_schedule(
                 logger.debug(
                     f"Task {task.id} '{task.title}' included due to fixed assignment"
                 )
-                continue
-
-            # Weekly recurring tasks are always schedulable (they don't have dependencies)
-            if task.is_weekly_recurring:
-                schedulable_tasks.append(task)
-                weekly_recurring_count += 1
                 continue
 
             # Check task dependencies with relaxed constraints
@@ -1354,7 +1244,7 @@ def optimize_schedule(
         # Summary logging with detailed breakdown
         logger.info(
             f"Dependency filtering summary: {len(schedulable_tasks)} schedulable tasks "
-            f"({weekly_recurring_count} weekly recurring, {fixed_assignment_included} fixed assignments), "
+            f"({fixed_assignment_included} fixed assignments), "
             f"{len(unscheduled_due_to_dependencies)} blocked "
             f"({task_dependency_blocked} by task deps, {goal_dependency_blocked} by goal deps)"
         )
@@ -1521,19 +1411,16 @@ class TaskSource(BaseModel):
 
     type: str = Field(
         "all_tasks",
-        description="Task source type: 'all_tasks', 'project', 'weekly_schedule'",
+        description="Task source type: 'all_tasks', 'project'",
     )
     project_id: str | None = Field(
         None, description="Project ID when type is 'project'"
-    )
-    weekly_schedule_date: str | None = Field(
-        None, description="Week start date (YYYY-MM-DD) when type is 'weekly_schedule'"
     )
 
     @field_validator("type")
     @classmethod
     def validate_task_source_type(cls, v):
-        valid_types = ["all_tasks", "project", "weekly_schedule"]
+        valid_types = ["all_tasks", "project"]
         if v not in valid_types:
             raise ValueError(f"Task source type must be one of: {valid_types}")
         return v
@@ -1556,17 +1443,12 @@ class DailyScheduleRequest(BaseModel):
 
     date: str = Field(..., description="Target date in YYYY-MM-DD format")
     task_source: TaskSource = Field(
-        default_factory=lambda: TaskSource(
-            type="all_tasks", project_id=None, weekly_schedule_date=None
-        ),
+        default_factory=lambda: TaskSource(type="all_tasks", project_id=None),
         description="Task source configuration",
     )
     # Legacy fields for backward compatibility
     project_id: str | None = Field(
         None, description="[DEPRECATED] Use task_source.project_id instead"
-    )
-    use_weekly_schedule: bool = Field(
-        False, description="[DEPRECATED] Use task_source.type='weekly_schedule' instead"
     )
     time_slots: list[TimeSlotInput] = Field(..., description="Available time slots")
     preferences: dict[str, Any] = Field(
@@ -1720,35 +1602,8 @@ def quick_task_to_scheduler_task(quick_task: QuickTask) -> SchedulerTask:
         due_date=quick_task.due_date,
         kind=task_kind,
         goal_id=None,  # Quick tasks have no goal
-        is_weekly_recurring=False,
         actual_hours=0.0,  # Quick tasks don't have logs yet
         project_id=None,  # Quick tasks have no project
-    )
-
-
-def map_weekly_recurring_category(category: TaskCategory) -> TaskKind:
-    """Map weekly recurring task category to scheduler TaskKind."""
-    mapping = {
-        TaskCategory.STUDY: TaskKind.STUDY,
-    }
-    return mapping.get(category, TaskKind.LIGHT_WORK)
-
-
-def weekly_recurring_task_to_scheduler_task(
-    weekly_task: WeeklyRecurringTask,
-) -> SchedulerTask:
-    """Convert a weekly recurring task template to a schedulable task."""
-    return SchedulerTask(
-        id=str(weekly_task.id),
-        title=weekly_task.title,
-        estimate_hours=float(weekly_task.estimate_hours),
-        priority=3,
-        due_date=None,
-        kind=map_weekly_recurring_category(weekly_task.category),
-        goal_id=None,
-        is_weekly_recurring=True,
-        actual_hours=0.0,
-        project_id=None,
     )
 
 
@@ -1777,23 +1632,12 @@ async def create_daily_schedule(
         task_source = request.task_source
 
         # Handle legacy fields for backward compatibility
-        if request.use_weekly_schedule and task_source.type == "all_tasks":
-            task_source.type = "weekly_schedule"
-            task_source.weekly_schedule_date = request.date
-        elif request.project_id and task_source.type == "all_tasks":
+        if request.project_id and task_source.type == "all_tasks":
             task_source.type = "project"
             task_source.project_id = request.project_id
 
         # Fetch tasks based on task source configuration
-        source_tasks = await _get_tasks_by_source(
-            session, user_id, task_source, request.date
-        )
-        db_tasks = [
-            task for task in source_tasks if not isinstance(task, WeeklyRecurringTask)
-        ]
-        weekly_recurring_tasks = [
-            task for task in source_tasks if isinstance(task, WeeklyRecurringTask)
-        ]
+        db_tasks = await _get_tasks_by_source(session, user_id, task_source)
 
         # Also fetch quick tasks (unclassified tasks) for all_tasks source
         quick_tasks = []
@@ -1815,11 +1659,11 @@ async def create_daily_schedule(
                 quick_tasks = []
 
         logger.info(
-            f"Fetched {len(db_tasks)} regular tasks + {len(weekly_recurring_tasks)} weekly recurring tasks "
-            f"+ {len(quick_tasks)} quick tasks from database"
+            f"Fetched {len(db_tasks)} regular tasks + {len(quick_tasks)} quick tasks "
+            "from database"
         )
 
-        if not db_tasks and not weekly_recurring_tasks and not quick_tasks:
+        if not db_tasks and not quick_tasks:
             return DailyScheduleResponse(
                 success=True,
                 date=request.date,
@@ -1835,26 +1679,6 @@ async def create_daily_schedule(
         all_task_ids = [str(db_task.id) for db_task in db_tasks]
         actual_hours_map = _get_task_actual_hours(session, all_task_ids)
         logger.info(f"Retrieved actual hours for {len(actual_hours_map)} tasks")
-        weekly_log_start_by_task = {
-            str(db_task.id): log_start
-            for db_task in db_tasks
-            if _get_weekly_schedule_assigned_hours(db_task) is not None
-            and (log_start := _get_weekly_schedule_log_start(db_task)) is not None
-        }
-        weekly_actual_hours_map: dict[str, float] = {}
-        for log_start in set(weekly_log_start_by_task.values()):
-            task_ids_for_log_start = [
-                task_id
-                for task_id, task_log_start in weekly_log_start_by_task.items()
-                if task_log_start == log_start
-            ]
-            weekly_actual_hours_map.update(
-                _get_task_actual_hours(
-                    session,
-                    task_ids_for_log_start,
-                    created_at_gte=log_start,
-                )
-            )
 
         # Pre-fetch all goals in one query to avoid N+1 problem
         goal_ids = [db_task.goal_id for db_task in db_tasks if db_task.goal_id]
@@ -1896,36 +1720,17 @@ async def create_daily_schedule(
             task_id_str = str(db_task.id)
             actual_hours = actual_hours_map.get(task_id_str, 0.0)
             estimate_hours = float(db_task.estimate_hours)
-            weekly_assigned_hours = _get_weekly_schedule_assigned_hours(db_task)
-            weekly_actual_hours = (
-                weekly_actual_hours_map.get(task_id_str, 0.0)
-                if task_id_str in weekly_log_start_by_task
-                else None
-            )
-            schedule_remaining_hours = _calculate_weekly_schedule_remaining_hours(
-                estimate_hours,
-                actual_hours,
-                weekly_assigned_hours,
-                weekly_actual_hours,
-            )
-            if weekly_assigned_hours is not None:
-                scheduler_estimate_hours = schedule_remaining_hours
-                scheduler_actual_hours = 0.0
-            else:
-                scheduler_estimate_hours = estimate_hours
-                scheduler_actual_hours = actual_hours
             task_priority = db_task.priority
 
             scheduler_task = SchedulerTask(
                 id=task_id_str,
                 title=db_task.title,
-                estimate_hours=scheduler_estimate_hours,
+                estimate_hours=estimate_hours,
                 priority=task_priority,
                 due_date=db_task.due_date,
                 kind=task_kind,
                 goal_id=goal_id_str,
-                is_weekly_recurring=False,
-                actual_hours=scheduler_actual_hours,
+                actual_hours=actual_hours,
                 project_id=project_id,  # Set project_id for slot assignment constraints
             )
 
@@ -1934,17 +1739,13 @@ async def create_daily_schedule(
             if remaining_hours <= 0:
                 logger.info(
                     f"Task {task_id_str} '{db_task.title}' has no remaining hours "
-                    f"(estimate: {estimate_hours}h, actual: {actual_hours}h, "
-                    f"weekly assigned: {weekly_assigned_hours}, "
-                    f"weekly actual: {weekly_actual_hours})"
+                    f"(estimate: {estimate_hours}h, actual: {actual_hours}h)"
                 )
             else:
                 logger.debug(
                     f"Task {task_id_str} '{db_task.title}' - "
                     f"estimate: {estimate_hours}h, actual: {actual_hours}h, "
-                    f"remaining: {remaining_hours}h, "
-                    f"weekly assigned: {weekly_assigned_hours}, "
-                    f"weekly actual: {weekly_actual_hours}"
+                    f"remaining: {remaining_hours}h"
                 )
             scheduler_tasks.append(scheduler_task)
 
@@ -1952,7 +1753,7 @@ async def create_daily_schedule(
             task_info_map[str(db_task.id)] = TaskInfo(
                 id=str(db_task.id),  # Convert UUID to string
                 title=db_task.title,
-                estimate_hours=remaining_hours,  # Remaining/capped hours for this schedule
+                estimate_hours=remaining_hours,  # Remaining hours for this schedule
                 priority=task_priority,
                 kind=task_kind.value,
                 due_date=db_task.due_date,
@@ -1980,32 +1781,12 @@ async def create_daily_schedule(
                 project_id=None,  # Quick tasks have no project
             )
 
-        for weekly_task in weekly_recurring_tasks:
-            scheduler_task = weekly_recurring_task_to_scheduler_task(weekly_task)
-            weekly_assigned_hours = _get_weekly_schedule_assigned_hours(weekly_task)
-            if weekly_assigned_hours is not None:
-                scheduler_task.estimate_hours = min(
-                    scheduler_task.estimate_hours,
-                    weekly_assigned_hours,
-                )
-            scheduler_tasks.append(scheduler_task)
-            task_info_map[scheduler_task.id] = TaskInfo(
-                id=scheduler_task.id,
-                title=weekly_task.title,
-                estimate_hours=scheduler_task.estimate_hours,
-                priority=scheduler_task.priority,
-                kind=scheduler_task.kind.value,
-                due_date=None,
-                goal_id=None,
-                project_id=None,
-            )
-
         logger.info(
             f"Converted {len(scheduler_tasks)} total tasks for scheduling "
-            f"(including {len(weekly_recurring_tasks)} weekly recurring and {len(quick_tasks)} quick tasks)"
+            f"(including {len(quick_tasks)} quick tasks)"
         )
 
-        # Validate ownership of assigned projects and weekly tasks (skip in test environment)
+        # Validate ownership of assigned projects (skip in test environment)
         try:
             for slot_input in request.time_slots:
                 if slot_input.assigned_project_id:
@@ -2225,147 +2006,6 @@ async def test_scheduler():
         }
 
 
-class WeeklyScheduleOption(BaseModel):
-    """Weekly schedule option for task source selection."""
-
-    week_start_date: str = Field(
-        ..., description="Week start date in YYYY-MM-DD format"
-    )
-    task_count: int = Field(..., description="Number of tasks in the weekly schedule")
-    title: str = Field(..., description="Descriptive title for the weekly schedule")
-
-
-@router.get("/weekly-schedule-options", response_model=list[WeeklyScheduleOption])
-async def get_weekly_schedule_options(
-    user_id: str = Depends(get_current_user_id),
-    session: Session = Depends(db.get_session),
-):
-    """
-    Get available weekly schedules that can be used as task sources for daily scheduling.
-
-    Returns a list of weekly schedule options with their dates and task counts.
-    """
-    try:
-        logger.info(f"Fetching weekly schedule options for user {user_id}")
-
-        # Convert user_id to UUID if it's a string
-        from uuid import UUID
-
-        try:
-            user_uuid = UUID(user_id) if isinstance(user_id, str) else user_id
-            logger.debug(f"Converted user_id to UUID: {user_uuid}")
-        except ValueError as uuid_error:
-            logger.error(f"Invalid user_id format: {user_id}, error: {uuid_error}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=ErrorResponse.create(
-                    code="INVALID_USER_ID",
-                    message="Invalid user ID format",
-                    details={"provided_user_id": user_id},
-                ).model_dump(),
-            )
-
-        # Get all weekly schedules for the user with enhanced error handling
-        from sqlmodel import desc
-
-        try:
-            logger.debug(
-                f"Executing weekly schedule options query for user {user_uuid}"
-            )
-
-            query = (
-                select(WeeklySchedule)
-                .where(WeeklySchedule.user_id == user_uuid)
-                .order_by(desc(WeeklySchedule.week_start_date))
-            )
-
-            logger.debug(f"SQL Query: {query}")
-            weekly_schedules = session.exec(query).all()
-
-            logger.info(f"Found {len(weekly_schedules)} weekly schedules")
-
-        except Exception as db_error:
-            logger.error(f"Database query error: {type(db_error).__name__}: {db_error}")
-            import traceback
-
-            logger.error(f"Database query traceback: {traceback.format_exc()}")
-
-            # Check if it's a database connection issue
-            if (
-                "connection" in str(db_error).lower()
-                or "timeout" in str(db_error).lower()
-            ):
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail=ErrorResponse.create(
-                        code="DATABASE_CONNECTION_ERROR",
-                        message="Database is temporarily unavailable",
-                        details={"error_type": type(db_error).__name__},
-                    ).model_dump(),
-                )
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=ErrorResponse.create(
-                        code="DATABASE_QUERY_ERROR",
-                        message="Failed to query weekly schedule options",
-                        details={
-                            "error_type": type(db_error).__name__,
-                            "error_message": str(db_error),
-                        },
-                    ).model_dump(),
-                )
-
-        # Convert to options format
-        options = []
-        for schedule in weekly_schedules:
-            try:
-                # Extract task count from schedule data
-                task_count = 0
-                if (
-                    schedule.schedule_json
-                    and "selected_tasks" in schedule.schedule_json
-                ):
-                    task_count = len(schedule.schedule_json["selected_tasks"])
-
-                # Format date and create title
-                week_start_str = schedule.week_start_date.strftime("%Y-%m-%d")
-                week_end = schedule.week_start_date.date() + timedelta(days=6)
-                week_end_str = week_end.strftime("%Y-%m-%d")
-                title = f"Week {week_start_str} to {week_end_str} ({task_count} tasks)"
-
-                option = WeeklyScheduleOption(
-                    week_start_date=week_start_str, task_count=task_count, title=title
-                )
-                options.append(option)
-
-            except Exception as e:
-                logger.error(f"Error processing weekly schedule {schedule.id}: {e}")
-                import traceback
-
-                logger.error(f"Processing error traceback: {traceback.format_exc()}")
-                continue
-
-        logger.info(f"Returning {len(options)} weekly schedule options")
-        return options
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching weekly schedule options: {e}")
-        import traceback
-
-        logger.error(f"Full traceback: {traceback.format_exc()}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=ErrorResponse.create(
-                code="INTERNAL_SERVER_ERROR",
-                message="Failed to fetch weekly schedule options",
-                details={"error_type": type(e).__name__},
-            ).model_dump(),
-        )
-
-
 @router.post("/daily/save", response_model=ScheduleResponse)
 async def save_daily_schedule(
     schedule_data: DailyScheduleResponse,
@@ -2541,8 +2181,8 @@ async def list_daily_schedules(
 
 
 async def _get_tasks_by_source(
-    session: Session, user_id: str, task_source: TaskSource, target_date: str
-) -> list[Task | WeeklyRecurringTask]:
+    session: Session, user_id: str, task_source: TaskSource
+) -> list[Task]:
     """
     Get tasks based on the specified task source configuration.
 
@@ -2550,7 +2190,6 @@ async def _get_tasks_by_source(
         session: Database session
         user_id: User ID
         task_source: Task source configuration
-        target_date: Target date for scheduling (used for weekly schedule lookups)
 
     Returns:
         List of tasks from the specified source
@@ -2558,11 +2197,7 @@ async def _get_tasks_by_source(
     logger.info(f"Fetching tasks with source type: {task_source.type}")
 
     try:
-        if task_source.type == "weekly_schedule":
-            # Use provided weekly_schedule_date or calculate from target_date
-            lookup_date = task_source.weekly_schedule_date or target_date
-            return await _get_tasks_from_weekly_schedule(session, user_id, lookup_date)
-        elif task_source.type == "project":
+        if task_source.type == "project":
             if not task_source.project_id:
                 logger.warning("Project ID not provided for project task source")
                 return []
@@ -2578,209 +2213,6 @@ async def _get_tasks_by_source(
             return []
     except Exception:
         logger.exception("Error fetching tasks by source")
-        raise
-
-
-def _extract_weekly_assigned_hours(
-    schedule_data: dict[str, Any],
-    selected_tasks: list[dict[str, Any]],
-) -> dict[str, float]:
-    """Return task_id -> hours assigned by a saved weekly schedule."""
-    assigned_hours: dict[str, float] = {}
-
-    for task in selected_tasks:
-        if not isinstance(task, dict):
-            continue
-        task_id = task.get("task_id")
-        if not task_id:
-            continue
-        for hours_field in (
-            "assigned_hours",
-            "allocated_hours",
-            "planned_hours",
-            "estimated_hours",
-        ):
-            if hours_field not in task:
-                continue
-            try:
-                parsed_hours = float(task[hours_field])
-            except (TypeError, ValueError):
-                continue
-            if parsed_hours > 0:
-                assigned_hours[str(task_id)] = parsed_hours
-                break
-
-    for field_name in ("assigned_task_hours", "assigned_recurring_task_hours"):
-        raw_map = schedule_data.get(field_name)
-        if not isinstance(raw_map, dict):
-            continue
-        for task_id, hours in raw_map.items():
-            try:
-                parsed_hours = float(hours)
-            except (TypeError, ValueError):
-                continue
-            if parsed_hours > 0:
-                assigned_hours[str(task_id)] = parsed_hours
-
-    return assigned_hours
-
-
-async def _get_tasks_from_weekly_schedule(
-    session: Session, user_id: str, date_str: str
-) -> list[Task | WeeklyRecurringTask]:
-    """
-    Get tasks from weekly schedule for the given date.
-
-    This function finds the appropriate weekly schedule for the given date
-    and returns the tasks selected for that week, considering project allocations.
-    """
-    try:
-        # Parse the date and find the Monday of that week
-        target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-        # Calculate the Monday of the week (0=Monday, 6=Sunday)
-        days_since_monday = target_date.weekday()
-        week_start = target_date - timedelta(days=days_since_monday)
-        week_start_datetime = datetime.combine(week_start, datetime.min.time())
-
-        logger.info(
-            f"Looking for weekly schedule starting {week_start} for date {date_str}"
-        )
-
-        # Get weekly schedule for this week
-        # Try multiple approaches to find the weekly schedule
-        weekly_schedule = session.exec(
-            select(WeeklySchedule).where(
-                WeeklySchedule.user_id == user_id,
-                WeeklySchedule.week_start_date == week_start_datetime,
-            )
-        ).first()
-
-        # If not found, try to find any schedule within this week (flexible search)
-        if not weekly_schedule:
-            logger.debug(
-                f"No exact match found, trying flexible search for week {week_start}"
-            )
-
-            # Calculate the end of the week (Sunday)
-            week_end = week_start + timedelta(days=6)
-            week_end_datetime = datetime.combine(week_end, datetime.min.time())
-
-            # Find any weekly schedule that starts within this week
-            weekly_schedules_in_range = session.exec(
-                select(WeeklySchedule).where(
-                    WeeklySchedule.user_id == user_id,
-                    WeeklySchedule.week_start_date >= week_start_datetime,
-                    WeeklySchedule.week_start_date <= week_end_datetime,
-                )
-            ).all()
-
-            if weekly_schedules_in_range:
-                weekly_schedule = weekly_schedules_in_range[
-                    0
-                ]  # Use the first one found
-                logger.info("Found weekly schedule with flexible search")
-            else:
-                logger.info(f"No weekly schedule found for week containing {date_str}")
-                return []
-
-        if not weekly_schedule:
-            logger.info(f"No weekly schedule found for week containing {date_str}")
-            return []
-
-        # Extract task IDs from weekly schedule
-        schedule_data = weekly_schedule.schedule_json
-        if not schedule_data or "selected_tasks" not in schedule_data:
-            logger.info("Weekly schedule found but no selected_tasks data")
-            return []
-
-        selected_tasks = schedule_data["selected_tasks"]
-        weekly_log_start = getattr(weekly_schedule, "created_at", None)
-        if not isinstance(weekly_log_start, datetime):
-            weekly_log_start = week_start_datetime
-        try:
-            task_ids = [task["task_id"] for task in selected_tasks]
-            assigned_hours_by_task = _extract_weekly_assigned_hours(
-                schedule_data,
-                selected_tasks,
-            )
-            logger.info(f"Extracted {len(task_ids)} task IDs from weekly schedule")
-        except (KeyError, TypeError):
-            logger.exception("Error extracting task_ids from selected_tasks")
-            raise
-
-        if not task_ids:
-            return []
-
-        # Get the actual task objects from database in a single query (N+1 fix)
-        from uuid import UUID
-
-        # Convert string IDs to UUIDs, filtering out invalid ones
-        valid_uuids = []
-        valid_uuid_strings = set()
-        for task_id in task_ids:
-            try:
-                task_uuid = UUID(task_id)
-                valid_uuids.append(task_uuid)
-                valid_uuid_strings.add(str(task_uuid))
-            except ValueError:
-                logger.warning(f"Invalid UUID format for task ID: {task_id}")
-
-        # Fetch all regular tasks in one query instead of N+1 queries
-        tasks = []
-        if valid_uuids:
-            tasks = list(
-                session.exec(select(Task).where(Task.id.in_(valid_uuids))).all()
-            )
-            for task in tasks:
-                _set_weekly_schedule_assigned_hours(
-                    task,
-                    assigned_hours_by_task.get(str(task.id)),
-                )
-                _set_weekly_schedule_log_start(task, weekly_log_start)
-            logger.info(
-                f"Fetched {len(tasks)} tasks in single query from {len(valid_uuids)} IDs"
-            )
-
-        weekly_recurring_tasks = []
-        found_task_ids = {str(task.id) for task in tasks}
-        weekly_recurring_ids = [
-            task_id
-            for task_id in task_ids
-            if task_id in valid_uuid_strings and task_id not in found_task_ids
-        ]
-        if weekly_recurring_ids:
-            weekly_recurring_uuids = [UUID(task_id) for task_id in weekly_recurring_ids]
-            weekly_recurring_tasks = list(
-                session.exec(
-                    select(WeeklyRecurringTask).where(
-                        WeeklyRecurringTask.id.in_(weekly_recurring_uuids),
-                        WeeklyRecurringTask.user_id == user_id,
-                        WeeklyRecurringTask.deleted_at.is_(None),
-                    )
-                ).all()
-            )
-            for task in weekly_recurring_tasks:
-                _set_weekly_schedule_assigned_hours(
-                    task,
-                    assigned_hours_by_task.get(str(task.id)),
-                )
-                _set_weekly_schedule_log_start(task, weekly_log_start)
-            found_weekly_ids = {str(task.id) for task in weekly_recurring_tasks}
-            for task_id in weekly_recurring_ids:
-                if task_id not in found_weekly_ids:
-                    logger.warning(f"Weekly schedule task ID {task_id} not found")
-            logger.info(
-                f"Fetched {len(weekly_recurring_tasks)} weekly recurring tasks from weekly schedule"
-            )
-
-        logger.info(
-            f"Retrieved {len(tasks)} tasks and {len(weekly_recurring_tasks)} weekly recurring tasks "
-            "from database based on saved weekly schedule selections"
-        )
-        return [*tasks, *weekly_recurring_tasks]
-
-    except Exception:
-        logger.exception("Error getting tasks from weekly schedule")
         raise
 
 

@@ -25,6 +25,7 @@ All database migrations are managed through SQL files and the MigrationManager. 
 - `030_trim_daily_plan_search.sql` - Normalize leading/trailing Unicode whitespace in notebook search text, including tabs and Japanese spaces. Rebuilds the index text for existing 029 installations; note content is unchanged.
 - `031_drop_slot_templates.sql` - Drop the unused `slot_templates` table. Deploy the API that no longer serves slot templates first. Stored templates are deleted, so back up the table beforehand if they should be kept; the rollback recreates an empty table.
 - `032_add_daily_plan_line_note_search.sql` - Include memos written under schedule lines (`note` on timed lines and /schedule lines) in notebook search text, and rebuild search text for existing notes. Note content is unchanged; rollback restores the 030 search rules.
+- `033_drop_weekly_planning.sql` - Drop the unused `weekly_schedules` and `weekly_recurring_tasks` tables and the `taskcategory` enum type. Deploy the API that no longer serves weekly plans first. Saved weekly plans and weekly recurring tasks are deleted, so back up both tables beforehand if they should be kept; the rollback recreates empty tables. Weekly work reports read work logs and are unaffected.
 - `enable_rls_security.sql` - Row Level Security policies (manual application)
 
 ## Data Loss Prevention Policy

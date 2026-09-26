@@ -9,7 +9,6 @@ import type { TaskStatus, TaskWorkspaceFilters } from "@/types/task";
 export type TaskWorkspacePreset =
   | "ready"
   | "today"
-  | "week"
   | "in_progress"
   | "overdue"
   | "blocked"
@@ -42,9 +41,7 @@ export function buildTaskWorkspaceFilters({
   let statuses = status ? [status] : undefined;
   if (
     !status &&
-    ["ready", "overdue", "today", "week", "unplanned", "blocked"].includes(
-      preset,
-    )
+    ["ready", "overdue", "today", "unplanned", "blocked"].includes(preset)
   ) {
     statuses = actionableStatuses;
   }
@@ -60,8 +57,8 @@ export function buildTaskWorkspaceFilters({
     search: search || undefined,
     blocked:
       preset === "blocked" ? true : preset === "ready" ? false : undefined,
-    plan: ["today", "week", "unplanned"].includes(preset)
-      ? (preset as "today" | "week" | "unplanned")
+    plan: ["today", "unplanned"].includes(preset)
+      ? (preset as "today" | "unplanned")
       : undefined,
     sortBy: preset === "ready" ? "priority" : "due_date",
   };
