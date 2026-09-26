@@ -1089,13 +1089,18 @@ class ApiClient {
    *
    * @param weekStartDate - Start date of the week (YYYY-MM-DD)
    * @param projectIds - Optional project IDs to filter
+   * @param includeNotes - Use project/goal/task notes as report context
    * @returns Weekly report data
    */
   async generateWeeklyReport(
     weekStartDate: string,
     projectIds?: string[],
+    includeNotes = true,
   ): Promise<import("@/types/reports").WeeklyReportResponse> {
-    const body: any = { week_start_date: weekStartDate };
+    const body: import("@/types/reports").WeeklyReportRequest = {
+      week_start_date: weekStartDate,
+      include_notes: includeNotes,
+    };
     if (projectIds && projectIds.length > 0) {
       body.project_ids = projectIds;
     }
@@ -1759,8 +1764,11 @@ export const timelineApi = {
  * Provides methods for generating progress reports.
  */
 export const reportsApi = {
-  generateWeeklyReport: (weekStartDate: string, projectIds?: string[]) =>
-    apiClient.generateWeeklyReport(weekStartDate, projectIds),
+  generateWeeklyReport: (
+    weekStartDate: string,
+    projectIds?: string[],
+    includeNotes?: boolean,
+  ) => apiClient.generateWeeklyReport(weekStartDate, projectIds, includeNotes),
 };
 
 /**

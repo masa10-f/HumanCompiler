@@ -7,10 +7,12 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
+import Link from "next/link";
 import {
   BarChart3,
   CheckCircle,
   Clock,
+  FileText,
   Loader2,
   Save,
   Target,
@@ -18,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { AppHeader } from "@/components/layout/app-header";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -36,7 +39,27 @@ import { toast } from "@/hooks/use-toast";
 import { reportsApi } from "@/lib/api";
 import { getJSTDateString, isValidJSTDateInput } from "@/lib/date-utils";
 import { getSelectableProjects } from "@/lib/project-filters";
-import type { WeeklyReportResponse } from "@/types/reports";
+import type {
+  WeeklyReportNoteReference,
+  WeeklyReportResponse,
+} from "@/types/reports";
+
+const NOTE_ENTITY_LABELS: Record<
+  WeeklyReportNoteReference["entity_type"],
+  string
+> = {
+  project: "プロジェクト",
+  goal: "ゴール",
+  task: "タスク",
+};
+
+function getNoteHref(note: WeeklyReportNoteReference): string {
+  const projectPath = `/projects/${note.project_id}`;
+  if (note.entity_type === "project") return `${projectPath}/notes`;
+  const goalPath = `${projectPath}/goals/${note.goal_id}`;
+  if (note.entity_type === "goal") return `${goalPath}/notes`;
+  return `${goalPath}/tasks/${note.entity_id}`;
+}
 
 export default function WeeklyReportPage() {
   const { user, loading: authLoading } = useAuth();
@@ -50,6 +73,7 @@ export default function WeeklyReportPage() {
 
   const [weekStartDate, setWeekStartDate] = useState(getJSTDateString);
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
+  const [includeNotes, setIncludeNotes] = useState(true);
   const [weeklyReport, setWeeklyReport] =
     useState<WeeklyReportResponse | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -90,6 +114,7 @@ export default function WeeklyReportPage() {
       const reportData = await reportsApi.generateWeeklyReport(
         weekStartDate,
         filteredProjectIds.length > 0 ? filteredProjectIds : undefined,
+        includeNotes,
       );
       setWeeklyReport(reportData);
       toast({
@@ -142,7 +167,7 @@ export default function WeeklyReportPage() {
             週間作業報告
           </h1>
           <p className="mt-2 text-gray-600 dark:text-gray-400">
-            指定した週の作業実績を分析し、報告書を自動生成します。
+            指定した週の作業実績とノートをもとに、プロジェクトごとの「背景・今週やったこと・次にやること」をまとめた報告書を自動生成します。
           </p>
         </div>
 
@@ -200,6 +225,22 @@ export default function WeeklyReportPage() {
                     </Label>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            <div className="flex items-start space-x-2">
+              <Checkbox
+                id="report-include-notes"
+                checked={includeNotes}
+                onCheckedChange={(checked) => setIncludeNotes(checked === true)}
+              />
+              <div className="space-y-1">
+                <Label htmlFor="report-include-notes" className="text-sm">
+                  プロジェクト・ゴール・タスクのノートを参照する
+                </Label>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  ノートの内容を背景と次にやることの作成に使います（AIに送信されます）。
+                </p>
               </div>
             </div>
 
@@ -262,6 +303,31 @@ export default function WeeklyReportPage() {
               </div>
 
               <Separator />
+
+              {weeklyReport.referenced_notes &&
+                weeklyReport.referenced_notes.length > 0 && (
+                  <div>
+                    <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                      <FileText className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                      参照したノート（{weeklyReport.referenced_notes.length}件）
+                    </h2>
+                    <ul className="flex flex-wrap gap-2">
+                      {weeklyReport.referenced_notes.map((note) => (
+                        <li key={`${note.entity_type}-${note.entity_id}`}>
+                          <Link
+                            href={getNoteHref(note)}
+                            className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-800"
+                          >
+                            <Badge variant="secondary">
+                              {NOTE_ENTITY_LABELS[note.entity_type]}
+                            </Badge>
+                            {note.title}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
               <div>
                 <h2 className="text-lg font-semibold mb-3">

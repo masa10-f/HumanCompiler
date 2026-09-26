@@ -2,7 +2,7 @@ import re
 from datetime import UTC, date as Date, datetime
 from decimal import Decimal
 from enum import Enum, StrEnum
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -1847,6 +1847,13 @@ class WeeklyReportRequest(BaseModel):
     project_ids: list[str] | None = Field(
         default=None, description="Optional list of project IDs to filter the report"
     )
+    include_notes: bool = Field(
+        default=True,
+        description=(
+            "Use project, goal, and task notes as context for the background "
+            "and next-step sections"
+        ),
+    )
 
     model_config = ConfigDict(
         str_strip_whitespace=True,
@@ -1854,6 +1861,7 @@ class WeeklyReportRequest(BaseModel):
             "example": {
                 "week_start_date": "2023-12-18",
                 "project_ids": ["uuid1", "uuid2"],
+                "include_notes": True,
             }
         },
     )
@@ -1904,6 +1912,16 @@ class WeeklyWorkSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class WeeklyReportNoteReference(BaseModel):
+    """A context note that was used to generate a weekly report"""
+
+    entity_type: Literal["project", "goal", "task"]
+    entity_id: str
+    title: str
+    project_id: str
+    goal_id: str | None = None
+
+
 class WeeklyReportResponse(BaseModel):
     """Response model for weekly work report"""
 
@@ -1912,6 +1930,7 @@ class WeeklyReportResponse(BaseModel):
     work_summary: WeeklyWorkSummary
     project_summaries: list[ProjectProgressSummary]
     markdown_report: str
+    referenced_notes: list[WeeklyReportNoteReference] = Field(default_factory=list)
     generated_at: datetime
 
     @field_serializer("generated_at")
