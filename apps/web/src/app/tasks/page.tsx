@@ -65,7 +65,6 @@ type Preset = TaskWorkspacePreset;
 const PRESETS: Array<{ id: Preset; label: string }> = [
   { id: "ready", label: "Ready" },
   { id: "today", label: "今日" },
-  { id: "week", label: "今週" },
   { id: "in_progress", label: "作業中" },
   { id: "overdue", label: "期限切れ" },
   { id: "blocked", label: "ブロック中" },
@@ -149,9 +148,6 @@ function TaskRow({
               <Badge variant="info">
                 {task.planned_today_unplaced ? "今日・未配置" : "今日"}
               </Badge>
-            )}
-            {!task.planned_today && task.planned_this_week && (
-              <Badge variant="secondary">今週</Badge>
             )}
           </div>
         </div>

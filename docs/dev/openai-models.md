@@ -33,12 +33,8 @@ Official sources:
 ## API compatibility
 
 GPT-6 Sol/Luna only support Chat Completions function calling with
-`reasoning_effort="none"`. Weekly planning therefore uses Responses API function
-calling with `reasoning={"effort": "high"}`, preserving the existing prompts,
-function arguments, and output budget. The function schema explicitly uses
-`strict=False` to retain its existing optional fields. Completed function-call
-items are read from `response.output`; incomplete or missing calls are errors.
-Planning requests set `store=False`.
+`reasoning_effort="none"`. Weekly planning, the only feature that used function
+calling, was removed on 2026-09-26.
 
 JSON-only and text-only Chat Completions keep their existing endpoint and
 reasoning effort. GPT-6 reasoning requests omit `temperature`. Background
@@ -54,7 +50,7 @@ their current selection. Users switch to Sol or Luna themselves from settings.
 New settings created through the application use the GPT-6 Sol default.
 
 Update any deployment override of `NEXT_PUBLIC_DEFAULT_OPENAI_MODEL` to
-`gpt-6-sol` and rebuild the web app. Local mock tests cover request parameters,
-function-call parsing, invalid task filtering, failure handling, and defaults.
+`gpt-6-sol` and rebuild the web app. Local mock tests cover request parameters
+and defaults.
 Real-account model access and generated quality/latency require verification
 in the deployment environment.

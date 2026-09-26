@@ -37,27 +37,17 @@ import type {
   TimelineOverviewData,
 } from "@/types/timeline";
 import type {
-  WeeklyPlanRequest,
-  WeeklyPlanResponse,
-  WeeklyScheduleData,
   WorkloadAnalysis,
   PrioritySuggestions,
   ScheduleRequest,
   ScheduleResult,
   SchedulerSolverConfig,
   SchedulerTuningConfig,
-  SavedWeeklySchedule,
 } from "@/types/ai-planning";
 import type {
-  TestAIIntegrationResponse,
   DailySchedule,
   TestSchedulerResponse,
 } from "@/types/api-responses";
-import type {
-  WeeklyRecurringTask,
-  WeeklyRecurringTaskCreate,
-  WeeklyRecurringTaskUpdate,
-} from "@/types/weekly-recurring-task";
 import type {
   WorkSession,
   WorkSessionStartRequest,
@@ -740,76 +730,6 @@ class ApiClient {
 
   // === AI Planning API methods ===
 
-  /**
-   * Generates a weekly task plan using OR-Tools optimizer.
-   *
-   * @param planRequest - Weekly plan request configuration
-   * @returns Optimized weekly plan response
-   */
-  async generateWeeklyPlan(
-    planRequest: WeeklyPlanRequest,
-  ): Promise<WeeklyPlanResponse> {
-    const meetingBufferHours = 5;
-    const availableHours = Math.max(
-      0,
-      planRequest.capacity_hours - meetingBufferHours,
-    );
-    const projectAllocations = Object.entries(
-      planRequest.project_allocations || {},
-    ).map(([projectId, percentage]) => {
-      const priorityWeight = Number(percentage) / 100;
-      const targetHours = availableHours * priorityWeight;
-      return {
-        project_id: projectId,
-        project_title: projectId,
-        target_hours: targetHours,
-        max_hours: targetHours * 1.5,
-        priority_weight: priorityWeight,
-      };
-    });
-
-    const solverRequest = {
-      week_start_date: planRequest.week_start_date,
-      constraints: {
-        total_capacity_hours: planRequest.capacity_hours,
-        meeting_buffer_hours: meetingBufferHours,
-        project_allocations: projectAllocations,
-        deadline_weight: 0.4,
-        project_balance_weight: 0.3,
-        effort_efficiency_weight: 0.3,
-      },
-      project_filter: planRequest.project_filter,
-      selected_recurring_task_ids:
-        planRequest.selected_recurring_task_ids || [],
-      preferences: planRequest.preferences || {},
-    };
-
-    const solverResponse = await this.request<WeeklyScheduleData>(
-      "/api/ai/weekly-task-solver",
-      {
-        method: "POST",
-        body: JSON.stringify(solverRequest),
-      },
-    );
-
-    // Convert TaskSolverResponse to WeeklyPlanResponse format for compatibility
-    return {
-      success: solverResponse.success,
-      week_start_date: solverResponse.week_start_date,
-      total_planned_hours: solverResponse.total_allocated_hours,
-      task_plans: solverResponse.selected_tasks || [],
-      assigned_task_hours: solverResponse.assigned_task_hours || {},
-      assigned_recurring_task_hours:
-        solverResponse.assigned_recurring_task_hours || {},
-      recommendations: [], // TaskSolver doesn't have recommendations
-      insights: solverResponse.optimization_insights || [],
-      project_allocations: solverResponse.project_allocations || [],
-      constraint_analysis: solverResponse.constraint_analysis,
-      solver_metrics: solverResponse.solver_metrics,
-      generated_at: solverResponse.generated_at,
-    };
-  }
-
   async analyzeWorkload(projectIds?: string[]): Promise<WorkloadAnalysis> {
     const body = projectIds ? { project_ids: projectIds } : {};
     return this.request<WorkloadAnalysis>("/api/ai/analyze-workload", {
@@ -826,10 +746,6 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify(body),
     });
-  }
-
-  async testAIIntegration(): Promise<TestAIIntegrationResponse> {
-    return this.request<TestAIIntegrationResponse>("/api/ai/weekly-plan/test");
   }
 
   async generateGoalTaskDraft(
@@ -1117,71 +1033,6 @@ class ApiClient {
     return this.request<TaskProgress>(`/api/progress/task/${taskId}/`);
   }
 
-  // === Weekly Schedule API methods ===
-
-  /**
-   * Fetches saved weekly schedules.
-   *
-   * @param skip - Pagination offset (default: 0)
-   * @param limit - Maximum results (default: 30)
-   * @returns Array of saved weekly schedules
-   */
-  async getWeeklySchedules(
-    skip = 0,
-    limit = 30,
-  ): Promise<SavedWeeklySchedule[]> {
-    return this.request<SavedWeeklySchedule[]>(
-      `/api/weekly-schedule/list?skip=${skip}&limit=${limit}`,
-    );
-  }
-
-  async getWeeklySchedule(weekStartDate: string): Promise<SavedWeeklySchedule> {
-    return this.request<SavedWeeklySchedule>(
-      `/api/weekly-schedule/${weekStartDate}/`,
-    );
-  }
-
-  async saveWeeklySchedule(
-    weekStartDate: string,
-    scheduleData: any,
-  ): Promise<SavedWeeklySchedule> {
-    return this.request<SavedWeeklySchedule>("/api/weekly-schedule/save", {
-      method: "POST",
-      body: JSON.stringify({
-        week_start_date: weekStartDate,
-        schedule_data: scheduleData,
-      }),
-    });
-  }
-
-  async updateWeeklyScheduleDraft(
-    weekStartDate: string,
-    scheduleData: Record<string, unknown>,
-    expectedUpdatedAt?: string | null,
-  ): Promise<SavedWeeklySchedule> {
-    return this.request<SavedWeeklySchedule>(
-      `/api/weekly-schedule/${weekStartDate}`,
-      {
-        method: "PUT",
-        body: JSON.stringify({
-          schedule_data: scheduleData,
-          expected_updated_at: expectedUpdatedAt ?? null,
-        }),
-      },
-    );
-  }
-
-  async deleteWeeklySchedule(
-    weekStartDate: string,
-  ): Promise<{ message: string }> {
-    return this.request<{ message: string }>(
-      `/api/weekly-schedule/${weekStartDate}/`,
-      {
-        method: "DELETE",
-      },
-    );
-  }
-
   // === Timeline API methods ===
 
   /**
@@ -1255,68 +1106,6 @@ class ApiClient {
         body: JSON.stringify(body),
       },
     );
-  }
-
-  // === Weekly Recurring Tasks ===
-
-  /**
-   * Fetches weekly recurring task templates.
-   *
-   * @param skip - Pagination offset (default: 0)
-   * @param limit - Maximum results (default: 20)
-   * @param category - Optional category filter
-   * @param isActive - Optional active status filter
-   * @returns Array of recurring task templates
-   */
-  async getWeeklyRecurringTasks(
-    skip: number = 0,
-    limit: number = 20,
-    category?: string,
-    isActive?: boolean,
-  ): Promise<WeeklyRecurringTask[]> {
-    const params = new URLSearchParams();
-    if (skip) params.append("skip", skip.toString());
-    if (limit) params.append("limit", limit.toString());
-    if (category) params.append("category", category);
-    if (isActive !== undefined) params.append("is_active", isActive.toString());
-
-    return this.request<WeeklyRecurringTask[]>(
-      `/api/weekly-recurring-tasks?${params.toString()}`,
-    );
-  }
-
-  async getWeeklyRecurringTask(taskId: string): Promise<WeeklyRecurringTask> {
-    return this.request<WeeklyRecurringTask>(
-      `/api/weekly-recurring-tasks/${taskId}/`,
-    );
-  }
-
-  async createWeeklyRecurringTask(
-    taskData: WeeklyRecurringTaskCreate,
-  ): Promise<WeeklyRecurringTask> {
-    return this.request<WeeklyRecurringTask>("/api/weekly-recurring-tasks", {
-      method: "POST",
-      body: JSON.stringify(taskData),
-    });
-  }
-
-  async updateWeeklyRecurringTask(
-    taskId: string,
-    taskData: WeeklyRecurringTaskUpdate,
-  ): Promise<WeeklyRecurringTask> {
-    return this.request<WeeklyRecurringTask>(
-      `/api/weekly-recurring-tasks/${taskId}/`,
-      {
-        method: "PUT",
-        body: JSON.stringify(taskData),
-      },
-    );
-  }
-
-  async deleteWeeklyRecurringTask(taskId: string): Promise<void> {
-    return this.request<void>(`/api/weekly-recurring-tasks/${taskId}/`, {
-      method: "DELETE",
-    });
   }
 
   // === Work Sessions ===
@@ -1852,13 +1641,10 @@ export const tasksApi = {
  * Provides methods for AI-powered task planning and workload analysis.
  */
 export const aiPlanningApi = {
-  generateWeeklyPlan: (request: WeeklyPlanRequest) =>
-    apiClient.generateWeeklyPlan(request),
   analyzeWorkload: (projectIds?: string[]) =>
     apiClient.analyzeWorkload(projectIds),
   suggestPriorities: (projectId?: string) =>
     apiClient.suggestTaskPriorities(projectId),
-  testIntegration: () => apiClient.testAIIntegration(),
   generateGoalTaskDraft: (request: GoalTaskDraftRequest) =>
     apiClient.generateGoalTaskDraft(request),
   startGoalTaskDraftJob: (request: GoalTaskDraftRequest) =>
@@ -1941,52 +1727,6 @@ export const progressApi = {
   getProject: (projectId: string) => apiClient.getProjectProgress(projectId),
   getGoal: (goalId: string) => apiClient.getGoalProgress(goalId),
   getTask: (taskId: string) => apiClient.getTaskProgress(taskId),
-};
-
-/**
- * Weekly Schedule API convenience wrapper.
- * Provides methods for managing saved weekly schedules.
- */
-export const weeklyScheduleApi = {
-  getAll: (skip?: number, limit?: number) =>
-    apiClient.getWeeklySchedules(skip, limit),
-  getByWeek: (weekStartDate: string) =>
-    apiClient.getWeeklySchedule(weekStartDate),
-  save: (weekStartDate: string, scheduleData: any) =>
-    apiClient.saveWeeklySchedule(weekStartDate, scheduleData),
-  updateDraft: (
-    weekStartDate: string,
-    scheduleData: Record<string, unknown>,
-    expectedUpdatedAt?: string | null,
-  ) =>
-    apiClient.updateWeeklyScheduleDraft(
-      weekStartDate,
-      scheduleData,
-      expectedUpdatedAt,
-    ),
-  delete: (weekStartDate: string) =>
-    apiClient.deleteWeeklySchedule(weekStartDate),
-};
-
-/**
- * Weekly Recurring Tasks API convenience wrapper.
- * Provides methods for managing recurring task templates.
- */
-export const weeklyRecurringTasksApi = {
-  getAll: (
-    skip?: number,
-    limit?: number,
-    category?: string,
-    isActive?: boolean,
-  ) => apiClient.getWeeklyRecurringTasks(skip, limit, category, isActive),
-  getActive: () =>
-    apiClient.getWeeklyRecurringTasks(undefined, undefined, undefined, true),
-  getById: (taskId: string) => apiClient.getWeeklyRecurringTask(taskId),
-  create: (taskData: WeeklyRecurringTaskCreate) =>
-    apiClient.createWeeklyRecurringTask(taskData),
-  update: (taskId: string, taskData: WeeklyRecurringTaskUpdate) =>
-    apiClient.updateWeeklyRecurringTask(taskId, taskData),
-  delete: (taskId: string) => apiClient.deleteWeeklyRecurringTask(taskId),
 };
 
 /**

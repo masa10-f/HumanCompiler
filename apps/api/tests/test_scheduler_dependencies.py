@@ -2,8 +2,7 @@
 Tests for scheduler dependency constraints.
 """
 
-from datetime import datetime, time
-from decimal import Decimal
+from datetime import time
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -25,15 +24,8 @@ from humancompiler_api.routers.scheduler import (
     _check_task_dependencies_satisfied_relaxed,
     _batch_check_task_completion_status,
     _batch_check_goal_completion_status,
-    _extract_weekly_assigned_hours,
-    _get_tasks_from_weekly_schedule,
-    _get_weekly_schedule_assigned_hours,
-    _calculate_weekly_schedule_remaining_hours,
-    _get_weekly_schedule_log_start,
-    weekly_recurring_task_to_scheduler_task,
 )
-from humancompiler_api.models import GoalStatus, Task, TaskCategory, TaskStatus
-from humancompiler_api.models import WeeklyRecurringTask
+from humancompiler_api.models import GoalStatus, TaskStatus
 
 client = TestClient(app)
 
@@ -156,7 +148,6 @@ class TestSchedulerDependencies:
                 estimate_hours=1.0,
                 kind=TaskKind.LIGHT_WORK,
                 goal_id=str(goal1_id),
-                is_weekly_recurring=False,
             )
         ]
 
@@ -303,352 +294,6 @@ class TestSchedulerDependencies:
         )
         assert result is False
 
-    def test_weekly_recurring_tasks_always_schedulable(self):
-        """Test that weekly recurring tasks are always schedulable regardless of dependencies."""
-        mock_session = MagicMock()
-
-        tasks = [
-            SchedulerTask(
-                id=str(uuid4()),
-                title="Weekly Task",
-                estimate_hours=1.0,
-                kind=TaskKind.LIGHT_WORK,
-                is_weekly_recurring=True,
-            )
-        ]
-
-        time_slots = [
-            TimeSlot(
-                start=time(9, 0),
-                end=time(10, 0),
-                kind=SlotKind.LIGHT_WORK,
-                capacity_hours=1.0,
-            )
-        ]
-
-        result = optimize_schedule(tasks, time_slots, session=mock_session)
-        assert result.success
-        assert len(result.assignments) == 1
-        assert len(result.unscheduled_tasks) == 0
-
-    def test_weekly_recurring_task_to_scheduler_task(self):
-        """Test weekly recurring task templates become schedulable tasks."""
-        task_id = uuid4()
-        weekly_task = WeeklyRecurringTask(
-            id=task_id,
-            user_id=uuid4(),
-            title="Weekly Study",
-            estimate_hours=Decimal("1.50"),
-            category=TaskCategory.STUDY,
-        )
-
-        scheduler_task = weekly_recurring_task_to_scheduler_task(weekly_task)
-
-        assert scheduler_task.id == str(task_id)
-        assert scheduler_task.title == "Weekly Study"
-        assert scheduler_task.estimate_hours == 1.5
-        assert scheduler_task.kind == TaskKind.STUDY
-        assert scheduler_task.is_weekly_recurring is True
-
-    @pytest.mark.asyncio
-    async def test_weekly_schedule_source_restores_selected_recurring_tasks(self):
-        """Saved weekly schedules restore both regular tasks and recurring tasks."""
-        user_uuid = uuid4()
-        user_id = str(user_uuid)
-        regular_id = uuid4()
-        recurring_id = uuid4()
-        regular_task = MagicMock(spec=Task)
-        regular_task.id = regular_id
-        weekly_task = WeeklyRecurringTask(
-            id=recurring_id,
-            user_id=user_uuid,
-            title="Weekly Review",
-            estimate_hours=Decimal("1.00"),
-            category=TaskCategory.REVIEW,
-        )
-        weekly_schedule = MagicMock()
-        weekly_schedule.created_at = datetime(2025, 6, 23, 9, 0)
-        weekly_schedule.schedule_json = {
-            "selected_tasks": [
-                {"task_id": str(regular_id)},
-                {"task_id": str(recurring_id)},
-            ],
-            "project_allocations": [],
-        }
-
-        class ExecResult:
-            def __init__(self, *, first_result=None, all_result=None):
-                self.first_result = first_result
-                self.all_result = all_result or []
-
-            def first(self):
-                return self.first_result
-
-            def all(self):
-                return self.all_result
-
-        class FakeSession:
-            def __init__(self):
-                self.results = iter(
-                    [
-                        ExecResult(first_result=weekly_schedule),
-                        ExecResult(all_result=[regular_task]),
-                        ExecResult(all_result=[weekly_task]),
-                    ]
-                )
-
-            def exec(self, _query):
-                return next(self.results)
-
-        tasks = await _get_tasks_from_weekly_schedule(
-            FakeSession(),
-            user_id,
-            datetime.now().strftime("%Y-%m-%d"),
-        )
-
-        assert tasks == [regular_task, weekly_task]
-
-    @pytest.mark.asyncio
-    async def test_weekly_schedule_source_attaches_assigned_hours(self):
-        """Saved weekly schedules carry partial weekly hours into daily scheduling."""
-        user_uuid = uuid4()
-        user_id = str(user_uuid)
-        regular_id = uuid4()
-        recurring_id = uuid4()
-        regular_task = MagicMock(spec=Task)
-        regular_task.id = regular_id
-        weekly_task = WeeklyRecurringTask(
-            id=recurring_id,
-            user_id=user_uuid,
-            title="Weekly Review",
-            estimate_hours=Decimal("2.00"),
-            category=TaskCategory.REVIEW,
-        )
-        weekly_schedule = MagicMock()
-        weekly_schedule.created_at = datetime(2025, 6, 23, 9, 0)
-        weekly_schedule.schedule_json = {
-            "selected_tasks": [
-                {"task_id": str(regular_id), "estimated_hours": 5.0},
-                {"task_id": str(recurring_id), "estimated_hours": 0.5},
-            ],
-            "assigned_task_hours": {str(regular_id): 5.0},
-            "assigned_recurring_task_hours": {str(recurring_id): 0.5},
-            "project_allocations": [],
-        }
-
-        class ExecResult:
-            def __init__(self, *, first_result=None, all_result=None):
-                self.first_result = first_result
-                self.all_result = all_result or []
-
-            def first(self):
-                return self.first_result
-
-            def all(self):
-                return self.all_result
-
-        class FakeSession:
-            def __init__(self):
-                self.results = iter(
-                    [
-                        ExecResult(first_result=weekly_schedule),
-                        ExecResult(all_result=[regular_task]),
-                        ExecResult(all_result=[weekly_task]),
-                    ]
-                )
-
-            def exec(self, _query):
-                return next(self.results)
-
-        tasks = await _get_tasks_from_weekly_schedule(
-            FakeSession(),
-            user_id,
-            datetime.now().strftime("%Y-%m-%d"),
-        )
-
-        assert tasks == [regular_task, weekly_task]
-        assert _get_weekly_schedule_assigned_hours(regular_task) == 5.0
-        assert _get_weekly_schedule_assigned_hours(weekly_task) == 0.5
-        assert (
-            _get_weekly_schedule_log_start(regular_task) == weekly_schedule.created_at
-        )
-
-    def test_weekly_assigned_hour_maps_override_selected_task_fallback(self):
-        """Explicit v0.3.1 assigned-hour maps are more authoritative."""
-        task_id = str(uuid4())
-        recurring_id = str(uuid4())
-
-        assigned_hours = _extract_weekly_assigned_hours(
-            {
-                "assigned_task_hours": {task_id: 4.0},
-                "assigned_recurring_task_hours": {recurring_id: 1.0},
-            },
-            [
-                {"task_id": task_id, "estimated_hours": 8.0},
-                {"task_id": recurring_id, "estimated_hours": 2.0},
-            ],
-        )
-
-        assert assigned_hours == {task_id: 4.0, recurring_id: 1.0}
-
-    def test_weekly_schedule_remaining_hours_subtracts_logged_work_from_cap(self):
-        """Daily scheduling should not exceed the weekly assigned budget."""
-        remaining_hours = _calculate_weekly_schedule_remaining_hours(
-            estimate_hours=10.0,
-            actual_hours=3.0,
-            weekly_assigned_hours=5.0,
-        )
-
-        assert remaining_hours == 2.0
-
-    def test_weekly_schedule_remaining_hours_ignores_pre_plan_logged_work_for_cap(
-        self,
-    ):
-        """Pre-plan logs are already reflected in the solver's remaining hours."""
-        remaining_hours = _calculate_weekly_schedule_remaining_hours(
-            estimate_hours=10.0,
-            actual_hours=4.0,
-            weekly_assigned_hours=5.0,
-            weekly_actual_hours=0.0,
-        )
-
-        assert remaining_hours == 5.0
-
-    def test_weekly_schedule_remaining_hours_subtracts_post_plan_logged_work_from_cap(
-        self,
-    ):
-        """Post-plan logs consume the weekly assigned budget."""
-        remaining_hours = _calculate_weekly_schedule_remaining_hours(
-            estimate_hours=10.0,
-            actual_hours=7.0,
-            weekly_assigned_hours=5.0,
-            weekly_actual_hours=3.0,
-        )
-
-        assert remaining_hours == 2.0
-
-    def test_weekly_schedule_remaining_hours_without_cap_uses_task_remaining(self):
-        """Schedules without weekly caps keep the legacy task remaining behavior."""
-        remaining_hours = _calculate_weekly_schedule_remaining_hours(
-            estimate_hours=10.0,
-            actual_hours=3.0,
-            weekly_assigned_hours=None,
-        )
-
-        assert remaining_hours == 7.0
-
-    def test_weekly_schedule_remaining_hours_never_goes_negative(self):
-        """Logged work can exhaust the weekly assigned budget."""
-        remaining_hours = _calculate_weekly_schedule_remaining_hours(
-            estimate_hours=10.0,
-            actual_hours=6.0,
-            weekly_assigned_hours=5.0,
-        )
-
-        assert remaining_hours == 0.0
-
-    @pytest.mark.asyncio
-    async def test_weekly_schedule_source_accepts_legacy_project_allocation_map(self):
-        """Legacy percentage allocation maps keep saved selected tasks usable."""
-        user_uuid = uuid4()
-        user_id = str(user_uuid)
-        regular_id = uuid4()
-        project_id = str(uuid4())
-        regular_task = MagicMock(spec=Task)
-        regular_task.id = regular_id
-        weekly_schedule = MagicMock()
-        weekly_schedule.schedule_json = {
-            "selected_tasks": [{"task_id": str(regular_id)}],
-            "project_allocations": {project_id: 100},
-        }
-
-        class ExecResult:
-            def __init__(self, *, first_result=None, all_result=None):
-                self.first_result = first_result
-                self.all_result = all_result or []
-
-            def first(self):
-                return self.first_result
-
-            def all(self):
-                return self.all_result
-
-        class FakeSession:
-            def __init__(self):
-                self.results = iter(
-                    [
-                        ExecResult(first_result=weekly_schedule),
-                        ExecResult(all_result=[regular_task]),
-                    ]
-                )
-
-            def exec(self, _query):
-                return next(self.results)
-
-        tasks = await _get_tasks_from_weekly_schedule(
-            FakeSession(),
-            user_id,
-            "2025-06-23",
-        )
-
-        assert tasks == [regular_task]
-
-    @pytest.mark.asyncio
-    async def test_weekly_schedule_source_skips_malformed_project_allocations(self):
-        """Malformed allocation entries should not break saved weekly schedules."""
-        user_uuid = uuid4()
-        user_id = str(user_uuid)
-        regular_id = uuid4()
-        project_id = uuid4()
-        regular_task = MagicMock(spec=Task)
-        regular_task.id = regular_id
-        regular_task.goal_id = uuid4()
-        regular_task.estimate_hours = Decimal("1.00")
-        goal = MagicMock()
-        goal.id = regular_task.goal_id
-        goal.project_id = project_id
-        weekly_schedule = MagicMock()
-        weekly_schedule.schedule_json = {
-            "selected_tasks": [{"task_id": str(regular_id)}],
-            "project_allocations": [
-                {"project_id": str(project_id)},
-                {"project_id": str(project_id), "target_hours": "bad"},
-                {"project_id": str(project_id), "target_hours": 2.0},
-            ],
-        }
-
-        class ExecResult:
-            def __init__(self, *, first_result=None, all_result=None):
-                self.first_result = first_result
-                self.all_result = all_result or []
-
-            def first(self):
-                return self.first_result
-
-            def all(self):
-                return self.all_result
-
-        class FakeSession:
-            def __init__(self):
-                self.results = iter(
-                    [
-                        ExecResult(first_result=weekly_schedule),
-                        ExecResult(all_result=[regular_task]),
-                        ExecResult(all_result=[goal]),
-                    ]
-                )
-
-            def exec(self, _query):
-                return next(self.results)
-
-        tasks = await _get_tasks_from_weekly_schedule(
-            FakeSession(),
-            user_id,
-            "2025-06-23",
-        )
-
-        assert tasks == [regular_task]
-
     @patch("humancompiler_api.routers.scheduler._get_task_dependencies")
     @patch("humancompiler_api.routers.scheduler._get_goal_dependencies")
     @patch(
@@ -681,14 +326,12 @@ class TestSchedulerDependencies:
                 title="Schedulable Task",
                 estimate_hours=1.0,
                 kind=TaskKind.LIGHT_WORK,
-                is_weekly_recurring=False,
             ),
             SchedulerTask(
                 id="task2",
                 title="Blocked Task",
                 estimate_hours=1.0,
                 kind=TaskKind.LIGHT_WORK,
-                is_weekly_recurring=False,
             ),
         ]
 
@@ -739,7 +382,6 @@ class TestSchedulerDependencies:
                     title="Blocked Task",
                     estimate_hours=1.0,
                     kind=TaskKind.LIGHT_WORK,
-                    is_weekly_recurring=False,
                 )
             ]
 
@@ -912,14 +554,12 @@ class TestSchedulerDependencies:
                 title="Dependent Task",
                 estimate_hours=1.0,
                 kind=TaskKind.LIGHT_WORK,
-                is_weekly_recurring=False,
             ),
             SchedulerTask(
                 id=task2_id,
                 title="Dependency Task",
                 estimate_hours=1.0,
                 kind=TaskKind.LIGHT_WORK,
-                is_weekly_recurring=False,
             ),
         ]
 
@@ -1077,7 +717,6 @@ class TestSchedulerDependencies:
                     title="Test Task",
                     estimate_hours=1.0,
                     kind=TaskKind.LIGHT_WORK,
-                    is_weekly_recurring=False,
                 )
             ]
 

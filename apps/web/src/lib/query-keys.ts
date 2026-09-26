@@ -66,7 +66,6 @@ export const queryKeys = {
   schedule: {
     all: ['schedule'] as const,
     daily: (date: string) => [...queryKeys.schedule.all, 'daily', date] as const,
-    weekly: (startDate: string) => [...queryKeys.schedule.all, 'weekly', startDate] as const,
   },
 
   // User settings keys
@@ -78,7 +77,6 @@ export const queryKeys = {
   // AI keys
   ai: {
     all: ['ai'] as const,
-    weeklyPlan: () => [...queryKeys.ai.all, 'weeklyPlan'] as const,
     workloadAnalysis: () => [...queryKeys.ai.all, 'workloadAnalysis'] as const,
     priorities: () => [...queryKeys.ai.all, 'priorities'] as const,
   },

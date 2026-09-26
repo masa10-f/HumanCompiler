@@ -23,8 +23,6 @@ from humancompiler_api.models import (
     Goal,
     Task,
     Schedule,
-    WeeklySchedule,
-    WeeklyRecurringTask,
     QuickTask,
     Log,
     UserSettings,
@@ -92,18 +90,6 @@ class DataBackupManager:
                     schedule.model_dump() for schedule in schedules
                 ]
 
-                # Backup weekly schedules
-                weekly_schedules = session.exec(select(WeeklySchedule)).all()
-                backup_data["weekly_schedules"] = [
-                    ws.model_dump() for ws in weekly_schedules
-                ]
-
-                # Backup weekly recurring tasks
-                weekly_recurring_tasks = session.exec(select(WeeklyRecurringTask)).all()
-                backup_data["weekly_recurring_tasks"] = [
-                    wrt.model_dump() for wrt in weekly_recurring_tasks
-                ]
-
                 # Backup logs
                 logs = session.exec(select(Log)).all()
                 backup_data["logs"] = [log.model_dump() for log in logs]
@@ -149,10 +135,6 @@ class DataBackupManager:
                         "tasks": len(backup_data["tasks"]),
                         "quick_tasks": len(backup_data["quick_tasks"]),
                         "schedules": len(backup_data["schedules"]),
-                        "weekly_schedules": len(backup_data["weekly_schedules"]),
-                        "weekly_recurring_tasks": len(
-                            backup_data["weekly_recurring_tasks"]
-                        ),
                         "logs": len(backup_data["logs"]),
                         "user_settings": len(backup_data["user_settings"]),
                         "triage_capacity_settings": len(
@@ -175,10 +157,6 @@ class DataBackupManager:
             logger.info(f"   Goals: {len(backup_data['goals'])}")
             logger.info(f"   Tasks: {len(backup_data['tasks'])}")
             logger.info(f"   Schedules: {len(backup_data['schedules'])}")
-            logger.info(f"   WeeklySchedules: {len(backup_data['weekly_schedules'])}")
-            logger.info(
-                f"   WeeklyRecurringTasks: {len(backup_data['weekly_recurring_tasks'])}"
-            )
             logger.info(f"   Logs: {len(backup_data['logs'])}")
             logger.info(f"   UserSettings: {len(backup_data['user_settings'])}")
             logger.info(f"   GoalDependencies: {len(backup_data['goal_dependencies'])}")
@@ -304,24 +282,6 @@ class DataBackupManager:
                     schedule.model_dump() for schedule in schedules
                 ]
 
-                # Backup user's weekly schedules
-                weekly_schedules = session.exec(
-                    select(WeeklySchedule).where(WeeklySchedule.user_id == user_id)
-                ).all()
-                backup_data["weekly_schedules"] = [
-                    ws.model_dump() for ws in weekly_schedules
-                ]
-
-                # Backup user's weekly recurring tasks
-                weekly_recurring_tasks = session.exec(
-                    select(WeeklyRecurringTask).where(
-                        WeeklyRecurringTask.user_id == user_id
-                    )
-                ).all()
-                backup_data["weekly_recurring_tasks"] = [
-                    wrt.model_dump() for wrt in weekly_recurring_tasks
-                ]
-
                 # Backup logs for user's tasks
                 logs = []
                 if task_ids:
@@ -404,10 +364,6 @@ class DataBackupManager:
                         "tasks": len(backup_data["tasks"]),
                         "quick_tasks": len(backup_data["quick_tasks"]),
                         "schedules": len(backup_data["schedules"]),
-                        "weekly_schedules": len(backup_data["weekly_schedules"]),
-                        "weekly_recurring_tasks": len(
-                            backup_data["weekly_recurring_tasks"]
-                        ),
                         "logs": len(backup_data["logs"]),
                         "user_settings": len(backup_data["user_settings"]),
                         "triage_capacity_settings": len(
@@ -524,22 +480,6 @@ class DataBackupManager:
 
                     schedule = Schedule(**schedule_data)
                     session.add(schedule)
-
-                # Import weekly schedules with new IDs and updated user reference
-                for ws_data in backup_data.get("weekly_schedules", []):
-                    ws_data["id"] = str(uuid.uuid4())
-                    ws_data["user_id"] = target_user_id
-
-                    weekly_schedule = WeeklySchedule(**ws_data)
-                    session.add(weekly_schedule)
-
-                # Import weekly recurring tasks with new IDs and updated user reference
-                for wrt_data in backup_data.get("weekly_recurring_tasks", []):
-                    wrt_data["id"] = str(uuid.uuid4())
-                    wrt_data["user_id"] = target_user_id
-
-                    weekly_recurring_task = WeeklyRecurringTask(**wrt_data)
-                    session.add(weekly_recurring_task)
 
                 # Import logs with new IDs and updated task references
                 for log_data in backup_data.get("logs", []):

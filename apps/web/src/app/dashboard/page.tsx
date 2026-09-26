@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Calendar, Plus, Brain, Settings, Clock, ExternalLink, History, TrendingUp } from 'lucide-react'
+import { Calendar, Plus, BarChart3, Settings, Clock, ExternalLink, History, TrendingUp } from 'lucide-react'
 import { AppHeader } from '@/components/layout/app-header'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -100,12 +100,12 @@ export default function DashboardPage() {
 
           <Card
             className="cursor-pointer hover:shadow-md transition-shadow"
-            onClick={() => router.push('/scheduling/weekly')}
+            onClick={() => router.push('/scheduling/weekly-report')}
           >
             <CardHeader className="text-center pb-4">
-              <Brain className="h-8 w-8 text-purple-600 mx-auto mb-2" />
-              <CardTitle className="text-lg">週次計画</CardTitle>
-              <CardDescription>週間計画の作成とタスク管理（AI分析オプション）</CardDescription>
+              <BarChart3 className="h-8 w-8 text-purple-600 mx-auto mb-2" />
+              <CardTitle className="text-lg">週間報告</CardTitle>
+              <CardDescription>1週間の作業実績から報告書を作成</CardDescription>
             </CardHeader>
           </Card>
 

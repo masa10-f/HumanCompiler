@@ -96,7 +96,6 @@ export function RunnerPage() {
           last_worked_at: null,
           planned_today: false,
           planned_today_unplaced: false,
-          planned_this_week: false,
         });
       } catch {
         setTaskPickerOpen(true);

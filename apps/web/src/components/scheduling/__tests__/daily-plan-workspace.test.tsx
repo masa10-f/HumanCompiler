@@ -48,7 +48,7 @@ function workspaceTask(id: string, title: string): TaskWorkspaceItem {
     project_id: 'project', project_title: 'Project', goal_title: 'Goal',
     remaining_estimate_hours: 1, is_blocked: false, is_ready: true, blocking_task_ids: [],
     last_worked_at: null, planned_today: false, planned_today_unplaced: false,
-    planned_this_week: false, created_at: '2030-01-01', updated_at: '2030-01-01' };
+    created_at: '2030-01-01', updated_at: '2030-01-01' };
 }
 
 const mockToast = jest.fn();
@@ -580,7 +580,6 @@ describe("DailyPlanWorkspace", () => {
       last_worked_at: null,
       planned_today: false,
       planned_today_unplaced: false,
-      planned_this_week: false,
       created_at: "2030-01-01T00:00:00Z",
       updated_at: "2030-01-01T00:00:00Z",
     };

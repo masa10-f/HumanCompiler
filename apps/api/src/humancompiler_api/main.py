@@ -56,8 +56,6 @@ from humancompiler_api.routers import (
     users,
     user_settings,
     websocket,
-    weekly_schedule,
-    weekly_recurring_tasks,
     work_sessions,
 )
 
@@ -313,8 +311,6 @@ app.include_router(progress.router, prefix="/api")
 app.include_router(scheduler.router, prefix="/api")
 app.include_router(daily_plans.router, prefix="/api")
 app.include_router(timeline.router, prefix="/api/timeline", tags=["timeline"])
-app.include_router(weekly_schedule.router, prefix="/api")
-app.include_router(weekly_recurring_tasks.router, prefix="/api")
 app.include_router(quick_tasks.router, prefix="/api")
 app.include_router(ai_planning.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
