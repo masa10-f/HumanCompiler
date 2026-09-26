@@ -75,16 +75,15 @@ describe('weekly report page', () => {
     expect(screen.getByRole('button', { name: 'マークダウンをダウンロード' })).toBeInTheDocument();
   });
 
-  it('does not request a report for an invalid date', () => {
+  it('disables generation while the date is invalid', () => {
     render(<WeeklyReportPage />);
 
     fireEvent.change(screen.getByLabelText('報告対象週開始日'), { target: { value: '' } });
-    fireEvent.click(screen.getByRole('button', { name: '週間作業報告を生成' }));
+    const generateButton = screen.getByRole('button', { name: '週間作業報告を生成' });
+    expect(generateButton).toBeDisabled();
 
+    fireEvent.click(generateButton);
     expect(mockGenerateWeeklyReport).not.toHaveBeenCalled();
-    expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ title: '日付エラー', variant: 'destructive' }),
-    );
   });
 
   it('shows the API error when report generation fails', async () => {

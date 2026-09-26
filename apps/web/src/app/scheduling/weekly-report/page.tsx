@@ -205,7 +205,7 @@ export default function WeeklyReportPage() {
 
             <Button
               onClick={generateWeeklyReport}
-              disabled={isGenerating}
+              disabled={isGenerating || !isWeekStartValid}
               className="w-full"
             >
               {isGenerating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

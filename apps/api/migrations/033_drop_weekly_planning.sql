@@ -5,6 +5,8 @@
 -- the weekly plan solver. Weekly work reports read work logs and are unaffected.
 -- Stored weekly plans and recurring tasks are deleted; back up both tables
 -- first to keep them.
+-- Apply only after deploying the API that no longer serves weekly plans: the
+-- previous API reads weekly_schedules on every task workspace request.
 
 DROP TABLE IF EXISTS public.weekly_schedules;
 DROP TABLE IF EXISTS public.weekly_recurring_tasks;
