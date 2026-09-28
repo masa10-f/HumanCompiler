@@ -2,6 +2,7 @@
 
 import { useAuth } from '@/hooks/use-auth';
 import { useRunner } from '@/hooks/use-runner';
+import { toast } from '@/hooks/use-toast';
 import { useReschedule } from '@/hooks/use-reschedule';
 import { AppHeader } from '@/components/layout/app-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,6 +29,16 @@ import type { RescheduleSuggestion } from '@/types/reschedule';
 import type { TaskWorkspaceItem } from '@/types/task';
 import { goalsApi, projectsApi, tasksApi } from '@/lib/api';
 import { consumeRunnerTaskId } from '@/lib/runner/route-task-id';
+import { getStartableAssignments } from '@/lib/runner/schedule-candidates';
+
+function reportStartFailure(error: unknown) {
+  toast({
+    title: 'セッションを開始できませんでした',
+    description:
+      error instanceof Error ? error.message : '不明なエラーが発生しました',
+    variant: 'destructive',
+  });
+}
 
 export function RunnerPage() {
   const { user, loading: authLoading } = useAuth();
@@ -60,6 +71,7 @@ export function RunnerPage() {
   } = useRunner();
 
   const [startDialogOpen, setStartDialogOpen] = useState(false);
+  const [scheduledTaskId, setScheduledTaskId] = useState<string | null>(null);
   const [manualTaskDialogOpen, setManualTaskDialogOpen] = useState(false);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [switchTarget, setSwitchTarget] = useState<TaskWorkspaceItem | null>(null);
@@ -164,8 +176,9 @@ export function RunnerPage() {
     );
   }
 
-  // No schedule warning
-  const hasSchedule = (todaySchedule?.plan_json?.assignments?.length ?? 0) > 0;
+  // Today's schedule entries that can start a session
+  const scheduledTasks = getStartableAssignments(todaySchedule?.plan_json?.assignments);
+  const hasSchedule = scheduledTasks.length > 0;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -296,7 +309,10 @@ export function RunnerPage() {
                 {/* Action buttons for starting session */}
                 <div className="flex gap-3">
                   <Button
-                    onClick={() => setStartDialogOpen(true)}
+                    onClick={() => {
+                      setScheduledTaskId(null);
+                      setStartDialogOpen(true);
+                    }}
                     disabled={!hasSchedule}
                     className="flex-1"
                     variant="default"
@@ -321,7 +337,10 @@ export function RunnerPage() {
                     </p>
                     <TaskSwitcher
                       candidates={nextCandidates}
-                      onSelect={() => setStartDialogOpen(true)}
+                      onSelect={(taskId) => {
+                        setScheduledTaskId(taskId);
+                        setStartDialogOpen(true);
+                      }}
                       isSelectionMode
                     />
                   </>
@@ -338,15 +357,22 @@ export function RunnerPage() {
         {/* Dialogs */}
         <StartSessionDialog
           open={startDialogOpen}
-          onOpenChange={setStartDialogOpen}
-          candidates={todaySchedule?.plan_json?.assignments ?? []}
+          onOpenChange={(open) => {
+            setStartDialogOpen(open);
+            if (!open) setScheduledTaskId(null);
+          }}
+          candidates={scheduledTasks}
+          initialTaskId={scheduledTaskId}
           isStarting={isStarting}
           onStart={async (taskId, plannedCheckoutAt, plannedOutcome) => {
             try {
               await startSession(taskId, plannedCheckoutAt, plannedOutcome, false);
               setStartDialogOpen(false);
+              setScheduledTaskId(null);
             } catch (error) {
               console.error('Start session failed:', error);
+              reportStartFailure(error);
+              throw error;
             }
           }}
         />
@@ -366,6 +392,8 @@ export function RunnerPage() {
               setInitialTaskId(null);
             } catch (error) {
               console.error('Start session failed:', error);
+              reportStartFailure(error);
+              throw error;
             }
           }}
         />

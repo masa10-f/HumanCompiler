@@ -122,12 +122,17 @@ export function ManualTaskSelectDialog({
 
   const handleStart = async () => {
     if (!selectedTaskId) return;
-    await onStart(
-      selectedTaskId,
-      calculateCheckoutTime(),
-      plannedOutcome || undefined,
-      true // is_manual_execution = true
-    );
+    try {
+      await onStart(
+        selectedTaskId,
+        calculateCheckoutTime(),
+        plannedOutcome || undefined,
+        true // is_manual_execution = true
+      );
+    } catch {
+      // Keep the dialog open so the user can retry; the caller reports the error
+      return;
+    }
     handleClose();
   };
 
