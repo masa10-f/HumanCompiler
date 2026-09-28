@@ -6,7 +6,13 @@
 """Plain-text extraction for context notes used as AI prompt context."""
 
 import re
+from collections.abc import Sequence
 from html.parser import HTMLParser
+from uuid import UUID
+
+from sqlmodel import Session, and_, col, or_, select
+
+from humancompiler_api.models import ContextNote
 
 _HTML_START_PATTERN = re.compile(
     r"^\s*<(p|h[1-6]|ul|ol|li|div|pre|blockquote|table)\b", re.IGNORECASE
@@ -136,3 +142,47 @@ def truncate_text(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[:limit].rstrip() + "…（以下省略）"
+
+
+def load_note_texts(
+    session: Session,
+    owner_id: UUID,
+    *,
+    project_ids: Sequence[UUID] = (),
+    goal_ids: Sequence[UUID] = (),
+    task_ids: Sequence[UUID] = (),
+) -> tuple[dict[UUID, str], dict[UUID, str], dict[UUID, str]]:
+    """Load non-empty note texts for projects, goals, and tasks in one query.
+
+    Returns ``(project_notes, goal_notes, task_notes)`` keyed by entity ID.
+    """
+    conditions = []
+    if project_ids:
+        conditions.append(col(ContextNote.project_id).in_(project_ids))
+    if goal_ids:
+        conditions.append(col(ContextNote.goal_id).in_(goal_ids))
+    if task_ids:
+        conditions.append(col(ContextNote.task_id).in_(task_ids))
+    if not conditions:
+        return {}, {}, {}
+
+    notes = session.exec(
+        select(ContextNote).where(
+            and_(ContextNote.user_id == owner_id, or_(*conditions))
+        )
+    ).all()
+
+    project_notes: dict[UUID, str] = {}
+    goal_notes: dict[UUID, str] = {}
+    task_notes: dict[UUID, str] = {}
+    for note in notes:
+        text = note_to_plain_text(note.content, note.content_type)
+        if not text:
+            continue
+        if note.project_id:
+            project_notes[note.project_id] = text
+        elif note.goal_id:
+            goal_notes[note.goal_id] = text
+        elif note.task_id:
+            task_notes[note.task_id] = text
+    return project_notes, goal_notes, task_notes

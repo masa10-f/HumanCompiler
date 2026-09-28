@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { FileText } from 'lucide-react'
 import { ProjectStatusDropdown } from './project-status-dropdown'
+import { ContextExportDialog } from '@/components/context-export/context-export-dialog'
 import { Button } from '@/components/ui/button'
 import type { Project } from '@/types/project'
 
@@ -22,6 +23,7 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
               Notes
             </Link>
           </Button>
+          <ContextExportDialog scope="project" targetId={project.id} />
           <ProjectStatusDropdown project={project} />
         </div>
       </div>
