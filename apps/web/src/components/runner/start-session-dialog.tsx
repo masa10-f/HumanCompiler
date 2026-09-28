@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -24,6 +24,7 @@ interface StartSessionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   candidates: Assignment[];
+  initialTaskId?: string | null;
   isStarting: boolean;
   onStart: (
     taskId: string,
@@ -36,12 +37,20 @@ export function StartSessionDialog({
   open,
   onOpenChange,
   candidates,
+  initialTaskId,
   isStarting,
   onStart,
 }: StartSessionDialogProps) {
   const [selectedTaskId, setSelectedTaskId] = useState<string>('');
   const [duration, setDuration] = useState<number>(60); // minutes
   const [plannedOutcome, setPlannedOutcome] = useState('');
+
+  // Preselect the task chosen from today's list
+  useEffect(() => {
+    if (open && initialTaskId) {
+      setSelectedTaskId(initialTaskId);
+    }
+  }, [initialTaskId, open]);
 
   // Get selected task info
   const selectedTask = candidates.find((c) => c.task_id === selectedTaskId);
@@ -55,11 +64,16 @@ export function StartSessionDialog({
 
   const handleStart = async () => {
     if (!selectedTaskId) return;
-    await onStart(
-      selectedTaskId,
-      calculateCheckoutTime(),
-      plannedOutcome || undefined
-    );
+    try {
+      await onStart(
+        selectedTaskId,
+        calculateCheckoutTime(),
+        plannedOutcome || undefined
+      );
+    } catch {
+      // Keep the form so the user can retry; the caller reports the error
+      return;
+    }
     // Reset form
     setSelectedTaskId('');
     setDuration(60);
