@@ -439,6 +439,41 @@ def test_work_sessions_and_daily_plans_can_be_turned_off(
     assert "#### ノート\n\n設計方針: 小さく始める" in markdown
 
 
+def test_free_text_in_entries_cannot_break_later_sections(
+    test_session: Session, workspace: Workspace
+):
+    test_session.add_all(
+        [
+            _session(
+                workspace.owner,
+                workspace.task,
+                datetime(2026, 9, 20, 1, 0, tzinfo=UTC),
+                30,
+                kpt_problem="ログ:\n```\nTraceback",
+            ),
+            DailyPlanDocument(
+                user_id=workspace.owner.id,
+                date=date(2026, 9, 25),
+                document_json={
+                    "blocks": [
+                        _timed_line(
+                            "a", workspace.task, "調査", note="要点\n# 結論\n~~~\nraw"
+                        )
+                    ]
+                },
+            ),
+        ]
+    )
+    test_session.commit()
+
+    _, markdown = _export_project(test_session, workspace)
+
+    assert "  - Problem: ログ:\n    ```\n    Traceback\n    ```\n" in markdown
+    assert "  - メモ: 要点\n    ##### 結論\n    ~~~\n    raw\n    ~~~\n" in markdown
+    assert markdown.count("```") % 2 == 0
+    assert markdown.count("~~~") % 2 == 0
+
+
 def test_goal_export_includes_project_background_and_only_that_goal(
     test_session: Session, workspace: Workspace
 ):

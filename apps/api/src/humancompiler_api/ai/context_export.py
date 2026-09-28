@@ -566,7 +566,7 @@ def _render_work_session(work_session: WorkSession) -> str:
         ("中断メモ", work_session.interruption_note),
     ):
         if value and value.strip():
-            lines.append(_bullet(f"{label}: {value.strip()}", indent=1))
+            lines.append(_bullet(f"{label}: {_entry_text(value)}", indent=1))
     disposition = _label(SWITCH_DISPOSITION_LABELS, work_session.switch_disposition)
     if disposition:
         lines.append(_bullet(f"切替時の扱い: {disposition}", indent=1))
@@ -597,8 +597,17 @@ def _render_daily_plan_block(plan_date: date, block: Mapping[str, Any]) -> str |
     lines = [_bullet(head.rstrip())]
     note = block.get("note")
     if isinstance(note, str) and note.strip():
-        lines.append(_bullet(f"メモ: {note.strip()}", indent=1))
+        lines.append(_bullet(f"メモ: {_entry_text(note)}", indent=1))
     return "\n".join(lines)
+
+
+def _entry_text(text: str) -> str:
+    """Normalize free text shown inside a work session or daily plan entry.
+
+    Entries sit under a level-4 section heading, so headings in the text are
+    pushed below it and an unclosed code fence is closed, as for notes.
+    """
+    return demote_headings(text.strip(), 4)
 
 
 def _session_minutes(work_session: WorkSession) -> int:
