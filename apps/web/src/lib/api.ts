@@ -111,6 +111,7 @@ import type {
 } from "@/types/daily-plan";
 
 export const DEFAULT_TASK_PAGE_LIMIT = 100;
+const AI_DRAFT_REQUEST_TIMEOUT_MS = 30000;
 
 /**
  * Builds the query string for a context export request.
@@ -126,7 +127,6 @@ export function buildContextExportQuery(options: ContextExportOptions): string {
   }
   return params.toString();
 }
-const AI_DRAFT_REQUEST_TIMEOUT_MS = 30000;
 
 type RawTask = Omit<Task, "estimate_hours"> & {
   estimate_hours: number | string | null | undefined;
@@ -1465,7 +1465,7 @@ class ApiClient {
   ): Promise<ContextExportResponse> {
     const collection = scope === "project" ? "projects" : "goals";
     return this.request<ContextExportResponse>(
-      `/api/context-export/${collection}/${id}?${buildContextExportQuery(options)}`,
+      `/api/context-export/${collection}/${encodeURIComponent(id)}?${buildContextExportQuery(options)}`,
     );
   }
 

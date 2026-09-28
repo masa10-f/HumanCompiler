@@ -505,6 +505,12 @@ def test_exports_are_scoped_to_the_owner(test_session: Session, workspace: Works
         ("```\n# comment\n```\n# Title", 1, "```\n# comment\n```\n## Title"),
         ("~~~\n# a\n```\n# b\n~~~\n# c", 1, "~~~\n# a\n```\n# b\n~~~\n## c"),
         ("#hashtag and # not heading", 2, "#hashtag and # not heading"),
+        # A fence closes only on the same marker, at least as long, with no info.
+        ("````\n```\n# x\n````\n# y", 1, "````\n```\n# x\n````\n## y"),
+        ("```\n# a\n```py\n# b\n```\n# c", 1, "```\n# a\n```py\n# b\n```\n## c"),
+        # An unclosed fence is closed so it cannot swallow later sections.
+        ("intro\n```py\n# x", 2, "intro\n```py\n# x\n```"),
+        ("~~~~\n# x", 0, "~~~~\n# x\n~~~~"),
         ("# unchanged", 0, "# unchanged"),
     ],
 )

@@ -76,7 +76,7 @@ _STATUS_ORDER = {"in_progress": 0, "pending": 1, "completed": 2, "cancelled": 3}
 _CLOSED_STATUSES = {"completed", "cancelled"}
 
 _ATX_HEADING = re.compile(r"^( {0,3})(#{1,6})(?=\s|$)")
-_CODE_FENCE = re.compile(r"^ {0,3}(```|~~~)")
+_CODE_FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 _UNSAFE_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
 _MAX_FILENAME_BASE_LENGTH = 80
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
@@ -117,26 +117,29 @@ def demote_headings(text: str, levels: int) -> str:
     """Push ATX headings down ``levels`` levels (capped at 6).
 
     Notes are rendered under an entity heading, so their own headings must
-    nest below it. Lines inside fenced code blocks are left untouched.
+    nest below it. Lines inside fenced code blocks are left untouched, and a
+    fence left open is closed so it cannot swallow the rest of the export.
     """
-    if levels <= 0:
-        return text
     lines = []
     fence: str | None = None
     for line in text.splitlines():
         fence_match = _CODE_FENCE.match(line)
         if fence_match:
-            marker = fence_match.group(1)
+            marker, rest = fence_match.groups()
             if fence is None:
                 fence = marker
-            elif marker == fence:
+            elif (
+                marker[0] == fence[0] and len(marker) >= len(fence) and not rest.strip()
+            ):
                 fence = None
-        elif fence is None:
+        elif fence is None and levels > 0:
             heading = _ATX_HEADING.match(line)
             if heading:
                 depth = min(len(heading.group(2)) + levels, 6)
                 line = heading.group(1) + "#" * depth + line[heading.end() :]
         lines.append(line)
+    if fence is not None:
+        lines.append(fence)
     return "\n".join(lines)
 
 
