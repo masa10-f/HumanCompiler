@@ -33,6 +33,13 @@ _BLOCK_TAGS = {
 }
 _LIST_TAGS = {"ul", "ol"}
 _SKIPPED_TAGS = {"script", "style"}
+_BACKTICK_RUN = re.compile(r"`+")
+
+
+def _code_fence_for(code: str) -> str:
+    """Return a backtick fence longer than any backtick run inside ``code``."""
+    longest = max((len(run) for run in _BACKTICK_RUN.findall(code)), default=0)
+    return "`" * max(3, longest + 1)
 
 
 class _NoteHTMLTextExtractor(HTMLParser):
@@ -113,7 +120,13 @@ class _NoteHTMLTextExtractor(HTMLParser):
             text = " ".join(raw_text.split())
         if not text:
             return
-        self._lines.append(f"{self._prefix}{text}")
+        if self._pre_depth:
+            # Keep code blocks fenced so their lines (e.g. "# comment") are
+            # not mistaken for Markdown headings or list items.
+            fence = _code_fence_for(text)
+            self._lines.extend([fence, text, fence])
+        else:
+            self._lines.append(f"{self._prefix}{text}")
         self._prefix = ""
 
     def get_text(self) -> str:

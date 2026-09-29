@@ -23,6 +23,7 @@ from humancompiler_api.ai.context_export import (
     build_project_context_export,
     demote_headings,
 )
+from humancompiler_api.ai.note_text import note_to_plain_text
 from humancompiler_api.auth import AuthUser, get_current_user
 from humancompiler_api.common.error_handlers import ResourceNotFoundError
 from humancompiler_api.database import get_session
@@ -543,6 +544,9 @@ def test_exports_are_scoped_to_the_owner(test_session: Session, workspace: Works
         # A fence closes only on the same marker, at least as long, with no info.
         ("````\n```\n# x\n````\n# y", 1, "````\n```\n# x\n````\n## y"),
         ("```\n# a\n```py\n# b\n```\n# c", 1, "```\n# a\n```py\n# b\n```\n## c"),
+        # A backtick in a backtick fence's info string makes it plain text.
+        ("```lang`x\n# H", 1, "```lang`x\n## H"),
+        ("~~~ a`b\n# x", 1, "~~~ a`b\n# x\n~~~"),
         # An unclosed fence is closed so it cannot swallow later sections.
         ("intro\n```py\n# x", 2, "intro\n```py\n# x\n```"),
         ("~~~~\n# x", 0, "~~~~\n# x\n~~~~"),
@@ -560,10 +564,24 @@ def test_demote_headings(text: str, levels: int, expected: str):
         ("  週次 レビュー  ", "週次_レビュー_context_20260928.md"),
         ("...", "export_context_20260928.md"),
         ("x" * 200, "x" * 80 + "_context_20260928.md"),
+        # Multi-byte titles are cut to fit the 255-byte filename limit.
+        ("あ" * 100, "あ" * 78 + "_context_20260928.md"),
+        ("😀" * 100, "😀" * 58 + "_context_20260928.md"),
     ],
 )
 def test_build_export_filename(title: str, expected: str):
-    assert build_export_filename(title, date(2026, 9, 28)) == expected
+    filename = build_export_filename(title, date(2026, 9, 28))
+
+    assert filename == expected
+    assert len(filename.encode()) <= 255
+
+
+def test_note_code_blocks_keep_heading_like_lines():
+    html = '<p>手順</p><pre><code class="language-python"># setup\nx = 1</code></pre>'
+
+    text = demote_headings(note_to_plain_text(html, "html"), 4)
+
+    assert text == "手順\n```\n# setup\nx = 1\n```"
 
 
 def _client_for(session: Session, user: User) -> TestClient:

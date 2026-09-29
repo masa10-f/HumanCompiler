@@ -517,6 +517,17 @@ class TestNoteText:
 
         assert note_to_plain_text(html, "html") == "- 親\n  - 子\n一行目\n二行目"
 
+    def test_fences_code_blocks(self):
+        from humancompiler_api.ai.note_text import note_to_plain_text
+
+        html = (
+            "<p>例</p><pre><code>- item\nprint(&quot;```&quot;)</code></pre><p>後</p>"
+        )
+
+        assert note_to_plain_text(html, "html") == (
+            '例\n````\n- item\nprint("```")\n````\n後'
+        )
+
     def test_detects_html_saved_with_markdown_type(self):
         from humancompiler_api.ai.note_text import note_to_plain_text
 

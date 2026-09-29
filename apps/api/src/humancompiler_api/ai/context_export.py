@@ -79,6 +79,8 @@ _ATX_HEADING = re.compile(r"^( {0,3})(#{1,6})(?=\s|$)")
 _CODE_FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 _UNSAFE_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
 _MAX_FILENAME_BASE_LENGTH = 80
+# Most filesystems cap a filename at 255 bytes.
+_MAX_FILENAME_BYTES = 255
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
@@ -124,15 +126,22 @@ def demote_headings(text: str, levels: int) -> str:
     fence: str | None = None
     for line in text.splitlines():
         fence_match = _CODE_FENCE.match(line)
-        if fence_match:
-            marker, rest = fence_match.groups()
-            if fence is None:
+        if fence is not None:
+            if fence_match:
+                marker, rest = fence_match.groups()
+                if (
+                    marker[0] == fence[0]
+                    and len(marker) >= len(fence)
+                    and not rest.strip()
+                ):
+                    fence = None
+        elif fence_match:
+            marker, info = fence_match.groups()
+            # A backtick fence's info string cannot contain backticks, so
+            # such a line is plain text rather than an opening fence.
+            if marker[0] == "~" or "`" not in info:
                 fence = marker
-            elif (
-                marker[0] == fence[0] and len(marker) >= len(fence) and not rest.strip()
-            ):
-                fence = None
-        elif fence is None and levels > 0:
+        elif levels > 0:
             heading = _ATX_HEADING.match(line)
             if heading:
                 depth = min(len(heading.group(2)) + levels, 6)
@@ -145,10 +154,15 @@ def demote_headings(text: str, levels: int) -> str:
 
 def build_export_filename(title: str, day: date) -> str:
     """Build a filesystem-safe Markdown filename for an export."""
+    suffix = f"_context_{day:%Y%m%d}.md"
     base = _UNSAFE_FILENAME_CHARS.sub("_", title)
     base = re.sub(r"[\s_]+", "_", base).strip("._")
-    base = base[:_MAX_FILENAME_BASE_LENGTH].rstrip("._")
-    return f"{base or 'export'}_context_{day:%Y%m%d}.md"
+    base = base[:_MAX_FILENAME_BASE_LENGTH]
+    # Multi-byte titles can pass the byte limit well before the character
+    # limit; truncating the UTF-8 bytes this way never splits a character.
+    max_base_bytes = _MAX_FILENAME_BYTES - len(suffix.encode())
+    base = base.encode()[:max_base_bytes].decode("utf-8", "ignore").rstrip("._")
+    return f"{base or 'export'}{suffix}"
 
 
 def build_project_context_export(
