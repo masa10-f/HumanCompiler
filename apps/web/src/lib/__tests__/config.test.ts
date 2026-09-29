@@ -77,9 +77,9 @@ describe('Configuration Management', () => {
       expect(getFallbackApiEndpoint()).toBe(appConfig.api.endpoints.production);
     });
 
-    it('should return production API as fallback for other domains', () => {
+    it('should not fall back to production for preview domains', () => {
       mockWindow('some-preview.vercel.app');
-      expect(getFallbackApiEndpoint()).toBe(appConfig.api.endpoints.production);
+      expect(getFallbackApiEndpoint()).toBe('');
     });
   });
 

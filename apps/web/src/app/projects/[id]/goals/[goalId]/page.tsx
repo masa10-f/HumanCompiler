@@ -17,6 +17,7 @@ import { TaskFormDialog } from '@/components/tasks/task-form-dialog';
 import { GoalTaskList } from '@/components/tasks/goal-task-list';
 import { ContextNotePanel } from '@/components/notes/context-note-panel';
 import { GoalTaskAssistantDialog } from '@/components/ai/goal-task-assistant-dialog';
+import { ContextExportDialog } from '@/components/context-export/context-export-dialog';
 import { ArrowLeft, Plus, Clock, FileText, Loader2, AlertCircle, Sparkles, CalendarDays } from 'lucide-react';
 import { SortBy, SortOrder } from '@/types/sort';
 import type { SortOptions } from '@/types/sort';
@@ -177,7 +178,12 @@ export default function GoalDetailPage() {
           <span>›</span>
           <span>ゴール</span>
         </div>
-        <h1 className="text-3xl font-bold mb-2">{goal.title}</h1>
+        <div className="mb-2 flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <h1 className="min-w-0 text-3xl font-bold">{goal.title}</h1>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <ContextExportDialog scope="goal" targetId={goalId} />
+          </div>
+        </div>
         <p className="text-gray-600 mb-4">
           {goal.description || 'ゴールの説明がありません'}
         </p>

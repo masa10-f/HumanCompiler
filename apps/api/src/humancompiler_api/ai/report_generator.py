@@ -9,15 +9,14 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from openai import OpenAI
-from sqlmodel import Session, select, and_, or_
+from sqlmodel import Session, select, and_
 from sqlalchemy import case, func
 from sqlalchemy.orm import selectinload
 
-from humancompiler_api.ai.note_text import note_to_plain_text, truncate_text
+from humancompiler_api.ai.note_text import load_note_texts, truncate_text
 from humancompiler_api.openai_models import LIGHTWEIGHT_OPENAI_MODEL
 
 from humancompiler_api.models import (
-    ContextNote,
     Log,
     Task,
     Goal,
@@ -452,36 +451,13 @@ class WeeklyReportGenerator:
         task_ids: list[UUID],
     ) -> tuple[dict[UUID, str], dict[UUID, str], dict[UUID, str]]:
         """Get non-empty note texts for projects, goals, and tasks"""
-        conditions = []
-        if project_ids:
-            conditions.append(ContextNote.project_id.in_(project_ids))  # type: ignore[union-attr]
-        if goal_ids:
-            conditions.append(ContextNote.goal_id.in_(goal_ids))  # type: ignore[union-attr]
-        if task_ids:
-            conditions.append(ContextNote.task_id.in_(task_ids))  # type: ignore[union-attr]
-        if not conditions:
-            return {}, {}, {}
-
-        notes = session.exec(
-            select(ContextNote).where(
-                and_(ContextNote.user_id == owner_id, or_(*conditions))
-            )
-        ).all()
-
-        project_notes: dict[UUID, str] = {}
-        goal_notes: dict[UUID, str] = {}
-        task_notes: dict[UUID, str] = {}
-        for note in notes:
-            text = note_to_plain_text(note.content, note.content_type)
-            if not text:
-                continue
-            if note.project_id:
-                project_notes[note.project_id] = text
-            elif note.goal_id:
-                goal_notes[note.goal_id] = text
-            elif note.task_id:
-                task_notes[note.task_id] = text
-        return project_notes, goal_notes, task_notes
+        return load_note_texts(
+            session,
+            owner_id,
+            project_ids=project_ids,
+            goal_ids=goal_ids,
+            task_ids=task_ids,
+        )
 
     def _task_note_reference(
         self, task: Task, project_key: str

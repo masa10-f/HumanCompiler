@@ -32,6 +32,7 @@ from humancompiler_api.exceptions import (
 )
 from humancompiler_api.routers import (
     ai_planning,
+    context_export,
     daily_plans,
     dashboard,
     data_export,
@@ -328,6 +329,7 @@ app.include_router(notifications.router, prefix="/api")
 app.include_router(websocket.router)
 # Context notes router
 app.include_router(notes.router, prefix="/api")
+app.include_router(context_export.router, prefix="/api")
 # Capacity triage router
 app.include_router(triage.router, prefix="/api")
 

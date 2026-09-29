@@ -122,6 +122,10 @@ export const fetchWithFallback = async (
   const primaryFullUrl = primaryUrl ? `${primaryUrl}${endpoint}` : endpoint;
   const fallbackFullUrl = `${fallbackUrl}${endpoint}`;
 
+  const canFallback = enableFallback && !!fallbackUrl && fallbackFullUrl !== primaryFullUrl;
+  // The last 5xx from the primary, returned as is when there is no fallback.
+  let lastServerErrorResponse: Response | null = null;
+
   safeLog('debug', '🔗 fetchWithFallback starting', {
     endpoint,
     primaryUrl: primaryFullUrl,
@@ -130,8 +134,9 @@ export const fetchWithFallback = async (
     maxRetries
   });
 
-  // Try primary endpoint first (if circuit breaker allows)
-  if (shouldAllowRequest()) {
+  // Try primary endpoint first (if circuit breaker allows). Without a fallback
+  // there is nowhere else to go, so the primary is always tried.
+  if (shouldAllowRequest() || !canFallback) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         safeLog('debug', `🎯 Attempting primary endpoint (${attempt}/${maxRetries})`, primaryFullUrl);
@@ -155,10 +160,17 @@ export const fetchWithFallback = async (
             statusText: response.statusText
           });
 
-          // Don't retry for client errors (4xx)
+          // Don't retry for client errors (4xx). The server answered, so it
+          // is healthy and must not trip the circuit breaker.
           if (response.status >= 400 && response.status < 500) {
-            updateCircuitBreaker(false);
+            updateCircuitBreaker(true);
             return response;
+          }
+          lastServerErrorResponse = response;
+          if (attempt < maxRetries) {
+            const waitTime = retryDelay * Math.pow(2, attempt - 1);
+            safeLog('debug', `⏱️ Waiting ${waitTime}ms before retry after ${response.status}`);
+            await sleep(waitTime);
           }
         }
       } catch (error) {
@@ -188,8 +200,14 @@ export const fetchWithFallback = async (
     safeLog('info', '🚫 Circuit breaker open - skipping primary endpoint');
   }
 
+  // Without a fallback, surface the primary's own server error instead of a
+  // generic network error.
+  if (!canFallback && lastServerErrorResponse) {
+    return lastServerErrorResponse;
+  }
+
   // Try fallback endpoint if enabled and available
-  if (enableFallback && fallbackUrl && fallbackFullUrl !== primaryFullUrl) {
+  if (canFallback) {
     safeLog('info', '🔄 Switching to fallback endpoint', fallbackFullUrl);
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {

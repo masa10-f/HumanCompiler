@@ -67,6 +67,11 @@ import type {
 import type { SortOptions } from "@/types/sort";
 import type { ContextNote, ContextNoteUpdate } from "@/types/context-note";
 import type {
+  ContextExportOptions,
+  ContextExportResponse,
+  ContextExportScope,
+} from "@/types/context-export";
+import type {
   QuickTask,
   QuickTaskCreate,
   QuickTaskUpdate,
@@ -107,6 +112,21 @@ import type {
 
 export const DEFAULT_TASK_PAGE_LIMIT = 100;
 const AI_DRAFT_REQUEST_TIMEOUT_MS = 30000;
+
+/**
+ * Builds the query string for a context export request.
+ */
+export function buildContextExportQuery(options: ContextExportOptions): string {
+  const params = new URLSearchParams({
+    include_completed: String(options.includeCompleted),
+    include_work_sessions: String(options.includeWorkSessions),
+    include_daily_plans: String(options.includeDailyPlans),
+  });
+  if (options.periodDays !== null) {
+    params.set("period_days", String(options.periodDays));
+  }
+  return params.toString();
+}
 
 type RawTask = Omit<Task, "estimate_hours"> & {
   estimate_hours: number | string | null | undefined;
@@ -1427,6 +1447,28 @@ class ApiClient {
     });
   }
 
+  // === Context Export API methods ===
+
+  /**
+   * Exports a project's or goal's notes, tasks, and work history as Markdown
+   * that can be handed to an AI assistant as context.
+   *
+   * @param scope - Whether to export a project or a goal
+   * @param id - The project or goal UUID
+   * @param options - What to include in the export
+   * @returns The Markdown document and a suggested filename
+   */
+  async getContextExport(
+    scope: ContextExportScope,
+    id: string,
+    options: ContextExportOptions,
+  ): Promise<ContextExportResponse> {
+    const collection = scope === "project" ? "projects" : "goals";
+    return this.request<ContextExportResponse>(
+      `/api/context-export/${collection}/${encodeURIComponent(id)}?${buildContextExportQuery(options)}`,
+    );
+  }
+
   // === Quick Tasks API methods ===
 
   /**
@@ -1825,6 +1867,18 @@ export const notesApi = {
   getTaskNote: (taskId: string) => apiClient.getTaskNote(taskId),
   updateTaskNote: (taskId: string, data: ContextNoteUpdate) =>
     apiClient.updateTaskNote(taskId, data),
+};
+
+/**
+ * Context Export API convenience wrapper.
+ * Provides Markdown exports of project/goal context for AI assistants.
+ */
+export const contextExportApi = {
+  get: (
+    scope: ContextExportScope,
+    id: string,
+    options: ContextExportOptions,
+  ) => apiClient.getContextExport(scope, id, options),
 };
 
 /**
