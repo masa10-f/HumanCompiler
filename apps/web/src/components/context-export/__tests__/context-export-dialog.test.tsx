@@ -117,7 +117,8 @@ describe('ContextExportDialog', () => {
     expect(click).toHaveBeenCalledTimes(1);
     const blob = (createObjectURL.mock.calls[0] as unknown[])[0] as Blob;
     expect(blob.type).toBe('text/markdown;charset=utf-8');
-    expect(revokeObjectURL).toHaveBeenCalledWith('blob:export');
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+    await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith('blob:export'));
     click.mockRestore();
   });
 

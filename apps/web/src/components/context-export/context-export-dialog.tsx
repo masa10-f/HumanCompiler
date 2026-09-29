@@ -154,7 +154,8 @@ export function ContextExportDialog({ scope, targetId }: ContextExportDialogProp
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    // Revoking synchronously can cancel the download in some browsers.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
     toast({ title: 'ダウンロードを開始しました', description: result.filename });
   };
 
