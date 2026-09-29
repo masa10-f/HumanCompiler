@@ -106,12 +106,14 @@ export const getFallbackApiEndpoint = (): string => {
     const hostname = window.location.hostname;
 
     // For production, fallback to direct API access
-    if (hostname === 'human-compiler.vercel.app') {
+    if (hostname === 'human-compiler.vercel.app' || hostname === 'human-compiler.rityo-lab.com') {
       return appConfig.api.endpoints.production;
     }
 
-    // For preview/development, fallback to production
-    return appConfig.api.endpoints.production;
+    // Preview and local builds never fall back: their API may be a different
+    // version than production (e.g. a PR's new endpoints), and silently using
+    // production would hide the real error.
+    return '';
   }
 
   return appConfig.api.endpoints.production;
