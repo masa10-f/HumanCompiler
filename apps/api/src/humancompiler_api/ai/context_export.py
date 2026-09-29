@@ -18,8 +18,8 @@ from typing import Any, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func
-from sqlmodel import Session, col, select
+from sqlalchemy import Text, cast, func
+from sqlmodel import Session, col, or_, select
 
 from humancompiler_api.ai.note_text import load_note_texts
 from humancompiler_api.ai.report_generator import TASK_STATUS_LABELS
@@ -360,9 +360,15 @@ class _ContextExportBuilder:
         if not task_ids:
             return {}
         wanted = {str(task_id).lower(): task_id for task_id in task_ids}
+        # Only fetch documents whose JSON mentions one of the task IDs; the
+        # lenient scan below still decides which blocks actually match.
+        document_text = cast(DailyPlanDocument.document_json, Text)
         statement = select(
             DailyPlanDocument.date, DailyPlanDocument.document_json
-        ).where(DailyPlanDocument.user_id == self.owner_id)
+        ).where(
+            DailyPlanDocument.user_id == self.owner_id,
+            or_(*(document_text.ilike(f"%{task_id}%") for task_id in wanted)),
+        )
         if self.since:
             statement = statement.where(
                 col(DailyPlanDocument.date) >= self.since.astimezone(JST).date()

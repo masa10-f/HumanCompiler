@@ -277,7 +277,15 @@ def workspace(test_session: Session) -> Workspace:
             DailyPlanDocument(
                 user_id=owner.id,
                 date=date(2026, 6, 20),
-                document_json={"blocks": [_timed_line("a", task, "古い予定")]},
+                # Task IDs match case-insensitively.
+                document_json={
+                    "blocks": [
+                        {
+                            **_timed_line("a", task, "古い予定"),
+                            "task_ref": {"source": "task", "id": str(task.id).upper()},
+                        }
+                    ]
+                },
             ),
             DailyPlanDocument(
                 user_id=owner.id,
