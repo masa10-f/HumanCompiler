@@ -167,6 +167,11 @@ export const fetchWithFallback = async (
             return response;
           }
           lastServerErrorResponse = response;
+          if (attempt < maxRetries) {
+            const waitTime = retryDelay * Math.pow(2, attempt - 1);
+            safeLog('debug', `⏱️ Waiting ${waitTime}ms before retry after ${response.status}`);
+            await sleep(waitTime);
+          }
         }
       } catch (error) {
         const isLastAttempt = attempt === maxRetries;

@@ -50,6 +50,28 @@ describe('fetchWithFallback', () => {
     }
   })
 
+  it('backs off between retries after a server error', async () => {
+    jest.useFakeTimers()
+    try {
+      mockFetch.mockResolvedValue(reply(500))
+
+      const pending = fetchWithFallback('/api/items', { retryDelay: 1000 })
+
+      await jest.advanceTimersByTimeAsync(0)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      await jest.advanceTimersByTimeAsync(999)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      await jest.advanceTimersByTimeAsync(1)
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+      await jest.advanceTimersByTimeAsync(2000)
+      expect(mockFetch).toHaveBeenCalledTimes(3)
+      // No wait after the last attempt.
+      expect((await pending).status).toBe(500)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
   it('does not open the circuit breaker on client errors', async () => {
     mockFetch.mockResolvedValue(reply(404))
 
