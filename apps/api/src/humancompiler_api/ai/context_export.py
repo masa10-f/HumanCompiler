@@ -18,7 +18,7 @@ from typing import Any, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Text, cast, func
+from sqlalchemy import ColumnElement, Text, cast, func
 from sqlmodel import Session, col, or_, select
 
 from humancompiler_api.ai.note_text import load_note_texts
@@ -82,6 +82,7 @@ _MAX_FILENAME_BASE_LENGTH = 80
 # Most filesystems cap a filename at 255 bytes.
 _MAX_FILENAME_BYTES = 255
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+_TASK_ID_REGEX_CHUNK = 100
 
 
 @dataclass(frozen=True)
@@ -349,6 +350,25 @@ class _ContextExportBuilder:
             sessions.setdefault(work_session.task_id, []).append(work_session)
         return sessions
 
+    def _mentions_any_task(self, task_ids: Sequence[str]) -> ColumnElement[bool]:
+        """Match daily plan documents whose JSON text mentions a task ID.
+
+        This only narrows what is fetched; the lenient scan in
+        ``_load_daily_plan_entries`` still decides which blocks match.
+        """
+        document_text = cast(DailyPlanDocument.document_json, Text)
+        if self.session.get_bind().dialect.name == "postgresql":
+            # One case-insensitive regex per chunk scans each document once
+            # per chunk instead of once per task. UUIDs contain no regex
+            # metacharacters, and chunking keeps each pattern well below
+            # Postgres' regex size limits.
+            chunks = [
+                task_ids[i : i + _TASK_ID_REGEX_CHUNK]
+                for i in range(0, len(task_ids), _TASK_ID_REGEX_CHUNK)
+            ]
+            return or_(*(document_text.op("~*")("|".join(chunk)) for chunk in chunks))
+        return or_(*(document_text.ilike(f"%{task_id}%") for task_id in task_ids))
+
     def _load_daily_plan_entries(
         self, task_ids: Sequence[UUID]
     ) -> dict[UUID, list[str]]:
@@ -360,14 +380,11 @@ class _ContextExportBuilder:
         if not task_ids:
             return {}
         wanted = {str(task_id).lower(): task_id for task_id in task_ids}
-        # Only fetch documents whose JSON mentions one of the task IDs; the
-        # lenient scan below still decides which blocks actually match.
-        document_text = cast(DailyPlanDocument.document_json, Text)
         statement = select(
             DailyPlanDocument.date, DailyPlanDocument.document_json
         ).where(
             DailyPlanDocument.user_id == self.owner_id,
-            or_(*(document_text.ilike(f"%{task_id}%") for task_id in wanted)),
+            self._mentions_any_task(list(wanted)),
         )
         if self.since:
             statement = statement.where(

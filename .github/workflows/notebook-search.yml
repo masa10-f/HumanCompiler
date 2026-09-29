@@ -7,6 +7,8 @@ on:
       - 'apps/api/migrations/029*'
       - 'apps/api/migrations/030*'
       - 'apps/api/tests/test_daily_plan_search_postgres.py'
+      - 'apps/api/src/humancompiler_api/ai/context_export.py'
+      - 'apps/api/tests/test_context_export_postgres.py'
       - '.github/workflows/notebook-search.yml'
 
 permissions:
@@ -45,3 +47,8 @@ jobs:
         env:
           NOTEBOOK_TEST_POSTGRES_URL: postgresql://notebook_test:notebook_test@localhost:5432/notebook_test
         run: uv run pytest -q tests/test_daily_plan_search_postgres.py
+      - name: Check the context export's daily plan filter
+        working-directory: apps/api
+        env:
+          NOTEBOOK_TEST_POSTGRES_URL: postgresql://notebook_test:notebook_test@localhost:5432/notebook_test
+        run: uv run pytest -q tests/test_context_export_postgres.py
