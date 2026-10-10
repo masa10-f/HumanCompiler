@@ -7,13 +7,14 @@
 import type { Goal } from '@/types/goal'
 import type { Project } from '@/types/project'
 
-export type WorkStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled'
+export type WorkStatus = 'pending' | 'in_progress' | 'paused' | 'completed' | 'cancelled'
 
 /**
  * Display groups ordered by how actionable they are: what is being worked on
- * now, what comes next, then everything that is already closed.
+ * now, what comes next, what is on hold, then everything that is already
+ * closed. Only projects can be paused.
  */
-export type StatusGroupKey = 'in_progress' | 'pending' | 'closed'
+export type StatusGroupKey = 'in_progress' | 'pending' | 'paused' | 'closed'
 
 export interface StatusGroup<T> {
   key: StatusGroupKey
@@ -30,6 +31,7 @@ const STATUS_GROUP_DEFINITIONS: {
 }[] = [
   { key: 'in_progress', label: '進行中', statuses: ['in_progress'] },
   { key: 'pending', label: '未着手', statuses: ['pending'] },
+  { key: 'paused', label: '一時停止', statuses: ['paused'] },
   { key: 'closed', label: '完了・キャンセル', statuses: ['completed', 'cancelled'] },
 ]
 
@@ -72,21 +74,26 @@ function chain<T>(...comparators: Comparator<T>[]): Comparator<T> {
 }
 
 /**
- * Split items into the in-progress / pending / closed groups, sorting each
- * group with its own comparator. Empty groups are kept so callers can decide
- * whether to render them.
+ * Split items into the in-progress / pending / paused / closed groups, sorting
+ * each group with its own comparator. Only groups given a comparator are
+ * returned, so goals (which cannot be paused) get no paused group. Empty
+ * groups are kept so callers can decide whether to render them.
  */
 export function groupByWorkStatus<T extends { status: WorkStatus }>(
   items: T[],
-  comparators: Record<StatusGroupKey, Comparator<T>>,
+  comparators: Partial<Record<StatusGroupKey, Comparator<T>>>,
 ): StatusGroup<T>[] {
-  return STATUS_GROUP_DEFINITIONS.map(({ key, label, statuses }) => ({
-    key,
-    label,
-    items: items
-      .filter((item) => statuses.includes(item.status))
-      .sort(comparators[key]),
-  }))
+  return STATUS_GROUP_DEFINITIONS.flatMap(({ key, label, statuses }) => {
+    const compare = comparators[key]
+    if (!compare) return []
+    return [
+      {
+        key,
+        label,
+        items: items.filter((item) => statuses.includes(item.status)).sort(compare),
+      },
+    ]
+  })
 }
 
 const byUpdatedDesc = byDateDesc<{ updated_at: string }>((item) => item.updated_at)
@@ -95,6 +102,8 @@ const PROJECT_GROUP_COMPARATORS: Record<StatusGroupKey, Comparator<Project>> = {
   // Recently touched projects are the ones the user is most likely returning to.
   in_progress: byUpdatedDesc,
   pending: byDateDesc((project) => project.created_at),
+  // Recently touched first, like in-progress projects.
+  paused: byUpdatedDesc,
   // Most recently finished first.
   closed: byUpdatedDesc,
 }

@@ -20,8 +20,9 @@ const PROJECT_OPTIONS_LIMIT = 100
 const PROJECT_STATUS_PRIORITY: Record<Project['status'], number> = {
   in_progress: 1,
   pending: 2,
-  completed: 3,
-  cancelled: 4,
+  paused: 3,
+  completed: 4,
+  cancelled: 5,
 }
 const PROJECT_STALE_TIME = 30 * 60 * 1000
 const PROJECT_DETAIL_STALE_TIME = 5 * 60 * 1000

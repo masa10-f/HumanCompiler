@@ -58,6 +58,7 @@ class ProjectStatus(StrEnum):
 
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
+    PAUSED = "paused"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
@@ -241,10 +242,16 @@ ALLOWED_SORT_FIELDS = {
 
 # Status priority configurations for consistent sorting.
 # Ascending order puts active work first: in progress, then not started,
-# then closed items.
+# then paused projects, then closed items.
 STATUS_PRIORITY = {
     "default": {"in_progress": 1, "pending": 2, "completed": 3, "cancelled": 4},
-    "project": {"in_progress": 1, "pending": 2, "completed": 3, "cancelled": 4},
+    "project": {
+        "in_progress": 1,
+        "pending": 2,
+        "paused": 3,
+        "completed": 4,
+        "cancelled": 5,
+    },
     "goal": {"in_progress": 1, "pending": 2, "completed": 3, "cancelled": 4},
     "task": {"in_progress": 1, "pending": 2, "completed": 3, "cancelled": 4},
 }
