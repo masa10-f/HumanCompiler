@@ -17,7 +17,11 @@ const HOOK_PATH = '/api/hooks/quick-tasks';
 const REQUEST_FIELDS = [
   { name: 'title', required: true, description: 'タスク名（1〜200文字）' },
   { name: 'description', required: false, description: '詳細（1000文字まで）' },
-  { name: 'estimate_hours', required: false, description: '見積時間（0より大きい値、デフォルト 0.5）' },
+  {
+    name: 'estimate_hours',
+    required: false,
+    description: '見積時間（0より大きく999.99以下、小数点以下2桁まで。デフォルト 0.5）',
+  },
   {
     name: 'due_date',
     required: false,
@@ -68,7 +72,6 @@ export function HookTokenUsageGuide() {
           variant="ghost"
           size="sm"
           className="flex h-auto w-full items-center justify-start gap-2 p-3 text-left"
-          aria-expanded={isOpen}
         >
           {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           <span className="text-sm font-medium">使用方法</span>
