@@ -1477,14 +1477,14 @@ class ApiClient {
    * @param skip - Pagination offset (default: 0)
    * @param limit - Maximum results (default: 50)
    * @param sortOptions - Sorting configuration
-   * @param status - Optional status filter
+   * @param status - Optional status filter (a list matches any of the statuses)
    * @returns Array of QuickTask objects
    */
   async getQuickTasks(
     skip: number = 0,
     limit: number = 50,
     sortOptions?: SortOptions,
-    status?: TaskStatus,
+    status?: TaskStatus | TaskStatus[],
   ): Promise<QuickTask[]> {
     const params = new URLSearchParams({
       skip: skip.toString(),
@@ -1497,8 +1497,9 @@ class ApiClient {
     if (sortOptions?.sortOrder) {
       params.set("sort_order", sortOptions.sortOrder);
     }
-    if (status) {
-      params.set("status", status);
+    const statuses = Array.isArray(status) ? status : status ? [status] : [];
+    for (const value of statuses) {
+      params.append("status", value);
     }
 
     return this.request<QuickTask[]>(`/api/quick-tasks/?${params.toString()}`);
@@ -1890,7 +1891,7 @@ export const quickTasksApi = {
     skip?: number,
     limit?: number,
     sortOptions?: SortOptions,
-    status?: TaskStatus,
+    status?: TaskStatus | TaskStatus[],
   ) => apiClient.getQuickTasks(skip, limit, sortOptions, status),
   getById: (taskId: string) => apiClient.getQuickTask(taskId),
   create: (taskData: QuickTaskCreate) => apiClient.createQuickTask(taskData),
