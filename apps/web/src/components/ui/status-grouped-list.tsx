@@ -7,7 +7,7 @@
 'use client'
 
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
-import { CheckCircle, ChevronRight, Clock, Play, type LucideIcon } from 'lucide-react'
+import { CheckCircle, ChevronRight, Clock, Pause, Play, type LucideIcon } from 'lucide-react'
 import {
   Collapsible,
   CollapsibleContent,
@@ -19,6 +19,7 @@ import type { StatusGroup, StatusGroupKey } from '@/lib/status-groups'
 const GROUP_ICONS: Record<StatusGroupKey, { icon: LucideIcon; className: string }> = {
   in_progress: { icon: Play, className: 'text-primary' },
   pending: { icon: Clock, className: 'text-muted-foreground' },
+  paused: { icon: Pause, className: 'text-warning' },
   closed: { icon: CheckCircle, className: 'text-success' },
 }
 
@@ -124,9 +125,9 @@ interface StatusGroupedListProps<T extends { id: string }> {
 }
 
 /**
- * Renders items under 進行中 / 未着手 / 完了・キャンセル headings. The closed
- * group is collapsed by default (unless nothing else is left) and remembers
- * the user's choice per list.
+ * Renders items under 進行中 / 未着手 / 一時停止 / 完了・キャンセル headings
+ * (一時停止 only for projects). The closed group is collapsed by default
+ * (unless nothing else is left) and remembers the user's choice per list.
  */
 export function StatusGroupedList<T extends { id: string }>({
   groups,

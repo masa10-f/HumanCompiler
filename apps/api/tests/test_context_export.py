@@ -37,6 +37,7 @@ from humancompiler_api.models import (
     GoalStatus,
     Log,
     Project,
+    ProjectStatus,
     SessionDecision,
     Task,
     TaskStatus,
@@ -413,6 +414,18 @@ def test_project_export_can_omit_completed_and_cancelled_items(
     # Totals still describe the whole project.
     assert "- ゴール: 2件 ／ タスク: 完了 2 / 全 5件" in markdown
     assert "- タスク: 完了 1 / 全 4件" in markdown
+
+
+def test_project_export_labels_paused_status(
+    test_session: Session, workspace: Workspace
+):
+    workspace.project.status = ProjectStatus.PAUSED
+    test_session.add(workspace.project)
+    test_session.commit()
+
+    _, markdown = _export_project(test_session, workspace)
+
+    assert "- ステータス: 一時停止" in markdown
 
 
 def test_period_limits_work_history_but_not_notes(

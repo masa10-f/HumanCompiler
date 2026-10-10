@@ -3,6 +3,8 @@
  * @description タスクの状態管理、作業種別、依存関係などを定義
  */
 
+import type { ProjectStatus } from './project';
+
 /**
  * タスクのステータス
  * @description タスクの進捗状態を表す
@@ -199,7 +201,7 @@ export interface TaskWorkspaceFilters {
   limit?: number;
   status?: TaskStatus[];
   projectId?: string;
-  projectStatus?: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  projectStatus?: ProjectStatus;
   goalId?: string;
   dueBefore?: string;
   dueAfter?: string;

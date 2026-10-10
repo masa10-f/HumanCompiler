@@ -36,7 +36,7 @@ import { useCreateProject } from '@/hooks/use-project-query';
 const projectFormSchema = z.object({
   title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
   description: z.string().max(500, '500文字以内で入力してください').optional(),
-  status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']).default('pending'),
+  status: z.enum(['pending', 'in_progress', 'paused', 'completed', 'cancelled']).default('pending'),
 });
 
 type ProjectFormData = z.infer<typeof projectFormSchema>;
@@ -138,6 +138,7 @@ export function ProjectFormDialog({ children }: ProjectFormDialogProps) {
                     <SelectContent>
                       <SelectItem value="pending">未開始</SelectItem>
                       <SelectItem value="in_progress">進行中</SelectItem>
+                      <SelectItem value="paused">一時停止</SelectItem>
                       <SelectItem value="completed">完了</SelectItem>
                       <SelectItem value="cancelled">キャンセル</SelectItem>
                     </SelectContent>

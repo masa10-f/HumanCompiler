@@ -29,6 +29,7 @@ from humancompiler_api.models import (
     Goal,
     Log,
     Project,
+    ProjectStatus,
     Task,
     WorkSession,
 )
@@ -42,6 +43,10 @@ WORK_TYPE_LABELS = {
     "light_work": "軽作業",
     "study": "学習",
     "focused_work": "集中作業",
+}
+PROJECT_STATUS_LABELS = {
+    **TASK_STATUS_LABELS,
+    ProjectStatus.PAUSED.value: "一時停止",
 }
 PRIORITY_LABELS = {1: "最高", 2: "高", 3: "中", 4: "低", 5: "最低"}
 CHECKOUT_TYPE_LABELS = {
@@ -451,7 +456,7 @@ class _ContextExportBuilder:
         goal_count: int,
         hidden_goal_count: int,
     ) -> list[str]:
-        facts = [f"ステータス: {_status_label(project.status)}"]
+        facts = [f"ステータス: {_project_status_label(project.status)}"]
         if project.created_at:
             facts.append(f"作成日: {_jst_date(project.created_at)}")
         if scope == "project":
@@ -710,6 +715,10 @@ def _label(labels: Mapping[str, str], value: Any) -> str | None:
 
 def _status_label(value: Any) -> str:
     return _label(TASK_STATUS_LABELS, value) or "-"
+
+
+def _project_status_label(value: Any) -> str:
+    return _label(PROJECT_STATUS_LABELS, value) or "-"
 
 
 def _hours(value: Decimal | float | int | None) -> str:

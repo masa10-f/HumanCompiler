@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, Play, CheckCircle, XCircle } from 'lucide-react';
+import { Clock, Play, Pause, CheckCircle, XCircle } from 'lucide-react';
 import { ProjectStatus } from '@/types/project';
 
 /**
@@ -19,6 +19,13 @@ export const PROJECT_STATUS_CONFIG = {
     color: 'primary',
     className: 'text-primary',
     bgClassName: 'bg-primary/10',
+  },
+  paused: {
+    icon: Pause,
+    label: '一時停止',
+    color: 'warning',
+    className: 'text-warning',
+    bgClassName: 'bg-warning/10',
   },
   completed: {
     icon: CheckCircle,

@@ -11,8 +11,15 @@ import pytest
 from sqlmodel import Session
 
 from conftest import create_test_data
-from humancompiler_api.models import Goal, GoalStatus, SortBy, SortOrder
-from humancompiler_api.services import GoalService
+from humancompiler_api.models import (
+    Goal,
+    GoalStatus,
+    Project,
+    ProjectStatus,
+    SortBy,
+    SortOrder,
+)
+from humancompiler_api.services import GoalService, ProjectService
 
 
 @pytest.mark.parametrize(
@@ -74,3 +81,41 @@ def test_status_sort_puts_in_progress_before_pending(
     )
 
     assert [goal.status for goal in goals] == expected
+
+
+def test_project_status_sort_puts_paused_after_pending(
+    session: Session,
+    test_user_id: str,
+):
+    # create_test_data adds one pending project.
+    create_test_data(session, test_user_id)
+    for status in (
+        ProjectStatus.CANCELLED,
+        ProjectStatus.PAUSED,
+        ProjectStatus.COMPLETED,
+        ProjectStatus.IN_PROGRESS,
+    ):
+        session.add(
+            Project(
+                id=uuid4(),
+                owner_id=test_user_id,
+                title=f"{status.value} project",
+                status=status,
+            )
+        )
+    session.flush()
+
+    projects = ProjectService().get_projects(
+        session,
+        test_user_id,
+        sort_by=SortBy.STATUS,
+        sort_order=SortOrder.ASC,
+    )
+
+    assert [project.status for project in projects] == [
+        ProjectStatus.IN_PROGRESS,
+        ProjectStatus.PENDING,
+        ProjectStatus.PAUSED,
+        ProjectStatus.COMPLETED,
+        ProjectStatus.CANCELLED,
+    ]

@@ -124,6 +124,30 @@ describe('project query cache', () => {
     expect(mockGetAll).toHaveBeenCalledTimes(1)
   })
 
+  it('sorts paused projects after pending ones and before closed ones', async () => {
+    mockGetAll.mockResolvedValue([
+      createMockProject({ id: 'cancelled', status: 'cancelled' }),
+      createMockProject({ id: 'completed', status: 'completed' }),
+      createMockProject({ id: 'paused', status: 'paused' }),
+      createMockProject({ id: 'pending', status: 'pending' }),
+      createMockProject({ id: 'in-progress', status: 'in_progress' }),
+    ])
+
+    const { result } = renderHookWithClient(() =>
+      useProjects({ sortBy: SortBy.STATUS, sortOrder: SortOrder.ASC }),
+    )
+
+    await waitFor(() => {
+      expect(result.current.data?.map((project) => project.id)).toEqual([
+        'in-progress',
+        'pending',
+        'paused',
+        'completed',
+        'cancelled',
+      ])
+    })
+  })
+
   it('renders fresh cached list data without a detail request', () => {
     const cached = createMockProject({
       id: 'project-1',
