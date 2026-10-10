@@ -60,12 +60,12 @@ export interface QuickTaskCreate {
 export interface QuickTaskUpdate {
   /** Task title */
   title?: string;
-  /** Task description */
-  description?: string;
+  /** Task description (null clears it) */
+  description?: string | null;
   /** Estimated hours */
   estimate_hours?: number;
-  /** Due date (ISO 8601 format) */
-  due_date?: string;
+  /** Due date (ISO 8601 format, null clears it) */
+  due_date?: string | null;
   /** Status */
   status?: TaskStatus;
   /** Work type classification */

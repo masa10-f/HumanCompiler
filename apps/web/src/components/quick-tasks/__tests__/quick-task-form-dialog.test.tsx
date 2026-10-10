@@ -75,4 +75,25 @@ describe('QuickTaskFormDialog deadline payload', () => {
       );
     });
   });
+
+  it('sends nulls when clearing the deadline and description while editing', async () => {
+    render(
+      <QuickTaskFormDialog
+        task={{ ...baseTask, description: 'メモ' }}
+        open
+        onOpenChange={jest.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('締切日'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('説明'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: '更新' }));
+
+    await waitFor(() => {
+      expect(quickTasksApi.update).toHaveBeenCalledWith(
+        baseTask.id,
+        expect.objectContaining({ due_date: null, description: null }),
+      );
+    });
+  });
 });

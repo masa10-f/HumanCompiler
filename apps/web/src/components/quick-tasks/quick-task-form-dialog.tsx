@@ -121,11 +121,12 @@ export function QuickTaskFormDialog({
 
       if (isEditing && task) {
         // Update existing quick task
+        // Send explicit nulls so clearing an optional field persists
         const updateData: QuickTaskUpdate = {
           title: data.title,
-          description: data.description || undefined,
+          description: data.description || null,
           estimate_hours: data.estimate_hours,
-          due_date: data.due_date ? toJSTStartOfDayISOString(data.due_date) : undefined,
+          due_date: data.due_date ? toJSTStartOfDayISOString(data.due_date) : null,
           work_type: data.work_type || 'light_work',
           priority: data.priority || 3,
         };

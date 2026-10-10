@@ -144,3 +144,21 @@ def test_create_rejects_due_date_without_timezone_offset(client: TestClient):
     )
 
     assert response.status_code == 422
+
+
+def test_update_clears_due_date_and_description_with_null(
+    client: TestClient, quick_task_rows
+):
+    task_id = quick_task_rows["old_pending"].id
+    client.put(
+        f"/api/quick-tasks/{task_id}",
+        json={"due_date": "2026-11-01", "description": "memo"},
+    )
+
+    response = client.put(
+        f"/api/quick-tasks/{task_id}", json={"due_date": None, "description": None}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["due_date"] is None
+    assert response.json()["description"] is None
