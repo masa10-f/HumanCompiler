@@ -126,3 +126,52 @@ describe('QuickTaskList completion', () => {
     });
   });
 });
+
+describe('QuickTaskList totals', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('requests only active quick tasks from the server', async () => {
+    jest.mocked(quickTasksApi.getAll).mockResolvedValue([task]);
+
+    render(<QuickTaskList />);
+
+    expect(await screen.findByText(task.title)).toBeInTheDocument();
+    expect(quickTasksApi.getAll).toHaveBeenCalledWith(0, 100, undefined, [
+      'pending',
+      'in_progress',
+    ]);
+  });
+
+  it('shows the full active total in the header even when the list is capped', async () => {
+    jest.mocked(quickTasksApi.getAll).mockResolvedValue([task, otherTask]);
+
+    render(<QuickTaskList limit={1} />);
+
+    expect(await screen.findByText(task.title)).toBeInTheDocument();
+    expect(screen.queryByText(otherTask.title)).not.toBeInTheDocument();
+    expect(screen.getByText('(2)')).toBeInTheDocument();
+    expect(screen.getByText('ほか 1 件')).toBeInTheDocument();
+  });
+
+  it('pages through every active quick task', async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({
+      ...task,
+      id: `quick-task-page-${index}`,
+      title: `ページタスク${index}`,
+    }));
+    jest.mocked(quickTasksApi.getAll)
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce([otherTask]);
+
+    render(<QuickTaskList limit={5} />);
+
+    expect(await screen.findByText('(101)')).toBeInTheDocument();
+    expect(quickTasksApi.getAll).toHaveBeenCalledTimes(2);
+    expect(quickTasksApi.getAll).toHaveBeenLastCalledWith(100, 100, undefined, [
+      'pending',
+      'in_progress',
+    ]);
+  });
+});

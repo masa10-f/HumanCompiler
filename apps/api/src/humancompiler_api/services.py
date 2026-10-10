@@ -2067,11 +2067,14 @@ class QuickTaskService(BaseService[QuickTask, QuickTaskCreate, QuickTaskUpdate])
         limit: int = 100,
         sort_by: SortBy = SortBy.CREATED_AT,
         sort_order: SortOrder = SortOrder.DESC,
-        status: TaskStatus | None = None,
+        status: TaskStatus | list[TaskStatus] | None = None,
     ) -> list[QuickTask]:
-        """Get quick tasks for specific owner with optional filters and sorting"""
-        filters = {}
-        if status is not None:
+        """Get quick tasks for specific owner with optional filters and sorting
+
+        ``status`` may be a single status or a list of statuses to match any of.
+        """
+        filters: dict[str, TaskStatus | list[TaskStatus]] = {}
+        if status:
             filters["status"] = status
 
         return self.get_all(
@@ -2178,6 +2181,7 @@ class QuickTaskService(BaseService[QuickTask, QuickTaskCreate, QuickTaskUpdate])
             limit=1000,  # Get all active tasks
             sort_by=SortBy.PRIORITY,
             sort_order=SortOrder.ASC,
+            status=[TaskStatus.PENDING, TaskStatus.IN_PROGRESS],
         )
 
 
