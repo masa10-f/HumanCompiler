@@ -12,6 +12,7 @@ import { Eye, EyeOff, Key, AlertCircle, CheckCircle, Download, Upload, Database,
 import { Switch } from "@/components/ui/switch"
 import { AppHeader } from "@/components/layout/app-header"
 import { TriageSettingsCard } from "@/components/triage/triage-settings-card"
+import { HookTokenUsageGuide } from "@/components/settings/hook-token-usage-guide"
 import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { supabase } from "@/lib/supabase"
 import { log } from "@/lib/logger"
@@ -818,6 +819,8 @@ export default function SettingsPage() {
               ))
             )}
           </div>
+
+          <HookTokenUsageGuide />
         </CardContent>
       </Card>
 
