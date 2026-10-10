@@ -293,6 +293,9 @@ describe('useCreateTask', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: queryKeys.dashboard.all,
     })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: queryKeys.progress.all,
+    })
   })
 
   it('should invalidate project task queries', async () => {

@@ -18,8 +18,8 @@ const PROJECT_OPTIONS_LIMIT = 100
 // Keep this order aligned with STATUS_PRIORITY["project"] in
 // apps/api/src/humancompiler_api/models.py.
 const PROJECT_STATUS_PRIORITY: Record<Project['status'], number> = {
-  pending: 1,
-  in_progress: 2,
+  in_progress: 1,
+  pending: 2,
   completed: 3,
   cancelled: 4,
 }

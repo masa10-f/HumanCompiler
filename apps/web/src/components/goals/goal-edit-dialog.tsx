@@ -5,7 +5,7 @@ import { log } from '@/lib/logger';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -42,6 +42,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useUpdateGoal, useGoalsByProject } from '@/hooks/use-goals-query';
 import { toast } from '@/hooks/use-toast';
 import { goalsApi } from '@/lib/api';
+import { queryKeys } from '@/lib/query-keys';
 import { GitBranch, Trash2, Plus } from 'lucide-react';
 import type { Goal } from '@/types/goal';
 import { toJSTDateInputValue, toJSTStartOfDayISOString } from '@/lib/date-utils';
@@ -66,6 +67,7 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
   const [activeTab, setActiveTab] = useState('basic');
   const [selectedDependencyGoal, setSelectedDependencyGoal] = useState<string>('');
 
+  const queryClient = useQueryClient();
   const updateGoalMutation = useUpdateGoal();
 
   // Fetch available goals for dependencies (same project)
@@ -78,6 +80,13 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
     enabled: open,
   });
 
+  const refreshDependencies = () => {
+    refetchDependencies();
+    // The goal list's cached `dependencies` drive the 依存待ち badge and the
+    // pending-goal order, so it has to pick up the change too.
+    queryClient.invalidateQueries({ queryKey: queryKeys.goals.byProject(goal.project_id) });
+  };
+
   // Add dependency mutation
   const addDependencyMutation = useMutation({
     mutationFn: (dependsOnGoalId: string) =>
@@ -87,7 +96,7 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
         title: '依存関係を追加しました',
         description: '依存関係が正常に追加されました。',
       });
-      refetchDependencies();
+      refreshDependencies();
       setSelectedDependencyGoal('');
     },
     onError: (error: Error) => {
@@ -108,7 +117,7 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
         title: '依存関係を削除しました',
         description: '依存関係が正常に削除されました。',
       });
-      refetchDependencies();
+      refreshDependencies();
     },
     onError: (error: Error) => {
       log.error('Failed to delete goal dependency', error, { goalId: goal.id });

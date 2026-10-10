@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { GoalEditDialog } from '../goal-edit-dialog';
+import { goalsApi } from '@/lib/api';
 import type { Goal } from '@/types/goal';
 
 const mockUpdateGoal = jest.fn();
@@ -45,6 +46,7 @@ function renderDialog(goal: Goal) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
 
   render(
     <QueryClientProvider client={queryClient}>
@@ -55,6 +57,8 @@ function renderDialog(goal: Goal) {
   );
 
   fireEvent.click(screen.getByRole('button', { name: '編集する' }));
+
+  return { invalidateSpy };
 }
 
 describe('GoalEditDialog deadline payload', () => {
@@ -91,6 +95,37 @@ describe('GoalEditDialog deadline payload', () => {
         data: expect.objectContaining({
           due_date: '2026-10-15T00:00:00+09:00',
         }),
+      });
+    });
+  });
+});
+
+describe('GoalEditDialog dependencies', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('refreshes the project goal list after removing a dependency', async () => {
+    jest.mocked(goalsApi.getDependencies).mockResolvedValue([
+      {
+        id: 'dep-1',
+        goal_id: baseGoal.id,
+        depends_on_goal_id: 'goal-0',
+        created_at: '2026-08-30T00:00:00Z',
+      },
+    ]);
+    jest.mocked(goalsApi.deleteDependency).mockResolvedValue(undefined as never);
+
+    const { invalidateSpy } = renderDialog(baseGoal);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /依存関係/ }));
+
+    const label = await screen.findByText('このゴールの完了を待つ');
+    const card = label.closest('.flex.items-center.justify-between') as HTMLElement;
+    fireEvent.click(card.querySelector('button') as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ['goals', 'project', baseGoal.project_id],
       });
     });
   });

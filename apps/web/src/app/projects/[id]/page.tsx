@@ -147,6 +147,7 @@ export default function ProjectDetailPage() {
         <GoalList
           projectId={id}
           goals={goals}
+          progress={projectProgress}
           isLoading={goalsLoading}
           error={goalsError}
           onRefetch={refetchGoals}

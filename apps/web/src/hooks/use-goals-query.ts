@@ -22,11 +22,12 @@ export const goalKeys = {
  *
  * @param projectId - The project UUID to fetch goals for
  * @param skip - Number of records to skip (default: 0)
- * @param limit - Maximum records to return (default: 20)
+ * @param limit - Maximum records to return (default: 100, the API maximum).
+ *   The cache key ignores skip/limit, so callers should share the full set.
  * @param sortOptions - Optional sorting configuration
  * @returns UseQueryResult with goal array
  */
-export function useGoalsByProject(projectId: string, skip = 0, limit = 20, sortOptions?: SortOptions) {
+export function useGoalsByProject(projectId: string, skip = 0, limit = 100, sortOptions?: SortOptions) {
   const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
   return useQuery({
     queryKey: [...goalKeys.byProject(projectId), sortKey],
@@ -70,6 +71,10 @@ export function useCreateGoal() {
       // Invalidate goals for the specific project
       queryClient.invalidateQueries({
         queryKey: goalKeys.byProject(newGoal.project_id)
+      })
+      // Lets the new goal's card show its digest.
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.progress.project(newGoal.project_id)
       })
 
       // Add the new goal to cache
