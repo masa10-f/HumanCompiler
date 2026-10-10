@@ -37,7 +37,7 @@ import type { Project } from '@/types/project';
 const projectFormSchema = z.object({
   title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
   description: z.string().max(500, '500文字以内で入力してください').optional(),
-  status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']),
+  status: z.enum(['pending', 'in_progress', 'paused', 'completed', 'cancelled']),
 });
 
 type ProjectFormData = z.infer<typeof projectFormSchema>;
@@ -151,6 +151,7 @@ export function ProjectEditDialog({ project, children }: ProjectEditDialogProps)
                     <SelectContent>
                       <SelectItem value="pending">未開始</SelectItem>
                       <SelectItem value="in_progress">進行中</SelectItem>
+                      <SelectItem value="paused">一時停止</SelectItem>
                       <SelectItem value="completed">完了</SelectItem>
                       <SelectItem value="cancelled">キャンセル</SelectItem>
                     </SelectContent>

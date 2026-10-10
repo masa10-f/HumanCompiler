@@ -26,19 +26,31 @@ const idsByGroup = (groups: { key: string; items: { id: string }[] }[]) =>
   Object.fromEntries(groups.map((group) => [group.key, group.items.map((item) => item.id)]))
 
 describe('groupProjectsByStatus', () => {
-  it('orders groups as in progress, pending, then closed', () => {
+  it('orders groups as in progress, pending, paused, then closed', () => {
     const groups = groupProjectsByStatus([
       createMockProject({ id: 'done', status: 'completed' }),
       createMockProject({ id: 'todo', status: 'pending' }),
+      createMockProject({ id: 'on-hold', status: 'paused' }),
       createMockProject({ id: 'cancelled', status: 'cancelled' }),
       createMockProject({ id: 'doing', status: 'in_progress' }),
     ])
 
-    expect(groups.map((group) => group.key)).toEqual(['in_progress', 'pending', 'closed'])
-    expect(groups.map((group) => group.label)).toEqual(['進行中', '未着手', '完了・キャンセル'])
+    expect(groups.map((group) => group.key)).toEqual([
+      'in_progress',
+      'pending',
+      'paused',
+      'closed',
+    ])
+    expect(groups.map((group) => group.label)).toEqual([
+      '進行中',
+      '未着手',
+      '一時停止',
+      '完了・キャンセル',
+    ])
     expect(idsByGroup(groups)).toEqual({
       in_progress: ['doing'],
       pending: ['todo'],
+      paused: ['on-hold'],
       closed: ['done', 'cancelled'],
     })
   })
@@ -49,6 +61,8 @@ describe('groupProjectsByStatus', () => {
       createMockProject({ id: 'doing-new', status: 'in_progress', updated_at: '2025-02-01T00:00:00Z' }),
       createMockProject({ id: 'todo-old', status: 'pending', created_at: '2025-01-01T00:00:00Z' }),
       createMockProject({ id: 'todo-new', status: 'pending', created_at: '2025-02-01T00:00:00Z' }),
+      createMockProject({ id: 'paused-old', status: 'paused', updated_at: '2025-01-01T00:00:00Z' }),
+      createMockProject({ id: 'paused-new', status: 'paused', updated_at: '2025-02-01T00:00:00Z' }),
       createMockProject({ id: 'done-old', status: 'completed', updated_at: '2025-01-01T00:00:00Z' }),
       createMockProject({ id: 'cancelled-new', status: 'cancelled', updated_at: '2025-02-01T00:00:00Z' }),
     ])
@@ -56,6 +70,7 @@ describe('groupProjectsByStatus', () => {
     expect(idsByGroup(groups)).toEqual({
       in_progress: ['doing-new', 'doing-old'],
       pending: ['todo-new', 'todo-old'],
+      paused: ['paused-new', 'paused-old'],
       closed: ['cancelled-new', 'done-old'],
     })
   })
@@ -68,12 +83,23 @@ describe('groupProjectsByStatus', () => {
 
     const groups = groupProjectsByStatus(projects)
 
-    expect(idsByGroup(groups)).toEqual({ in_progress: [], pending: ['a', 'b'], closed: [] })
+    expect(idsByGroup(groups)).toEqual({
+      in_progress: [],
+      pending: ['a', 'b'],
+      paused: [],
+      closed: [],
+    })
     expect(projects.map((project) => project.id)).toEqual(['b', 'a'])
   })
 })
 
 describe('groupGoalsByStatus', () => {
+  it('has no paused group because goals cannot be paused', () => {
+    const groups = groupGoalsByStatus([createMockGoal({ id: 'goal', status: 'pending' })])
+
+    expect(groups.map((group) => group.key)).toEqual(['in_progress', 'pending', 'closed'])
+  })
+
   it('sorts in-progress goals by nearest due date, undated last', () => {
     const groups = groupGoalsByStatus([
       createMockGoal({ id: 'undated', status: 'in_progress', due_date: null }),
