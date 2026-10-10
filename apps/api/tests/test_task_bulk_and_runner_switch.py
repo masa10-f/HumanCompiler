@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
 
@@ -421,3 +421,29 @@ async def test_daily_remove_deletes_assignment_and_recalculates_total(
     assert str(task.id) not in plan.plan_json["planned_task_ids"]
     assert len(plan.plan_json["assignments"]) == 1
     assert plan.plan_json["total_scheduled_hours"] == 0.5
+
+
+def test_ai_sanitizer_reads_date_only_due_date_as_jst_and_drops_naive_times():
+    jst = timezone(timedelta(hours=9))
+    dated_task_id = uuid4()
+    naive_task_id = uuid4()
+    mutations, warnings = _sanitize_ai_bulk_mutations(
+        {
+            "mutations": [
+                {"task_id": str(dated_task_id), "patch": {"due_date": "2030-01-02"}},
+                {
+                    "task_id": str(naive_task_id),
+                    "patch": {"due_date": "2030-01-02T10:00:00"},
+                },
+            ]
+        },
+        {dated_task_id, naive_task_id},
+        set(),
+    )
+
+    patches = {mutation.task_id: mutation.patch for mutation in mutations}
+    assert patches[dated_task_id].due_date == datetime(2030, 1, 2, tzinfo=jst)
+    assert (
+        "due_date" not in patches.get(naive_task_id, BulkTaskPatch()).model_fields_set
+    )
+    assert any("due_date" in warning for warning in warnings)

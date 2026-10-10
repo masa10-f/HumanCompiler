@@ -20,7 +20,7 @@ describe('buildTaskEditUpdatePayload', () => {
     });
   });
 
-  it('preserves non-empty optional fields', () => {
+  it('preserves non-empty optional fields and sends deadlines as JST start of day', () => {
     const payload = buildTaskEditUpdatePayload({
       title: 'Updated task',
       description: 'Keep this',
@@ -32,6 +32,6 @@ describe('buildTaskEditUpdatePayload', () => {
     });
 
     expect(payload.description).toBe('Keep this');
-    expect(payload.due_date).toBe('2026-01-15');
+    expect(payload.due_date).toBe('2026-01-15T00:00:00+09:00');
   });
 });

@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime, time
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Literal
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 from openai import (
@@ -38,6 +39,8 @@ from humancompiler_api.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+JST = ZoneInfo("Asia/Tokyo")
 
 MAX_DRAFT_OUTPUT_TOKENS = 50000
 AI_DRAFT_OPENAI_TIMEOUT_SECONDS = 180.0
@@ -1258,10 +1261,12 @@ class GoalTaskDraftService:
             return None
         try:
             if len(value) == 10:
-                return datetime.combine(date.fromisoformat(value), time.min)
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+                return datetime.combine(date.fromisoformat(value), time.min, tzinfo=JST)
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
             return None
+        # Deadlines are stored as aware datetimes; read offset-less times as JST.
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=JST)
 
     def _would_create_dependency_cycle(
         self,

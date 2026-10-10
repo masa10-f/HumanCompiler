@@ -1063,6 +1063,16 @@ class TaskCreate(TaskBase):
 
     goal_id: UUID
 
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def prepare_due_date(cls, value: Any) -> Any:
+        return prepare_due_date(value)
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date_timezone(cls, value: datetime | None) -> datetime | None:
+        return require_due_date_timezone(value)
+
 
 class TaskUpdate(BaseModel):
     """Task update request"""
@@ -1076,6 +1086,16 @@ class TaskUpdate(BaseModel):
     work_type: WorkType | None = None
     priority: int | None = Field(None, ge=1, le=5)
     goal_id: UUID | None = None
+
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def prepare_due_date(cls, value: Any) -> Any:
+        return prepare_due_date(value)
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date_timezone(cls, value: datetime | None) -> datetime | None:
+        return require_due_date_timezone(value)
 
 
 class TaskResponse(TaskBase):
