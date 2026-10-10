@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { roundToDecimals, parseFloatSafe } from '@/lib/number-utils';
+import { toJSTDateInputValue, toJSTStartOfDayISOString } from '@/lib/date-utils';
 import { quickTasksApi } from '@/lib/api';
 import type { QuickTask, QuickTaskCreate, QuickTaskUpdate } from '@/types/quick-task';
 
@@ -84,7 +85,7 @@ export function QuickTaskFormDialog({
       title: task?.title || '',
       description: task?.description || '',
       estimate_hours: task?.estimate_hours || 0.5,
-      due_date: task?.due_date ? task.due_date.split('T')[0] : '',
+      due_date: toJSTDateInputValue(task?.due_date ?? null),
       work_type: task?.work_type || 'light_work',
       priority: task?.priority || 3,
     },
@@ -97,7 +98,7 @@ export function QuickTaskFormDialog({
         title: task.title,
         description: task.description || '',
         estimate_hours: task.estimate_hours,
-        due_date: task.due_date ? task.due_date.split('T')[0] : '',
+        due_date: toJSTDateInputValue(task.due_date),
         work_type: task.work_type,
         priority: task.priority,
       });
@@ -124,7 +125,7 @@ export function QuickTaskFormDialog({
           title: data.title,
           description: data.description || undefined,
           estimate_hours: data.estimate_hours,
-          due_date: data.due_date || undefined,
+          due_date: data.due_date ? toJSTStartOfDayISOString(data.due_date) : undefined,
           work_type: data.work_type || 'light_work',
           priority: data.priority || 3,
         };
@@ -143,7 +144,7 @@ export function QuickTaskFormDialog({
           title: data.title,
           description: data.description || undefined,
           estimate_hours: data.estimate_hours,
-          due_date: data.due_date || undefined,
+          due_date: data.due_date ? toJSTStartOfDayISOString(data.due_date) : undefined,
           work_type: data.work_type || 'light_work',
           priority: data.priority || 3,
         };

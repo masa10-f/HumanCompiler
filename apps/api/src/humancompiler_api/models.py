@@ -38,7 +38,7 @@ def prepare_due_date(value: Any) -> Any:
 
 
 def require_due_date_timezone(value: datetime | None) -> datetime | None:
-    """Reject ambiguous goal datetimes that do not include an offset."""
+    """Reject ambiguous due-date datetimes that do not include an offset."""
     if value is not None and (value.tzinfo is None or value.utcoffset() is None):
         raise ValueError("due_date datetime must include a timezone offset")
     return value
@@ -1204,7 +1204,15 @@ class TaskSummary(BaseModel):
 class QuickTaskCreate(QuickTaskBase):
     """Quick task creation request - no goal_id required"""
 
-    pass
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def prepare_due_date(cls, value: Any) -> Any:
+        return prepare_due_date(value)
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date_timezone(cls, value: datetime | None) -> datetime | None:
+        return require_due_date_timezone(value)
 
 
 class QuickTaskUpdate(BaseModel):
@@ -1217,6 +1225,16 @@ class QuickTaskUpdate(BaseModel):
     status: TaskStatus | None = None
     work_type: WorkType | None = None
     priority: int | None = Field(None, ge=1, le=5)
+
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def prepare_due_date(cls, value: Any) -> Any:
+        return prepare_due_date(value)
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date_timezone(cls, value: datetime | None) -> datetime | None:
+        return require_due_date_timezone(value)
 
 
 class QuickTaskResponse(QuickTaskBase):
