@@ -6,7 +6,7 @@ python-dotenv>=1.0.0
 pydantic-settings>=2.5.0
 supabase>=2.0.0
 pydantic>=2.5.0
-sqlmodel>=0.0.14
+sqlmodel==0.0.48
 psycopg2-binary>=2.9.0
 humancompiler-scheduler[cp-sat]>=0.5.0,<0.6.0
 openai>=1.50.0
