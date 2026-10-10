@@ -28,6 +28,8 @@ const isTaskProjectQuery = (query: Query) => query.queryKey[0] === taskKeys.all[
 
 const invalidateTaskCollections = (queryClient: QueryClient, goalId?: string) => {
   queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
+  // Goal digests derive completion rates from task statuses in progress data.
+  queryClient.invalidateQueries({ queryKey: queryKeys.progress.all })
 
   if (goalId) {
     queryClient.invalidateQueries({ queryKey: taskKeys.byGoal(goalId) })

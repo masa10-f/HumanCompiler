@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, memo } from 'react';
+import { useState, useEffect, useMemo, memo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import {
@@ -41,6 +41,8 @@ import {
 } from '@/constants/project-status';
 import { SortBy, SortOrder, SortOptions } from '@/types/sort';
 import { SortDropdown } from '@/components/ui/sort-dropdown';
+import { StatusGroupedList } from '@/components/ui/status-grouped-list';
+import { groupProjectsByStatus } from '@/lib/status-groups';
 
 // Component to display and manage project status
 const ProjectStatusDropdown = memo(function ProjectStatusDropdown({ project }: { project: Project }) {
@@ -133,11 +135,8 @@ export default function ProjectsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
-  // Sort state
-  const [sortOptions, setSortOptions] = useState<SortOptions>({
-    sortBy: SortBy.STATUS,
-    sortOrder: SortOrder.ASC,
-  });
+  // Sort state; undefined means the default grouped-by-status view.
+  const [sortOptions, setSortOptions] = useState<SortOptions | undefined>(undefined);
 
   const {
     data: projects = [],
@@ -147,6 +146,7 @@ export default function ProjectsPage() {
   } = useProjects(sortOptions, {
     enabled: Boolean(user),
   });
+  const projectGroups = useMemo(() => groupProjectsByStatus(projects), [projects]);
   const createProjectMutation = useCreateProject();
   const updateProjectMutation = useUpdateProject();
   const deleteProjectMutation = useDeleteProject();
@@ -282,6 +282,72 @@ export default function ProjectsPage() {
     }
   };
 
+  const renderProjectCard = (project: Project) => (
+    <Card
+      key={project.id}
+      className="hover:shadow-lg transition-shadow relative"
+    >
+      <CardHeader>
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <div
+            className="min-w-0 flex-1 cursor-pointer"
+            onClick={() => router.push(`/projects/${project.id}`)}
+          >
+            <CardTitle className="line-clamp-2">{project.title}</CardTitle>
+            <CardDescription className="line-clamp-2">
+              {project.description || 'プロジェクトの説明がありません'}
+            </CardDescription>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                className="h-8 w-8 shrink-0 p-0"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <span className="sr-only">アクションメニューを開く</span>
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleEditProject(project);
+                }}
+              >
+                <Edit className="mr-2 h-4 w-4" />
+                編集
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteProject(project);
+                }}
+                className="text-red-600"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                削除
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-muted-foreground">
+              作成日: {new Date(project.created_at).toLocaleDateString('ja-JP')}
+            </div>
+            <div onClick={(e) => e.stopPropagation()}>
+              <ProjectStatusDropdown project={project} />
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login');
@@ -310,10 +376,14 @@ export default function ProjectsPage() {
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:shrink-0 sm:flex-row sm:items-center">
             <SortDropdown
               className="w-full sm:w-auto"
-              currentSort={sortOptions}
+              currentSort={sortOptions ?? { sortBy: SortBy.TITLE, sortOrder: SortOrder.ASC }}
               onSortChange={setSortOptions}
+              defaultSortOption={{
+                label: '進行中を優先',
+                selected: sortOptions === undefined,
+                onSelect: () => setSortOptions(undefined),
+              }}
               sortFields={[
-                { value: SortBy.STATUS, label: 'ステータス' },
                 { value: SortBy.TITLE, label: 'タイトル' },
                 { value: SortBy.CREATED_AT, label: '作成日' },
                 { value: SortBy.UPDATED_AT, label: '更新日' },
@@ -419,74 +489,18 @@ export default function ProjectsPage() {
               </Button>
             </CardContent>
           </Card>
-        ) : (
+        ) : sortOptions ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {projects.map((project) => (
-              <Card
-                key={project.id}
-                className="hover:shadow-lg transition-shadow relative"
-              >
-                <CardHeader>
-                  <div className="flex min-w-0 items-start justify-between gap-2">
-                    <div
-                      className="min-w-0 flex-1 cursor-pointer"
-                      onClick={() => router.push(`/projects/${project.id}`)}
-                    >
-                      <CardTitle className="line-clamp-2">{project.title}</CardTitle>
-                      <CardDescription className="line-clamp-2">
-                        {project.description || 'プロジェクトの説明がありません'}
-                      </CardDescription>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          className="h-8 w-8 shrink-0 p-0"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <span className="sr-only">アクションメニューを開く</span>
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEditProject(project);
-                          }}
-                        >
-                          <Edit className="mr-2 h-4 w-4" />
-                          編集
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteProject(project);
-                          }}
-                          className="text-red-600"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          削除
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="text-sm text-muted-foreground">
-                        作成日: {new Date(project.created_at).toLocaleDateString('ja-JP')}
-                      </div>
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <ProjectStatusDropdown project={project} />
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+            {projects.map(renderProjectCard)}
           </div>
+        ) : (
+          <StatusGroupedList
+            groups={projectGroups}
+            storageKey="projects"
+            headingAs="h2"
+            itemsClassName="grid gap-6 md:grid-cols-2 lg:grid-cols-3"
+            renderItem={renderProjectCard}
+          />
         )}
 
         {/* Quick Tasks Section */}

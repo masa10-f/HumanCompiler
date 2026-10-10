@@ -1,16 +1,22 @@
 'use client'
 
+import { useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { StatusGroupedList } from '@/components/ui/status-grouped-list'
 import { GoalFormDialog } from './goal-form-dialog'
 import { GoalCard } from './goal-card'
 import { GoalTaskAssistantDialog } from '@/components/ai/goal-task-assistant-dialog'
 import { Plus, Sparkles } from 'lucide-react'
+import { groupGoalsByStatus } from '@/lib/status-groups'
 import type { Goal } from '@/types/goal'
+import type { ProjectProgress } from '@/types/progress'
 
 interface GoalListProps {
   projectId: string
   goals: Goal[]
+  /** Project progress; supplies the per-goal digest when available. */
+  progress?: ProjectProgress
   isLoading: boolean
   error: Error | null
   onRefetch: () => void
@@ -20,11 +26,18 @@ interface GoalListProps {
 export function GoalList({
   projectId,
   goals,
+  progress,
   isLoading,
   error,
   onRefetch,
   onNavigateToGoal,
 }: GoalListProps) {
+  const groups = useMemo(() => groupGoalsByStatus(goals), [goals])
+  const progressByGoalId = useMemo(
+    () => new Map(progress?.goals.map((goalProgress) => [goalProgress.goal_id, goalProgress])),
+    [progress],
+  )
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -99,16 +112,19 @@ export function GoalList({
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {goals.map((goal) => (
+        <StatusGroupedList
+          groups={groups}
+          storageKey="goals"
+          itemsClassName="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
+          renderItem={(goal) => (
             <GoalCard
-              key={goal.id}
               goal={goal}
               allGoals={goals}
+              progress={progressByGoalId.get(goal.id)}
               onNavigate={onNavigateToGoal}
             />
-          ))}
-        </div>
+          )}
+        />
       )}
     </div>
   )

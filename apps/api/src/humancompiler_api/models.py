@@ -239,12 +239,14 @@ ALLOWED_SORT_FIELDS = {
     },
 }
 
-# Status priority configurations for consistent sorting
+# Status priority configurations for consistent sorting.
+# Ascending order puts active work first: in progress, then not started,
+# then closed items.
 STATUS_PRIORITY = {
-    "default": {"pending": 1, "in_progress": 2, "completed": 3, "cancelled": 4},
-    "project": {"pending": 1, "in_progress": 2, "completed": 3, "cancelled": 4},
-    "goal": {"pending": 1, "in_progress": 2, "completed": 3, "cancelled": 4},
-    "task": {"pending": 1, "in_progress": 2, "completed": 3, "cancelled": 4},
+    "default": {"in_progress": 1, "pending": 2, "completed": 3, "cancelled": 4},
+    "project": {"in_progress": 1, "pending": 2, "completed": 3, "cancelled": 4},
+    "goal": {"in_progress": 1, "pending": 2, "completed": 3, "cancelled": 4},
+    "task": {"in_progress": 1, "pending": 2, "completed": 3, "cancelled": 4},
 }
 
 
