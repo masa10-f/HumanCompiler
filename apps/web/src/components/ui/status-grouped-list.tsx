@@ -73,11 +73,14 @@ function CollapsibleGroupSection({
 }) {
   const [open, setOpen] = useState(defaultOpen)
 
-  // Read after mount so server and first client render agree.
+  // Read after mount so server and first client render agree. Without a
+  // stored choice, also open when this becomes the only group left (e.g. the
+  // last open item was just completed), so cards don't vanish behind it.
   useEffect(() => {
     const stored = readStoredOpen(storageKey)
     if (stored !== null) setOpen(stored)
-  }, [storageKey])
+    else if (defaultOpen) setOpen(true)
+  }, [defaultOpen, storageKey])
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next)

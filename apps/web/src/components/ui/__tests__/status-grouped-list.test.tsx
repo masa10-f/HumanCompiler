@@ -92,4 +92,42 @@ describe('StatusGroupedList', () => {
       expect(screen.getByText('完了したもの')).toBeInTheDocument()
     })
   })
+
+  it('opens the closed group once it becomes the only group left', async () => {
+    const { rerender } = renderList(
+      groups([{ id: '1', title: '進行中のもの' }], [], [{ id: '3', title: '完了したもの' }]),
+    )
+    expect(screen.queryByText('完了したもの')).not.toBeInTheDocument()
+
+    rerender(
+      <StatusGroupedList
+        groups={groups(
+          [],
+          [],
+          [
+            { id: '1', title: '進行中のもの' },
+            { id: '3', title: '完了したもの' },
+          ],
+        )}
+        storageKey="test"
+        renderItem={(item) => <div>{item.title}</div>}
+      />,
+    )
+
+    expect(await screen.findByText('完了したもの')).toBeInTheDocument()
+  })
+
+  it('keeps a stored collapsed choice when the closed group is the only one left', async () => {
+    window.localStorage.setItem(STORAGE_KEY, 'false')
+
+    renderList(groups([], [], [{ id: '3', title: '完了したもの' }]))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /完了・キャンセル/ })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      )
+    })
+    expect(screen.queryByText('完了したもの')).not.toBeInTheDocument()
+  })
 })
