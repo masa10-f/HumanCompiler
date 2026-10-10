@@ -117,6 +117,41 @@ describe('StatusGroupedList', () => {
     expect(await screen.findByText('完了したもの')).toBeInTheDocument()
   })
 
+  it('collapses the closed group again when open work comes back', async () => {
+    const { rerender } = renderList(groups([], [], [{ id: '3', title: '完了したもの' }]))
+    expect(await screen.findByText('完了したもの')).toBeInTheDocument()
+
+    rerender(
+      <StatusGroupedList
+        groups={groups([], [{ id: '4', title: '新しいもの' }], [{ id: '3', title: '完了したもの' }])}
+        storageKey="test"
+        renderItem={(item) => <div>{item.title}</div>}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.queryByText('完了したもの')).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('新しいもの')).toBeInTheDocument()
+  })
+
+  it('keeps a stored expanded choice when open work comes back', async () => {
+    window.localStorage.setItem(STORAGE_KEY, 'true')
+    const { rerender } = renderList(groups([], [], [{ id: '3', title: '完了したもの' }]))
+    expect(await screen.findByText('完了したもの')).toBeInTheDocument()
+
+    rerender(
+      <StatusGroupedList
+        groups={groups([], [{ id: '4', title: '新しいもの' }], [{ id: '3', title: '完了したもの' }])}
+        storageKey="test"
+        renderItem={(item) => <div>{item.title}</div>}
+      />,
+    )
+
+    expect(screen.getByText('新しいもの')).toBeInTheDocument()
+    expect(screen.getByText('完了したもの')).toBeInTheDocument()
+  })
+
   it('keeps a stored collapsed choice when the closed group is the only one left', async () => {
     window.localStorage.setItem(STORAGE_KEY, 'false')
 
