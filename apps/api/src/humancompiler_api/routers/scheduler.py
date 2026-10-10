@@ -1646,12 +1646,6 @@ async def create_daily_schedule(
                 quick_tasks = quick_task_service.get_active_quick_tasks(
                     session, user_id
                 )
-                # Filter out completed/cancelled quick tasks
-                quick_tasks = [
-                    qt
-                    for qt in quick_tasks
-                    if qt.status not in [TaskStatus.COMPLETED, TaskStatus.CANCELLED]
-                ]
                 logger.info(f"Fetched {len(quick_tasks)} active quick tasks")
             except Exception as e:
                 # Handle cases where quick_tasks table doesn't exist yet (e.g., during tests)

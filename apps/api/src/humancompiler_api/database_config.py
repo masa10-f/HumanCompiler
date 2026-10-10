@@ -10,6 +10,18 @@ from sqlalchemy.pool import Pool
 logger = logging.getLogger(__name__)
 
 
+def sqlalchemy_database_url(url: str) -> str:
+    """Pin PostgreSQL URLs to the installed psycopg2 driver.
+
+    SQLAlchemy 2.1 maps a bare ``postgresql://`` URL to psycopg (v3), which is
+    not installed; ``postgres://`` is not accepted by SQLAlchemy at all.
+    """
+    for prefix in ("postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg2://" + url[len(prefix) :]
+    return url
+
+
 def configure_database_extensions() -> None:
     """Configure database extensions and disable problematic features"""
 

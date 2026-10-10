@@ -8,7 +8,10 @@ from sqlalchemy import inspect, text
 from sqlmodel import Session, create_engine
 
 from humancompiler_api.config import settings
-from humancompiler_api.database_config import configure_database_extensions
+from humancompiler_api.database_config import (
+    configure_database_extensions,
+    sqlalchemy_database_url,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +28,7 @@ class MigrationManager:
         """Initialize database engine"""
         configure_database_extensions()
         self.engine = create_engine(
-            settings.database_url,
+            sqlalchemy_database_url(settings.database_url),
             echo=False,
             pool_pre_ping=True,
         )
