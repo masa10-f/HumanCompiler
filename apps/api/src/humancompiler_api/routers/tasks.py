@@ -3,13 +3,13 @@ import logging
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from openai import OpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlmodel import Session, or_, select
 
 from humancompiler_api.openai_models import DEFAULT_OPENAI_MODEL
@@ -45,6 +45,8 @@ from humancompiler_api.models import (
     Goal,
     Project,
     UserSettings,
+    prepare_due_date,
+    require_due_date_timezone,
 )
 from humancompiler_api.crypto import get_crypto_service
 from humancompiler_api.services import task_service
@@ -70,6 +72,16 @@ class BulkTaskPatch(BaseModel):
     priority: int | None = Field(None, ge=1, le=5)
     due_date: datetime | None = None
     goal_id: UUID | None = None
+
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def prepare_due_date(cls, value: Any) -> Any:
+        return prepare_due_date(value)
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date_timezone(cls, value: datetime | None) -> datetime | None:
+        return require_due_date_timezone(value)
 
 
 class PlanMembershipMutation(BaseModel):

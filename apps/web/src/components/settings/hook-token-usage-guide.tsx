@@ -25,7 +25,8 @@ const REQUEST_FIELDS = [
   {
     name: 'due_date',
     required: false,
-    description: '締切（ISO 8601）。タイムゾーン省略時はUTCとして扱われるため +09:00 などを付けてください',
+    description:
+      '締切（ISO 8601）。日付のみ（例: 2026-10-15）は日本時間 0:00 として扱います。時刻を含める場合は +09:00 などのタイムゾーンが必要です（省略すると 422）',
   },
   {
     name: 'work_type',

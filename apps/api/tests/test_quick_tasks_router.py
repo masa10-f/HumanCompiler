@@ -4,7 +4,7 @@
 # This file is part of HumanCompiler.
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
 
@@ -105,3 +105,60 @@ def test_get_active_quick_tasks_excludes_closed_statuses(
     active = quick_task_service.get_active_quick_tasks(session, owner.id)
 
     assert {task.title for task in active} == {"old_pending", "old_in_progress"}
+
+
+JST = timezone(timedelta(hours=9))
+
+
+def test_create_accepts_date_only_due_date_as_jst(client: TestClient):
+    response = client.post(
+        "/api/quick-tasks/",
+        json={"title": "dated", "estimate_hours": 0.5, "due_date": "2026-10-20"},
+    )
+
+    assert response.status_code == 201
+    due_date = datetime.fromisoformat(response.json()["due_date"])
+    assert due_date == datetime(2026, 10, 20, tzinfo=JST)
+
+
+def test_update_accepts_date_only_due_date_as_jst(client: TestClient, quick_task_rows):
+    task_id = quick_task_rows["old_pending"].id
+
+    response = client.put(
+        f"/api/quick-tasks/{task_id}", json={"due_date": "2026-11-01"}
+    )
+
+    assert response.status_code == 200
+    due_date = datetime.fromisoformat(response.json()["due_date"])
+    assert due_date == datetime(2026, 11, 1, tzinfo=JST)
+
+
+def test_create_rejects_due_date_without_timezone_offset(client: TestClient):
+    response = client.post(
+        "/api/quick-tasks/",
+        json={
+            "title": "ambiguous",
+            "estimate_hours": 0.5,
+            "due_date": "2026-10-20T10:00:00",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_clears_due_date_and_description_with_null(
+    client: TestClient, quick_task_rows
+):
+    task_id = quick_task_rows["old_pending"].id
+    client.put(
+        f"/api/quick-tasks/{task_id}",
+        json={"due_date": "2026-11-01", "description": "memo"},
+    )
+
+    response = client.put(
+        f"/api/quick-tasks/{task_id}", json={"due_date": None, "description": None}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["due_date"] is None
+    assert response.json()["description"] is None

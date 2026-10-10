@@ -38,6 +38,7 @@ import { TaskDependenciesManager } from './task-dependencies-manager';
 import { SessionHistory } from '@/components/runner/session-history';
 import type { Task } from '@/types/task';
 import { roundToDecimals, parseFloatSafe } from '@/lib/number-utils';
+import { toJSTDateInputValue } from '@/lib/date-utils';
 import { buildTaskEditUpdatePayload } from './task-edit-payload';
 import {
   TASK_ESTIMATE_HOURS_MAX,
@@ -62,7 +63,7 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
       title: task.title,
       description: task.description || '',
       estimate_hours: task.estimate_hours,
-      due_date: task.due_date?.split('T')[0] || '',
+      due_date: toJSTDateInputValue(task.due_date),
       status: task.status,
       work_type: task.work_type || 'light_work',
       priority: task.priority || 3,
@@ -75,7 +76,7 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
       title: task.title,
       description: task.description || '',
       estimate_hours: task.estimate_hours,
-      due_date: task.due_date?.split('T')[0] || '',
+      due_date: toJSTDateInputValue(task.due_date),
       status: task.status,
       work_type: task.work_type || 'light_work',
       priority: task.priority || 3,

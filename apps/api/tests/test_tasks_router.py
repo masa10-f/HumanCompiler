@@ -1,16 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2024-2025 Masato Fukushima <masa1063fuk@gmail.com>
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from conftest import create_test_data
 from humancompiler_api.auth import AuthUser
-from humancompiler_api.models import Task, TaskCreate, TaskDependency
+from humancompiler_api.models import Task, TaskCreate, TaskDependency, TaskUpdate
 from humancompiler_api.routers import tasks
+
+JST = timezone(timedelta(hours=9))
 
 
 def test_create_task_keeps_no_slash_route_out_of_schema():
@@ -110,3 +113,52 @@ def test_build_task_responses_with_dependencies_batches_project_tasks(
     assert len(responses[0].dependencies) == 1
     assert responses[0].dependencies[0].depends_on_task_id == prerequisite_task.id
     assert responses[0].dependencies[0].depends_on_task.title == "Prerequisite task"
+
+
+def test_task_create_persists_date_only_due_date_as_jst(session, test_user_id):
+    data = create_test_data(session, test_user_id)
+
+    task = tasks.task_service.create_task(
+        session,
+        TaskCreate.model_validate(
+            {
+                "goal_id": data["goal"].id,
+                "title": "Dated task",
+                "estimate_hours": 1,
+                "due_date": "2026-10-20",
+            }
+        ),
+        test_user_id,
+    )
+    session.commit()
+    session.refresh(task)
+
+    assert task.due_date == datetime(2026, 10, 20, tzinfo=JST)
+
+
+def test_task_input_models_read_date_only_due_dates_as_jst():
+    create_data = TaskCreate.model_validate(
+        {
+            "goal_id": uuid4(),
+            "title": "Dated task",
+            "estimate_hours": 1,
+            "due_date": "2026-10-20",
+        }
+    )
+    update_data = TaskUpdate.model_validate({"due_date": "2026-11-01"})
+
+    assert create_data.due_date == datetime(2026, 10, 20, tzinfo=JST)
+    assert update_data.due_date == datetime(2026, 11, 1, tzinfo=JST)
+
+
+def test_task_input_models_reject_naive_due_datetimes():
+    with pytest.raises(ValidationError, match="timezone offset"):
+        TaskCreate(
+            goal_id=uuid4(),
+            title="Ambiguous task",
+            estimate_hours=Decimal("1"),
+            due_date=datetime(2026, 10, 20, 10),
+        )
+
+    with pytest.raises(ValidationError, match="timezone offset"):
+        TaskUpdate(due_date=datetime(2026, 11, 1, 10))
