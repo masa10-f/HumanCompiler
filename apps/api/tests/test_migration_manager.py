@@ -126,3 +126,22 @@ def test_line_note_search_migrations_keep_function_body_together():
         assert "UPDATE public.daily_plan_documents" in statements[1]
     upgrade = (migrations / "032_add_daily_plan_line_note_search.sql").read_text()
     assert "NULLIF(block->>''note'', '''')" in upgrade
+
+
+def test_project_paused_status_migrations_keep_do_block_together():
+    manager = MigrationManager.__new__(MigrationManager)
+    migrations = Path(__file__).resolve().parents[1] / "migrations"
+    upgrade = manager._split_sql_statements(
+        (migrations / "034_add_project_paused_status.sql").read_text()
+    )
+    assert len(upgrade) == 1
+    assert "ALTER COLUMN status TYPE VARCHAR(20) USING status::text" in upgrade[0]
+    assert "ENABLE ROW LEVEL SECURITY" in upgrade[0]
+    assert "CREATE POLICY projects_own_data" in upgrade[0]
+    assert upgrade[0].rstrip().endswith("'")
+
+    rollback = manager._split_sql_statements(
+        (migrations / "034_add_project_paused_status_rollback.sql").read_text()
+    )
+    assert len(rollback) == 1
+    assert "WHERE status::text = 'paused'" in rollback[0]
