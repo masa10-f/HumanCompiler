@@ -14,9 +14,11 @@
 --     even inside the same transaction.
 --   * a CHECK constraint on status that rejects paused is recreated under the
 --     same name with paused included.
--- Row Level Security on projects stays as enable_rls_security.sql set it: the
+-- Row Level Security on projects stays as enable_rls_security.sql set it: on
+-- Supabase-shaped databases (authenticated role and auth.uid() present) the
 -- migration re-enables it and recreates the owner-only policy only when the
--- table has no policy at all, so it never leaves projects unprotected.
+-- table has no policy at all, so it never leaves projects unprotected. Plain
+-- PostgreSQL databases without those objects skip this step.
 -- Apply before deploying the API that offers the status.
 
 DO '
@@ -70,17 +72,17 @@ BEGIN
 
     -- 2. CHECK constraints on status alone that reject paused (hand-built schemas).
     FOR status_check IN
-        SELECT c.conname, pg_get_constraintdef(c.oid) AS definition
+        SELECT c.conname, pg_get_expr(c.conbin, c.conrelid) AS expression
         FROM pg_constraint AS c
         WHERE c.conrelid = ''public.projects''::regclass
           AND c.contype = ''c''
           AND c.conkey = ARRAY[status_attnum]
     LOOP
-        -- pg_get_constraintdef returns "CHECK (<expression>)"; evaluate the
-        -- expression against a one-row stand-in for projects holding paused.
+        -- Evaluate the constraint expression against a one-row stand-in for
+        -- projects holding paused.
         EXECUTE format(
             ''SELECT %s FROM (SELECT %L::varchar(20) AS status) AS projects'',
-            substring(status_check.definition FROM 7),
+            status_check.expression,
             ''paused''
         ) INTO allows_paused;
 
@@ -98,17 +100,23 @@ BEGIN
     END LOOP;
 
     -- 3. Keep projects protected: RLS on, owner-only policy present.
-    ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
+    -- Only on Supabase-shaped databases, which have the authenticated role
+    -- and auth.uid(); a plain PostgreSQL database (local ORM-created schema)
+    -- has neither and is left alone.
+    IF to_regrole(''authenticated'') IS NOT NULL
+       AND to_regprocedure(''auth.uid()'') IS NOT NULL THEN
+        ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_policies
-        WHERE schemaname = ''public'' AND tablename = ''projects''
-    ) THEN
-        CREATE POLICY projects_own_data ON public.projects
-            FOR ALL
-            TO authenticated
-            USING (auth.uid()::text = owner_id::text)
-            WITH CHECK (auth.uid()::text = owner_id::text);
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_policies
+            WHERE schemaname = ''public'' AND tablename = ''projects''
+        ) THEN
+            CREATE POLICY projects_own_data ON public.projects
+                FOR ALL
+                TO authenticated
+                USING (auth.uid()::text = owner_id::text)
+                WITH CHECK (auth.uid()::text = owner_id::text);
+        END IF;
     END IF;
 END;
 ';
