@@ -62,10 +62,15 @@ BEGIN
               AND a.attnum > 0
               AND NOT a.attisdropped
         ) THEN
+            -- Dropping needs ownership of the type, which the role that owns
+            -- projects may lack; an unused type left behind is harmless.
             BEGIN
                 EXECUTE format(''DROP TYPE %s'', enum_type);
-            EXCEPTION WHEN dependent_objects_still_exist THEN
-                RAISE NOTICE ''Enum type % is still referenced elsewhere and was kept'', enum_type;
+            EXCEPTION
+                WHEN dependent_objects_still_exist THEN
+                    RAISE NOTICE ''Enum type % is still referenced elsewhere and was kept'', enum_type;
+                WHEN insufficient_privilege THEN
+                    RAISE NOTICE ''Enum type % is owned by another role and was kept'', enum_type;
             END;
         END IF;
     END IF;
