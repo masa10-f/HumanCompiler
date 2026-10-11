@@ -124,7 +124,8 @@ describe("DailyPlanWorkspace", () => {
         optimization_status: "OK", generated_at: "2030-01-02T00:00:00Z", source_scheduling_blocks: [block] } });
     await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
     fireEvent.click(screen.getByRole("checkbox", { name: "会議を終了済みにする" }));
-    expect(screen.getByText("終了済み")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "会議を終了済みにする" })).toBeChecked();
+    expect(screen.queryByText("終了済み")).not.toBeInTheDocument();
     expect(screen.queryByText(/再生成が必要/)).not.toBeInTheDocument();
     await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalledWith("2030-01-02", 1,
       expect.objectContaining({ blocks: [expect.objectContaining({ completed: true })] })), { timeout: 2500 });
