@@ -1242,11 +1242,6 @@ export const DailyPlanWorkspace = forwardRef<
                                         })
                                       }
                                     />
-                                    {block.completed && (
-                                      <Badge variant="secondary">
-                                        終了済み
-                                      </Badge>
-                                    )}
                                     {block.task_ref?.source === "task" && (
                                       <Button
                                         size="sm"
