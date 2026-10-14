@@ -82,7 +82,7 @@ export function useLog(logId: string) {
 
 /**
  * Mutation hook for creating a new log.
- * Automatically invalidates log and progress cache on success.
+ * Automatically invalidates log, progress and task cache on success.
  *
  * @returns UseMutationResult with mutateAsync function
  */
@@ -107,6 +107,9 @@ export function useCreateLog() {
 
       // Invalidate progress data as it depends on logs
       queryClient.invalidateQueries({ queryKey: queryKeys.progress.all })
+
+      // Logging work moves pending tasks to in_progress on the server
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all })
 
       // Add the new log to cache
       queryClient.setQueryData(

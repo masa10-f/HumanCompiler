@@ -1187,6 +1187,11 @@ class LogService(BaseService[Log, LogCreate, LogUpdate]):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
             )
+        # Logging work on a pending task means it has started
+        if task.status == TaskStatus.PENDING:
+            task.status = TaskStatus.IN_PROGRESS
+            task.updated_at = datetime.now(UTC)
+            session.add(task)
         return self.create(session, log_data, owner_id)
 
     def get_log(
