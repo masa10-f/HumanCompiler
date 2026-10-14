@@ -11,6 +11,7 @@ from uuid import UUID
 from uuid import uuid4
 
 from fastapi import HTTPException, status
+from sqlalchemy import update as sqlalchemy_update
 from sqlalchemy.orm import aliased, selectinload
 from sqlmodel import Session, and_, col, delete, func, select
 
@@ -1187,11 +1188,14 @@ class LogService(BaseService[Log, LogCreate, LogUpdate]):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
             )
-        # Logging work on a pending task means it has started
-        if task.status == TaskStatus.PENDING:
-            task.status = TaskStatus.IN_PROGRESS
-            task.updated_at = datetime.now(UTC)
-            session.add(task)
+        # Logging work on a pending task means it has started. Match on the
+        # current status in the database so a concurrent completion or
+        # cancellation is never overwritten.
+        session.exec(
+            sqlalchemy_update(Task)
+            .where(Task.id == task.id, Task.status == TaskStatus.PENDING)
+            .values(status=TaskStatus.IN_PROGRESS, updated_at=datetime.now(UTC))
+        )
         return self.create(session, log_data, owner_id)
 
     def get_log(
