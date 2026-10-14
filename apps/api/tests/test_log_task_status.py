@@ -1,3 +1,8 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2024-2025 Masato Fukushima <masa1063fuk@gmail.com>
+#
+# This file is part of HumanCompiler.
+# For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 """
 Tests for task status transitions triggered by work log creation.
 """
@@ -6,8 +11,14 @@ import pytest
 from sqlmodel import Session
 
 from conftest import create_test_data
-from humancompiler_api.models import LogCreate, TaskCreate, TaskStatus
-from humancompiler_api.services import LogService, TaskService
+from humancompiler_api.models import (
+    LogCreate,
+    TaskCreate,
+    TaskStatus,
+    WorkSessionCheckoutRequest,
+    WorkSessionStartRequest,
+)
+from humancompiler_api.services import LogService, TaskService, WorkSessionService
 
 
 @pytest.mark.parametrize(
@@ -50,3 +61,39 @@ def test_create_log_starts_pending_task(
 
     session.refresh(task)
     assert task.status == expected_status
+
+
+def test_checkout_starts_pending_task(session: Session, test_user_id: str):
+    """Checkout auto-creates a log, so a pending task moves to in_progress."""
+    test_data = create_test_data(session, test_user_id)
+    task_service = TaskService()
+    work_session_service = WorkSessionService()
+
+    task = task_service.create_task(
+        session,
+        TaskCreate(
+            goal_id=test_data["goal"].id,
+            title="Checkout task",
+            estimate_hours=1.0,
+            status=TaskStatus.PENDING,
+            priority=1,
+        ),
+        test_user_id,
+    )
+
+    work_session_service.start_session(
+        session,
+        WorkSessionStartRequest(
+            task_id=task.id,
+            planned_checkout_at="2030-01-01T00:00:00Z",
+        ),
+        test_user_id,
+    )
+    work_session_service.checkout_session(
+        session,
+        test_user_id,
+        WorkSessionCheckoutRequest(decision="switch"),
+    )
+
+    session.refresh(task)
+    assert task.status == TaskStatus.IN_PROGRESS

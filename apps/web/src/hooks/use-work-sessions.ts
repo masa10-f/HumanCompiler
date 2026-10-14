@@ -123,6 +123,9 @@ export function useCheckoutWorkSession() {
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.progress.all });
 
+      // Checkout auto-creates a log, which moves pending tasks to in_progress
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
+
       // Invalidate reschedule suggestions (Issue #227)
       if (result.reschedule_suggestion) {
         queryClient.invalidateQueries({ queryKey: queryKeys.reschedule.suggestions() });
