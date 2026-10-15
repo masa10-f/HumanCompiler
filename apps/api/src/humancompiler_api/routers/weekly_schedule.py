@@ -14,9 +14,13 @@ from pydantic import BaseModel, Field
 from humancompiler_api.auth import get_current_user_id
 from humancompiler_api.database import db
 from humancompiler_api.models import (
+    ErrorResponse,
+    Goal,
+    Project,
+    Task,
+    WeeklyRecurringTask,
     WeeklySchedule,
     WeeklyScheduleResponse,
-    ErrorResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,6 +43,87 @@ class WeeklyScheduleDraftUpdate(BaseModel):
 
     schedule_data: dict = Field(..., description="Edited weekly schedule data")
     expected_updated_at: datetime | None = None
+
+
+def _extract_selected_task_ids(schedule_data: dict) -> set[UUID]:
+    """Return selected regular/recurring task IDs embedded in weekly schedule JSON."""
+    task_ids: set[UUID] = set()
+
+    raw_selected_task_ids = schedule_data.get("selected_task_ids")
+    if isinstance(raw_selected_task_ids, list):
+        for task_id in raw_selected_task_ids:
+            try:
+                task_ids.add(UUID(str(task_id)))
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=ErrorResponse.create(
+                        code="INVALID_TASK_ID",
+                        message="Selected task IDs must be valid UUIDs",
+                        details={"task_id": str(task_id)},
+                    ).model_dump(),
+                )
+
+    raw_selected_tasks = schedule_data.get("selected_tasks")
+    if isinstance(raw_selected_tasks, list):
+        for selected_task in raw_selected_tasks:
+            if not isinstance(selected_task, dict) or "task_id" not in selected_task:
+                continue
+            task_id = selected_task["task_id"]
+            try:
+                task_ids.add(UUID(str(task_id)))
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=ErrorResponse.create(
+                        code="INVALID_TASK_ID",
+                        message="Selected task IDs must be valid UUIDs",
+                        details={"task_id": str(task_id)},
+                    ).model_dump(),
+                )
+
+    return task_ids
+
+
+def _validate_selected_tasks_owned(
+    session: Session, user_uuid: UUID, schedule_data: dict
+) -> None:
+    """Reject weekly schedule task references not owned by the current user."""
+    task_ids = _extract_selected_task_ids(schedule_data)
+    if not task_ids:
+        return
+
+    owned_regular_task_ids = set(
+        session.exec(
+            select(Task.id)
+            .join(Goal, Task.goal_id == Goal.id)
+            .join(Project, Goal.project_id == Project.id)
+            .where(Task.id.in_(task_ids), Project.owner_id == user_uuid)
+        ).all()
+    )
+    owned_recurring_task_ids = set(
+        session.exec(
+            select(WeeklyRecurringTask.id).where(
+                WeeklyRecurringTask.id.in_(task_ids),
+                WeeklyRecurringTask.user_id == user_uuid,
+                WeeklyRecurringTask.deleted_at.is_(None),
+            )
+        ).all()
+    )
+    unauthorized_task_ids = task_ids - owned_regular_task_ids - owned_recurring_task_ids
+    if unauthorized_task_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=ErrorResponse.create(
+                code="TASK_ACCESS_DENIED",
+                message="Weekly schedule contains tasks that are not accessible to the current user",
+                details={
+                    "task_ids": sorted(
+                        str(task_id) for task_id in unauthorized_task_ids
+                    )
+                },
+            ).model_dump(),
+        )
 
 
 def validate_week_start_date(date_str: str) -> datetime:
@@ -103,6 +188,8 @@ async def save_weekly_schedule(
         # Convert user_id to UUID if it's a string
         user_uuid = UUID(user_id) if isinstance(user_id, str) else user_id
 
+        _validate_selected_tasks_owned(session, user_uuid, request.schedule_data)
+
         existing_schedule = session.exec(
             select(WeeklySchedule)
             .where(
@@ -135,6 +222,8 @@ async def save_weekly_schedule(
             logger.info(f"Created new weekly schedule {new_schedule.id}")
             return WeeklyScheduleResponse.model_validate(new_schedule)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error saving weekly schedule: {e}")
         raise HTTPException(
@@ -377,19 +466,23 @@ async def update_weekly_schedule_draft(
                 status_code=409, detail="Weekly plan changed after loading"
             )
 
+    next_schedule_json = (
+        request.schedule_data
+        if existing is None
+        else {**(existing.schedule_json or {}), **request.schedule_data}
+    )
+    _validate_selected_tasks_owned(session, user_uuid, next_schedule_json)
+
     now = datetime.now(UTC)
     if existing is None:
         existing = WeeklySchedule(
             id=uuid4(),
             user_id=user_uuid,
             week_start_date=week_start,
-            schedule_json=request.schedule_data,
+            schedule_json=next_schedule_json,
         )
     else:
-        existing.schedule_json = {
-            **(existing.schedule_json or {}),
-            **request.schedule_data,
-        }
+        existing.schedule_json = next_schedule_json
         existing.updated_at = now
     session.add(existing)
     session.commit()

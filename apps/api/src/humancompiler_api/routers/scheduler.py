@@ -2782,8 +2782,14 @@ async def _get_tasks_from_weekly_schedule(
         # Fetch all regular tasks in one query instead of N+1 queries
         tasks = []
         if valid_uuids:
+            user_uuid = UUID(str(user_id))
             tasks = list(
-                session.exec(select(Task).where(Task.id.in_(valid_uuids))).all()
+                session.exec(
+                    select(Task)
+                    .join(Goal, Task.goal_id == Goal.id)
+                    .join(Project, Goal.project_id == Project.id)
+                    .where(Task.id.in_(valid_uuids), Project.owner_id == user_uuid)
+                ).all()
             )
             for task in tasks:
                 _set_weekly_schedule_assigned_hours(

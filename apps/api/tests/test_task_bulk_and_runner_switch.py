@@ -9,8 +9,12 @@ from conftest import create_test_data
 from humancompiler_api.models import (
     Schedule,
     SwitchDisposition,
+    Project,
+    Goal,
+    Task,
     TaskCreate,
     TaskStatus,
+    User,
     WeeklySchedule,
     WorkSessionStartRequest,
     WorkSessionSwitchRequest,
@@ -515,6 +519,48 @@ async def test_weekly_membership_preserves_legacy_selected_task_ids(
     assert {
         str(item["task_id"]) for item in plan.schedule_json["selected_tasks"]
     } == expected_ids
+
+
+@pytest.mark.asyncio
+async def test_weekly_draft_rejects_task_owned_by_another_user(session, test_user_id):
+    create_test_data(session, test_user_id)
+    victim_user_id = uuid4()
+    victim_project_id = uuid4()
+    victim_goal_id = uuid4()
+    victim_task_id = uuid4()
+    session.add(User(id=victim_user_id, email="victim@example.com"))
+    session.add(
+        Project(id=victim_project_id, owner_id=victim_user_id, title="Victim project")
+    )
+    session.add(
+        Goal(
+            id=victim_goal_id,
+            project_id=victim_project_id,
+            title="Victim goal",
+            estimate_hours=Decimal("1"),
+        )
+    )
+    session.add(
+        Task(
+            id=victim_task_id,
+            goal_id=victim_goal_id,
+            title="Victim secret task",
+            estimate_hours=Decimal("1"),
+        )
+    )
+    session.commit()
+
+    with pytest.raises(HTTPException) as error:
+        await update_weekly_schedule_draft(
+            "2030-01-07",
+            WeeklyScheduleDraftUpdate(
+                schedule_data={"selected_tasks": [{"task_id": str(victim_task_id)}]},
+            ),
+            str(test_user_id),
+            session,
+        )
+
+    assert error.value.status_code == 403
 
 
 @pytest.mark.asyncio
