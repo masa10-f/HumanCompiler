@@ -1604,6 +1604,9 @@ function TaskSearchSelect({
   const [query, setQuery] = useState("");
   const [projectId, setProjectId] = useState(ALL_SCOPE);
   const [goalId, setGoalId] = useState(ALL_SCOPE);
+  // A filter picked with the pointer hands focus back to the input for
+  // typing; a keyboard change (arrows on a closed select) keeps it there.
+  const pickedByPointer = useRef(false);
   // null follows the default row, so a refresh never moves the highlight
   // onto a different task.
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -1650,6 +1653,10 @@ function TaskSearchSelect({
   // highlighted task that disappears falls back to the default row.
   const activeIndex = activeKey === null ? -1 : itemKeys.indexOf(activeKey);
   const current = activeIndex >= 0 ? activeIndex : defaultIndex;
+  // The filters live in the list, so moving focus between them and the
+  // input keeps the list (and the typed words) open.
+  const staysInside = (target: EventTarget | null) =>
+    target instanceof Node && Boolean(rootRef.current?.contains(target));
   // Every close drops the words and filters, so reopening the list (by
   // focus, typing or the arrow keys) starts from the current link.
   const close = () => {
@@ -1662,12 +1669,15 @@ function TaskSearchSelect({
   const choose = (task: TaskOption | undefined) => {
     // Re-picking the current link must not rewrite the title or autosave.
     if (task?.key !== selectedKey) onChange(task);
+    // A click while a filter has focus would otherwise leave focus on a
+    // select that unmounts with the list.
+    if (
+      document.activeElement !== inputRef.current &&
+      staysInside(document.activeElement)
+    )
+      inputRef.current?.focus();
     close();
   };
-  // The filters live in the list, so moving focus between them and the
-  // input keeps the list (and the typed words) open.
-  const staysInside = (target: EventTarget | null) =>
-    target instanceof Node && Boolean(rootRef.current?.contains(target));
   const leave = (event: FocusEvent) => {
     if (staysInside(event.relatedTarget)) return;
     setFocused(false);
@@ -1677,7 +1687,7 @@ function TaskSearchSelect({
     setProjectId(nextProjectId);
     setGoalId(nextGoalId);
     setActiveKey(null);
-    inputRef.current?.focus();
+    if (pickedByPointer.current) inputRef.current?.focus();
   };
   useEffect(() => {
     if (open)
@@ -1746,7 +1756,11 @@ function TaskSearchSelect({
           {scope.projects.length > 0 && (
             <div
               className="flex flex-wrap gap-1 border-b p-1 pb-2"
+              onPointerDown={() => {
+                pickedByPointer.current = true;
+              }}
               onKeyDown={(event) => {
+                pickedByPointer.current = false;
                 if (event.key !== "Escape") return;
                 event.preventDefault();
                 inputRef.current?.focus();
@@ -1779,9 +1793,8 @@ function TaskSearchSelect({
                 onChange={(event) => {
                   const goal = event.target.value;
                   // A goal implies its project, so the list stays consistent.
-                  const owner = options.find(
-                    (option) => goal && option.goalId === goal,
-                  )?.projectId;
+                  const owner = goalChoices.find(([id]) => id === goal)?.[1]
+                    .projectId;
                   changeScope(owner ?? scopeProjectId, goal);
                 }}
               >

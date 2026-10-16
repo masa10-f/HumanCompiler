@@ -255,6 +255,28 @@ describe("DailyPlanWorkspace", () => {
         title: "定例", task_ref: { source: "task", id: "paper" } }), { timeout: 2500 });
     });
 
+    it("keeps keyboard focus on a filter and hands a pointer pick back to the input", async () => {
+      const input = await openFixedLine();
+      act(() => input.focus());
+      const project = screen.getByRole("combobox", { name: "プロジェクトで絞り込む" });
+      const goal = screen.getByRole("combobox", { name: "ゴールで絞り込む" });
+      act(() => project.focus());
+      expect(screen.getByRole("listbox", { name: "紐づけるタスクの候補" })).toBeInTheDocument();
+      // Arrow keys on a closed select change it; focus must stay to keep moving.
+      fireEvent.keyDown(project, { key: "ArrowDown" });
+      fireEvent.change(project, { target: { value: "research" } });
+      expect(project).toHaveFocus();
+      fireEvent.pointerDown(goal);
+      fireEvent.change(goal, { target: { value: "survey" } });
+      expect(input).toHaveFocus();
+      act(() => goal.focus());
+      fireEvent.click(screen.getByRole("option", { name: /論文を読む/ }));
+      expect(input).toHaveFocus();
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      await waitFor(() => expect(lastSavedFixed()).toMatchObject({
+        title: "定例", task_ref: { source: "task", id: "paper" } }), { timeout: 2500 });
+    });
+
     it("names the linked task when recording a fixed line's result", async () => {
       await openFixedLine([{ ...fixed, task_ref: { source: "task", id: "paper" } }]);
       expect(screen.getByRole("checkbox", { name: "定例を終了済みにする" })).toBeInTheDocument();
