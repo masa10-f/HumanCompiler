@@ -175,8 +175,10 @@ describe("DailyPlanWorkspace", () => {
 
     async function openFixedLine(blocks: DailyPlanResponse["document"]["blocks"] = [fixed]) {
       jest.mocked(tasksApi.getWorkspace).mockResolvedValue({ items: [
-        { ...workspaceTask("paper", "論文を読む"), project_title: "研究", goal_title: "調査" },
-        { ...workspaceTask("data", "データ整理"), project_title: "研究", goal_title: "実験" },
+        { ...workspaceTask("paper", "論文を読む"), project_id: "research", project_title: "研究",
+          goal_id: "survey", goal_title: "調査" },
+        { ...workspaceTask("data", "データ整理"), project_id: "research", project_title: "研究",
+          goal_id: "experiment", goal_title: "実験" },
         workspaceTask("shopping", "買い物"),
       ], total: 3, skip: 0, limit: 100 });
       jest.mocked(dailyPlansApi.get).mockResolvedValue({ ...blankResponse, revision: 1,
@@ -203,6 +205,74 @@ describe("DailyPlanWorkspace", () => {
       // Linking keeps the fixed line's own name in the note.
       expect(screen.getByRole("textbox", { name: "予定名" })).toHaveValue("定例");
       expect(screen.getByText("定例", { selector: "summary" })).toBeInTheDocument();
+      await waitFor(() => expect(lastSavedFixed()).toMatchObject({
+        title: "定例", task_ref: { source: "task", id: "paper" } }), { timeout: 2500 });
+    });
+
+    it("narrows candidates by project and goal together with the typed words", async () => {
+      jest.mocked(quickTasksApi.getAll).mockResolvedValue([quickTask("memo", "メモ整理")]);
+      const input = await openFixedLine();
+      const list = screen.getByRole("listbox", { name: "紐づけるタスクの候補" });
+      const titles = () => within(screen.getByRole("listbox", { name: "紐づけるタスクの候補" }))
+        .getAllByRole("option").slice(1).map((option) => option.firstChild?.textContent);
+      await waitFor(() => expect(titles()).toContain("メモ整理"));
+      const project = screen.getByRole("combobox", { name: "プロジェクトで絞り込む" });
+      const goal = screen.getByRole("combobox", { name: "ゴールで絞り込む" });
+      // Moving to a filter keeps the list and the typed words.
+      fireEvent.change(input, { target: { value: "整理" } });
+      fireEvent.blur(input, { relatedTarget: project });
+      fireEvent.focus(project);
+      expect(titles()).toEqual(["データ整理", "メモ整理"]);
+      fireEvent.change(project, { target: { value: "quick" } });
+      expect(goal).toBeDisabled();
+      expect(titles()).toEqual(["メモ整理"]);
+      fireEvent.change(input, { target: { value: "" } });
+      fireEvent.change(project, { target: { value: "research" } });
+      expect(within(goal).getAllByRole("option").map((option) => option.textContent))
+        .toEqual(["すべてのゴール", "調査", "実験"]);
+      expect(titles()).toEqual(["論文を読む", "データ整理"]);
+      fireEvent.change(goal, { target: { value: "experiment" } });
+      expect(titles()).toEqual(["データ整理"]);
+      // Choosing a goal with every project shown also narrows to its project.
+      fireEvent.change(project, { target: { value: "" } });
+      expect(within(goal).getAllByRole("option").map((option) => option.textContent))
+        .toEqual(["すべてのゴール", "調査 · 研究", "実験 · 研究", "Goal · Project"]);
+      fireEvent.change(goal, { target: { value: "survey" } });
+      expect(project).toHaveValue("research");
+      // Enter takes the first narrowed task instead of unlinking.
+      expect(within(list).getAllByRole("option")[1]).toHaveAttribute("aria-selected", "true");
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      // Reopening without leaving the input drops the old filters.
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      expect(screen.getByRole("combobox", { name: "プロジェクトで絞り込む" })).toHaveValue("");
+      expect(titles()).toEqual(["論文を読む", "データ整理", "買い物", "メモ整理"]);
+      expect(screen.getByRole("option", { name: /論文を読む/ })).toHaveAttribute("aria-selected", "true");
+      // Escape from a filter closes the list too.
+      fireEvent.keyDown(screen.getByRole("combobox", { name: "プロジェクトで絞り込む" }), { key: "Escape" });
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      await waitFor(() => expect(lastSavedFixed()).toMatchObject({
+        title: "定例", task_ref: { source: "task", id: "paper" } }), { timeout: 2500 });
+    });
+
+    it("keeps keyboard focus on a filter and hands a pointer pick back to the input", async () => {
+      const input = await openFixedLine();
+      act(() => input.focus());
+      const project = screen.getByRole("combobox", { name: "プロジェクトで絞り込む" });
+      const goal = screen.getByRole("combobox", { name: "ゴールで絞り込む" });
+      act(() => project.focus());
+      expect(screen.getByRole("listbox", { name: "紐づけるタスクの候補" })).toBeInTheDocument();
+      // Arrow keys on a closed select change it; focus must stay to keep moving.
+      fireEvent.keyDown(project, { key: "ArrowDown" });
+      fireEvent.change(project, { target: { value: "research" } });
+      expect(project).toHaveFocus();
+      fireEvent.pointerDown(goal);
+      fireEvent.change(goal, { target: { value: "survey" } });
+      expect(input).toHaveFocus();
+      act(() => goal.focus());
+      fireEvent.click(screen.getByRole("option", { name: /論文を読む/ }));
+      expect(input).toHaveFocus();
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
       await waitFor(() => expect(lastSavedFixed()).toMatchObject({
         title: "定例", task_ref: { source: "task", id: "paper" } }), { timeout: 2500 });
     });
