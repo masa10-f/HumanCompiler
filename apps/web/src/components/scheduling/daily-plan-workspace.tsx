@@ -10,6 +10,7 @@ import {
 import { createDailyPlanId } from "@/lib/daily-plan-id";
 import {
   forwardRef,
+  type FocusEvent,
   useImperativeHandle,
   useCallback,
   useEffect,
@@ -1537,6 +1538,39 @@ function TaskSelect({
 }
 
 const UNLINK_KEY = "none";
+const ALL_SCOPE = "";
+const QUICK_SCOPE = "quick";
+
+// Projects and goals present among the candidates, for narrowing the list.
+function taskScopeChoices(options: TaskOption[], projectId: string) {
+  const projects = new Map<string, string>();
+  const goals = new Map<string, { title: string; projectTitle?: string }>();
+  let hasQuick = false;
+  for (const option of options) {
+    if (option.isFallback) continue;
+    if (!option.projectId) {
+      hasQuick = true;
+      continue;
+    }
+    projects.set(option.projectId, option.projectTitle ?? "プロジェクト");
+    if (option.goalId && (!projectId || option.projectId === projectId))
+      goals.set(option.goalId, {
+        title: option.goalTitle ?? "ゴール",
+        projectTitle: option.projectTitle,
+      });
+  }
+  return { projects: [...projects], goals: [...goals], hasQuick };
+}
+
+function inTaskScope(
+  option: TaskOption,
+  projectId: string,
+  goalId: string,
+): boolean {
+  if (projectId === QUICK_SCOPE) return !option.isFallback && !option.projectId;
+  if (projectId && option.projectId !== projectId) return false;
+  return !goalId || option.goalId === goalId;
+}
 
 function taskOptionLabel(option: TaskOption): string {
   return `${option.title}${
@@ -1559,9 +1593,13 @@ function TaskSearchSelect({
   onChange: (task: TaskOption | undefined) => void;
 }) {
   const listId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [projectId, setProjectId] = useState(ALL_SCOPE);
+  const [goalId, setGoalId] = useState(ALL_SCOPE);
   // null follows the default row, so a refresh never moves the highlight
   // onto a different task.
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -1574,14 +1612,17 @@ function TaskSearchSelect({
   // Keep a linked task that is no longer loaded (e.g. completed) choosable,
   // so opening the list never defaults to unlinking it.
   const selectable = selected?.isFallback ? [selected, ...options] : options;
-  const matches = query.trim()
-    ? searchDailyPlanTasks(selectable, query)
+  const scope = taskScopeChoices(options, projectId);
+  const scoped = projectId
+    ? selectable.filter((option) => inTaskScope(option, projectId, goalId))
     : selectable;
+  const narrowing = Boolean(query.trim() || projectId);
+  const matches = query.trim() ? searchDailyPlanTasks(scoped, query) : scoped;
   // Index 0 unlinks; candidates follow.
   const items: Array<TaskOption | undefined> = [undefined, ...matches];
   const itemKeys = items.map((task) => task?.key ?? UNLINK_KEY);
-  // The default row is the first match while searching, else the current link.
-  const defaultIndex = query.trim()
+  // The default row is the first match while narrowing, else the current link.
+  const defaultIndex = narrowing
     ? Math.min(1, items.length - 1)
     : Math.max(0, itemKeys.indexOf(selectedKey ?? UNLINK_KEY));
   // Candidates can change while open (e.g. after a task is completed); a
@@ -1594,6 +1635,21 @@ function TaskSearchSelect({
     setQuery("");
     setOpen(false);
   };
+  // The filters live in the list, so moving focus between them and the
+  // input keeps the list (and the typed words) open.
+  const staysInside = (target: EventTarget | null) =>
+    target instanceof Node && Boolean(rootRef.current?.contains(target));
+  const leave = (event: FocusEvent) => {
+    if (staysInside(event.relatedTarget)) return;
+    setFocused(false);
+    setOpen(false);
+  };
+  const changeScope = (nextProjectId: string, nextGoalId: string) => {
+    setProjectId(nextProjectId);
+    setGoalId(nextGoalId);
+    setActiveKey(null);
+    inputRef.current?.focus();
+  };
   useEffect(() => {
     if (open)
       document
@@ -1602,8 +1658,9 @@ function TaskSearchSelect({
   }, [current, listId, open]);
 
   return (
-    <div className="relative min-w-[220px] flex-1">
+    <div ref={rootRef} className="relative min-w-[220px] flex-1">
       <Input
+        ref={inputRef}
         role="combobox"
         aria-label="紐づけるタスク"
         aria-autocomplete="list"
@@ -1616,14 +1673,15 @@ function TaskSearchSelect({
         value={focused ? query : selected ? taskOptionLabel(selected) : ""}
         onFocus={() => {
           setFocused(true);
-          setQuery("");
+          // Returning from a filter keeps the open list as it was.
+          if (open) return;
           setOpen(true);
+          setQuery("");
+          setProjectId(ALL_SCOPE);
+          setGoalId(ALL_SCOPE);
           setActiveKey(null);
         }}
-        onBlur={() => {
-          setFocused(false);
-          setOpen(false);
-        }}
+        onBlur={leave}
         onChange={(event) => {
           setQuery(event.target.value);
           setOpen(true);
@@ -1645,7 +1703,7 @@ function TaskSearchSelect({
           } else if (event.key === "Enter" && open) {
             event.preventDefault();
             // A search with no match must not fall through to unlinking.
-            if (!query.trim() || matches.length) choose(items[current]);
+            if (!narrowing || matches.length) choose(items[current]);
           } else if (event.key === "Escape" && open) {
             event.preventDefault();
             setQuery("");
@@ -1655,47 +1713,100 @@ function TaskSearchSelect({
       />
       {open && (
         <div
-          id={listId}
-          role="listbox"
-          aria-label="紐づけるタスクの候補"
-          className="absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
-          // Keep focus in the input so a click is not lost to its blur.
-          onMouseDown={(event) => event.preventDefault()}
+          className="absolute left-0 right-0 z-50 mt-1 rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+          // Keep focus in the input so a click is not lost to its blur; the
+          // filter menus still need the click to open.
+          onMouseDown={(event) => {
+            if (!(event.target instanceof HTMLSelectElement))
+              event.preventDefault();
+          }}
         >
-          {items.map((task, index) => (
-            <div
-              key={task?.key ?? "none"}
-              id={`${listId}-${index}`}
-              role="option"
-              aria-selected={index === current}
-              className={`cursor-pointer rounded px-2 py-1.5 text-sm ${
-                index === current
-                  ? "bg-secondary text-secondary-foreground"
-                  : ""
-              }`}
-              onMouseEnter={() => setActiveKey(itemKeys[index]!)}
-              onClick={() => choose(task)}
-            >
-              {task ? (
-                <>
-                  <span className="block">{task.title}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {task.isFallback
-                      ? "候補外"
-                      : (task.projectTitle ?? "Quick Task")}
-                    {task.goalTitle ? ` / ${task.goalTitle}` : ""}
-                  </span>
-                </>
-              ) : (
-                "タスクに紐づけない"
-              )}
+          {scope.projects.length > 0 && (
+            <div className="flex flex-wrap gap-1 border-b p-1 pb-2">
+              <select
+                aria-label="プロジェクトで絞り込む"
+                className="min-w-0 flex-1 rounded border bg-background p-1 text-xs"
+                value={projectId}
+                onBlur={leave}
+                onChange={(event) => changeScope(event.target.value, ALL_SCOPE)}
+              >
+                <option value={ALL_SCOPE}>すべてのプロジェクト</option>
+                {scope.projects.map(([id, title]) => (
+                  <option key={id} value={id}>
+                    {title}
+                  </option>
+                ))}
+                {scope.hasQuick && (
+                  <option value={QUICK_SCOPE}>Quick Task</option>
+                )}
+              </select>
+              <select
+                aria-label="ゴールで絞り込む"
+                className="min-w-0 flex-1 rounded border bg-background p-1 text-xs"
+                value={goalId}
+                disabled={projectId === QUICK_SCOPE || !scope.goals.length}
+                onBlur={leave}
+                onChange={(event) => {
+                  const goal = event.target.value;
+                  // A goal implies its project, so the list stays consistent.
+                  const owner = options.find(
+                    (option) => goal && option.goalId === goal,
+                  )?.projectId;
+                  changeScope(owner ?? projectId, goal);
+                }}
+              >
+                <option value={ALL_SCOPE}>すべてのゴール</option>
+                {scope.goals.map(([id, goal]) => (
+                  <option key={id} value={id}>
+                    {projectId || !goal.projectTitle
+                      ? goal.title
+                      : `${goal.title} · ${goal.projectTitle}`}
+                  </option>
+                ))}
+              </select>
             </div>
-          ))}
-          {!matches.length && (
-            <p className="px-2 py-1.5 text-xs text-muted-foreground">
-              一致するタスクがありません
-            </p>
           )}
+          <div
+            id={listId}
+            role="listbox"
+            aria-label="紐づけるタスクの候補"
+            className="max-h-64 overflow-y-auto"
+          >
+            {items.map((task, index) => (
+              <div
+                key={task?.key ?? "none"}
+                id={`${listId}-${index}`}
+                role="option"
+                aria-selected={index === current}
+                className={`cursor-pointer rounded px-2 py-1.5 text-sm ${
+                  index === current
+                    ? "bg-secondary text-secondary-foreground"
+                    : ""
+                }`}
+                onMouseEnter={() => setActiveKey(itemKeys[index]!)}
+                onClick={() => choose(task)}
+              >
+                {task ? (
+                  <>
+                    <span className="block">{task.title}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {task.isFallback
+                        ? "候補外"
+                        : (task.projectTitle ?? "Quick Task")}
+                      {task.goalTitle ? ` / ${task.goalTitle}` : ""}
+                    </span>
+                  </>
+                ) : (
+                  "タスクに紐づけない"
+                )}
+              </div>
+            ))}
+            {!matches.length && (
+              <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                一致するタスクがありません
+              </p>
+            )}
+          </div>
         </div>
       )}
     </div>
