@@ -31,13 +31,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useProjects } from '@/hooks/use-projects';
+import { useUpdateProject } from '@/hooks/use-project-query';
 import type { Project } from '@/types/project';
 
 const projectFormSchema = z.object({
   title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
   description: z.string().max(500, '500文字以内で入力してください').optional(),
-  status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']),
+  status: z.enum(['pending', 'in_progress', 'paused', 'completed', 'cancelled']),
 });
 
 type ProjectFormData = z.infer<typeof projectFormSchema>;
@@ -50,7 +50,7 @@ interface ProjectEditDialogProps {
 export function ProjectEditDialog({ project, children }: ProjectEditDialogProps) {
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { updateProject } = useProjects();
+  const updateProject = useUpdateProject();
 
   const form = useForm<ProjectFormData>({
     resolver: zodResolver(projectFormSchema),
@@ -73,10 +73,13 @@ export function ProjectEditDialog({ project, children }: ProjectEditDialogProps)
   const onSubmit = async (data: ProjectFormData) => {
     try {
       setIsSubmitting(true);
-      await updateProject(project.id, {
-        title: data.title,
-        description: data.description || undefined,
-        status: data.status,
+      await updateProject.mutateAsync({
+        id: project.id,
+        data: {
+          title: data.title,
+          description: data.description || undefined,
+          status: data.status,
+        },
       });
       setOpen(false);
     } catch (error) {
@@ -148,6 +151,7 @@ export function ProjectEditDialog({ project, children }: ProjectEditDialogProps)
                     <SelectContent>
                       <SelectItem value="pending">未開始</SelectItem>
                       <SelectItem value="in_progress">進行中</SelectItem>
+                      <SelectItem value="paused">一時停止</SelectItem>
                       <SelectItem value="completed">完了</SelectItem>
                       <SelectItem value="cancelled">キャンセル</SelectItem>
                     </SelectContent>

@@ -73,7 +73,7 @@ const jsonResponse = (data: unknown, ok = true) =>
 
 const defaultSettings = {
   has_api_key: false,
-  openai_model: 'gpt-5.5',
+  openai_model: 'gpt-6-sol',
   email_notifications_enabled: false,
   email_deadline_reminder_hours: 24,
   email_overdue_alerts_enabled: true,
@@ -88,7 +88,6 @@ const defaultExportInfo = {
     tasks: 0,
     quick_tasks: 0,
     schedules: 0,
-    weekly_schedules: 0,
   },
 }
 
@@ -111,8 +110,8 @@ describe('SettingsPage hook tokens', () => {
         return Promise.resolve(
           jsonResponse({
             models: {
-              'gpt-5.5': {
-                name: 'GPT-5.5',
+              'gpt-6-sol': {
+                name: 'GPT-6 Sol',
                 description: 'Model',
                 max_context: '400k',
                 max_output: '128k',

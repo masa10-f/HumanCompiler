@@ -555,7 +555,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=41.0.0" },
     { name = "fastapi", specifier = ">=0.104.0" },
     { name = "httpx", specifier = ">=0.25.0" },
-    { name = "humancompiler-scheduler", extras = ["cp-sat"], specifier = ">=0.3.1" },
+    { name = "humancompiler-scheduler", extras = ["cp-sat"], specifier = ">=0.5.0,<0.6.0" },
     { name = "langgraph", specifier = ">=0.1.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.5.0" },
     { name = "openai", specifier = ">=2.44.0" },
@@ -570,7 +570,7 @@ requires-dist = [
     { name = "resend", specifier = ">=2.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.14.14" },
     { name = "slowapi", specifier = ">=0.1.9" },
-    { name = "sqlmodel", specifier = ">=0.0.14" },
+    { name = "sqlmodel", specifier = "==0.0.48" },
     { name = "supabase", specifier = ">=2.0.0" },
     { name = "types-cachetools", marker = "extra == 'dev'", specifier = ">=6.2.0.20251129" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.24.0" },
@@ -579,14 +579,14 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "humancompiler-scheduler"
-version = "0.3.1"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/49/89/a9daf36b8f52a077b7a7ecc22c1d6d7234056d2b5115d8a03bbf0be9577c/humancompiler_scheduler-0.3.1.tar.gz", hash = "sha256:147e09668b5253aa68ce48e30eb27dcd9ee84c9dcb8f1144733781a314c9115c", size = 160681, upload-time = "2026-07-06T04:00:51.324Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/26/e01aa4540387f1694a32467673d3852f8a6260a06aef3ef377e67fbacd38/humancompiler_scheduler-0.5.0.tar.gz", hash = "sha256:70471251dca7d6037299cd8f39eef290aa6299b3d73db99c3448dfb63cb80060", size = 165894, upload-time = "2026-09-01T14:35:41.267Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c9/17/84903b3e9a1dcad8791b73ac09336e602f0b5bcc87cb7abb08b632daf632/humancompiler_scheduler-0.3.1-py3-none-any.whl", hash = "sha256:f1ea1b50ce7951db10a53ea35549739458e0b37cdd522ae6143d1ad45ab5adf4", size = 33330, upload-time = "2026-07-06T04:00:49.845Z" },
+    { url = "https://files.pythonhosted.org/packages/73/f9/e66af76d93726be555e63783999d6f1ec4a37c1ddc010bb5edd0569fba6c/humancompiler_scheduler-0.5.0-py3-none-any.whl", hash = "sha256:e6c33c23f986024d05c719acfc3379f0ed9ea3afa56ec8aee318ec35ba89cea9", size = 35934, upload-time = "2026-09-01T14:35:40.195Z" },
 ]
 
 [package.optional-dependencies]
@@ -1761,15 +1761,16 @@ wheels = [
 
 [[package]]
 name = "sqlmodel"
-version = "0.0.24"
+version = "0.0.48"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "sqlalchemy" },
+    { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/86/4b/c2ad0496f5bdc6073d9b4cef52be9c04f2b37a5773441cc6600b1857648b/sqlmodel-0.0.24.tar.gz", hash = "sha256:cc5c7613c1a5533c9c7867e1aab2fd489a76c9e8a061984da11b4e613c182423", size = 116780, upload-time = "2025-03-07T05:43:32.887Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/dd/67/b2c0b771c89c023262dd8fb6ba2cdc6a004e5ff75dd5763051b38ccd133a/sqlmodel-0.0.48.tar.gz", hash = "sha256:5582e87e845e23bb1179a7d8b11a4f5e441b4494528a41ee2fe1d129ffe91543", size = 99329, upload-time = "2026-10-06T21:44:36.391Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/16/91/484cd2d05569892b7fef7f5ceab3bc89fb0f8a8c0cde1030d383dbc5449c/sqlmodel-0.0.24-py3-none-any.whl", hash = "sha256:6778852f09370908985b667d6a3ab92910d0d5ec88adcaf23dbc242715ff7193", size = 28622, upload-time = "2025-03-07T05:43:30.37Z" },
+    { url = "https://files.pythonhosted.org/packages/4b/76/6f8221eda15f28471c3887e5a75a62cd7338d20ac03e1e78a110a127d61e/sqlmodel-0.0.48-py3-none-any.whl", hash = "sha256:8d389bf735b03a17508e93e888c13a30ef1ddca22dd8e57add12317401e4112e", size = 31468, upload-time = "2026-10-06T21:44:35.326Z" },
 ]
 
 [[package]]

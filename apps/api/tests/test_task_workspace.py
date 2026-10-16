@@ -487,21 +487,17 @@ def test_extract_planned_task_ids_supports_camel_case_assignments(
     )
     session.flush()
 
-    today_ids, _, placed_today_ids = _extract_planned_task_ids(session, test_user_id)
+    today_ids, placed_today_ids = _extract_planned_task_ids(session, test_user_id)
 
     assert str(task_id) in today_ids
     assert str(task_id) in placed_today_ids
 
 
 def test_plan_date_windows_use_jst_calendar_boundaries():
-    day_start, day_end, week_start, week_end = _plan_date_windows(
-        datetime(2026, 7, 15, 16, 0, tzinfo=UTC)
-    )
+    day_start, day_end = _plan_date_windows(datetime(2026, 7, 15, 16, 0, tzinfo=UTC))
 
     assert day_start == datetime(2026, 7, 16)
     assert day_end == datetime(2026, 7, 17)
-    assert week_start == datetime(2026, 7, 13)
-    assert week_end == datetime(2026, 7, 20)
 
 
 def test_moving_task_preserves_related_records(session, test_user_id):

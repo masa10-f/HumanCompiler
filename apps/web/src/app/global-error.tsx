@@ -21,14 +21,14 @@ export default function GlobalError({
   return (
     <html lang="ja">
       <body>
-        <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
-          <div className="w-full max-w-lg bg-white rounded-lg shadow-lg p-6">
+        <div className="flex min-h-screen items-center justify-center bg-background p-4 text-foreground">
+          <div className="w-full max-w-lg rounded-lg border bg-card p-6 shadow-lg">
             <div className="flex items-center gap-2 text-red-600 mb-4">
               <AlertTriangle className="h-6 w-6" />
               <h2 className="text-xl font-bold">エラーが発生しました</h2>
             </div>
 
-            <p className="text-gray-600 mb-6">
+            <p className="mb-6 text-muted-foreground">
               申し訳ございませんが、問題が発生しました。
             </p>
 

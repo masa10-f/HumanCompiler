@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
 
@@ -16,6 +17,8 @@ from humancompiler_api.ai.goal_task_drafts import (
     goal_task_draft_service,
 )
 from humancompiler_api.models import Goal, Project, Task, TaskDependency, User
+
+JST = timezone(timedelta(hours=9))
 
 
 @pytest.fixture
@@ -415,3 +418,37 @@ def test_get_draft_job_returns_completed_draft(
     assert response.status == "completed"
     assert response.draft is not None
     assert response.draft.goals[0].rationale == "プロジェクトの文脈に沿うためです。"
+
+
+def test_apply_draft_stores_task_due_dates_as_jst(session: Session, draft_workspace):
+    project = draft_workspace["project"]
+    user = draft_workspace["user"]
+    existing_goal = draft_workspace["goal"]
+
+    request = GoalTaskDraftApplyRequest(
+        project_id=project.id,
+        mode="project_goals",
+        goals=[],
+        tasks=[
+            make_draft_task(
+                "date-only", goal_id=existing_goal.id, due_date="2026-10-20"
+            ),
+            make_draft_task(
+                "naive", goal_id=existing_goal.id, due_date="2026-10-21T18:00:00"
+            ),
+        ],
+        dependencies=[],
+        selected_goal_client_ids=[],
+        selected_task_client_ids=["date-only", "naive"],
+    )
+
+    response = goal_task_draft_service.apply_draft(session, user.id, request)
+
+    due_dates = {
+        task.title: session.get(Task, task.id).due_date
+        for task in response.created_tasks
+    }
+    assert due_dates == {
+        "Task date-only": datetime(2026, 10, 20, tzinfo=JST),
+        "Task naive": datetime(2026, 10, 21, 18, tzinfo=JST),
+    }

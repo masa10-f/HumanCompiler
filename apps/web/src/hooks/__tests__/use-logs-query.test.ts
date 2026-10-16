@@ -41,6 +41,9 @@ jest.mock('@/lib/query-keys', () => ({
     progress: {
       all: ['progress'],
     },
+    tasks: {
+      all: ['tasks'],
+    },
   },
 }))
 
@@ -247,6 +250,24 @@ describe('useCreateLog', () => {
     })
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['progress'] })
+  })
+
+  it('should invalidate task queries so status changes are reflected', async () => {
+    const newLog = createMockLog({ id: 'new-log', task_id: 'task-1' })
+    mockCreate.mockResolvedValue(newLog)
+
+    const { result, queryClient } = renderHookWithClient(() => useCreateLog())
+
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries')
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        task_id: 'task-1',
+        actual_minutes: 15,
+      })
+    })
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['tasks'] })
   })
 
   it('should add log to cache', async () => {

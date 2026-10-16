@@ -26,7 +26,6 @@ RATE_LIMITS = {
     "/api/login": "5 per minute",
     "/api/register": "3 per minute",
     # AI endpoints - expensive operations
-    "/api/ai/weekly-plan": "10 per hour",
     "/api/ai/analyze-workload": "20 per hour",
     "/api/ai/suggest-priorities": "20 per hour",
     "/api/schedule/daily": "30 per hour",

@@ -118,8 +118,8 @@ export default function ScheduleHistoryPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-4">
-              <div className="flex-1">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
+              <div className="min-w-0 flex-1">
                 <Label htmlFor="date-filter">日付で絞り込み</Label>
                 <Input
                   id="date-filter"
@@ -132,7 +132,7 @@ export default function ScheduleHistoryPage() {
               <Button
                 variant="outline"
                 onClick={() => setSelectedDate('')}
-                className="mt-6"
+                className="w-full sm:w-auto"
               >
                 リセット
               </Button>
@@ -171,8 +171,8 @@ export default function ScheduleHistoryPage() {
           {filteredSchedules.map((schedule) => (
             <Card key={schedule.id} className="hover:shadow-md transition-shadow">
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:justify-between">
+                  <div className="min-w-0">
                     <CardTitle className="flex items-center gap-2">
                       <Calendar className="h-5 w-5 text-blue-600" />
                       {formatDate(schedule.date)}
@@ -186,7 +186,7 @@ export default function ScheduleHistoryPage() {
                       )}
                     </CardDescription>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
                     <Badge variant={schedule.plan_json.success ? 'default' : 'destructive'}>
                       {schedule.plan_json.optimization_status}
                     </Badge>
@@ -216,18 +216,18 @@ export default function ScheduleHistoryPage() {
                 {schedule.plan_json.assignments.length > 0 && (
                   <div>
                     <h4 className="font-semibold mb-2">スケジュール済みタスク</h4>
-                    <div className="space-y-2 max-h-80 overflow-y-auto border border-gray-200 rounded-lg p-2">
+                    <div className="max-h-80 space-y-2 overflow-y-auto rounded-lg border border-gray-200 p-2">
                       {schedule.plan_json.assignments
                         .sort((a, b) => a.start_time.localeCompare(b.start_time))
                         .map((assignment, index) => (
-                        <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                          <div className="flex items-center gap-3">
-                            <div className="text-sm font-semibold text-gray-600">
+                        <div key={index} className="flex min-w-0 flex-col items-start gap-3 rounded bg-gray-50 p-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex min-w-0 items-start gap-3">
+                            <div className="shrink-0 text-sm font-semibold text-gray-600">
                               {assignment.start_time}
                             </div>
-                            <div>
-                              <div className="text-sm font-medium">{assignment.task_title}</div>
-                              <div className="text-xs text-gray-500 flex items-center gap-1">
+                            <div className="min-w-0">
+                              <div className="break-words text-sm font-medium">{assignment.task_title}</div>
+                              <div className="flex flex-wrap items-center gap-1 text-xs text-gray-500">
                                 <Clock className="h-3 w-3" />
                                 {assignment.duration_hours.toFixed(1)}h
                                 <span className="text-gray-400">•</span>
@@ -237,7 +237,7 @@ export default function ScheduleHistoryPage() {
                               </div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex shrink-0 items-center gap-2 self-end sm:self-auto">
                             <LogFormDialog
                               taskId={assignment.task_id}
                               taskTitle={assignment.task_title}

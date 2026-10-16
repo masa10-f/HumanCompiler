@@ -22,6 +22,7 @@ import { useCountdown } from './use-countdown';
 import { useNotifications } from './use-notifications';
 import { schedulingApi, tasksApi, goalsApi, projectsApi, workSessionsApi } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
+import { getStartableAssignments } from '@/lib/runner/schedule-candidates';
 import type { Goal } from '@/types/goal';
 import type { Project } from '@/types/project';
 import type { SessionDecision, SwitchDisposition } from '@/types/work-session';
@@ -197,7 +198,7 @@ export function useRunner(): UseRunnerReturn {
     const currentTaskId = session?.task_id;
 
     // Filter and map assignments to candidates
-    return todaySchedule.plan_json.assignments
+    const upcoming = todaySchedule.plan_json.assignments
       .filter((assignment) => {
         // Exclude current task
         if (assignment.task_id === currentTaskId) return false;
@@ -217,7 +218,8 @@ export function useRunner(): UseRunnerReturn {
           return assignmentTime >= now;
         }
         return true;
-      })
+      });
+    return getStartableAssignments(upcoming)
       .slice(0, 3) // Max 3 candidates
       .map((assignment) => ({
         task_id: assignment.task_id,

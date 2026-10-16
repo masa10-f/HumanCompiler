@@ -55,6 +55,8 @@ export interface TimelineGoal {
   start_date: string | null
   /** 終了日 (ISO 8601形式) */
   end_date: string | null
+  /** 期限日 (ISO 8601形式) */
+  due_date: string | null
   /** 依存先ゴールIDリスト */
   dependencies: string[]
   /** 作成日時 */

@@ -18,6 +18,7 @@ import {
 } from '@/constants/goal-status'
 import { getStatusUpdateError } from '@/lib/status-error-handler'
 import type { Goal, GoalStatus } from '@/types/goal'
+import { queryKeys } from '@/lib/query-keys'
 
 interface GoalStatusDropdownProps {
   goal: Goal
@@ -66,6 +67,7 @@ export const GoalStatusDropdown = memo(function GoalStatusDropdown({
       return { previousGoals, previousGoal }
     },
     onSuccess: (_, newStatus) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
       queryClient.invalidateQueries({ queryKey: ['goals', 'project', goal.project_id] })
       queryClient.invalidateQueries({ queryKey: ['goal', goal.id] })
       toast({

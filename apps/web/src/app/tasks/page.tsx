@@ -44,7 +44,9 @@ import {
   useTaskWorkspaceSummary,
   useUpdateTask,
 } from "@/hooks/use-tasks-query";
-import { goalsApi, projectsApi, quickTasksApi } from "@/lib/api";
+import { goalsApi, quickTasksApi } from "@/lib/api";
+import { queryKeys } from "@/lib/query-keys";
+import { useProjectOptions } from "@/hooks/use-project-query";
 import {
   buildTaskWorkspaceFilters,
   DEFAULT_TASK_WORKSPACE_PRESET,
@@ -63,7 +65,6 @@ type Preset = TaskWorkspacePreset;
 const PRESETS: Array<{ id: Preset; label: string }> = [
   { id: "ready", label: "Ready" },
   { id: "today", label: "今日" },
-  { id: "week", label: "今週" },
   { id: "in_progress", label: "作業中" },
   { id: "overdue", label: "期限切れ" },
   { id: "blocked", label: "ブロック中" },
@@ -147,9 +148,6 @@ function TaskRow({
               <Badge variant="info">
                 {task.planned_today_unplaced ? "今日・未配置" : "今日"}
               </Badge>
-            )}
-            {!task.planned_today && task.planned_this_week && (
-              <Badge variant="secondary">今週</Badge>
             )}
           </div>
         </div>
@@ -290,9 +288,7 @@ export default function TasksPage() {
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
 
-  const { data: projects = [] } = useQuery({
-    queryKey: ["projects", "task-workspace"],
-    queryFn: () => projectsApi.getAll(0, 100),
+  const { data: projects = [] } = useProjectOptions({
     enabled: Boolean(user),
   });
   const { data: goals = [] } = useQuery({
@@ -742,7 +738,12 @@ export default function TasksPage() {
                     convertingTask.id,
                     convertGoalId,
                   );
-                  await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+                  await Promise.all([
+                    queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+                    queryClient.invalidateQueries({
+                      queryKey: queryKeys.dashboard.all,
+                    }),
+                  ]);
                   setConvertingTask(null);
                   setInboxVersion((value) => value + 1);
                   toast({ title: "通常タスクへ移動しました" });

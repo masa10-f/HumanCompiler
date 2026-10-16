@@ -33,6 +33,7 @@ import {
 import { useCreateTask } from '@/hooks/use-tasks-query';
 import { toast } from '@/hooks/use-toast';
 import { roundToDecimals, parseFloatSafe } from '@/lib/number-utils';
+import { toJSTStartOfDayISOString } from '@/lib/date-utils';
 import {
   TASK_ESTIMATE_HOURS_MAX,
   TASK_ESTIMATE_HOURS_MIN,
@@ -67,7 +68,7 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
         title: data.title,
         description: data.description || undefined,
         estimate_hours: data.estimate_hours,
-        due_date: data.due_date || undefined,
+        due_date: data.due_date ? toJSTStartOfDayISOString(data.due_date) : undefined,
         work_type: data.work_type || 'light_work',
         priority: data.priority || 3,
         goal_id: goalId,

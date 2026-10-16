@@ -5,6 +5,7 @@
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 
@@ -31,6 +32,9 @@ from humancompiler_api.exceptions import (
 )
 from humancompiler_api.routers import (
     ai_planning,
+    context_export,
+    daily_plans,
+    dashboard,
     data_export,
     goal_dependencies,
     goals,
@@ -47,16 +51,12 @@ from humancompiler_api.routers import (
     reschedule,
     scheduler,
     simple_backup_api,
-    slot_templates,
-    task_dependencies,
     tasks,
     timeline,
     triage,
     users,
     user_settings,
     websocket,
-    weekly_schedule,
-    weekly_recurring_tasks,
     work_sessions,
 )
 
@@ -143,6 +143,31 @@ async def lifespan(app: FastAPI):
 
     # Simple backup system - no scheduler to stop
     logger.info("✅ Server shutdown complete")
+
+
+# Browsers can't set headers on WebSocket, so the client sends its access token
+# as ?token=..., and uvicorn logs the full path with query string. Mask it so
+# valid tokens never land in the logs.
+_TOKEN_QUERY_RE = re.compile(r"(?<=[?&]token=)[^&\s\"]+")
+
+
+class RedactTokenFilter(logging.Filter):
+    """Mask ?token=... query values in log records"""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = _TOKEN_QUERY_RE.sub("[REDACTED]", record.msg)
+        # Keep args as a tuple: uvicorn's AccessFormatter unpacks it
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                _TOKEN_QUERY_RE.sub("[REDACTED]", arg) if isinstance(arg, str) else arg
+                for arg in record.args
+            )
+        return True
+
+
+for _logger_name in ("uvicorn.error", "uvicorn.access"):
+    logging.getLogger(_logger_name).addFilter(RedactTokenFilter())
 
 
 # Initialize FastAPI app
@@ -277,17 +302,16 @@ app.add_exception_handler(Exception, general_exception_handler)
 
 # Include API routers
 app.include_router(users.router, prefix="/api")
+app.include_router(dashboard.router, prefix="/api")
 app.include_router(projects.router, prefix="/api")
 app.include_router(goals.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
-app.include_router(task_dependencies.router)
 app.include_router(goal_dependencies.router)
 app.include_router(logs.router, prefix="/api")
 app.include_router(progress.router, prefix="/api")
 app.include_router(scheduler.router, prefix="/api")
+app.include_router(daily_plans.router, prefix="/api")
 app.include_router(timeline.router, prefix="/api/timeline", tags=["timeline"])
-app.include_router(weekly_schedule.router, prefix="/api")
-app.include_router(weekly_recurring_tasks.router, prefix="/api")
 app.include_router(quick_tasks.router, prefix="/api")
 app.include_router(ai_planning.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
@@ -305,8 +329,7 @@ app.include_router(notifications.router, prefix="/api")
 app.include_router(websocket.router)
 # Context notes router
 app.include_router(notes.router, prefix="/api")
-# Slot templates router
-app.include_router(slot_templates.router, prefix="/api")
+app.include_router(context_export.router, prefix="/api")
 # Capacity triage router
 app.include_router(triage.router, prefix="/api")
 

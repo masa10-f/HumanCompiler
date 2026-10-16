@@ -18,10 +18,6 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status_priority ON public.tasks(status, pri
 CREATE INDEX IF NOT EXISTS idx_tasks_title ON public.tasks(title);
 CREATE INDEX IF NOT EXISTS idx_tasks_priority ON public.tasks(priority);
 
--- Weekly recurring tasks indexes
-CREATE INDEX IF NOT EXISTS idx_weekly_recurring_tasks_title ON public.weekly_recurring_tasks(title);
-CREATE INDEX IF NOT EXISTS idx_weekly_recurring_tasks_created_at ON public.weekly_recurring_tasks(created_at);
-
 -- Logs table indexes
 CREATE INDEX IF NOT EXISTS idx_logs_created_at ON public.logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_logs_updated_at ON public.logs(updated_at);

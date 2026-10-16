@@ -9,6 +9,7 @@ import Link from 'next/link'
 
 // UI components
 import { Button } from '@/components/ui/button'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import {
   DropdownMenu,
@@ -19,13 +20,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 // Icons
-import { TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play, Timer, ListChecks, MoreHorizontal, ChevronDown, CalendarDays, SlidersHorizontal, LayoutTemplate, ListTodo } from 'lucide-react'
+import { NotebookPen, TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play, Timer, ListChecks, MoreHorizontal, ChevronDown, BarChart3, SlidersHorizontal, ListTodo } from 'lucide-react'
 
 // Hooks
 import { useAuth } from '@/hooks/use-auth'
 
 interface AppHeaderProps {
-  currentPage?: 'dashboard' | 'tasks' | 'projects' | 'ai-planning' | 'triage' | 'scheduling' | 'scheduling-daily' | 'scheduling-settings' | 'scheduler-tuning' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner'
+  currentPage?: 'daily-notes' | 'dashboard' | 'tasks' | 'projects' | 'weekly-report' | 'triage' | 'scheduling' | 'scheduling-daily' | 'scheduler-tuning' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner'
 }
 
 const NAVIGATION_ITEMS = [
@@ -35,6 +36,7 @@ const NAVIGATION_ITEMS = [
   { id: 'projects', label: 'プロジェクト', path: '/projects', icon: FolderOpen },
   { id: 'scheduling', label: 'スケジューリング', path: '/scheduling', icon: Calendar },
   { id: 'triage', label: 'トリアージ', path: '/triage', icon: ListChecks },
+  { id: 'daily-notes', label: 'ノート', path: '/notes', icon: NotebookPen },
   { id: 'work-session-history', label: 'セッション履歴', path: '/work-session-history', icon: Timer },
   { id: 'timeline', label: 'タイムライン', path: '/timeline', icon: TrendingUp },
   { id: 'settings', label: '設定', path: '/settings', icon: Settings },
@@ -43,9 +45,8 @@ const NAVIGATION_ITEMS = [
 const SCHEDULING_NAVIGATION_ITEMS = [
   { id: 'scheduling', label: '概要', path: '/scheduling', icon: Calendar },
   { id: 'scheduling-daily', label: '日次計画', path: '/scheduling/daily', icon: Clock },
-  { id: 'ai-planning', label: '週次計画', path: '/scheduling/weekly', icon: CalendarDays },
+  { id: 'weekly-report', label: '週間報告', path: '/scheduling/weekly-report', icon: BarChart3 },
   { id: 'scheduler-tuning', label: '調整', path: '/scheduling/tuning', icon: SlidersHorizontal },
-  { id: 'scheduling-settings', label: 'テンプレート', path: '/scheduling/settings', icon: LayoutTemplate },
   { id: 'schedule-history', label: 'スケジュール履歴', path: '/scheduling/history', icon: History },
 ] as const
 
@@ -87,9 +88,14 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
   return (
     <header className="bg-card/95 backdrop-blur-sm shadow-md border-b border-border/60 sticky top-0 z-50">
       <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16 gap-2 xl:gap-3">
+        <div className="flex h-16 items-center justify-between gap-2 xl:gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden xl:gap-4">
-            <div className="flex shrink-0 items-center space-x-3">
+            <Link
+              href="/dashboard"
+              aria-label="HumanCompiler ホーム（ダッシュボード）"
+              title="ホーム"
+              className="flex shrink-0 items-center space-x-3 rounded-lg ring-offset-background transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
               <Image
                 src="/logo.png"
                 alt="HumanCompiler Logo"
@@ -100,7 +106,7 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
               <h1 className="hidden text-xl font-bold text-foreground bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent sm:block">
                 HumanCompiler
               </h1>
-            </div>
+            </Link>
             {/* Desktop Navigation */}
             <nav className="hidden min-w-0 flex-1 items-center gap-1 overflow-hidden lg:flex">
               {PRIMARY_NAVIGATION_ITEMS.map((item) => {
@@ -190,7 +196,7 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
             </nav>
 
             {/* Mobile Navigation */}
-            <div className="lg:hidden">
+            <div className="shrink-0 lg:hidden">
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
                   <Button variant="ghost" size="sm" aria-label="メニューを開く">
@@ -277,15 +283,18 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
               </Dialog>
             </div>
           </div>
-          <div className="hidden shrink-0 lg:flex items-center gap-2 xl:gap-3">
-            {user?.email && (
-              <span className="hidden max-w-[220px] truncate rounded-full bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground 2xl:inline-block">
-                {user.email}
-              </span>
-            )}
-            <Button variant="outline" onClick={signOut} className="border-border hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50 whitespace-nowrap">
-              ログアウト
-            </Button>
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2 xl:gap-3">
+            <ThemeToggle />
+            <div className="hidden items-center gap-2 lg:flex xl:gap-3">
+              {user?.email && (
+                <span className="hidden max-w-[220px] truncate rounded-full bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground 2xl:inline-block">
+                  {user.email}
+                </span>
+              )}
+              <Button variant="outline" onClick={signOut} className="border-border hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50 whitespace-nowrap">
+                ログアウト
+              </Button>
+            </div>
           </div>
         </div>
       </div>

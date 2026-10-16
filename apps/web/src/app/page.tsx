@@ -9,10 +9,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowRight, Calendar, Clock, Target } from 'lucide-react'
 import Link from 'next/link'
 import Image from 'next/image'
+import { RedirectIfAuthenticated } from '@/components/redirect-if-authenticated'
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
+      <RedirectIfAuthenticated />
       <div className="container mx-auto px-4 py-16">
         {/* Hero Section */}
         <div className="text-center mb-16">

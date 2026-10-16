@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
 
@@ -9,13 +9,8 @@ from conftest import create_test_data
 from humancompiler_api.models import (
     Schedule,
     SwitchDisposition,
-    Project,
-    Goal,
-    Task,
     TaskCreate,
     TaskStatus,
-    User,
-    WeeklySchedule,
     WorkSessionStartRequest,
     WorkSessionSwitchRequest,
 )
@@ -30,10 +25,6 @@ from humancompiler_api.routers.tasks import (
     _sanitize_ai_bulk_mutations,
     apply_bulk_task_changes,
     preview_natural_language_bulk_changes,
-)
-from humancompiler_api.routers.weekly_schedule import (
-    WeeklyScheduleDraftUpdate,
-    update_weekly_schedule_draft,
 )
 from humancompiler_api.auth import AuthUser
 from humancompiler_api.services import TaskService, WorkSessionService
@@ -68,9 +59,6 @@ async def test_bulk_preview_and_apply_updates_task_and_plan_membership(
                     PlanMembershipMutation(
                         scope="daily", action="add", target_date="2030-01-02"
                     ),
-                    PlanMembershipMutation(
-                        scope="weekly", action="add", target_date="2029-12-31"
-                    ),
                 ],
             )
         ]
@@ -81,7 +69,6 @@ async def test_bulk_preview_and_apply_updates_task_and_plan_membership(
         "priority",
         "status",
         "plan:daily:2030-01-02",
-        "plan:weekly:2029-12-31",
     }
 
     applied = await apply_bulk_task_changes(
@@ -98,9 +85,12 @@ async def test_bulk_preview_and_apply_updates_task_and_plan_membership(
     assert task.priority == 1
     assert task.status == TaskStatus.IN_PROGRESS
     daily = session.exec(select(Schedule)).one()
-    weekly = session.exec(select(WeeklySchedule)).one()
     assert str(task.id) in daily.plan_json["planned_task_ids"]
-    assert weekly.schedule_json["selected_tasks"][0]["task_id"] == str(task.id)
+
+
+def test_plan_membership_rejects_removed_weekly_scope():
+    with pytest.raises(ValidationError):
+        PlanMembershipMutation(scope="weekly", action="add", target_date="2029-12-31")
 
 
 @pytest.mark.asyncio
@@ -433,171 +423,27 @@ async def test_daily_remove_deletes_assignment_and_recalculates_total(
     assert plan.plan_json["total_scheduled_hours"] == 0.5
 
 
-@pytest.mark.asyncio
-async def test_weekly_membership_preserves_legacy_selected_task_ids(
-    session, test_user_id
-):
-    data = create_test_data(session, test_user_id)
-    tasks = TaskService()
-    removed_task = tasks.create_task(
-        session,
-        TaskCreate(
-            goal_id=data["goal"].id,
-            title="Remove legacy task",
-            estimate_hours=Decimal("1"),
-        ),
-        test_user_id,
-    )
-    untouched_task = tasks.create_task(
-        session,
-        TaskCreate(
-            goal_id=data["goal"].id,
-            title="Keep legacy task",
-            estimate_hours=Decimal("2"),
-        ),
-        test_user_id,
-    )
-    added_task = tasks.create_task(
-        session,
-        TaskCreate(
-            goal_id=data["goal"].id,
-            title="Add current task",
-            estimate_hours=Decimal("3"),
-        ),
-        test_user_id,
-    )
-    plan = WeeklySchedule(
-        id=uuid4(),
-        user_id=test_user_id,
-        week_start_date=datetime(2030, 1, 7),
-        schedule_json={
-            "selected_task_ids": [
-                str(removed_task.id),
-                str(untouched_task.id),
-            ],
-            "assigned_task_hours": {
-                str(removed_task.id): 1,
-                str(untouched_task.id): 2,
-            },
-        },
-    )
-    session.add(plan)
-    session.commit()
-
-    for task, action in [
-        (removed_task, "remove"),
-        (added_task, "add"),
-    ]:
-        request = BulkTaskRequest(
-            mutations=[
-                BulkTaskMutation(
-                    task_id=task.id,
-                    plans=[
-                        PlanMembershipMutation(
-                            scope="weekly",
-                            action=action,
-                            target_date="2030-01-07",
-                        )
-                    ],
-                )
+def test_ai_sanitizer_reads_date_only_due_date_as_jst_and_drops_naive_times():
+    jst = timezone(timedelta(hours=9))
+    dated_task_id = uuid4()
+    naive_task_id = uuid4()
+    mutations, warnings = _sanitize_ai_bulk_mutations(
+        {
+            "mutations": [
+                {"task_id": str(dated_task_id), "patch": {"due_date": "2030-01-02"}},
+                {
+                    "task_id": str(naive_task_id),
+                    "patch": {"due_date": "2030-01-02T10:00:00"},
+                },
             ]
-        )
-        preview = _preview_bulk(session, test_user_id, request)
-        await apply_bulk_task_changes(
-            BulkTaskApplyRequest(
-                mutations=request.mutations,
-                expected_task_versions=preview.expected_task_versions,
-                expected_plan_versions=preview.expected_plan_versions,
-            ),
-            session,
-            _auth(test_user_id),
-        )
-
-    session.refresh(plan)
-    expected_ids = {str(untouched_task.id), str(added_task.id)}
-    assert set(plan.schedule_json["selected_task_ids"]) == expected_ids
-    assert {
-        str(item["task_id"]) for item in plan.schedule_json["selected_tasks"]
-    } == expected_ids
-
-
-@pytest.mark.asyncio
-async def test_weekly_draft_rejects_task_owned_by_another_user(session, test_user_id):
-    create_test_data(session, test_user_id)
-    victim_user_id = uuid4()
-    victim_project_id = uuid4()
-    victim_goal_id = uuid4()
-    victim_task_id = uuid4()
-    session.add(User(id=victim_user_id, email="victim@example.com"))
-    session.add(
-        Project(id=victim_project_id, owner_id=victim_user_id, title="Victim project")
+        },
+        {dated_task_id, naive_task_id},
+        set(),
     )
-    session.add(
-        Goal(
-            id=victim_goal_id,
-            project_id=victim_project_id,
-            title="Victim goal",
-            estimate_hours=Decimal("1"),
-        )
+
+    patches = {mutation.task_id: mutation.patch for mutation in mutations}
+    assert patches[dated_task_id].due_date == datetime(2030, 1, 2, tzinfo=jst)
+    assert (
+        "due_date" not in patches.get(naive_task_id, BulkTaskPatch()).model_fields_set
     )
-    session.add(
-        Task(
-            id=victim_task_id,
-            goal_id=victim_goal_id,
-            title="Victim secret task",
-            estimate_hours=Decimal("1"),
-        )
-    )
-    session.commit()
-
-    with pytest.raises(HTTPException) as error:
-        await update_weekly_schedule_draft(
-            "2030-01-07",
-            WeeklyScheduleDraftUpdate(
-                schedule_data={"selected_tasks": [{"task_id": str(victim_task_id)}]},
-            ),
-            str(test_user_id),
-            session,
-        )
-
-    assert error.value.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_weekly_draft_preserves_unknown_fields_and_rejects_stale_version(
-    session, test_user_id
-):
-    create_test_data(session, test_user_id)
-    schedule = WeeklySchedule(
-        id=uuid4(),
-        user_id=test_user_id,
-        week_start_date=datetime(2030, 1, 7),
-        schedule_json={"selected_task_ids": [], "legacy_unknown": {"keep": True}},
-    )
-    session.add(schedule)
-    session.commit()
-    session.refresh(schedule)
-    old_version = schedule.updated_at
-    saved = await update_weekly_schedule_draft(
-        "2030-01-07",
-        WeeklyScheduleDraftUpdate(
-            schedule_data={"selected_tasks": [], "capacity_hours": 20},
-            expected_updated_at=old_version,
-        ),
-        str(test_user_id),
-        session,
-    )
-    assert saved.schedule_json["legacy_unknown"] == {"keep": True}
-    assert saved.schedule_json["capacity_hours"] == 20
-
-    with pytest.raises(HTTPException) as error:
-        await update_weekly_schedule_draft(
-            "2030-01-07",
-            WeeklyScheduleDraftUpdate(
-                schedule_data={"capacity_hours": 30},
-                expected_updated_at=old_version,
-            ),
-            str(test_user_id),
-            session,
-        )
-    assert error.value.status_code == 409
+    assert any("due_date" in warning for warning in warnings)

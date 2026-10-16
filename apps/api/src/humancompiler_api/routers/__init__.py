@@ -1,6 +1,7 @@
 # API routers package
 from . import (
     ai_planning,
+    daily_plans,
     goals,
     hook_tokens,
     hooks,
@@ -9,7 +10,6 @@ from . import (
     notifications,
     projects,
     scheduler,
-    slot_templates,
     tasks,
     triage,
     user_settings,
@@ -20,6 +20,7 @@ from . import (
 
 __all__ = [
     "ai_planning",
+    "daily_plans",
     "goals",
     "hook_tokens",
     "hooks",
@@ -28,7 +29,6 @@ __all__ = [
     "notifications",
     "projects",
     "scheduler",
-    "slot_templates",
     "tasks",
     "triage",
     "user_settings",

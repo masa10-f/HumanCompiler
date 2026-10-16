@@ -2,56 +2,21 @@
 Tests for AI planning router with cache mocking
 """
 
-from datetime import datetime
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import Mock, patch
 
 import pytest
 from fastapi import HTTPException, status
 
 from humancompiler_api.routers.ai_planning import (
-    generate_weekly_plan,
-    test_ai_integration,
     analyze_workload,
     suggest_task_priorities,
 )
-from humancompiler_api.ai.models import TaskPlan
-from humancompiler_api.ai_service import WeeklyPlanRequest, WeeklyPlanResponse
-from humancompiler_api.ai.weekly_task_solver import TaskSolverResponse
 
 
 @pytest.fixture
 def mock_session():
     """Mock database session"""
     return Mock()
-
-
-@pytest.fixture
-def weekly_plan_request():
-    """Mock weekly plan request"""
-    # Use a date within the valid range (not more than 7 days in the past)
-    valid_date = datetime.now().strftime("%Y-%m-%d")
-    return WeeklyPlanRequest(
-        week_start_date=valid_date,
-        capacity_hours=40.0,
-        project_filter=None,
-        preferences={},
-    )
-
-
-@pytest.fixture
-def mock_plan_response():
-    """Mock weekly plan response"""
-    # Use a date within the valid range (not more than 7 days in the past)
-    valid_date = datetime.now().strftime("%Y-%m-%d")
-    return WeeklyPlanResponse(
-        success=True,
-        week_start_date=valid_date,
-        total_planned_hours=25.0,
-        task_plans=[],
-        recommendations=["Focus on deep work in the morning"],
-        insights=["Good workload distribution"],
-        generated_at=datetime.now(),
-    )
 
 
 # Mock workload analysis tests
@@ -344,115 +309,3 @@ async def test_suggest_task_priorities_scoring_algorithm(mock_session):
         suggestions = result["priority_suggestions"]
         assert suggestions[0]["priority_score"] >= suggestions[1]["priority_score"]
         assert suggestions[1]["priority_score"] >= suggestions[2]["priority_score"]
-
-
-# Original tests that don't use caching
-@pytest.mark.asyncio
-async def test_generate_weekly_plan_success(weekly_plan_request, mock_session):
-    """Test successful weekly plan generation"""
-    solver_response = TaskSolverResponse(
-        success=True,
-        week_start_date=weekly_plan_request.week_start_date,
-        total_allocated_hours=25.0,
-        project_allocations=[],
-        selected_tasks=[
-            TaskPlan(
-                task_id="task-1",
-                task_title="Task 1",
-                estimated_hours=2.0,
-                priority=8,
-                rationale="Selected by deterministic solver",
-            )
-        ],
-        optimization_insights=["external weekly selection completed"],
-        constraint_analysis={},
-        solver_metrics={},
-        generated_at=datetime.now(),
-    )
-
-    with patch("humancompiler_api.routers.ai_planning.WeeklyTaskSolver") as MockSolver:
-        mock_solver_instance = Mock()
-        mock_solver_instance.solve_weekly_tasks = AsyncMock(
-            return_value=solver_response
-        )
-        MockSolver.create_for_user = AsyncMock(return_value=mock_solver_instance)
-
-        result = await generate_weekly_plan(
-            weekly_plan_request,
-            "87654321-4321-8765-4321-876543218765",
-            mock_session,
-        )
-
-        assert result.success is True
-        assert result.total_planned_hours == 25.0
-        assert result.task_plans[0].task_id == "task-1"
-        assert "external weekly selection" in result.insights[0]
-
-
-@pytest.mark.asyncio
-async def test_generate_weekly_plan_invalid_date():
-    """Test weekly plan generation with invalid date"""
-    invalid_request = WeeklyPlanRequest(
-        week_start_date="invalid-date",
-        capacity_hours=40.0,
-    )
-
-    with pytest.raises(HTTPException) as exc_info:
-        await generate_weekly_plan(
-            invalid_request, "87654321-4321-8765-4321-876543218765", Mock()
-        )
-
-    assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
-
-
-@pytest.mark.asyncio
-async def test_generate_weekly_plan_past_date():
-    """Test weekly plan generation with far past date"""
-    past_date = "2024-01-01"  # More than 7 days in the past
-    past_request = WeeklyPlanRequest(
-        week_start_date=past_date,
-        capacity_hours=40.0,
-    )
-
-    with pytest.raises(HTTPException) as exc_info:
-        await generate_weekly_plan(
-            past_request, "87654321-4321-8765-4321-876543218765", Mock()
-        )
-
-    assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
-
-
-@pytest.mark.asyncio
-async def test_test_ai_integration_success():
-    """Test AI integration test endpoint success"""
-    with patch("humancompiler_api.ai.openai_client.OpenAIClient") as MockOpenAIClient:
-        with patch(
-            "humancompiler_api.ai.prompts.get_function_definitions"
-        ) as MockFunctions:
-            mock_client = Mock()
-            mock_client.model = "gpt-5.5"
-            MockOpenAIClient.return_value = mock_client
-
-            mock_functions = [{"function": {"name": "test_function"}}]
-            MockFunctions.return_value = mock_functions
-
-            result = await test_ai_integration()
-
-            assert result["status"] == "success"
-            assert result["model"] == "gpt-5.5"
-            assert result["functions_available"] == 1
-
-
-@pytest.mark.asyncio
-async def test_test_ai_integration_error():
-    """Test AI integration test endpoint error"""
-    with patch(
-        "humancompiler_api.ai.openai_client.OpenAIClient",
-        side_effect=Exception("Test error"),
-    ):
-        result = await test_ai_integration()
-
-        assert result["status"] == "error"
-        assert "Test error" in result["message"]
-        assert result["model"] is None
-        assert result["functions_available"] == 0

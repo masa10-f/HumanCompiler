@@ -9,7 +9,7 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "rounded-xl border border-border/60 bg-card text-card-foreground shadow-md hover:shadow-lg transition-all duration-200",
+      "min-w-0 rounded-xl border border-border/60 bg-card text-card-foreground shadow-md hover:shadow-lg transition-all duration-200",
       className
     )}
     {...props}
@@ -21,7 +21,7 @@ const CardHeader = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("flex flex-col space-y-1.5 p-6 border-b border-border/40", className)} {...props} />
+  <div ref={ref} className={cn("flex min-w-0 flex-col space-y-1.5 border-b border-border/40 p-[clamp(1rem,4vw,1.5rem)]", className)} {...props} />
 ))
 CardHeader.displayName = "CardHeader"
 
@@ -32,7 +32,7 @@ const CardTitle = React.forwardRef<
   <h3
     ref={ref}
     className={cn(
-      "text-xl font-semibold leading-none tracking-tight text-foreground",
+      "min-w-0 break-words text-xl font-semibold leading-snug tracking-tight text-foreground",
       className
     )}
     {...props}
@@ -46,7 +46,7 @@ const CardDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <p
     ref={ref}
-    className={cn("text-sm text-muted-foreground", className)}
+    className={cn("min-w-0 break-words text-sm text-muted-foreground", className)}
     {...props}
   />
 ))
@@ -56,7 +56,7 @@ const CardContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("p-6 pt-0", className)} {...props} />
+  <div ref={ref} className={cn("min-w-0 p-[clamp(1rem,4vw,1.5rem)] pt-0", className)} {...props} />
 ))
 CardContent.displayName = "CardContent"
 
@@ -64,7 +64,7 @@ const CardFooter = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("flex items-center p-6 pt-4 border-t border-border/40 bg-muted/30", className)} {...props} />
+  <div ref={ref} className={cn("flex min-w-0 items-center border-t border-border/40 bg-muted/30 p-[clamp(1rem,4vw,1.5rem)] pt-4", className)} {...props} />
 ))
 CardFooter.displayName = "CardFooter"
 

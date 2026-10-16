@@ -74,12 +74,12 @@ function DefaultErrorFallback({ error, resetErrorBoundary }: ErrorFallbackProps)
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-gray-600">
+        <p className="text-muted-foreground">
           タイムラインの表示中にエラーが発生しました。以下のボタンをクリックして再試行するか、ページをリロードしてください。
         </p>
 
         {isDevelopment && (
-          <details className="bg-gray-50 p-4 rounded-lg">
+          <details className="rounded-lg bg-muted p-4">
             <summary className="cursor-pointer font-medium text-gray-700 mb-2">
               エラー詳細 (開発環境)
             </summary>
@@ -105,7 +105,7 @@ function DefaultErrorFallback({ error, resetErrorBoundary }: ErrorFallbackProps)
           </Button>
         </div>
 
-        <div className="text-sm text-gray-500 border-t pt-4 mt-4">
+        <div className="mt-4 border-t pt-4 text-sm text-muted-foreground">
           <p>
             この問題が継続する場合は、以下をお試しください：
           </p>

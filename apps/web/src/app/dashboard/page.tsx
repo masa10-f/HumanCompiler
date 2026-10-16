@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Calendar, Plus, Brain, Settings, Clock, ExternalLink, History, TrendingUp } from 'lucide-react'
+import { Calendar, Plus, BarChart3, Settings, Clock, ExternalLink, History, TrendingUp } from 'lucide-react'
 import { AppHeader } from '@/components/layout/app-header'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -18,6 +18,8 @@ import { QuickTaskList } from '@/components/quick-tasks'
 import { useTimelineOverview } from '@/hooks/use-timeline'
 import { getSlotKindLabel } from '@/constants/schedule'
 import { getJSTDateString, getJSTDate } from '@/lib/date-utils'
+import { DailyNotesCard } from '@/components/dashboard/daily-notes-card'
+import { RecentItemShortcuts } from '@/components/dashboard/recent-item-shortcuts'
 
 export default function DashboardPage() {
   const { loading, isAuthenticated } = useAuth()
@@ -98,12 +100,12 @@ export default function DashboardPage() {
 
           <Card
             className="cursor-pointer hover:shadow-md transition-shadow"
-            onClick={() => router.push('/scheduling/weekly')}
+            onClick={() => router.push('/scheduling/weekly-report')}
           >
             <CardHeader className="text-center pb-4">
-              <Brain className="h-8 w-8 text-purple-600 mx-auto mb-2" />
-              <CardTitle className="text-lg">週次計画</CardTitle>
-              <CardDescription>週間計画の作成とタスク管理（AI分析オプション）</CardDescription>
+              <BarChart3 className="h-8 w-8 text-purple-600 mx-auto mb-2" />
+              <CardTitle className="text-lg">週間報告</CardTitle>
+              <CardDescription>1週間の作業実績から報告書を作成</CardDescription>
             </CardHeader>
           </Card>
 
@@ -141,9 +143,18 @@ export default function DashboardPage() {
           </Card>
         </div>
 
+        {/* Recently Updated Tasks and Goals */}
+        <div className="mb-8">
+          <RecentItemShortcuts />
+        </div>
+
         {/* Quick Tasks Section */}
         <div className="mb-8">
           <QuickTaskList limit={5} />
+        </div>
+
+        <div className="mb-8">
+          <DailyNotesCard />
         </div>
 
         {/* Today's Schedule */}
@@ -151,8 +162,8 @@ export default function DashboardPage() {
           <div className="mb-8">
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
                     <CardTitle className="flex items-center gap-2">
                       <Calendar className="h-5 w-5 text-blue-600" />
                       本日のスケジュール
@@ -169,7 +180,7 @@ export default function DashboardPage() {
                       })()}
                     </CardDescription>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
                     <Button
                       variant="outline"
                       size="sm"
@@ -194,14 +205,14 @@ export default function DashboardPage() {
                   {todaySchedule.plan_json.assignments
                     .sort((a, b) => a.start_time.localeCompare(b.start_time))
                     .map((assignment, index: number) => (
-                    <div key={index} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <div className="text-lg font-semibold text-gray-600">
+                    <div key={index} className="flex min-w-0 items-start justify-between gap-3 rounded-lg border p-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="shrink-0 text-lg font-semibold text-gray-600">
                           {assignment.start_time}
                         </div>
-                        <div>
-                          <div className="font-medium">{assignment.task_title}</div>
-                          <div className="text-sm text-gray-500 flex items-center gap-2">
+                        <div className="min-w-0">
+                          <div className="break-words font-medium">{assignment.task_title}</div>
+                          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
                             <Clock className="h-3 w-3" />
                             {assignment.duration_hours.toFixed(1)}時間
                             <span className="text-gray-400">•</span>
@@ -214,7 +225,7 @@ export default function DashboardPage() {
                       {assignment.project_id && assignment.goal_id && (
                         <Link
                           href={`/projects/${assignment.project_id}/goals/${assignment.goal_id}`}
-                          className="text-blue-500 hover:text-blue-700 transition-colors"
+                          className="shrink-0 p-2 text-blue-500 transition-colors hover:text-blue-700"
                         >
                           <ExternalLink className="h-4 w-4" />
                         </Link>

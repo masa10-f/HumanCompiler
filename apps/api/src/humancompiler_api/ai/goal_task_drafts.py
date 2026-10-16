@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime, time
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Literal
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 from openai import (
@@ -19,6 +20,8 @@ from openai import (
 )
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from sqlmodel import Session, select
+
+from humancompiler_api.openai_models import DEFAULT_OPENAI_MODEL
 
 from humancompiler_api.crypto import get_crypto_service
 from humancompiler_api.models import (
@@ -37,7 +40,8 @@ from humancompiler_api.models import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_OPENAI_MODEL = "gpt-5.5"
+JST = ZoneInfo("Asia/Tokyo")
+
 MAX_DRAFT_OUTPUT_TOKENS = 50000
 AI_DRAFT_OPENAI_TIMEOUT_SECONDS = 180.0
 MAX_CONTEXT_NOTE_CHARS = 6000
@@ -988,9 +992,9 @@ class GoalTaskDraftService:
             "response_format": {"type": "json_object"},
             "max_completion_tokens": MAX_DRAFT_OUTPUT_TOKENS,
         }
-        if model.startswith(("gpt-5.5", "gpt-5.4")):
+        if model.startswith(("gpt-6-", "gpt-5.5", "gpt-5.4")):
             api_params["reasoning_effort"] = "high"
-        if not model.startswith(("gpt-5.5", "gpt-5.4", "o1")):
+        if not model.startswith(("gpt-6-", "gpt-5.5", "gpt-5.4", "o1")):
             api_params["temperature"] = 0.2
         response = client.chat.completions.create(**api_params)
         choice = response.choices[0]
@@ -1257,10 +1261,12 @@ class GoalTaskDraftService:
             return None
         try:
             if len(value) == 10:
-                return datetime.combine(date.fromisoformat(value), time.min)
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+                return datetime.combine(date.fromisoformat(value), time.min, tzinfo=JST)
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
             return None
+        # Deadlines are stored as aware datetimes; read offset-less times as JST.
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=JST)
 
     def _would_create_dependency_cycle(
         self,

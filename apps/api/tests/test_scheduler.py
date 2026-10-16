@@ -799,83 +799,6 @@ class TestSchedulerAPI:
             if db.get_session in app.dependency_overrides:
                 del app.dependency_overrides[db.get_session]
 
-    @patch("humancompiler_api.routers.scheduler._get_tasks_from_weekly_schedule")
-    @patch("humancompiler_api.routers.scheduler.goal_service.get_goal")
-    def test_create_daily_schedule_with_task_source_weekly_schedule(
-        self, mock_get_goal, mock_get_weekly_tasks, mock_auth
-    ):
-        """Test daily schedule creation with new task_source field for weekly schedule."""
-        from humancompiler_api.database import db
-
-        # Mock weekly schedule task
-        goal_id = str(uuid4())
-        task_id = str(uuid4())
-        project_id = str(uuid4())
-
-        mock_task = MagicMock()
-        mock_task.id = task_id
-        mock_task.title = "Weekly Task"
-        mock_task.estimate_hours = 3.0
-        mock_task.status = "pending"
-        mock_task.due_date = None
-        mock_task.goal_id = goal_id
-        mock_task.priority = 3
-        mock_task.work_type = WorkType.STUDY
-        mock_get_weekly_tasks.return_value = [mock_task]
-
-        # Mock goal data
-        mock_goal = MagicMock()
-        mock_goal.id = goal_id
-        mock_goal.project_id = project_id
-        mock_get_goal.return_value = mock_goal
-
-        # Create mock session with exec method for batch goal query (N+1 fix)
-        mock_sess = MagicMock()
-        mock_exec_result = MagicMock()
-        mock_exec_result.all.return_value = [mock_goal]
-        mock_sess.exec.return_value = mock_exec_result
-
-        def mock_get_session():
-            yield mock_sess
-
-        app.dependency_overrides[db.get_session] = mock_get_session
-
-        try:
-            request_data = {
-                "date": "2025-06-23",
-                "task_source": {
-                    "type": "weekly_schedule",
-                    "weekly_schedule_date": "2025-06-23",
-                },
-                "time_slots": [{"start": "09:00", "end": "12:00", "kind": "study"}],
-            }
-
-            response = client.post("/api/schedule/daily", json=request_data)
-
-            assert response.status_code == 200
-            data = response.json()
-            assert "success" in data
-            assert "assignments" in data
-            assert "unscheduled_tasks" in data
-        finally:
-            if db.get_session in app.dependency_overrides:
-                del app.dependency_overrides[db.get_session]
-
-    def test_get_weekly_schedule_options(self, mock_auth):
-        """Test getting weekly schedule options."""
-        # Test the response format when there are no weekly schedules
-        response = client.get("/api/schedule/weekly-schedule-options")
-
-        # The endpoint should return 200 with empty list if no weekly schedules exist
-        # or may return 403/500/503 if database is not available, which is fine for unit tests
-        assert response.status_code in [200, 403, 500, 503]
-
-        if response.status_code == 200:
-            data = response.json()
-            assert isinstance(
-                data, list
-            )  # Should return a list (empty or with options)
-
     def test_task_source_validation(self):
         """Test TaskSource model validation."""
         from humancompiler_api.routers.scheduler import TaskSource
@@ -887,14 +810,11 @@ class TestSchedulerAPI:
         valid_project = TaskSource(type="project", project_id=str(uuid4()))
         assert valid_project.type == "project"
 
-        valid_weekly = TaskSource(
-            type="weekly_schedule", weekly_schedule_date="2025-06-23"
-        )
-        assert valid_weekly.type == "weekly_schedule"
-
-        # Invalid task source type
+        # Invalid task source types, including the removed weekly schedule source
         with pytest.raises(ValueError):
             TaskSource(type="invalid_type")
+        with pytest.raises(ValueError):
+            TaskSource(type="weekly_schedule")
 
     def test_save_daily_schedule_unscheduled_tasks_not_stored(self, mock_auth):
         """Test that unscheduled_tasks are not stored in database (Issue #141)."""

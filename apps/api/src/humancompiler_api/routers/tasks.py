@@ -3,14 +3,16 @@ import logging
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from openai import OpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlmodel import Session, or_, select
+
+from humancompiler_api.openai_models import DEFAULT_OPENAI_MODEL
 
 from humancompiler_api.auth import AuthUser, get_current_user
 from humancompiler_api.database import db
@@ -40,10 +42,11 @@ from humancompiler_api.models import (
     TaskWorkspacePlanFilter,
     TaskWorkspaceSortBy,
     Schedule,
-    WeeklySchedule,
     Goal,
     Project,
     UserSettings,
+    prepare_due_date,
+    require_due_date_timezone,
 )
 from humancompiler_api.crypto import get_crypto_service
 from humancompiler_api.services import task_service
@@ -70,9 +73,19 @@ class BulkTaskPatch(BaseModel):
     due_date: datetime | None = None
     goal_id: UUID | None = None
 
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def prepare_due_date(cls, value: Any) -> Any:
+        return prepare_due_date(value)
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date_timezone(cls, value: datetime | None) -> datetime | None:
+        return require_due_date_timezone(value)
+
 
 class PlanMembershipMutation(BaseModel):
-    scope: Literal["daily", "weekly"]
+    scope: Literal["daily"]
     action: Literal["add", "remove"]
     target_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
 
@@ -163,14 +176,10 @@ def _load_bulk_tasks(
     return rows
 
 
-def _get_plan(
-    session: Session, owner_id: UUID, scope: str, target_date: str
-) -> Schedule | WeeklySchedule | None:
+def _get_plan(session: Session, owner_id: UUID, target_date: str) -> Schedule | None:
     parsed = _parse_plan_date(target_date)
-    model = Schedule if scope == "daily" else WeeklySchedule
-    date_column = Schedule.date if scope == "daily" else WeeklySchedule.week_start_date
     return session.exec(
-        select(model).where(model.user_id == owner_id, date_column == parsed)
+        select(Schedule).where(Schedule.user_id == owner_id, Schedule.date == parsed)
     ).first()
 
 
@@ -189,19 +198,6 @@ def _daily_members(plan: Schedule | None) -> set[str]:
     return members
 
 
-def _weekly_members(plan: WeeklySchedule | None) -> set[str]:
-    payload = (plan.schedule_json if plan else {}) or {}
-    members = {str(task_id) for task_id in payload.get("selected_task_ids", [])}
-    for item in payload.get("selected_tasks", []):
-        if isinstance(item, dict):
-            task_id = item.get("task_id") or item.get("taskId")
-        else:
-            task_id = item
-        if task_id:
-            members.add(str(task_id))
-    return members
-
-
 def _preview_bulk(
     session: Session,
     owner_id: str | UUID,
@@ -214,7 +210,7 @@ def _preview_bulk(
     expected_plan_versions: dict[str, str | None] = {}
     items: list[BulkTaskPreviewItem] = []
     warnings = list(initial_warnings or [])
-    plan_cache: dict[str, Schedule | WeeklySchedule | None] = {}
+    plan_cache: dict[str, Schedule | None] = {}
 
     for mutation in request.mutations:
         task, _goal, _project = rows[mutation.task_id]
@@ -237,19 +233,13 @@ def _preview_bulk(
                 plan_cache[key] = _get_plan(
                     session,
                     UUID(str(owner_id)),
-                    plan_change.scope,
                     plan_change.target_date,
                 )
                 plan = plan_cache[key]
                 expected_plan_versions[key] = (
                     _version_value(plan.updated_at) if plan else None
                 )
-            plan = plan_cache[key]
-            members = (
-                _daily_members(plan if isinstance(plan, Schedule) else None)
-                if plan_change.scope == "daily"
-                else _weekly_members(plan if isinstance(plan, WeeklySchedule) else None)
-            )
+            members = _daily_members(plan_cache[key])
             is_member = str(task.id) in members
             after_member = plan_change.action == "add"
             if is_member == after_member:
@@ -386,7 +376,7 @@ def _apply_daily_membership(
     task: Task,
     action: str,
 ) -> None:
-    plan = _get_plan(session, owner_id, "daily", target_date)
+    plan = _get_plan(session, owner_id, target_date)
     if plan is None:
         plan = Schedule(
             id=uuid4(),
@@ -411,87 +401,6 @@ def _apply_daily_membership(
         float(assignment.get("duration_hours", 0) or 0) for assignment in assignments
     )
     plan.plan_json = payload
-    plan.updated_at = datetime.now(UTC)
-    session.add(plan)
-
-
-def _apply_weekly_membership(
-    session: Session,
-    owner_id: UUID,
-    target_date: str,
-    task: Task,
-    action: str,
-) -> None:
-    plan = _get_plan(session, owner_id, "weekly", target_date)
-    if plan is None:
-        plan = WeeklySchedule(
-            id=uuid4(),
-            user_id=owner_id,
-            week_start_date=_parse_plan_date(target_date),
-            schedule_json={"selected_tasks": [], "assigned_task_hours": {}},
-        )
-    payload = dict(plan.schedule_json or {})
-    selected = list(payload.get("selected_tasks", []))
-    assigned = dict(payload.get("assigned_task_hours", {}))
-    pinned = list(payload.get("pinned_task_ids", []))
-    selected_ids = {
-        str(
-            (item.get("task_id") or item.get("taskId"))
-            if isinstance(item, dict)
-            else item
-        )
-        for item in selected
-    }
-    for legacy_task_id in payload.get("selected_task_ids", []):
-        legacy_task_id = str(legacy_task_id)
-        if legacy_task_id in selected_ids:
-            continue
-        selected.append(
-            {
-                "task_id": legacy_task_id,
-                "task_title": f"タスク {legacy_task_id[:8]}",
-                "estimated_hours": float(assigned.get(legacy_task_id, 1)),
-                "priority": 3,
-                "rationale": "旧形式の週次計画から復元",
-            }
-        )
-        selected_ids.add(legacy_task_id)
-    selected = [
-        item
-        for item in selected
-        if str(
-            (item.get("task_id") or item.get("taskId"))
-            if isinstance(item, dict)
-            else item
-        )
-        != str(task.id)
-    ]
-    if action == "add":
-        selected.append(
-            {
-                "task_id": str(task.id),
-                "task_title": task.title,
-                "estimated_hours": float(task.estimate_hours),
-                "priority": task.priority,
-                "rationale": "タスクワークスペースから手動追加",
-            }
-        )
-        assigned[str(task.id)] = float(task.estimate_hours)
-    else:
-        assigned.pop(str(task.id), None)
-        pinned = [task_id for task_id in pinned if str(task_id) != str(task.id)]
-    payload["selected_tasks"] = selected
-    if "selected_task_ids" in payload:
-        payload["selected_task_ids"] = [
-            str(item.get("task_id") or item.get("taskId"))
-            if isinstance(item, dict)
-            else str(item)
-            for item in selected
-        ]
-    payload["assigned_task_hours"] = assigned
-    payload["pinned_task_ids"] = pinned
-    payload["total_allocated_hours"] = sum(float(value) for value in assigned.values())
-    plan.schedule_json = payload
     plan.updated_at = datetime.now(UTC)
     session.add(plan)
 
@@ -524,7 +433,7 @@ async def apply_bulk_task_changes(
     if preview.expected_plan_versions != request.expected_plan_versions:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="A daily or weekly plan changed after the preview",
+            detail="A daily plan changed after the preview",
         )
 
     rows = _load_bulk_tasks(session, owner_id, request.mutations)
@@ -541,38 +450,18 @@ async def apply_bulk_task_changes(
                 session.add(task)
 
             for plan_change in mutation.plans:
-                existing = _get_plan(
-                    session,
-                    owner_id,
-                    plan_change.scope,
-                    plan_change.target_date,
-                )
-                members = (
-                    _daily_members(existing if isinstance(existing, Schedule) else None)
-                    if plan_change.scope == "daily"
-                    else _weekly_members(
-                        existing if isinstance(existing, WeeklySchedule) else None
-                    )
-                )
+                existing = _get_plan(session, owner_id, plan_change.target_date)
+                members = _daily_members(existing)
                 should_add = plan_change.action == "add"
                 if (str(task.id) in members) == should_add:
                     continue
-                if plan_change.scope == "daily":
-                    _apply_daily_membership(
-                        session,
-                        owner_id,
-                        plan_change.target_date,
-                        task,
-                        plan_change.action,
-                    )
-                else:
-                    _apply_weekly_membership(
-                        session,
-                        owner_id,
-                        plan_change.target_date,
-                        task,
-                        plan_change.action,
-                    )
+                _apply_daily_membership(
+                    session,
+                    owner_id,
+                    plan_change.target_date,
+                    task,
+                    plan_change.action,
+                )
         session.commit()
     except Exception:
         session.rollback()
@@ -612,7 +501,7 @@ async def preview_natural_language_bulk_changes(
         ).all()
         allowed_goal_ids = {goal.id for goal, _project in goals if goal.id is not None}
         client = OpenAI(api_key=api_key, timeout=30.0)
-        model = settings.openai_model or "gpt-5.5"
+        model = settings.openai_model or DEFAULT_OPENAI_MODEL
         response = client.chat.completions.create(
             model=model,
             messages=[
@@ -645,7 +534,7 @@ async def preview_natural_language_bulk_changes(
                                         },
                                         "plans": [
                                             {
-                                                "scope": "daily|weekly",
+                                                "scope": "daily",
                                                 "action": "add|remove",
                                                 "target_date": "YYYY-MM-DD",
                                             }
@@ -683,7 +572,7 @@ async def preview_natural_language_bulk_changes(
             max_completion_tokens=2500,
             **(
                 {"reasoning_effort": "high"}
-                if model.startswith(("gpt-5.5", "gpt-5.4"))
+                if model.startswith(("gpt-6-", "gpt-5.5", "gpt-5.4"))
                 else {}
             ),
         )
@@ -753,7 +642,7 @@ def build_task_responses_with_dependencies(
 
 def _plan_date_windows(
     now: datetime | None = None,
-) -> tuple[datetime, datetime, datetime, datetime]:
+) -> tuple[datetime, datetime]:
     """Return naive date boundaries matching stored JST schedule dates."""
     instant = now or datetime.now(UTC)
     if instant.tzinfo is None:
@@ -761,30 +650,21 @@ def _plan_date_windows(
     local_date = instant.astimezone(APP_TIMEZONE).date()
     day_start = datetime.combine(local_date, datetime.min.time())
     day_end = day_start + timedelta(days=1)
-    week_start = day_start - timedelta(days=day_start.weekday())
-    week_end = week_start + timedelta(days=7)
-    return day_start, day_end, week_start, week_end
+    return day_start, day_end
 
 
 def _extract_planned_task_ids(
     session: Session, owner_id: str | UUID
-) -> tuple[set[str], set[str], set[str]]:
-    """Return today's plan IDs, weekly IDs, and today's placed assignment IDs."""
+) -> tuple[set[str], set[str]]:
+    """Return today's plan IDs and today's placed assignment IDs."""
     owner_uuid = UUID(str(owner_id))
-    day_start, day_end, week_start, week_end = _plan_date_windows()
+    day_start, day_end = _plan_date_windows()
 
     daily_schedules = session.exec(
         select(Schedule).where(
             Schedule.user_id == owner_uuid,
             Schedule.date >= day_start,
             Schedule.date < day_end,
-        )
-    ).all()
-    weekly_schedules = session.exec(
-        select(WeeklySchedule).where(
-            WeeklySchedule.user_id == owner_uuid,
-            WeeklySchedule.week_start_date >= week_start,
-            WeeklySchedule.week_start_date < week_end,
         )
     ).all()
 
@@ -801,10 +681,7 @@ def _extract_planned_task_ids(
         for task_id in (schedule.plan_json or {}).get("planned_task_ids", [])
         if task_id
     )
-    week_ids: set[str] = set()
-    for schedule in weekly_schedules:
-        week_ids.update(_weekly_members(schedule))
-    return today_ids, week_ids, placed_today_ids
+    return today_ids, placed_today_ids
 
 
 def _valid_task_uuids(task_ids: set[str]) -> set[UUID]:
@@ -874,7 +751,6 @@ def build_workspace_items(
     rows: list[tuple[Task, object, object, int, datetime | None]],
     owner_id: str | UUID,
     today_ids: set[str] | None = None,
-    week_ids: set[str] | None = None,
     placed_today_ids: set[str] | None = None,
 ) -> list[TaskWorkspaceItem]:
     """Hydrate workspace query rows without per-task database calls."""
@@ -884,10 +760,8 @@ def build_workspace_items(
     tasks = [row[0] for row in rows]
     task_ids = [task.id for task in tasks if task.id is not None]
     dependencies = task_service.get_task_dependencies_batch(session, task_ids, owner_id)
-    if today_ids is None or week_ids is None or placed_today_ids is None:
-        today_ids, week_ids, placed_today_ids = _extract_planned_task_ids(
-            session, owner_id
-        )
+    if today_ids is None or placed_today_ids is None:
+        today_ids, placed_today_ids = _extract_planned_task_ids(session, owner_id)
 
     items: list[TaskWorkspaceItem] = []
     for task, goal, project, actual_minutes, last_worked_at in rows:
@@ -925,7 +799,6 @@ def build_workspace_items(
                 planned_today_unplaced=(
                     str(task.id) in today_ids and str(task.id) not in placed_today_ids
                 ),
-                planned_this_week=str(task.id) in week_ids,
             )
         )
     return items
@@ -954,18 +827,15 @@ async def get_task_workspace(
     included_task_ids: set[UUID] | None = None
     excluded_task_ids: set[UUID] | None = None
     today_ids: set[str] | None = None
-    week_ids: set[str] | None = None
     placed_today_ids: set[str] | None = None
     if plan is not None:
-        today_ids, week_ids, placed_today_ids = _extract_planned_task_ids(
+        today_ids, placed_today_ids = _extract_planned_task_ids(
             session, current_user.user_id
         )
         if plan == TaskWorkspacePlanFilter.TODAY:
             included_task_ids = _valid_task_uuids(today_ids)
-        elif plan == TaskWorkspacePlanFilter.WEEK:
-            included_task_ids = _valid_task_uuids(week_ids)
         else:
-            excluded_task_ids = _valid_task_uuids(today_ids | week_ids)
+            excluded_task_ids = _valid_task_uuids(today_ids)
 
     rows, total = task_service.get_workspace_tasks(
         session,
@@ -991,7 +861,6 @@ async def get_task_workspace(
             rows,
             current_user.user_id,
             today_ids=today_ids,
-            week_ids=week_ids,
             placed_today_ids=placed_today_ids,
         ),
         total=total,
@@ -1036,15 +905,13 @@ async def get_task_dependency_graph(
     included_task_ids: set[UUID] | None = None
     excluded_task_ids: set[UUID] | None = None
     if plan is not None:
-        today_ids, week_ids, _placed_today_ids = _extract_planned_task_ids(
+        today_ids, _placed_today_ids = _extract_planned_task_ids(
             session, current_user.user_id
         )
         if plan == TaskWorkspacePlanFilter.TODAY:
             included_task_ids = _valid_task_uuids(today_ids)
-        elif plan == TaskWorkspacePlanFilter.WEEK:
-            included_task_ids = _valid_task_uuids(week_ids)
         else:
-            excluded_task_ids = _valid_task_uuids(today_ids | week_ids)
+            excluded_task_ids = _valid_task_uuids(today_ids)
 
     tasks, total = task_service.get_workspace_graph_tasks(
         session,
@@ -1163,9 +1030,6 @@ async def get_task_recommendations(
         if item.planned_today:
             score += 30
             reasons.append("今日の計画に登録済み")
-        elif item.planned_this_week:
-            score += 10
-            reasons.append("今週の計画に登録済み")
         if item.due_date:
             due_date = item.due_date
             if due_date.tzinfo is None:

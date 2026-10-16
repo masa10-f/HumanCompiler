@@ -11,9 +11,13 @@ import { toast } from '@/hooks/use-toast';
 import { log } from '@/lib/logger';
 import { quickTasksApi } from '@/lib/api';
 import type { QuickTask } from '@/types/quick-task';
+import type { TaskStatus } from '@/types/task';
+
+const ACTIVE_STATUSES: TaskStatus[] = ['pending', 'in_progress'];
+const PAGE_SIZE = 100;
 
 interface QuickTaskListProps {
-  /** Maximum number of tasks to display */
+  /** Maximum number of tasks to display (the header count always shows the total) */
   limit?: number;
   /** Whether to show the header with title and add button */
   showHeader?: boolean;
@@ -22,7 +26,7 @@ interface QuickTaskListProps {
 }
 
 export function QuickTaskList({
-  limit = 50,
+  limit,
   showHeader = true,
   onConvertToTask,
 }: QuickTaskListProps) {
@@ -38,11 +42,16 @@ export function QuickTaskList({
     setIsLoading(true);
     setError(null);
     try {
-      const result = await quickTasksApi.getAll(0, limit);
-      // Filter out completed/cancelled tasks for display
-      const activeTasks = result.filter(
-        (task) => task.status !== 'completed' && task.status !== 'cancelled'
-      );
+      // Filter on the server so pagination counts only active tasks; the
+      // dashboard and project pages then agree on the total.
+      const activeTasks: QuickTask[] = [];
+      let skip = 0;
+      while (true) {
+        const page = await quickTasksApi.getAll(skip, PAGE_SIZE, undefined, ACTIVE_STATUSES);
+        activeTasks.push(...page);
+        skip += page.length;
+        if (page.length < PAGE_SIZE) break;
+      }
       setTasks(activeTasks);
     } catch (err) {
       log.error('Failed to fetch quick tasks', err, { component: 'QuickTaskList' });
@@ -50,7 +59,7 @@ export function QuickTaskList({
     } finally {
       setIsLoading(false);
     }
-  }, [limit]);
+  }, []);
 
   useEffect(() => {
     fetchTasks();
@@ -127,6 +136,9 @@ export function QuickTaskList({
     }
   };
 
+  const visibleTasks = limit === undefined ? tasks : tasks.slice(0, limit);
+  const hiddenCount = tasks.length - visibleTasks.length;
+
   if (isLoading) {
     return (
       <Card>
@@ -158,8 +170,8 @@ export function QuickTaskList({
     <>
       <Card>
         {showHeader && (
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-lg font-medium flex items-center gap-2">
+          <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 pb-2">
+            <CardTitle className="min-w-0 text-lg font-medium flex items-center gap-2">
               <Inbox className="h-5 w-5" />
               クイックタスク
               {tasks.length > 0 && (
@@ -185,7 +197,7 @@ export function QuickTaskList({
             </div>
           ) : (
             <div className="space-y-2">
-              {tasks.map((task) => (
+              {visibleTasks.map((task) => (
                 <QuickTaskCard
                   key={task.id}
                   task={task}
@@ -196,6 +208,11 @@ export function QuickTaskList({
                   isCompleting={completingTaskIds.has(task.id)}
                 />
               ))}
+              {hiddenCount > 0 && (
+                <p className="pt-1 text-center text-sm text-muted-foreground">
+                  ほか {hiddenCount} 件
+                </p>
+              )}
             </div>
           )}
         </CardContent>

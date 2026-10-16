@@ -14,7 +14,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { goalsApi, projectsApi, tasksApi } from '@/lib/api';
+import { goalsApi, tasksApi } from '@/lib/api';
+import { useProjectOptions } from '@/hooks/use-project-query';
 import type { TaskWorkspaceItem } from '@/types/task';
 
 type PickerView = 'recommended' | 'today' | 'recent' | 'all';
@@ -40,9 +41,7 @@ export function TaskPickerDialog({
   const [projectId, setProjectId] = useState('');
   const [goalId, setGoalId] = useState('');
 
-  const projects = useQuery({
-    queryKey: ['projects', 'task-picker'],
-    queryFn: () => projectsApi.getAll(0, 100),
+  const projects = useProjectOptions({
     enabled: open,
   });
   const goals = useQuery({
@@ -177,15 +176,15 @@ export function TaskPickerDialog({
                 onOpenChange(false);
               }}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="truncate font-medium">{task.title}</div>
+              <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="break-words font-medium">{task.title}</div>
                   <div className="mt-1 truncate text-xs text-muted-foreground">
                     {task.project_title} › {task.goal_title}
                   </div>
                   {reason && <div className="mt-2 text-xs">{reason}</div>}
                 </div>
-                <div className="flex shrink-0 gap-1">
+                <div className="flex shrink-0 flex-wrap gap-1">
                   {task.planned_today && (
                     <Badge variant="info">
                       {task.planned_today_unplaced ? '今日・未配置' : '今日'}

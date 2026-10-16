@@ -8,8 +8,6 @@ ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.goals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.schedules ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.weekly_schedules ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.weekly_recurring_tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.api_usage_logs ENABLE ROW LEVEL SECURITY;
@@ -74,20 +72,6 @@ CREATE POLICY "tasks_via_goals" ON public.tasks
 
 -- 5. Schedules table: Users can only access their own schedules
 CREATE POLICY "schedules_own_data" ON public.schedules
-    FOR ALL
-    TO authenticated
-    USING (auth.uid()::text = user_id::text)
-    WITH CHECK (auth.uid()::text = user_id::text);
-
--- 6. Weekly schedules table: Users can only access their own weekly schedules
-CREATE POLICY "weekly_schedules_own_data" ON public.weekly_schedules
-    FOR ALL
-    TO authenticated
-    USING (auth.uid()::text = user_id::text)
-    WITH CHECK (auth.uid()::text = user_id::text);
-
--- 7. Weekly recurring tasks table: Users can only access their own tasks
-CREATE POLICY "weekly_recurring_tasks_own_data" ON public.weekly_recurring_tasks
     FOR ALL
     TO authenticated
     USING (auth.uid()::text = user_id::text)
@@ -210,8 +194,6 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.projects TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.goals TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.tasks TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.schedules TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.weekly_schedules TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.weekly_recurring_tasks TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.logs TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_settings TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.api_usage_logs TO authenticated;

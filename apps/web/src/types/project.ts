@@ -7,7 +7,7 @@
  * プロジェクトのステータス
  * @description プロジェクトの進捗状態を表す
  */
-export type ProjectStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
+export type ProjectStatus = 'pending' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
 
 /**
  * プロジェクト

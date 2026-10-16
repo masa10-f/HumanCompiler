@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { goalsApi } from '@/lib/api'
 import type { Goal, GoalCreate, GoalUpdate } from '@/types/goal'
 import type { SortOptions } from '@/types/sort'
+import { queryKeys } from '@/lib/query-keys'
 
 /**
  * Query keys for goal caching with React Query.
@@ -21,11 +22,12 @@ export const goalKeys = {
  *
  * @param projectId - The project UUID to fetch goals for
  * @param skip - Number of records to skip (default: 0)
- * @param limit - Maximum records to return (default: 20)
+ * @param limit - Maximum records to return (default: 100, the API maximum).
+ *   The cache key ignores skip/limit, so callers should share the full set.
  * @param sortOptions - Optional sorting configuration
  * @returns UseQueryResult with goal array
  */
-export function useGoalsByProject(projectId: string, skip = 0, limit = 20, sortOptions?: SortOptions) {
+export function useGoalsByProject(projectId: string, skip = 0, limit = 100, sortOptions?: SortOptions) {
   const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
   return useQuery({
     queryKey: [...goalKeys.byProject(projectId), sortKey],
@@ -64,9 +66,15 @@ export function useCreateGoal() {
   return useMutation({
     mutationFn: (goalData: GoalCreate) => goalsApi.create(goalData),
     onSuccess: (newGoal: Goal) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
+
       // Invalidate goals for the specific project
       queryClient.invalidateQueries({
         queryKey: goalKeys.byProject(newGoal.project_id)
+      })
+      // Lets the new goal's card show its digest.
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.progress.project(newGoal.project_id)
       })
 
       // Add the new goal to cache
@@ -91,6 +99,8 @@ export function useUpdateGoal() {
     mutationFn: ({ id, data }: { id: string; data: GoalUpdate }) =>
       goalsApi.update(id, data),
     onSuccess: (updatedGoal: Goal) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
+
       // Update the cached goal
       queryClient.setQueryData(
         goalKeys.detail(updatedGoal.id),
@@ -129,6 +139,8 @@ export function useDeleteGoal() {
       // Delay cache invalidation to allow dialog close animation to complete
       // This prevents Radix UI dialog cleanup issues that cause UI freeze
       setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
+
         // Force reset body styles in case Radix UI dialog cleanup failed
         if (typeof document !== 'undefined') {
           document.body.style.pointerEvents = ''

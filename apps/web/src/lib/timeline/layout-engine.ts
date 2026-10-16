@@ -278,7 +278,7 @@ export class TimelineLayoutEngine {
         minStart = actualStartDate
       }
 
-      // Calculate or use explicit end date
+      // Calculate or use explicit scheduled end date.
       const actualEndDate = explicitEndDate ||
                            this.calculateGoalEndDate(actualStartDate, goal.estimate_hours, weeklyWorkHours)
 

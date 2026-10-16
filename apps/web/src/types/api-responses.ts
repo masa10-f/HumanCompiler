@@ -4,34 +4,6 @@
  */
 
 /**
- * AI連携テストレスポンス
- * @description AI機能の接続テスト結果
- */
-export interface TestAIIntegrationResponse {
-  /** 成功したかどうか */
-  success: boolean;
-  /** 結果メッセージ */
-  message: string;
-  /** アシスタントID（成功時） */
-  assistant_id?: string;
-  /** エラーメッセージ（失敗時） */
-  error?: string;
-}
-
-/**
- * デイリースケジュール保存レスポンス
- * @description スケジュール保存結果
- */
-export interface SaveDailyScheduleResponse {
-  /** 成功したかどうか */
-  success: boolean;
-  /** 保存されたスケジュールID */
-  schedule_id: string;
-  /** 結果メッセージ */
-  message: string;
-}
-
-/**
  * デイリースケジュール
  * @description 日次スケジュールの保存データ
  */

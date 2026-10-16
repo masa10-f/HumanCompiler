@@ -11,16 +11,28 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
-import { projectsApi, triageApi } from '@/lib/api';
+import { triageApi } from '@/lib/api';
+import { useAuth } from '@/hooks/use-auth';
+import { useProjectOptions } from '@/hooks/use-project-query';
+import { getErrorMessage } from '@/lib/errors';
 import { getSelectableProjects } from '@/lib/project-filters';
-import type { Project } from '@/types/project';
 import type { WorkType } from '@/types/task';
 import { workTypeLabels } from '@/types/task';
 
 const workTypes: WorkType[] = ['focused_work', 'study', 'light_work'];
 
 export function TriageSettingsCard() {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const { user, loading: authLoading } = useAuth();
+  const {
+    data: projectData,
+    error: projectsError,
+    isLoading: projectsLoading,
+    refetch: refetchProjects,
+  } = useProjectOptions({ enabled: Boolean(user) });
+  const projects = useMemo(
+    () => getSelectableProjects(projectData ?? []),
+    [projectData]
+  );
   const [weeklyCapacityHours, setWeeklyCapacityHours] = useState(40);
   const [meetingBufferHours, setMeetingBufferHours] = useState(5);
   const [cadenceDays, setCadenceDays] = useState(7);
@@ -33,41 +45,32 @@ export function TriageSettingsCard() {
     study: '',
     light_work: '',
   });
-  const [loading, setLoading] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const projectsErrorMessage = projectsError
+    ? `プロジェクト一覧の取得に失敗しました: ${getErrorMessage(projectsError)}`
+    : '';
+  const projectsUnavailable = projectData === undefined;
+  const displayError = error || projectsErrorMessage;
 
   useEffect(() => {
     let cancelled = false;
 
     const load = async () => {
-      setLoading(true);
+      setSettingsLoading(true);
       setError('');
       try {
-        const [projectData, settings] = await Promise.all([
-          projectsApi.getAll(0, 100),
-          triageApi.getSettings(),
-        ]);
+        const settings = await triageApi.getSettings();
         if (cancelled) return;
 
-        const selectableProjects = getSelectableProjects(projectData);
-        const selectableProjectIds = new Set(
-          selectableProjects.map((project) => project.id)
-        );
-        setProjects(selectableProjects);
         setWeeklyCapacityHours(settings.weekly_capacity_hours);
         setMeetingBufferHours(settings.meeting_buffer_hours);
         setCadenceDays(settings.cadence_days);
         setAutoGenerateEnabled(settings.auto_generate_enabled);
         setUseAiRankAdjustment(settings.use_ai_rank_adjustment);
-        setProjectAllocations(
-          Object.fromEntries(
-            Object.entries(settings.project_allocations || {}).filter(([projectId]) =>
-              selectableProjectIds.has(projectId)
-            )
-          )
-        );
+        setProjectAllocations(settings.project_allocations || {});
         setInboxAllocationPercent(settings.inbox_allocation_percent || 0);
         setWorkTypeCaps({
           focused_work: settings.work_type_caps.focused_work?.toString() || '',
@@ -76,10 +79,14 @@ export function TriageSettingsCard() {
         });
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'トリアージ設定の取得に失敗しました');
+          setError(
+            err instanceof Error
+              ? `トリアージ設定の取得に失敗しました: ${getErrorMessage(err)}`
+              : 'トリアージ設定の取得に失敗しました'
+          );
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setSettingsLoading(false);
       }
     };
 
@@ -89,13 +96,25 @@ export function TriageSettingsCard() {
     };
   }, []);
 
+  const loading =
+    authLoading ||
+    settingsLoading ||
+    (Boolean(user) && projectsLoading);
+
   const allocationTotal = useMemo(() => {
-    const projectTotal = projects.reduce(
-      (total, project) => total + (projectAllocations[project.id] || 0),
-      0
-    );
+    // Without project metadata, preserve and validate the stored map as-is;
+    // silently dropping unknown IDs could hide an invalid allocation total.
+    const projectTotal = projectsUnavailable
+      ? Object.values(projectAllocations).reduce(
+          (total, allocation) => total + allocation,
+          0
+        )
+      : projects.reduce(
+          (total, project) => total + (projectAllocations[project.id] || 0),
+          0
+        );
     return projectTotal + inboxAllocationPercent;
-  }, [inboxAllocationPercent, projectAllocations, projects]);
+  }, [inboxAllocationPercent, projectAllocations, projects, projectsUnavailable]);
 
   const effectiveCapacity = Math.max(0, weeklyCapacityHours - meetingBufferHours);
 
@@ -142,10 +161,12 @@ export function TriageSettingsCard() {
       await triageApi.updateSettings({
         weekly_capacity_hours: weeklyCapacityHours,
         meeting_buffer_hours: meetingBufferHours,
-        project_allocations: projects.reduce<Record<string, number>>((acc, project) => {
-          acc[project.id] = projectAllocations[project.id] || 0;
-          return acc;
-        }, {}),
+        project_allocations: projectsUnavailable
+          ? projectAllocations
+          : projects.reduce<Record<string, number>>((acc, project) => {
+              acc[project.id] = projectAllocations[project.id] || 0;
+              return acc;
+            }, {}),
         inbox_allocation_percent: inboxAllocationPercent,
         work_type_caps: parsedWorkTypeCaps,
         cadence_days: cadenceDays,
@@ -154,7 +175,11 @@ export function TriageSettingsCard() {
       });
       setSuccess('トリアージ設定を保存しました');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'トリアージ設定の保存に失敗しました');
+      setError(
+        err instanceof Error
+          ? `トリアージ設定の保存に失敗しました: ${getErrorMessage(err)}`
+          : 'トリアージ設定の保存に失敗しました'
+      );
     } finally {
       setSaving(false);
     }
@@ -172,10 +197,10 @@ export function TriageSettingsCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {error && (
+        {displayError && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription>{displayError}</AlertDescription>
           </Alert>
         )}
 
@@ -259,41 +284,60 @@ export function TriageSettingsCard() {
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-sm font-semibold">配分</h3>
-                <Button type="button" variant="outline" size="sm" onClick={balanceAllocations}>
-                  均等配分
-                </Button>
+                {projectsError ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void refetchProjects()}
+                  >
+                    プロジェクトを再取得
+                  </Button>
+                ) : !projectsUnavailable ? (
+                  <Button type="button" variant="outline" size="sm" onClick={balanceAllocations}>
+                    均等配分
+                  </Button>
+                ) : null}
               </div>
 
-              {projects.map((project) => {
-                const allocation = projectAllocations[project.id] || 0;
-                return (
-                  <div key={project.id} className="space-y-2">
+              {projectsUnavailable ? (
+                <p className="text-sm text-muted-foreground">
+                  プロジェクト配分は再取得後に編集できます。
+                </p>
+              ) : (
+                <>
+                  {projects.map((project) => {
+                    const allocation = projectAllocations[project.id] || 0;
+                    return (
+                      <div key={project.id} className="space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <Label className="truncate">{project.title}</Label>
+                          <span className="text-sm font-medium">{allocation}%</span>
+                        </div>
+                        <Slider
+                          value={[allocation]}
+                          max={100}
+                          step={5}
+                          onValueChange={(values) => updateProjectAllocation(project.id, values[0] ?? 0)}
+                        />
+                      </div>
+                    );
+                  })}
+
+                  <div className="space-y-2">
                     <div className="flex items-center justify-between gap-3">
-                      <Label className="truncate">{project.title}</Label>
-                      <span className="text-sm font-medium">{allocation}%</span>
+                      <Label>Inbox</Label>
+                      <span className="text-sm font-medium">{inboxAllocationPercent}%</span>
                     </div>
                     <Slider
-                      value={[allocation]}
+                      value={[inboxAllocationPercent]}
                       max={100}
                       step={5}
-                      onValueChange={(values) => updateProjectAllocation(project.id, values[0] ?? 0)}
+                      onValueChange={(values) => setInboxAllocationPercent(values[0] ?? 0)}
                     />
                   </div>
-                );
-              })}
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <Label>Inbox</Label>
-                  <span className="text-sm font-medium">{inboxAllocationPercent}%</span>
-                </div>
-                <Slider
-                  value={[inboxAllocationPercent]}
-                  max={100}
-                  step={5}
-                  onValueChange={(values) => setInboxAllocationPercent(values[0] ?? 0)}
-                />
-              </div>
+                </>
+              )}
             </div>
 
             <div className="space-y-3">

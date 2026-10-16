@@ -19,6 +19,8 @@ from fastapi import HTTPException, status
 from openai import OpenAI
 from sqlmodel import Session, col, func, select
 
+from humancompiler_api.openai_models import DEFAULT_OPENAI_MODEL
+
 from humancompiler_api.crypto import get_crypto_service
 from humancompiler_api.models import (
     Goal,
@@ -650,7 +652,7 @@ class TriageService:
                     candidates, key=lambda item: item.deterministic_score, reverse=True
                 )[:120]
             ]
-            model = user_settings.openai_model or "gpt-5.5"
+            model = user_settings.openai_model or DEFAULT_OPENAI_MODEL
             api_params = {
                 "model": model,
                 "messages": [
@@ -688,7 +690,7 @@ class TriageService:
                 "response_format": {"type": "json_object"},
                 "max_completion_tokens": 900,
             }
-            if model.startswith(("gpt-5.5", "gpt-5.4")):
+            if model.startswith(("gpt-6-", "gpt-5.5", "gpt-5.4")):
                 api_params["reasoning_effort"] = "high"
             response = client.chat.completions.create(**api_params)
             content = response.choices[0].message.content or "{}"

@@ -1,0 +1,1688 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
+
+"""Document-oriented daily planning endpoints."""
+
+from __future__ import annotations
+
+import json
+import logging
+import math
+import re
+from collections.abc import Awaitable, Callable
+from copy import deepcopy
+from datetime import UTC, date as date_type, datetime, time
+from decimal import Decimal
+from typing import Annotated, Literal
+from urllib.parse import urlsplit
+from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.routing import APIRoute
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    field_validator,
+    model_validator,
+)
+from pydantic_core import PydanticCustomError
+from sqlalchemy import func, or_
+from sqlalchemy import update as sqlalchemy_update
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import Session, select
+
+from humancompiler_scheduler.human import (
+    HumanAvailabilityWindow,
+    HumanCandidatePool,
+    HumanDirectiveWindow,
+    HumanFixedEvent,
+    HumanFlexibleDailyFixture,
+    HumanFrozenTaskBlock,
+    HumanTask,
+    HumanWorkKind,
+    compile_human_flexible_daily_fixture,
+    plan_daily_schedule,
+)
+
+from humancompiler_api.auth import get_current_user_id
+from humancompiler_api.database import db
+from humancompiler_api.models import (
+    DailyPlanDocument,
+    Goal,
+    GoalDependency,
+    GoalStatus,
+    Log,
+    Project,
+    QuickTask,
+    Schedule,
+    Task,
+    TaskDependency,
+    TaskStatus,
+    WorkType,
+)
+from humancompiler_api.routers.schemas.scheduler_config import (
+    SchedulerSolverConfigInput,
+    coerce_human_solver_config,
+)
+
+
+class DailyPlanRoute(APIRoute):
+    def get_route_handler(self) -> Callable[[Request], Awaitable[Response]]:
+        handler = super().get_route_handler()
+
+        async def check_size(request: Request) -> Response:
+            # Reject declared oversized bodies before FastAPI parses JSON/Pydantic.
+            length = request.headers.get("content-length", "")
+            if length.isdecimal() and int(length) > 6_000_000:
+                raise HTTPException(
+                    status_code=413, detail="daily note request exceeds 6MB"
+                )
+            return await handler(request)
+
+        return check_size
+
+
+router = APIRouter(
+    prefix="/daily-plans", tags=["daily-plans"], route_class=DailyPlanRoute
+)
+logger = logging.getLogger(__name__)
+
+JST = ZoneInfo("Asia/Tokyo")
+ACTIVE_TASK_STATUSES = {TaskStatus.PENDING, TaskStatus.IN_PROGRESS}
+
+
+def _parse_time(value: str) -> time:
+    try:
+        return datetime.strptime(value, "%H:%M").time()
+    except ValueError as exc:
+        raise ValueError("time must use HH:MM format") from exc
+
+
+def _minutes(value: time) -> int:
+    return value.hour * 60 + value.minute
+
+
+def _time_text(value: time) -> str:
+    return value.strftime("%H:%M")
+
+
+def _add_minutes(value: time, duration: int) -> time | None:
+    total = _minutes(value) + duration
+    if duration <= 0 or total >= 24 * 60:
+        return None
+    return time(hour=total // 60, minute=total % 60)
+
+
+class TaskRef(BaseModel):
+    source: Literal["task", "quick_task"]
+    id: UUID
+
+    @property
+    def scheduler_id(self) -> str:
+        return str(self.id) if self.source == "task" else f"quick_{self.id}"
+
+
+class AvailabilityWindow(BaseModel):
+    start: str = "09:00"
+    end: str = "18:00"
+    work_type: Literal["light_work", "focused_work", "study"] = "light_work"
+
+    @field_validator("start", "end")
+    @classmethod
+    def validate_time(cls, value: str) -> str:
+        _parse_time(value)
+        return value
+
+    @model_validator(mode="after")
+    def validate_range(self) -> AvailabilityWindow:
+        if _minutes(_parse_time(self.start)) >= _minutes(_parse_time(self.end)):
+            raise ValueError("availability start must be before end")
+        return self
+
+
+# Free-form memo written under a schedule line; indexed for notebook search.
+LINE_NOTE_MAX_LENGTH = 10000
+
+
+class TimedLineBlock(BaseModel):
+    id: str = Field(min_length=1, max_length=100)
+    type: Literal["timed_line"] = "timed_line"
+    start: str
+    end: str
+    title: str = Field(min_length=1, max_length=500)
+    task_ref: TaskRef | None = None
+    pinned: bool = True
+    completed: bool = False
+    kind: Literal["event", "break"] = "event"
+    note: str | None = Field(default=None, max_length=LINE_NOTE_MAX_LENGTH)
+
+    @field_validator("start", "end")
+    @classmethod
+    def validate_time(cls, value: str) -> str:
+        _parse_time(value)
+        return value
+
+    @model_validator(mode="after")
+    def validate_range(self) -> TimedLineBlock:
+        if _minutes(_parse_time(self.start)) >= _minutes(_parse_time(self.end)):
+            raise ValueError("timed line start must be before end")
+        return self
+
+
+class DirectiveFilter(BaseModel):
+    work_types: list[Literal["light_work", "focused_work", "study"]] = Field(
+        default_factory=list,
+        max_length=3,
+    )
+    project_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    goal_ids: list[UUID] = Field(default_factory=list, max_length=200)
+
+
+class DirectiveWindow(BaseModel):
+    start: str
+    end: str
+
+    @field_validator("start", "end")
+    @classmethod
+    def validate_time(cls, value: str) -> str:
+        _parse_time(value)
+        return value
+
+    @model_validator(mode="after")
+    def validate_range(self) -> DirectiveWindow:
+        if _minutes(_parse_time(self.start)) >= _minutes(_parse_time(self.end)):
+            raise ValueError("directive window start must be before end")
+        return self
+
+
+class ScheduleDirectiveBlock(BaseModel):
+    id: str = Field(min_length=1, max_length=100)
+    type: Literal["schedule_directive"] = "schedule_directive"
+    mode: Literal["task", "filter"]
+    work_type: Literal["light_work", "focused_work", "study"] = "light_work"
+    title: str | None = Field(default=None, max_length=500)
+    task_ref: TaskRef | None = None
+    filter: DirectiveFilter | None = None
+    duration_override_minutes: int | None = Field(default=None, gt=0, le=1440)
+    allowed_windows: list[DirectiveWindow] = Field(
+        default_factory=list,
+        max_length=24,
+    )
+    note: str | None = Field(default=None, max_length=LINE_NOTE_MAX_LENGTH)
+
+    @model_validator(mode="after")
+    def validate_mode_fields(self) -> ScheduleDirectiveBlock:
+        if self.mode == "task" and self.task_ref is None:
+            raise ValueError("task mode requires task_ref")
+        if self.mode == "filter" and self.filter is None:
+            self.filter = DirectiveFilter()
+        return self
+
+
+class ChecklistItemBlock(BaseModel):
+    id: str = Field(min_length=1, max_length=100)
+    type: Literal["checklist_item"] = "checklist_item"
+    title: str = Field(min_length=1, max_length=500)
+    checked: bool = False
+    task_ref: TaskRef | None = None
+    duration_override_minutes: int | None = Field(default=None, gt=0, le=1440)
+
+
+class TextBlock(BaseModel):
+    id: str = Field(min_length=1, max_length=100)
+    type: Literal["text"] = "text"
+    text: str = Field(default="", max_length=50000)
+    content: dict[str, JsonValue] | None = None
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(
+        cls, value: dict[str, JsonValue] | None
+    ) -> dict[str, JsonValue] | None:
+        if value is None:
+            return value
+        if len(json.dumps(value, ensure_ascii=False, separators=(",", ":"))) > 50000:
+            raise PydanticCustomError(
+                "note_content_too_large", "rich note content exceeds 50000 characters"
+            )
+        # Older editor builds included internal planId attrs on nested nodes.
+        # Normalize them on both reads and writes, without mutating stored JSON.
+        value = deepcopy(value)
+        allowed = {
+            "paragraph",
+            "heading",
+            "text",
+            "bulletList",
+            "orderedList",
+            "listItem",
+            "taskList",
+            "taskItem",
+            "blockquote",
+            "codeBlock",
+            "hardBreak",
+            "horizontalRule",
+        }
+
+        def check(node: JsonValue, depth: int = 0) -> None:
+            if depth > 20:
+                raise PydanticCustomError(
+                    "note_too_deep", "rich note nesting exceeds 20 levels"
+                )
+            if not isinstance(node, dict):
+                raise ValueError("unsupported rich note node")
+            node_type = node.get("type")
+            if not isinstance(node_type, str) or node_type not in allowed:
+                raise ValueError("unsupported rich note node")
+            if depth == 0 and node_type not in {
+                "paragraph",
+                "heading",
+                "bulletList",
+                "orderedList",
+                "taskList",
+                "blockquote",
+                "codeBlock",
+                "horizontalRule",
+            }:
+                raise ValueError("rich note root must be a block node")
+            attrs = node.get("attrs", {})
+            if not isinstance(attrs, dict):
+                raise ValueError("rich note attrs must be an object")
+            attrs.pop("planId", None)
+            allowed_attrs = {
+                "heading": {"level"},
+                "orderedList": {"start", "type"},
+                "taskItem": {"checked"},
+                "codeBlock": {"language"},
+            }.get(node_type, set())
+            if set(attrs) - allowed_attrs:
+                raise ValueError("unsupported rich note attributes")
+            if "level" in attrs and (
+                type(attrs["level"]) is not int or not 1 <= attrs["level"] <= 6
+            ):
+                raise ValueError("heading level must be an integer from 1 to 6")
+            if "checked" in attrs and not isinstance(attrs["checked"], bool):
+                raise ValueError("task checked must be a boolean")
+            if "start" in attrs and type(attrs["start"]) is not int:
+                raise ValueError("ordered list start must be an integer")
+            if (
+                "type" in attrs
+                and attrs["type"] is not None
+                and attrs["type"] not in ("1", "a", "A", "i", "I")
+            ):
+                raise ValueError("unsupported ordered list numbering type")
+            if (
+                "language" in attrs
+                and attrs["language"] is not None
+                and (
+                    not isinstance(attrs["language"], str)
+                    or len(attrs["language"]) > 100
+                )
+            ):
+                raise ValueError("code language must be short text")
+            marks = node.get("marks", [])
+            if not isinstance(marks, list):
+                raise ValueError("rich note marks must be a list")
+            for mark in marks:
+                if not isinstance(mark, dict) or mark.get("type") not in (
+                    "bold",
+                    "italic",
+                    "strike",
+                    "code",
+                    "link",
+                ):
+                    raise ValueError("unsupported rich note mark")
+                mark_attrs = mark.get("attrs", {})
+                if not isinstance(mark_attrs, dict):
+                    raise ValueError("rich note mark attrs must be an object")
+                if mark.get("type") != "link":
+                    if mark_attrs:
+                        raise ValueError("unsupported rich note mark attributes")
+                    continue
+                if set(mark_attrs) - {"href", "target", "rel", "class"}:
+                    raise ValueError("unsupported link attributes")
+                href = mark_attrs.get("href")
+                if not isinstance(href, str):
+                    raise ValueError("link href must be text")
+                # Browsers ignore whitespace/control characters in URL schemes.
+                normalized_href = re.sub(r"[\s\x00-\x1f\x7f-\x9f]", "", href)
+                try:
+                    safe = urlsplit(normalized_href).scheme.lower() in (
+                        "",
+                        "http",
+                        "https",
+                        "mailto",
+                        "tel",
+                    )
+                except ValueError:
+                    safe = False
+                if not safe:
+                    raise PydanticCustomError(
+                        "note_unsafe_link", "unsupported link protocol"
+                    )
+            children = node.get("content", [])
+            if not isinstance(children, list):
+                raise ValueError("rich note content must be a list")
+            for child in children:
+                check(child, depth + 1)
+
+        check(value)
+        return value
+
+
+DailyPlanBlock = Annotated[
+    TimedLineBlock | ScheduleDirectiveBlock | ChecklistItemBlock | TextBlock,
+    Field(discriminator="type"),
+]
+
+
+class DailyPlanDocumentV1(BaseModel):
+    schema_version: Literal[1] = 1
+    # Legacy availability_windows is an ignored extra field, never a constraint.
+    blocks: list[DailyPlanBlock] = Field(default_factory=list, max_length=500)
+
+    @field_validator("blocks")
+    @classmethod
+    def unique_block_ids(cls, value: list[DailyPlanBlock]) -> list[DailyPlanBlock]:
+        ids = [block.id for block in value]
+        if len(ids) != len(set(ids)):
+            raise ValueError("daily plan block ids must be unique")
+        size = len(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "blocks": [block.model_dump(mode="json") for block in value],
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
+        if size > 5_000_000:
+            raise PydanticCustomError(
+                "note_document_too_large", "daily note exceeds 5MB"
+            )
+        return value
+
+
+class DailyPlanUpdateRequest(BaseModel):
+    expected_revision: int = Field(ge=0)
+    document: DailyPlanDocumentV1
+
+
+class DailyPlanGenerateRequest(BaseModel):
+    solver_config: SchedulerSolverConfigInput | None = None
+
+
+class DailyPlanScheduleAssignment(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    task_id: str = ""
+    task_title: str = ""
+    goal_id: str | None = ""
+    project_id: str | None = ""
+    slot_index: int = 0
+    start_time: str = ""
+    duration_hours: float = 0
+    slot_start: str = ""
+    slot_end: str = ""
+    slot_kind: str = "light_work"
+    is_fixed: bool = False
+    directive_id: str | None = None
+    source: Literal["task", "quick_task"] | None = None
+
+
+class DailyPlanDirectiveDiagnostic(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    directive_id: str
+    eligible_count: int = 0
+    generated_count: int = 0
+    generated_minutes: int = 0
+    reason: str | None = None
+
+
+class DailyPlanUnscheduledTask(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    task_id: str = ""
+    title: str = ""
+    reason: str = ""
+
+
+class DailyPlanConstraintViolation(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    code: str
+    message: str
+    task_id: str | None = None
+    slot_index: int | None = None
+
+
+class DailyPlanScheduleResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    success: bool = False
+    assignments: list[DailyPlanScheduleAssignment] = Field(default_factory=list)
+    total_scheduled_hours: float = 0
+    optimization_status: str = ""
+    generated_at: str = ""
+    source: str | None = None
+    source_document_revision: int | None = None
+    source_scheduling_blocks: list[DailyPlanBlock] | None = None
+    directive_diagnostics: list[DailyPlanDirectiveDiagnostic] = Field(
+        default_factory=list
+    )
+    unused_minutes: int = 0
+    unscheduled_tasks: list[DailyPlanUnscheduledTask] = Field(default_factory=list)
+    violations: list[DailyPlanConstraintViolation] = Field(default_factory=list)
+
+
+class DailyPlanResponse(BaseModel):
+    id: UUID | None = None
+    date: str
+    revision: int
+    document: DailyPlanDocumentV1
+    schedule: DailyPlanScheduleResponse | None = None
+    updated_at: datetime | None = None
+
+
+class DailyPlanSummary(BaseModel):
+    date: str
+    revision: int
+    updated_at: datetime
+    title: str
+    preview: str
+
+
+class DailyPlanHistoryResponse(BaseModel):
+    items: list[DailyPlanSummary]
+    next_cursor: str | None = None
+
+
+def _document_search_text(document: DailyPlanDocumentV1) -> str:
+    """Visible note text only; never index task IDs or editor JSON metadata.
+
+    PostgreSQL's migration 029 trigger (search function last replaced by 032) is
+    authoritative and overwrites this mirror on every document write (including
+    writes from older API versions). This implementation supports SQLite and is
+    checked against PostgreSQL in test_daily_plan_search_postgres.py; keep both
+    rules in sync.
+    """
+    lines = []
+    for block in document.blocks:
+        parts = [getattr(block, "text", None), getattr(block, "title", None)]
+        if isinstance(block, TimedLineBlock):
+            parts.extend([block.start, block.end])
+        if isinstance(block, ScheduleDirectiveBlock):
+            parts.append("/schedule")
+            parts.extend(
+                f"{window.start}-{window.end}" for window in block.allowed_windows
+            )
+        parts.append(getattr(block, "note", None))
+        line = " ".join(part for part in parts if part).strip()
+        if line:
+            lines.append(line)
+    return "\n".join(lines)
+
+
+def _history_preview(text: str, query: str) -> str:
+    match = re.search(re.escape(query), text, re.IGNORECASE) if query else None
+    start = max(0, (match.start() if match else 0) - 45)
+    excerpt = text[start : start + 180].replace("\n", " ")
+    return ("…" if start else "") + excerpt + ("…" if start + 180 < len(text) else "")
+
+
+class TaskActionRequest(BaseModel):
+    task_ref: TaskRef
+    action: Literal["continue", "complete"]
+    actual_minutes: int | None = Field(default=None, ge=1, le=1440)
+    comment: str | None = Field(default=None, max_length=500)
+
+
+class TaskActionResponse(BaseModel):
+    task_ref: TaskRef
+    status: TaskStatus
+    actual_minutes: int | None = None
+
+
+def _parse_date(value: str) -> date_type:
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Date must be in YYYY-MM-DD format",
+        ) from exc
+
+
+def _get_document(
+    session: Session, user_id: UUID, date_value: date_type, *, for_update: bool = False
+) -> DailyPlanDocument | None:
+    statement = select(DailyPlanDocument).where(
+        DailyPlanDocument.user_id == user_id,
+        DailyPlanDocument.date == date_value,
+    )
+    if for_update:
+        statement = statement.with_for_update()
+    return session.exec(statement).first()
+
+
+def _get_schedule(
+    session: Session, user_id: UUID, date_value: date_type
+) -> Schedule | None:
+    schedule_date = datetime.combine(date_value, time.min)
+    return session.exec(
+        select(Schedule).where(
+            Schedule.user_id == user_id,
+            Schedule.date == schedule_date,
+        )
+    ).first()
+
+
+def _response(
+    session: Session,
+    user_id: UUID,
+    date_text: str,
+    document: DailyPlanDocument | None,
+) -> DailyPlanResponse:
+    date_value = _parse_date(date_text)
+    schedule = _get_schedule(session, user_id, date_value)
+    if document is None:
+        return DailyPlanResponse(
+            date=date_text,
+            revision=0,
+            document=DailyPlanDocumentV1(),
+            schedule=schedule.plan_json if schedule else None,
+        )
+    return DailyPlanResponse(
+        id=document.id,
+        date=date_text,
+        revision=document.revision,
+        document=DailyPlanDocumentV1.model_validate(document.document_json),
+        schedule=schedule.plan_json if schedule else None,
+        updated_at=document.updated_at,
+    )
+
+
+@router.get("", response_model=DailyPlanHistoryResponse)
+async def list_daily_plans(
+    query: Annotated[str, Query(max_length=200)] = "",
+    date_from: date_type | None = None,
+    date_to: date_type | None = None,
+    before: date_type | None = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(db.get_session),
+) -> DailyPlanHistoryResponse:
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=400, detail="開始日は終了日以前にしてください")
+    query = query.strip()
+    statement = select(
+        DailyPlanDocument.date,
+        DailyPlanDocument.revision,
+        DailyPlanDocument.updated_at,
+        DailyPlanDocument.search_text,
+    ).where(
+        DailyPlanDocument.user_id == UUID(user_id),
+        DailyPlanDocument.search_text != "",
+    )
+    if query:
+        statement = statement.where(
+            DailyPlanDocument.search_text.icontains(query, autoescape=True)
+        )
+    if date_from:
+        statement = statement.where(DailyPlanDocument.date >= date_from)
+    if date_to:
+        statement = statement.where(DailyPlanDocument.date <= date_to)
+    if before:
+        statement = statement.where(DailyPlanDocument.date < before)
+    rows = session.exec(
+        statement.order_by(DailyPlanDocument.date.desc()).limit(limit + 1)
+    ).all()
+    items = [
+        DailyPlanSummary(
+            date=row.date.isoformat(),
+            revision=row.revision,
+            updated_at=row.updated_at,
+            title=next(
+                (line.strip() for line in row.search_text.splitlines() if line.strip()),
+                "",
+            )[:80],
+            preview=_history_preview(row.search_text, query),
+        )
+        for row in rows[:limit]
+    ]
+    return DailyPlanHistoryResponse(
+        items=items,
+        next_cursor=items[-1].date if len(rows) > limit else None,
+    )
+
+
+@router.get("/{date}", response_model=DailyPlanResponse)
+async def get_daily_plan(
+    date: str,
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(db.get_session),
+) -> DailyPlanResponse:
+    date_value = _parse_date(date)
+    owner_id = UUID(user_id)
+    return _response(
+        session, owner_id, date, _get_document(session, owner_id, date_value)
+    )
+
+
+@router.put("/{date}", response_model=DailyPlanResponse)
+async def update_daily_plan(
+    date: str,
+    request: DailyPlanUpdateRequest,
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(db.get_session),
+) -> DailyPlanResponse:
+    date_value = _parse_date(date)
+    owner_id = UUID(user_id)
+    task_refs = [
+        (block.id, task_ref)
+        for block in request.document.blocks
+        if (task_ref := getattr(block, "task_ref", None)) is not None
+    ]
+    if task_refs:
+        _validate_owned_task_refs(session, owner_id, task_refs)
+    existing = _get_document(session, owner_id, date_value)
+    if existing is None:
+        if request.expected_revision != 0:
+            raise HTTPException(status_code=409, detail="Daily plan revision conflict")
+        existing = DailyPlanDocument(
+            user_id=owner_id,
+            date=date_value,
+            revision=1,
+            document_json=request.document.model_dump(mode="json"),
+            search_text=_document_search_text(request.document),
+        )
+        session.add(existing)
+        try:
+            session.commit()
+        except IntegrityError as exc:
+            session.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="Daily plan revision conflict",
+            ) from exc
+        session.refresh(existing)
+    else:
+        result = session.exec(
+            sqlalchemy_update(DailyPlanDocument)
+            .where(
+                DailyPlanDocument.id == existing.id,
+                DailyPlanDocument.revision == request.expected_revision,
+            )
+            .values(
+                revision=request.expected_revision + 1,
+                document_json=request.document.model_dump(mode="json"),
+                search_text=_document_search_text(request.document),
+                updated_at=datetime.now(UTC),
+            )
+        )
+        if result.rowcount != 1:  # type: ignore[attr-defined]
+            session.rollback()
+            current = _get_document(session, owner_id, date_value)
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Daily plan revision conflict",
+                    "current_revision": current.revision if current else None,
+                },
+            )
+        session.commit()
+        existing = _get_document(session, owner_id, date_value)
+        if existing is None:  # pragma: no cover - guarded by the update above
+            raise HTTPException(status_code=409, detail="Daily plan disappeared")
+    return _response(session, owner_id, date, existing)
+
+
+def _work_kind(value: str | WorkType) -> HumanWorkKind:
+    raw = value.value if isinstance(value, WorkType) else value
+    return {
+        "focused_work": HumanWorkKind.FOCUSED_WORK,
+        "study": HumanWorkKind.STUDY,
+    }.get(raw, HumanWorkKind.LIGHT_WORK)
+
+
+def _estimate_minutes(estimate_hours: Decimal | float) -> int:
+    # Round up so a fractional-minute estimate is never under-allocated. The
+    # string round-trip keeps float inputs such as 0.1 from rounding to 7 min.
+    return max(0, math.ceil(Decimal(str(estimate_hours)) * 60))
+
+
+def _scheduler_priority(priority: int | None) -> int:
+    if priority is None:
+        return 3
+    return min(5, max(1, int(priority)))
+
+
+def _load_owned_tasks(
+    session: Session,
+    owner_id: UUID,
+    additional_regular_ids: set[UUID] | None = None,
+    additional_quick_ids: set[UUID] | None = None,
+) -> tuple[
+    dict[str, tuple[Task, Goal, Project]],
+    dict[str, QuickTask],
+]:
+    regular_filter = Task.status.in_(list(ACTIVE_TASK_STATUSES))
+    if additional_regular_ids:
+        regular_filter = or_(
+            regular_filter,
+            Task.id.in_(additional_regular_ids),
+        )
+    rows = session.exec(
+        select(Task, Goal, Project)
+        .join(Goal, Task.goal_id == Goal.id)
+        .join(Project, Goal.project_id == Project.id)
+        .where(Project.owner_id == owner_id, regular_filter)
+    ).all()
+    regular = {str(task.id): (task, goal, project) for task, goal, project in rows}
+    quick_filter = QuickTask.status.in_(list(ACTIVE_TASK_STATUSES))
+    if additional_quick_ids:
+        quick_filter = or_(
+            quick_filter,
+            QuickTask.id.in_(additional_quick_ids),
+        )
+    quick_rows = session.exec(
+        select(QuickTask).where(QuickTask.owner_id == owner_id, quick_filter)
+    ).all()
+    quick = {f"quick_{task.id}": task for task in quick_rows}
+    return regular, quick
+
+
+def _validate_owned_task_refs(
+    session: Session,
+    owner_id: UUID,
+    refs: list[tuple[str, TaskRef]],
+) -> None:
+    regular_ids = {ref.id for _, ref in refs if ref.source == "task"}
+    quick_ids = {ref.id for _, ref in refs if ref.source == "quick_task"}
+    found_regular = (
+        set(
+            session.exec(
+                select(Task.id)
+                .join(Goal, Task.goal_id == Goal.id)
+                .join(Project, Goal.project_id == Project.id)
+                .where(
+                    Project.owner_id == owner_id,
+                    Task.id.in_(regular_ids),
+                )
+            ).all()
+        )
+        if regular_ids
+        else set()
+    )
+    found_quick = (
+        set(
+            session.exec(
+                select(QuickTask.id).where(
+                    QuickTask.owner_id == owner_id,
+                    QuickTask.id.in_(quick_ids),
+                )
+            ).all()
+        )
+        if quick_ids
+        else set()
+    )
+    if found_regular != regular_ids or found_quick != quick_ids:
+        missing = [
+            {
+                "block_id": block_id,
+                "source": ref.source,
+                "id": str(ref.id),
+            }
+            for block_id, ref in refs
+            if (ref.source == "task" and ref.id not in found_regular)
+            or (ref.source == "quick_task" and ref.id not in found_quick)
+        ]
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "message": "Referenced task was not found",
+                "missing": missing,
+            },
+        )
+
+
+def _load_actual_minutes(
+    session: Session,
+    selected_ids: set[str],
+) -> dict[str, int]:
+    regular_ids = [
+        UUID(task_id) for task_id in selected_ids if not task_id.startswith("quick_")
+    ]
+    if not regular_ids:
+        return {}
+    rows = session.exec(
+        select(Log.task_id, func.sum(Log.actual_minutes))
+        .where(Log.task_id.in_(regular_ids))
+        .group_by(Log.task_id)
+    ).all()
+    return {str(task_id): int(total or 0) for task_id, total in rows}
+
+
+def _matches_filter(
+    scheduler_id: str,
+    filter_value: DirectiveFilter,
+    regular: dict[str, tuple[Task, Goal, Project]],
+    quick: dict[str, QuickTask],
+) -> bool:
+    if scheduler_id.startswith("quick_"):
+        task = quick[scheduler_id]
+        if filter_value.project_ids or filter_value.goal_ids:
+            return False
+        return (
+            not filter_value.work_types
+            or task.work_type.value in filter_value.work_types
+        )
+
+    task, goal, project = regular[scheduler_id]
+    return (
+        (not filter_value.work_types or task.work_type.value in filter_value.work_types)
+        and (not filter_value.project_ids or project.id in filter_value.project_ids)
+        and (not filter_value.goal_ids or goal.id in filter_value.goal_ids)
+    )
+
+
+def _task_status(
+    scheduler_id: str,
+    regular: dict[str, tuple[Task, Goal, Project]],
+    quick: dict[str, QuickTask],
+) -> TaskStatus:
+    if scheduler_id.startswith("quick_"):
+        return quick[scheduler_id].status
+    return regular[scheduler_id][0].status
+
+
+def _validate_task_ref(
+    ref: TaskRef,
+    regular: dict[str, tuple[Task, Goal, Project]],
+    quick: dict[str, QuickTask],
+    block_id: str,
+) -> str:
+    scheduler_id = ref.scheduler_id
+    if scheduler_id not in regular and scheduler_id not in quick:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "message": "Referenced task was not found",
+                "missing": [
+                    {
+                        "block_id": block_id,
+                        "source": ref.source,
+                        "id": str(ref.id),
+                    }
+                ],
+            },
+        )
+    return scheduler_id
+
+
+def _build_task_dependencies(
+    session: Session,
+    owner_id: UUID,
+    selected_ids: set[str],
+    regular: dict[str, tuple[Task, Goal, Project]],
+) -> tuple[dict[str, list[str]], set[str]]:
+    """Build dependency constraints, adding owned prerequisite rows to regular.
+
+    The caller-owned mapping is enriched in place so prerequisite status and
+    goal membership are available during the remaining input construction.
+    """
+    regular_ids = [
+        UUID(task_id) for task_id in selected_ids if not task_id.startswith("quick_")
+    ]
+    dependencies: dict[str, set[str]] = {}
+    blocked_task_ids: set[str] = set()
+    if regular_ids:
+        rows = session.exec(
+            select(TaskDependency).where(TaskDependency.task_id.in_(regular_ids))
+        ).all()
+        missing_prerequisite_ids = {
+            dependency.depends_on_task_id
+            for dependency in rows
+            if str(dependency.depends_on_task_id) not in regular
+        }
+        if missing_prerequisite_ids:
+            prerequisite_rows = session.exec(
+                select(Task, Goal, Project)
+                .join(Goal, Task.goal_id == Goal.id)
+                .join(Project, Goal.project_id == Project.id)
+                .where(
+                    Project.owner_id == owner_id,
+                    Task.id.in_(missing_prerequisite_ids),
+                )
+            ).all()
+            regular.update(
+                {
+                    str(task.id): (task, goal, project)
+                    for task, goal, project in prerequisite_rows
+                }
+            )
+        for dependency in rows:
+            dependent_id = str(dependency.task_id)
+            prerequisite_id = str(dependency.depends_on_task_id)
+            prerequisite = regular.get(prerequisite_id)
+            if prerequisite is None:
+                # Ignore stale/cross-owner edges rather than passing a permanently
+                # unsatisfiable prerequisite to the scheduler.
+                continue
+            if prerequisite[0].status == TaskStatus.COMPLETED:
+                continue
+            if (
+                prerequisite[0].status not in ACTIVE_TASK_STATUSES
+                or prerequisite_id not in selected_ids
+            ):
+                blocked_task_ids.add(dependent_id)
+                continue
+            dependencies.setdefault(dependent_id, set()).add(prerequisite_id)
+
+    selected_goal_ids = {
+        str(regular[task_id][1].id) for task_id in selected_ids if task_id in regular
+    }
+    if selected_goal_ids:
+        goal_dependencies = session.exec(
+            select(GoalDependency).where(
+                GoalDependency.goal_id.in_([UUID(item) for item in selected_goal_ids])
+            )
+        ).all()
+        tasks_by_goal: dict[str, list[str]] = {}
+        for task_id in selected_ids:
+            if task_id in regular:
+                tasks_by_goal.setdefault(str(regular[task_id][1].id), []).append(
+                    task_id
+                )
+        active_tasks_by_goal: dict[str, set[str]] = {}
+        completed_goal_ids: set[str] = set()
+        for task_id, (task, goal, _project) in regular.items():
+            if goal.status == GoalStatus.COMPLETED:
+                completed_goal_ids.add(str(goal.id))
+            if task.status in ACTIVE_TASK_STATUSES:
+                active_tasks_by_goal.setdefault(str(goal.id), set()).add(task_id)
+        for dependency in goal_dependencies:
+            prerequisite_goal_id = str(dependency.depends_on_goal_id)
+            if prerequisite_goal_id in completed_goal_ids:
+                continue
+            dependent_tasks = tasks_by_goal.get(str(dependency.goal_id), [])
+            prerequisite_tasks = active_tasks_by_goal.get(prerequisite_goal_id, set())
+            if not prerequisite_tasks:
+                continue
+            for task_id in dependent_tasks:
+                if not prerequisite_tasks.issubset(selected_ids):
+                    blocked_task_ids.add(task_id)
+                    continue
+                dependencies.setdefault(task_id, set()).update(prerequisite_tasks)
+
+    return (
+        {task_id: sorted(values) for task_id, values in dependencies.items()},
+        blocked_task_ids,
+    )
+
+
+def _directive_availability(
+    document: DailyPlanDocumentV1,
+) -> list[HumanAvailabilityWindow]:
+    """Derive usable time solely from explicit directive slots, never legacy globals."""
+    ranges = [
+        (
+            _minutes(_parse_time(window.start)),
+            _minutes(_parse_time(window.end)),
+            block.work_type,
+        )
+        for block in document.blocks
+        if isinstance(block, ScheduleDirectiveBlock)
+        for window in block.allowed_windows
+    ]
+    # Prefer the narrower (more specific) window on overlap. Break ties by
+    # clock range and kind so moving document rows cannot change slot affinity.
+    ranges.sort(key=lambda item: (item[1] - item[0], item[0], item[1], item[2]))
+    boundaries = sorted(
+        {point for start, end, _kind in ranges for point in (start, end)}
+    )
+    segments: list[tuple[int, int, str]] = []
+    for start, end in zip(boundaries, boundaries[1:], strict=False):
+        covering = next(
+            (kind for left, right, kind in ranges if left <= start and end <= right),
+            None,
+        )
+        if covering is None:
+            continue
+        if segments and segments[-1][1] == start and segments[-1][2] == covering:
+            segments[-1] = (segments[-1][0], end, covering)
+        else:
+            segments.append((start, end, covering))
+    return [
+        HumanAvailabilityWindow(
+            start=time(start // 60, start % 60),
+            end=time(end // 60, end % 60),
+            work_kind=_work_kind(kind),
+        )
+        for start, end, kind in segments
+    ]
+
+
+def _build_scheduler_input(
+    session: Session,
+    owner_id: UUID,
+    date_text: str,
+    document: DailyPlanDocumentV1,
+    solver_config: SchedulerSolverConfigInput | None = None,
+) -> tuple[
+    HumanFlexibleDailyFixture,
+    dict[str, dict],
+    dict[str, int],
+    set[str],
+]:
+    missing_windows = [
+        block.id
+        for block in document.blocks
+        if isinstance(block, ScheduleDirectiveBlock) and not block.allowed_windows
+    ]
+    if missing_windows:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "SCHEDULE_TIME_REQUIRED",
+                "message": "/scheduleには開始・終了時刻が必要です",
+                "block_ids": missing_windows,
+            },
+        )
+    existing_schedule = _get_schedule(
+        session,
+        owner_id,
+        _parse_date(date_text),
+    )
+    existing_assignments = (
+        existing_schedule.plan_json.get("assignments", [])
+        if existing_schedule and isinstance(existing_schedule.plan_json, dict)
+        else []
+    )
+    additional_regular_ids: set[UUID] = set()
+    additional_quick_ids: set[UUID] = set()
+    for block in document.blocks:
+        task_ref = getattr(block, "task_ref", None)
+        if task_ref is None:
+            continue
+        if task_ref.source == "task":
+            additional_regular_ids.add(task_ref.id)
+        else:
+            additional_quick_ids.add(task_ref.id)
+    for assignment in existing_assignments:
+        if not isinstance(assignment, dict):
+            continue
+        scheduler_id = str(assignment.get("task_id", ""))
+        try:
+            if scheduler_id.startswith("quick_"):
+                additional_quick_ids.add(UUID(scheduler_id.removeprefix("quick_")))
+            else:
+                additional_regular_ids.add(UUID(scheduler_id))
+        except ValueError:
+            continue
+    regular, quick = _load_owned_tasks(
+        session,
+        owner_id,
+        additional_regular_ids,
+        additional_quick_ids,
+    )
+    active_ids = {
+        task_id
+        for task_id in [*regular, *quick]
+        if _task_status(task_id, regular, quick) in ACTIVE_TASK_STATUSES
+    }
+    selected_ids: set[str] = set()
+    requested_by_task: dict[str, int] = {}
+    frozen_minutes_by_task: dict[str, int] = {}
+    candidate_pools: list[HumanCandidatePool] = []
+    frozen_blocks: list[HumanFrozenTaskBlock] = []
+    fixed_events: list[HumanFixedEvent] = []
+    eligible_counts: dict[str, int] = {}
+    schedule_date = _parse_date(date_text)
+    current_jst = datetime.now(JST)
+    # Only keeps already-started generated rows on regeneration. Placement may
+    # still use windows before the current time; the user decides the timing.
+    now = current_jst if current_jst.date() == schedule_date else None
+    frozen_keys: set[tuple[str, str, str]] = set()
+    document_block_ids = {block.id for block in document.blocks}
+    timed_line_ids = {
+        block.id for block in document.blocks if isinstance(block, TimedLineBlock)
+    }
+
+    for block in document.blocks:
+        if isinstance(block, TimedLineBlock):
+            start_value = _parse_time(block.start)
+            end_value = _parse_time(block.end)
+            if block.task_ref is None:
+                fixed_events.append(
+                    HumanFixedEvent(
+                        title=block.title,
+                        start=start_value,
+                        end=end_value,
+                        metadata={"block_id": block.id, "kind": block.kind},
+                    )
+                )
+                continue
+            scheduler_id = _validate_task_ref(
+                block.task_ref,
+                regular,
+                quick,
+                block.id,
+            )
+            selected_ids.add(scheduler_id)
+            duration = _minutes(end_value) - _minutes(start_value)
+            frozen_minutes_by_task[scheduler_id] = (
+                frozen_minutes_by_task.get(scheduler_id, 0) + duration
+            )
+            frozen_blocks.append(
+                HumanFrozenTaskBlock(
+                    task_id=scheduler_id,
+                    start=start_value,
+                    end=end_value,
+                    directive_id=block.id,
+                    metadata={"title": block.title},
+                )
+            )
+            frozen_keys.add(
+                (scheduler_id, _time_text(start_value), _time_text(end_value))
+            )
+        elif isinstance(block, ScheduleDirectiveBlock):
+            if block.mode == "task" and block.task_ref is not None:
+                scheduler_id = _validate_task_ref(
+                    block.task_ref,
+                    regular,
+                    quick,
+                    block.id,
+                )
+                if (
+                    _task_status(scheduler_id, regular, quick)
+                    not in ACTIVE_TASK_STATUSES
+                ):
+                    eligible_ids: set[str] = set()
+                else:
+                    eligible_ids = {scheduler_id}
+                    selected_ids.add(scheduler_id)
+                    if block.duration_override_minutes:
+                        requested_by_task[scheduler_id] = max(
+                            requested_by_task.get(scheduler_id, 0),
+                            block.duration_override_minutes,
+                        )
+                candidate_pools.append(
+                    HumanCandidatePool(
+                        id=block.id,
+                        eligible_task_ids=frozenset(eligible_ids),
+                        required_task_id=scheduler_id if eligible_ids else None,
+                        requested_minutes=block.duration_override_minutes,
+                        allowed_windows=tuple(
+                            HumanDirectiveWindow(
+                                start=_parse_time(window.start),
+                                end=_parse_time(window.end),
+                            )
+                            for window in block.allowed_windows
+                        ),
+                    )
+                )
+                eligible_counts[block.id] = len(eligible_ids)
+            elif block.mode == "filter":
+                filter_value = block.filter or DirectiveFilter()
+                eligible_ids = {
+                    task_id
+                    for task_id in active_ids
+                    if _matches_filter(task_id, filter_value, regular, quick)
+                }
+                selected_ids.update(eligible_ids)
+                candidate_pools.append(
+                    HumanCandidatePool(
+                        id=block.id,
+                        eligible_task_ids=frozenset(eligible_ids),
+                        requested_minutes=block.duration_override_minutes,
+                        allowed_windows=tuple(
+                            HumanDirectiveWindow(
+                                start=_parse_time(window.start),
+                                end=_parse_time(window.end),
+                            )
+                            for window in block.allowed_windows
+                        ),
+                    )
+                )
+                eligible_counts[block.id] = len(eligible_ids)
+
+    for assignment in existing_assignments:
+        if not isinstance(assignment, dict):
+            continue
+        scheduler_id = str(assignment.get("task_id", ""))
+        start_text = str(assignment.get("start_time", ""))
+        end_text = str(assignment.get("slot_end", ""))
+        if scheduler_id not in regular and scheduler_id not in quick:
+            continue
+        try:
+            start_value = _parse_time(start_text)
+        except ValueError:
+            continue
+        duration: int | None = None
+        end_value: time | None = None
+        duration_hours = assignment.get("duration_hours")
+        if (
+            isinstance(duration_hours, int | float)
+            and not isinstance(duration_hours, bool)
+            and math.isfinite(float(duration_hours))
+        ):
+            duration = round(float(duration_hours) * 60)
+            end_value = _add_minutes(start_value, duration)
+        if end_value is None:
+            try:
+                end_value = _parse_time(end_text)
+            except ValueError:
+                continue
+            duration = _minutes(end_value) - _minutes(start_value)
+        is_past = now is not None and start_value < now.time()
+        directive_id = assignment.get("directive_id")
+        # Future fixed lines are owned by the current document. If their time
+        # or task changed, do not resurrect the old assignment as a second pin.
+        if not is_past and directive_id in timed_line_ids:
+            continue
+        still_referenced = (
+            bool(directive_id) and str(directive_id) in document_block_ids
+        )
+        if not is_past and not (bool(assignment.get("is_fixed")) and still_referenced):
+            continue
+        if duration is None or duration <= 0:
+            continue
+        key = (scheduler_id, _time_text(start_value), _time_text(end_value))
+        if key in frozen_keys:
+            continue
+        selected_ids.add(scheduler_id)
+        frozen_minutes_by_task[scheduler_id] = (
+            frozen_minutes_by_task.get(scheduler_id, 0) + duration
+        )
+        frozen_blocks.append(
+            HumanFrozenTaskBlock(
+                task_id=scheduler_id,
+                start=start_value,
+                end=end_value,
+                directive_id=(
+                    str(assignment["directive_id"])
+                    if assignment.get("directive_id")
+                    else None
+                ),
+                slot_index=0,
+                metadata={"source": "previous_schedule"},
+            )
+        )
+        frozen_keys.add(key)
+
+    for scheduler_id, frozen_minutes in frozen_minutes_by_task.items():
+        requested_by_task[scheduler_id] = max(
+            requested_by_task.get(scheduler_id, 0),
+            frozen_minutes,
+        )
+
+    task_dependencies, dependency_blocked_ids = _build_task_dependencies(
+        session, owner_id, selected_ids, regular
+    )
+    dependency_blocked_directives: set[str] = set()
+    adjusted_candidate_pools: list[HumanCandidatePool] = []
+    for pool in candidate_pools:
+        eligible_ids = pool.eligible_task_ids - dependency_blocked_ids
+        if pool.eligible_task_ids and not eligible_ids:
+            dependency_blocked_directives.add(pool.id)
+        adjusted_candidate_pools.append(
+            HumanCandidatePool(
+                id=pool.id,
+                eligible_task_ids=frozenset(eligible_ids),
+                required_task_id=(
+                    pool.required_task_id
+                    if pool.required_task_id in eligible_ids
+                    else None
+                ),
+                requested_minutes=pool.requested_minutes,
+                allowed_windows=pool.allowed_windows,
+            )
+        )
+        eligible_counts[pool.id] = len(eligible_ids)
+    actual_minutes = _load_actual_minutes(session, selected_ids)
+
+    task_metadata: dict[str, dict] = {}
+    scheduler_tasks: list[HumanTask] = []
+    for scheduler_id in sorted(selected_ids):
+        if scheduler_id.startswith("quick_"):
+            quick_task = quick[scheduler_id]
+            remaining = _estimate_minutes(quick_task.estimate_hours)
+            remaining = max(remaining, requested_by_task.get(scheduler_id, 0))
+            scheduler_tasks.append(
+                HumanTask(
+                    id=scheduler_id,
+                    title=quick_task.title,
+                    remaining_minutes=remaining,
+                    priority=_scheduler_priority(quick_task.priority),
+                    work_kind=_work_kind(quick_task.work_type),
+                    due_at=quick_task.due_date,
+                    source="quick_task",
+                )
+            )
+            task_metadata[scheduler_id] = {
+                "title": quick_task.title,
+                "goal_id": "",
+                "project_id": "",
+                "source": "quick_task",
+            }
+        else:
+            task, goal, project = regular[scheduler_id]
+            estimate_minutes = _estimate_minutes(task.estimate_hours)
+            remaining = max(0, estimate_minutes - actual_minutes.get(scheduler_id, 0))
+            remaining = max(remaining, requested_by_task.get(scheduler_id, 0))
+            scheduler_tasks.append(
+                HumanTask(
+                    id=scheduler_id,
+                    title=task.title,
+                    remaining_minutes=remaining,
+                    priority=_scheduler_priority(task.priority),
+                    work_kind=_work_kind(task.work_type),
+                    due_at=task.due_date,
+                    project_id=str(project.id),
+                    goal_id=str(goal.id),
+                    source="task",
+                )
+            )
+            task_metadata[scheduler_id] = {
+                "title": task.title,
+                "goal_id": str(goal.id),
+                "project_id": str(project.id),
+                "project_title": project.title,
+                "source": "task",
+            }
+
+    fixture = HumanFlexibleDailyFixture(
+        date=schedule_date,
+        tasks=scheduler_tasks,
+        availability_windows=_directive_availability(document),
+        fixed_events=fixed_events,
+        frozen_blocks=frozen_blocks,
+        # An empty pool list means unrestricted scheduling to the package.
+        # A document without /schedule must emit only its fixed work instead.
+        candidate_pools=adjusted_candidate_pools
+        or [HumanCandidatePool(id="__no_directives__", eligible_task_ids=frozenset())],
+        task_dependencies=task_dependencies,
+        solver_config=coerce_human_solver_config(solver_config),
+        metadata={"source": "daily_plan_document"},
+    )
+    return (
+        fixture,
+        task_metadata,
+        eligible_counts,
+        dependency_blocked_directives,
+    )
+
+
+def _save_generated_schedule(
+    session: Session,
+    owner_id: UUID,
+    date_value: date_type,
+    plan_json: dict,
+) -> None:
+    schedule = _get_schedule(session, owner_id, date_value)
+    if schedule is None:
+        schedule = Schedule(
+            id=uuid4(),
+            user_id=owner_id,
+            date=datetime.combine(date_value, time.min),
+            plan_json=plan_json,
+        )
+    else:
+        schedule.plan_json = plan_json
+        schedule.updated_at = datetime.now(UTC)
+    session.add(schedule)
+    session.commit()
+
+
+@router.post("/{date}/generate", response_model=DailyPlanResponse)
+def generate_daily_plan(
+    date: str,
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(db.get_session),
+    request: DailyPlanGenerateRequest | None = None,
+) -> DailyPlanResponse:
+    date_value = _parse_date(date)
+    owner_id = UUID(user_id)
+    # Serialize generation with document updates and other generations for this
+    # user/date, so a slow solve cannot overwrite a newer revision's schedule.
+    source_document = _get_document(session, owner_id, date_value, for_update=True)
+    if source_document is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Save the daily plan document before generating",
+        )
+    document = DailyPlanDocumentV1.model_validate(source_document.document_json)
+    (
+        fixture,
+        task_metadata,
+        eligible_counts,
+        dependency_blocked_directives,
+    ) = _build_scheduler_input(
+        session,
+        owner_id,
+        date,
+        document,
+        solver_config=request.solver_config if request else None,
+    )
+    try:
+        compiled_fixture = compile_human_flexible_daily_fixture(fixture)
+        report = plan_daily_schedule(compiled_fixture)
+    except Exception:
+        logger.exception("humancompiler-scheduler failed for daily plan %s", date)
+        plan_json = {
+            "success": False,
+            "assignments": [],
+            "planned_task_ids": [],
+            "total_scheduled_hours": 0.0,
+            "optimization_status": "SOLVER_ERROR",
+            "solve_time_seconds": 0.0,
+            "objective_value": None,
+            "generated_at": datetime.now(UTC).isoformat(),
+            "source": "daily_plan_document",
+            "source_document_revision": source_document.revision,
+            "source_scheduling_blocks": [
+                block.model_dump(mode="json")
+                for block in document.blocks
+                if isinstance(block, ScheduleDirectiveBlock | TimedLineBlock)
+            ],
+            "directive_diagnostics": [],
+            "unused_minutes": 0,
+            "unscheduled_tasks": [
+                {
+                    "task_id": task.id,
+                    "title": task.title,
+                    "reason": "solver_error",
+                }
+                for task in fixture.tasks
+            ],
+            "violations": [],
+        }
+        _save_generated_schedule(session, owner_id, date_value, plan_json)
+        return _response(session, owner_id, date, source_document)
+    slots_by_index = {slot.index: slot for slot in compiled_fixture.time_slots}
+
+    assignments: list[dict] = []
+    generated_counts: dict[str, int] = {}
+    generated_minutes: dict[str, int] = {}
+    for block in report.plan.blocks:
+        metadata = task_metadata.get(block.task_id)
+        if metadata is None:
+            continue
+        if block.directive_id:
+            generated_counts[block.directive_id] = (
+                generated_counts.get(block.directive_id, 0) + 1
+            )
+            generated_minutes[block.directive_id] = (
+                generated_minutes.get(block.directive_id, 0) + block.duration_minutes
+            )
+        slot = slots_by_index.get(block.slot_index)
+        assignments.append(
+            {
+                "task_id": block.task_id,
+                "task_title": metadata["title"],
+                "goal_id": metadata["goal_id"],
+                "project_id": metadata["project_id"],
+                "slot_index": block.slot_index,
+                "start_time": _time_text(block.start),
+                "duration_hours": block.duration_minutes / 60,
+                "slot_start": _time_text(block.start),
+                "slot_end": _time_text(block.end),
+                "slot_kind": (
+                    slot.work_kind.value
+                    if slot is not None
+                    else next(
+                        (
+                            task.work_kind.value
+                            for task in compiled_fixture.tasks
+                            if task.id == block.task_id
+                        ),
+                        "light_work",
+                    )
+                ),
+                "is_fixed": block.is_fixed,
+                "directive_id": block.directive_id,
+                "source": metadata["source"],
+            }
+        )
+
+    residual_capacity_minutes = sum(
+        slot.effective_capacity_minutes for slot in compiled_fixture.time_slots
+    )
+    generated_capacity_minutes = sum(
+        block.duration_minutes for block in report.plan.blocks if not block.is_fixed
+    )
+    unused_minutes = max(0, residual_capacity_minutes - generated_capacity_minutes)
+    diagnostics = []
+    for block in document.blocks:
+        if not isinstance(block, ScheduleDirectiveBlock):
+            continue
+        eligible_count = eligible_counts.get(block.id, 0)
+        generated_count = generated_counts.get(block.id, 0)
+        reason = None
+        generated_for_directive = generated_minutes.get(block.id, 0)
+        if generated_count == 0:
+            if block.id in dependency_blocked_directives:
+                reason = "依存タスクまたは依存ゴールが未完了です"
+            elif eligible_count == 0:
+                reason = "候補がありません"
+            else:
+                reason = "利用可能な時間が不足しています"
+        elif block.duration_override_minutes and (
+            generated_for_directive < block.duration_override_minutes
+        ):
+            reason = "要求時間の一部だけを配置しました"
+        diagnostics.append(
+            {
+                "directive_id": block.id,
+                "eligible_count": eligible_count,
+                "generated_count": generated_count,
+                "generated_minutes": generated_for_directive,
+                "reason": reason,
+            }
+        )
+
+    plan_json = {
+        "success": report.plan.status in {"ok", "partial"} and not report.violations,
+        "assignments": assignments,
+        "planned_task_ids": list(
+            dict.fromkeys(item["task_id"] for item in assignments)
+        ),
+        "total_scheduled_hours": sum(item["duration_hours"] for item in assignments),
+        "optimization_status": report.plan.status.upper(),
+        "solve_time_seconds": 0.0,
+        "objective_value": None,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "source": "daily_plan_document",
+        "source_document_revision": source_document.revision,
+        "source_scheduling_blocks": [
+            block.model_dump(mode="json")
+            for block in document.blocks
+            if isinstance(block, ScheduleDirectiveBlock | TimedLineBlock)
+        ],
+        "directive_diagnostics": diagnostics,
+        "unused_minutes": unused_minutes,
+        "unscheduled_tasks": [
+            {
+                "task_id": item.task_id,
+                "title": item.title,
+                "reason": item.reason,
+            }
+            for item in report.unscheduled_tasks
+        ],
+        "violations": [
+            {
+                "code": item.code,
+                "message": item.message,
+                "task_id": item.task_id,
+                "slot_index": item.slot_index,
+            }
+            for item in report.violations
+        ],
+    }
+    _save_generated_schedule(session, owner_id, date_value, plan_json)
+    return _response(session, owner_id, date, source_document)
+
+
+@router.post("/{date}/task-action", response_model=TaskActionResponse)
+async def apply_task_action(
+    date: str,
+    request: TaskActionRequest,
+    user_id: str = Depends(get_current_user_id),
+    session: Session = Depends(db.get_session),
+) -> TaskActionResponse:
+    _parse_date(date)
+    owner_id = UUID(user_id)
+    _validate_owned_task_refs(session, owner_id, [("task-action", request.task_ref)])
+
+    if request.task_ref.source == "quick_task":
+        if request.action != "complete":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Quick Tasks only support completion from the daily plan",
+            )
+        quick_task = session.get(QuickTask, request.task_ref.id)
+        if quick_task is None:  # pragma: no cover - guarded by ownership validation
+            raise HTTPException(status_code=404, detail="Referenced task was not found")
+        quick_task.status = TaskStatus.COMPLETED
+        quick_task.updated_at = datetime.now(UTC)
+        session.add(quick_task)
+        session.commit()
+        return TaskActionResponse(
+            task_ref=request.task_ref,
+            status=quick_task.status,
+        )
+
+    if request.actual_minutes is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="actual_minutes is required for regular tasks",
+        )
+    task = session.get(Task, request.task_ref.id)
+    if task is None:  # pragma: no cover - guarded by ownership validation
+        raise HTTPException(status_code=404, detail="Referenced task was not found")
+    log = Log(
+        id=uuid4(),
+        task_id=task.id,
+        actual_minutes=request.actual_minutes,
+        comment=request.comment
+        if request.comment is not None
+        else f"Daily plan {date}",
+    )
+    if request.action == "complete":
+        task.status = TaskStatus.COMPLETED
+    elif task.status == TaskStatus.PENDING:
+        task.status = TaskStatus.IN_PROGRESS
+    task.updated_at = datetime.now(UTC)
+    session.add(log)
+    session.add(task)
+    session.commit()
+    return TaskActionResponse(
+        task_ref=request.task_ref,
+        status=task.status,
+        actual_minutes=request.actual_minutes,
+    )

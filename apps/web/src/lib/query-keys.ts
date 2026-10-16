@@ -4,11 +4,19 @@
  */
 
 export const queryKeys = {
+  // Dashboard keys
+  dashboard: {
+    all: ['dashboard'] as const,
+    dailyNotes: (limit: number) =>
+      [...queryKeys.dashboard.all, 'daily-notes', { limit }] as const,
+    recentItems: (limit = 5) =>
+      [...queryKeys.dashboard.all, 'recent-items', { limit }] as const,
+  },
+
   // Project keys
   projects: {
     all: ['projects'] as const,
-    lists: () => [...queryKeys.projects.all, 'list'] as const,
-    list: (filters: string) => [...queryKeys.projects.lists(), { filters }] as const,
+    options: () => [...queryKeys.projects.all, 'options'] as const,
     details: () => [...queryKeys.projects.all, 'detail'] as const,
     detail: (id: string) => [...queryKeys.projects.details(), id] as const,
   },
@@ -58,7 +66,6 @@ export const queryKeys = {
   schedule: {
     all: ['schedule'] as const,
     daily: (date: string) => [...queryKeys.schedule.all, 'daily', date] as const,
-    weekly: (startDate: string) => [...queryKeys.schedule.all, 'weekly', startDate] as const,
   },
 
   // User settings keys
@@ -70,7 +77,6 @@ export const queryKeys = {
   // AI keys
   ai: {
     all: ['ai'] as const,
-    weeklyPlan: () => [...queryKeys.ai.all, 'weeklyPlan'] as const,
     workloadAnalysis: () => [...queryKeys.ai.all, 'workloadAnalysis'] as const,
     priorities: () => [...queryKeys.ai.all, 'priorities'] as const,
   },

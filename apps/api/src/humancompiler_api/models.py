@@ -1,7 +1,8 @@
-from datetime import datetime, UTC
+import re
+from datetime import UTC, date as Date, datetime
 from decimal import Decimal
 from enum import Enum, StrEnum
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -12,10 +13,35 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from sqlalchemy import JSON, text, UUID as SQLAlchemyUUID
+from sqlalchemy import JSON, Text, UniqueConstraint, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
+from sqlalchemy import DateTime
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Column, Relationship, SQLModel
 from sqlmodel import Field as SQLField
+
+
+from humancompiler_api.openai_models import DEFAULT_OPENAI_MODEL
+
+GOAL_DUE_DATE_DESCRIPTION = (
+    "Goal deadline in ISO 8601 format. Date-only values are interpreted as "
+    "00:00 JST; datetime values must include a timezone offset."
+)
+GOAL_DUE_DATE_ONLY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def prepare_due_date(value: Any) -> Any:
+    """Convert an unambiguous calendar date into the start of that day in JST."""
+    if isinstance(value, str) and GOAL_DUE_DATE_ONLY_PATTERN.fullmatch(value):
+        return f"{value}T00:00:00+09:00"
+    return value
+
+
+def require_due_date_timezone(value: datetime | None) -> datetime | None:
+    """Reject ambiguous due-date datetimes that do not include an offset."""
+    if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+        raise ValueError("due_date datetime must include a timezone offset")
+    return value
 
 
 class TaskStatus(StrEnum):
@@ -32,6 +58,7 @@ class ProjectStatus(StrEnum):
 
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
+    PAUSED = "paused"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
@@ -43,19 +70,6 @@ class GoalStatus(StrEnum):
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
-
-
-class TaskCategory(StrEnum):
-    """Weekly recurring task category enum"""
-
-    MEETING = "meeting"
-    STUDY = "study"
-    EXERCISE = "exercise"
-    HOBBY = "hobby"
-    ADMIN = "admin"
-    MAINTENANCE = "maintenance"
-    REVIEW = "review"
-    OTHER = "other"
 
 
 class WorkType(StrEnum):
@@ -107,7 +121,6 @@ class TaskWorkspacePlanFilter(StrEnum):
     """Plan-membership filters for the cross-project task workspace."""
 
     TODAY = "today"
-    WEEK = "week"
     UNPLANNED = "unplanned"
 
 
@@ -216,7 +229,6 @@ ALLOWED_SORT_FIELDS = {
     "Project": {"status", "title", "created_at", "updated_at"},
     "Goal": {"status", "title", "created_at", "updated_at"},
     "Task": {"status", "title", "created_at", "updated_at", "priority"},
-    "WeeklyRecurringTask": {"title", "created_at", "updated_at"},
     "Log": {"created_at", "updated_at"},
     "QuickTask": {
         "status",
@@ -228,12 +240,20 @@ ALLOWED_SORT_FIELDS = {
     },
 }
 
-# Status priority configurations for consistent sorting
+# Status priority configurations for consistent sorting.
+# Ascending order puts active work first: in progress, then not started,
+# then paused projects, then closed items.
 STATUS_PRIORITY = {
-    "default": {"pending": 1, "in_progress": 2, "completed": 3, "cancelled": 4},
-    "project": {"pending": 1, "in_progress": 2, "completed": 3, "cancelled": 4},
-    "goal": {"pending": 1, "in_progress": 2, "completed": 3, "cancelled": 4},
-    "task": {"pending": 1, "in_progress": 2, "completed": 3, "cancelled": 4},
+    "default": {"in_progress": 1, "pending": 2, "completed": 3, "cancelled": 4},
+    "project": {
+        "in_progress": 1,
+        "pending": 2,
+        "paused": 3,
+        "completed": 4,
+        "cancelled": 5,
+    },
+    "goal": {"in_progress": 1, "pending": 2, "completed": 3, "cancelled": 4},
+    "task": {"in_progress": 1, "pending": 2, "completed": 3, "cancelled": 4},
 }
 
 
@@ -256,15 +276,13 @@ class User(UserBase, table=True):  # type: ignore[call-arg]
     # Relationships
     projects: list["Project"] = Relationship(back_populates="owner")
     schedules: list["Schedule"] = Relationship(back_populates="user")
-    weekly_schedules: list["WeeklySchedule"] = Relationship(back_populates="user")
-    weekly_recurring_tasks: list["WeeklyRecurringTask"] = Relationship(
+    daily_plan_documents: list["DailyPlanDocument"] = Relationship(
         back_populates="user"
     )
     settings: "UserSettings" = Relationship(back_populates="user")
     work_sessions: list["WorkSession"] = Relationship(back_populates="user")
     push_subscriptions: list["PushSubscription"] = Relationship(back_populates="user")
     quick_tasks: list["QuickTask"] = Relationship(back_populates="owner")
-    slot_templates: list["SlotTemplate"] = Relationship(back_populates="user")
     hook_tokens: list["HookToken"] = Relationship(back_populates="user")
 
 
@@ -305,6 +323,9 @@ class GoalBase(SQLModel):
     title: str = SQLField(min_length=1, max_length=200)
     description: str | None = SQLField(default=None, max_length=1000)
     estimate_hours: Decimal = SQLField(gt=0, max_digits=5, decimal_places=2)
+    due_date: datetime | None = SQLField(
+        default=None, description=GOAL_DUE_DATE_DESCRIPTION
+    )
     status: GoalStatus = SQLField(
         default=GoalStatus.PENDING,
         sa_column=Column(
@@ -533,7 +554,10 @@ class TaskDependency(TaskDependencyBase, table=True):  # type: ignore[call-arg]
 class ScheduleBase(SQLModel):
     """Base schedule model"""
 
-    date: datetime = SQLField()
+    # Calendar keys use naive midnight, independent of SQLModel's UTC datetime default.
+    date: datetime = SQLField(
+        sa_column=Column(DateTime(timezone=False), nullable=False)
+    )
     plan_json: dict[str, Any] = SQLField(sa_column=Column(JSON), default_factory=dict)
 
 
@@ -551,68 +575,29 @@ class Schedule(ScheduleBase, table=True):  # type: ignore[call-arg]
     user: User = Relationship(back_populates="schedules")
 
 
-class WeeklyRecurringTaskBase(SQLModel):
-    """Base weekly recurring task model"""
+class DailyPlanDocument(SQLModel, table=True):  # type: ignore[call-arg]
+    """Versioned source document for one user's daily plan note."""
 
-    title: str = SQLField(min_length=1, max_length=200)
-    description: str | None = SQLField(default=None, max_length=1000)
-    estimate_hours: Decimal = SQLField(gt=0, max_digits=5, decimal_places=2)
-    category: TaskCategory = SQLField(
-        default=TaskCategory.OTHER,
-        description="Task category from predefined enum values",
-    )
-    is_active: bool = SQLField(
-        default=True, description="Whether this recurring task is active"
-    )
-    deleted_at: datetime | None = SQLField(
-        default=None, description="Timestamp when the task was soft deleted"
+    __tablename__ = "daily_plan_documents"
+    __table_args__ = (
+        UniqueConstraint("user_id", "date", name="uq_daily_plan_documents_user_date"),
     )
 
-
-class WeeklyRecurringTask(WeeklyRecurringTaskBase, table=True):  # type: ignore[call-arg]
-    """Weekly recurring task database model for storing weekly recurring tasks"""
-
-    __tablename__ = "weekly_recurring_tasks"
-
-    id: UUID | None = SQLField(default=None, primary_key=True)
-    user_id: UUID = SQLField(foreign_key="users.id", index=True)
-    category: TaskCategory = SQLField(
-        default=TaskCategory.OTHER,
-        sa_column=Column(
-            SQLEnum(TaskCategory, values_callable=lambda x: [e.value for e in x])
-        ),
-        description="Task category from predefined enum values",
-    )
-    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
-
-    # Relationships
-    user: User = Relationship(back_populates="weekly_recurring_tasks")
-
-
-class WeeklyScheduleBase(SQLModel):
-    """Base weekly schedule model"""
-
-    week_start_date: datetime = SQLField(description="Start date of the week (Monday)")
-    schedule_json: dict[str, Any] = SQLField(
-        sa_column=Column(JSON),
+    id: UUID = SQLField(default_factory=uuid4, primary_key=True)
+    user_id: UUID = SQLField(foreign_key="users.id")
+    date: Date
+    revision: int = SQLField(default=1, ge=1)
+    document_json: dict[str, Any] = SQLField(
+        sa_column=Column(JSON().with_variant(JSONB(), "postgresql"), nullable=False),
         default_factory=dict,
-        description="Weekly schedule data including selected tasks and project allocations",
     )
+    search_text: str = SQLField(
+        default="", sa_column=Column(Text, nullable=False, server_default="")
+    )
+    created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
 
-
-class WeeklySchedule(WeeklyScheduleBase, table=True):  # type: ignore[call-arg]
-    """Weekly schedule database model for storing weekly task selection"""
-
-    __tablename__ = "weekly_schedules"
-
-    id: UUID | None = SQLField(default=None, primary_key=True)
-    user_id: UUID = SQLField(foreign_key="users.id", index=True)
-    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
-
-    # Relationships
-    user: User = Relationship(back_populates="weekly_schedules")
+    user: User = Relationship(back_populates="daily_plan_documents")
 
 
 class LogBase(SQLModel):
@@ -766,7 +751,7 @@ class UserSettingsBase(SQLModel):
     """Base user settings model"""
 
     openai_api_key_encrypted: str | None = SQLField(default=None, max_length=500)
-    openai_model: str = SQLField(default="gpt-5.5", max_length=50)
+    openai_model: str = SQLField(default=DEFAULT_OPENAI_MODEL, max_length=50)
     ai_features_enabled: bool = SQLField(default=False)
 
     # Email notification settings (Issue #261)
@@ -1008,6 +993,16 @@ class GoalCreate(GoalBase):
 
     project_id: UUID
 
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def prepare_due_date(cls, value: Any) -> Any:
+        return prepare_due_date(value)
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date_timezone(cls, value: datetime | None) -> datetime | None:
+        return require_due_date_timezone(value)
+
 
 class GoalUpdate(BaseModel):
     """Goal update request"""
@@ -1015,7 +1010,18 @@ class GoalUpdate(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = Field(None, max_length=1000)
     estimate_hours: Decimal | None = Field(None, gt=0)
+    due_date: datetime | None = Field(None, description=GOAL_DUE_DATE_DESCRIPTION)
     status: GoalStatus | None = None
+
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def prepare_due_date(cls, value: Any) -> Any:
+        return prepare_due_date(value)
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date_timezone(cls, value: datetime | None) -> datetime | None:
+        return require_due_date_timezone(value)
 
     @field_validator("status")
     @classmethod
@@ -1064,6 +1070,16 @@ class TaskCreate(TaskBase):
 
     goal_id: UUID
 
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def prepare_due_date(cls, value: Any) -> Any:
+        return prepare_due_date(value)
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date_timezone(cls, value: datetime | None) -> datetime | None:
+        return require_due_date_timezone(value)
+
 
 class TaskUpdate(BaseModel):
     """Task update request"""
@@ -1077,6 +1093,16 @@ class TaskUpdate(BaseModel):
     work_type: WorkType | None = None
     priority: int | None = Field(None, ge=1, le=5)
     goal_id: UUID | None = None
+
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def prepare_due_date(cls, value: Any) -> Any:
+        return prepare_due_date(value)
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date_timezone(cls, value: datetime | None) -> datetime | None:
+        return require_due_date_timezone(value)
 
 
 class TaskResponse(TaskBase):
@@ -1109,7 +1135,6 @@ class TaskWorkspaceItem(TaskResponse):
     last_worked_at: datetime | None = None
     planned_today: bool = False
     planned_today_unplaced: bool = False
-    planned_this_week: bool = False
 
     @field_serializer("remaining_estimate_hours")
     def serialize_remaining_estimate_hours(self, value: Decimal) -> float:
@@ -1206,7 +1231,15 @@ class TaskSummary(BaseModel):
 class QuickTaskCreate(QuickTaskBase):
     """Quick task creation request - no goal_id required"""
 
-    pass
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def prepare_due_date(cls, value: Any) -> Any:
+        return prepare_due_date(value)
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date_timezone(cls, value: datetime | None) -> datetime | None:
+        return require_due_date_timezone(value)
 
 
 class QuickTaskUpdate(BaseModel):
@@ -1219,6 +1252,16 @@ class QuickTaskUpdate(BaseModel):
     status: TaskStatus | None = None
     work_type: WorkType | None = None
     priority: int | None = Field(None, ge=1, le=5)
+
+    @field_validator("due_date", mode="before")
+    @classmethod
+    def prepare_due_date(cls, value: Any) -> Any:
+        return prepare_due_date(value)
+
+    @field_validator("due_date")
+    @classmethod
+    def validate_due_date_timezone(cls, value: datetime | None) -> datetime | None:
+        return require_due_date_timezone(value)
 
 
 class QuickTaskResponse(QuickTaskBase):
@@ -1281,62 +1324,6 @@ class ScheduleResponse(ScheduleBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
-
-
-class WeeklyScheduleCreate(WeeklyScheduleBase):
-    """Weekly schedule creation request"""
-
-    pass
-
-
-class WeeklyScheduleUpdate(BaseModel):
-    """Weekly schedule update request"""
-
-    week_start_date: datetime | None = None
-    schedule_json: dict[str, Any] | None = None
-
-
-class WeeklyScheduleResponse(WeeklyScheduleBase):
-    """Weekly schedule response model"""
-
-    id: UUID
-    user_id: UUID
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class WeeklyRecurringTaskCreate(WeeklyRecurringTaskBase):
-    """Weekly recurring task creation request"""
-
-    pass
-
-
-class WeeklyRecurringTaskUpdate(BaseModel):
-    """Weekly recurring task update request"""
-
-    title: str | None = Field(None, min_length=1, max_length=200)
-    description: str | None = Field(None, max_length=1000)
-    estimate_hours: Decimal | None = Field(None, gt=0)
-    category: TaskCategory | None = None
-    is_active: bool | None = None
-
-
-class WeeklyRecurringTaskResponse(WeeklyRecurringTaskBase):
-    """Weekly recurring task response model"""
-
-    id: UUID
-    user_id: UUID
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-    @field_serializer("estimate_hours")
-    def serialize_estimate_hours(self, value: Decimal) -> float:
-        """Convert Decimal to float for JSON serialization"""
-        return float(value)
 
 
 class LogCreate(LogBase):
@@ -1532,7 +1519,7 @@ class UserSettingsCreate(BaseModel):
     """User settings creation request"""
 
     openai_api_key: str = Field(min_length=1)
-    openai_model: str = Field(default="gpt-5.5", max_length=50)
+    openai_model: str = Field(default=DEFAULT_OPENAI_MODEL, max_length=50)
 
 
 class UserSettingsUpdate(BaseModel):
@@ -1907,6 +1894,13 @@ class WeeklyReportRequest(BaseModel):
     project_ids: list[str] | None = Field(
         default=None, description="Optional list of project IDs to filter the report"
     )
+    include_notes: bool = Field(
+        default=True,
+        description=(
+            "Use project, goal, and task notes as context for the background "
+            "and next-step sections"
+        ),
+    )
 
     model_config = ConfigDict(
         str_strip_whitespace=True,
@@ -1914,6 +1908,7 @@ class WeeklyReportRequest(BaseModel):
             "example": {
                 "week_start_date": "2023-12-18",
                 "project_ids": ["uuid1", "uuid2"],
+                "include_notes": True,
             }
         },
     )
@@ -1964,6 +1959,16 @@ class WeeklyWorkSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class WeeklyReportNoteReference(BaseModel):
+    """A context note that was used to generate a weekly report"""
+
+    entity_type: Literal["project", "goal", "task"]
+    entity_id: str
+    title: str
+    project_id: str
+    goal_id: str | None = None
+
+
 class WeeklyReportResponse(BaseModel):
     """Response model for weekly work report"""
 
@@ -1972,6 +1977,7 @@ class WeeklyReportResponse(BaseModel):
     work_summary: WeeklyWorkSummary
     project_summaries: list[ProjectProgressSummary]
     markdown_report: str
+    referenced_notes: list[WeeklyReportNoteReference] = Field(default_factory=list)
     generated_at: datetime
 
     @field_serializer("generated_at")
@@ -2165,50 +2171,6 @@ class ContentType(StrEnum):
     MARKDOWN = "markdown"
     HTML = "html"
     TIPTAP_JSON = "tiptap_json"
-
-
-class DayOfWeek(int, Enum):
-    """Day of week enum (ISO 8601: 0=Monday, 6=Sunday)"""
-
-    MONDAY = 0
-    TUESDAY = 1
-    WEDNESDAY = 2
-    THURSDAY = 3
-    FRIDAY = 4
-    SATURDAY = 5
-    SUNDAY = 6
-
-
-class SlotTemplateBase(SQLModel):
-    """Base slot template model for day-of-week slot presets"""
-
-    name: str = SQLField(min_length=1, max_length=100)
-    day_of_week: int = SQLField(
-        ge=0, le=6, description="Day of week (0=Monday, 6=Sunday)"
-    )
-    slots_json: list[dict[str, Any]] = SQLField(
-        sa_column=Column(JSON),
-        default_factory=list,
-        description="Array of TimeSlot objects",
-    )
-    is_default: bool = SQLField(
-        default=False,
-        description="Whether this template is the default for the day of week",
-    )
-
-
-class SlotTemplate(SlotTemplateBase, table=True):  # type: ignore[call-arg]
-    """Slot template database model for storing day-of-week slot presets"""
-
-    __tablename__ = "slot_templates"
-
-    id: UUID = SQLField(default_factory=uuid4, primary_key=True)
-    user_id: UUID = SQLField(foreign_key="users.id", index=True)
-    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
-
-    # Relationships
-    user: "User" = Relationship(back_populates="slot_templates")
 
 
 class TriageCapacitySettings(SQLModel, table=True):  # type: ignore[call-arg]
@@ -2480,110 +2442,3 @@ class ContextNoteResponse(BaseModel):
         return value.isoformat()
 
     model_config = ConfigDict(from_attributes=True)
-
-
-# Slot Template API Models
-class TimeSlotSchema(BaseModel):
-    """Time slot schema for validation"""
-
-    start: str = Field(..., pattern=r"^\d{2}:\d{2}$", description="Start time (HH:mm)")
-    end: str = Field(..., pattern=r"^\d{2}:\d{2}$", description="End time (HH:mm)")
-    kind: SlotKind = Field(
-        ..., description="Slot kind (study, focused_work, light_work, meeting)"
-    )
-    capacity_hours: float | None = Field(
-        None, ge=0, description="Slot capacity in hours"
-    )
-    assigned_project_id: str | None = Field(None, description="Assigned project ID")
-
-    @field_validator("start", "end")
-    @classmethod
-    def validate_time_value(cls, value: str) -> str:
-        """Validate HH:mm values are within a single calendar day."""
-        hour, minute = map(int, value.split(":"))
-        if not (0 <= hour <= 23 and 0 <= minute <= 59):
-            raise ValueError("Time must be between 00:00 and 23:59")
-        return value
-
-    @model_validator(mode="after")
-    def validate_start_before_end(self) -> "TimeSlotSchema":
-        """Validate that start time is before end time"""
-        start_parts = self.start.split(":")
-        end_parts = self.end.split(":")
-        start_minutes = int(start_parts[0]) * 60 + int(start_parts[1])
-        end_minutes = int(end_parts[0]) * 60 + int(end_parts[1])
-        if start_minutes >= end_minutes:
-            raise ValueError("Start time must be before end time")
-        return self
-
-
-class SlotTemplateCreate(BaseModel):
-    """Slot template creation request"""
-
-    name: str = Field(..., min_length=1, max_length=100)
-    day_of_week: int = Field(
-        ..., ge=0, le=6, description="Day of week (0=Monday, 6=Sunday)"
-    )
-    slots: list[TimeSlotSchema] = Field(default_factory=list)
-    is_default: bool = Field(default=False)
-
-
-class SlotTemplateUpdate(BaseModel):
-    """Slot template update request"""
-
-    name: str | None = Field(None, min_length=1, max_length=100)
-    day_of_week: int | None = Field(None, ge=0, le=6)
-    slots: list[TimeSlotSchema] | None = None
-    is_default: bool | None = None
-
-
-class SlotTemplateResponse(BaseModel):
-    """Slot template response model"""
-
-    id: UUID
-    user_id: UUID
-    name: str
-    day_of_week: int
-    slots: list[TimeSlotSchema]
-    is_default: bool
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-    @field_serializer("created_at", "updated_at")
-    def serialize_datetimes(self, value: datetime) -> str:
-        """Ensure datetime is serialized with UTC timezone info"""
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=UTC)
-        return value.isoformat()
-
-    @classmethod
-    def from_db_model(cls, template: "SlotTemplate") -> "SlotTemplateResponse":
-        """Create response from database model"""
-        return cls(
-            id=template.id,
-            user_id=template.user_id,
-            name=template.name,
-            day_of_week=template.day_of_week,
-            slots=[TimeSlotSchema.model_validate(slot) for slot in template.slots_json],
-            is_default=template.is_default,
-            created_at=template.created_at,
-            updated_at=template.updated_at,
-        )
-
-
-class SlotTemplateListResponse(BaseModel):
-    """Response for listing slot templates"""
-
-    templates: list[SlotTemplateResponse]
-    total: int
-
-
-class DayOfWeekTemplatesResponse(BaseModel):
-    """Response for getting templates grouped by day of week"""
-
-    day_of_week: int
-    day_name: str
-    templates: list[SlotTemplateResponse]
-    default_template: SlotTemplateResponse | None = None

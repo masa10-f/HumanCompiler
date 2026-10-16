@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2024-2025 Masato Fukushima <masa1063fuk@gmail.com>
+//
+// This file is part of HumanCompiler.
+// For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
+
 'use client'
 
 import { useMemo, useState } from 'react'
@@ -41,6 +47,7 @@ type TaskView = 'all' | TaskDecisionState
 
 interface GoalTaskListProps {
   tasks: Task[]
+  useDefaultSort?: boolean
   projectId: string
   goalId: string
   logsByTask: Record<string, Log[]>
@@ -54,6 +61,13 @@ const stateLabels: Record<TaskDecisionState, string> = {
   blocked: 'ブロック中',
   completed: '完了',
   cancelled: 'キャンセル',
+}
+
+const stateOrder: Record<TaskDecisionState, number> = {
+  ready: 0,
+  blocked: 1,
+  completed: 2,
+  cancelled: 3,
 }
 
 const stateVariants: Record<
@@ -163,21 +177,21 @@ function DependencyButton({
 
 function TaskActions({ task, tasks }: { task: Task; tasks: Task[] }) {
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-1">
       <LogFormDialog
         taskId={task.id}
         taskTitle={task.title}
         trigger={
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" className="w-full sm:w-auto">
             時間記録
           </Button>
         }
       />
       <TaskEditDialog task={task} availableTasks={tasks}>
-        <Button variant="outline" size="sm">編集</Button>
+        <Button variant="outline" size="sm" className="w-full sm:w-auto">編集</Button>
       </TaskEditDialog>
       <TaskDeleteDialog task={task}>
-        <Button variant="outline" size="sm">削除</Button>
+        <Button variant="outline" size="sm" className="w-full sm:w-auto">削除</Button>
       </TaskDeleteDialog>
     </div>
   )
@@ -185,6 +199,7 @@ function TaskActions({ task, tasks }: { task: Task; tasks: Task[] }) {
 
 export function GoalTaskList({
   tasks,
+  useDefaultSort = true,
   projectId,
   goalId,
   logsByTask,
@@ -208,13 +223,19 @@ export function GoalTaskList({
     }),
     [summaries, tasks],
   )
-  const visibleTasks = useMemo(
-    () =>
-      view === 'all'
-        ? tasks
-        : tasks.filter((task) => summaries.get(task.id)?.state === view),
-    [summaries, tasks, view],
-  )
+  const visibleTasks = useMemo(() => {
+    const filteredTasks = tasks.filter(
+      (task) => view === 'all' || summaries.get(task.id)?.state === view,
+    )
+    // Explicit sort selections are already applied by the API.
+    if (!useDefaultSort) return filteredTasks
+
+    return filteredTasks.sort((a, b) => {
+      const stateDiff = stateOrder[summaries.get(a.id)!.state] - stateOrder[summaries.get(b.id)!.state]
+      if (stateDiff !== 0) return stateDiff
+      return (a.priority ?? 3) - (b.priority ?? 3)
+    })
+  }, [summaries, tasks, view, useDefaultSort])
   const views: { value: TaskView; label: string; count: number }[] = [
     { value: 'all', label: 'すべて', count: counts.all },
     { value: 'ready', label: 'Ready', count: counts.ready },
@@ -414,8 +435,8 @@ function TaskMobileCard({
   return (
     <Card>
       <CardContent className="space-y-4 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
+        <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:justify-between">
+          <div className="min-w-0 flex-1">
             <TaskDecisionBadge task={task} />
             <Link
               href={`/projects/${projectId}/goals/${goalId}/tasks/${task.id}`}
@@ -429,7 +450,9 @@ function TaskMobileCard({
               </p>
             )}
           </div>
-          <TaskStatusSelect task={task} />
+          <div className="shrink-0">
+            <TaskStatusSelect task={task} />
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 rounded-lg bg-muted/50 p-3 text-sm">

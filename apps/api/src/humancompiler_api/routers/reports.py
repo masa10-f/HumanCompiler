@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlmodel import Session
 
+from humancompiler_api.openai_models import LIGHTWEIGHT_OPENAI_MODEL
+
 from humancompiler_api.auth import AuthUser, get_current_user
 from humancompiler_api.database import db
 from humancompiler_api.models import (
@@ -39,6 +41,7 @@ class ExampleRequest(BaseModel):
 
     week_start_date: str
     project_ids: list[str]
+    include_notes: bool
 
 
 class WeeklyReportTemplateResponse(BaseModel):
@@ -102,7 +105,7 @@ async def generate_weekly_report(
             request=request,
             user_id=str(current_user.user_id),
             openai_api_key=decrypted_api_key,
-            openai_model=user_settings.openai_model or "gpt-5.4-mini",
+            openai_model=user_settings.openai_model or LIGHTWEIGHT_OPENAI_MODEL,
         )
 
         return report
@@ -137,26 +140,20 @@ async def get_weekly_report_template(
             title="週間作業報告書 ({week_start_date}週)",
             sections=[
                 TemplateSectionContent(
+                    name="{project_title}（プロジェクトごと）",
+                    content=[
+                        "背景: プロジェクト・ゴールの目的や経緯（説明とノートから要約）",
+                        "今週やったこと: 作業ログとタスクの進捗",
+                        "次にやること: 未完了タスクとノートの未完了TODO",
+                    ],
+                ),
+                TemplateSectionContent(
                     name="作業時間実績",
                     content=[
                         "週間合計作業時間",
                         "日別作業時間",
-                        "プロジェクト別配分時間",
-                    ],
-                ),
-                TemplateSectionContent(
-                    name="タスク進捗率",
-                    content=[
-                        "完了タスク数/作業対象タスク数",
-                        "進捗率（パーセンテージ）",
-                    ],
-                ),
-                TemplateSectionContent(
-                    name="プロジェクト別詳細",
-                    content=[
-                        "各プロジェクトの作業時間",
-                        "主要タスクの進捗状況",
-                        "作業ログからのハイライト",
+                        "プロジェクト別作業時間",
+                        "完了タスク数/作業対象タスク数（完了率）",
                     ],
                 ),
             ],
@@ -165,5 +162,6 @@ async def get_weekly_report_template(
         example_request=ExampleRequest(
             week_start_date="2023-12-18",
             project_ids=["uuid1", "uuid2"],
+            include_notes=True,
         ),
     )

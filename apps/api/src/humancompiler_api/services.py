@@ -11,6 +11,7 @@ from uuid import UUID
 from uuid import uuid4
 
 from fastapi import HTTPException, status
+from sqlalchemy import update as sqlalchemy_update
 from sqlalchemy.orm import aliased, selectinload
 from sqlmodel import Session, and_, col, delete, func, select
 
@@ -36,14 +37,10 @@ from humancompiler_api.models import (
     Task,
     TaskCreate,
     TaskUpdate,
-    TaskCategory,
     TaskDependency,
     User,
     UserCreate,
     UserUpdate,
-    WeeklyRecurringTask,
-    WeeklyRecurringTaskCreate,
-    WeeklyRecurringTaskUpdate,
     WorkSession,
     WorkSessionStartRequest,
     WorkSessionCheckoutRequest,
@@ -63,9 +60,6 @@ from humancompiler_api.models import (
     HookToken,
     HookTokenCreate,
     TaskStatus,
-    SlotTemplate,
-    SlotTemplateCreate,
-    SlotTemplateUpdate,
     TaskWorkspaceSortBy,
 )
 
@@ -304,6 +298,7 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
             title=data.title,
             description=data.description,
             estimate_hours=data.estimate_hours,
+            due_date=data.due_date,
         )
 
     def _get_user_filter(self, user_id: str | UUID):
@@ -469,7 +464,7 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
 
         # Create dependency
         dependency = GoalDependency(
-            goal_id=goal_id, depends_on_goal_id=depends_on_goal_id
+            id=uuid4(), goal_id=goal_id, depends_on_goal_id=depends_on_goal_id
         )
         session.add(dependency)
         session.commit()
@@ -519,6 +514,36 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
 
         dependency = session.get(GoalDependency, dependency_id)
         if not dependency or dependency.goal_id != UUID(str(goal_id)):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Dependency not found"
+            )
+
+        session.delete(dependency)
+        session.commit()
+
+        return True
+
+    def delete_goal_dependency_by_id(
+        self,
+        session: Session,
+        dependency_id: str | UUID,
+        owner_id: str | UUID,
+    ) -> bool:
+        """Delete a goal dependency by ID if its goal belongs to the owner"""
+        dependency = session.get(
+            GoalDependency, validate_uuid(dependency_id, "dependency_id")
+        )
+        owned_goal_id = None
+        if dependency:
+            owned_goal_id = session.exec(
+                select(Goal.id).where(
+                    Goal.id == dependency.goal_id,
+                    self._get_user_filter(validate_uuid(owner_id, "owner_id")),
+                )
+            ).first()
+
+        # Same response for missing and not-owned so IDs can't be probed
+        if not owned_goal_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Dependency not found"
             )
@@ -1163,6 +1188,14 @@ class LogService(BaseService[Log, LogCreate, LogUpdate]):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
             )
+        # Logging work on a pending task means it has started. Match on the
+        # current status in the database so a concurrent completion or
+        # cancellation is never overwritten.
+        session.exec(
+            sqlalchemy_update(Task)
+            .where(Task.id == task.id, Task.status == TaskStatus.PENDING)
+            .values(status=TaskStatus.IN_PROGRESS, updated_at=datetime.now(UTC))
+        )
         return self.create(session, log_data, owner_id)
 
     def get_log(
@@ -1268,115 +1301,6 @@ class LogService(BaseService[Log, LogCreate, LogUpdate]):
     ) -> bool:
         """Delete log"""
         return self.delete(session, log_id, owner_id)
-
-
-class WeeklyRecurringTaskService(
-    BaseService[
-        WeeklyRecurringTask, WeeklyRecurringTaskCreate, WeeklyRecurringTaskUpdate
-    ]
-):
-    """Weekly recurring task service using base service"""
-
-    def __init__(self):
-        super().__init__(WeeklyRecurringTask)
-
-    def _create_instance(
-        self, data: WeeklyRecurringTaskCreate, user_id: str | UUID, **kwargs
-    ) -> WeeklyRecurringTask:
-        """Create a new weekly recurring task instance"""
-        return WeeklyRecurringTask(
-            user_id=user_id,
-            title=data.title,
-            description=data.description,
-            estimate_hours=data.estimate_hours,
-            category=data.category,
-            is_active=data.is_active,
-        )
-
-    def _get_user_filter(self, user_id: str | UUID):
-        """Get filter for weekly recurring task ownership"""
-        return WeeklyRecurringTask.user_id == user_id
-
-    def get_weekly_recurring_tasks(
-        self,
-        session: Session,
-        user_id: str | UUID,
-        skip: int = 0,
-        limit: int = 100,
-        category: TaskCategory | None = None,
-        is_active: bool | None = None,
-    ) -> list[WeeklyRecurringTask]:
-        """Get weekly recurring tasks for specific user with optional filters"""
-        user_id_validated = validate_uuid(user_id, "user_id")
-        statement = select(WeeklyRecurringTask).where(
-            WeeklyRecurringTask.user_id == user_id_validated,
-            WeeklyRecurringTask.deleted_at.is_(None),  # Exclude soft deleted tasks
-        )
-
-        if category is not None:
-            statement = statement.where(WeeklyRecurringTask.category == category)
-
-        if is_active is not None:
-            statement = statement.where(WeeklyRecurringTask.is_active == is_active)
-
-        statement = (
-            statement.order_by(WeeklyRecurringTask.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
-
-        return list(session.exec(statement).all())
-
-    def get_weekly_recurring_task(
-        self, session: Session, task_id: str | UUID, user_id: str | UUID
-    ) -> WeeklyRecurringTask | None:
-        """Get weekly recurring task by ID for specific user"""
-        task = session.exec(
-            select(WeeklyRecurringTask).where(
-                WeeklyRecurringTask.id == task_id,
-                WeeklyRecurringTask.user_id == user_id,
-                WeeklyRecurringTask.deleted_at.is_(None),  # Exclude soft deleted tasks
-            )
-        ).first()
-        return task
-
-    def create_weekly_recurring_task(
-        self,
-        session: Session,
-        task_data: WeeklyRecurringTaskCreate,
-        user_id: str | UUID,
-    ) -> WeeklyRecurringTask:
-        """Create a new weekly recurring task"""
-        return self.create(session, task_data, user_id)
-
-    def update_weekly_recurring_task(
-        self,
-        session: Session,
-        task_id: str | UUID,
-        user_id: str | UUID,
-        task_data: WeeklyRecurringTaskUpdate,
-    ) -> WeeklyRecurringTask:
-        """Update weekly recurring task"""
-        return self.update(session, task_id, task_data, user_id)
-
-    def delete_weekly_recurring_task(
-        self, session: Session, task_id: str | UUID, user_id: str | UUID
-    ) -> bool:
-        """Soft delete weekly recurring task"""
-        task = self.get_weekly_recurring_task(session, task_id, user_id)
-        if not task:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Weekly recurring task not found",
-            )
-
-        # Soft delete: set deleted_at timestamp
-        task.deleted_at = datetime.now(UTC)
-        task.updated_at = datetime.now(UTC)
-        session.add(task)
-        session.commit()
-
-        return True
 
 
 class WorkSessionService(
@@ -2152,11 +2076,14 @@ class QuickTaskService(BaseService[QuickTask, QuickTaskCreate, QuickTaskUpdate])
         limit: int = 100,
         sort_by: SortBy = SortBy.CREATED_AT,
         sort_order: SortOrder = SortOrder.DESC,
-        status: TaskStatus | None = None,
+        status: TaskStatus | list[TaskStatus] | None = None,
     ) -> list[QuickTask]:
-        """Get quick tasks for specific owner with optional filters and sorting"""
-        filters = {}
-        if status is not None:
+        """Get quick tasks for specific owner with optional filters and sorting
+
+        ``status`` may be a single status or a list of statuses to match any of.
+        """
+        filters: dict[str, TaskStatus | list[TaskStatus]] = {}
+        if status:
             filters["status"] = status
 
         return self.get_all(
@@ -2263,229 +2190,8 @@ class QuickTaskService(BaseService[QuickTask, QuickTaskCreate, QuickTaskUpdate])
             limit=1000,  # Get all active tasks
             sort_by=SortBy.PRIORITY,
             sort_order=SortOrder.ASC,
+            status=[TaskStatus.PENDING, TaskStatus.IN_PROGRESS],
         )
-
-
-class SlotTemplateService(
-    BaseService[SlotTemplate, SlotTemplateCreate, SlotTemplateUpdate]
-):
-    """Slot template service for day-of-week slot presets"""
-
-    DAY_NAMES = [
-        "Monday",
-        "Tuesday",
-        "Wednesday",
-        "Thursday",
-        "Friday",
-        "Saturday",
-        "Sunday",
-    ]
-
-    def __init__(self):
-        super().__init__(SlotTemplate)
-
-    def _create_instance(
-        self, data: SlotTemplateCreate, user_id: str | UUID, **kwargs
-    ) -> SlotTemplate:
-        """Create a new slot template instance"""
-        return SlotTemplate(
-            user_id=user_id,
-            name=data.name,
-            day_of_week=data.day_of_week,
-            slots_json=[slot.model_dump(mode="json") for slot in data.slots],
-            is_default=data.is_default,
-        )
-
-    def _get_user_filter(self, user_id: str | UUID):
-        """Get filter for slot template ownership"""
-        return SlotTemplate.user_id == user_id
-
-    def get_slot_templates(
-        self,
-        session: Session,
-        user_id: str | UUID,
-        day_of_week: int | None = None,
-        skip: int = 0,
-        limit: int = 100,
-    ) -> list[SlotTemplate]:
-        """Get slot templates for specific user with optional day filter"""
-        user_id_validated = validate_uuid(user_id, "user_id")
-        statement = select(SlotTemplate).where(
-            SlotTemplate.user_id == user_id_validated,
-        )
-
-        if day_of_week is not None:
-            statement = statement.where(SlotTemplate.day_of_week == day_of_week)
-
-        statement = (
-            statement.order_by(SlotTemplate.day_of_week, SlotTemplate.name)
-            .offset(skip)
-            .limit(limit)
-        )
-
-        return list(session.exec(statement).all())
-
-    def get_slot_template(
-        self, session: Session, template_id: str | UUID, user_id: str | UUID
-    ) -> SlotTemplate | None:
-        """Get slot template by ID for specific user"""
-        template = session.exec(
-            select(SlotTemplate).where(
-                SlotTemplate.id == template_id,
-                SlotTemplate.user_id == user_id,
-            )
-        ).first()
-        return template
-
-    def get_default_template_for_day(
-        self, session: Session, user_id: str | UUID, day_of_week: int
-    ) -> SlotTemplate | None:
-        """Get the default template for a specific day of week"""
-        user_id_validated = validate_uuid(user_id, "user_id")
-        return session.exec(
-            select(SlotTemplate).where(
-                SlotTemplate.user_id == user_id_validated,
-                SlotTemplate.day_of_week == day_of_week,
-                SlotTemplate.is_default == True,  # noqa: E712
-            )
-        ).first()
-
-    def create_slot_template(
-        self,
-        session: Session,
-        template_data: SlotTemplateCreate,
-        user_id: str | UUID,
-    ) -> SlotTemplate:
-        """Create a new slot template"""
-        user_id_validated = validate_uuid(user_id, "user_id")
-
-        # If this template is set as default, unset any existing default for the same day
-        if template_data.is_default:
-            self._unset_default_for_day(
-                session, user_id_validated, template_data.day_of_week
-            )
-
-        template = self._create_instance(template_data, user_id_validated)
-        session.add(template)
-        session.commit()
-        session.refresh(template)
-        return template
-
-    def update_slot_template(
-        self,
-        session: Session,
-        template_id: str | UUID,
-        user_id: str | UUID,
-        template_data: SlotTemplateUpdate,
-    ) -> SlotTemplate:
-        """Update slot template"""
-        user_id_validated = validate_uuid(user_id, "user_id")
-        template = self.get_slot_template(session, template_id, user_id_validated)
-        if not template:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Slot template not found",
-            )
-
-        update_data = template_data.model_dump(exclude_unset=True, exclude={"slots"})
-
-        # Handle slots separately (convert to JSON)
-        if (
-            "slots" in template_data.model_fields_set
-            and template_data.slots is not None
-        ):
-            template.slots_json = [
-                slot.model_dump(mode="json") for slot in template_data.slots
-            ]
-
-        # Handle default template logic
-        new_day_of_week = update_data.get("day_of_week")
-        is_becoming_default = update_data.get("is_default")
-
-        # If explicitly setting as default OR moving an already-default template to a new day
-        if is_becoming_default or (new_day_of_week is not None and template.is_default):
-            target_day = (
-                new_day_of_week if new_day_of_week is not None else template.day_of_week
-            )
-            self._unset_default_for_day(
-                session, user_id_validated, target_day, exclude_id=template_id
-            )
-
-        for field, value in update_data.items():
-            setattr(template, field, value)
-
-        template.updated_at = datetime.now(UTC)
-        session.add(template)
-        session.commit()
-        session.refresh(template)
-        return template
-
-    def delete_slot_template(
-        self, session: Session, template_id: str | UUID, user_id: str | UUID
-    ) -> bool:
-        """Delete slot template"""
-        user_id_validated = validate_uuid(user_id, "user_id")
-        template = self.get_slot_template(session, template_id, user_id_validated)
-        if not template:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Slot template not found",
-            )
-
-        session.delete(template)
-        session.commit()
-        return True
-
-    def _unset_default_for_day(
-        self,
-        session: Session,
-        user_id: UUID,
-        day_of_week: int,
-        exclude_id: str | UUID | None = None,
-    ) -> None:
-        """Unset default flag for all templates of a specific day"""
-        statement = select(SlotTemplate).where(
-            SlotTemplate.user_id == user_id,
-            SlotTemplate.day_of_week == day_of_week,
-            SlotTemplate.is_default == True,  # noqa: E712
-        )
-        if exclude_id:
-            statement = statement.where(SlotTemplate.id != exclude_id)
-
-        templates = session.exec(statement).all()
-        for template in templates:
-            template.is_default = False
-            template.updated_at = datetime.now(UTC)
-            session.add(template)
-
-    def get_all_templates_grouped_by_day(
-        self, session: Session, user_id: str | UUID
-    ) -> list[dict]:
-        """Get all templates grouped by day of week"""
-        user_id_validated = validate_uuid(user_id, "user_id")
-        templates = self.get_slot_templates(session, user_id_validated, limit=1000)
-
-        # Group by day of week
-        by_day: dict[int, list[SlotTemplate]] = {}
-        for template in templates:
-            if template.day_of_week not in by_day:
-                by_day[template.day_of_week] = []
-            by_day[template.day_of_week].append(template)
-
-        # Build response for all days
-        result = []
-        for day in range(7):
-            day_templates = by_day.get(day, [])
-            default_template = next((t for t in day_templates if t.is_default), None)
-            result.append(
-                {
-                    "day_of_week": day,
-                    "day_name": self.DAY_NAMES[day],
-                    "templates": day_templates,
-                    "default_template": default_template,
-                }
-            )
-        return result
 
 
 # Create service instances for use in routers
@@ -2493,8 +2199,6 @@ project_service = ProjectService()
 goal_service = GoalService()
 task_service = TaskService()
 log_service = LogService()
-weekly_recurring_task_service = WeeklyRecurringTaskService()
 work_session_service = WorkSessionService()
 hook_token_service = HookTokenService()
 quick_task_service = QuickTaskService()
-slot_template_service = SlotTemplateService()

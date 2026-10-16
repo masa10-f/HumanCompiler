@@ -26,7 +26,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Clock, Search, FolderOpen, AlertCircle } from 'lucide-react';
-import { projectsApi, tasksApi } from '@/lib/api';
+import { tasksApi } from '@/lib/api';
+import { useProjectOptions } from '@/hooks/use-project-query';
 import { getSelectableProjects } from '@/lib/project-filters';
 import type { Project } from '@/types/project';
 
@@ -61,9 +62,7 @@ export function ManualTaskSelectDialog({
   const resumeContext = useWorkSessionResumeContext(selectedTaskId || undefined);
 
   // Fetch all projects
-  const { data: projects = [], isLoading: projectsLoading } = useQuery({
-    queryKey: ['projects', 'all'],
-    queryFn: () => projectsApi.getAll(0, 100),
+  const { data: projects = [], isLoading: projectsLoading } = useProjectOptions({
     enabled: open && !isInitialTaskMode,
   });
   const selectableProjects = useMemo(
@@ -123,12 +122,17 @@ export function ManualTaskSelectDialog({
 
   const handleStart = async () => {
     if (!selectedTaskId) return;
-    await onStart(
-      selectedTaskId,
-      calculateCheckoutTime(),
-      plannedOutcome || undefined,
-      true // is_manual_execution = true
-    );
+    try {
+      await onStart(
+        selectedTaskId,
+        calculateCheckoutTime(),
+        plannedOutcome || undefined,
+        true // is_manual_execution = true
+      );
+    } catch {
+      // Keep the dialog open so the user can retry; the caller reports the error
+      return;
+    }
     handleClose();
   };
 

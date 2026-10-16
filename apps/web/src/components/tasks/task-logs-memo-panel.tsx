@@ -158,7 +158,7 @@ export function TaskLogsMemoPanel({
       </CollapsibleTrigger>
 
       <CollapsibleContent>
-        <div className="pl-6 pt-2 pb-4 space-y-4">
+        <div className="space-y-4 pb-4 pt-2 sm:pl-6">
           {/* Memo Section */}
           <Card>
             <CardHeader className="pb-3">
@@ -254,8 +254,8 @@ export function TaskLogsMemoPanel({
                         className="p-3 bg-gray-50 rounded-md space-y-2"
                       >
                         {/* Session metadata */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                        <div className="flex min-w-0 items-start justify-between gap-2">
+                          <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-muted-foreground">
                             <span>
                               {format(new Date(session.started_at), 'MM/dd (E) HH:mm', { locale: ja })}
                             </span>
@@ -357,9 +357,9 @@ export function TaskLogsMemoPanel({
                   {logs.map((logEntry) => (
                     <div
                       key={logEntry.id}
-                      className="flex items-start justify-between p-3 bg-gray-50 rounded-md"
+                      className="flex min-w-0 items-start justify-between gap-2 rounded-md bg-gray-50 p-3"
                     >
-                      <div className="flex-1">
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <Badge variant="secondary" className="text-xs">
                             {(logEntry.actual_minutes / 60).toFixed(1)}h

@@ -81,6 +81,25 @@ export interface WeeklyReportRequest {
   week_start_date: string;
   /** フィルター対象プロジェクトID一覧（省略時は全プロジェクト） */
   project_ids?: string[];
+  /** プロジェクト・ゴール・タスクのノートを背景や次にやることの材料に使うか（省略時はtrue） */
+  include_notes?: boolean;
+}
+
+/**
+ * 週次レポートで参照したノート
+ * @description レポート生成時にコンテキストとして使用したノートの参照情報
+ */
+export interface WeeklyReportNoteReference {
+  /** ノートの対象エンティティ種別 */
+  entity_type: 'project' | 'goal' | 'task';
+  /** 対象エンティティID */
+  entity_id: string;
+  /** 対象エンティティのタイトル */
+  title: string;
+  /** 所属プロジェクトID */
+  project_id: string;
+  /** 所属ゴールID（ゴール・タスクのノートのみ） */
+  goal_id?: string | null;
 }
 
 /**
@@ -98,6 +117,8 @@ export interface WeeklyReportResponse {
   project_summaries: ProjectProgressSummary[];
   /** Markdown形式のレポート本文 */
   markdown_report: string;
+  /** レポート生成に使用したノート（旧バージョンのAPIでは省略される） */
+  referenced_notes?: WeeklyReportNoteReference[];
   /** レポート生成日時 (ISO 8601形式) */
   generated_at: string;
 }

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from sqlalchemy import text
 from sqlmodel import Session
 
@@ -62,3 +64,84 @@ def test_baseline_existing_schema_marks_legacy_migrations(tmp_path):
         assert pending == ["022_add_capacity_triage"]
     finally:
         manager.engine.dispose()
+
+
+def test_daily_plan_policy_upgrade_is_pending_after_baselining_027(tmp_path):
+    _use_sqlite_database(tmp_path)
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    real_migrations = Path(__file__).resolve().parents[1] / "migrations"
+    for name in (
+        "027_add_daily_plan_documents.sql",
+        "028_scope_daily_plan_policy.sql",
+        "028_scope_daily_plan_policy_rollback.sql",
+    ):
+        (migrations_dir / name).write_text((real_migrations / name).read_text())
+    manager = MigrationManager(str(migrations_dir))
+    try:
+        with Session(manager.engine) as session:
+            session.exec(
+                text("CREATE TABLE daily_plan_documents (id TEXT PRIMARY KEY)")
+            )
+            session.commit()
+        assert manager.baseline_existing_schema() == ["027_add_daily_plan_documents"]
+        assert [version for version, _path in manager.get_pending_migrations()] == [
+            "028_scope_daily_plan_policy"
+        ]
+        # Test discovery/splitting only; PostgreSQL RLS is not executed on SQLite.
+        statements = manager._split_sql_statements(
+            (migrations_dir / "028_scope_daily_plan_policy.sql").read_text()
+        )
+        assert len(statements) == 1
+        assert "TO authenticated" in statements[0]
+    finally:
+        manager.engine.dispose()
+
+
+def test_daily_notebook_search_migration_keeps_function_bodies_together():
+    manager = MigrationManager.__new__(MigrationManager)
+    path = (
+        Path(__file__).resolve().parents[1] / "migrations/029_add_daily_plan_search.sql"
+    )
+    statements = manager._split_sql_statements(path.read_text())
+    assert len(statements) == 5
+    assert "CREATE FUNCTION public.daily_plan_search_text" in statements[1]
+    assert "RETURN NEW;" in statements[2]
+    assert "END;" in statements[2]
+    assert "CREATE TRIGGER" in statements[3]
+    assert "UPDATE public.daily_plan_documents" in statements[4]
+
+
+def test_line_note_search_migrations_keep_function_body_together():
+    manager = MigrationManager.__new__(MigrationManager)
+    migrations = Path(__file__).resolve().parents[1] / "migrations"
+    for name in (
+        "032_add_daily_plan_line_note_search.sql",
+        "032_add_daily_plan_line_note_search_rollback.sql",
+    ):
+        statements = manager._split_sql_statements((migrations / name).read_text())
+        assert len(statements) == 2
+        assert "FUNCTION public.daily_plan_search_text" in statements[0]
+        assert "WHERE line <> ''''" in statements[0]
+        assert "UPDATE public.daily_plan_documents" in statements[1]
+    upgrade = (migrations / "032_add_daily_plan_line_note_search.sql").read_text()
+    assert "NULLIF(block->>''note'', '''')" in upgrade
+
+
+def test_project_paused_status_migrations_keep_do_block_together():
+    manager = MigrationManager.__new__(MigrationManager)
+    migrations = Path(__file__).resolve().parents[1] / "migrations"
+    upgrade = manager._split_sql_statements(
+        (migrations / "034_add_project_paused_status.sql").read_text()
+    )
+    assert len(upgrade) == 1
+    assert "ALTER COLUMN status TYPE VARCHAR(20) USING status::text" in upgrade[0]
+    assert "ENABLE ROW LEVEL SECURITY" in upgrade[0]
+    assert "CREATE POLICY projects_own_data" in upgrade[0]
+    assert upgrade[0].rstrip().endswith("'")
+
+    rollback = manager._split_sql_statements(
+        (migrations / "034_add_project_paused_status_rollback.sql").read_text()
+    )
+    assert len(rollback) == 1
+    assert "WHERE status::text = 'paused'" in rollback[0]

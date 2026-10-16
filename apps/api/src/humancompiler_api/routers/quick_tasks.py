@@ -93,9 +93,13 @@ async def get_quick_tasks(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     sort_by: Annotated[SortBy, Query()] = SortBy.CREATED_AT,
     sort_order: Annotated[SortOrder, Query()] = SortOrder.DESC,
-    task_status: Annotated[TaskStatus | None, Query(alias="status")] = None,
+    task_status: Annotated[list[TaskStatus] | None, Query(alias="status")] = None,
 ) -> list[QuickTaskResponse]:
-    """Get all quick tasks for current user with optional filtering and sorting"""
+    """Get all quick tasks for current user with optional filtering and sorting
+
+    ``status`` can be repeated (``?status=pending&status=in_progress``) to match
+    any of the given statuses before pagination is applied.
+    """
     logger.debug(
         f"Fetching quick tasks for user {current_user.user_id}, "
         f"skip={skip}, limit={limit}, status={task_status}"

@@ -5,7 +5,7 @@ import { log } from '@/lib/logger';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -42,13 +42,17 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useUpdateGoal, useGoalsByProject } from '@/hooks/use-goals-query';
 import { toast } from '@/hooks/use-toast';
 import { goalsApi } from '@/lib/api';
+import { queryKeys } from '@/lib/query-keys';
 import { GitBranch, Trash2, Plus } from 'lucide-react';
 import type { Goal } from '@/types/goal';
+import { toJSTDateInputValue, toJSTStartOfDayISOString } from '@/lib/date-utils';
+import { goalDueDateSchema } from '@/lib/validations/goal';
 
 const goalFormSchema = z.object({
   title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
   description: z.string().max(500, '500文字以内で入力してください').optional(),
   estimate_hours: z.number().min(0.1, '0.1時間以上で入力してください').max(1000, '1000時間以内で入力してください'),
+  due_date: goalDueDateSchema,
 });
 
 type GoalFormData = z.infer<typeof goalFormSchema>;
@@ -63,6 +67,7 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
   const [activeTab, setActiveTab] = useState('basic');
   const [selectedDependencyGoal, setSelectedDependencyGoal] = useState<string>('');
 
+  const queryClient = useQueryClient();
   const updateGoalMutation = useUpdateGoal();
 
   // Fetch available goals for dependencies (same project)
@@ -75,6 +80,13 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
     enabled: open,
   });
 
+  const refreshDependencies = () => {
+    refetchDependencies();
+    // The goal list's cached `dependencies` drive the 依存待ち badge and the
+    // pending-goal order, so it has to pick up the change too.
+    queryClient.invalidateQueries({ queryKey: queryKeys.goals.byProject(goal.project_id) });
+  };
+
   // Add dependency mutation
   const addDependencyMutation = useMutation({
     mutationFn: (dependsOnGoalId: string) =>
@@ -84,7 +96,7 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
         title: '依存関係を追加しました',
         description: '依存関係が正常に追加されました。',
       });
-      refetchDependencies();
+      refreshDependencies();
       setSelectedDependencyGoal('');
     },
     onError: (error: Error) => {
@@ -105,7 +117,7 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
         title: '依存関係を削除しました',
         description: '依存関係が正常に削除されました。',
       });
-      refetchDependencies();
+      refreshDependencies();
     },
     onError: (error: Error) => {
       log.error('Failed to delete goal dependency', error, { goalId: goal.id });
@@ -129,6 +141,7 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
       title: goal.title,
       description: goal.description || '',
       estimate_hours: typeof goal.estimate_hours === 'string' ? parseFloat(goal.estimate_hours) : goal.estimate_hours,
+      due_date: toJSTDateInputValue(goal.due_date),
     },
   });
 
@@ -138,6 +151,7 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
       title: goal.title,
       description: goal.description || '',
       estimate_hours: typeof goal.estimate_hours === 'string' ? parseFloat(goal.estimate_hours) : goal.estimate_hours,
+      due_date: toJSTDateInputValue(goal.due_date),
     });
   }, [goal, form]);
 
@@ -149,6 +163,7 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
           title: data.title,
           description: data.description || undefined,
           estimate_hours: data.estimate_hours,
+          due_date: data.due_date ? toJSTStartOfDayISOString(data.due_date) : null,
         }
       });
 
@@ -253,6 +268,19 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
                           {...field}
                           onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                         />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="due_date"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>期限</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

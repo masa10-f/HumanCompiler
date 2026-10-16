@@ -11,6 +11,7 @@ import { signIn } from '@/lib/auth'
 import { toast } from '@/hooks/use-toast'
 import { Loader2 } from 'lucide-react'
 import Image from 'next/image'
+import { RedirectIfAuthenticated } from '@/components/redirect-if-authenticated'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -47,6 +48,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-4">
+      <RedirectIfAuthenticated />
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">

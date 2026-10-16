@@ -8,6 +8,7 @@ from humancompiler_api.config import settings
 from humancompiler_api.database_config import (
     configure_database_extensions,
     setup_connection_listeners,
+    sqlalchemy_database_url,
 )
 
 # Configure database extensions before any connections are made
@@ -76,8 +77,7 @@ class Database:
     def get_engine(self):
         """Get SQLModel engine for database operations"""
         if self._engine is None:
-            # Use the database URL as-is from environment
-            database_url = settings.database_url
+            database_url = sqlalchemy_database_url(settings.database_url)
 
             # Connection args for PostgreSQL: timeouts, keepalives, and optional SSL.
             # NOTE: Do NOT use 'options' parameter (e.g. -c statement_timeout=...)

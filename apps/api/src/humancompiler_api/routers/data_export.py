@@ -169,10 +169,6 @@ async def import_user_data(
                 "tasks": total_records.get("tasks", 0),
                 "quick_tasks": total_records.get("quick_tasks", 0),
                 "schedules": total_records.get("schedules", 0),
-                "weekly_schedules": total_records.get("weekly_schedules", 0),
-                "weekly_recurring_tasks": total_records.get(
-                    "weekly_recurring_tasks", 0
-                ),
                 "logs": total_records.get("logs", 0),
                 "user_settings": total_records.get("user_settings", 0),
                 "triage_capacity_settings": total_records.get(
@@ -241,7 +237,6 @@ async def get_export_info(
             Task,
             QuickTask,
             Schedule,
-            WeeklySchedule,
             TriageCapacitySettings,
             TaskTriageRun,
             TaskTriageItem,
@@ -309,15 +304,6 @@ async def get_export_info(
                 ).all()
             )
 
-            # Count weekly schedules
-            weekly_schedules_count = len(
-                db_session.exec(
-                    select(WeeklySchedule).where(
-                        WeeklySchedule.user_id == current_user.user_id
-                    )
-                ).all()
-            )
-
             triage_settings_count = len(
                 db_session.exec(
                     select(TriageCapacitySettings).where(
@@ -351,8 +337,7 @@ async def get_export_info(
                     "Projects and goals",
                     "Tasks and task dependencies",
                     "Quick tasks",
-                    "Schedules and weekly schedules",
-                    "Weekly recurring tasks",
+                    "Schedules",
                     "Task logs and progress data",
                     "Capacity triage settings and history",
                     "User settings",
@@ -377,7 +362,6 @@ async def get_export_info(
                 "tasks": tasks_count,
                 "quick_tasks": quick_tasks_count,
                 "schedules": schedules_count,
-                "weekly_schedules": weekly_schedules_count,
                 "triage_capacity_settings": triage_settings_count,
                 "task_triage_runs": triage_runs_count,
                 "task_triage_items": triage_items_count,

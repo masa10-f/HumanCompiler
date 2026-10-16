@@ -17,10 +17,12 @@ import { TaskFormDialog } from '@/components/tasks/task-form-dialog';
 import { GoalTaskList } from '@/components/tasks/goal-task-list';
 import { ContextNotePanel } from '@/components/notes/context-note-panel';
 import { GoalTaskAssistantDialog } from '@/components/ai/goal-task-assistant-dialog';
-import { ArrowLeft, Plus, Clock, FileText, Loader2, AlertCircle, Sparkles } from 'lucide-react';
+import { ContextExportDialog } from '@/components/context-export/context-export-dialog';
+import { ArrowLeft, Plus, Clock, FileText, Loader2, AlertCircle, Sparkles, CalendarDays } from 'lucide-react';
 import { SortBy, SortOrder } from '@/types/sort';
 import type { SortOptions } from '@/types/sort';
 import { AppHeader } from '@/components/layout/app-header';
+import { safeFormatJapaneseDate } from '@/lib/date-utils';
 
 export default function GoalDetailPage() {
   const { user, loading: authLoading } = useAuth();
@@ -28,10 +30,7 @@ export default function GoalDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const goalId = params.goalId as string;
-  const [taskSortOptions, setTaskSortOptions] = useState<SortOptions>({
-    sortBy: SortBy.STATUS,
-    sortOrder: SortOrder.ASC,
-  });
+  const [taskSortOptions, setTaskSortOptions] = useState<SortOptions>();
 
   const {
     data: tasks = [],
@@ -179,10 +178,21 @@ export default function GoalDetailPage() {
           <span>›</span>
           <span>ゴール</span>
         </div>
-        <h1 className="text-3xl font-bold mb-2">{goal.title}</h1>
+        <div className="mb-2 flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <h1 className="min-w-0 text-3xl font-bold">{goal.title}</h1>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <ContextExportDialog scope="goal" targetId={goalId} />
+          </div>
+        </div>
         <p className="text-gray-600 mb-4">
           {goal.description || 'ゴールの説明がありません'}
         </p>
+        {goal.due_date && (
+          <div className="mb-4 flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-300">
+            <CalendarDays className="h-4 w-4" />
+            期限: {safeFormatJapaneseDate(goal.due_date)}
+          </div>
+        )}
 
         {/* Goal Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -280,8 +290,13 @@ export default function GoalDetailPage() {
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <SortDropdown
-              currentSort={taskSortOptions}
+              currentSort={taskSortOptions ?? { sortBy: SortBy.STATUS, sortOrder: SortOrder.ASC }}
               onSortChange={setTaskSortOptions}
+              defaultSortOption={{
+                label: 'Ready・優先度順',
+                selected: taskSortOptions === undefined,
+                onSelect: () => setTaskSortOptions(undefined),
+              }}
               sortFields={[
                 { value: SortBy.STATUS, label: 'ステータス' },
                 { value: SortBy.PRIORITY, label: '優先度' },
@@ -366,6 +381,7 @@ export default function GoalDetailPage() {
         ) : (
           <GoalTaskList
             tasks={tasks}
+            useDefaultSort={taskSortOptions === undefined}
             projectId={id}
             goalId={goalId}
             logsByTask={logsByTask}

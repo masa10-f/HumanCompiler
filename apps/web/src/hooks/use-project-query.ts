@@ -1,18 +1,94 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useCallback } from 'react'
 import { projectsApi } from '@/lib/api'
+import { queryKeys } from '@/lib/query-keys'
 import type { Project, ProjectCreate, ProjectUpdate } from '@/types/project'
 import type { SortOptions } from '@/types/sort'
+import { SortBy, SortOrder } from '@/types/sort'
 
 /**
  * Query keys for project caching with React Query.
  * Provides consistent cache key structure for all project-related queries.
  */
-export const projectKeys = {
-  all: ['projects'] as const,
-  lists: () => [...projectKeys.all, 'list'] as const,
-  list: (filters: string) => [...projectKeys.lists(), { filters }] as const,
-  details: () => [...projectKeys.all, 'detail'] as const,
-  detail: (id: string) => [...projectKeys.details(), id] as const,
+export const projectKeys = queryKeys.projects
+
+const PROJECT_OPTIONS_LIMIT = 100
+// TODO: Use a paginated collection with server-side sorting over 100 projects;
+// sorting only this first page does not produce the true top-N.
+// Keep this order aligned with STATUS_PRIORITY["project"] in
+// apps/api/src/humancompiler_api/models.py.
+const PROJECT_STATUS_PRIORITY: Record<Project['status'], number> = {
+  in_progress: 1,
+  pending: 2,
+  paused: 3,
+  completed: 4,
+  cancelled: 5,
+}
+const PROJECT_STALE_TIME = 30 * 60 * 1000
+const PROJECT_DETAIL_STALE_TIME = 5 * 60 * 1000
+const PROJECT_GC_TIME = 24 * 60 * 60 * 1000
+
+export function projectOptionsQueryOptions() {
+  return {
+    queryKey: projectKeys.options(),
+    queryFn: () => projectsApi.getAll(0, PROJECT_OPTIONS_LIMIT),
+    // Deliberately refresh stale shared metadata when the user returns.
+    refetchOnWindowFocus: true,
+    staleTime: PROJECT_STALE_TIME,
+    gcTime: PROJECT_GC_TIME,
+  }
+}
+
+function compareProjects(
+  left: Project,
+  right: Project,
+  sortBy = SortBy.STATUS,
+  sortOrder = SortOrder.ASC,
+) {
+  const direction = sortOrder === SortOrder.DESC ? -1 : 1
+
+  let comparison = 0
+  switch (sortBy) {
+    case SortBy.TITLE:
+      comparison = left.title.localeCompare(right.title, 'ja')
+      break
+    case SortBy.CREATED_AT:
+      comparison =
+        new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
+      break
+    case SortBy.UPDATED_AT:
+      comparison =
+        new Date(left.updated_at).getTime() - new Date(right.updated_at).getTime()
+      break
+    case SortBy.STATUS:
+    // Projects have no priority field, so keep the workflow status order.
+    case SortBy.PRIORITY:
+      comparison =
+        (PROJECT_STATUS_PRIORITY[left.status] ?? Number.MAX_SAFE_INTEGER) -
+        (PROJECT_STATUS_PRIORITY[right.status] ?? Number.MAX_SAFE_INTEGER)
+      break
+    default: {
+      const exhaustive: never = sortBy
+      void exhaustive
+      return 0
+    }
+  }
+
+  return comparison * direction
+}
+
+const sortProjectsCanonical = (projects: Project[]) =>
+  [...projects].sort(compareProjects)
+
+/**
+ * Fetches the shared project option set used by selectors and pages.
+ * The authenticated query provider warms the API's 100-item page after sign-in.
+ */
+export function useProjectOptions(options?: { enabled?: boolean }) {
+  return useQuery({
+    ...projectOptionsQueryOptions(),
+    enabled: options?.enabled ?? true,
+  })
 }
 
 /**
@@ -23,30 +99,50 @@ export const projectKeys = {
  * @returns UseQueryResult with project data, loading state, and error
  */
 export function useProject(projectId: string) {
+  const queryClient = useQueryClient()
+
   return useQuery({
     queryKey: projectKeys.detail(projectId),
     queryFn: () => projectsApi.getById(projectId),
     enabled: !!projectId,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    initialData: () =>
+      queryClient
+        .getQueryData<Project[]>(projectKeys.options())
+        ?.find((project) => project.id === projectId),
+    initialDataUpdatedAt: () =>
+      queryClient.getQueryState(projectKeys.options())?.dataUpdatedAt,
+    staleTime: PROJECT_DETAIL_STALE_TIME,
+    gcTime: PROJECT_GC_TIME,
+    refetchOnWindowFocus: true,
   })
 }
 
 /**
- * Fetches all projects with pagination and sorting.
+ * Sorts the shared project collection for the project list screen.
  *
- * @param skip - Number of records to skip (default: 0)
- * @param limit - Maximum records to return (default: 20)
  * @param sortOptions - Optional sorting configuration
+ * @param options - Optional query controls
  * @returns UseQueryResult with project array
  */
-export function useProjects(skip = 0, limit = 20, sortOptions?: SortOptions) {
-  const sortKey = sortOptions ? `sort-${sortOptions.sortBy}-${sortOptions.sortOrder}` : 'default';
+export function useProjects(
+  sortOptions?: SortOptions,
+  options?: { enabled?: boolean },
+) {
+  const sortBy = sortOptions?.sortBy
+  const sortOrder = sortOptions?.sortOrder
+  const selectProjects = useCallback(
+    (projects: Project[]) =>
+      [...projects]
+        .sort((left, right) =>
+          compareProjects(left, right, sortBy, sortOrder),
+        ),
+    [sortBy, sortOrder],
+  )
+
   return useQuery({
-    queryKey: projectKeys.list(`skip-${skip}-limit-${limit}-${sortKey}`),
-    queryFn: () => projectsApi.getAll(skip, limit, sortOptions),
-    staleTime: 2 * 60 * 1000, // 2 minutes for list view
-    gcTime: 5 * 60 * 1000, // 5 minutes
+    ...projectOptionsQueryOptions(),
+    enabled: options?.enabled ?? true,
+    select: selectProjects,
   })
 }
 
@@ -62,14 +158,22 @@ export function useCreateProject() {
   return useMutation({
     mutationFn: (projectData: ProjectCreate) => projectsApi.create(projectData),
     onSuccess: (newProject: Project) => {
-      // Invalidate and refetch project lists
-      queryClient.invalidateQueries({ queryKey: projectKeys.lists() })
-
-      // Optionally add the new project to cache
-      queryClient.setQueryData(
-        projectKeys.detail(newProject.id),
-        newProject
+      const cachedOptions = queryClient.getQueryData<Project[]>(
+        projectKeys.options(),
       )
+
+      queryClient.setQueryData(projectKeys.detail(newProject.id), newProject)
+      if (cachedOptions) {
+        queryClient.setQueryData<Project[]>(
+          projectKeys.options(),
+          sortProjectsCanonical([
+            ...cachedOptions.filter((project) => project.id !== newProject.id),
+            newProject,
+          ]),
+        )
+      } else {
+        void queryClient.invalidateQueries({ queryKey: projectKeys.options() })
+      }
     },
   })
 }
@@ -87,14 +191,27 @@ export function useUpdateProject() {
     mutationFn: ({ id, data }: { id: string; data: ProjectUpdate }) =>
       projectsApi.update(id, data),
     onSuccess: (updatedProject: Project) => {
-      // Update the cached project
-      queryClient.setQueryData(
-        projectKeys.detail(updatedProject.id),
-        updatedProject
+      const cachedOptions = queryClient.getQueryData<Project[]>(
+        projectKeys.options(),
       )
 
-      // Invalidate project lists to show updated data
-      queryClient.invalidateQueries({ queryKey: projectKeys.lists() })
+      queryClient.setQueryData(
+        projectKeys.detail(updatedProject.id),
+        updatedProject,
+      )
+      if (cachedOptions) {
+        queryClient.setQueryData<Project[]>(
+          projectKeys.options(),
+          sortProjectsCanonical(
+            cachedOptions.map((project) =>
+              project.id === updatedProject.id ? updatedProject : project,
+            ),
+          ),
+        )
+      } else {
+        void queryClient.invalidateQueries({ queryKey: projectKeys.options() })
+      }
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
     },
   })
 }
@@ -113,19 +230,29 @@ export function useDeleteProject() {
   return useMutation({
     mutationFn: (projectId: string) => projectsApi.delete(projectId),
     onSuccess: (_, projectId) => {
-      // Remove project from cache immediately
-      queryClient.removeQueries({ queryKey: projectKeys.detail(projectId) })
-
-      // Delay cache invalidation to allow dialog close animation to complete
-      // This prevents Radix UI dialog cleanup issues that cause UI freeze
+      // Updating the observed collection can unmount the Radix dialog. Wait
+      // for its close animation before doing that work and restoring styles.
       setTimeout(() => {
-        // Force reset body styles in case Radix UI dialog cleanup failed
+        const cachedOptions = queryClient.getQueryData<Project[]>(
+          projectKeys.options(),
+        )
+
+        if (cachedOptions) {
+          queryClient.setQueryData<Project[]>(
+            projectKeys.options(),
+            cachedOptions.filter((project) => project.id !== projectId),
+          )
+        } else {
+          void queryClient.invalidateQueries({ queryKey: projectKeys.options() })
+        }
+
+        queryClient.removeQueries({ queryKey: projectKeys.detail(projectId) })
+        void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
+
         if (typeof document !== 'undefined') {
           document.body.style.pointerEvents = ''
           document.body.style.overflow = ''
         }
-
-        queryClient.invalidateQueries({ queryKey: projectKeys.lists() })
       }, 300)
     },
   })

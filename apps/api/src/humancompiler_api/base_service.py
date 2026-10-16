@@ -86,7 +86,11 @@ class BaseService(ABC, Generic[T, CreateT, UpdateT]):
         # Add additional filters
         for key, value in filters.items():
             if hasattr(self.model, key) and value is not None:
-                statement = statement.where(getattr(self.model, key) == value)
+                column = getattr(self.model, key)
+                if isinstance(value, list | tuple | set):
+                    statement = statement.where(column.in_(value))
+                else:
+                    statement = statement.where(column == value)
 
         statement = self._apply_sorting(statement, sort_by, sort_order)
 

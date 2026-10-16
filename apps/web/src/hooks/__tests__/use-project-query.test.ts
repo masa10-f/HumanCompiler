@@ -2,13 +2,16 @@
  * @jest-environment jsdom
  */
 import { act, waitFor } from '@testing-library/react'
-import { createMockProject, createMockProjects, resetIdCounter } from './helpers/mock-factories'
-import { renderHookWithClient } from './helpers/test-utils'
+import { createMockProject } from './helpers/mock-factories'
+import {
+  createTestQueryClient,
+  renderHookWithClient,
+} from './helpers/test-utils'
 import type { Project, ProjectCreate, ProjectUpdate } from '@/types/project'
-import type { SortOptions } from '@/types/sort'
+import { queryKeys } from '@/lib/query-keys'
+import { SortBy, SortOrder } from '@/types/sort'
 
-// Mock the API
-const mockGetAll = jest.fn<Promise<Project[]>, [number?, number?, SortOptions?]>()
+const mockGetAll = jest.fn<Promise<Project[]>, [number?, number?]>()
 const mockGetById = jest.fn<Promise<Project>, [string]>()
 const mockCreate = jest.fn<Promise<Project>, [ProjectCreate]>()
 const mockUpdate = jest.fn<Promise<Project>, [string, ProjectUpdate]>()
@@ -16,7 +19,7 @@ const mockDelete = jest.fn<Promise<void>, [string]>()
 
 jest.mock('@/lib/api', () => ({
   projectsApi: {
-    getAll: (...args: [number?, number?, SortOptions?]) => mockGetAll(...args),
+    getAll: (...args: [number?, number?]) => mockGetAll(...args),
     getById: (id: string) => mockGetById(id),
     create: (data: ProjectCreate) => mockCreate(data),
     update: (id: string, data: ProjectUpdate) => mockUpdate(id, data),
@@ -24,224 +27,258 @@ jest.mock('@/lib/api', () => ({
   },
 }))
 
-// Import after mocks
 import {
-  useProject,
-  useProjects,
-  useCreateProject,
-  useUpdateProject,
-  useDeleteProject,
   projectKeys,
+  useCreateProject,
+  useDeleteProject,
+  useProject,
+  useProjectOptions,
+  useProjects,
+  useUpdateProject,
 } from '../use-project-query'
 
-describe('projectKeys', () => {
-  it('should generate correct keys for all', () => {
-    expect(projectKeys.all).toEqual(['projects'])
-  })
+function createProjectTestClient() {
+  const queryClient = createTestQueryClient()
+  queryClient.setQueryDefaults(projectKeys.all, { gcTime: Infinity })
+  return queryClient
+}
 
-  it('should generate correct keys for lists', () => {
-    expect(projectKeys.lists()).toEqual(['projects', 'list'])
-  })
-
-  it('should generate correct keys for list with filters', () => {
-    expect(projectKeys.list('filter-1')).toEqual(['projects', 'list', { filters: 'filter-1' }])
-  })
-
-  it('should generate correct keys for details', () => {
-    expect(projectKeys.details()).toEqual(['projects', 'detail'])
-  })
-
-  it('should generate correct keys for detail', () => {
-    expect(projectKeys.detail('proj-1')).toEqual(['projects', 'detail', 'proj-1'])
-  })
-})
-
-describe('useProject', () => {
+describe('project query cache', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    resetIdCounter()
   })
 
-  it('should fetch single project', async () => {
-    const mockProject = createMockProject({ id: 'proj-1', title: 'Test Project' })
-    mockGetById.mockResolvedValue(mockProject)
+  afterEach(() => {
+    jest.useRealTimers()
+  })
 
-    const { result } = renderHookWithClient(() => useProject('proj-1'))
+  it('uses one canonical collection key', () => {
+    expect(projectKeys.options()).toEqual(['projects', 'options'])
+    expect(projectKeys.detail('project-1')).toEqual([
+      'projects',
+      'detail',
+      'project-1',
+    ])
+  })
+
+  it('fetches the shared project options once with the API limit', async () => {
+    const projects = [createMockProject({ id: 'project-1' })]
+    mockGetAll.mockResolvedValue(projects)
+    const queryClient = createProjectTestClient()
+
+    const options = renderHookWithClient(() => useProjectOptions(), {
+      queryClient,
+    })
+    const list = renderHookWithClient(() => useProjects(), { queryClient })
 
     await waitFor(() => {
-      expect(result.current.isSuccess).toBe(true)
+      expect(options.result.current.data).toEqual(projects)
+      expect(list.result.current.data).toEqual(projects)
     })
-
-    expect(mockGetById).toHaveBeenCalledWith('proj-1')
-    expect(result.current.data).toEqual(mockProject)
+    expect(mockGetAll).toHaveBeenCalledTimes(1)
+    expect(mockGetAll).toHaveBeenCalledWith(0, 100)
   })
 
-  it('should not fetch when projectId is falsy', async () => {
-    const { result } = renderHookWithClient(() => useProject(''))
+  it('does not fetch when disabled', () => {
+    const { result } = renderHookWithClient(() =>
+      useProjectOptions({ enabled: false }),
+    )
 
-    // Query should be disabled
-    expect(result.current.isPending).toBe(true)
     expect(result.current.fetchStatus).toBe('idle')
+    expect(mockGetAll).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [SortBy.TITLE, SortOrder.ASC, ['second', 'first']],
+    [SortBy.TITLE, SortOrder.DESC, ['first', 'second']],
+    [SortBy.CREATED_AT, SortOrder.ASC, ['second', 'first']],
+    [SortBy.CREATED_AT, SortOrder.DESC, ['first', 'second']],
+    [SortBy.UPDATED_AT, SortOrder.ASC, ['first', 'second']],
+    [SortBy.UPDATED_AT, SortOrder.DESC, ['second', 'first']],
+    [SortBy.STATUS, SortOrder.ASC, ['first', 'second']],
+    [SortBy.STATUS, SortOrder.DESC, ['second', 'first']],
+  ])('sorts by %s %s without another request', async (sortBy, sortOrder, ids) => {
+    const first = createMockProject({
+      id: 'first',
+      title: 'B',
+      status: 'pending',
+      created_at: '2025-01-02T00:00:00Z',
+      updated_at: '2025-01-01T00:00:00Z',
+    })
+    const second = createMockProject({
+      id: 'second',
+      title: 'A',
+      status: 'completed',
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: '2025-01-02T00:00:00Z',
+    })
+    mockGetAll.mockResolvedValue([first, second])
+
+    const { result } = renderHookWithClient(() =>
+      useProjects({ sortBy, sortOrder }),
+    )
+
+    await waitFor(() => {
+      expect(result.current.data?.map((project) => project.id)).toEqual(ids)
+    })
+    expect(mockGetAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('sorts paused projects after pending ones and before closed ones', async () => {
+    mockGetAll.mockResolvedValue([
+      createMockProject({ id: 'cancelled', status: 'cancelled' }),
+      createMockProject({ id: 'completed', status: 'completed' }),
+      createMockProject({ id: 'paused', status: 'paused' }),
+      createMockProject({ id: 'pending', status: 'pending' }),
+      createMockProject({ id: 'in-progress', status: 'in_progress' }),
+    ])
+
+    const { result } = renderHookWithClient(() =>
+      useProjects({ sortBy: SortBy.STATUS, sortOrder: SortOrder.ASC }),
+    )
+
+    await waitFor(() => {
+      expect(result.current.data?.map((project) => project.id)).toEqual([
+        'in-progress',
+        'pending',
+        'paused',
+        'completed',
+        'cancelled',
+      ])
+    })
+  })
+
+  it('renders fresh cached list data without a detail request', () => {
+    const cached = createMockProject({
+      id: 'project-1',
+      title: 'Cached',
+    })
+    const queryClient = createProjectTestClient()
+    queryClient.setQueryData(projectKeys.options(), [cached], {
+      updatedAt: Date.now(),
+    })
+
+    const { result } = renderHookWithClient(
+      () => useProject('project-1'),
+      { queryClient },
+    )
+
+    expect(result.current.data).toEqual(cached)
+    expect(result.current.isLoading).toBe(false)
     expect(mockGetById).not.toHaveBeenCalled()
   })
 
-  it('should have 5 minute staleTime', async () => {
-    const mockProject = createMockProject()
-    mockGetById.mockResolvedValue(mockProject)
-
-    const { result, queryClient } = renderHookWithClient(() => useProject('proj-1'))
-
-    await waitFor(() => {
-      expect(result.current.isSuccess).toBe(true)
+  it('adds a created project to the shared cache', async () => {
+    const existing = createMockProject({
+      id: 'existing',
+      status: 'completed',
     })
+    const created = createMockProject({ id: 'created', status: 'pending' })
+    const queryClient = createProjectTestClient()
+    queryClient.setQueryData(projectKeys.options(), [existing])
+    mockCreate.mockResolvedValue(created)
 
-    // Check that the query has the expected stale time by checking the query cache
-    const queryState = queryClient.getQueryState(projectKeys.detail('proj-1'))
-    expect(queryState).toBeDefined()
-  })
-})
-
-describe('useProjects', () => {
-  beforeEach(() => {
-    jest.clearAllMocks()
-    resetIdCounter()
-  })
-
-  it('should fetch all projects with pagination', async () => {
-    const mockProjects = createMockProjects(5)
-    mockGetAll.mockResolvedValue(mockProjects)
-
-    const { result } = renderHookWithClient(() => useProjects(0, 20))
-
-    await waitFor(() => {
-      expect(result.current.isSuccess).toBe(true)
+    const { result } = renderHookWithClient(() => useCreateProject(), {
+      queryClient,
     })
-
-    expect(mockGetAll).toHaveBeenCalledWith(0, 20, undefined)
-    expect(result.current.data).toHaveLength(5)
-  })
-
-  it('should include sort options', async () => {
-    const mockProjects = createMockProjects(3)
-    mockGetAll.mockResolvedValue(mockProjects)
-
-    const sortOptions: SortOptions = { sortBy: 'title', sortOrder: 'asc' }
-    const { result } = renderHookWithClient(() => useProjects(0, 20, sortOptions))
-
-    await waitFor(() => {
-      expect(result.current.isSuccess).toBe(true)
-    })
-
-    expect(mockGetAll).toHaveBeenCalledWith(0, 20, sortOptions)
-  })
-})
-
-describe('useCreateProject', () => {
-  beforeEach(() => {
-    jest.clearAllMocks()
-    resetIdCounter()
-  })
-
-  it('should create project and invalidate lists', async () => {
-    const newProject = createMockProject({ id: 'new-proj', title: 'New Project' })
-    mockCreate.mockResolvedValue(newProject)
-
-    const { result, queryClient } = renderHookWithClient(() => useCreateProject())
-
-    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries')
-
     await act(async () => {
       await result.current.mutateAsync({
-        title: 'New Project',
-        status: 'pending',
+        title: created.title,
+        status: created.status,
       })
     })
 
-    expect(mockCreate).toHaveBeenCalledWith({
-      title: 'New Project',
+    expect(queryClient.getQueryData(projectKeys.options())).toEqual([
+      created,
+      existing,
+    ])
+    expect(queryClient.getQueryData(projectKeys.detail(created.id))).toEqual(
+      created,
+    )
+  })
+
+  it('invalidates the collection after a cold-cache create', async () => {
+    const created = createMockProject({ id: 'created' })
+    const queryClient = createProjectTestClient()
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries')
+    mockCreate.mockResolvedValue(created)
+
+    const { result } = renderHookWithClient(() => useCreateProject(), {
+      queryClient,
+    })
+    await act(async () => {
+      await result.current.mutateAsync({
+        title: created.title,
+        status: created.status,
+      })
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: projectKeys.options(),
+    })
+  })
+
+  it('updates the detail and shared collection caches', async () => {
+    const original = createMockProject({
+      id: 'project-1',
+      title: 'Before',
       status: 'pending',
     })
+    const other = createMockProject({
+      id: 'project-2',
+      status: 'in_progress',
+    })
+    const updated = { ...original, title: 'After', status: 'completed' as const }
+    const queryClient = createProjectTestClient()
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries')
+    queryClient.setQueryData(projectKeys.options(), [original, other])
+    mockUpdate.mockResolvedValue(updated)
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: projectKeys.lists() })
-  })
-
-  it('should call API with correct data', async () => {
-    const newProject = createMockProject({ id: 'cached-proj', title: 'Cached Project' })
-    mockCreate.mockResolvedValue(newProject)
-
-    const { result } = renderHookWithClient(() => useCreateProject())
-
+    const { result } = renderHookWithClient(() => useUpdateProject(), {
+      queryClient,
+    })
     await act(async () => {
       await result.current.mutateAsync({
-        title: 'Cached Project',
-        status: 'pending',
+        id: original.id,
+        data: { title: updated.title, status: updated.status },
       })
     })
 
-    expect(mockCreate).toHaveBeenCalledWith({
-      title: 'Cached Project',
-      status: 'pending',
+    expect(queryClient.getQueryData(projectKeys.options())).toEqual([
+      other,
+      updated,
+    ])
+    expect(queryClient.getQueryData(projectKeys.detail(original.id))).toEqual(
+      updated,
+    )
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: queryKeys.dashboard.all,
     })
   })
-})
 
-describe('useUpdateProject', () => {
-  beforeEach(() => {
-    jest.clearAllMocks()
-    resetIdCounter()
-  })
-
-  it('should update cache and invalidate lists', async () => {
-    const updatedProject = createMockProject({ id: 'proj-1', title: 'Updated' })
-    mockUpdate.mockResolvedValue(updatedProject)
-
-    const { result, queryClient } = renderHookWithClient(() => useUpdateProject())
-
-    // Pre-populate cache
-    queryClient.setQueryData(projectKeys.detail('proj-1'), createMockProject({ id: 'proj-1' }))
-
-    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries')
-
-    await act(async () => {
-      await result.current.mutateAsync({
-        id: 'proj-1',
-        data: { title: 'Updated' },
-      })
-    })
-
-    expect(mockUpdate).toHaveBeenCalledWith('proj-1', { title: 'Updated' })
-
-    // Check lists were invalidated
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: projectKeys.lists() })
-  })
-})
-
-describe('useDeleteProject', () => {
-  beforeEach(() => {
-    jest.clearAllMocks()
-    resetIdCounter()
-  })
-
-  it('should remove from cache and invalidate lists', async () => {
+  it('removes a deleted project after the dialog close delay', async () => {
+    jest.useFakeTimers()
+    const project = createMockProject({ id: 'project-1' })
+    const queryClient = createProjectTestClient()
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries')
+    queryClient.setQueryData(projectKeys.options(), [project])
+    queryClient.setQueryData(projectKeys.detail(project.id), project)
     mockDelete.mockResolvedValue(undefined)
 
-    const { result, queryClient } = renderHookWithClient(() => useDeleteProject())
-
-    // Pre-populate cache
-    queryClient.setQueryData(projectKeys.detail('proj-to-delete'), createMockProject())
-
-    const removeQueriesSpy = jest.spyOn(queryClient, 'removeQueries')
-    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries')
-
+    const { result } = renderHookWithClient(() => useDeleteProject(), {
+      queryClient,
+    })
     await act(async () => {
-      await result.current.mutateAsync('proj-to-delete')
+      await result.current.mutateAsync(project.id)
+    })
+    await act(async () => {
+      jest.advanceTimersByTime(300)
     })
 
-    expect(mockDelete).toHaveBeenCalledWith('proj-to-delete')
-
-    expect(removeQueriesSpy).toHaveBeenCalledWith({
-      queryKey: projectKeys.detail('proj-to-delete'),
+    expect(queryClient.getQueryData(projectKeys.options())).toEqual([])
+    expect(queryClient.getQueryData(projectKeys.detail(project.id))).toBeUndefined()
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: queryKeys.dashboard.all,
     })
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: projectKeys.lists() })
   })
 })

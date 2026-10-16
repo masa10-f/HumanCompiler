@@ -11,7 +11,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { useProjects } from '@/hooks/use-projects';
+import { useDeleteProject } from '@/hooks/use-project-query';
 import type { Project } from '@/types/project';
 
 interface ProjectDeleteDialogProps {
@@ -22,12 +22,12 @@ interface ProjectDeleteDialogProps {
 export function ProjectDeleteDialog({ project, children }: ProjectDeleteDialogProps) {
   const [open, setOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const { deleteProject } = useProjects();
+  const deleteProject = useDeleteProject();
 
   const handleDelete = async () => {
     try {
       setIsDeleting(true);
-      await deleteProject(project.id);
+      await deleteProject.mutateAsync(project.id);
       setOpen(false);
     } catch (error) {
       log.error('Failed to delete project', error, { component: 'ProjectDeleteDialog', projectId: project.id, action: 'deleteProject' });

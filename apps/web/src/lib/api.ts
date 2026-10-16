@@ -37,31 +37,17 @@ import type {
   TimelineOverviewData,
 } from "@/types/timeline";
 import type {
-  WeeklyPlanRequest,
-  WeeklyPlanResponse,
-  WeeklyScheduleData,
   WorkloadAnalysis,
   PrioritySuggestions,
   ScheduleRequest,
   ScheduleResult,
+  SchedulerSolverConfig,
   SchedulerTuningConfig,
-  SavedWeeklySchedule,
-  SlotTemplate,
-  SlotTemplateCreate,
-  SlotTemplateUpdate,
-  DayOfWeekTemplates,
 } from "@/types/ai-planning";
 import type {
-  TestAIIntegrationResponse,
-  SaveDailyScheduleResponse,
   DailySchedule,
   TestSchedulerResponse,
 } from "@/types/api-responses";
-import type {
-  WeeklyRecurringTask,
-  WeeklyRecurringTaskCreate,
-  WeeklyRecurringTaskUpdate,
-} from "@/types/weekly-recurring-task";
 import type {
   WorkSession,
   WorkSessionStartRequest,
@@ -80,6 +66,11 @@ import type {
 } from "@/types/reschedule";
 import type { SortOptions } from "@/types/sort";
 import type { ContextNote, ContextNoteUpdate } from "@/types/context-note";
+import type {
+  ContextExportOptions,
+  ContextExportResponse,
+  ContextExportScope,
+} from "@/types/context-export";
 import type {
   QuickTask,
   QuickTaskCreate,
@@ -109,9 +100,33 @@ import type {
   GoalTaskDraftRequest,
   GoalTaskDraftResponse,
 } from "@/types/ai-drafts";
+import type { RecentDashboardItem } from "@/types/dashboard";
+import type {
+  DailyPlanDocumentV1,
+  DailyPlanHistoryQuery,
+  DailyPlanHistoryResponse,
+  DailyPlanResponse,
+  DailyPlanTaskActionRequest,
+  DailyPlanTaskActionResponse,
+} from "@/types/daily-plan";
 
 export const DEFAULT_TASK_PAGE_LIMIT = 100;
 const AI_DRAFT_REQUEST_TIMEOUT_MS = 30000;
+
+/**
+ * Builds the query string for a context export request.
+ */
+export function buildContextExportQuery(options: ContextExportOptions): string {
+  const params = new URLSearchParams({
+    include_completed: String(options.includeCompleted),
+    include_work_sessions: String(options.includeWorkSessions),
+    include_daily_plans: String(options.includeDailyPlans),
+  });
+  if (options.periodDays !== null) {
+    params.set("period_days", String(options.periodDays));
+  }
+  return params.toString();
+}
 
 type RawTask = Omit<Task, "estimate_hours"> & {
   estimate_hours: number | string | null | undefined;
@@ -581,6 +596,15 @@ class ApiClient {
     return { ...page, items: page.items.map(normalizeWorkspaceItem) };
   }
 
+  async getRecentDashboardItems(
+    limit: number = 5,
+  ): Promise<RecentDashboardItem[]> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    return this.request<RecentDashboardItem[]>(
+      `/api/dashboard/recent-items?${params.toString()}`,
+    );
+  }
+
   async getTaskRecommendations(): Promise<TaskRecommendation[]> {
     const recommendations = await this.request<
       Array<Omit<TaskRecommendation, "task"> & { task: RawWorkspaceItem }>
@@ -726,76 +750,6 @@ class ApiClient {
 
   // === AI Planning API methods ===
 
-  /**
-   * Generates a weekly task plan using OR-Tools optimizer.
-   *
-   * @param planRequest - Weekly plan request configuration
-   * @returns Optimized weekly plan response
-   */
-  async generateWeeklyPlan(
-    planRequest: WeeklyPlanRequest,
-  ): Promise<WeeklyPlanResponse> {
-    const meetingBufferHours = 5;
-    const availableHours = Math.max(
-      0,
-      planRequest.capacity_hours - meetingBufferHours,
-    );
-    const projectAllocations = Object.entries(
-      planRequest.project_allocations || {},
-    ).map(([projectId, percentage]) => {
-      const priorityWeight = Number(percentage) / 100;
-      const targetHours = availableHours * priorityWeight;
-      return {
-        project_id: projectId,
-        project_title: projectId,
-        target_hours: targetHours,
-        max_hours: targetHours * 1.5,
-        priority_weight: priorityWeight,
-      };
-    });
-
-    const solverRequest = {
-      week_start_date: planRequest.week_start_date,
-      constraints: {
-        total_capacity_hours: planRequest.capacity_hours,
-        meeting_buffer_hours: meetingBufferHours,
-        project_allocations: projectAllocations,
-        deadline_weight: 0.4,
-        project_balance_weight: 0.3,
-        effort_efficiency_weight: 0.3,
-      },
-      project_filter: planRequest.project_filter,
-      selected_recurring_task_ids:
-        planRequest.selected_recurring_task_ids || [],
-      preferences: planRequest.preferences || {},
-    };
-
-    const solverResponse = await this.request<WeeklyScheduleData>(
-      "/api/ai/weekly-task-solver",
-      {
-        method: "POST",
-        body: JSON.stringify(solverRequest),
-      },
-    );
-
-    // Convert TaskSolverResponse to WeeklyPlanResponse format for compatibility
-    return {
-      success: solverResponse.success,
-      week_start_date: solverResponse.week_start_date,
-      total_planned_hours: solverResponse.total_allocated_hours,
-      task_plans: solverResponse.selected_tasks || [],
-      assigned_task_hours: solverResponse.assigned_task_hours || {},
-      assigned_recurring_task_hours:
-        solverResponse.assigned_recurring_task_hours || {},
-      recommendations: [], // TaskSolver doesn't have recommendations
-      insights: solverResponse.optimization_insights || [],
-      project_allocations: solverResponse.project_allocations || [],
-      constraint_analysis: solverResponse.constraint_analysis,
-      solver_metrics: solverResponse.solver_metrics,
-      generated_at: solverResponse.generated_at,
-    };
-  }
-
   async analyzeWorkload(projectIds?: string[]): Promise<WorkloadAnalysis> {
     const body = projectIds ? { project_ids: projectIds } : {};
     return this.request<WorkloadAnalysis>("/api/ai/analyze-workload", {
@@ -812,10 +766,6 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify(body),
     });
-  }
-
-  async testAIIntegration(): Promise<TestAIIntegrationResponse> {
-    return this.request<TestAIIntegrationResponse>("/api/ai/weekly-plan/test");
   }
 
   async generateGoalTaskDraft(
@@ -949,17 +899,59 @@ class ApiClient {
     });
   }
 
-  async saveDailySchedule(
-    scheduleData: ScheduleResult & { date: string; generated_at: string },
-  ): Promise<SaveDailyScheduleResponse> {
-    return this.request<SaveDailyScheduleResponse>("/api/schedule/daily/save", {
-      method: "POST",
-      body: JSON.stringify(scheduleData),
+  async getDailySchedule(date: string): Promise<DailySchedule> {
+    return this.request<DailySchedule>(`/api/schedule/daily/${date}/`);
+  }
+
+  async listDailyPlanDocuments(query: DailyPlanHistoryQuery = {}): Promise<DailyPlanHistoryResponse> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== "") params.set(key, String(value));
+    }
+    return this.request<DailyPlanHistoryResponse>(`/api/daily-plans?${params}`);
+  }
+
+  async getDailyPlanDocument(date: string): Promise<DailyPlanResponse> {
+    return this.request<DailyPlanResponse>(`/api/daily-plans/${date}`);
+  }
+
+  async updateDailyPlanDocument(
+    date: string,
+    expectedRevision: number,
+    document: DailyPlanDocumentV1,
+  ): Promise<DailyPlanResponse> {
+    return this.request<DailyPlanResponse>(`/api/daily-plans/${date}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        expected_revision: expectedRevision,
+        document,
+      }),
     });
   }
 
-  async getDailySchedule(date: string): Promise<DailySchedule> {
-    return this.request<DailySchedule>(`/api/schedule/daily/${date}/`);
+  async generateDailyPlanDocument(
+    date: string,
+    solverConfig?: SchedulerSolverConfig,
+  ): Promise<DailyPlanResponse> {
+    return this.request<DailyPlanResponse>(
+      `/api/daily-plans/${date}/generate`,
+      solverConfig
+        ? {
+            method: "POST",
+            body: JSON.stringify({ solver_config: solverConfig }),
+          }
+        : { method: "POST" },
+    );
+  }
+
+  async applyDailyPlanTaskAction(
+    date: string,
+    request: DailyPlanTaskActionRequest,
+  ): Promise<DailyPlanTaskActionResponse> {
+    return this.request<DailyPlanTaskActionResponse>(
+      `/api/daily-plans/${date}/task-action`,
+      { method: "POST", body: JSON.stringify(request) },
+    );
   }
 
   async listDailySchedules(
@@ -981,14 +973,6 @@ class ApiClient {
 
   async getSchedulerTuningConfig(): Promise<SchedulerTuningConfig> {
     return this.request<SchedulerTuningConfig>("/api/schedule/tuning/config");
-  }
-
-  async getWeeklyScheduleOptions(): Promise<
-    import("@/types/ai-planning").WeeklyScheduleOption[]
-  > {
-    return this.request<import("@/types/ai-planning").WeeklyScheduleOption[]>(
-      "/api/schedule/weekly-schedule-options",
-    );
   }
 
   // === Log API methods ===
@@ -1069,71 +1053,6 @@ class ApiClient {
     return this.request<TaskProgress>(`/api/progress/task/${taskId}/`);
   }
 
-  // === Weekly Schedule API methods ===
-
-  /**
-   * Fetches saved weekly schedules.
-   *
-   * @param skip - Pagination offset (default: 0)
-   * @param limit - Maximum results (default: 30)
-   * @returns Array of saved weekly schedules
-   */
-  async getWeeklySchedules(
-    skip = 0,
-    limit = 30,
-  ): Promise<SavedWeeklySchedule[]> {
-    return this.request<SavedWeeklySchedule[]>(
-      `/api/weekly-schedule/list?skip=${skip}&limit=${limit}`,
-    );
-  }
-
-  async getWeeklySchedule(weekStartDate: string): Promise<SavedWeeklySchedule> {
-    return this.request<SavedWeeklySchedule>(
-      `/api/weekly-schedule/${weekStartDate}/`,
-    );
-  }
-
-  async saveWeeklySchedule(
-    weekStartDate: string,
-    scheduleData: any,
-  ): Promise<SavedWeeklySchedule> {
-    return this.request<SavedWeeklySchedule>("/api/weekly-schedule/save", {
-      method: "POST",
-      body: JSON.stringify({
-        week_start_date: weekStartDate,
-        schedule_data: scheduleData,
-      }),
-    });
-  }
-
-  async updateWeeklyScheduleDraft(
-    weekStartDate: string,
-    scheduleData: Record<string, unknown>,
-    expectedUpdatedAt?: string | null,
-  ): Promise<SavedWeeklySchedule> {
-    return this.request<SavedWeeklySchedule>(
-      `/api/weekly-schedule/${weekStartDate}`,
-      {
-        method: "PUT",
-        body: JSON.stringify({
-          schedule_data: scheduleData,
-          expected_updated_at: expectedUpdatedAt ?? null,
-        }),
-      },
-    );
-  }
-
-  async deleteWeeklySchedule(
-    weekStartDate: string,
-  ): Promise<{ message: string }> {
-    return this.request<{ message: string }>(
-      `/api/weekly-schedule/${weekStartDate}/`,
-      {
-        method: "DELETE",
-      },
-    );
-  }
-
   // === Timeline API methods ===
 
   /**
@@ -1190,13 +1109,18 @@ class ApiClient {
    *
    * @param weekStartDate - Start date of the week (YYYY-MM-DD)
    * @param projectIds - Optional project IDs to filter
+   * @param includeNotes - Use project/goal/task notes as report context
    * @returns Weekly report data
    */
   async generateWeeklyReport(
     weekStartDate: string,
     projectIds?: string[],
+    includeNotes = true,
   ): Promise<import("@/types/reports").WeeklyReportResponse> {
-    const body: any = { week_start_date: weekStartDate };
+    const body: import("@/types/reports").WeeklyReportRequest = {
+      week_start_date: weekStartDate,
+      include_notes: includeNotes,
+    };
     if (projectIds && projectIds.length > 0) {
       body.project_ids = projectIds;
     }
@@ -1207,68 +1131,6 @@ class ApiClient {
         body: JSON.stringify(body),
       },
     );
-  }
-
-  // === Weekly Recurring Tasks ===
-
-  /**
-   * Fetches weekly recurring task templates.
-   *
-   * @param skip - Pagination offset (default: 0)
-   * @param limit - Maximum results (default: 20)
-   * @param category - Optional category filter
-   * @param isActive - Optional active status filter
-   * @returns Array of recurring task templates
-   */
-  async getWeeklyRecurringTasks(
-    skip: number = 0,
-    limit: number = 20,
-    category?: string,
-    isActive?: boolean,
-  ): Promise<WeeklyRecurringTask[]> {
-    const params = new URLSearchParams();
-    if (skip) params.append("skip", skip.toString());
-    if (limit) params.append("limit", limit.toString());
-    if (category) params.append("category", category);
-    if (isActive !== undefined) params.append("is_active", isActive.toString());
-
-    return this.request<WeeklyRecurringTask[]>(
-      `/api/weekly-recurring-tasks?${params.toString()}`,
-    );
-  }
-
-  async getWeeklyRecurringTask(taskId: string): Promise<WeeklyRecurringTask> {
-    return this.request<WeeklyRecurringTask>(
-      `/api/weekly-recurring-tasks/${taskId}/`,
-    );
-  }
-
-  async createWeeklyRecurringTask(
-    taskData: WeeklyRecurringTaskCreate,
-  ): Promise<WeeklyRecurringTask> {
-    return this.request<WeeklyRecurringTask>("/api/weekly-recurring-tasks", {
-      method: "POST",
-      body: JSON.stringify(taskData),
-    });
-  }
-
-  async updateWeeklyRecurringTask(
-    taskId: string,
-    taskData: WeeklyRecurringTaskUpdate,
-  ): Promise<WeeklyRecurringTask> {
-    return this.request<WeeklyRecurringTask>(
-      `/api/weekly-recurring-tasks/${taskId}/`,
-      {
-        method: "PUT",
-        body: JSON.stringify(taskData),
-      },
-    );
-  }
-
-  async deleteWeeklyRecurringTask(taskId: string): Promise<void> {
-    return this.request<void>(`/api/weekly-recurring-tasks/${taskId}/`, {
-      method: "DELETE",
-    });
   }
 
   // === Work Sessions ===
@@ -1585,6 +1447,28 @@ class ApiClient {
     });
   }
 
+  // === Context Export API methods ===
+
+  /**
+   * Exports a project's or goal's notes, tasks, and work history as Markdown
+   * that can be handed to an AI assistant as context.
+   *
+   * @param scope - Whether to export a project or a goal
+   * @param id - The project or goal UUID
+   * @param options - What to include in the export
+   * @returns The Markdown document and a suggested filename
+   */
+  async getContextExport(
+    scope: ContextExportScope,
+    id: string,
+    options: ContextExportOptions,
+  ): Promise<ContextExportResponse> {
+    const collection = scope === "project" ? "projects" : "goals";
+    return this.request<ContextExportResponse>(
+      `/api/context-export/${collection}/${encodeURIComponent(id)}?${buildContextExportQuery(options)}`,
+    );
+  }
+
   // === Quick Tasks API methods ===
 
   /**
@@ -1593,14 +1477,14 @@ class ApiClient {
    * @param skip - Pagination offset (default: 0)
    * @param limit - Maximum results (default: 50)
    * @param sortOptions - Sorting configuration
-   * @param status - Optional status filter
+   * @param status - Optional status filter (a list matches any of the statuses)
    * @returns Array of QuickTask objects
    */
   async getQuickTasks(
     skip: number = 0,
     limit: number = 50,
     sortOptions?: SortOptions,
-    status?: TaskStatus,
+    status?: TaskStatus | TaskStatus[],
   ): Promise<QuickTask[]> {
     const params = new URLSearchParams({
       skip: skip.toString(),
@@ -1613,8 +1497,9 @@ class ApiClient {
     if (sortOptions?.sortOrder) {
       params.set("sort_order", sortOptions.sortOrder);
     }
-    if (status) {
-      params.set("status", status);
+    const statuses = Array.isArray(status) ? status : status ? [status] : [];
+    for (const value of statuses) {
+      params.append("status", value);
     }
 
     return this.request<QuickTask[]>(`/api/quick-tasks/?${params.toString()}`);
@@ -1709,116 +1594,15 @@ class ApiClient {
       method: "DELETE",
     });
   }
-
-  // === Slot Template Methods ===
-
-  /**
-   * Get all slot templates for the current user.
-   *
-   * @param dayOfWeek - Optional filter for day of week (0=Monday, 6=Sunday)
-   * @param skip - Number of templates to skip
-   * @param limit - Maximum number of templates to return
-   * @returns List of SlotTemplate objects
-   */
-  async getSlotTemplates(
-    dayOfWeek?: number,
-    skip: number = 0,
-    limit: number = 50,
-  ): Promise<{ templates: SlotTemplate[]; total: number }> {
-    const params = new URLSearchParams({
-      skip: skip.toString(),
-      limit: limit.toString(),
-    });
-
-    if (dayOfWeek !== undefined) {
-      params.set("day_of_week", dayOfWeek.toString());
-    }
-
-    return this.request<{ templates: SlotTemplate[]; total: number }>(
-      `/api/slot-templates/?${params.toString()}`,
-    );
-  }
-
-  /**
-   * Get all slot templates grouped by day of week.
-   *
-   * @returns Templates organized by day (Monday-Sunday)
-   */
-  async getSlotTemplatesByDay(): Promise<DayOfWeekTemplates[]> {
-    return this.request<DayOfWeekTemplates[]>("/api/slot-templates/by-day");
-  }
-
-  /**
-   * Get the default template for a specific day of week.
-   *
-   * @param dayOfWeek - Day of week (0=Monday, 6=Sunday)
-   * @returns The default SlotTemplate or null
-   */
-  async getDefaultSlotTemplate(
-    dayOfWeek: number,
-  ): Promise<SlotTemplate | null> {
-    return this.request<SlotTemplate | null>(
-      `/api/slot-templates/default/${dayOfWeek}`,
-    );
-  }
-
-  /**
-   * Get a specific slot template by ID.
-   *
-   * @param templateId - The slot template UUID
-   * @returns The SlotTemplate object
-   */
-  async getSlotTemplate(templateId: string): Promise<SlotTemplate> {
-    return this.request<SlotTemplate>(`/api/slot-templates/${templateId}`);
-  }
-
-  /**
-   * Create a new slot template.
-   *
-   * @param templateData - Slot template creation data
-   * @returns The created SlotTemplate object
-   */
-  async createSlotTemplate(
-    templateData: SlotTemplateCreate,
-  ): Promise<SlotTemplate> {
-    return this.request<SlotTemplate>("/api/slot-templates/", {
-      method: "POST",
-      body: JSON.stringify(templateData),
-    });
-  }
-
-  /**
-   * Update a slot template.
-   *
-   * @param templateId - The slot template UUID
-   * @param templateData - Slot template update data
-   * @returns The updated SlotTemplate object
-   */
-  async updateSlotTemplate(
-    templateId: string,
-    templateData: SlotTemplateUpdate,
-  ): Promise<SlotTemplate> {
-    return this.request<SlotTemplate>(`/api/slot-templates/${templateId}`, {
-      method: "PUT",
-      body: JSON.stringify(templateData),
-    });
-  }
-
-  /**
-   * Delete a slot template.
-   *
-   * @param templateId - The slot template UUID
-   */
-  async deleteSlotTemplate(templateId: string): Promise<void> {
-    return this.request<void>(`/api/slot-templates/${templateId}`, {
-      method: "DELETE",
-    });
-  }
 }
 
 export const apiClient = new ApiClient();
 
 // === Convenience API wrappers ===
+
+export const dashboardApi = {
+  getRecentItems: (limit?: number) => apiClient.getRecentDashboardItems(limit),
+};
 
 /**
  * Project API convenience wrapper.
@@ -1905,13 +1689,10 @@ export const tasksApi = {
  * Provides methods for AI-powered task planning and workload analysis.
  */
 export const aiPlanningApi = {
-  generateWeeklyPlan: (request: WeeklyPlanRequest) =>
-    apiClient.generateWeeklyPlan(request),
   analyzeWorkload: (projectIds?: string[]) =>
     apiClient.analyzeWorkload(projectIds),
   suggestPriorities: (projectId?: string) =>
     apiClient.suggestTaskPriorities(projectId),
-  testIntegration: () => apiClient.testAIIntegration(),
   generateGoalTaskDraft: (request: GoalTaskDraftRequest) =>
     apiClient.generateGoalTaskDraft(request),
   startGoalTaskDraftJob: (request: GoalTaskDraftRequest) =>
@@ -1950,15 +1731,25 @@ export const triageApi = {
 export const schedulingApi = {
   optimizeDaily: (request: ScheduleRequest) =>
     apiClient.optimizeDailySchedule(request),
-  save: (
-    scheduleData: ScheduleResult & { date: string; generated_at: string },
-  ) => apiClient.saveDailySchedule(scheduleData),
   getByDate: (date: string) => apiClient.getDailySchedule(date),
   list: (skip?: number, limit?: number) =>
     apiClient.listDailySchedules(skip, limit),
   test: () => apiClient.testScheduler(),
   getTuningConfig: () => apiClient.getSchedulerTuningConfig(),
-  getWeeklyScheduleOptions: () => apiClient.getWeeklyScheduleOptions(),
+};
+
+export const dailyPlansApi = {
+  list: (query?: DailyPlanHistoryQuery) => apiClient.listDailyPlanDocuments(query),
+  get: (date: string) => apiClient.getDailyPlanDocument(date),
+  update: (
+    date: string,
+    expectedRevision: number,
+    document: DailyPlanDocumentV1,
+  ) => apiClient.updateDailyPlanDocument(date, expectedRevision, document),
+  generate: (date: string, solverConfig?: SchedulerSolverConfig) =>
+    apiClient.generateDailyPlanDocument(date, solverConfig),
+  applyTaskAction: (date: string, request: DailyPlanTaskActionRequest) =>
+    apiClient.applyDailyPlanTaskAction(date, request),
 };
 
 /**
@@ -1984,52 +1775,6 @@ export const progressApi = {
   getProject: (projectId: string) => apiClient.getProjectProgress(projectId),
   getGoal: (goalId: string) => apiClient.getGoalProgress(goalId),
   getTask: (taskId: string) => apiClient.getTaskProgress(taskId),
-};
-
-/**
- * Weekly Schedule API convenience wrapper.
- * Provides methods for managing saved weekly schedules.
- */
-export const weeklyScheduleApi = {
-  getAll: (skip?: number, limit?: number) =>
-    apiClient.getWeeklySchedules(skip, limit),
-  getByWeek: (weekStartDate: string) =>
-    apiClient.getWeeklySchedule(weekStartDate),
-  save: (weekStartDate: string, scheduleData: any) =>
-    apiClient.saveWeeklySchedule(weekStartDate, scheduleData),
-  updateDraft: (
-    weekStartDate: string,
-    scheduleData: Record<string, unknown>,
-    expectedUpdatedAt?: string | null,
-  ) =>
-    apiClient.updateWeeklyScheduleDraft(
-      weekStartDate,
-      scheduleData,
-      expectedUpdatedAt,
-    ),
-  delete: (weekStartDate: string) =>
-    apiClient.deleteWeeklySchedule(weekStartDate),
-};
-
-/**
- * Weekly Recurring Tasks API convenience wrapper.
- * Provides methods for managing recurring task templates.
- */
-export const weeklyRecurringTasksApi = {
-  getAll: (
-    skip?: number,
-    limit?: number,
-    category?: string,
-    isActive?: boolean,
-  ) => apiClient.getWeeklyRecurringTasks(skip, limit, category, isActive),
-  getActive: () =>
-    apiClient.getWeeklyRecurringTasks(undefined, undefined, undefined, true),
-  getById: (taskId: string) => apiClient.getWeeklyRecurringTask(taskId),
-  create: (taskData: WeeklyRecurringTaskCreate) =>
-    apiClient.createWeeklyRecurringTask(taskData),
-  update: (taskId: string, taskData: WeeklyRecurringTaskUpdate) =>
-    apiClient.updateWeeklyRecurringTask(taskId, taskData),
-  delete: (taskId: string) => apiClient.deleteWeeklyRecurringTask(taskId),
 };
 
 /**
@@ -2062,8 +1807,11 @@ export const timelineApi = {
  * Provides methods for generating progress reports.
  */
 export const reportsApi = {
-  generateWeeklyReport: (weekStartDate: string, projectIds?: string[]) =>
-    apiClient.generateWeeklyReport(weekStartDate, projectIds),
+  generateWeeklyReport: (
+    weekStartDate: string,
+    projectIds?: string[],
+    includeNotes?: boolean,
+  ) => apiClient.generateWeeklyReport(weekStartDate, projectIds, includeNotes),
 };
 
 /**
@@ -2123,6 +1871,18 @@ export const notesApi = {
 };
 
 /**
+ * Context Export API convenience wrapper.
+ * Provides Markdown exports of project/goal context for AI assistants.
+ */
+export const contextExportApi = {
+  get: (
+    scope: ContextExportScope,
+    id: string,
+    options: ContextExportOptions,
+  ) => apiClient.getContextExport(scope, id, options),
+};
+
+/**
  * Quick Tasks API convenience wrapper.
  * Provides methods for managing unclassified tasks that don't belong to any project/goal.
  */
@@ -2131,7 +1891,7 @@ export const quickTasksApi = {
     skip?: number,
     limit?: number,
     sortOptions?: SortOptions,
-    status?: TaskStatus,
+    status?: TaskStatus | TaskStatus[],
   ) => apiClient.getQuickTasks(skip, limit, sortOptions, status),
   getById: (taskId: string) => apiClient.getQuickTask(taskId),
   create: (taskData: QuickTaskCreate) => apiClient.createQuickTask(taskData),
@@ -2150,24 +1910,6 @@ export const hookTokensApi = {
   getAll: () => apiClient.getHookTokens(),
   create: (tokenData: HookTokenCreate) => apiClient.createHookToken(tokenData),
   revoke: (tokenId: string) => apiClient.revokeHookToken(tokenId),
-};
-
-/**
- * Slot Templates API convenience wrapper.
- * Provides methods for managing day-of-week slot presets.
- */
-export const slotTemplatesApi = {
-  getAll: (dayOfWeek?: number, skip?: number, limit?: number) =>
-    apiClient.getSlotTemplates(dayOfWeek, skip, limit),
-  getByDay: () => apiClient.getSlotTemplatesByDay(),
-  getDefault: (dayOfWeek: number) =>
-    apiClient.getDefaultSlotTemplate(dayOfWeek),
-  getById: (templateId: string) => apiClient.getSlotTemplate(templateId),
-  create: (templateData: SlotTemplateCreate) =>
-    apiClient.createSlotTemplate(templateData),
-  update: (templateId: string, templateData: SlotTemplateUpdate) =>
-    apiClient.updateSlotTemplate(templateId, templateData),
-  delete: (templateId: string) => apiClient.deleteSlotTemplate(templateId),
 };
 
 // === Helper functions ===

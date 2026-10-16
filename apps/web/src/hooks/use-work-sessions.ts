@@ -102,6 +102,7 @@ export function useCheckoutWorkSession() {
   return useMutation({
     mutationFn: (data: WorkSessionCheckoutRequest) => workSessionsApi.checkout(data),
     onSuccess: (result: WorkSessionWithReschedule) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
       const session = result.session;
       // Invalidate session queries
       queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.current() });
@@ -122,6 +123,9 @@ export function useCheckoutWorkSession() {
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.progress.all });
 
+      // Checkout auto-creates a log, which moves pending tasks to in_progress
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
+
       // Invalidate reschedule suggestions (Issue #227)
       if (result.reschedule_suggestion) {
         queryClient.invalidateQueries({ queryKey: queryKeys.reschedule.suggestions() });
@@ -135,6 +139,7 @@ export function useSwitchWorkSession() {
   return useMutation({
     mutationFn: (data: WorkSessionSwitchRequest) => workSessionsApi.switch(data),
     onSuccess: (result: WorkSessionSwitchResponse) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
       queryClient.setQueryData(
         queryKeys.workSessions.current(),
         result.current_session,
