@@ -213,7 +213,8 @@ describe("DailyPlanWorkspace", () => {
       jest.mocked(quickTasksApi.getAll).mockResolvedValue([quickTask("memo", "メモ整理")]);
       const input = await openFixedLine();
       const list = screen.getByRole("listbox", { name: "紐づけるタスクの候補" });
-      const titles = () => within(list).getAllByRole("option").slice(1).map((option) => option.firstChild?.textContent);
+      const titles = () => within(screen.getByRole("listbox", { name: "紐づけるタスクの候補" }))
+        .getAllByRole("option").slice(1).map((option) => option.firstChild?.textContent);
       await waitFor(() => expect(titles()).toContain("メモ整理"));
       const project = screen.getByRole("combobox", { name: "プロジェクトで絞り込む" });
       const goal = screen.getByRole("combobox", { name: "ゴールで絞り込む" });
@@ -241,6 +242,14 @@ describe("DailyPlanWorkspace", () => {
       // Enter takes the first narrowed task instead of unlinking.
       expect(within(list).getAllByRole("option")[1]).toHaveAttribute("aria-selected", "true");
       fireEvent.keyDown(input, { key: "Enter" });
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      // Reopening without leaving the input drops the old filters.
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      expect(screen.getByRole("combobox", { name: "プロジェクトで絞り込む" })).toHaveValue("");
+      expect(titles()).toEqual(["論文を読む", "データ整理", "買い物", "メモ整理"]);
+      expect(screen.getByRole("option", { name: /論文を読む/ })).toHaveAttribute("aria-selected", "true");
+      // Escape from a filter closes the list too.
+      fireEvent.keyDown(screen.getByRole("combobox", { name: "プロジェクトで絞り込む" }), { key: "Escape" });
       expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
       await waitFor(() => expect(lastSavedFixed()).toMatchObject({
         title: "定例", task_ref: { source: "task", id: "paper" } }), { timeout: 2500 });

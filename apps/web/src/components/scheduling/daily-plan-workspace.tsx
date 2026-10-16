@@ -1542,9 +1542,12 @@ const ALL_SCOPE = "";
 const QUICK_SCOPE = "quick";
 
 // Projects and goals present among the candidates, for narrowing the list.
-function taskScopeChoices(options: TaskOption[], projectId: string) {
+function taskScopeChoices(options: TaskOption[]) {
   const projects = new Map<string, string>();
-  const goals = new Map<string, { title: string; projectTitle?: string }>();
+  const goals = new Map<
+    string,
+    { title: string; projectId: string; projectTitle?: string }
+  >();
   let hasQuick = false;
   for (const option of options) {
     if (option.isFallback) continue;
@@ -1553,9 +1556,10 @@ function taskScopeChoices(options: TaskOption[], projectId: string) {
       continue;
     }
     projects.set(option.projectId, option.projectTitle ?? "プロジェクト");
-    if (option.goalId && (!projectId || option.projectId === projectId))
+    if (option.goalId)
       goals.set(option.goalId, {
         title: option.goalTitle ?? "ゴール",
+        projectId: option.projectId,
         projectTitle: option.projectTitle,
       });
   }
@@ -1612,11 +1616,28 @@ function TaskSearchSelect({
   // Keep a linked task that is no longer loaded (e.g. completed) choosable,
   // so opening the list never defaults to unlinking it.
   const selectable = selected?.isFallback ? [selected, ...options] : options;
-  const scope = taskScopeChoices(options, projectId);
-  const scoped = projectId
-    ? selectable.filter((option) => inTaskScope(option, projectId, goalId))
+  const scope = taskScopeChoices(options);
+  // Candidates can change while open; a filter whose project or goal has
+  // dropped out falls back to "all" so the list never sticks empty.
+  const scopeProjectId =
+    scope.projects.length &&
+    (projectId === QUICK_SCOPE
+      ? scope.hasQuick
+      : scope.projects.some(([id]) => id === projectId))
+      ? projectId
+      : ALL_SCOPE;
+  const goalChoices = scope.goals.filter(
+    ([, goal]) => !scopeProjectId || goal.projectId === scopeProjectId,
+  );
+  const scopeGoalId = goalChoices.some(([id]) => id === goalId)
+    ? goalId
+    : ALL_SCOPE;
+  const scoped = scopeProjectId
+    ? selectable.filter((option) =>
+        inTaskScope(option, scopeProjectId, scopeGoalId),
+      )
     : selectable;
-  const narrowing = Boolean(query.trim() || projectId);
+  const narrowing = Boolean(query.trim() || scopeProjectId);
   const matches = query.trim() ? searchDailyPlanTasks(scoped, query) : scoped;
   // Index 0 unlinks; candidates follow.
   const items: Array<TaskOption | undefined> = [undefined, ...matches];
@@ -1629,11 +1650,19 @@ function TaskSearchSelect({
   // highlighted task that disappears falls back to the default row.
   const activeIndex = activeKey === null ? -1 : itemKeys.indexOf(activeKey);
   const current = activeIndex >= 0 ? activeIndex : defaultIndex;
+  // Every close drops the words and filters, so reopening the list (by
+  // focus, typing or the arrow keys) starts from the current link.
+  const close = () => {
+    setQuery("");
+    setProjectId(ALL_SCOPE);
+    setGoalId(ALL_SCOPE);
+    setActiveKey(null);
+    setOpen(false);
+  };
   const choose = (task: TaskOption | undefined) => {
     // Re-picking the current link must not rewrite the title or autosave.
     if (task?.key !== selectedKey) onChange(task);
-    setQuery("");
-    setOpen(false);
+    close();
   };
   // The filters live in the list, so moving focus between them and the
   // input keeps the list (and the typed words) open.
@@ -1642,7 +1671,7 @@ function TaskSearchSelect({
   const leave = (event: FocusEvent) => {
     if (staysInside(event.relatedTarget)) return;
     setFocused(false);
-    setOpen(false);
+    close();
   };
   const changeScope = (nextProjectId: string, nextGoalId: string) => {
     setProjectId(nextProjectId);
@@ -1673,13 +1702,7 @@ function TaskSearchSelect({
         value={focused ? query : selected ? taskOptionLabel(selected) : ""}
         onFocus={() => {
           setFocused(true);
-          // Returning from a filter keeps the open list as it was.
-          if (open) return;
           setOpen(true);
-          setQuery("");
-          setProjectId(ALL_SCOPE);
-          setGoalId(ALL_SCOPE);
-          setActiveKey(null);
         }}
         onBlur={leave}
         onChange={(event) => {
@@ -1706,8 +1729,7 @@ function TaskSearchSelect({
             if (!narrowing || matches.length) choose(items[current]);
           } else if (event.key === "Escape" && open) {
             event.preventDefault();
-            setQuery("");
-            setOpen(false);
+            close();
           }
         }}
       />
@@ -1722,11 +1744,19 @@ function TaskSearchSelect({
           }}
         >
           {scope.projects.length > 0 && (
-            <div className="flex flex-wrap gap-1 border-b p-1 pb-2">
+            <div
+              className="flex flex-wrap gap-1 border-b p-1 pb-2"
+              onKeyDown={(event) => {
+                if (event.key !== "Escape") return;
+                event.preventDefault();
+                inputRef.current?.focus();
+                close();
+              }}
+            >
               <select
                 aria-label="プロジェクトで絞り込む"
                 className="min-w-0 flex-1 rounded border bg-background p-1 text-xs"
-                value={projectId}
+                value={scopeProjectId}
                 onBlur={leave}
                 onChange={(event) => changeScope(event.target.value, ALL_SCOPE)}
               >
@@ -1743,8 +1773,8 @@ function TaskSearchSelect({
               <select
                 aria-label="ゴールで絞り込む"
                 className="min-w-0 flex-1 rounded border bg-background p-1 text-xs"
-                value={goalId}
-                disabled={projectId === QUICK_SCOPE || !scope.goals.length}
+                value={scopeGoalId}
+                disabled={!goalChoices.length}
                 onBlur={leave}
                 onChange={(event) => {
                   const goal = event.target.value;
@@ -1752,13 +1782,13 @@ function TaskSearchSelect({
                   const owner = options.find(
                     (option) => goal && option.goalId === goal,
                   )?.projectId;
-                  changeScope(owner ?? projectId, goal);
+                  changeScope(owner ?? scopeProjectId, goal);
                 }}
               >
                 <option value={ALL_SCOPE}>すべてのゴール</option>
-                {scope.goals.map(([id, goal]) => (
+                {goalChoices.map(([id, goal]) => (
                   <option key={id} value={id}>
-                    {projectId || !goal.projectTitle
+                    {scopeProjectId || !goal.projectTitle
                       ? goal.title
                       : `${goal.title} · ${goal.projectTitle}`}
                   </option>
