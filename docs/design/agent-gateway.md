@@ -142,7 +142,7 @@ HumanCompiler の情報を安全に取得し、将来的に更新を反映でき
 - INSERT は同期の `Session` で行うため、`run_in_threadpool` で実行し、イベントループを止めない。
 - ルートのテンプレートは `request.scope["route"].path` から取る。どのルートにも一致しなかったリクエストは、生のパス（ID を含みうる）ではなく固定値 `<unmatched>` を記録する。
 - 認証に失敗したリクエストの `token_prefix` は、トークン形式の正規表現（後述の prefix 抽出）に一致した場合だけ記録する。一致しなければ NULL。任意の値がそのまま保存されないようにするため。
-- 認証の失敗（401）とスコープ不足（403）も記録する。
+- 認証の失敗（401）とスコープ不足（403）も記録する。ただし、トークンのヘッダー自体がないリクエストは記録しない。誰にも見えない `user_id = NULL` の行が、無制限に増えないようにするため。
 - 監査ログの書き込みに失敗しても、応答そのものは失敗させない。エラーとしてログ出力する。
 
 ### トークン prefix の抽出
@@ -163,7 +163,7 @@ API は Fly.io のマシン1台で動いているので、カウンタは in-mem
 
 - Dockerfile は uvicorn を `--proxy-headers --forwarded-allow-ips "*"` で起動している。すべての転送元を信頼する設定なので、`request.client.host` はクライアントが送る `X-Forwarded-For` で決まり、偽装できる。このままでは、1 と 3 の IP 単位の制御は回避されてしまう。
 - 段階 1 と 3、および監査ログの `client_ip` は、共通の `get_client_ip(request)` で IP を取る。この関数は Fly のエッジプロキシが付ける `Fly-Client-IP` を優先し、ない場合（ローカル開発やテスト）だけ `request.client.host` を使う。
-- この関数の追加、既存の limiter（`rate_limiter.py`）と `auth.py` への適用、uvicorn の設定の見直しは issue #358 で行う。PR2 は #358 の後に着手する。#358 が先に入らない場合は、`get_client_ip` だけを PR2 で先に追加し、#358 では既存の箇所への適用を行う。
+- この関数の追加、既存の limiter（`rate_limiter.py`）と `auth.py` への適用、uvicorn の設定の見直しは issue #358 で行う。#358 は PR2 の前提条件とし、PR2 は #358 がマージされてから着手する。
 - IP は権限の判定には使わない。
 
 ### 既存 hook の移行
@@ -210,14 +210,14 @@ API は Fly.io のマシン1台で動いているので、カウンタは in-mem
    - 失効は「どちらかで失効していれば失効」の向きにだけ伝える。復活させることはない。
    - `token_hash` も UNIQUE なので、`ON CONFLICT (id)` だけでは `token_hash` の衝突を拾えず、マイグレーションが失敗する。そこで、別の `id` で同じハッシュがすでにある行は `WHERE NOT EXISTS` で除外する（実際には起こらないが、マイグレーションを失敗させないため）。
    - `hook_tokens.created_at` と `updated_at` は NULL を許すため、COALESCE で埋める（`agent_tokens` 側は NOT NULL）。
-   - **デプロイ手順**: PR1 を本番に出した後、`sync_hook_tokens.sql` を1回実行する。PR の Deployment Notes にも書く。失効の反映は次の 3 の確認で即時に効くので、この手順はデータの片付けであり、セキュリティ上の必須手順ではない。
+   - **デプロイ手順**: PR1 を本番に出した後、`sync_hook_tokens.sql` を1回実行する。PR の Deployment Notes にも書く。**この手順は必須**。失効は次の 3 の確認で即時に効くが、移行期間中に旧コードで**作成**されたトークンは `hook_tokens` にしか存在しない。そのため、同期するまで新しい認証では 401 になる。
 2. **PR1〜PR3 の間は `hook_tokens` にも書く**: 互換アダプタと新しい認証は、`agent_tokens` を正としつつ、次の変更を `hook_tokens` にも書く。
    - トークンの作成: 同じ `id` と `token_hash` で `hook_tokens` にも INSERT する。`hook_tokens.token_prefix` は VARCHAR(16) なので、先頭16文字を入れる（表示にしか使わない）。
    - 失効: 両方の `revoked_at` を更新する。
    - `last_used_at` は `agent_tokens` だけを更新する（rollback 後に失っても安全な情報のため）。
 
    これで rollback した後も `hook_tokens` が完全な状態に保たれ、失効させたトークンが復活せず、アダプタで作ったトークンも消えない。
-3. **PR1〜PR3 の間は、認証時に `hook_tokens` の失効も確認する**: 旧コードが `hook_tokens` だけに書いた失効は、同期 SQL を実行するまで `agent_tokens` に届かない。preview が本番 DB を使う場合、この期間は数日に及びうる。そこで `get_agent_principal` は、同じ `token_hash` の `hook_tokens` 行で `revoked_at IS NOT NULL` なら 401 にする。既存のインデックス `idx_hook_tokens_token_hash` で引けるので、追加のコストは小さい。
+3. **PR1〜PR3 の間は、認証時に `hook_tokens` の失効も確認する**: 旧コードが `hook_tokens` だけに書いた失効は、同期 SQL を実行するまで `agent_tokens` に届かない。preview が本番 DB を使う場合、この期間は数日に及びうる。そこで `get_agent_principal` は、同じ `token_hash` の `hook_tokens` 行で `revoked_at IS NOT NULL` なら 401 にする。`token_hash` の UNIQUE 制約が作る通常のインデックスで引けるので、追加のコストは小さい（`idx_hook_tokens_token_hash` は `WHERE revoked_at IS NULL` の部分インデックスなので、この確認には使えない）。
 
 二重書き込みと 3 の確認は、PR4 で `hook_tokens` のコードを消すときに一緒に削除する。
 - `HookToken` モデル、`HookTokenService`、`routers/hook_tokens.py`、`/api/user/hook-tokens` は、Web を新しい管理画面に移した PR で削除する（実装順序を参照）。
@@ -274,7 +274,7 @@ context_notes は `user_id` を直接持つが、Read API の役割はユーザ�
 | パラメータ | 内容 |
 |---|---|
 | `updated_since` | ISO 8601 のタイムゾーン付き日時。`updated_at >= updated_since` の行を返す。タイムゾーンがなければ 422 |
-| `cursor` | 前のページの `next_cursor`。中身を解釈しない文字列。前のページと同じ `updated_since` と絞り込み条件で使うこと（条件を変えた場合の結果は保証しない） |
+| `cursor` | 前のページの `next_cursor`。中身を解釈しない文字列。前のページと同じ `updated_since` と絞り込み条件で使うこと（条件を変えた場合の結果は保証しない）。デコードできない値、UUID でない `id`、タイムゾーンのない日時を含む cursor は 422 |
 | `limit` | 既定 100、最大 200（daily-plans だけは既定 7、最大 31） |
 
 - 並び順は `(updated_at, id)` の昇順に固定する。カーソルは最後の行の `(updated_at, id)` をエンコードしたもので、keyset pagination で次のページを取る。同じ時刻の行があっても、漏れや重複は出ない。
@@ -357,7 +357,7 @@ PR1〜PR3 の間は `hook_tokens` にも書き込んでいるので、rollback �
 - トークン: 作成すると secret が1回だけ返る。ハッシュで照合できる。失効すると即時に 401 になる。未知のスコープは 422 になる。
 - 認証: トークンがない、形式が不正、失効済みの場合は 401。スコープ不足は 403 で、`detail` に必要なスコープが入る。3種類のヘッダーをすべて受け付ける。Supabase JWT では 401 になる。
 - 移行: `hook_tokens` の行がコピーされ、移行前に発行した `hc_hook_` トークンで `/api/hooks/quick-tasks` が両方のヘッダーで成功する。同じトークンで `/api/agent/v1/tasks` を呼ぶと 403 になる。
-- 同期 SQL: 2回実行しても結果が変わらない。`hook_tokens` 側でだけ失効させた行は、再実行で `agent_tokens` でも失効になる。`agent_tokens` 側で失効済みの行が、再実行で復活しない。別の `id` で同じ `token_hash` を持つ行があっても失敗しない。
+- 同期 SQL: 2回実行しても結果が変わらない。`hook_tokens` 側でだけ失効させた行は、再実行で `agent_tokens` でも失効になる。`agent_tokens` 側で失効済みの行が、再実行で復活しない。別の `id` で同じ `token_hash` を持つ行があっても失敗しない。 マイグレーションの後に `hook_tokens` だけに作られたトークンが、同期で `agent_tokens` にコピーされ、認証できるようになる。
 - 二重書き込み: アダプタで作成・失効させたトークンが `hook_tokens` にも反映される。rollback の手順の後、失効させたトークンが旧コードで 401 になる。 `hook_tokens` 側だけで失効させたトークンは、同期 SQL を実行する前でも新しい認証で 401 になる。
 - prefix の抽出: `public_id` に `_` を含むトークンでも、正しい prefix が取り出せる。形式に合わない値は監査ログに記録されない。
 - Rate limit: 偽の prefix を毎回変えても IP 単位の上限で 429 になる。`X-Forwarded-For` を毎回変えても、IP 単位の上限と認証失敗のカウンタはリセットされない。トークン単位の上限は検証済みのトークンにだけ効く。1分間に 20 回を超えて認証に失敗した IP は 429 になる。
@@ -365,7 +365,7 @@ PR1〜PR3 の間は `hook_tokens` にも書き込んでいるので、rollback �
 - 同期 SQL（追加）: 別の `id` で同じ `token_hash` を持つ行が `hook_tokens` 側で失効していれば、`agent_tokens` 側も失効になり、警告が出る。
 - daily plans: `AgentDailyPlanResponse` の `id` と `updated_at` が常に入っている。31 件の一覧で、schedule の問い合わせが件数に比例して増えない。
 - `last_used_at`: 5 分以内の連続アクセスでは更新されない。
-- Read API: ユーザー A のトークンでユーザー B のデータが見えない（一覧と個別取得の両方。リソースごとの所有の判定すべてについて確認する）。`user_id` は自分だが親が他人の context note は返らない。作業ログを編集すると `/logs` の差分に現れる。`updated_since` と `cursor` で、同じ時刻の行が混ざっていても漏れや重複がない。タイムゾーンのない `updated_since` は 422 になる。
+- Read API: ユーザー A のトークンでユーザー B のデータが見えない（一覧と個別取得の両方。リソースごとの所有の判定すべてについて確認する）。`user_id` は自分だが親が他人の context note は返らない。作業ログを編集すると `/logs` の差分に現れる。`updated_since` と `cursor` で、同じ時刻の行が混ざっていても漏れや重複がない。タイムゾーンのない `updated_since` は 422 になる。壊れた cursor は 500 ではなく 422 になる。
 - トリガー: logs / quick_tasks / context_notes / daily_plan_documents を直接 UPDATE すると `updated_at` が進む（Postgres を使う CI ジョブで確認する）。
 
 フロントエンド（Jest）:
@@ -381,11 +381,13 @@ PR1〜PR3 の間は `hook_tokens` にも書き込んでいるので、rollback �
    - 作成と失効を `hook_tokens` にも書く（二重書き込み）
    - Deployment Notes: 本番に出した後、`sync_hook_tokens.sql` を1回実行する
 2. **PR2: 監査ログと rate limit**
-   - ミドルウェア、保持ジョブ、`/api/user/agent-tokens/{id}/audit-logs`
+   - 前提: #358 がマージ済みであること
+   - ミドルウェア、保持ジョブ
+   - トークン管理 API のバックエンド（`/api/user/agent-tokens` の一覧・作成・失効・`/scopes`・`/{id}/audit-logs`）。PR3 の Read API を、スコープ付きのトークンで本番と preview で確かめられるようにするため
 3. **PR3: Agent Read API**
    - `/api/agent/v1/*`、差分取得、context export
-4. **PR4: 管理 API と Web UI**
-   - `/api/user/agent-tokens` の管理 API、設定画面の置き換え、使い方ガイドの更新
+4. **PR4: Web UI**
+   - 設定画面の置き換え、使い方ガイドの更新
    - `HookToken` 関連のコード、`/api/user/hook-tokens`、`hook_tokens` への二重書き込みと、認証時の `hook_tokens` 失効確認の削除
 
 各 PR は単体でデプロイしてよく、それぞれの時点で既存の hook が動き続けること。
