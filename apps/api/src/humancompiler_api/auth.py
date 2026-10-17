@@ -1,7 +1,5 @@
 import logging
 import threading
-import time
-from collections import defaultdict
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -11,14 +9,6 @@ from humancompiler_api.models import UserCreate
 from humancompiler_api.services import UserService
 
 logger = logging.getLogger(__name__)
-
-# Simple in-memory rate limiting
-# WARNING: This implementation does not persist across server restarts
-# and will not work correctly in multi-instance deployments.
-# For production environments, use a distributed cache like Redis.
-_auth_attempts: dict[str, list] = defaultdict(list)
-MAX_AUTH_ATTEMPTS = 5
-RATE_LIMIT_WINDOW = 300  # 5 minutes
 
 # In-memory cache of known user IDs to skip DB check on every request.
 # This eliminates the stale connection issue caused by ensure_user_exists()
@@ -37,30 +27,6 @@ class AuthUser:
     def __init__(self, user_id: str, email: str):
         self.user_id = user_id
         self.email = email
-
-
-def _check_rate_limit(client_ip: str) -> None:
-    """Check authentication rate limit for IP address"""
-    now = time.time()
-    attempts = _auth_attempts[client_ip]
-
-    # Remove old attempts outside the window
-    attempts[:] = [
-        attempt_time
-        for attempt_time in attempts
-        if now - attempt_time < RATE_LIMIT_WINDOW
-    ]
-
-    if len(attempts) >= MAX_AUTH_ATTEMPTS:
-        logger.warning(f"🔒 Rate limit exceeded for IP: {client_ip}")
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many authentication attempts. Please try again later.",
-            headers={"Retry-After": str(RATE_LIMIT_WINDOW)},
-        )
-
-    # Record this attempt
-    attempts.append(now)
 
 
 def _ensure_user_exists_sync(user_id: str, email: str) -> None:

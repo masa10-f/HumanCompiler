@@ -11,14 +11,10 @@ from fastapi.security import HTTPAuthorizationCredentials
 
 from humancompiler_api.auth import (
     AuthUser,
-    _check_rate_limit,
     ensure_user_exists,
     get_current_user,
     get_optional_user,
     get_current_user_id,
-    _auth_attempts,
-    MAX_AUTH_ATTEMPTS,
-    RATE_LIMIT_WINDOW,
 )
 
 
@@ -36,82 +32,12 @@ def auth_user():
     )
 
 
-@pytest.fixture(autouse=True)
-def clean_auth_attempts():
-    """Clean up auth attempts before and after each test to prevent interference"""
-    # Clear before test
-    _auth_attempts.clear()
-    yield
-    # Clear after test
-    _auth_attempts.clear()
-
-
 def test_auth_user_initialization():
     """Test AuthUser class initialization"""
     user_id = "87654321-4321-8765-4321-876543218765"
     user = AuthUser(user_id=user_id, email="user@test.com")
     assert user.user_id == user_id
     assert user.email == "user@test.com"
-
-
-def test_check_rate_limit_normal_usage():
-    """Test rate limiting with normal usage"""
-    client_ip = "192.168.1.1"
-
-    # Clear any existing attempts
-    _auth_attempts[client_ip].clear()
-
-    # Normal usage should not raise exception
-    _check_rate_limit(client_ip)
-    assert len(_auth_attempts[client_ip]) == 1
-
-
-def test_check_rate_limit_exceeded():
-    """Test rate limiting when limit is exceeded"""
-    client_ip = "192.168.1.2"
-
-    # Clear any existing attempts
-    _auth_attempts[client_ip].clear()
-
-    # Add MAX_AUTH_ATTEMPTS attempts
-    current_time = time.time()
-    for _ in range(MAX_AUTH_ATTEMPTS):
-        _auth_attempts[client_ip].append(current_time)
-
-    # Next attempt should raise exception
-    with pytest.raises(HTTPException) as exc_info:
-        _check_rate_limit(client_ip)
-
-    assert exc_info.value.status_code == status.HTTP_429_TOO_MANY_REQUESTS
-    assert "Too many authentication attempts" in exc_info.value.detail
-
-
-def test_check_rate_limit_window_expiry():
-    """Test rate limiting window expiry"""
-    client_ip = "192.168.1.3"
-
-    # Clear any existing attempts
-    _auth_attempts[client_ip].clear()
-
-    # Add old attempts (outside the window)
-    old_time = time.time() - RATE_LIMIT_WINDOW - 10
-    for _ in range(MAX_AUTH_ATTEMPTS):
-        _auth_attempts[client_ip].append(old_time)
-
-    # Should not raise exception as attempts are old
-    _check_rate_limit(client_ip)
-
-    # Old attempts should be cleaned up
-    assert (
-        len(
-            [
-                a
-                for a in _auth_attempts[client_ip]
-                if time.time() - a < RATE_LIMIT_WINDOW
-            ]
-        )
-        == 1
-    )
 
 
 @pytest.mark.asyncio
@@ -283,19 +209,3 @@ async def test_get_current_user_no_email(mock_credentials):
 
             assert result.user_id == "87654321-4321-8765-4321-876543218765"
             assert result.email == "unknown@example.com"
-
-
-def test_auth_constants():
-    """Test authentication constants"""
-    assert MAX_AUTH_ATTEMPTS == 5
-    assert RATE_LIMIT_WINDOW == 300
-
-
-def test_auth_attempts_data_structure():
-    """Test _auth_attempts data structure"""
-    assert isinstance(_auth_attempts, dict)
-    # Test that accessing a new key creates an empty list
-    test_ip = "test.ip.address"
-    attempts = _auth_attempts[test_ip]
-    assert isinstance(attempts, list)
-    assert len(attempts) == 0
