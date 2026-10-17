@@ -124,7 +124,7 @@ HumanCompiler の情報を安全に取得し、将来的に更新を反映でき
    3. `X-HumanCompiler-Hook-Token`（互換用）
 
    見つからなければ 401。
-2. `get_agent_principal`: ハッシュで有効なトークン（`revoked_at IS NULL`）を引く。見つからなければ 401。結果を `AgentPrincipal(token_id, user_id, scopes, token_prefix)` として `request.state.agent_principal` に置く。
+2. `get_agent_principal`: ハッシュで有効なトークン（`revoked_at IS NULL`）を引く。見つからなければ 401。PR1〜PR3 の間は、同じ `token_hash` の `hook_tokens` 行が失効していれば、それも 401 にする（「移行期間の整合性」を参照）。結果を `AgentPrincipal(token_id, user_id, scopes, token_prefix)` として `request.state.agent_principal` に置く。
 3. `require_scope(scope)`: `get_agent_principal` に依存する FastAPI 依存関数。スコープがなければ 403 を返し、`detail` に必要なスコープ名を入れる。`request.state.required_scope` にも記録する。
 4. `last_used_at` は、前回の値から 5 分以上たっている場合だけ更新する。頻繁な読み取りで書き込みが増えないようにするため。利用の詳細は監査ログで追う。
 
@@ -185,7 +185,8 @@ API は Fly.io のマシン1台で動いているので、カウンタは in-mem
    INSERT INTO agent_tokens (id, user_id, name, scopes, token_hash, token_prefix,
                              last_used_at, revoked_at, created_at, updated_at)
    SELECT h.id, h.user_id, h.name, ARRAY['quick_tasks:write'], h.token_hash,
-          h.token_prefix, h.last_used_at, h.revoked_at, h.created_at, h.updated_at
+          h.token_prefix, h.last_used_at, h.revoked_at,
+          COALESCE(h.created_at, NOW()), COALESCE(h.updated_at, h.created_at, NOW())
    FROM hook_tokens h
    WHERE NOT EXISTS (
        SELECT 1 FROM agent_tokens a
@@ -208,13 +209,17 @@ API は Fly.io のマシン1台で動いているので、カウンタは in-mem
 
    - 失効は「どちらかで失効していれば失効」の向きにだけ伝える。復活させることはない。
    - `token_hash` も UNIQUE なので、`ON CONFLICT (id)` だけでは `token_hash` の衝突を拾えず、マイグレーションが失敗する。そこで、別の `id` で同じハッシュがすでにある行は `WHERE NOT EXISTS` で除外する（実際には起こらないが、マイグレーションを失敗させないため）。
-   - **デプロイ手順**: PR1 を本番に出した後、`sync_hook_tokens.sql` を1回実行する。PR の Deployment Notes にも書く。
+   - `hook_tokens.created_at` と `updated_at` は NULL を許すため、COALESCE で埋める（`agent_tokens` 側は NOT NULL）。
+   - **デプロイ手順**: PR1 を本番に出した後、`sync_hook_tokens.sql` を1回実行する。PR の Deployment Notes にも書く。失効の反映は次の 3 の確認で即時に効くので、この手順はデータの片付けであり、セキュリティ上の必須手順ではない。
 2. **PR1〜PR3 の間は `hook_tokens` にも書く**: 互換アダプタと新しい認証は、`agent_tokens` を正としつつ、次の変更を `hook_tokens` にも書く。
    - トークンの作成: 同じ `id` と `token_hash` で `hook_tokens` にも INSERT する。`hook_tokens.token_prefix` は VARCHAR(16) なので、先頭16文字を入れる（表示にしか使わない）。
    - 失効: 両方の `revoked_at` を更新する。
    - `last_used_at` は `agent_tokens` だけを更新する（rollback 後に失っても安全な情報のため）。
 
-   これで rollback した後も `hook_tokens` が完全な状態に保たれ、失効させたトークンが復活せず、アダプタで作ったトークンも消えない。二重書き込みは、PR4 で `hook_tokens` のコードを消すときに一緒に削除する。
+   これで rollback した後も `hook_tokens` が完全な状態に保たれ、失効させたトークンが復活せず、アダプタで作ったトークンも消えない。
+3. **PR1〜PR3 の間は、認証時に `hook_tokens` の失効も確認する**: 旧コードが `hook_tokens` だけに書いた失効は、同期 SQL を実行するまで `agent_tokens` に届かない。preview が本番 DB を使う場合、この期間は数日に及びうる。そこで `get_agent_principal` は、同じ `token_hash` の `hook_tokens` 行で `revoked_at IS NOT NULL` なら 401 にする。既存のインデックス `idx_hook_tokens_token_hash` で引けるので、追加のコストは小さい。
+
+二重書き込みと 3 の確認は、PR4 で `hook_tokens` のコードを消すときに一緒に削除する。
 - `HookToken` モデル、`HookTokenService`、`routers/hook_tokens.py`、`/api/user/hook-tokens` は、Web を新しい管理画面に移した PR で削除する（実装順序を参照）。
 
 ### トークン管理 API（Supabase ログインが必要）
@@ -269,7 +274,7 @@ context_notes は `user_id` を直接持つが、Read API の役割はユーザ�
 | パラメータ | 内容 |
 |---|---|
 | `updated_since` | ISO 8601 のタイムゾーン付き日時。`updated_at >= updated_since` の行を返す。タイムゾーンがなければ 422 |
-| `cursor` | 前のページの `next_cursor`。中身を解釈しない文字列 |
+| `cursor` | 前のページの `next_cursor`。中身を解釈しない文字列。前のページと同じ `updated_since` と絞り込み条件で使うこと（条件を変えた場合の結果は保証しない） |
 | `limit` | 既定 100、最大 200（daily-plans だけは既定 7、最大 31） |
 
 - 並び順は `(updated_at, id)` の昇順に固定する。カーソルは最後の行の `(updated_at, id)` をエンコードしたもので、keyset pagination で次のページを取る。同じ時刻の行があっても、漏れや重複は出ない。
@@ -281,7 +286,14 @@ context_notes は `user_id` を直接持つが、Read API の役割はユーザ�
 ### `updated_at` の信頼性
 
 - **logs に `updated_at` 列を追加する**。作業ログは編集できるため、`created_at` で代用すると編集が差分に現れない。
-  - マイグレーションで `ALTER TABLE logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()` を実行し、既存の行は `created_at` の値で埋める。
+  - マイグレーションでは、列の追加、既存の行の埋め戻し、DEFAULT と NOT NULL の付与の順に行う。`DEFAULT NOW()` を付けて列を追加すると、全行が NOW() で書き換えられてから上書きすることになるため。`logs.created_at` は NULL を許すので COALESCE を使う。
+
+    ```sql
+    ALTER TABLE logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
+    UPDATE logs SET updated_at = COALESCE(created_at, NOW()) WHERE updated_at IS NULL;
+    ALTER TABLE logs ALTER COLUMN updated_at SET DEFAULT NOW(),
+                     ALTER COLUMN updated_at SET NOT NULL;
+    ```
   - `Log` モデルと `LogResponse` にも `updated_at` を追加する。レスポンスへのフィールド追加なので、既存のクライアントは壊れない。
 - quick_tasks / context_notes / daily_plan_documents と logs に、`update_updated_at_column()` トリガーを追加する（既存の関数を使う）。どの経路で更新されても `updated_at` が進むようにするため。
 - 一覧で使うテーブルに `(updated_at, id)` のインデックスを追加する。
@@ -346,7 +358,7 @@ PR1〜PR3 の間は `hook_tokens` にも書き込んでいるので、rollback �
 - 認証: トークンがない、形式が不正、失効済みの場合は 401。スコープ不足は 403 で、`detail` に必要なスコープが入る。3種類のヘッダーをすべて受け付ける。Supabase JWT では 401 になる。
 - 移行: `hook_tokens` の行がコピーされ、移行前に発行した `hc_hook_` トークンで `/api/hooks/quick-tasks` が両方のヘッダーで成功する。同じトークンで `/api/agent/v1/tasks` を呼ぶと 403 になる。
 - 同期 SQL: 2回実行しても結果が変わらない。`hook_tokens` 側でだけ失効させた行は、再実行で `agent_tokens` でも失効になる。`agent_tokens` 側で失効済みの行が、再実行で復活しない。別の `id` で同じ `token_hash` を持つ行があっても失敗しない。
-- 二重書き込み: アダプタで作成・失効させたトークンが `hook_tokens` にも反映される。rollback の手順の後、失効させたトークンが旧コードで 401 になる。
+- 二重書き込み: アダプタで作成・失効させたトークンが `hook_tokens` にも反映される。rollback の手順の後、失効させたトークンが旧コードで 401 になる。 `hook_tokens` 側だけで失効させたトークンは、同期 SQL を実行する前でも新しい認証で 401 になる。
 - prefix の抽出: `public_id` に `_` を含むトークンでも、正しい prefix が取り出せる。形式に合わない値は監査ログに記録されない。
 - Rate limit: 偽の prefix を毎回変えても IP 単位の上限で 429 になる。`X-Forwarded-For` を毎回変えても、IP 単位の上限と認証失敗のカウンタはリセットされない。トークン単位の上限は検証済みのトークンにだけ効く。1分間に 20 回を超えて認証に失敗した IP は 429 になる。
 - 監査ログ: 成功、401、403 のいずれでも1行記録される。ボディや secret が含まれない。一致するルートがないリクエストは `<unmatched>` で記録される。90 日を過ぎた行が削除ジョブで消える。ユーザーを削除すると、その人の監査ログも消える。
@@ -374,6 +386,6 @@ PR1〜PR3 の間は `hook_tokens` にも書き込んでいるので、rollback �
    - `/api/agent/v1/*`、差分取得、context export
 4. **PR4: 管理 API と Web UI**
    - `/api/user/agent-tokens` の管理 API、設定画面の置き換え、使い方ガイドの更新
-   - `HookToken` 関連のコード、`/api/user/hook-tokens`、`hook_tokens` への二重書き込みの削除
+   - `HookToken` 関連のコード、`/api/user/hook-tokens`、`hook_tokens` への二重書き込みと、認証時の `hook_tokens` 失効確認の削除
 
 各 PR は単体でデプロイしてよく、それぞれの時点で既存の hook が動き続けること。
