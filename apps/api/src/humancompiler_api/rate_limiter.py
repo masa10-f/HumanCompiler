@@ -3,6 +3,7 @@ Rate limiting middleware for API protection
 """
 
 import logging
+import math
 import time
 
 from fastapi import FastAPI
@@ -60,7 +61,10 @@ class DefaultRateLimitMiddleware:
                 response = JSONResponse(
                     {"error": f"Rate limit exceeded: {item}"},
                     status_code=429,
-                    headers={"Retry-After": str(max(1, int(reset_at - time.time())))},
+                    # Round up so clients never retry inside the window
+                    headers={
+                        "Retry-After": str(max(1, math.ceil(reset_at - time.time())))
+                    },
                 )
                 await response(scope, receive, send)
                 return

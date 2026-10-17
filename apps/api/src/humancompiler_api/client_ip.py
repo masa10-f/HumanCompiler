@@ -7,10 +7,11 @@
 """
 Trusted client IP resolution (Issue #358)
 
-uvicorn runs with ``--forwarded-allow-ips "*"`` (see Dockerfile), so
-``scope["client"]`` is taken from the left-most X-Forwarded-For entry, which
-the client controls. On Fly.io the edge proxy sets ``Fly-Client-IP`` to the
-address it accepted the connection from, so that header is preferred there.
+On Fly.io uvicorn trusts every forwarder (``FORWARDED_ALLOW_IPS="*"`` in
+fly.toml), so ``scope["client"]`` is taken from the left-most X-Forwarded-For
+entry, which the client controls. The Fly edge proxy also sets
+``Fly-Client-IP`` to the address it accepted the connection from, so that
+header is preferred there.
 Everywhere else (local dev, tests) the header is ignored and the peer address
 is used, so a client cannot pick its own IP by sending ``Fly-Client-IP``.
 """
