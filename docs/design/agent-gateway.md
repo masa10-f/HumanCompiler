@@ -100,7 +100,7 @@ HumanCompiler の情報を安全に取得し、将来的に更新を反映でき
 |---|---|---|
 | `id` | UUID PK | |
 | `token_id` | UUID NULL | `agent_tokens.id`、ON DELETE SET NULL。認証に失敗した場合は NULL |
-| `user_id` | UUID NULL | 認証に失敗した場合は NULL |
+| `user_id` | UUID NULL | `users.id`、ON DELETE CASCADE。認証に失敗した場合は NULL。ユーザーを削除したときに、その人の監査ログ（IP やアクセス先）が残らないようにする |
 | `token_prefix` | VARCHAR(32) NULL | 認証に失敗した場合も、形式が正しければ記録する |
 | `method` | VARCHAR(10) NOT NULL | |
 | `route` | VARCHAR(200) NOT NULL | パスのテンプレート（例: `/api/agent/v1/tasks/{task_id}`）。ID の値は含めない |
@@ -159,7 +159,12 @@ HumanCompiler の情報を安全に取得し、将来的に更新を反映でき
 
 API は Fly.io のマシン1台で動いているので、カウンタは in-memory でよい。複数台にする場合は共有ストレージが必要になる（範囲外）。
 
-クライアント IP について: Dockerfile は uvicorn を `--proxy-headers --forwarded-allow-ips "*"` で起動しているので、`X-Forwarded-For` は反映される。ただし、すべての送信元を信頼する設定なので、IP は偽装されうる。IP 単位の制御と監査ログの `client_ip` は補助的なものとして扱い、権限の判定には使わない。
+クライアント IP について:
+
+- Dockerfile は uvicorn を `--proxy-headers --forwarded-allow-ips "*"` で起動している。すべての転送元を信頼する設定なので、`request.client.host` はクライアントが送る `X-Forwarded-For` で決まり、偽装できる。このままでは、1 と 3 の IP 単位の制御は回避されてしまう。
+- 段階 1 と 3、および監査ログの `client_ip` は、共通の `get_client_ip(request)` で IP を取る。この関数は Fly のエッジプロキシが付ける `Fly-Client-IP` を優先し、ない場合（ローカル開発やテスト）だけ `request.client.host` を使う。
+- この関数の追加、既存の limiter（`rate_limiter.py`）と `auth.py` への適用、uvicorn の設定の見直しは issue #358 で行う。PR2 は #358 の後に着手する。#358 が先に入らない場合は、`get_client_ip` だけを PR2 で先に追加し、#358 では既存の箇所への適用を行う。
+- IP は権限の判定には使わない。
 
 ### 既存 hook の移行
 
@@ -189,7 +194,17 @@ API は Fly.io のマシン1台で動いているので、カウンタは in-mem
    ON CONFLICT (id) DO UPDATE SET
        revoked_at   = COALESCE(agent_tokens.revoked_at, EXCLUDED.revoked_at),
        last_used_at = GREATEST(agent_tokens.last_used_at, EXCLUDED.last_used_at);
+
+   -- WHERE NOT EXISTS で除外した行も、失効だけは token_hash で伝える
+   UPDATE agent_tokens a
+   SET revoked_at = h.revoked_at
+   FROM hook_tokens h
+   WHERE a.token_hash = h.token_hash
+     AND a.revoked_at IS NULL
+     AND h.revoked_at IS NOT NULL;
    ```
+
+   除外した行がある場合は、その件数を `RAISE WARNING` で出す（`DO` ブロックで数える）。食い違いを黙って見逃さないため。
 
    - 失効は「どちらかで失効していれば失効」の向きにだけ伝える。復活させることはない。
    - `token_hash` も UNIQUE なので、`ON CONFLICT (id)` だけでは `token_hash` の衝突を拾えず、マイグレーションが失敗する。そこで、別の `id` で同じハッシュがすでにある行は `WHERE NOT EXISTS` で除外する（実際には起こらないが、マイグレーションを失敗させないため）。
@@ -245,7 +260,9 @@ API は Fly.io のマシン1台で動いているので、カウンタは in-mem
 | context_notes | `context_notes.user_id = user_id` **かつ** 親（project / goal / task のうち設定されているもの）が上の判定で同じユーザーに属する |
 
 context_notes は `user_id` を直接持つが、Read API の役割はユーザー間のデータを確実に分けることなので、親の所有も確認する。
-- レスポンスのスキーマは、既存の `*Response` モデルを使う（`ProjectResponse`、`GoalResponse`、`TaskResponse`、`QuickTaskResponse`、`LogResponse`、`WorkSessionResponse`、`ContextNoteResponse`、`DailyPlanResponse`）。エージェント専用のスキーマは作らない。
+- レスポンスのスキーマは、既存の `*Response` モデルを使う（`ProjectResponse`、`GoalResponse`、`TaskResponse`、`QuickTaskResponse`、`LogResponse`、`WorkSessionResponse`、`ContextNoteResponse`）。これらは `id` と `updated_at` がどちらも必須で、差分取得の条件を満たす（`LogResponse` には PR1 で `updated_at` を追加する）。
+- **daily plan だけは例外**とする。`DailyPlanResponse` は `routers/daily_plans.py:482` で定義されていて、`id` と `updated_at` がどちらも Optional になっている。カーソルとクライアント向けの指針はこの2つが必ずあることを前提にしているため、`AgentDailyPlanResponse(DailyPlanResponse)` を作り、`id: UUID` と `updated_at: datetime` を必須にする（DB の列はどちらも NOT NULL なので、値は常にある）。
+- `DailyPlanResponse.schedule` は daily plan ごとに別の問い合わせで取っている。一覧のエンドポイントではページ内の schedule をまとめて1回で読み込み、1件ごとに問い合わせが増えないようにする。
 
 ### 差分取得の仕様（一覧系に共通）
 
@@ -331,8 +348,10 @@ PR1〜PR3 の間は `hook_tokens` にも書き込んでいるので、rollback �
 - 同期 SQL: 2回実行しても結果が変わらない。`hook_tokens` 側でだけ失効させた行は、再実行で `agent_tokens` でも失効になる。`agent_tokens` 側で失効済みの行が、再実行で復活しない。別の `id` で同じ `token_hash` を持つ行があっても失敗しない。
 - 二重書き込み: アダプタで作成・失効させたトークンが `hook_tokens` にも反映される。rollback の手順の後、失効させたトークンが旧コードで 401 になる。
 - prefix の抽出: `public_id` に `_` を含むトークンでも、正しい prefix が取り出せる。形式に合わない値は監査ログに記録されない。
-- Rate limit: 偽の prefix を毎回変えても IP 単位の上限で 429 になる。トークン単位の上限は検証済みのトークンにだけ効く。1分間に 20 回を超えて認証に失敗した IP は 429 になる。
-- 監査ログ: 成功、401、403 のいずれでも1行記録される。ボディや secret が含まれない。一致するルートがないリクエストは `<unmatched>` で記録される。90 日を過ぎた行が削除ジョブで消える。
+- Rate limit: 偽の prefix を毎回変えても IP 単位の上限で 429 になる。`X-Forwarded-For` を毎回変えても、IP 単位の上限と認証失敗のカウンタはリセットされない。トークン単位の上限は検証済みのトークンにだけ効く。1分間に 20 回を超えて認証に失敗した IP は 429 になる。
+- 監査ログ: 成功、401、403 のいずれでも1行記録される。ボディや secret が含まれない。一致するルートがないリクエストは `<unmatched>` で記録される。90 日を過ぎた行が削除ジョブで消える。ユーザーを削除すると、その人の監査ログも消える。
+- 同期 SQL（追加）: 別の `id` で同じ `token_hash` を持つ行が `hook_tokens` 側で失効していれば、`agent_tokens` 側も失効になり、警告が出る。
+- daily plans: `AgentDailyPlanResponse` の `id` と `updated_at` が常に入っている。31 件の一覧で、schedule の問い合わせが件数に比例して増えない。
 - `last_used_at`: 5 分以内の連続アクセスでは更新されない。
 - Read API: ユーザー A のトークンでユーザー B のデータが見えない（一覧と個別取得の両方。リソースごとの所有の判定すべてについて確認する）。`user_id` は自分だが親が他人の context note は返らない。作業ログを編集すると `/logs` の差分に現れる。`updated_since` と `cursor` で、同じ時刻の行が混ざっていても漏れや重複がない。タイムゾーンのない `updated_since` は 422 になる。
 - トリガー: logs / quick_tasks / context_notes / daily_plan_documents を直接 UPDATE すると `updated_at` が進む（Postgres を使う CI ジョブで確認する）。
