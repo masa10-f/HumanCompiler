@@ -2092,9 +2092,9 @@ class AgentTokenService:
             select(AgentToken)
             .where(
                 AgentToken.user_id == user_id_validated,
-                AgentToken.revoked_at.is_(None),  # type: ignore[union-attr]
+                AgentToken.revoked_at.is_(None),
             )
-            .order_by(AgentToken.created_at.desc(), AgentToken.id.asc())  # type: ignore[union-attr]
+            .order_by(AgentToken.created_at.desc(), AgentToken.id.asc())
         )
         return list(session.exec(statement).all())
 
@@ -2108,7 +2108,7 @@ class AgentTokenService:
             select(AgentToken).where(
                 AgentToken.id == token_id_validated,
                 AgentToken.user_id == user_id_validated,
-                AgentToken.revoked_at.is_(None),  # type: ignore[union-attr]
+                AgentToken.revoked_at.is_(None),
             )
         ).first()
         if agent_token is None:
@@ -2129,7 +2129,7 @@ class AgentTokenService:
         return session.exec(
             select(AgentToken).where(
                 AgentToken.token_hash == self.hash_token(token),
-                AgentToken.revoked_at.is_(None),  # type: ignore[union-attr]
+                AgentToken.revoked_at.is_(None),
             )
         ).first()
 
