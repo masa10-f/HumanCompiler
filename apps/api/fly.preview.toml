@@ -10,6 +10,9 @@ primary_region = "nrt"  # Tokyo region for lower latency
   PYTHONPATH = "/app/src"
   ENVIRONMENT = "staging"  # Different from production
   DEBUG = "true"  # More verbose logging for debugging
+  # Trust the Fly edge for X-Forwarded-* (read by uvicorn, see Dockerfile).
+  # Client IPs come from Fly-Client-IP, not X-Forwarded-For (Issue #358).
+  FORWARDED_ALLOW_IPS = "*"
   # Optional: Enable read-only mode for shared database safety
   # READ_ONLY_MODE = "true"  # Uncomment to prevent write operations
 

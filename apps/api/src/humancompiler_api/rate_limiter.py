@@ -3,80 +3,93 @@ Rate limiting middleware for API protection
 """
 
 import logging
+import math
+import time
 
 from fastapi import FastAPI
+from limits import parse_many
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
+from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+from humancompiler_api.client_ip import get_client_ip, resolve_client_ip
+from humancompiler_api.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Applied per client IP to every HTTP request by DefaultRateLimitMiddleware.
+# Routes with an @limiter.limit decorator are additionally subject to their own.
+DEFAULT_LIMITS = ["200 per minute"]
+_DEFAULT_LIMIT_ITEMS = [item for spec in DEFAULT_LIMITS for item in parse_many(spec)]
+_DEFAULT_LIMIT_SCOPE = "default"
+
 # Create limiter instance with custom key function
 limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=["200 per minute", "1000 per hour"],
+    key_func=get_client_ip,
     headers_enabled=True,  # Include rate limit headers in responses
     storage_uri=None,  # In-memory storage for development (use Redis for production clustering)
+    # The whole test suite shares one client address and in-memory buckets
+    enabled=settings.environment != "test",
 )
 
-# Custom rate limit configurations for different endpoints
-RATE_LIMITS = {
-    # Authentication endpoints - stricter limits
-    "/api/auth/*": "5 per minute",
-    "/api/login": "5 per minute",
-    "/api/register": "3 per minute",
-    # AI endpoints - expensive operations
-    "/api/ai/analyze-workload": "20 per hour",
-    "/api/ai/suggest-priorities": "20 per hour",
-    "/api/schedule/daily": "30 per hour",
-    # Timeline endpoints - computationally expensive
-    "/api/timeline/projects/*": "15 per minute",  # Project timeline generation
-    "/api/timeline/overview": "30 per minute",  # Overview less expensive
-    # CRUD operations - moderate limits
-    "/api/projects/*": "60 per minute",
-    "/api/goals/*": "60 per minute",
-    "/api/tasks/*": "60 per minute",
-    # Read-heavy endpoints - higher limits
-    "/api/projects": "100 per minute",
-    "/api/goals": "100 per minute",
-    "/api/tasks": "100 per minute",
-    # Health check - very high limit
-    "/health": "1000 per minute",
-    "/": "1000 per minute",
-}
 
-
-def get_rate_limit_for_path(path: str) -> str:
+class DefaultRateLimitMiddleware:
     """
-    Get the appropriate rate limit for a given path
+    Enforce DEFAULT_LIMITS per client IP on every HTTP request.
+
+    slowapi's own middleware only applies default_limits to routes it finds in
+    the top-level app.routes. Current FastAPI keeps included routers nested, so
+    it would treat every /api route as exempt.
     """
-    # Check exact matches first
-    if path in RATE_LIMITS:
-        return RATE_LIMITS[path]
 
-    # Check wildcard patterns
-    for pattern, limit in RATE_LIMITS.items():
-        if "*" in pattern:
-            base_path = pattern.replace("/*", "")
-            if path.startswith(base_path):
-                return limit
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
 
-    # Return default limit
-    return "60 per minute"
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or not limiter.enabled:
+            await self.app(scope, receive, send)
+            return
+
+        key = resolve_client_ip(scope)
+        for item in _DEFAULT_LIMIT_ITEMS:
+            if not limiter.limiter.hit(item, _DEFAULT_LIMIT_SCOPE, key):
+                reset_at, _ = limiter.limiter.get_window_stats(
+                    item, _DEFAULT_LIMIT_SCOPE, key
+                )
+                logger.warning("🔒 Default rate limit exceeded for IP: %s", key)
+                response = JSONResponse(
+                    {"error": f"Rate limit exceeded: {item}"},
+                    status_code=429,
+                    # Round up so clients never retry inside the window
+                    headers={
+                        "Retry-After": str(max(1, math.ceil(reset_at - time.time())))
+                    },
+                )
+                await response(scope, receive, send)
+                return
+
+        await self.app(scope, receive, send)
 
 
 def configure_rate_limiting(app: FastAPI) -> Limiter:
     """
-    Configure rate limiting for the FastAPI application
+    Configure rate limiting for the FastAPI application.
+
+    Call this before registering the CORS middleware so that the limiter sits
+    inside it and 429 responses still carry CORS headers.
     """
     # Add rate limit exceeded handler
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-    # Log configuration
-    logger.info("✅ Rate limiting configured with the following limits:")
-    for path, limit in RATE_LIMITS.items():
-        logger.info(f"  {path}: {limit}")
+    app.add_middleware(DefaultRateLimitMiddleware)
+
+    logger.info(
+        "✅ Rate limiting configured (per client IP): default %s, enabled=%s",
+        ", ".join(DEFAULT_LIMITS),
+        limiter.enabled,
+    )
 
     return limiter
 

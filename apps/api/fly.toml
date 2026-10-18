@@ -10,6 +10,9 @@ primary_region = "nrt"  # Tokyo region for lower latency
   PYTHONPATH = "/app/src"
   ENVIRONMENT = "production"
   DEBUG = "false"
+  # Trust the Fly edge for X-Forwarded-* (read by uvicorn, see Dockerfile).
+  # Client IPs come from Fly-Client-IP, not X-Forwarded-For (Issue #358).
+  FORWARDED_ALLOW_IPS = "*"
 
 [http_service]
   internal_port = 8000

@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
+from humancompiler_api.client_ip import TrustedClientIPMiddleware
 from humancompiler_api.config import settings
 from humancompiler_api.common.error_handlers import (
     ServiceError,
@@ -222,6 +223,11 @@ def is_origin_allowed(origin: str) -> bool:
 SLOW_REQUEST_THRESHOLD = 1.0
 
 
+# Configure rate limiting. Registered before the CORS middleware so the limiter
+# runs inside it and 429 responses still get CORS headers.
+configure_rate_limiting(app)
+
+
 # Custom CORS middleware for dynamic Vercel domains + request timing
 @app.middleware("http")
 async def cors_middleware(request, call_next):
@@ -289,8 +295,9 @@ async def cors_middleware(request, call_next):
 # Remove standard CORS middleware - using custom CORS middleware only
 # The custom cors_middleware function above handles all CORS processing
 
-# Configure rate limiting
-configure_rate_limiting(app)
+# Rewrite the client address from Fly-Client-IP (Issue #358). Added last so it
+# is the outermost middleware and everything below sees the trusted IP.
+app.add_middleware(TrustedClientIPMiddleware)
 
 # Add exception handlers
 app.add_exception_handler(HTTPException, http_exception_handler)

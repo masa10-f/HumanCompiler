@@ -45,5 +45,9 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run the application with verbose logging and proxy headers support
-CMD ["uvicorn", "humancompiler_api.main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# Run the application with verbose logging and proxy headers support.
+# Trusted forwarders come from $FORWARDED_ALLOW_IPS (uvicorn default: localhost
+# only). fly.toml sets it to "*" so X-Forwarded-Proto from the Fly edge works;
+# that makes X-Forwarded-For spoofable, so the app takes the client IP from
+# Fly-Client-IP instead (see humancompiler_api/client_ip.py).
+CMD ["uvicorn", "humancompiler_api.main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info", "--proxy-headers"]
