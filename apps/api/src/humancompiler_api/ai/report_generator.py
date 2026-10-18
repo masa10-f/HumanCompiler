@@ -3,7 +3,7 @@
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -78,10 +78,20 @@ class WeeklyReportGenerator:
         return self.openai_client
 
     def _get_week_dates(self, week_start_date: str) -> tuple[datetime, datetime]:
-        """Get start and end datetime for the week"""
-        start_date = datetime.strptime(week_start_date, "%Y-%m-%d")
-        end_date = start_date + timedelta(days=6, hours=23, minutes=59, seconds=59)
+        """Get the JST week as [start, end) timezone-aware datetimes.
+
+        Timestamp columns reject naive datetimes, even as query parameters.
+        """
+        start_date = datetime.strptime(week_start_date, "%Y-%m-%d").replace(tzinfo=JST)
+        end_date = start_date + timedelta(days=7)
         return start_date, end_date
+
+    @staticmethod
+    def _to_jst_date(value: datetime) -> date:
+        """Return the JST calendar date of a timestamp (naive means UTC)"""
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.astimezone(JST).date()
 
     def _get_work_logs_for_week(
         self,
@@ -91,7 +101,7 @@ class WeeklyReportGenerator:
         end_date: datetime,
         project_ids: list[str] | None = None,
     ) -> list[Log]:
-        """Get all work logs for the specified week and optional project filter with eager loading"""
+        """Get work logs in [start_date, end_date) with optional project filter"""
         query = (
             select(Log)
             .options(
@@ -104,15 +114,15 @@ class WeeklyReportGenerator:
             .join(Project, Goal.project_id == Project.id)
             .where(
                 and_(
-                    Project.owner_id == user_id,
+                    Project.owner_id == UUID(str(user_id)),
                     Log.created_at >= start_date,  # type: ignore[operator]
-                    Log.created_at <= end_date,  # type: ignore[operator]
+                    Log.created_at < end_date,  # type: ignore[operator]
                 )
             )
         )
 
         if project_ids:
-            query = query.where(Project.id.in_(project_ids))
+            query = query.where(Project.id.in_([UUID(str(pid)) for pid in project_ids]))
 
         return session.exec(query.order_by(Log.created_at.desc())).all()
 
@@ -212,7 +222,11 @@ class WeeklyReportGenerator:
         for i in range(7):
             day = start_date + timedelta(days=i)
             day_str = day.strftime("%Y-%m-%d")
-            day_logs = [log for log in logs if log.created_at.date() == day.date()]
+            day_logs = [
+                log
+                for log in logs
+                if log.created_at and self._to_jst_date(log.created_at) == day.date()
+            ]
             daily_breakdown[day_str] = sum(log.actual_minutes for log in day_logs)
 
         # Project breakdown
@@ -809,7 +823,7 @@ class WeeklyReportGenerator:
             .options(selectinload(Task.goal).selectinload(Goal.project))
             .join(Goal, Task.goal_id == Goal.id)
             .join(Project, Goal.project_id == Project.id)
-            .where(and_(Task.id.in_(task_ids), Project.owner_id == user_id))
+            .where(and_(Task.id.in_(task_ids), Project.owner_id == UUID(str(user_id))))
         )
         tasks = session.exec(tasks_query).all()
 

@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 from sqlmodel import Session
 
 from humancompiler_api.ai.report_generator import (
+    JST,
     ReportBackground,
     WeeklyReportGenerator,
 )
@@ -40,7 +41,7 @@ class TestWeeklyReportGenerator:
     def sample_user(self):
         """Create a sample user for testing."""
         return User(
-            id="user-123",
+            id="00000000-0000-0000-0000-000000000123",
             email="test@example.com",
             created_at=datetime.now(),
             updated_at=datetime.now(),
@@ -97,11 +98,13 @@ class TestWeeklyReportGenerator:
         )
 
     def test_get_week_dates(self, report_generator):
-        """Test week date calculation."""
+        """The week is a timezone-aware JST [Monday, next Monday) range."""
         start_date, end_date = report_generator._get_week_dates("2023-12-18")  # Monday
 
-        assert start_date == datetime(2023, 12, 18, 0, 0, 0)
-        assert end_date == datetime(2023, 12, 24, 23, 59, 59)
+        assert start_date == datetime(2023, 12, 18, tzinfo=JST)
+        assert end_date == datetime(2023, 12, 25, tzinfo=JST)
+        assert start_date.utcoffset() is not None
+        assert end_date.utcoffset() is not None
 
     def test_calculate_task_progress_completed_task(
         self, report_generator, sample_task, sample_log, sample_goal, sample_project
@@ -1018,3 +1021,79 @@ class TestWeeklyReportThreePartOutput:
 
         assert "- プロジェクトの説明やノートは登録されていません" in report
         assert "- 未完了のタスクはありません" in report
+
+
+class TestWeeklyReportDatabase:
+    """generate_weekly_report against a real session (only OpenAI is mocked)."""
+
+    @pytest.fixture
+    def week_logs(self, session, report_workspace):
+        """Logs around the JST week of 2030-01-07 (Mon) to 2030-01-13 (Sun)."""
+        from datetime import UTC
+        from uuid import uuid4
+
+        task_id = report_workspace["worked_task"].id
+        logs = {
+            # 2030-01-06 23:59 JST: the previous week
+            "before": datetime(2030, 1, 6, 14, 59, tzinfo=UTC),
+            # 2030-01-07 00:00 JST: the first moment of the week
+            "first": datetime(2030, 1, 6, 15, 0, tzinfo=UTC),
+            # 2030-01-13 23:59 JST: the last minute of the week
+            "last": datetime(2030, 1, 13, 14, 59, tzinfo=UTC),
+            # 2030-01-14 00:00 JST: the next week
+            "after": datetime(2030, 1, 13, 15, 0, tzinfo=UTC),
+        }
+        minutes = {"before": 10, "first": 30, "last": 45, "after": 20}
+        session.add_all(
+            [
+                Log(
+                    id=uuid4(),
+                    task_id=task_id,
+                    actual_minutes=minutes[key],
+                    comment=key,
+                    created_at=created_at,
+                )
+                for key, created_at in logs.items()
+            ]
+        )
+        session.commit()
+        return report_workspace
+
+    @pytest.mark.parametrize("filter_by_project", [False, True])
+    @patch("humancompiler_api.ai.report_generator.OpenAI")
+    def test_reports_logs_of_the_jst_week(
+        self, mock_openai_class, session, week_logs, filter_by_project
+    ):
+        # The fallback report is built from the same data without AI
+        mock_openai_class.return_value.chat.completions.create.side_effect = (
+            RuntimeError("OpenAI unavailable")
+        )
+        project_id = str(week_logs["project"].id)
+        request = WeeklyReportRequest(
+            week_start_date="2030-01-07",
+            project_ids=[project_id] if filter_by_project else None,
+        )
+
+        result = WeeklyReportGenerator().generate_weekly_report(
+            session, request, str(week_logs["user"].id), "test-api-key"
+        )
+
+        summary = result.work_summary
+        assert summary.total_actual_minutes == 75
+        assert summary.daily_breakdown["2030-01-07"] == 30
+        assert summary.daily_breakdown["2030-01-13"] == 45
+        assert sum(summary.daily_breakdown.values()) == 75
+        assert summary.project_breakdown == {"週報自動化": 75}
+        assert result.week_end_date == "2030-01-13"
+        assert [p.project_id for p in result.project_summaries] == [project_id]
+        assert "## 週報自動化" in result.markdown_report
+
+    def test_returns_empty_report_for_a_week_without_logs(self, session, week_logs):
+        request = WeeklyReportRequest(week_start_date="2030-01-21")
+
+        result = WeeklyReportGenerator().generate_weekly_report(
+            session, request, str(week_logs["user"].id), "test-api-key"
+        )
+
+        assert result.work_summary.total_actual_minutes == 0
+        assert "作業実績なし" in result.markdown_report
