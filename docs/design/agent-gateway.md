@@ -1,7 +1,7 @@
 # Agent Gateway 設計（G1: エージェントトークン・監査ログ / G2: Agent Read API）
 
 作成日: 2026-10-17
-状態: レビュー待ち
+状態: 承認済み（実装: #360）
 関連: ResearchDistillator `docs/roadmap.md`（Track G）
 
 ## 概要
@@ -295,10 +295,12 @@ context_notes は `user_id` を直接持つが、Read API の役割はユーザ�
 
 ## マイグレーション
 
-`035_add_agent_tokens.sql` と `035_add_agent_tokens_rollback.sql`:
+### `035_add_agent_tokens.sql` と `035_add_agent_tokens_rollback.sql`（PR1）
 
-1. `agent_tokens` の作成（インデックス、RLS、GRANT、COMMENT）
-2. `agent_audit_logs` の作成（インデックス `(user_id, created_at DESC)`、`(token_id, created_at DESC)`、RLS）
+追加だけにして、旧コードと互換にする。`agent_audit_logs` は含めない（036 に分ける）。
+
+1. 前提チェック（依存するテーブルと `update_updated_at_column()` がなければ、分かるメッセージで失敗させる）
+2. `agent_tokens` の作成（インデックス、RLS、`REVOKE ALL` の後に必要な列だけ `GRANT SELECT`、COMMENT）
 3. `hook_tokens` から `agent_tokens` へのコピー（「既存 hook の移行」を参照）
 4. `logs.updated_at` 列の追加と、`created_at` からの埋め戻し
 5. logs / quick_tasks / context_notes / daily_plan_documents への `updated_at` トリガーの追加（`DROP TRIGGER IF EXISTS` の後に `CREATE`）
@@ -308,10 +310,20 @@ context_notes は `user_id` を直接持つが、Read API の役割はユーザ�
 rollback の手順:
 
 1. `agent_tokens` で失効しているトークンの `revoked_at` を、`hook_tokens` に書き戻す。移行後に失効させたトークンが、旧コードで再び有効にならないようにするため。
-2. 上の 1〜3 と 5〜6 を元に戻す。
+2. 上の 2〜3 と 5〜7 を元に戻す。インデックスとトリガーを削除し、`agent_tokens` を削除し、`hook_tokens` の COMMENT を元の文言に戻す。
 3. `logs.updated_at` は列を残す。消すと、すでに値を読んでいるクライアントとの差が出るうえ、残しても旧コードに害はない。
 
 移行後に新しく作ったトークンは、rollback すると使えなくなる。その場合は旧コードで作り直す。
+
+### `036_add_agent_audit_logs.sql`（PR2）
+
+1. `agent_audit_logs` の作成（「データモデル: `agent_audit_logs`」の定義）
+2. インデックス `(user_id, created_at DESC)`、`(token_id, created_at DESC)`
+3. RLS を有効にし、`authenticated` には自分の `user_id` の行の SELECT のみ許可する
+4. `REVOKE ALL ON agent_audit_logs FROM anon, authenticated` を先に実行し、その後で必要な列だけ `GRANT SELECT` する（#360 のレビューで PR2 に振り分けた項目）
+
+036 の rollback は `agent_audit_logs` を削除する。
+
 
 ## セキュリティ
 
@@ -351,6 +363,7 @@ rollback の手順:
    - Deployment Notes: マイグレーションを適用してからデプロイするまでの間は、トークンを作成・失効させない
 2. **PR2: 監査ログと rate limit**
    - 前提: #358 がマージ済みであること
+   - migration 036（`agent_audit_logs` の作成、インデックス、RLS、`REVOKE` と列単位の `GRANT`）
    - ミドルウェア、保持ジョブ
    - トークン管理 API のバックエンド（`/api/user/agent-tokens` の一覧・作成・失効・`/scopes`・`/{id}/audit-logs`）。PR3 の Read API を、スコープ付きのトークンで確かめられるようにするため
 3. **PR3: Agent Read API**
