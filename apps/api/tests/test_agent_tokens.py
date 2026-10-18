@@ -69,6 +69,17 @@ def test_create_token_rejects_empty_scopes(session: Session):
         agent_token_service.create_token(session, USER_ID, "x", [])
 
 
+@pytest.mark.parametrize(
+    "scopes",
+    [["bogus:scope"], [AgentScope.TASKS_READ, "bogus:scope"]],
+)
+def test_create_token_rejects_unknown_scopes(session: Session, scopes):
+    with pytest.raises(ValueError):
+        agent_token_service.create_token(session, USER_ID, "x", scopes)
+
+    assert agent_token_service.list_active_tokens(session, USER_ID) == []
+
+
 def test_unknown_secret_is_not_found(session: Session):
     assert agent_token_service.get_active_token_by_secret(session, "nope") is None
 

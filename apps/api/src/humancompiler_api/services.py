@@ -1954,7 +1954,8 @@ class AgentTokenService:
         user_id_validated = validate_uuid(user_id, "user_id")
         if not scopes:
             raise ValueError("scopes must not be empty")
-        requested = set(scopes)
+        # AgentScope(value) raises ValueError for anything that is not a scope.
+        requested = {AgentScope(scope) for scope in scopes}
         ordered_scopes = [scope.value for scope in AgentScope if scope in requested]
 
         token, token_prefix = self.generate_token()
