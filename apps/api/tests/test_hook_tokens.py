@@ -295,6 +295,25 @@ def test_revoke_other_users_token_returns_404(session: Session):
     assert hook_response.status_code == 201
 
 
+def test_revoke_broader_token_returns_404(session: Session):
+    seed_user(session)
+    install_overrides(session)
+    broader, _ = agent_token_service.create_token(
+        session,
+        TEST_USER_ID,
+        "Broader",
+        [AgentScope.QUICK_TASKS_WRITE, AgentScope.TASKS_READ],
+    )
+
+    response = client.delete(f"/api/user/hook-tokens/{broader.id}")
+
+    assert response.status_code == 404
+    assert [
+        token.id
+        for token in agent_token_service.list_active_tokens(session, TEST_USER_ID)
+    ] == [broader.id]
+
+
 def test_hook_token_service_is_removed():
     assert not hasattr(services, "hook_token_service")
     assert not hasattr(services, "HookTokenService")

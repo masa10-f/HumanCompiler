@@ -6,6 +6,10 @@ from fastapi import APIRouter, Depends, status
 from sqlmodel import Session
 
 from humancompiler_api.auth import AuthUser, get_current_user
+from humancompiler_api.common.error_handlers import (
+    ResourceNotFoundError,
+    validate_uuid,
+)
 from humancompiler_api.database import get_session
 from humancompiler_api.models import (
     AgentScope,
@@ -35,6 +39,12 @@ def _created_response(token_model: AgentToken, token: str) -> HookTokenCreatedRe
     )
 
 
+def _hook_only_tokens(session: Session, user_id: str) -> list[AgentToken]:
+    """Active tokens that can only write quick tasks."""
+    tokens = agent_token_service.list_active_tokens(session, user_id)
+    return [token for token in tokens if set(token.scopes) == _HOOK_ONLY_SCOPES]
+
+
 @router.get("", response_model=list[HookTokenResponse])
 @router.get("/", response_model=list[HookTokenResponse], include_in_schema=False)
 async def list_hook_tokens(
@@ -42,11 +52,9 @@ async def list_hook_tokens(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> list[HookTokenResponse]:
     """List active tokens that can only write quick tasks."""
-    tokens = agent_token_service.list_active_tokens(session, current_user.user_id)
     return [
         HookTokenResponse.model_validate(token)
-        for token in tokens
-        if set(token.scopes) == _HOOK_ONLY_SCOPES
+        for token in _hook_only_tokens(session, current_user.user_id)
     ]
 
 
@@ -79,5 +87,9 @@ async def revoke_hook_token(
     session: Annotated[Session, Depends(get_session)],
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> None:
-    """Revoke an active hook token."""
-    agent_token_service.revoke_token(session, token_id, current_user.user_id)
+    """Revoke an active hook token. Tokens this API does not list are not found."""
+    token_uuid = validate_uuid(token_id, "token_id")
+    hook_tokens = _hook_only_tokens(session, current_user.user_id)
+    if not any(token.id == token_uuid for token in hook_tokens):
+        raise ResourceNotFoundError("AgentToken", token_uuid)
+    agent_token_service.revoke_token(session, token_uuid, current_user.user_id)
