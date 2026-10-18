@@ -5,12 +5,14 @@
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
+from humancompiler_api import auth
 from humancompiler_api.auth import AuthUser, get_current_user
 from humancompiler_api.database import get_session
 from humancompiler_api.main import app
@@ -304,3 +306,44 @@ def test_audit_logs_for_other_users_token_returns_404(session: Session):
 
     assert response.status_code == 404
     assert missing.status_code == 404
+
+
+def test_management_api_rejects_agent_tokens(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+):
+    # No get_current_user override: the real dependency runs. It asks Supabase
+    # to verify the bearer token, so only that network client is replaced
+    # (Supabase answers "no user" for a token that is not one of its JWTs).
+    seed_user(session)
+    _, agent_secret = agent_token_service.create_token(
+        session, TEST_USER_ID, "agent", [AgentScope.TASKS_READ]
+    )
+    session.commit()
+    lookups: list[str] = []
+
+    def get_user(token: str):
+        lookups.append(token)
+        return SimpleNamespace(user=None)
+
+    fake_client = SimpleNamespace(auth=SimpleNamespace(get_user=get_user))
+    monkeypatch.setattr(auth.db, "get_client", lambda: fake_client)
+
+    def override_session():
+        yield session
+
+    app.dependency_overrides[get_session] = override_session
+
+    headers = {"Authorization": f"Bearer {agent_secret}"}
+    responses = [
+        client.get(BASE_URL, headers=headers),
+        client.post(
+            BASE_URL, headers=headers, json={"name": "x", "scopes": ["tasks:read"]}
+        ),
+    ]
+
+    for response in responses:
+        assert response.status_code == 401
+        assert response.headers["www-authenticate"] == "Bearer"
+        assert agent_secret not in response.text
+
+    assert lookups == [agent_secret, agent_secret]
