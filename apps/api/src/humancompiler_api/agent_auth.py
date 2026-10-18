@@ -30,6 +30,10 @@ _FALLBACK_HEADERS = ("x-humancompiler-agent-token", "x-humancompiler-hook-token"
 # prefix must be matched positionally, never by splitting on "_".
 _TOKEN_PREFIX_PATTERN = re.compile(r"^(hc_agent_|hc_hook_)([A-Za-z0-9_-]{8})_")
 
+# ``request.state`` attribute that, when truthy, tells AgentAuditMiddleware not
+# to record the request.
+SKIP_AUDIT_STATE = "skip_agent_audit"
+
 
 @dataclass(frozen=True)
 class AgentPrincipal:

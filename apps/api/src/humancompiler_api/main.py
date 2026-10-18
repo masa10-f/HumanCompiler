@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
+from humancompiler_api.agent_audit import AgentAuditMiddleware
 from humancompiler_api.client_ip import TrustedClientIPMiddleware
 from humancompiler_api.config import settings
 from humancompiler_api.common.error_handlers import (
@@ -222,6 +223,10 @@ def is_origin_allowed(origin: str) -> bool:
 # Slow request threshold in seconds
 SLOW_REQUEST_THRESHOLD = 1.0
 
+
+# Record agent requests in agent_audit_logs. Added before rate limiting so it
+# runs inside DefaultRateLimitMiddleware: the default 429s are not recorded.
+app.add_middleware(AgentAuditMiddleware)
 
 # Configure rate limiting. Registered before the CORS middleware so the limiter
 # runs inside it and 429 responses still get CORS headers.

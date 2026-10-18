@@ -1,0 +1,128 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2024-2025 Masato Fukushima <masa1063fuk@gmail.com>
+#
+# This file is part of HumanCompiler.
+# For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
+
+"""Audit logging for agent-facing endpoints.
+
+Every HTTP request under the agent prefixes that carries an agent token header
+is recorded in ``agent_audit_logs``. Request bodies, query values and token
+secrets are never stored, and ``route`` is the route template, not the path.
+"""
+
+import logging
+import time
+from collections.abc import Callable
+from typing import Any
+from uuid import uuid4
+
+from fastapi import HTTPException
+from starlette.concurrency import run_in_threadpool
+from starlette.requests import Request
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
+from sqlmodel import Session
+
+from humancompiler_api.agent_auth import (
+    SKIP_AUDIT_STATE,
+    AgentPrincipal,
+    extract_agent_token,
+    extract_token_prefix,
+)
+from humancompiler_api.client_ip import resolve_client_ip
+from humancompiler_api.database import db
+from humancompiler_api.models import AgentAuditLog
+
+logger = logging.getLogger(__name__)
+
+AUDITED_PATH_PREFIXES = ("/api/agent/", "/api/hooks/")
+UNMATCHED_ROUTE = "<unmatched>"
+
+# Replaced in tests to point at the test database.
+session_factory: Callable[[], Session] = lambda: Session(db.get_engine())  # noqa: E731
+
+
+def write_audit_log(entry: AgentAuditLog) -> None:
+    """Persist one audit row. Errors propagate to the caller."""
+    with session_factory() as session:
+        session.add(entry)
+        session.commit()
+
+
+class AgentAuditMiddleware:
+    """Record agent requests after the response has been sent.
+
+    Pure ASGI so the write happens once the last body chunk has gone out,
+    without delaying the response, and so exceptions from the app are seen in
+    the same ``try/finally``.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or not scope["path"].startswith(
+            AUDITED_PATH_PREFIXES
+        ):
+            await self.app(scope, receive, send)
+            return
+
+        try:
+            token = extract_agent_token(Request(scope))
+        except HTTPException:
+            # No token header: not recorded.
+            await self.app(scope, receive, send)
+            return
+
+        status_code: int | None = None
+
+        async def wrapped_send(message: Message) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+            await send(message)
+
+        start = time.monotonic()
+        try:
+            await self.app(scope, receive, wrapped_send)
+        finally:
+            duration_ms = int((time.monotonic() - start) * 1000)
+            state = scope.get("state", {})
+            if not state.get(SKIP_AUDIT_STATE):
+                await self._record(scope, state, token, status_code, duration_ms)
+
+    @staticmethod
+    async def _record(
+        scope: Scope,
+        state: dict[str, Any],
+        token: str,
+        status_code: int | None,
+        duration_ms: int,
+    ) -> None:
+        principal = state.get("agent_principal")
+        if isinstance(principal, AgentPrincipal):
+            token_id = principal.token_id
+            user_id = principal.user_id
+            token_prefix: str | None = principal.token_prefix
+        else:
+            token_id = None
+            user_id = None
+            token_prefix = extract_token_prefix(token)
+
+        entry = AgentAuditLog(
+            id=uuid4(),
+            token_id=token_id,
+            user_id=user_id,
+            token_prefix=token_prefix,
+            method=scope["method"],
+            route=getattr(scope.get("route"), "path", None) or UNMATCHED_ROUTE,
+            required_scope=state.get("required_scope"),
+            # No response started means the app raised; the server returns 500.
+            status_code=status_code if status_code is not None else 500,
+            duration_ms=duration_ms,
+            client_ip=resolve_client_ip(scope),
+        )
+        try:
+            await run_in_threadpool(write_audit_log, entry)
+        except Exception:
+            logger.exception("Failed to write agent audit log")

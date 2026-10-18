@@ -869,6 +869,37 @@ class AgentToken(SQLModel, table=True):  # type: ignore[call-arg]
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
 
+class AgentAuditLog(SQLModel, table=True):  # type: ignore[call-arg]
+    """One row per Agent Gateway request. Never holds bodies, query values or
+    token secrets; ``route`` is the route template."""
+
+    __tablename__ = "agent_audit_logs"
+
+    id: UUID | None = SQLField(
+        default=None,
+        sa_column=Column(
+            "id",
+            SQLAlchemyUUID,
+            primary_key=True,
+            server_default=text("gen_random_uuid()"),
+        ),
+    )
+    token_id: UUID | None = SQLField(
+        default=None, foreign_key="agent_tokens.id", ondelete="SET NULL"
+    )
+    user_id: UUID | None = SQLField(
+        default=None, foreign_key="users.id", ondelete="CASCADE"
+    )
+    token_prefix: str | None = SQLField(default=None, max_length=32)
+    method: str = SQLField(max_length=10)
+    route: str = SQLField(max_length=200)
+    required_scope: str | None = SQLField(default=None, max_length=50)
+    status_code: int
+    duration_ms: int
+    client_ip: str | None = SQLField(default=None, max_length=45)
+    created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
+
+
 # Email Notification Models (Issue #261)
 class EmailNotificationType(StrEnum):
     """Type of email notification"""
