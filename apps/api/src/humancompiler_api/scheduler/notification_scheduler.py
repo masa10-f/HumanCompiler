@@ -491,11 +491,16 @@ def start_notification_scheduler():
         replace_existing=True,
     )
 
-    # Purge agent audit logs past their 90-day retention once a day.
+    # Purge agent audit logs past their 90-day retention once a day. The job
+    # store is in memory, so every deploy resets the interval; run the first
+    # purge shortly after boot (but outside startup) so frequent deploys cannot
+    # starve it. APScheduler's 1s default misfire grace would drop a late run.
     scheduler.add_job(
         purge_expired_agent_audit_logs,
         "interval",
         days=1,
+        next_run_time=datetime.now(UTC) + timedelta(minutes=1),
+        misfire_grace_time=3600,
         id="agent_audit_log_retention",
         name="Purge expired agent audit logs",
         replace_existing=True,

@@ -283,6 +283,11 @@ def test_retention_job_is_registered_daily(monkeypatch: pytest.MonkeyPatch):
 
         assert job is not None
         assert job.trigger.interval == timedelta(days=1)
+        # Runs shortly after boot so frequent deploys cannot starve the purge.
+        assert job.next_run_time is not None
+        assert job.next_run_time <= datetime.now(UTC) + timedelta(minutes=5)
+        assert job.misfire_grace_time is not None
+        assert job.misfire_grace_time >= 3600
     finally:
         for job in scheduler.get_jobs():
             if job.id not in job_ids_before:
