@@ -3,7 +3,8 @@ Refactored services using base service class
 """
 
 from collections import deque
-from datetime import datetime, UTC
+from collections.abc import Sequence
+from datetime import datetime, timedelta, UTC
 from decimal import Decimal, ROUND_HALF_UP
 import hashlib
 import secrets
@@ -22,6 +23,8 @@ from humancompiler_api.common.error_handlers import (
     validate_uuid,
 )
 from humancompiler_api.models import (
+    AgentScope,
+    AgentToken,
     Goal,
     GoalCreate,
     GoalUpdate,
@@ -2025,6 +2028,135 @@ class HookTokenService:
         return hook_token
 
 
+class AgentTokenService:
+    """Service for scoped agent tokens."""
+
+    NAMESPACE = "hc_agent_"
+    PUBLIC_ID_BYTES = 6
+    LAST_USED_INTERVAL = timedelta(minutes=5)
+
+    @classmethod
+    def generate_token(cls) -> tuple[str, str]:
+        """Generate an agent token and its non-secret display prefix."""
+        public_id = secrets.token_urlsafe(cls.PUBLIC_ID_BYTES)
+        token_prefix = f"{cls.NAMESPACE}{public_id}"
+        return f"{token_prefix}_{secrets.token_urlsafe(32)}", token_prefix
+
+    @staticmethod
+    def hash_token(token: str) -> str:
+        """Hash an agent token for storage and lookup."""
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+    def create_token(
+        self,
+        session: Session,
+        user_id: str | UUID,
+        name: str,
+        scopes: Sequence[AgentScope],
+        description: str | None = None,
+    ) -> tuple[AgentToken, str]:
+        """Create an agent token and return the one-time plaintext secret."""
+        user_id_validated = validate_uuid(user_id, "user_id")
+        if not scopes:
+            raise ValueError("scopes must not be empty")
+        requested = set(scopes)
+        ordered_scopes = [scope.value for scope in AgentScope if scope in requested]
+
+        token, token_prefix = self.generate_token()
+        now = datetime.now(UTC)
+        agent_token = AgentToken(
+            id=uuid4(),
+            user_id=user_id_validated,
+            name=name,
+            description=description,
+            scopes=ordered_scopes,
+            token_hash=self.hash_token(token),
+            token_prefix=token_prefix,
+            created_at=now,
+            updated_at=now,
+        )
+
+        def create_operation() -> AgentToken:
+            session.add(agent_token)
+            session.flush()
+            return agent_token
+
+        return safe_execute(session, create_operation), token
+
+    def list_active_tokens(
+        self, session: Session, user_id: str | UUID
+    ) -> list[AgentToken]:
+        """Return active agent token metadata for a user."""
+        user_id_validated = validate_uuid(user_id, "user_id")
+        statement = (
+            select(AgentToken)
+            .where(
+                AgentToken.user_id == user_id_validated,
+                AgentToken.revoked_at.is_(None),  # type: ignore[union-attr]
+            )
+            .order_by(AgentToken.created_at.desc(), AgentToken.id.asc())  # type: ignore[union-attr]
+        )
+        return list(session.exec(statement).all())
+
+    def revoke_token(
+        self, session: Session, token_id: str | UUID, user_id: str | UUID
+    ) -> AgentToken:
+        """Revoke one of the user's active agent tokens."""
+        token_id_validated = validate_uuid(token_id, "token_id")
+        user_id_validated = validate_uuid(user_id, "user_id")
+        agent_token = session.exec(
+            select(AgentToken).where(
+                AgentToken.id == token_id_validated,
+                AgentToken.user_id == user_id_validated,
+                AgentToken.revoked_at.is_(None),  # type: ignore[union-attr]
+            )
+        ).first()
+        if agent_token is None:
+            raise ResourceNotFoundError("AgentToken", token_id_validated)
+
+        now = datetime.now(UTC)
+        agent_token.revoked_at = now
+        agent_token.updated_at = now
+        session.add(agent_token)
+        session.commit()
+        session.refresh(agent_token)
+        return agent_token
+
+    def get_active_token_by_secret(
+        self, session: Session, token: str
+    ) -> AgentToken | None:
+        """Resolve an active agent token from a plaintext secret."""
+        return session.exec(
+            select(AgentToken).where(
+                AgentToken.token_hash == self.hash_token(token),
+                AgentToken.revoked_at.is_(None),  # type: ignore[union-attr]
+            )
+        ).first()
+
+    def touch_last_used(
+        self,
+        session: Session,
+        agent_token: AgentToken,
+        now: datetime | None = None,
+    ) -> bool:
+        """Record use at most once per LAST_USED_INTERVAL. Return True if updated."""
+        now = now or datetime.now(UTC)
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=UTC)
+        last_used_at = agent_token.last_used_at
+        if last_used_at is not None:
+            if last_used_at.tzinfo is None:
+                last_used_at = last_used_at.replace(tzinfo=UTC)
+            if now - last_used_at < self.LAST_USED_INTERVAL:
+                return False
+
+        agent_token.last_used_at = now
+        agent_token.updated_at = now
+        session.add(agent_token)
+        session.commit()
+        return True
+
+
 class QuickTaskService(BaseService[QuickTask, QuickTaskCreate, QuickTaskUpdate]):
     """QuickTask service for unclassified tasks not belonging to any project"""
 
@@ -2201,4 +2333,5 @@ task_service = TaskService()
 log_service = LogService()
 work_session_service = WorkSessionService()
 hook_token_service = HookTokenService()
+agent_token_service = AgentTokenService()
 quick_task_service = QuickTaskService()
