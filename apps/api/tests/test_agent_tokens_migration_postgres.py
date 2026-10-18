@@ -8,13 +8,15 @@
 
 from collections.abc import Iterator
 import os
-from pathlib import Path
 from uuid import uuid4
 
 import psycopg2
 import pytest
 
-from humancompiler_api.migration_manager import MigrationManager
+from tests.postgres_migration_helpers import (
+    create_supabase_objects,
+    run_migration,
+)
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("NOTEBOOK_TEST_POSTGRES_URL"), reason="requires test PostgreSQL"
@@ -32,46 +34,6 @@ LOG_WITH_CREATED_ID = "00000000-0000-0000-0000-0000000000d1"
 LOG_WITHOUT_CREATED_ID = "00000000-0000-0000-0000-0000000000d2"
 
 TOKEN_COLUMNS = "id, user_id, name, token_hash, token_prefix, last_used_at, revoked_at"
-
-
-def migration_statements(name: str) -> list[str]:
-    path = Path(__file__).parents[1] / "migrations" / name
-    manager = MigrationManager.__new__(MigrationManager)
-    return manager._split_sql_statements(path.read_text())
-
-
-def run_migration(cursor, schema: str, name: str) -> None:
-    for statement in migration_statements(name):
-        cursor.execute(statement.replace("public.", f'"{schema}".'))
-
-
-def create_supabase_objects(cursor) -> None:
-    # Only create what is missing, so a Supabase database keeps its own definitions.
-    cursor.execute(
-        """
-        DO $$
-        BEGIN
-            IF to_regrole('anon') IS NULL THEN
-                CREATE ROLE anon NOLOGIN;
-            END IF;
-            IF to_regrole('authenticated') IS NULL THEN
-                CREATE ROLE authenticated NOLOGIN;
-            END IF;
-        END $$
-        """
-    )
-    cursor.execute("CREATE SCHEMA IF NOT EXISTS auth")
-    cursor.execute(
-        """
-        DO $$
-        BEGIN
-            IF to_regprocedure('auth.uid()') IS NULL THEN
-                CREATE FUNCTION auth.uid() RETURNS uuid
-                    LANGUAGE sql STABLE AS 'SELECT NULL::uuid';
-            END IF;
-        END $$
-        """
-    )
 
 
 def create_minimal_tables(cursor, schema: str) -> None:

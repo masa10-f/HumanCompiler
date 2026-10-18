@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
+from humancompiler_api.agent_audit import AgentAuditMiddleware
 from humancompiler_api.client_ip import TrustedClientIPMiddleware
 from humancompiler_api.config import settings
 from humancompiler_api.common.error_handlers import (
@@ -32,6 +33,7 @@ from humancompiler_api.exceptions import (
     validation_exception_handler,
 )
 from humancompiler_api.routers import (
+    agent_tokens,
     ai_planning,
     context_export,
     daily_plans,
@@ -223,6 +225,10 @@ def is_origin_allowed(origin: str) -> bool:
 SLOW_REQUEST_THRESHOLD = 1.0
 
 
+# Record agent requests in agent_audit_logs. Added before rate limiting so it
+# runs inside DefaultRateLimitMiddleware: the default 429s are not recorded.
+app.add_middleware(AgentAuditMiddleware)
+
 # Configure rate limiting. Registered before the CORS middleware so the limiter
 # runs inside it and 429 responses still get CORS headers.
 configure_rate_limiting(app)
@@ -327,6 +333,7 @@ app.include_router(monitoring.router)
 app.include_router(simple_backup_api.router)
 app.include_router(data_export.router, tags=["data-export"])
 app.include_router(hook_tokens.router)
+app.include_router(agent_tokens.router)
 app.include_router(hooks.router, prefix="/api")
 app.include_router(work_sessions.router, prefix="/api")
 # Issue #227: Reschedule router
