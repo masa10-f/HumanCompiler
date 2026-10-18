@@ -4,13 +4,14 @@
 # This file is part of HumanCompiler.
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
+import logging
 from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
-from humancompiler_api import agent_audit
+from humancompiler_api import agent_audit, agent_auth
 from humancompiler_api.agent_rate_limit import (
     AUTH_FAILURE_LIMIT,
     TOKEN_LIMIT,
@@ -128,6 +129,21 @@ def test_auth_failure_limit_blocks_ip_after_20_failures(session: Session):
     assert int(blocked.headers["Retry-After"]) >= 1
     # The IP stays blocked even for a valid token.
     assert post_quick_task(bearer(valid_token)).status_code == 429
+
+
+def test_auth_failure_lockout_is_logged_without_the_token(
+    session: Session, caplog: pytest.LogCaptureFixture
+):
+    for i in range(20):
+        assert post_quick_task(bearer(fake_token(i))).status_code == 401
+    blocked_token = fake_token(20)
+
+    with caplog.at_level(logging.WARNING, logger=agent_auth.__name__):
+        response = post_quick_task(bearer(blocked_token))
+
+    assert response.status_code == 429
+    assert "Agent auth failure limit exceeded for IP: testclient" in caplog.text
+    assert blocked_token not in caplog.text
 
 
 def test_auth_failure_429_is_not_audited(session: Session):

@@ -10,6 +10,7 @@ Agent tokens are opaque, hashed secrets (``hc_agent_<public_id>_<secret>``).
 Supabase JWTs are deliberately not accepted here.
 """
 
+import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -24,6 +25,8 @@ from humancompiler_api.client_ip import get_client_ip
 from humancompiler_api.database import get_session
 from humancompiler_api.models import AgentScope
 from humancompiler_api.services import agent_token_service
+
+logger = logging.getLogger(__name__)
 
 # Lowercase header names, in lookup priority order after "Authorization: Bearer".
 _FALLBACK_HEADERS = ("x-humancompiler-agent-token", "x-humancompiler-hook-token")
@@ -105,6 +108,8 @@ def get_agent_principal(
     retry_after = agent_rate_limiter.auth_failure_retry_after(client_ip)
     if retry_after is not None:
         setattr(request.state, SKIP_AUDIT_STATE, True)
+        # Not audited, so this is the only server-side trace of the lockout.
+        logger.warning("Agent auth failure limit exceeded for IP: %s", client_ip)
         raise _too_many_requests(
             "Too many failed agent authentication attempts", retry_after
         )
