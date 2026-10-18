@@ -16,13 +16,13 @@ import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
-from sqlmodel import Session, col, delete
+from sqlmodel import Session, col, delete, select
 
 from humancompiler_api.agent_auth import (
     SKIP_AUDIT_STATE,
@@ -59,6 +59,22 @@ def purge_expired_audit_logs(session: Session, now: datetime | None = None) -> i
     )
     session.commit()
     return result.rowcount
+
+
+def list_audit_logs_for_token(
+    session: Session, token_id: UUID, user_id: UUID, limit: int
+) -> list[AgentAuditLog]:
+    """Return the newest audit rows of one token owned by ``user_id``."""
+    statement = (
+        select(AgentAuditLog)
+        .where(
+            AgentAuditLog.token_id == token_id,
+            AgentAuditLog.user_id == user_id,
+        )
+        .order_by(col(AgentAuditLog.created_at).desc(), col(AgentAuditLog.id).desc())
+        .limit(limit)
+    )
+    return list(session.exec(statement).all())
 
 
 class AgentAuditMiddleware:

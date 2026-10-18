@@ -841,6 +841,24 @@ class AgentScope(StrEnum):
     QUICK_TASKS_WRITE = "quick_tasks:write"
 
 
+# User-facing (Japanese) descriptions shown in the token settings UI.
+AGENT_SCOPE_DESCRIPTIONS: dict[AgentScope, str] = {
+    AgentScope.PROJECTS_READ: "Project の取得",
+    AgentScope.GOALS_READ: "Goal の取得",
+    AgentScope.TASKS_READ: "Task の取得",
+    AgentScope.QUICK_TASKS_READ: "QuickTask の取得",
+    AgentScope.LOGS_READ: "作業ログ（Log）の取得",
+    AgentScope.WORK_SESSIONS_READ: "WorkSession の取得",
+    AgentScope.NOTES_READ: "ContextNote の取得",
+    AgentScope.DAILY_PLANS_READ: "DailyPlanDocument の取得",
+    AgentScope.CONTEXT_READ: (
+        "context export（Markdown）の取得。ノート、タスク、作業履歴、日次ノートを"
+        "まとめて読むため、実質的に広い読み取り権限になる"
+    ),
+    AgentScope.QUICK_TASKS_WRITE: "POST /api/hooks/quick-tasks（既存 hook の互換）",
+}
+
+
 class AgentToken(SQLModel, table=True):  # type: ignore[call-arg]
     """User-scoped, hashed token for agents, limited by scopes."""
 
@@ -1675,6 +1693,97 @@ class HookTokenCreatedResponse(HookTokenResponse):
     token: str
 
     model_config = ConfigDict(from_attributes=True)
+
+
+def _serialize_utc(value: datetime | None) -> str | None:
+    """Serialize a datetime with UTC timezone info (naive values are UTC)."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.isoformat()
+
+
+class AgentTokenCreate(BaseModel):
+    """Agent token creation request. Scopes are fixed once the token exists."""
+
+    name: str = Field(min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=500)
+    scopes: list[AgentScope] = Field(min_length=1)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        """Normalize token names and reject whitespace-only values."""
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Agent token name cannot be empty")
+        return stripped
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value: str | None) -> str | None:
+        """Normalize descriptions; blank values become None."""
+        if value is None:
+            return None
+        return value.strip() or None
+
+
+class AgentTokenResponse(BaseModel):
+    """Agent token metadata response. Neither secret nor hash is ever returned."""
+
+    id: UUID
+    name: str
+    description: str | None
+    scopes: list[str]
+    token_prefix: str
+    last_used_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("last_used_at", "created_at", "updated_at")
+    def serialize_datetimes(self, value: datetime | None) -> str | None:
+        """Ensure datetimes are serialized with UTC timezone info."""
+        return _serialize_utc(value)
+
+
+class AgentTokenCreatedResponse(AgentTokenResponse):
+    """Agent token creation response, including the one-time token secret."""
+
+    token: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AgentScopeInfo(BaseModel):
+    """A scope that can be granted to an agent token, with its description."""
+
+    scope: str
+    description: str
+
+
+class AgentAuditLogResponse(BaseModel):
+    """One audit row of an agent request, as shown to the token's owner."""
+
+    id: UUID
+    token_id: UUID | None
+    token_prefix: str | None
+    method: str
+    route: str
+    required_scope: str | None
+    status_code: int
+    duration_ms: int
+    client_ip: str | None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str | None:
+        """Ensure created_at is serialized with UTC timezone info."""
+        return _serialize_utc(value)
 
 
 class EmailNotificationSettingsUpdate(BaseModel):
