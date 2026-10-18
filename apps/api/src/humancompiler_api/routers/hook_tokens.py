@@ -8,17 +8,20 @@ from sqlmodel import Session
 from humancompiler_api.auth import AuthUser, get_current_user
 from humancompiler_api.database import get_session
 from humancompiler_api.models import (
-    HookToken,
+    AgentScope,
+    AgentToken,
     HookTokenCreate,
     HookTokenCreatedResponse,
     HookTokenResponse,
 )
-from humancompiler_api.services import hook_token_service
+from humancompiler_api.services import agent_token_service
 
 router = APIRouter(prefix="/api/user/hook-tokens", tags=["hook-tokens"])
 
+_HOOK_ONLY_SCOPES = {AgentScope.QUICK_TASKS_WRITE.value}
 
-def _created_response(token_model: HookToken, token: str) -> HookTokenCreatedResponse:
+
+def _created_response(token_model: AgentToken, token: str) -> HookTokenCreatedResponse:
     """Build the one-time token creation response."""
     return HookTokenCreatedResponse(
         id=token_model.id,
@@ -38,9 +41,13 @@ async def list_hook_tokens(
     session: Annotated[Session, Depends(get_session)],
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> list[HookTokenResponse]:
-    """List active hook tokens for the current user."""
-    tokens = hook_token_service.get_hook_tokens(session, current_user.user_id)
-    return [HookTokenResponse.model_validate(token) for token in tokens]
+    """List active tokens that can only write quick tasks."""
+    tokens = agent_token_service.list_active_tokens(session, current_user.user_id)
+    return [
+        HookTokenResponse.model_validate(token)
+        for token in tokens
+        if set(token.scopes) == _HOOK_ONLY_SCOPES
+    ]
 
 
 @router.post(
@@ -60,8 +67,8 @@ async def create_hook_token(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> HookTokenCreatedResponse:
     """Create a hook token and return its secret once."""
-    token_model, token = hook_token_service.create_hook_token(
-        session, token_data, current_user.user_id
+    token_model, token = agent_token_service.create_token(
+        session, current_user.user_id, token_data.name, [AgentScope.QUICK_TASKS_WRITE]
     )
     return _created_response(token_model, token)
 
@@ -73,4 +80,4 @@ async def revoke_hook_token(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> None:
     """Revoke an active hook token."""
-    hook_token_service.revoke_hook_token(session, token_id, current_user.user_id)
+    agent_token_service.revoke_token(session, token_id, current_user.user_id)

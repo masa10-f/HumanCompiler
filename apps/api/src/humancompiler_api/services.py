@@ -60,8 +60,6 @@ from humancompiler_api.models import (
     QuickTask,
     QuickTaskCreate,
     QuickTaskUpdate,
-    HookToken,
-    HookTokenCreate,
     TaskStatus,
     TaskWorkspaceSortBy,
 )
@@ -1925,109 +1923,6 @@ class WorkSessionService(
         return work_session
 
 
-class HookTokenService:
-    """Service for user-scoped hook ingestion tokens."""
-
-    HOOK_NAMESPACE = "hc_hook_"
-    PUBLIC_ID_BYTES = 6
-    TOKEN_PREFIX_LENGTH = 16
-
-    @classmethod
-    def generate_token(cls) -> tuple[str, str]:
-        """Generate a hook token and its non-secret display prefix."""
-        public_id = secrets.token_urlsafe(cls.PUBLIC_ID_BYTES)
-        token_prefix = f"{cls.HOOK_NAMESPACE}{public_id}"
-        return f"{token_prefix}_{secrets.token_urlsafe(32)}", token_prefix
-
-    @staticmethod
-    def hash_token(token: str) -> str:
-        """Hash a hook token for storage and lookup."""
-        return hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-    def create_hook_token(
-        self, session: Session, token_data: HookTokenCreate, user_id: str | UUID
-    ) -> tuple[HookToken, str]:
-        """Create a hook token and return the one-time plaintext secret."""
-        user_id_validated = validate_uuid(user_id, "user_id")
-        token, token_prefix = self.generate_token()
-        now = datetime.now(UTC)
-        hook_token = HookToken(
-            id=uuid4(),
-            user_id=user_id_validated,
-            name=token_data.name,
-            token_hash=self.hash_token(token),
-            token_prefix=token_prefix[: self.TOKEN_PREFIX_LENGTH],
-            created_at=now,
-            updated_at=now,
-        )
-
-        def create_operation() -> HookToken:
-            session.add(hook_token)
-            session.flush()
-            return hook_token
-
-        return safe_execute(session, create_operation), token
-
-    def get_hook_tokens(self, session: Session, user_id: str | UUID) -> list[HookToken]:
-        """Return active hook token metadata for a user."""
-        user_id_validated = validate_uuid(user_id, "user_id")
-        statement = (
-            select(HookToken)
-            .where(
-                HookToken.user_id == user_id_validated,
-                HookToken.revoked_at.is_(None),
-            )
-            .order_by(HookToken.created_at.desc(), HookToken.id.asc())
-        )
-        return list(session.exec(statement).all())
-
-    def revoke_hook_token(
-        self, session: Session, token_id: str | UUID, user_id: str | UUID
-    ) -> HookToken:
-        """Revoke an active hook token."""
-        token_id_validated = validate_uuid(token_id, "token_id")
-        user_id_validated = validate_uuid(user_id, "user_id")
-        hook_token = session.exec(
-            select(HookToken).where(
-                HookToken.id == token_id_validated,
-                HookToken.user_id == user_id_validated,
-                HookToken.revoked_at.is_(None),
-            )
-        ).first()
-        if hook_token is None:
-            raise ResourceNotFoundError("HookToken", token_id_validated)
-
-        now = datetime.now(UTC)
-        hook_token.revoked_at = now
-        hook_token.updated_at = now
-        session.add(hook_token)
-        session.commit()
-        session.refresh(hook_token)
-        return hook_token
-
-    def get_active_token_by_secret(
-        self, session: Session, token: str
-    ) -> HookToken | None:
-        """Resolve an active hook token from a plaintext secret."""
-        token_hash = self.hash_token(token)
-        return session.exec(
-            select(HookToken).where(
-                HookToken.token_hash == token_hash,
-                HookToken.revoked_at.is_(None),
-            )
-        ).first()
-
-    def mark_token_used(self, session: Session, hook_token: HookToken) -> HookToken:
-        """Record successful hook token use."""
-        now = datetime.now(UTC)
-        hook_token.last_used_at = now
-        hook_token.updated_at = now
-        session.add(hook_token)
-        session.commit()
-        session.refresh(hook_token)
-        return hook_token
-
-
 class AgentTokenService:
     """Service for scoped agent tokens."""
 
@@ -2332,6 +2227,5 @@ goal_service = GoalService()
 task_service = TaskService()
 log_service = LogService()
 work_session_service = WorkSessionService()
-hook_token_service = HookTokenService()
 agent_token_service = AgentTokenService()
 quick_task_service = QuickTaskService()
