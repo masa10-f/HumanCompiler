@@ -13,7 +13,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from sqlalchemy import JSON, Text, UniqueConstraint, text, UUID as SQLAlchemyUUID
+from sqlalchemy import ARRAY, JSON, Text, UniqueConstraint, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy import DateTime
 from sqlalchemy.dialects.postgresql import JSONB
@@ -615,6 +615,7 @@ class Log(LogBase, table=True):  # type: ignore[call-arg]
     id: UUID | None = SQLField(default=None, primary_key=True)
     task_id: UUID = SQLField(foreign_key="tasks.id", ondelete="CASCADE")
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
     task: Task = Relationship(back_populates="logs")
@@ -823,6 +824,49 @@ class HookToken(SQLModel, table=True):  # type: ignore[call-arg]
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     user: User = Relationship(back_populates="hook_tokens")
+
+
+class AgentScope(StrEnum):
+    """Permission granted to an agent token. Fixed when the token is created."""
+
+    PROJECTS_READ = "projects:read"
+    GOALS_READ = "goals:read"
+    TASKS_READ = "tasks:read"
+    QUICK_TASKS_READ = "quick_tasks:read"
+    LOGS_READ = "logs:read"
+    WORK_SESSIONS_READ = "work_sessions:read"
+    NOTES_READ = "notes:read"
+    DAILY_PLANS_READ = "daily_plans:read"
+    CONTEXT_READ = "context:read"
+    QUICK_TASKS_WRITE = "quick_tasks:write"
+
+
+class AgentToken(SQLModel, table=True):  # type: ignore[call-arg]
+    """User-scoped, hashed token for agents, limited by scopes."""
+
+    __tablename__ = "agent_tokens"
+
+    id: UUID | None = SQLField(
+        default=None,
+        sa_column=Column(
+            "id",
+            SQLAlchemyUUID,
+            primary_key=True,
+            server_default=text("gen_random_uuid()"),
+        ),
+    )
+    user_id: UUID = SQLField(foreign_key="users.id", index=True)
+    name: str = SQLField(min_length=1, max_length=100)
+    description: str | None = SQLField(default=None, max_length=500)
+    scopes: list[str] = SQLField(
+        sa_column=Column(ARRAY(Text()).with_variant(JSON(), "sqlite"), nullable=False)
+    )
+    token_hash: str = SQLField(max_length=64, unique=True, index=True)
+    token_prefix: str = SQLField(max_length=32)
+    last_used_at: datetime | None = SQLField(default=None)
+    revoked_at: datetime | None = SQLField(default=None)
+    created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
 
 # Email Notification Models (Issue #261)
@@ -1345,9 +1389,10 @@ class LogResponse(LogBase):
     id: UUID
     task_id: UUID
     created_at: datetime
+    updated_at: datetime
 
-    @field_serializer("created_at")
-    def serialize_created_at(self, value: datetime) -> str:
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetimes(self, value: datetime) -> str:
         """Ensure datetime is serialized with UTC timezone info"""
         if value.tzinfo is None:
             # Assume naive datetime is UTC and add timezone info

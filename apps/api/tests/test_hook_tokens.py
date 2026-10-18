@@ -1,6 +1,6 @@
 import hashlib
 import logging
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,12 +9,15 @@ from sqlmodel import Session, select
 from humancompiler_api.auth import AuthUser, get_current_user
 from humancompiler_api.database import get_session
 from humancompiler_api.main import app
-from humancompiler_api.models import HookToken, QuickTask, User
+from humancompiler_api import services
+from humancompiler_api.models import AgentScope, AgentToken, QuickTask, User
 from humancompiler_api.routers import hooks
+from humancompiler_api.services import agent_token_service
 
 client = TestClient(app)
 
 TEST_USER_ID = UUID("12345678-1234-1234-1234-123456789012")
+OTHER_USER_ID = UUID("87654321-4321-4321-4321-210987654321")
 
 
 @pytest.fixture(autouse=True)
@@ -25,7 +28,7 @@ def reset_dependency_overrides():
 
 
 def seed_user(session: Session, user_id: UUID = TEST_USER_ID) -> User:
-    user = User(id=user_id, email="hook-user@example.com")
+    user = User(id=user_id, email=f"hook-user-{user_id}@example.com")
     session.add(user)
     session.commit()
     return user
@@ -69,13 +72,14 @@ def test_create_hook_token_returns_secret_once_and_stores_hash(session: Session)
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "PR review hook"
-    assert data["token"].startswith("hc_hook_")
-    assert len(data["token_prefix"]) == 16
+    assert data["token"].startswith("hc_agent_")
+    assert len(data["token_prefix"]) == 17
     assert data["token"].startswith(f"{data['token_prefix']}_")
     assert "token_hash" not in data
 
-    stored_token = session.exec(select(HookToken)).one()
+    stored_token = session.exec(select(AgentToken)).one()
     assert stored_token.token_prefix == data["token_prefix"]
+    assert stored_token.scopes == ["quick_tasks:write"]
     assert (
         stored_token.token_hash
         == hashlib.sha256(data["token"].encode("utf-8")).hexdigest()
@@ -113,7 +117,7 @@ def test_hook_token_creates_quick_task_and_updates_last_used(session: Session):
     assert quick_task.title == "Review PR 299"
     assert quick_task.owner_id == TEST_USER_ID
 
-    stored_token = session.exec(select(HookToken)).one()
+    stored_token = session.exec(select(AgentToken)).one()
     assert stored_token.last_used_at is not None
 
 
@@ -132,7 +136,7 @@ def test_hook_token_header_creates_quick_task(session: Session):
 
 def test_missing_invalid_and_revoked_hook_tokens_are_rejected(session: Session):
     token = create_hook_token(session)
-    token_id = session.exec(select(HookToken.id)).one()
+    token_id = session.exec(select(AgentToken.id)).one()
     revoke_response = client.delete(f"/api/user/hook-tokens/{token_id}")
 
     assert revoke_response.status_code == 204
@@ -188,3 +192,128 @@ def test_hook_quick_task_logs_do_not_include_user_content(session: Session, capl
     assert str(TEST_USER_ID) in caplog.text
     assert "Sensitive hook title" not in caplog.text
     assert "Sensitive hook description" not in caplog.text
+
+
+def insert_agent_token(
+    session: Session,
+    user_id: UUID,
+    scopes: list[str],
+    token: str | None = None,
+    token_prefix: str = "hc_agent_AbCdEfGh",
+) -> tuple[AgentToken, str]:
+    token = token or f"{token_prefix}_secret-{uuid4().hex}"
+    agent_token = AgentToken(
+        id=uuid4(),
+        user_id=user_id,
+        name="Inserted token",
+        scopes=scopes,
+        token_hash=agent_token_service.hash_token(token),
+        token_prefix=token_prefix,
+    )
+    session.add(agent_token)
+    session.commit()
+    return agent_token, token
+
+
+def test_migrated_hook_token_works_with_both_headers(session: Session):
+    seed_user(session)
+    install_overrides(session)
+    # Same shape as the rows migration 035 copies from hook_tokens.
+    _, token = insert_agent_token(
+        session,
+        TEST_USER_ID,
+        ["quick_tasks:write"],
+        token="hc_hook_AbCdEfGh_migratedsecret",
+        token_prefix="hc_hook_AbCdEfGh",
+    )
+
+    bearer_response = client.post(
+        "/api/hooks/quick-tasks",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"title": "Via bearer"},
+    )
+    header_response = client.post(
+        "/api/hooks/quick-tasks",
+        headers={"X-HumanCompiler-Hook-Token": token},
+        json={"title": "Via hook header"},
+    )
+
+    assert bearer_response.status_code == 201
+    assert header_response.status_code == 201
+
+
+def test_hook_rejects_token_without_quick_tasks_write(session: Session):
+    seed_user(session)
+    install_overrides(session)
+    _, token = insert_agent_token(session, TEST_USER_ID, ["tasks:read"])
+
+    response = client.post(
+        "/api/hooks/quick-tasks",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"title": "Not allowed"},
+    )
+
+    assert response.status_code == 403
+    assert session.exec(select(QuickTask)).all() == []
+
+
+def test_hook_token_list_shows_only_hook_only_tokens(session: Session):
+    seed_user(session)
+    install_overrides(session)
+    hook_only, _ = agent_token_service.create_token(
+        session, TEST_USER_ID, "Hook only", [AgentScope.QUICK_TASKS_WRITE]
+    )
+    agent_token_service.create_token(
+        session,
+        TEST_USER_ID,
+        "Broader",
+        [AgentScope.QUICK_TASKS_WRITE, AgentScope.TASKS_READ],
+    )
+
+    response = client.get("/api/user/hook-tokens")
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == [str(hook_only.id)]
+
+
+def test_revoke_other_users_token_returns_404(session: Session):
+    seed_user(session)
+    seed_user(session, OTHER_USER_ID)
+    install_overrides(session)
+    other_token, token = insert_agent_token(
+        session, OTHER_USER_ID, ["quick_tasks:write"]
+    )
+
+    revoke_response = client.delete(f"/api/user/hook-tokens/{other_token.id}")
+    hook_response = client.post(
+        "/api/hooks/quick-tasks",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"title": "Still valid"},
+    )
+
+    assert revoke_response.status_code == 404
+    assert hook_response.status_code == 201
+
+
+def test_revoke_broader_token_returns_404(session: Session):
+    seed_user(session)
+    install_overrides(session)
+    broader, _ = agent_token_service.create_token(
+        session,
+        TEST_USER_ID,
+        "Broader",
+        [AgentScope.QUICK_TASKS_WRITE, AgentScope.TASKS_READ],
+    )
+
+    response = client.delete(f"/api/user/hook-tokens/{broader.id}")
+
+    assert response.status_code == 404
+    assert [
+        token.id
+        for token in agent_token_service.list_active_tokens(session, TEST_USER_ID)
+    ] == [broader.id]
+
+
+def test_hook_token_service_is_removed():
+    assert not hasattr(services, "hook_token_service")
+    assert not hasattr(services, "HookTokenService")

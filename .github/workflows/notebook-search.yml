@@ -9,6 +9,9 @@ on:
       - 'apps/api/tests/test_daily_plan_search_postgres.py'
       - 'apps/api/src/humancompiler_api/ai/context_export.py'
       - 'apps/api/tests/test_context_export_postgres.py'
+      - 'apps/api/migrations/035*'
+      - 'apps/api/tests/test_agent_tokens_migration_postgres.py'
+      - 'apps/api/src/humancompiler_api/migration_manager.py'
       - '.github/workflows/notebook-search.yml'
 
 permissions:
@@ -52,3 +55,8 @@ jobs:
         env:
           NOTEBOOK_TEST_POSTGRES_URL: postgresql://notebook_test:notebook_test@localhost:5432/notebook_test
         run: uv run pytest -q tests/test_context_export_postgres.py
+      - name: Check agent token migration and rollback
+        working-directory: apps/api
+        env:
+          NOTEBOOK_TEST_POSTGRES_URL: postgresql://notebook_test:notebook_test@localhost:5432/notebook_test
+        run: uv run pytest -q tests/test_agent_tokens_migration_postgres.py
