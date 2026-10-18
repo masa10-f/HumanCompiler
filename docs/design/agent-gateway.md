@@ -324,7 +324,6 @@ rollback の手順:
 
 036 の rollback は `agent_audit_logs` を削除する。
 
-
 ## セキュリティ
 
 - secret は保存せず、ハッシュのみを保存する。secret はログにも監査ログにも出さない。

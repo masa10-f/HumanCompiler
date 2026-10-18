@@ -11,6 +11,7 @@ on:
       - 'apps/api/tests/test_context_export_postgres.py'
       - 'apps/api/migrations/035*'
       - 'apps/api/tests/test_agent_tokens_migration_postgres.py'
+      - 'apps/api/src/humancompiler_api/migration_manager.py'
       - '.github/workflows/notebook-search.yml'
 
 permissions:

@@ -316,9 +316,22 @@ def test_035_can_be_applied_twice(db):
     cursor.execute(f'SELECT count(*) FROM "{schema}".agent_tokens')
     count = cursor.fetchone()[0]
 
+    # Revoked through the new API between the two runs.
+    cursor.execute(
+        f'UPDATE "{schema}".agent_tokens SET revoked_at = NOW() WHERE id = %s',
+        (ACTIVE_ID,),
+    )
+
     run_migration(cursor, schema, MIGRATION)
     cursor.execute(f'SELECT count(*) FROM "{schema}".agent_tokens')
     assert cursor.fetchone()[0] == count == 3
+
+    # The startup re-run must not undo the revocation.
+    cursor.execute(
+        f'SELECT revoked_at FROM "{schema}".agent_tokens WHERE id = %s',
+        (ACTIVE_ID,),
+    )
+    assert cursor.fetchone()[0] is not None
 
 
 def test_035_rollback_writes_back_revocations(db):
