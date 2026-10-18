@@ -23,8 +23,8 @@ from humancompiler_api.database import get_session
 from humancompiler_api.models import AgentScope
 from humancompiler_api.services import agent_token_service
 
-AGENT_TOKEN_HEADER = "x-humancompiler-agent-token"
-HOOK_TOKEN_HEADER = "x-humancompiler-hook-token"
+# Lowercase header names, in lookup priority order after "Authorization: Bearer".
+_FALLBACK_HEADERS = ("x-humancompiler-agent-token", "x-humancompiler-hook-token")
 
 # public_id is always 8 URL-safe chars and may itself contain "_" or "-", so the
 # prefix must be matched positionally, never by splitting on "_".
@@ -58,7 +58,7 @@ def extract_agent_token(request: Request) -> str:
         if scheme.lower() == "bearer" and value.strip():
             return value.strip()
 
-    for header in (AGENT_TOKEN_HEADER, HOOK_TOKEN_HEADER):
+    for header in _FALLBACK_HEADERS:
         header_token = request.headers.get(header)
         if header_token and header_token.strip():
             return header_token.strip()
