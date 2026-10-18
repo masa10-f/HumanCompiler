@@ -615,6 +615,7 @@ class Log(LogBase, table=True):  # type: ignore[call-arg]
     id: UUID | None = SQLField(default=None, primary_key=True)
     task_id: UUID = SQLField(foreign_key="tasks.id", ondelete="CASCADE")
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Relationships
     task: Task = Relationship(back_populates="logs")
@@ -1345,9 +1346,10 @@ class LogResponse(LogBase):
     id: UUID
     task_id: UUID
     created_at: datetime
+    updated_at: datetime
 
-    @field_serializer("created_at")
-    def serialize_created_at(self, value: datetime) -> str:
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetimes(self, value: datetime) -> str:
         """Ensure datetime is serialized with UTC timezone info"""
         if value.tzinfo is None:
             # Assume naive datetime is UTC and add timezone info
