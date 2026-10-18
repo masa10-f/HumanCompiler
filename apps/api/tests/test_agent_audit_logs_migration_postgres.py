@@ -78,6 +78,12 @@ def db() -> Iterator[tuple]:
         with connection.cursor() as cursor:
             create_supabase_objects(cursor)
             cursor.execute(f'CREATE SCHEMA "{schema}"')
+            # Supabase grants new tables to these roles by default. Mirror that
+            # so the privilege assertions actually exercise 036's REVOKE.
+            cursor.execute(
+                f'ALTER DEFAULT PRIVILEGES IN SCHEMA "{schema}" '
+                "GRANT ALL ON TABLES TO anon, authenticated"
+            )
             create_minimal_tables(cursor, schema)
             yield cursor, schema
     finally:
