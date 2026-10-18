@@ -5,6 +5,7 @@
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
 import logging
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -19,6 +20,7 @@ from humancompiler_api.main import app
 from humancompiler_api.models import AgentAuditLog, AgentScope, AgentToken, User
 from humancompiler_api.rate_limiter import DefaultRateLimitMiddleware
 from humancompiler_api.routers import hooks
+from humancompiler_api.scheduler import notification_scheduler
 from humancompiler_api.services import agent_token_service
 
 client = TestClient(app)
@@ -246,3 +248,56 @@ def test_audit_middleware_runs_inside_default_rate_limit():
     assert classes.index(AgentAuditMiddleware) > classes.index(
         DefaultRateLimitMiddleware
     )
+
+
+def test_purge_deletes_rows_older_than_90_days(session: Session):
+    now = datetime(2026, 10, 19, 12, 0, tzinfo=UTC)
+    for age_days in (91, 89):
+        session.add(
+            AgentAuditLog(
+                id=uuid4(),
+                method="POST",
+                route=f"/age-{age_days}",
+                status_code=200,
+                duration_ms=1,
+                created_at=now - timedelta(days=age_days),
+            )
+        )
+    session.commit()
+
+    deleted = agent_audit.purge_expired_audit_logs(session, now=now)
+
+    assert deleted == 1
+    assert [row.route for row in audit_rows(session)] == ["/age-89"]
+
+
+def test_retention_job_is_registered_daily(monkeypatch: pytest.MonkeyPatch):
+    scheduler = notification_scheduler.get_scheduler()
+    job_ids_before = {job.id for job in scheduler.get_jobs()}
+    # Keep the shared module-level scheduler from actually starting.
+    monkeypatch.setattr(scheduler, "start", lambda *args, **kwargs: None)
+
+    try:
+        notification_scheduler.start_notification_scheduler()
+        job = scheduler.get_job("agent_audit_log_retention")
+
+        assert job is not None
+        assert job.trigger.interval == timedelta(days=1)
+    finally:
+        for job in scheduler.get_jobs():
+            if job.id not in job_ids_before:
+                scheduler.remove_job(job.id)
+
+
+async def test_retention_job_swallows_errors(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    def broken_session_factory() -> Session:
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(agent_audit, "session_factory", broken_session_factory)
+
+    with caplog.at_level(logging.ERROR, logger=notification_scheduler.__name__):
+        await notification_scheduler.purge_expired_agent_audit_logs()
+
+    assert "agent audit log retention" in caplog.text

@@ -14,6 +14,7 @@ secrets are never stored, and ``route`` is the route template, not the path.
 import logging
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -21,7 +22,7 @@ from fastapi import HTTPException
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
-from sqlmodel import Session
+from sqlmodel import Session, col, delete
 
 from humancompiler_api.agent_auth import (
     SKIP_AUDIT_STATE,
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 AUDITED_PATH_PREFIXES = ("/api/agent/", "/api/hooks/")
 UNMATCHED_ROUTE = "<unmatched>"
+AUDIT_LOG_RETENTION = timedelta(days=90)
 
 # Replaced in tests to point at the test database.
 session_factory: Callable[[], Session] = lambda: Session(db.get_engine())  # noqa: E731
@@ -47,6 +49,16 @@ def write_audit_log(entry: AgentAuditLog) -> None:
     with session_factory() as session:
         session.add(entry)
         session.commit()
+
+
+def purge_expired_audit_logs(session: Session, now: datetime | None = None) -> int:
+    """Delete audit rows older than ``AUDIT_LOG_RETENTION`` and return the count."""
+    cutoff = (now or datetime.now(UTC)) - AUDIT_LOG_RETENTION
+    result = session.exec(
+        delete(AgentAuditLog).where(col(AgentAuditLog.created_at) < cutoff)
+    )
+    session.commit()
+    return result.rowcount
 
 
 class AgentAuditMiddleware:
