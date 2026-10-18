@@ -127,30 +127,32 @@ class AgentAuditMiddleware:
         status_code: int | None,
         duration_ms: int,
     ) -> None:
-        principal = state.get("agent_principal")
-        if isinstance(principal, AgentPrincipal):
-            token_id = principal.token_id
-            user_id = principal.user_id
-            token_prefix: str | None = principal.token_prefix
-        else:
-            token_id = None
-            user_id = None
-            token_prefix = extract_token_prefix(token)
-
-        entry = AgentAuditLog(
-            id=uuid4(),
-            token_id=token_id,
-            user_id=user_id,
-            token_prefix=token_prefix,
-            method=scope["method"],
-            route=getattr(scope.get("route"), "path", None) or UNMATCHED_ROUTE,
-            required_scope=state.get("required_scope"),
-            # No response started means the app raised; the server returns 500.
-            status_code=status_code if status_code is not None else 500,
-            duration_ms=duration_ms,
-            client_ip=resolve_client_ip(scope),
-        )
+        # Everything here runs in the caller's ``finally``; a failure must
+        # neither replace the app's own exception nor surface after a response.
         try:
+            principal = state.get("agent_principal")
+            if isinstance(principal, AgentPrincipal):
+                token_id = principal.token_id
+                user_id = principal.user_id
+                token_prefix: str | None = principal.token_prefix
+            else:
+                token_id = None
+                user_id = None
+                token_prefix = extract_token_prefix(token)
+
+            entry = AgentAuditLog(
+                id=uuid4(),
+                token_id=token_id,
+                user_id=user_id,
+                token_prefix=token_prefix,
+                method=scope["method"],
+                route=getattr(scope.get("route"), "path", None) or UNMATCHED_ROUTE,
+                required_scope=state.get("required_scope"),
+                # No response started means the app raised; the server returns 500.
+                status_code=status_code if status_code is not None else 500,
+                duration_ms=duration_ms,
+                client_ip=resolve_client_ip(scope),
+            )
             await run_in_threadpool(write_audit_log, entry)
         except Exception:
             logger.exception("Failed to write agent audit log")

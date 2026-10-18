@@ -242,6 +242,88 @@ def test_audit_write_failure_does_not_fail_response(
     assert audit_rows(session) == []
 
 
+def test_audit_row_construction_failure_does_not_fail_response(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    _, token = create_token(session)
+
+    def broken_resolve_client_ip(scope):
+        raise RuntimeError("cannot resolve ip")
+
+    monkeypatch.setattr(agent_audit, "resolve_client_ip", broken_resolve_client_ip)
+
+    with caplog.at_level(logging.ERROR, logger=agent_audit.__name__):
+        response = client.post(
+            "/api/hooks/quick-tasks", headers=bearer(token), json={"title": "Still"}
+        )
+
+    assert response.status_code == 201
+    assert "Failed to write agent audit log" in caplog.text
+    assert token not in caplog.text
+    assert audit_rows(session) == []
+
+
+def test_audit_row_construction_failure_keeps_apps_own_500(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    _, token = create_token(session)
+
+    def explode(*args, **kwargs):
+        raise RuntimeError("app boom")
+
+    def broken_resolve_client_ip(scope):
+        raise RuntimeError("audit boom")
+
+    monkeypatch.setattr(hooks.quick_task_service, "create_quick_task", explode)
+    monkeypatch.setattr(agent_audit, "resolve_client_ip", broken_resolve_client_ip)
+    failing_client = TestClient(app, raise_server_exceptions=False)
+
+    with caplog.at_level(logging.ERROR, logger=agent_audit.__name__):
+        response = failing_client.post(
+            "/api/hooks/quick-tasks", headers=bearer(token), json={"title": "X"}
+        )
+
+    assert response.status_code == 500
+    assert "Failed to write agent audit log" in caplog.text
+    assert audit_rows(session) == []
+
+
+async def test_audit_failure_does_not_replace_apps_own_exception(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+):
+    _, token = create_token(session)
+
+    async def failing_app(scope, receive, send):
+        raise KeyError("app boom")
+
+    def broken_resolve_client_ip(scope):
+        raise ValueError("audit boom")
+
+    monkeypatch.setattr(agent_audit, "resolve_client_ip", broken_resolve_client_ip)
+    middleware = AgentAuditMiddleware(failing_app)
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/hooks/quick-tasks",
+        "headers": [(b"authorization", f"Bearer {token}".encode())],
+        "query_string": b"",
+    }
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        pass
+
+    # The app's own exception must surface, not the audit failure.
+    with pytest.raises(KeyError, match="app boom"):
+        await middleware(scope, receive, send)
+
+
 def test_audit_middleware_runs_inside_default_rate_limit():
     classes = [middleware.cls for middleware in app.user_middleware]  # [0] is outermost
 
