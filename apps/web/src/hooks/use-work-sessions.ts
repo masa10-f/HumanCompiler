@@ -125,6 +125,8 @@ export function useCheckoutWorkSession() {
 
       // Checkout auto-creates a log, which moves pending tasks to in_progress
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
+      // A remaining estimate updates the task estimate and so the goal total
+      queryClient.invalidateQueries({ queryKey: queryKeys.goals.all });
 
       // Invalidate reschedule suggestions (Issue #227)
       if (result.reschedule_suggestion) {
@@ -146,6 +148,7 @@ export function useSwitchWorkSession() {
       );
       queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.all });
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.goals.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.logs.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.progress.all });
     },

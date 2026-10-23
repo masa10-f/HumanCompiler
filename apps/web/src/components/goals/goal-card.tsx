@@ -116,7 +116,7 @@ export const GoalCard = memo(function GoalCard({
           </div>
 
           <div className="flex gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
-            <GoalEditDialog goal={goal}>
+            <GoalEditDialog goal={goal} estimateFromTasks={(progress?.tasks.length ?? 0) > 0}>
               <Button variant="outline" size="sm" className="flex-1">
                 編集
               </Button>

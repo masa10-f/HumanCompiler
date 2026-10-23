@@ -48,6 +48,8 @@ export function useApplyGoalTaskDraft() {
         queryClient.setQueryData(taskKeys.detail(task.id), task);
       });
       goalIds.forEach((goalId) => {
+        // New tasks change the goal's estimate, which is their sum.
+        queryClient.invalidateQueries({ queryKey: goalKeys.detail(goalId) });
         queryClient.invalidateQueries({ queryKey: taskKeys.byGoal(goalId) });
         queryClient.invalidateQueries({ queryKey: queryKeys.progress.goal(goalId) });
       });

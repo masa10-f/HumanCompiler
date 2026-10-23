@@ -42,7 +42,7 @@ const baseGoal: Goal = {
   updated_at: '2026-08-30T00:00:00Z',
 };
 
-function renderDialog(goal: Goal) {
+function renderDialog(goal: Goal, estimateFromTasks = false) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -50,7 +50,7 @@ function renderDialog(goal: Goal) {
 
   render(
     <QueryClientProvider client={queryClient}>
-      <GoalEditDialog goal={goal}>
+      <GoalEditDialog goal={goal} estimateFromTasks={estimateFromTasks}>
         <button type="button">編集する</button>
       </GoalEditDialog>
     </QueryClientProvider>,
@@ -97,6 +97,44 @@ describe('GoalEditDialog deadline payload', () => {
         }),
       });
     });
+  });
+});
+
+describe('GoalEditDialog estimate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUpdateGoal.mockResolvedValue(baseGoal);
+  });
+
+  it('sends a hand-entered estimate for a goal without tasks', async () => {
+    renderDialog(baseGoal);
+
+    fireEvent.change(screen.getByLabelText('見積時間 (時間) *'), {
+      target: { value: '12' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '更新' }));
+
+    await waitFor(() => {
+      expect(mockUpdateGoal).toHaveBeenCalledWith({
+        id: baseGoal.id,
+        data: expect.objectContaining({ estimate_hours: 12 }),
+      });
+    });
+  });
+
+  it('locks the estimate to the task total for a goal with tasks', async () => {
+    // A task total may exceed the limit for a hand-entered estimate.
+    renderDialog({ ...baseGoal, estimate_hours: 1500 }, true);
+
+    expect(screen.getByLabelText('見積時間 (時間) *')).toBeDisabled();
+    expect(screen.getByText('タスクの見積時間の合計から自動計算されます')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '更新' }));
+
+    await waitFor(() => {
+      expect(mockUpdateGoal).toHaveBeenCalledTimes(1);
+    });
+    expect(mockUpdateGoal.mock.calls[0][0].data).not.toHaveProperty('estimate_hours');
   });
 });
 

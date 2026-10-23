@@ -15,8 +15,12 @@ from pydantic import (
 )
 from sqlalchemy import ARRAY, JSON, Text, UniqueConstraint, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, event, func, select, update
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Session as OrmSession
+from sqlalchemy.orm.attributes import set_committed_value
+from sqlalchemy.orm.util import identity_key
 from sqlmodel import Column, Relationship, SQLModel
 from sqlmodel import Field as SQLField
 
@@ -322,7 +326,8 @@ class GoalBase(SQLModel):
 
     title: str = SQLField(min_length=1, max_length=200)
     description: str | None = SQLField(default=None, max_length=1000)
-    estimate_hours: Decimal = SQLField(gt=0, max_digits=5, decimal_places=2)
+    # Kept equal to the sum of the goal's task estimates once it has tasks.
+    estimate_hours: Decimal = SQLField(gt=0, max_digits=7, decimal_places=2)
     due_date: datetime | None = SQLField(
         default=None, description=GOAL_DUE_DATE_DESCRIPTION
     )
@@ -433,6 +438,88 @@ class Task(TaskBase, table=True):  # type: ignore[call-arg]
         back_populates="task",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
+
+
+_GOALS_TO_SYNC = "goals_to_sync_estimates"
+
+
+@event.listens_for(Task.goal_id, "set", active_history=True)
+def _load_previous_goal_id(
+    _target: Task, _value: Any, _oldvalue: Any, _initiator: Any
+) -> None:
+    """Load the goal a task leaves even when the attribute was expired.
+
+    Without active history the old goal is unknown after a commit, so the flush
+    could not resync the goal the task moved away from.
+    """
+
+
+@event.listens_for(OrmSession, "before_flush")
+def _collect_goals_to_sync(
+    session: OrmSession, _flush_context: Any, _instances: Any
+) -> None:
+    """Record goals whose estimate may no longer match the sum of their tasks.
+
+    Runs before the flush, while the rows of deleted tasks can still be loaded.
+    """
+    goal_ids: set[UUID] = session.info.setdefault(_GOALS_TO_SYNC, set())
+
+    with session.no_autoflush:
+        for obj in session.deleted:
+            if isinstance(obj, Task) and obj.goal_id is not None:
+                goal_ids.add(obj.goal_id)
+
+        for obj in session.dirty:
+            if isinstance(obj, Task):
+                state = sa_inspect(obj)
+                goal_history = state.attrs.goal_id.history
+                if goal_history.has_changes():
+                    goal_ids.update(gid for gid in goal_history.deleted if gid)
+                    goal_ids.update(gid for gid in goal_history.added if gid)
+                elif state.attrs.estimate_hours.history.has_changes():
+                    goal_ids.add(obj.goal_id)
+            elif isinstance(obj, Goal) and obj.id is not None:
+                # A goal with tasks keeps the task total even if edited directly.
+                if sa_inspect(obj).attrs.estimate_hours.history.has_changes():
+                    goal_ids.add(obj.id)
+
+
+@event.listens_for(OrmSession, "after_flush")
+def sync_goal_estimates(session: OrmSession, _flush_context: Any) -> None:
+    """Keep each goal's estimate equal to the sum of its task estimates.
+
+    Goals without tasks keep the estimate entered for the goal itself. Project
+    estimates are not stored; they are summed from the goals when read.
+    """
+    goal_ids: set[UUID] = session.info.pop(_GOALS_TO_SYNC, set())
+    # New tasks only know their goal once the flush has set the foreign key.
+    goal_ids.update(
+        obj.goal_id
+        for obj in session.new
+        if isinstance(obj, Task) and obj.goal_id is not None
+    )
+    if not goal_ids:
+        return
+
+    connection = session.connection()
+    totals = connection.execute(
+        select(Task.goal_id, func.sum(Task.estimate_hours))
+        .where(Task.goal_id.in_(goal_ids))  # type: ignore[attr-defined]
+        .group_by(Task.goal_id)
+    ).all()
+
+    for goal_id, total in totals:
+        if total is None or total <= 0:
+            continue
+        total = Decimal(str(total)).quantize(Decimal("0.01"))
+        connection.execute(
+            update(Goal)
+            .where(Goal.id == goal_id)  # type: ignore[arg-type]
+            .values(estimate_hours=total)
+        )
+        goal = session.identity_map.get(identity_key(Goal, goal_id))
+        if goal is not None:
+            set_committed_value(goal, "estimate_hours", total)
 
 
 class QuickTaskBase(SQLModel):
