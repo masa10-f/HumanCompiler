@@ -26,6 +26,7 @@ import { useApplyGoalTaskDraft, useStartGoalTaskDraftJob } from '@/hooks/use-ai-
 import { useGoalsByProject } from '@/hooks/use-goals-query';
 import { toast } from '@/hooks/use-toast';
 import { aiPlanningApi } from '@/lib/api';
+import { getDraftGoalEstimateHours } from '@/lib/draft-goal-estimate';
 import type {
   DraftGoal,
   DraftTask,
@@ -560,6 +561,7 @@ export function GoalTaskAssistantDialog({
                         <DraftGoalCard
                           key={goal.client_id}
                           goal={goal}
+                          estimateHours={getDraftGoalEstimateHours(draft, goal, selectedTaskIds)}
                           selected={selectedGoalIds.has(goal.client_id)}
                           onToggle={(checked) => toggleGoal(goal, checked)}
                           onUpdate={updateGoal}
@@ -610,11 +612,13 @@ export function GoalTaskAssistantDialog({
 
 function DraftGoalCard({
   goal,
+  estimateHours,
   selected,
   onToggle,
   onUpdate,
 }: {
   goal: DraftGoal;
+  estimateHours: number;
   selected: boolean;
   onToggle: (checked: boolean) => void;
   onUpdate: <K extends keyof DraftGoal>(
@@ -640,19 +644,12 @@ function DraftGoalCard({
           </div>
           <div className="space-y-1">
             <div className="text-xs font-medium text-muted-foreground">見積(h)</div>
-            <Input
-              type="number"
-              min="0.1"
-              step="0.1"
-              value={goal.estimate_hours}
-              onChange={(event) =>
-                onUpdate(
-                  goal.client_id,
-                  'estimate_hours',
-                  Number.parseFloat(event.target.value) || 0.1
-                )
-              }
-            />
+            <div
+              className="flex h-10 items-center rounded-md border bg-muted/50 px-3 text-sm"
+              title="選択中のタスクの見積の合計"
+            >
+              {Math.round(estimateHours * 10) / 10}
+            </div>
           </div>
         </div>
       </div>

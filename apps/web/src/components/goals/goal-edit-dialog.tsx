@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { log } from '@/lib/logger';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -23,7 +23,6 @@ import {
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -49,28 +48,20 @@ import type { Goal } from '@/types/goal';
 import { toJSTDateInputValue, toJSTStartOfDayISOString } from '@/lib/date-utils';
 import { goalDueDateSchema } from '@/lib/validations/goal';
 
-// A goal with tasks takes its estimate from the task total, which is not
-// entered here and may exceed the limit for a hand-entered estimate.
-const createGoalFormSchema = (estimateFromTasks: boolean) =>
-  z.object({
-    title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
-    description: z.string().max(500, '500文字以内で入力してください').optional(),
-    estimate_hours: estimateFromTasks
-      ? z.number()
-      : z.number().min(0.1, '0.1時間以上で入力してください').max(1000, '1000時間以内で入力してください'),
-    due_date: goalDueDateSchema,
-  });
+const goalFormSchema = z.object({
+  title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
+  description: z.string().max(500, '500文字以内で入力してください').optional(),
+  due_date: goalDueDateSchema,
+});
 
-type GoalFormData = z.infer<ReturnType<typeof createGoalFormSchema>>;
+type GoalFormData = z.infer<typeof goalFormSchema>;
 
 interface GoalEditDialogProps {
   goal: Goal;
-  /** The goal has tasks, so its estimate is the sum of their estimates. */
-  estimateFromTasks?: boolean;
   children: React.ReactNode;
 }
 
-export function GoalEditDialog({ goal, estimateFromTasks = false, children }: GoalEditDialogProps) {
+export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('basic');
   const [selectedDependencyGoal, setSelectedDependencyGoal] = useState<string>('');
@@ -143,14 +134,11 @@ export function GoalEditDialog({ goal, estimateFromTasks = false, children }: Go
     !dependencies.some(dep => dep.depends_on_goal_id === g.id)
   );
 
-  const goalFormSchema = useMemo(() => createGoalFormSchema(estimateFromTasks), [estimateFromTasks]);
-
   const form = useForm<GoalFormData>({
     resolver: zodResolver(goalFormSchema),
     defaultValues: {
       title: goal.title,
       description: goal.description || '',
-      estimate_hours: typeof goal.estimate_hours === 'string' ? parseFloat(goal.estimate_hours) : goal.estimate_hours,
       due_date: toJSTDateInputValue(goal.due_date),
     },
   });
@@ -160,7 +148,6 @@ export function GoalEditDialog({ goal, estimateFromTasks = false, children }: Go
     form.reset({
       title: goal.title,
       description: goal.description || '',
-      estimate_hours: typeof goal.estimate_hours === 'string' ? parseFloat(goal.estimate_hours) : goal.estimate_hours,
       due_date: toJSTDateInputValue(goal.due_date),
     });
   }, [goal, form]);
@@ -172,7 +159,6 @@ export function GoalEditDialog({ goal, estimateFromTasks = false, children }: Go
         data: {
           title: data.title,
           description: data.description || undefined,
-          ...(estimateFromTasks ? {} : { estimate_hours: data.estimate_hours }),
           due_date: data.due_date ? toJSTStartOfDayISOString(data.due_date) : null,
         }
       });
@@ -258,31 +244,6 @@ export function GoalEditDialog({ goal, estimateFromTasks = false, children }: Go
                           {...field}
                         />
                       </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="estimate_hours"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>見積時間 (時間) *</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          min="0.1"
-                          max="1000"
-                          placeholder="1"
-                          disabled={estimateFromTasks}
-                          {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                        />
-                      </FormControl>
-                      {estimateFromTasks && (
-                        <FormDescription>タスクの見積時間の合計から自動計算されます</FormDescription>
-                      )}
                       <FormMessage />
                     </FormItem>
                   )}
