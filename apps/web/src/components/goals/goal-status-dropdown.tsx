@@ -70,6 +70,8 @@ export const GoalStatusDropdown = memo(function GoalStatusDropdown({
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
       queryClient.invalidateQueries({ queryKey: ['goals', 'project', goal.project_id] })
       queryClient.invalidateQueries({ queryKey: ['goal', goal.id] })
+      // A cancelled goal no longer counts toward the project estimate.
+      queryClient.invalidateQueries({ queryKey: queryKeys.progress.project(goal.project_id) })
       toast({
         title: 'ステータスを更新しました',
         description: `ゴールのステータスを「${getGoalStatusLabel(newStatus)}」に変更しました。`,

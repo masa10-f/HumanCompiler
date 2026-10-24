@@ -685,6 +685,9 @@ class GoalTaskDraftService:
         task_id_by_client_id: dict[str, UUID] = {}
 
         try:
+            # Create every selected goal before placing any task, so a task
+            # moved to a draft goal listed later still finds that goal.
+            parent_goal_ids: list[tuple[DraftGoal, UUID | None]] = []
             for draft_goal in request.goals:
                 should_create_goal = apply_all_goals or (
                     selected_goal_ids is not None
@@ -709,7 +712,9 @@ class GoalTaskDraftService:
                     goal_id_by_client_id[draft_goal.client_id] = goal.id
                 elif db_goal_id:
                     goal_id_by_client_id[draft_goal.client_id] = db_goal_id
+                parent_goal_ids.append((draft_goal, db_goal_id))
 
+            for draft_goal, db_goal_id in parent_goal_ids:
                 for draft_task in draft_goal.tasks:
                     if not (
                         apply_all_tasks

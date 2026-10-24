@@ -8,12 +8,14 @@ import type { DraftGoal, GoalTaskDraftPayload } from '@/types/ai-drafts'
 
 /**
  * Estimate the draft goal will have once applied: the sum of the selected
- * tasks that end up in it. A task goes to the draft goal named by
- * goal_client_id, else to an existing goal_id, else to the goal it is nested in.
+ * tasks that end up in it. As when the draft is applied, a task goes to the
+ * draft goal named by goal_client_id if that goal is selected (and so
+ * created), else to an existing goal_id, else to the goal it is nested in.
  */
 export const getDraftGoalEstimateHours = (
   draft: GoalTaskDraftPayload,
   goal: DraftGoal,
+  selectedGoalIds: Set<string>,
   selectedTaskIds: Set<string>
 ) =>
   [
@@ -25,6 +27,10 @@ export const getDraftGoalEstimateHours = (
     .filter(
       ({ task, parentClientId }) =>
         selectedTaskIds.has(task.client_id) &&
-        (task.goal_client_id ?? (task.goal_id ? null : parentClientId)) === goal.client_id
+        (task.goal_client_id && selectedGoalIds.has(task.goal_client_id)
+          ? task.goal_client_id
+          : task.goal_id
+            ? null
+            : parentClientId) === goal.client_id
     )
     .reduce((sum, { task }) => sum + (Number(task.estimate_hours) || 0), 0);

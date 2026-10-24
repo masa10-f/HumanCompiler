@@ -561,7 +561,7 @@ export function GoalTaskAssistantDialog({
                         <DraftGoalCard
                           key={goal.client_id}
                           goal={goal}
-                          estimateHours={getDraftGoalEstimateHours(draft, goal, selectedTaskIds)}
+                          estimateHours={getDraftGoalEstimateHours(draft, goal, selectedGoalIds, selectedTaskIds)}
                           selected={selectedGoalIds.has(goal.client_id)}
                           onToggle={(checked) => toggleGoal(goal, checked)}
                           onUpdate={updateGoal}
