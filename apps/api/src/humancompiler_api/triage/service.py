@@ -26,6 +26,7 @@ from humancompiler_api.models import (
     Goal,
     Log,
     Project,
+    ProjectStatus,
     QuickTask,
     Task,
     TaskStatus,
@@ -233,6 +234,7 @@ class TriageService:
             .join(Project, Goal.project_id == Project.id)
             .where(
                 Project.owner_id == user_uuid,
+                Project.status == ProjectStatus.IN_PROGRESS,
                 col(Task.status).in_(ACTIVE_STATUSES),
             )
         ).all()

@@ -7,7 +7,15 @@ from sqlmodel import Session
 
 from humancompiler_api.auth import get_current_user_id
 from humancompiler_api.main import app
-from humancompiler_api.models import Goal, Project, Task, TaskStatus, User, WorkType
+from humancompiler_api.models import (
+    Goal,
+    Project,
+    ProjectStatus,
+    Task,
+    TaskStatus,
+    User,
+    WorkType,
+)
 from humancompiler_api.routers.triage import get_session as get_triage_session
 
 
@@ -16,7 +24,12 @@ client = TestClient(app)
 
 def seed_router_data(session: Session):
     user = User(id=uuid4(), email="triage-router@example.com")
-    project = Project(id=uuid4(), owner_id=user.id, title="Router Project")
+    project = Project(
+        id=uuid4(),
+        owner_id=user.id,
+        title="Router Project",
+        status=ProjectStatus.IN_PROGRESS,
+    )
     goal = Goal(
         id=uuid4(),
         project_id=project.id,
