@@ -61,7 +61,7 @@ export interface Goal {
   title: string;
   /** ゴール説明 */
   description: string | null;
-  /** 見積もり時間（時間単位） */
+  /** 見積もり時間（時間単位）。キャンセル以外のタスクの見積もりの合計 */
   estimate_hours: number;
   /** 期限日 (ISO 8601形式) */
   due_date: string | null;
@@ -86,8 +86,6 @@ export interface GoalCreate {
   title: string;
   /** ゴール説明 */
   description?: string;
-  /** 見積もり時間（時間単位） */
-  estimate_hours: number;
   /** 期限日 (ISO 8601形式) */
   due_date?: string;
   /** 初期ステータス（デフォルト: pending） */
@@ -105,8 +103,6 @@ export interface GoalUpdate {
   title?: string;
   /** ゴール説明 */
   description?: string;
-  /** 見積もり時間（時間単位） */
-  estimate_hours?: number;
   /** 期限日。nullで期限を解除 */
   due_date?: string | null;
   /** ステータス */

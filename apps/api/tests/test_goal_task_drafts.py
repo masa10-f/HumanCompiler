@@ -194,6 +194,53 @@ def test_apply_project_draft_can_add_task_to_existing_goal(
     assert created_task.goal_id == existing_goal.id
 
 
+def test_apply_draft_moves_task_to_draft_goal_listed_later(
+    session: Session, draft_workspace
+):
+    project = draft_workspace["project"]
+    user = draft_workspace["user"]
+
+    def draft_goal(client_id: str, tasks: list[DraftTask]) -> DraftGoal:
+        return DraftGoal(
+            client_id=client_id,
+            title=client_id,
+            description=None,
+            rationale=None,
+            confidence=0.8,
+            tasks=tasks,
+        )
+
+    request = GoalTaskDraftApplyRequest(
+        project_id=project.id,
+        mode="project_goals",
+        goals=[
+            draft_goal(
+                "goal-a",
+                [
+                    make_draft_task("a1", estimate_hours=2.0),
+                    make_draft_task("a2", goal_client_id="goal-b", estimate_hours=4.0),
+                    # Its goal is not selected, so it stays in its own goal.
+                    make_draft_task("a3", goal_client_id="goal-c", estimate_hours=0.5),
+                ],
+            ),
+            draft_goal("goal-b", [make_draft_task("b1", estimate_hours=1.0)]),
+            draft_goal("goal-c", []),
+        ],
+        tasks=[],
+        dependencies=[],
+        selected_goal_client_ids=["goal-a", "goal-b"],
+        selected_task_client_ids=["a1", "a2", "a3", "b1"],
+    )
+
+    response = goal_task_draft_service.apply_draft(session, user.id, request)
+
+    session.expire_all()
+    goals = {goal.title: session.get(Goal, goal.id) for goal in response.created_goals}
+    assert set(goals) == {"goal-a", "goal-b"}
+    assert goals["goal-a"].estimate_hours == Decimal("2.50")
+    assert goals["goal-b"].estimate_hours == Decimal("5.00")
+
+
 def test_apply_draft_deduplicates_generated_dependencies(
     session: Session, draft_workspace
 ):

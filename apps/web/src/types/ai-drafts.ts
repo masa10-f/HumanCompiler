@@ -41,7 +41,6 @@ export interface DraftGoal {
   client_id: string;
   title: string;
   description?: string | null;
-  estimate_hours: number;
   rationale?: string | null;
   confidence: number;
   tasks: DraftTask[];

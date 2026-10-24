@@ -2,7 +2,7 @@ import re
 from datetime import UTC, date as Date, datetime
 from decimal import Decimal
 from enum import Enum, StrEnum
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -15,8 +15,9 @@ from pydantic import (
 )
 from sqlalchemy import ARRAY, JSON, Text, UniqueConstraint, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, func, select
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import column_property
 from sqlmodel import Column, Relationship, SQLModel
 from sqlmodel import Field as SQLField
 
@@ -322,7 +323,6 @@ class GoalBase(SQLModel):
 
     title: str = SQLField(min_length=1, max_length=200)
     description: str | None = SQLField(default=None, max_length=1000)
-    estimate_hours: Decimal = SQLField(gt=0, max_digits=5, decimal_places=2)
     due_date: datetime | None = SQLField(
         default=None, description=GOAL_DUE_DATE_DESCRIPTION
     )
@@ -343,6 +343,8 @@ class Goal(GoalBase, table=True):  # type: ignore[call-arg]
     project_id: UUID = SQLField(foreign_key="projects.id", ondelete="CASCADE")
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    # Sum of the goal's task estimates, mapped below once Task is defined.
+    estimate_hours: ClassVar[Decimal]
 
     # Relationships
     project: Project = Relationship(back_populates="goals")
@@ -433,6 +435,19 @@ class Task(TaskBase, table=True):  # type: ignore[call-arg]
         back_populates="task",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
+
+
+# A goal's estimate is the sum of its task estimates, cancelled tasks excluded.
+# It is computed whenever a goal is loaded, so it is never stored or edited.
+Goal.estimate_hours = column_property(  # type: ignore[assignment]
+    select(func.coalesce(func.sum(Task.estimate_hours), 0))
+    .where(
+        Task.goal_id == Goal.id,  # type: ignore[arg-type]
+        Task.status != TaskStatus.CANCELLED,
+    )
+    .correlate_except(Task)
+    .scalar_subquery()
+)
 
 
 class QuickTaskBase(SQLModel):
@@ -1053,7 +1068,6 @@ class GoalUpdate(BaseModel):
 
     title: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = Field(None, max_length=1000)
-    estimate_hours: Decimal | None = Field(None, gt=0)
     due_date: datetime | None = Field(None, description=GOAL_DUE_DATE_DESCRIPTION)
     status: GoalStatus | None = None
 
@@ -1097,6 +1111,8 @@ class GoalResponse(GoalBase):
 
     id: UUID
     project_id: UUID
+    # Sum of the goal's task estimates, cancelled tasks excluded.
+    estimate_hours: Decimal = Field(ge=0)
     created_at: datetime
     updated_at: datetime
     dependencies: list["GoalDependencyResponse"] = Field(default_factory=list)

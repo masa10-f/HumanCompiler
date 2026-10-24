@@ -740,6 +740,10 @@ export default function TasksPage() {
                   );
                   await Promise.all([
                     queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+                    // The new task adds to the goal's estimate.
+                    queryClient.invalidateQueries({
+                      queryKey: queryKeys.goals.all,
+                    }),
                     queryClient.invalidateQueries({
                       queryKey: queryKeys.dashboard.all,
                     }),

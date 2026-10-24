@@ -97,7 +97,6 @@ class DraftGoal(BaseModel):
     client_id: str = Field(min_length=1, max_length=80)
     title: str = Field(min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=1000)
-    estimate_hours: float = Field(ge=0.1, le=999.0)
     rationale: str | None = Field(default=None, max_length=800)
     confidence: float = Field(default=0.7, ge=0.0, le=1.0)
     tasks: list[DraftTask] = Field(default_factory=list)
@@ -215,11 +214,6 @@ DRAFT_JSON_SCHEMA: dict[str, Any] = {
                     "client_id": {"type": "string"},
                     "title": {"type": "string"},
                     "description": {"type": ["string", "null"]},
-                    "estimate_hours": {
-                        "type": "number",
-                        "minimum": 0.1,
-                        "maximum": 999,
-                    },
                     "rationale": {"type": ["string", "null"]},
                     "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                     "tasks": {
@@ -231,7 +225,6 @@ DRAFT_JSON_SCHEMA: dict[str, Any] = {
                     "client_id",
                     "title",
                     "description",
-                    "estimate_hours",
                     "rationale",
                     "confidence",
                     "tasks",
@@ -692,6 +685,9 @@ class GoalTaskDraftService:
         task_id_by_client_id: dict[str, UUID] = {}
 
         try:
+            # Create every selected goal before placing any task, so a task
+            # moved to a draft goal listed later still finds that goal.
+            parent_goal_ids: list[tuple[DraftGoal, UUID | None]] = []
             for draft_goal in request.goals:
                 should_create_goal = apply_all_goals or (
                     selected_goal_ids is not None
@@ -708,7 +704,6 @@ class GoalTaskDraftService:
                         description=self._clean_optional_text(
                             draft_goal.description, 1000
                         ),
-                        estimate_hours=self._decimal_hours(draft_goal.estimate_hours),
                     )
                     session.add(goal)
                     session.flush()
@@ -717,7 +712,9 @@ class GoalTaskDraftService:
                     goal_id_by_client_id[draft_goal.client_id] = goal.id
                 elif db_goal_id:
                     goal_id_by_client_id[draft_goal.client_id] = db_goal_id
+                parent_goal_ids.append((draft_goal, db_goal_id))
 
+            for draft_goal, db_goal_id in parent_goal_ids:
                 for draft_task in draft_goal.tasks:
                     if not (
                         apply_all_tasks

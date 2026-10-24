@@ -30,6 +30,9 @@ const invalidateTaskCollections = (queryClient: QueryClient, goalId?: string) =>
   queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
   // Goal digests derive completion rates from task statuses in progress data.
   queryClient.invalidateQueries({ queryKey: queryKeys.progress.all })
+  // Goal estimates are the sum of their task estimates, so a task change
+  // (including a move between goals) can change any goal's estimate.
+  queryClient.invalidateQueries({ queryKey: queryKeys.goals.all })
 
   if (goalId) {
     queryClient.invalidateQueries({ queryKey: taskKeys.byGoal(goalId) })

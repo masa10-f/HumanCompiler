@@ -51,7 +51,6 @@ import { goalDueDateSchema } from '@/lib/validations/goal';
 const goalFormSchema = z.object({
   title: z.string().min(1, '必須項目です').max(100, '100文字以内で入力してください'),
   description: z.string().max(500, '500文字以内で入力してください').optional(),
-  estimate_hours: z.number().min(0.1, '0.1時間以上で入力してください').max(1000, '1000時間以内で入力してください'),
   due_date: goalDueDateSchema,
 });
 
@@ -140,7 +139,6 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
     defaultValues: {
       title: goal.title,
       description: goal.description || '',
-      estimate_hours: typeof goal.estimate_hours === 'string' ? parseFloat(goal.estimate_hours) : goal.estimate_hours,
       due_date: toJSTDateInputValue(goal.due_date),
     },
   });
@@ -150,7 +148,6 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
     form.reset({
       title: goal.title,
       description: goal.description || '',
-      estimate_hours: typeof goal.estimate_hours === 'string' ? parseFloat(goal.estimate_hours) : goal.estimate_hours,
       due_date: toJSTDateInputValue(goal.due_date),
     });
   }, [goal, form]);
@@ -162,7 +159,6 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
         data: {
           title: data.title,
           description: data.description || undefined,
-          estimate_hours: data.estimate_hours,
           due_date: data.due_date ? toJSTStartOfDayISOString(data.due_date) : null,
         }
       });
@@ -246,27 +242,6 @@ export function GoalEditDialog({ goal, children }: GoalEditDialogProps) {
                           placeholder="ゴールの説明を入力（任意）"
                           rows={3}
                           {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="estimate_hours"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>見積時間 (時間) *</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          min="0.1"
-                          max="1000"
-                          placeholder="1"
-                          {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                         />
                       </FormControl>
                       <FormMessage />

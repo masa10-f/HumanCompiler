@@ -138,7 +138,6 @@ def workspace(test_session: Session) -> Workspace:
         project_id=project.id,
         title="MVPを作る",
         status=GoalStatus.IN_PROGRESS,
-        estimate_hours=Decimal("10"),
         due_date=datetime(2026, 10, 30, 15, 0, tzinfo=UTC),  # 2026-10-31 JST
         created_at=NOW - timedelta(days=30),
     )
@@ -147,12 +146,9 @@ def workspace(test_session: Session) -> Workspace:
         project_id=project.id,
         title="初期調査",
         status=GoalStatus.COMPLETED,
-        estimate_hours=Decimal("2"),
         created_at=NOW - timedelta(days=90),
     )
-    other_goal = Goal(
-        id=uuid4(), project_id=other_project.id, title="他人のゴール", estimate_hours=1
-    )
+    other_goal = Goal(id=uuid4(), project_id=other_project.id, title="他人のゴール")
     test_session.add_all([goal, done_goal, other_goal])
     test_session.commit()
 
@@ -346,7 +342,8 @@ def test_project_export_bundles_notes_tasks_and_work_history(
 
     # Goal details and note.
     assert "- 期限: 2026-10-31" in markdown
-    assert "- 見積: 10h ／ 実績: 1.25h" in markdown
+    # Task total without the cancelled task: 3 + 1 + 1.
+    assert "- 見積: 5h ／ 実績: 1.25h" in markdown
     assert "- タスク: 完了 1 / 全 4件" in markdown
     assert "### ゴールノート\n\n#### ゴールメモ\n週2回レビュー" in markdown
 
