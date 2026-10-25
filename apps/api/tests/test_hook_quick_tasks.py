@@ -247,5 +247,6 @@ def test_hook_token_management_api_is_removed(session: Session):
         404,
         405,
     )
+    assert client.delete(f"/api/user/hook-tokens/{uuid4()}").status_code == 404
     assert not hasattr(models, "HookToken")
     assert not hasattr(models, "HookTokenResponse")
