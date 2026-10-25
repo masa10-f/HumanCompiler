@@ -63,10 +63,11 @@ async def get_me(
     """Return the identity and scopes of the calling agent token."""
     # Authentication loaded this row moments ago, and revocation only sets
     # revoked_at, so the row is always present.
-    agent_token = session.get(AgentToken, principal.token_id)
-    assert agent_token is not None
+    token_name = session.exec(
+        select(AgentToken.name).where(AgentToken.id == principal.token_id)
+    ).one()
     return AgentMeResponse(
-        token_name=agent_token.name,
+        token_name=token_name,
         token_prefix=principal.token_prefix,
         scopes=sorted(principal.scopes),
         user_id=principal.user_id,
