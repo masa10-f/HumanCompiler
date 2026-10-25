@@ -8,7 +8,7 @@ from sqlmodel import Session, select, func
 
 from humancompiler_api.auth import AuthUser, get_current_user
 from humancompiler_api.database import db
-from humancompiler_api.models import Goal, Log, Project, Task
+from humancompiler_api.models import Goal, GoalStatus, Log, Project, Task
 
 router = APIRouter(prefix="/progress", tags=["progress"])
 
@@ -177,7 +177,9 @@ async def get_project_progress(
         )
         goal_progresses.append(goal_progress_info)
 
-        project_total_estimate += goal_total_estimate
+        # A cancelled goal's tasks are no longer planned work.
+        if goal.status != GoalStatus.CANCELLED:
+            project_total_estimate += goal_total_estimate
         project_total_actual += goal_total_actual
 
     project_estimate_minutes = int(project_total_estimate * 60)

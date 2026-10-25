@@ -10,6 +10,7 @@ from sqlmodel import Session, select
 from humancompiler_api.models import (
     Goal,
     Project,
+    ProjectStatus,
     QuickTask,
     Task,
     TaskStatus,
@@ -36,12 +37,14 @@ def triage_user(session: Session):
         owner_id=user.id,
         title="Main Project",
         description=None,
+        status=ProjectStatus.IN_PROGRESS,
     )
     other_project = Project(
         id=uuid4(),
         owner_id=user.id,
         title="Other Project",
         description=None,
+        status=ProjectStatus.IN_PROGRESS,
     )
     session.add(project)
     session.add(other_project)
@@ -176,6 +179,40 @@ def test_capacity_selection_recommends_overflow_cancel(session: Session, triage_
     assert recommendations[other_task.id] == TriageRecommendation.KEEP
     assert recommendations[quick_task.id] == TriageRecommendation.CANCEL
     assert run.summary["cancel_candidate_items"] == 2
+
+
+@pytest.mark.parametrize(
+    "project_status",
+    [
+        ProjectStatus.PENDING,
+        ProjectStatus.PAUSED,
+        ProjectStatus.COMPLETED,
+        ProjectStatus.CANCELLED,
+    ],
+)
+def test_collect_candidates_only_includes_in_progress_projects(
+    session: Session, triage_user, project_status: ProjectStatus
+):
+    user = triage_user["user"]
+    goal = triage_user["goal"]
+    other_project = triage_user["other_project"]
+    other_goal = triage_user["other_goal"]
+    other_project.status = project_status
+    session.add(other_project)
+    session.commit()
+
+    active_task = add_task(session, goal.id, "Active project task", "2.00", 1)
+    inactive_task = add_task(session, other_goal.id, "Inactive project", "2.00", 1)
+    quick_task = add_quick_task(session, user.id, "Inbox task", "1.00", priority=1)
+
+    candidates = triage_service.collect_candidates(session, user.id)
+    candidate_ids = {
+        candidate.task_id or candidate.quick_task_id for candidate in candidates
+    }
+
+    assert active_task.id in candidate_ids
+    assert quick_task.id in candidate_ids
+    assert inactive_task.id not in candidate_ids
 
 
 def test_long_term_tasks_use_weekly_capacity_load(session: Session, triage_user):

@@ -298,7 +298,6 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
             project_id=data.project_id,
             title=data.title,
             description=data.description,
-            estimate_hours=data.estimate_hours,
             due_date=data.due_date,
         )
 
