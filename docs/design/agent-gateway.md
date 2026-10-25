@@ -212,7 +212,7 @@ API は Fly.io のマシン1台で動いているので、カウンタは in-mem
   - `scopes` は `{quick_tasks:write}` とする。
   - `hook_tokens.created_at` と `updated_at` は NULL を許すため、COALESCE で埋める（`agent_tokens` 側は NOT NULL）。
 - `hook_tokens` は PR4 まで残し、COMMENT に deprecated と書く。PR1 以降のコードは `hook_tokens` を読み書きしない。
-- `HookToken` モデル、`HookTokenService`、`routers/hook_tokens.py`、`/api/user/hook-tokens` は、Web を新しい管理画面に移した PR で削除する（実装順序を参照）。
+- `HookToken` モデル、hook token の Pydantic モデル、`routers/hook_tokens.py`、`/api/user/hook-tokens` は、Web を新しいエージェントトークン画面に移した PR4a が本番で動くのを確かめてから、PR4b で削除する（実装順序を参照）。`HookTokenService` は PR1 で削除済み。
 
 ```sql
 INSERT INTO agent_tokens (id, user_id, name, scopes, token_hash, token_prefix,
