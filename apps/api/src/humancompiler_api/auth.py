@@ -1,9 +1,11 @@
+import hashlib
 import logging
 import threading
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from humancompiler_api.agent_auth import extract_token_prefix
 from humancompiler_api.database import db
 from humancompiler_api.models import UserCreate
 from humancompiler_api.services import UserService
@@ -19,6 +21,18 @@ _known_users_lock = threading.Lock()
 
 # Security scheme
 security = HTTPBearer()
+
+
+def _token_log_label(token: str) -> str:
+    """Describe a token for logs without revealing any of its secret characters.
+
+    An agent token keeps its non-secret prefix, so the owner can tell which token
+    was sent to a user endpoint. Anything else is logged as a short fingerprint.
+    """
+    prefix = extract_token_prefix(token)
+    if prefix is not None:
+        return prefix
+    return "sha256:" + hashlib.sha256(token.encode()).hexdigest()[:12]
 
 
 class AuthUser:
@@ -132,6 +146,7 @@ async def get_current_user(
     """
     Extract and validate user from JWT token
     """
+    token: str | None = None
     try:
         if not credentials:
             logger.warning("❌ [AUTH] No credentials provided")
@@ -150,7 +165,9 @@ async def get_current_user(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        logger.info(f"🔍 [AUTH] Attempting authentication with token: {token[:20]}...")
+        logger.info(
+            f"🔍 [AUTH] Attempting authentication with token: {_token_log_label(token)}"
+        )
 
         # Verify token with Supabase
         client = db.get_client()
@@ -173,7 +190,7 @@ async def get_current_user(
 
         if not user_response.user:
             logger.warning(
-                f"❌ [AUTH] Invalid token: {token[:20]}... - No user found in response"
+                f"❌ [AUTH] Invalid token: {_token_log_label(token)} - No user found in response"
             )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -205,7 +222,7 @@ async def get_current_user(
             f"❌ [AUTH] Authentication exception: {type(e).__name__}: {str(e)}"
         )
         logger.error(
-            f"❌ [AUTH] Token was: {token[:20] if 'token' in locals() else 'N/A'}..."
+            f"❌ [AUTH] Token was: {_token_log_label(token) if token else 'N/A'}"
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -253,7 +270,7 @@ async def verify_token_for_websocket(token: str) -> AuthUser:
     if not token:
         raise ValueError("No token provided")
 
-    logger.info(f"🔍 [WS AUTH] Verifying WebSocket token: {token[:20]}...")
+    logger.info(f"🔍 [WS AUTH] Verifying WebSocket token: {_token_log_label(token)}")
 
     # Verify token with Supabase
     client = db.get_client()
@@ -270,7 +287,7 @@ async def verify_token_for_websocket(token: str) -> AuthUser:
         raise Exception("Authentication service timeout") from e
 
     if not user_response.user:
-        logger.warning(f"❌ [WS AUTH] Invalid token: {token[:20]}...")
+        logger.warning(f"❌ [WS AUTH] Invalid token: {_token_log_label(token)}")
         raise Exception("Invalid authentication token")
 
     user = user_response.user
