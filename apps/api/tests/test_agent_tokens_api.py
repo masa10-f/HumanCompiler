@@ -235,10 +235,52 @@ def test_scopes_lists_every_scope_with_description(session: Session):
 
     assert response.status_code == 200
     body = response.json()
-    assert [item["scope"] for item in body] == [scope.value for scope in AgentScope]
-    assert all(item["description"] for item in body)
-    descriptions = {item["scope"]: item["description"] for item in body}
+    assert [item["scope"] for item in body["scopes"]] == [
+        scope.value for scope in AgentScope
+    ]
+    assert all(item["description"] for item in body["scopes"])
+    descriptions = {item["scope"]: item["description"] for item in body["scopes"]}
     assert "広い読み取り権限" in descriptions["context:read"]
+
+
+def test_scopes_marks_only_context_read_as_broad(session: Session):
+    setup_user(session)
+
+    body = client.get(f"{BASE_URL}/scopes").json()
+
+    assert [i["scope"] for i in body["scopes"] if i["broad"]] == ["context:read"]
+
+
+def test_scopes_returns_presets_from_the_spec(session: Session):
+    setup_user(session)
+
+    presets = {p["key"]: p for p in client.get(f"{BASE_URL}/scopes").json()["presets"]}
+
+    assert list(presets) == ["quick_task_hook", "read_only"]
+    assert presets["quick_task_hook"]["label"] == "Quick task hook"
+    assert presets["quick_task_hook"]["scopes"] == ["quick_tasks:write"]
+    assert presets["read_only"]["label"] == "読み取り専用エージェント"
+    assert presets["read_only"]["scopes"] == [
+        "projects:read",
+        "goals:read",
+        "tasks:read",
+        "quick_tasks:read",
+        "logs:read",
+        "work_sessions:read",
+        "notes:read",
+        "daily_plans:read",
+        "context:read",
+    ]
+    assert all(p["description"] for p in presets.values())
+
+
+def test_preset_scopes_are_all_grantable(session: Session):
+    setup_user(session)
+
+    body = client.get(f"{BASE_URL}/scopes").json()
+
+    grantable = {item["scope"] for item in body["scopes"]}
+    assert all(set(p["scopes"]) <= grantable for p in body["presets"])
 
 
 def test_audit_logs_returns_newest_rows_for_own_token(session: Session):

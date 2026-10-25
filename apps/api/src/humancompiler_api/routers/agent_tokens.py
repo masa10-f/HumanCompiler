@@ -16,9 +16,12 @@ from humancompiler_api.auth import AuthUser, get_current_user
 from humancompiler_api.common.error_handlers import validate_uuid
 from humancompiler_api.database import get_session
 from humancompiler_api.models import (
+    AGENT_BROAD_SCOPES,
     AGENT_SCOPE_DESCRIPTIONS,
+    AGENT_TOKEN_PRESETS,
     AgentAuditLogResponse,
     AgentScope,
+    AgentScopeCatalog,
     AgentScopeInfo,
     AgentTokenCreate,
     AgentTokenCreatedResponse,
@@ -74,15 +77,22 @@ async def create_agent_token(
     )
 
 
-@router.get("/scopes", response_model=list[AgentScopeInfo])
+@router.get("/scopes", response_model=AgentScopeCatalog)
 async def list_agent_scopes(
     _current_user: Annotated[AuthUser, Depends(get_current_user)],
-) -> list[AgentScopeInfo]:
-    """List every grantable scope with its description, in definition order."""
-    return [
-        AgentScopeInfo(scope=scope.value, description=AGENT_SCOPE_DESCRIPTIONS[scope])
-        for scope in AgentScope
-    ]
+) -> AgentScopeCatalog:
+    """List every grantable scope (in definition order) and the token presets."""
+    return AgentScopeCatalog(
+        scopes=[
+            AgentScopeInfo(
+                scope=scope.value,
+                description=AGENT_SCOPE_DESCRIPTIONS[scope],
+                broad=scope in AGENT_BROAD_SCOPES,
+            )
+            for scope in AgentScope
+        ],
+        presets=list(AGENT_TOKEN_PRESETS),
+    )
 
 
 @router.delete("/{token_id}", status_code=status.HTTP_204_NO_CONTENT)

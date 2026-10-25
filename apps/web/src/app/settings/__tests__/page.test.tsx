@@ -1,16 +1,12 @@
 /**
  * @jest-environment jsdom
  */
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 
 const mockPush = jest.fn()
 const mockSecureFetch = jest.fn()
-const mockGetHookTokens = jest.fn()
-const mockCreateHookToken = jest.fn()
-const mockRevokeHookToken = jest.fn()
 const mockGetUser = jest.fn()
 const mockGetSession = jest.fn()
-const mockClipboardWriteText = jest.fn()
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -20,11 +16,6 @@ jest.mock('next/navigation', () => ({
 
 jest.mock('@/lib/api', () => ({
   secureFetch: (...args: unknown[]) => mockSecureFetch(...args),
-  hookTokensApi: {
-    getAll: () => mockGetHookTokens(),
-    create: (data: unknown) => mockCreateHookToken(data),
-    revoke: (tokenId: string) => mockRevokeHookToken(tokenId),
-  },
 }))
 
 jest.mock('@/lib/supabase', () => ({
@@ -44,23 +35,8 @@ jest.mock('@/components/triage/triage-settings-card', () => ({
   TriageSettingsCard: () => <section>Triage Settings</section>,
 }))
 
-jest.mock('@/components/ui/confirmation-modal', () => ({
-  ConfirmationModal: ({
-    isOpen,
-    onConfirm,
-    title,
-    confirmText,
-  }: {
-    isOpen: boolean
-    onConfirm: () => void
-    title: string
-    confirmText?: string
-  }) =>
-    isOpen ? (
-      <div role="dialog" aria-label={title}>
-        <button onClick={onConfirm}>{confirmText ?? '確認'}</button>
-      </div>
-    ) : null,
+jest.mock('@/components/settings/agent-tokens-card', () => ({
+  AgentTokensCard: () => <section>Agent Tokens Card</section>,
 }))
 
 import SettingsPage from '../page'
@@ -91,14 +67,9 @@ const defaultExportInfo = {
   },
 }
 
-describe('SettingsPage hook tokens', () => {
+describe('SettingsPage agent tokens', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText: mockClipboardWriteText },
-      configurable: true,
-    })
-
     mockGetUser.mockResolvedValue({
       data: { user: { id: 'user-1', email: 'test@example.com' } },
     })
@@ -129,71 +100,12 @@ describe('SettingsPage hook tokens', () => {
       }
       return Promise.resolve(jsonResponse({}))
     })
-    mockGetHookTokens.mockResolvedValue([])
-    mockCreateHookToken.mockResolvedValue({
-      id: 'token-1',
-      user_id: 'user-1',
-      name: 'PR review',
-      token_prefix: 'hc_hook_created',
-      token: 'hc_hook_created_secret',
-      last_used_at: null,
-      created_at: '2026-07-07T00:00:00Z',
-      updated_at: '2026-07-07T00:00:00Z',
-    })
-    mockRevokeHookToken.mockResolvedValue(undefined)
-    mockClipboardWriteText.mockResolvedValue(undefined)
   })
 
-  it('creates a hook token and shows the one-time secret for copying', async () => {
+  it('shows the agent tokens card in place of the hook tokens card', async () => {
     render(<SettingsPage />)
 
-    await screen.findByText('Hook Tokens')
-    fireEvent.change(screen.getByPlaceholderText('Token name'), {
-      target: { value: 'PR review' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: /作成/ }))
-
-    await waitFor(() => {
-      expect(mockCreateHookToken).toHaveBeenCalledWith({ name: 'PR review' })
-    })
-    expect(screen.getByText('hc_hook_created_secret')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /コピー/ }))
-
-    await waitFor(() => {
-      expect(mockClipboardWriteText).toHaveBeenCalledWith(
-        'hc_hook_created_secret'
-      )
-    })
-  })
-
-  it('revokes an existing hook token from the settings list', async () => {
-    mockGetHookTokens.mockResolvedValue([
-      {
-        id: 'token-1',
-        user_id: 'user-1',
-        name: 'Paper intake',
-        token_prefix: 'hc_hook_paper',
-        last_used_at: null,
-        created_at: '2026-07-07T00:00:00Z',
-        updated_at: '2026-07-07T00:00:00Z',
-      },
-    ])
-
-    render(<SettingsPage />)
-
-    await screen.findByText('Paper intake')
-    fireEvent.click(screen.getByRole('button', { name: /失効/ }))
-    fireEvent.click(
-      within(screen.getByRole('dialog', { name: 'Hook tokenを失効' })).getByRole(
-        'button',
-        { name: '失効' }
-      )
-    )
-
-    await waitFor(() => {
-      expect(mockRevokeHookToken).toHaveBeenCalledWith('token-1')
-    })
-    expect(screen.queryByText('Paper intake')).not.toBeInTheDocument()
+    expect(await screen.findByText('Agent Tokens Card')).toBeInTheDocument()
+    expect(screen.queryByText('Hook Tokens')).not.toBeInTheDocument()
   })
 })

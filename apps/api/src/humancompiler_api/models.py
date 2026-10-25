@@ -873,6 +873,38 @@ AGENT_SCOPE_DESCRIPTIONS: dict[AgentScope, str] = {
     AgentScope.QUICK_TASKS_WRITE: "POST /api/hooks/quick-tasks（既存 hook の互換）",
 }
 
+# Scopes the UI flags with a warning badge.
+AGENT_BROAD_SCOPES: frozenset[AgentScope] = frozenset({AgentScope.CONTEXT_READ})
+
+
+class AgentTokenPresetInfo(BaseModel):
+    """A named set of scopes offered when creating an agent token."""
+
+    key: str
+    label: str
+    description: str
+    scopes: list[str]
+
+
+# The web UI builds its presets from this list, so adding a preset here shows up
+# on screen without a web change. The response order is the definition order.
+AGENT_TOKEN_PRESETS: tuple[AgentTokenPresetInfo, ...] = (
+    AgentTokenPresetInfo(
+        key="quick_task_hook",
+        label="Quick task hook",
+        description="外部の hook から Quick Task を登録する（POST /api/hooks/quick-tasks）",
+        scopes=[AgentScope.QUICK_TASKS_WRITE.value],
+    ),
+    AgentTokenPresetInfo(
+        key="read_only",
+        label="読み取り専用エージェント",
+        description=(
+            "Agent API の読み取りをすべて許可する。context:read（広い読み取り権限）を含む"
+        ),
+        scopes=[scope.value for scope in AgentScope if scope.value.endswith(":read")],
+    ),
+)
+
 
 class AgentToken(SQLModel, table=True):  # type: ignore[call-arg]
     """User-scoped, hashed token for agents, limited by scopes."""
@@ -1778,6 +1810,14 @@ class AgentScopeInfo(BaseModel):
 
     scope: str
     description: str
+    broad: bool
+
+
+class AgentScopeCatalog(BaseModel):
+    """Grantable scopes and the token presets built from them."""
+
+    scopes: list[AgentScopeInfo]
+    presets: list[AgentTokenPresetInfo]
 
 
 class AgentAuditLogResponse(BaseModel):
