@@ -115,6 +115,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             or ("INTERNAL_ERROR" if is_server_error else None),
             request=request,
         ),
+        # Keep headers such as WWW-Authenticate and Retry-After
+        headers=getattr(exc, "headers", None),
     )
 
 

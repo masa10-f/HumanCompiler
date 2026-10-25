@@ -5,6 +5,7 @@ Manages scheduled notification jobs:
 - Checkout reminders: Polls every 30 seconds for WebSocket/Web Push
 - Task deadline emails: Polls every 5 minutes for email notifications (Issue #261)
 - Daily digest emails: Runs daily at configured hour (Issue #261)
+- Agent audit log retention: Runs daily and purges rows older than 90 days
 
 Note: For MVP, we use a polling approach rather than scheduling individual
 jobs per session. This is simpler and works well for single-instance deployments.
@@ -19,6 +20,7 @@ from apscheduler.jobstores.memory import MemoryJobStore
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 
+from humancompiler_api import agent_audit
 from humancompiler_api.database import db
 from humancompiler_api.notification_service import (
     NotificationService,
@@ -188,6 +190,19 @@ async def generate_due_triage_suggestions():
                 logger.info("Generated %s scheduled triage runs", generated_count)
     except Exception as e:
         logger.error(f"Error in capacity triage suggestion check: {e}")
+
+
+async def purge_expired_agent_audit_logs():
+    """Delete agent audit logs past their retention period."""
+    logger.debug("Running agent audit log retention...")
+
+    try:
+        with agent_audit.session_factory() as session:
+            deleted_count = agent_audit.purge_expired_audit_logs(session)
+            if deleted_count:
+                logger.info("Purged %s expired agent audit logs", deleted_count)
+    except Exception:
+        logger.exception("Error in agent audit log retention")
 
 
 async def _process_user_deadline_notifications(
@@ -476,10 +491,26 @@ def start_notification_scheduler():
         replace_existing=True,
     )
 
+    # Purge agent audit logs past their 90-day retention once a day. The job
+    # store is in memory, so every deploy resets the interval; run the first
+    # purge shortly after boot (but outside startup) so frequent deploys cannot
+    # starve it. APScheduler's 1s default misfire grace would drop a late run.
+    scheduler.add_job(
+        purge_expired_agent_audit_logs,
+        "interval",
+        days=1,
+        next_run_time=datetime.now(UTC) + timedelta(minutes=1),
+        misfire_grace_time=3600,
+        id="agent_audit_log_retention",
+        name="Purge expired agent audit logs",
+        replace_existing=True,
+    )
+
     scheduler.start()
     logger.info(
         "Notification scheduler started "
-        "(checkout notifications: 30s, deadline emails: 5min, triage suggestions: 1h)"
+        "(checkout notifications: 30s, deadline emails: 5min, "
+        "triage suggestions: 1h, agent audit log retention: 1d)"
     )
 
 

@@ -1993,6 +1993,22 @@ class AgentTokenService:
         )
         return list(session.exec(statement).all())
 
+    def get_owned_token(
+        self, session: Session, token_id: str | UUID, user_id: str | UUID
+    ) -> AgentToken:
+        """Return one of the user's tokens, revoked ones included."""
+        token_id_validated = validate_uuid(token_id, "token_id")
+        user_id_validated = validate_uuid(user_id, "user_id")
+        agent_token = session.exec(
+            select(AgentToken).where(
+                AgentToken.id == token_id_validated,
+                AgentToken.user_id == user_id_validated,
+            )
+        ).first()
+        if agent_token is None:
+            raise ResourceNotFoundError("AgentToken", token_id_validated)
+        return agent_token
+
     def revoke_token(
         self, session: Session, token_id: str | UUID, user_id: str | UUID
     ) -> AgentToken:

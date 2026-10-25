@@ -113,6 +113,13 @@ HumanCompiler の情報を安全に取得し、将来的に更新を反映でき
 - リクエストボディ、クエリの値、トークンの secret は記録しない。
 - 保持期間は 90 日。既存の APScheduler（`scheduler/notification_scheduler.py`）に1日1回の削除ジョブを追加する。
 - RLS: `authenticated` には自分の `user_id` の行の SELECT のみ許可する。
+- GRANT: `authenticated` には、上の 11 列すべてを列単位で `GRANT SELECT` する（`client_ip` と `route` を含む）。理由は次のとおり。
+  - RLS で自分の行しか見えない。
+  - 表に secret がない（ボディ、クエリの値、トークンの secret は記録しない）。
+  - 管理 API の `/{id}/audit-logs` が、同じ列を同じユーザーに返す。
+  - `client_ip` は、漏れたトークンが知らない IP から使われていないかを本人が確かめるのに使う。
+  - テーブル単位ではなく列単位にして、将来追加する列が自動で見えないようにする。
+  - `anon` には何も GRANT しない。
 
 ### 認証の流れ
 
@@ -136,14 +143,24 @@ HumanCompiler の情報を安全に取得し、将来的に更新を反映でき
 
 ### 監査ログの書き込み
 
-`/api/agent/` と `/api/hooks/` で始まるパスに対してだけ動くミドルウェアで書き込む。
+`/api/agent/` と `/api/hooks/` で始まるパスの HTTP リクエストに対してだけ動くミドルウェア（`agent_audit.py` の `AgentAuditMiddleware`）で書き込む。
 
+- pure ASGI ミドルウェアにする。`BaseHTTPMiddleware` は使わない。
+- 書き込みは `await self.app(...)` が返った後に行う。最後の body を送り終えた後なので、`response.background = BackgroundTask(...)` と同じく、応答を待たせない。
 - 応答の後に `request.state` から principal、必要スコープ、ルートのテンプレートを読み、1行 INSERT する。
 - INSERT は同期の `Session` で行うため、`run_in_threadpool` で実行し、イベントループを止めない。
-- ルートのテンプレートは `request.scope["route"].path` から取る。どのルートにも一致しなかったリクエストは、生のパス（ID を含みうる）ではなく固定値 `<unmatched>` を記録する。
+- アプリが応答を送る前に例外を出した場合は、status 500 として記録する。同じ `try/finally` で扱える。ただし、外側の `ServerErrorMiddleware` が 500 を返す前に書くことになる。頻度が低いので許容する。
+- 記録するのは、`get_agent_principal` がトークンの照合まで進んだリクエストだけにする。照合の直前に `request.state.agent_audit` を立て、ミドルウェアはこれが立っているときだけ書く。一致するルートがない、メソッドが違う（405）、ボディの JSON が壊れている（422）、認証失敗の上限にかかった（429）、のいずれかで照合まで進まなかったリクエストは記録しない。`user_id = NULL` で誰にも見えず、認証失敗の上限もかからない行が増えるのを防ぐため。
+- ルートのテンプレートは `request.scope["route"].path` から取る。取れない場合は、生のパス（ID を含みうる）ではなく固定値 `<unmatched>` を記録する。
 - 認証に失敗したリクエストの `token_prefix` は、トークン形式の正規表現（後述の prefix 抽出）に一致した場合だけ記録する。一致しなければ NULL。任意の値がそのまま保存されないようにするため。
 - 認証の失敗（401）とスコープ不足（403）も記録する。ただし、トークンのヘッダー自体がないリクエストは記録しない。誰にも見えない `user_id = NULL` の行が、無制限に増えないようにするため。
-- 監査ログの書き込みに失敗しても、応答そのものは失敗させない。エラーとしてログ出力する。
+- 429 の扱いは次のとおり。
+  - トークン単位の上限の 429 は記録する。検証済みで `user_id` があり、本人に見える。総量は既定の 200/分で抑えられる。
+  - 認証失敗の上限の 429 は記録しない。`user_id = NULL` の行が増えるのを防ぐため。
+  - 既定の上限（`DefaultRateLimitMiddleware`、200/分）の 429 は記録しない。リクエストが監査のミドルウェアまで届かない。
+- ミドルウェアは `DefaultRateLimitMiddleware` の内側に置く。既定の上限にかかったリクエストが、監査の対象にならないようにするため。
+- 監査ログの書き込みに失敗しても、応答そのものは失敗させない。`logger.exception` で出力する。
+- 保持期間の削除は `purge_expired_audit_logs` で行い、1日1回のジョブ `agent_audit_log_retention` から呼ぶ。
 
 ### トークン prefix の抽出
 
@@ -151,19 +168,35 @@ HumanCompiler の情報を安全に取得し、将来的に更新を反映でき
 
 ### Rate limit
 
-ヘッダーの prefix は認証前の入力で、偽の prefix を毎回変えれば新しい枠が作れてしまう。また prefix は UI に表示する非秘密の値なので、それを知る第三者が本物のトークンの枠を使い切ることもできる。そのため、認証前の入力はキーにしない。次の3段で制御する。
+ヘッダーの prefix は認証前の入力で、偽の prefix を毎回変えれば新しい枠が作れてしまう。また prefix は UI に表示する非秘密の値なので、それを知る第三者が本物のトークンの枠を使い切ることもできる。そのため、認証前の入力はキーにしない。次の2段で制御する。
 
-1. **IP 単位の上限（認証前）**: `/api/agent/*` と `/api/hooks/*` のすべてのリクエストに、slowapi で IP 単位 `300 per minute` を設定する。
-2. **トークン単位の上限（認証後）**: `get_agent_principal` の中で、検証済みの `token_id` をキーに `120 per minute` を数える。slowapi が内部で使う `limits` ライブラリの in-memory の moving window を使う。超えたら 429。
-3. **認証失敗の上限**: slowapi は応答の前に判定するため、失敗だけを数えることはできない。`get_agent_principal` の中で、401 を返すたびに IP 単位のカウンタを増やし、1分間に 20 回を超えた IP は以後 429 にする（`auth.py:42` の `_check_rate_limit` と同じ形）。
+IP 単位の制御は、新しく足さない。`DefaultRateLimitMiddleware`（IP 単位 `200 per minute`、全リクエスト）が先にかかるため、`/api/agent/*` と `/api/hooks/*` 専用の IP 単位の段（当初案の 300/分）は設けない。
 
-API は Fly.io のマシン1台で動いているので、カウンタは in-memory でよい。複数台にする場合は共有ストレージが必要になる（範囲外）。
+1. **トークン単位の上限（認証後）**: `get_agent_principal` の中で、検証済みの `token_id` をキーに `120 per minute` を数える。slowapi が内部で使う `limits` ライブラリの in-memory の moving window を使う。超えたら 429（`Retry-After` 付き）。この 429 は監査ログに記録する。
+2. **認証失敗の上限**: slowapi は応答の前に判定するため、失敗だけを数えることはできない。`get_agent_principal` の中で、ハッシュで照合して見つからなかった（401 になる）たびに、`get_client_ip(request)` をキーにカウンタを増やす。1分間に `20` 回を超えた IP は以後 429（`Retry-After` 付き）にする。moving window、in-memory。
+
+`get_agent_principal` の順序:
+
+1. トークンを取り出す。ヘッダーがなければ 401。この 401 は認証失敗に数えない（監査ログに記録しない方針とそろえる。総量は既定の 200/分で抑えられる）。
+2. 認証失敗の上限を判定する。ハッシュで照合する前に行う。上限にかかった IP は 429 を返し、この 429 は監査ログに記録しない。
+3. ハッシュで照合する。見つからなければ認証失敗を数えて 401。
+4. principal を `request.state` に置く。
+5. トークン単位の上限を判定する。超えたら 429（監査ログに記録する）。
+6. `last_used_at` を更新する。
+
+認証失敗の上限にかかった IP からは、正しいトークンでも 429 になる。ハッシュで照合する前に判定するため。
+
+429 に `Retry-After` を付けるため、`exceptions.http_exception_handler` が `HTTPException.headers` を渡すようにする。それまでは捨てていたので、PR1 の 401 の `WWW-Authenticate` も、本体のアプリでは返っていなかった。
+
+どちらの上限もテスト環境では無効にする（`settings.environment != "test"`）。テストでは `agent_rate_limiter.enabled` を明示的に `True` にし、`reset()` で数をリセットする。
+
+API は Fly.io のマシン1台で動いているので、カウンタは in-memory でよい。デプロイや再起動でリセットされる。複数台にする場合は共有ストレージが必要になる（範囲外）。
 
 クライアント IP について:
 
-- Dockerfile は uvicorn を `--proxy-headers --forwarded-allow-ips "*"` で起動している。すべての転送元を信頼する設定なので、`request.client.host` はクライアントが送る `X-Forwarded-For` で決まり、偽装できる。このままでは、1 と 3 の IP 単位の制御は回避されてしまう。
-- 段階 1 と 3、および監査ログの `client_ip` は、共通の `get_client_ip(request)` で IP を取る。この関数は Fly のエッジプロキシが付ける `Fly-Client-IP` を優先し、ない場合（ローカル開発やテスト）だけ `request.client.host` を使う。
-- この関数の追加、既存の limiter（`rate_limiter.py`）と `auth.py` への適用、uvicorn の設定の見直しは issue #358 で行う。#358 は PR2 の前提条件とし、PR2 は #358 がマージされてから着手する。
+- Dockerfile は uvicorn を `--proxy-headers --forwarded-allow-ips "*"` で起動している。すべての転送元を信頼する設定なので、`request.client.host` はクライアントが送る `X-Forwarded-For` で決まり、偽装できる。そのため、認証失敗の上限の IP 制御は、そのままでは回避されてしまう。
+- 認証失敗の上限と、監査ログの `client_ip` は、共通の `get_client_ip(request)` で IP を取る。この関数は Fly のエッジプロキシが付ける `Fly-Client-IP` を優先し、ない場合（ローカル開発やテスト）だけ `request.client.host` を使う。
+- この関数の追加、既存の limiter（`rate_limiter.py`）と `auth.py` への適用、uvicorn の設定の見直しは issue #358 で行った（マージ済み）。`auth.py` の `_check_rate_limit` は #359 で削除した。
 - IP は権限の判定には使わない。
 
 ### 既存 hook の移行
@@ -297,7 +330,7 @@ context_notes は `user_id` を直接持つが、Read API の役割はユーザ�
 
 ### `035_add_agent_tokens.sql` と `035_add_agent_tokens_rollback.sql`（PR1）
 
-追加だけにして、旧コードと互換にする。`agent_audit_logs` は含めない（036 に分ける）。
+追加だけにして、旧コードと互換にする。`agent_audit_logs` は含めない（037 に分ける）。
 
 1. 前提チェック（依存するテーブルと `update_updated_at_column()` がなければ、分かるメッセージで失敗させる）
 2. `agent_tokens` の作成（インデックス、RLS、`REVOKE ALL` の後に必要な列だけ `GRANT SELECT`、COMMENT）
@@ -315,14 +348,14 @@ rollback の手順:
 
 移行後に新しく作ったトークンは、rollback すると使えなくなる。その場合は旧コードで作り直す。
 
-### `036_add_agent_audit_logs.sql`（PR2）
+### `037_add_agent_audit_logs.sql`（PR2）
 
 1. `agent_audit_logs` の作成（「データモデル: `agent_audit_logs`」の定義）
-2. インデックス `(user_id, created_at DESC)`、`(token_id, created_at DESC)`
+2. インデックス `(user_id, created_at DESC)`、`(token_id, created_at DESC)`、`(created_at)`（保持期間の削除ジョブ用）
 3. RLS を有効にし、`authenticated` には自分の `user_id` の行の SELECT のみ許可する
-4. `REVOKE ALL ON agent_audit_logs FROM anon, authenticated` を先に実行し、その後で必要な列だけ `GRANT SELECT` する（#360 のレビューで PR2 に振り分けた項目）
+4. `REVOKE ALL ON public.agent_audit_logs FROM anon, authenticated` を先に実行し、その後で `authenticated` に 11 列すべてを列単位で `GRANT SELECT` する（#360 のレビューで PR2 に振り分けた項目）。`client_ip` と `route` も含める。理由は「データモデル: `agent_audit_logs`」の GRANT のとおり（RLS で自分の行だけ、表に secret がない、管理 API が同じ列を返す、`client_ip` は本人が不審な利用を確かめるのに使う）。`anon` には GRANT しない
 
-036 の rollback は `agent_audit_logs` を削除する。
+037 の rollback は `agent_audit_logs` を削除する。
 
 ## セキュリティ
 
@@ -342,8 +375,8 @@ rollback の手順:
 - コピー: 失効済みの行も失効状態のままコピーされる。`created_at` / `updated_at` が NULL の行があっても失敗しない。
 - rollback: 移行後に失効させたトークンが、rollback の後も旧コードで 401 になる。
 - prefix の抽出: `public_id` に `_` を含むトークンでも、正しい prefix が取り出せる。形式に合わない値は監査ログに記録されない。
-- Rate limit: 偽の prefix を毎回変えても IP 単位の上限で 429 になる。`X-Forwarded-For` を毎回変えても、IP 単位の上限と認証失敗のカウンタはリセットされない。トークン単位の上限は検証済みのトークンにだけ効く。1分間に 20 回を超えて認証に失敗した IP は 429 になる。
-- 監査ログ: 成功、401、403 のいずれでも1行記録される。ボディや secret が含まれない。一致するルートがないリクエストは `<unmatched>` で記録される。90 日を過ぎた行が削除ジョブで消える。ユーザーを削除すると、その人の監査ログも消える。
+- Rate limit: 偽の prefix を毎回変えても認証失敗の上限で 429 になる。トークンのヘッダーがない 401 は認証失敗に数えない。`X-Forwarded-For` を毎回変えても、認証失敗のカウンタはリセットされない。トークン単位の上限は検証済みのトークンにだけ効く。1分間に 20 回を超えて認証に失敗した IP は 429 になり、正しいトークンでも 429 になる。429 には `Retry-After` が付く。
+- 監査ログ: 成功、401、403 のいずれでも1行記録される。ボディや secret が含まれない。一致するルートがないリクエストは記録されない。90 日を過ぎた行が削除ジョブで消える。ユーザーを削除すると、その人の監査ログも消える。
 - daily plans: `AgentDailyPlanResponse` の `id` と `updated_at` が常に入っている。31 件の一覧で、schedule の問い合わせが件数に比例して増えない。
 - `last_used_at`: 5 分以内の連続アクセスでは更新されない。
 - Read API: ユーザー A のトークンでユーザー B のデータが見えない（一覧と個別取得の両方。リソースごとの所有の判定すべてについて確認する）。`user_id` は自分だが親が他人の context note は返らない。作業ログを編集すると `/logs` の差分に現れる。`updated_since` と `cursor` で、同じ時刻の行が混ざっていても漏れや重複がない。タイムゾーンのない `updated_since` は 422 になる。壊れた cursor は 500 ではなく 422 になる。
@@ -362,7 +395,7 @@ rollback の手順:
    - Deployment Notes: マイグレーションを適用してからデプロイするまでの間は、トークンを作成・失効させない
 2. **PR2: 監査ログと rate limit**
    - 前提: #358 がマージ済みであること
-   - migration 036（`agent_audit_logs` の作成、インデックス、RLS、`REVOKE` と列単位の `GRANT`）
+   - migration 037（`agent_audit_logs` の作成、インデックス、RLS、`REVOKE` と列単位の `GRANT`）
    - ミドルウェア、保持ジョブ
    - トークン管理 API のバックエンド（`/api/user/agent-tokens` の一覧・作成・失効・`/scopes`・`/{id}/audit-logs`）。PR3 の Read API を、スコープ付きのトークンで確かめられるようにするため
 3. **PR3: Agent Read API**

@@ -140,6 +140,18 @@ def override_settings():
     settings.environment = original_env
 
 
+@pytest.fixture(autouse=True)
+def agent_audit_test_database(monkeypatch):
+    """Write agent audit rows to the in-memory test database.
+
+    Without this, every agent request in any test would try to reach the
+    PostgreSQL URL above and wait for the connect timeout.
+    """
+    from humancompiler_api import agent_audit
+
+    monkeypatch.setattr(agent_audit, "session_factory", lambda: Session(engine))
+
+
 @pytest.fixture
 def test_user_id():
     """Provide a test user ID"""
