@@ -53,7 +53,7 @@ def decode_cursor(cursor: str) -> tuple[datetime, UUID]:
     try:
         padded = cursor + "=" * (-len(cursor) % 4)
         payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
-    except (binascii.Error, UnicodeError, ValueError) as exc:
+    except (binascii.Error, UnicodeError, ValueError, RecursionError) as exc:
         raise ValueError("Invalid cursor") from exc
     if not isinstance(payload, dict):
         raise ValueError("Invalid cursor")
@@ -63,7 +63,11 @@ def decode_cursor(cursor: str) -> tuple[datetime, UUID]:
     updated_at = datetime.fromisoformat(raw_at)
     if updated_at.tzinfo is None:
         raise ValueError("Cursor timestamp must include a timezone")
-    return updated_at.astimezone(UTC), UUID(raw_id)
+    try:
+        # Offsets near datetime.min/max overflow when converted to UTC.
+        return updated_at.astimezone(UTC), UUID(raw_id)
+    except OverflowError as exc:
+        raise ValueError("Invalid cursor") from exc
 
 
 @dataclass(frozen=True)
@@ -105,7 +109,13 @@ def page_params(
                     status.HTTP_422_UNPROCESSABLE_ENTITY,
                     "updated_since must include a timezone",
                 )
-            since = _to_utc(updated_since)
+            try:
+                since = _to_utc(updated_since)
+            except OverflowError:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "updated_since is out of range",
+                ) from None
         after: tuple[datetime, UUID] | None = None
         if cursor is not None:
             try:

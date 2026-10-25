@@ -40,6 +40,9 @@ BAD_CURSORS = [
     _b64({"u": "2026-01-01T00:00:00+00:00"}),
     _b64({"u": "2026-01-01T00:00:00+00:00", "i": "nope"}),
     _b64({"u": "2026-01-01T00:00:00", "i": str(uuid4())}),
+    _b64("[" * 20_000),
+    _b64({"u": "0001-01-01T00:00:00+05:00", "i": str(uuid4())}),
+    _b64({"u": "9999-12-31T23:59:59-05:00", "i": str(uuid4())}),
 ]
 
 
@@ -87,7 +90,9 @@ def _insert_projects(session: Session, stamps: list[datetime]) -> None:
     session.commit()
 
 
-def _walk(session: Session, limit: int, **kwargs: Any) -> list[list[Project]]:
+def _walk(
+    session: Session, limit: int, updated_since: datetime | None = None
+) -> list[list[Project]]:
     pages: list[list[Project]] = []
     after = None
     while True:
@@ -95,9 +100,7 @@ def _walk(session: Session, limit: int, **kwargs: Any) -> list[list[Project]]:
             session,
             select(Project),
             Project,
-            PageParams(
-                updated_since=kwargs.get("updated_since"), after=after, limit=limit
-            ),
+            PageParams(updated_since=updated_since, after=after, limit=limit),
         )
         pages.append(rows)
         if next_cursor is None:
@@ -213,6 +216,16 @@ def test_page_params_rejects_naive_updated_since_with_422():
     response = client.get("/default", params={"updated_since": "2026-01-01T00:00:00"})
     assert response.status_code == 422
     assert response.json()["detail"] == "updated_since must include a timezone"
+
+
+@pytest.mark.parametrize(
+    "updated_since", ["0001-01-01T00:00:00+05:00", "9999-12-31T23:59:59-05:00"]
+)
+def test_page_params_rejects_out_of_range_updated_since_with_422(updated_since):
+    client = TestClient(build_app(), raise_server_exceptions=False)
+    response = client.get("/default", params={"updated_since": updated_since})
+    assert response.status_code == 422
+    assert isinstance(response.json()["detail"], str)
 
 
 @pytest.mark.parametrize("cursor", BAD_CURSORS)
