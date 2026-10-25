@@ -22,6 +22,10 @@ jest.mock('../config', () => ({
 // Mock fetch
 global.fetch = jest.fn();
 
+// jsdom has no Response, so tests use the parts of it fetchWithFallback reads.
+const reply = (status: number) =>
+  ({ ok: status >= 200 && status < 300, status, statusText: '' }) as Response;
+
 describe('fetchWithFallback', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -35,10 +39,7 @@ describe('fetchWithFallback', () => {
 
   describe('successful requests', () => {
     it('should make successful request to primary endpoint', async () => {
-      const mockResponse = new Response('{"success": true}', {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      const mockResponse = reply(200);
       (fetch as jest.Mock).mockResolvedValueOnce(mockResponse);
 
       const response = await fetchWithFallback('/test-endpoint');
@@ -57,7 +58,7 @@ describe('fetchWithFallback', () => {
       const { getApiEndpoint } = require('../config');
       getApiEndpoint.mockReturnValueOnce(''); // Empty string for relative URL
 
-      const mockResponse = new Response('{"success": true}', { status: 200 });
+      const mockResponse = reply(200);
       (fetch as jest.Mock).mockResolvedValueOnce(mockResponse);
 
       await fetchWithFallback('/test-endpoint');
@@ -74,7 +75,7 @@ describe('fetchWithFallback', () => {
       // Primary endpoint fails with DNS error
       (fetch as jest.Mock)
         .mockRejectedValueOnce(new TypeError('Failed to fetch: net::ERR_NAME_NOT_RESOLVED'))
-        .mockResolvedValueOnce(new Response('{"success": true}', { status: 200 }));
+        .mockResolvedValueOnce(reply(200));
 
       const response = await fetchWithFallback('/test-endpoint');
 
@@ -89,7 +90,7 @@ describe('fetchWithFallback', () => {
       (fetch as jest.Mock)
         .mockRejectedValueOnce(new Error('Network error'))
         .mockRejectedValueOnce(new Error('Network error'))
-        .mockResolvedValueOnce(new Response('{"success": true}', { status: 200 }));
+        .mockResolvedValueOnce(reply(200));
 
       const response = await fetchWithFallback('/test-endpoint');
 
@@ -98,7 +99,7 @@ describe('fetchWithFallback', () => {
     });
 
     it('should not retry on 4xx client errors', async () => {
-      const errorResponse = new Response('{"error": "Bad Request"}', { status: 400 });
+      const errorResponse = reply(400);
       (fetch as jest.Mock).mockResolvedValueOnce(errorResponse);
 
       const response = await fetchWithFallback('/test-endpoint');
@@ -127,12 +128,16 @@ describe('fetchWithFallback', () => {
     });
 
     it('should reset circuit breaker on successful request', async () => {
-      // First fail to increment failure count
-      (fetch as jest.Mock)
-        .mockRejectedValueOnce(new TypeError('Network error'))
-        .mockResolvedValueOnce(new Response('{"success": true}', { status: 200 }));
+      // First request: primary and fallback both fail, counting a primary failure
+      (fetch as jest.Mock).mockRejectedValue(new TypeError('Network error'));
+      await expect(fetchWithFallback('/test-endpoint')).rejects.toThrow(NetworkError);
+      expect(getCircuitBreakerStatus().failureCount).toBe(1);
 
+      // Second request: primary succeeds, which resets the breaker
+      (fetch as jest.Mock).mockReset();
+      (fetch as jest.Mock).mockResolvedValueOnce(reply(200));
       await fetchWithFallback('/test-endpoint');
+      expect(fetch).toHaveBeenCalledWith('https://primary-api.com/test-endpoint', expect.any(Object));
 
       const status = getCircuitBreakerStatus();
       expect(status.failureCount).toBe(0);
@@ -189,7 +194,7 @@ describe('fetchWithFallback', () => {
     });
 
     it('should pass through fetch options', async () => {
-      const mockResponse = new Response('{"success": true}', { status: 200 });
+      const mockResponse = reply(200);
       (fetch as jest.Mock).mockResolvedValueOnce(mockResponse);
 
       const headers = { 'Authorization': 'Bearer token' };
@@ -212,14 +217,19 @@ describe('fetchWithFallback', () => {
 
   describe('timeout handling', () => {
     it('should timeout requests', async () => {
-      // Mock a long-running request
-      (fetch as jest.Mock).mockImplementation(() =>
-        new Promise(resolve => setTimeout(resolve, 10000))
+      // Mock a request that never answers but, like real fetch, rejects on abort
+      (fetch as jest.Mock).mockImplementation(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () =>
+              reject(new DOMException('This operation was aborted', 'AbortError'))
+            );
+          })
       );
 
       await expect(
         fetchWithFallback('/test-endpoint', { timeout: 100 })
-      ).rejects.toThrow();
+      ).rejects.toThrow(NetworkError);
     });
   });
 });
