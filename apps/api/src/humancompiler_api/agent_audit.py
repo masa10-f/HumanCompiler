@@ -40,6 +40,29 @@ AUDITED_PATH_PREFIXES = ("/api/agent/", "/api/hooks/")
 UNMATCHED_ROUTE = "<unmatched>"
 AUDIT_LOG_RETENTION = timedelta(days=90)
 
+
+def route_template(scope: Scope) -> str:
+    """Return the full template of the matched route, or UNMATCHED_ROUTE.
+
+    Older FastAPI flattens included routers, so ``route.path`` is the full
+    template. Newer FastAPI keeps them nested and ``route.path`` is relative to
+    the include prefix. Find the suffix of the request path that the route
+    matches and put the prefix in front. The include prefixes in this app have
+    no path parameters, so the prefix never carries IDs.
+    """
+    route = scope.get("route")
+    route_path = getattr(route, "path", None)
+    path_regex = getattr(route, "path_regex", None)
+    if not route_path or path_regex is None:
+        return UNMATCHED_ROUTE
+
+    path = scope.get("path", "")
+    for index, char in enumerate(path):
+        if char == "/" and path_regex.match(path[index:]):
+            return path[:index] + route_path
+    return UNMATCHED_ROUTE
+
+
 # Replaced in tests to point at the test database.
 session_factory: Callable[[], Session] = lambda: Session(db.get_engine())  # noqa: E731
 
@@ -146,7 +169,7 @@ class AgentAuditMiddleware:
                 user_id=user_id,
                 token_prefix=token_prefix,
                 method=scope["method"],
-                route=getattr(scope.get("route"), "path", None) or UNMATCHED_ROUTE,
+                route=route_template(scope),
                 required_scope=state.get("required_scope"),
                 # No response started means the app raised; the server returns 500.
                 status_code=status_code if status_code is not None else 500,

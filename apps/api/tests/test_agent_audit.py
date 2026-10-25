@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
@@ -388,3 +389,43 @@ async def test_retention_job_swallows_errors(
         await notification_scheduler.purge_expired_agent_audit_logs()
 
     assert "agent audit log retention" in caplog.text
+
+
+# Newer FastAPI keeps included routers nested, so scope["route"].path is
+# relative to the include prefix ("/hooks/..." instead of "/api/hooks/...").
+# These fake routes stand in for both shapes on any installed FastAPI version.
+def fake_route(path: str) -> APIRoute:
+    return APIRoute(path, endpoint=lambda: None)
+
+
+@pytest.mark.parametrize(
+    ("route_path", "request_path", "expected"),
+    [
+        # Older FastAPI: the route carries the full template
+        (
+            "/api/agent/v1/tasks/{task_id}",
+            "/api/agent/v1/tasks/1f0c",
+            "/api/agent/v1/tasks/{task_id}",
+        ),
+        # Newer FastAPI: the route is relative to the include prefix
+        (
+            "/agent/v1/tasks/{task_id}",
+            "/api/agent/v1/tasks/1f0c",
+            "/api/agent/v1/tasks/{task_id}",
+        ),
+        ("/hooks/quick-tasks", "/api/hooks/quick-tasks", "/api/hooks/quick-tasks"),
+    ],
+)
+def test_route_template_includes_the_router_prefix(route_path, request_path, expected):
+    scope = {"route": fake_route(route_path), "path": request_path}
+    assert agent_audit.route_template(scope) == expected
+
+
+def test_route_template_without_route_is_unmatched():
+    assert agent_audit.route_template({"path": "/api/agent/v1/x"}) == "<unmatched>"
+
+
+def test_route_template_never_returns_a_raw_path():
+    # A route that does not match the request path must not leak the raw path
+    scope = {"route": fake_route("/hooks/quick-tasks"), "path": "/api/agent/v1/9a7b"}
+    assert agent_audit.route_template(scope) == "<unmatched>"
