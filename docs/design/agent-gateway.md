@@ -268,10 +268,13 @@ ON CONFLICT (id) DO NOTHING;
 | daily_plans | `daily_plan_documents.user_id = user_id` |
 | context_notes | `context_notes.user_id = user_id` **かつ** 親（project / goal / task のうち設定されているもの）が上の判定で同じユーザーに属する |
 
-context_notes は `user_id` を直接持つが、Read API の役割はユーザー間のデータを確実に分けることなので、親の所有も確認する。
+context_notes は `user_id` を直接持つが、Read API の役割はユーザー間のデータを確実に分けることなので、親の所有も確認する。親がどれも設定されていないノートは、`user_id` だけで判定する。
 - レスポンスのスキーマは、既存の `*Response` モデルを使う（`ProjectResponse`、`GoalResponse`、`TaskResponse`、`QuickTaskResponse`、`LogResponse`、`WorkSessionResponse`、`ContextNoteResponse`）。これらは `id` と `updated_at` がどちらも必須で、差分取得の条件を満たす（`LogResponse` には PR1 で `updated_at` を追加する）。
 - **daily plan だけは例外**とする。`DailyPlanResponse` は `routers/daily_plans.py:482` で定義されていて、`id` と `updated_at` がどちらも Optional になっている。カーソルとクライアント向けの指針はこの2つが必ずあることを前提にしているため、`AgentDailyPlanResponse(DailyPlanResponse)` を作り、`id: UUID` と `updated_at: datetime` を必須にする（DB の列はどちらも NOT NULL なので、値は常にある）。
 - `DailyPlanResponse.schedule` は daily plan ごとに別の問い合わせで取っている。一覧のエンドポイントではページ内の schedule をまとめて1回で読み込み、1件ごとに問い合わせが増えないようにする。
+- `/work-sessions` のレスポンスには `task`（`TaskSummary`）を含める。ページ内の task は `selectinload` でまとめて1回の問い合わせで読み込む。
+- `/daily-plans` の一覧は、文書（`daily_plan_documents`）がある日だけを返す。schedule だけがある日は返さない。`date_from > date_to` のときは 422 ではなく空の一覧を返す。`limit` は既定 7、最大 31。
+- `/context-notes` の `project_id` / `goal_id` / `task_id` による絞り込みは、その列との一致だけを見る。`project_id` を指定しても、配下の goal や task のノートは含めない（Web の notes API と同じ）。
 
 ### 差分取得の仕様（一覧系に共通）
 
@@ -295,6 +298,8 @@ context_notes は `user_id` を直接持つが、Read API の役割はユーザ�
     - goal の `estimate_hours`（配下の task の見積もりの合計）
     - `depends_on_goal` / `depends_on_task` の要約
     - 削除された項目への依存関係
+    - daily plan の `schedule`（変わっても daily plan の `updated_at` は進まない）。schedule の変更は、`date_from` / `date_to` の範囲で読み直して拾う
+    - work session の `task` の要約（変わっても work session の `updated_at` は進まない）。task の変更は `/tasks` から読む
 - `updated_at` が NULL の行は、`updated_since` でも cursor でも扱えないので、一覧に含めない。
 
 ### `updated_at` の信頼性
@@ -332,7 +337,7 @@ context_notes は `user_id` を直接持つが、Read API の役割はユーザ�
 | GET | `/context-export/goals/{goal_id}` | `context:read` | 同上 |
 
 - 個別取得で、所有していない ID または存在しない ID を指定した場合は 404 を返す（存在するかどうかを漏らさない）。
-- context export は既存の `build_project_context_export` / `build_goal_context_export` をそのまま呼ぶ。
+- context export は既存の `build_project_context_export` / `build_goal_context_export` をそのまま呼ぶ。スコープは `context:read`。他人の ID と存在しない ID は、既存の `ResourceNotFoundError` の扱いのまま 404 になる。
 
 ---
 
