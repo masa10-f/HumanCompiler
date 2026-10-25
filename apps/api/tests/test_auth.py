@@ -2,6 +2,7 @@
 Tests for authentication module
 """
 
+import logging
 import time
 from unittest.mock import Mock, patch
 
@@ -15,7 +16,13 @@ from humancompiler_api.auth import (
     get_current_user,
     get_optional_user,
     get_current_user_id,
+    verify_token_for_websocket,
 )
+
+# Fake values: the secret part must never appear in logs.
+AGENT_TOKEN_PREFIX = "hc_agent_Ab3dE5gH"
+AGENT_TOKEN = AGENT_TOKEN_PREFIX + "_" + "s" * 32
+OPAQUE_TOKEN = "opaque-test-value-" + "x" * 32
 
 
 @pytest.fixture
@@ -209,3 +216,69 @@ async def test_get_current_user_no_email(mock_credentials):
 
             assert result.user_id == "87654321-4321-8765-4321-876543218765"
             assert result.email == "unknown@example.com"
+
+
+def _invalid_user_response():
+    response = Mock()
+    response.user = None
+    return response
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["invalid", "error"])
+async def test_get_current_user_logs_only_agent_token_prefix(caplog, outcome):
+    """An agent token sent to a user endpoint logs its public prefix only."""
+    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=AGENT_TOKEN)
+    wait_for = (
+        {"return_value": _invalid_user_response()}
+        if outcome == "invalid"
+        else {"side_effect": Exception("boom")}
+    )
+
+    with caplog.at_level(logging.INFO, logger="humancompiler_api.auth"):
+        with patch("humancompiler_api.auth.db.get_client", return_value=Mock()):
+            with patch("asyncio.wait_for", **wait_for):
+                with pytest.raises(HTTPException):
+                    await get_current_user(credentials)
+
+    assert AGENT_TOKEN_PREFIX in caplog.text
+    assert AGENT_TOKEN[: len(AGENT_TOKEN_PREFIX) + 2] not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_does_not_log_other_token_characters(caplog):
+    """A non-agent token is logged as a fingerprint, never by its characters."""
+    credentials = HTTPAuthorizationCredentials(
+        scheme="Bearer", credentials=OPAQUE_TOKEN
+    )
+
+    with caplog.at_level(logging.INFO, logger="humancompiler_api.auth"):
+        with patch("humancompiler_api.auth.db.get_client", return_value=Mock()):
+            with patch("asyncio.wait_for", return_value=_invalid_user_response()):
+                with pytest.raises(HTTPException):
+                    await get_current_user(credentials)
+
+    assert "sha256:" in caplog.text
+    assert OPAQUE_TOKEN[:8] not in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("token", "secret_part"),
+    [
+        (AGENT_TOKEN, AGENT_TOKEN[: len(AGENT_TOKEN_PREFIX) + 2]),
+        (OPAQUE_TOKEN, OPAQUE_TOKEN[:8]),
+    ],
+)
+async def test_verify_token_for_websocket_does_not_log_secret(
+    caplog, token, secret_part
+):
+    """WebSocket auth logs follow the same rule as get_current_user."""
+    with caplog.at_level(logging.INFO, logger="humancompiler_api.auth"):
+        with patch("humancompiler_api.auth.db.get_client", return_value=Mock()):
+            with patch("asyncio.wait_for", return_value=_invalid_user_response()):
+                with pytest.raises(Exception, match="Invalid authentication token"):
+                    await verify_token_for_websocket(token)
+
+    assert "[WS AUTH]" in caplog.text
+    assert secret_part not in caplog.text
