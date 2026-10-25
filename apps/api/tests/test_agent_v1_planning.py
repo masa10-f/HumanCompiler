@@ -6,10 +6,12 @@
 
 import base64
 import json
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import event
 from sqlmodel import Session, select
 
 from humancompiler_api.database import get_session
@@ -330,3 +332,102 @@ def test_goals_and_tasks_require_their_scopes(session: Session):
         response = client.get(f"/api/agent/v1{path}", headers=bearer(secret))
         assert response.status_code == 403
         assert response.json()["detail"] == f"Missing required scope: {scope}"
+
+
+def _count_statements(session: Session, path: str, secret: str, **params) -> int:
+    """Count SQL statements the app executes for one GET on ``path``."""
+    statements: list[str] = []
+    # The app shares this session, so loaded relationships would otherwise be
+    # served from the identity map and hide per-row lazy loads.
+    session.expire_all()
+
+    def record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    engine = session.get_bind()
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        response = client.get(path, params=params, headers=bearer(secret))
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+    assert response.status_code == 200
+    return len(statements)
+
+
+def test_list_tasks_and_goals_query_count_does_not_grow_with_rows(session: Session):
+    project = seed_project(session, USER_A)
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    goals = [
+        seed_goal(session, project, updated_at=base + timedelta(minutes=i))
+        for i in range(12)
+    ]
+    tasks = [
+        seed_task(session, goals[0], updated_at=base + timedelta(minutes=i))
+        for i in range(12)
+    ]
+    # Each row depends on its predecessor, so every page row has dependencies.
+    for i in range(1, 12):
+        session.add(
+            GoalDependency(
+                id=uuid4(), goal_id=goals[i].id, depends_on_goal_id=goals[i - 1].id
+            )
+        )
+        session.add(
+            TaskDependency(
+                id=uuid4(), task_id=tasks[i].id, depends_on_task_id=tasks[i - 1].id
+            )
+        )
+    session.commit()
+    secret = issue_token(
+        session, USER_A, [AgentScope.GOALS_READ, AgentScope.TASKS_READ]
+    )
+    # Warm-up: the first request also pays for per-request work (token touch,
+    # audit insert) that is not per-row.
+    client.get("/api/agent/v1/tasks", headers=bearer(secret))
+
+    for path in ("/api/agent/v1/tasks", "/api/agent/v1/goals"):
+        small = _count_statements(session, path, secret, limit=3)
+        large = _count_statements(session, path, secret, limit=12)
+        assert small == large, f"{path}: 3 rows -> {small}, 12 rows -> {large}"
+
+    page = client.get(
+        "/api/agent/v1/tasks", params={"limit": 3}, headers=bearer(secret)
+    ).json()["items"]
+    info = [d["depends_on_task"] for item in page for d in item["dependencies"]]
+    assert len(info) == 2
+    assert all(i is not None and i["id"] for i in info)
+
+
+def test_list_tasks_paging_walk_with_shared_updated_at(session: Session):
+    goal = seed_goal(session, seed_project(session, USER_A))
+    stamp = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    shared = [seed_task(session, goal, updated_at=stamp) for _ in range(5)]
+    # Older than updated_since below, so it must not appear in the walk.
+    seed_task(session, goal, updated_at=stamp - timedelta(hours=1))
+    seed_task(
+        session, seed_goal(session, seed_project(session, USER_B)), updated_at=stamp
+    )
+    secret = issue_token(session, USER_A, [AgentScope.TASKS_READ])
+
+    seen: list[str] = []
+    params: dict[str, str | int] = {
+        "limit": 2,
+        # 21:00+09:00 is exactly 12:00 UTC; params= encodes the "+".
+        "updated_since": "2026-01-01T21:00:00+09:00",
+    }
+    pages = 0
+    while True:
+        response = client.get(
+            "/api/agent/v1/tasks", params=params, headers=bearer(secret)
+        )
+        assert response.status_code == 200
+        body = response.json()
+        seen.extend(item["id"] for item in body["items"])
+        pages += 1
+        if body["next_cursor"] is None:
+            break
+        params["cursor"] = body["next_cursor"]
+        assert pages < 10
+
+    assert pages == 3
+    assert seen == [str(t.id) for t in sorted(shared, key=lambda t: t.id)]
