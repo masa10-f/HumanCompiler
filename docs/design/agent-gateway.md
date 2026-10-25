@@ -63,13 +63,18 @@ HumanCompiler の情報を安全に取得し、将来的に更新を反映でき
 
 スコープは**作成後に変更しない**。変更したい場合は新しいトークンを発行し、古いものを失効させる。権限が後から広がる経路をなくすため。
 
-### プリセット（UI のみ。API はスコープの配列を受け取る）
+### プリセット（バックエンドで定義し、`/scopes` が返す。作成 API はスコープの配列を受け取る）
 
-| プリセット | スコープ |
+プリセットは `models.py` の `AGENT_TOKEN_PRESETS` で定義し、`GET /api/user/agent-tokens/scopes` が返す。Web はスコープ名やプリセットの一覧を持たず、この応答を表示する。
+
+| プリセット（`key`） | スコープ |
 |---|---|
-| Quick task hook | `quick_tasks:write` |
-| 読み取り専用エージェント | すべての `:read` |
-| カスタム | 任意に選択 |
+| Quick task hook（`quick_task_hook`） | `quick_tasks:write` |
+| 読み取り専用エージェント（`read_only`） | `:read` で終わるすべてのスコープ（`AgentScope` の定義順） |
+
+- 読み取り専用エージェントのスコープは、`AgentScope` から `:read` で終わるものを集めて作る。`context:read` を含む。今後 `:read` のスコープを足すと自動で含まれる。
+- 「カスタム」はプリセットではなく、Web 上の状態である。チェックしたスコープがどのプリセットとも一致しないときに表示する。API には存在しない。
+- `broad` が true のスコープは `context:read` だけ（`AGENT_BROAD_SCOPES`）。Web は `broad` のスコープにバッジを付ける。
 
 ### トークン形式
 
@@ -236,17 +241,33 @@ ON CONFLICT (id) DO NOTHING;
 | POST | `` | 作成。`{name, description?, scopes[]}`。secret は作成時のレスポンスで1回だけ返す |
 | DELETE | `/{token_id}` | 失効 |
 | GET | `/{token_id}/audit-logs` | 監査ログの直近の行（`limit` は既定 50、最大 200） |
-| GET | `/scopes` | 利用できるスコープとその説明（UI の表示用） |
+| GET | `/scopes` | 利用できるスコープとプリセット（UI の表示用）。応答は下記 |
+
+`/scopes` の応答:
+
+```json
+{
+  "scopes": [{"scope": "context:read", "description": "...", "broad": true}],
+  "presets": [{"key": "quick_task_hook", "label": "Quick task hook", "description": "...", "scopes": ["quick_tasks:write"]}]
+}
+```
 
 ### Web UI
 
 設定画面の hook token セクションを「エージェントトークン」セクションに置き換える。
 
-- 一覧には名前、prefix、スコープのチップ、最終利用日時、作成日時を表示する。
-- 作成ダイアログでは、プリセットを選んでから個々のスコープを調整できる。`context:read` には「広い読み取り権限」の注記を付ける。
-- secret は作成時に1回だけ表示し、コピーボタンを付ける（既存の挙動と同じ）。
-- 失効の操作と、直近の監査ログ（展開して表示）を置く。
-- 使い方ガイド（`hook-token-usage-guide.tsx`）は、Quick task hook の例に加えて、Agent API の `curl` 例と `/api/agent/v1/me` での動作確認を載せる。
+コンポーネントは `apps/web/src/components/settings/` に置く。
+
+- 一覧（`agent-tokens-card.tsx`）には名前、prefix、スコープのチップ、最終利用日時、作成日時を表示する。`broad` のスコープにはバッジを付ける。カタログにないスコープは、スコープ名のままのチップで表示する。一覧に出るのは有効なトークンだけで、失効したトークンの監査ログは画面から見えない。
+- 作成ダイアログ（`agent-token-create-dialog.tsx`）の初期状態はスコープなし（カスタム）。最小権限にするため、プリセットは自動では選ばない。スコープが1つもないと作成ボタンは押せない。
+  - プリセットの選択状態は、チェックしたスコープの集合から導く。プリセットを選ぶとチェックがそのプリセットのスコープに置き換わる。チェックを変えてどのプリセットとも一致しなくなると「カスタム」になる。「カスタム」を選んでもチェックは変えない。
+  - 作成に失敗した（422、通信エラー）ときはダイアログを開いたままにし、入力とチェックを残してエラーを出す。
+- secret は作成に成功するとダイアログを閉じ、カードの上部に1回だけ表示する。コピーボタンを付ける。画面を再読み込みすると消える。
+- 失効は確認ダイアログを挟む。
+- 監査ログ（`agent-token-audit-log.tsx`）は、トークンの行を展開すると直近 20 行を表で出す。列は日時、リクエスト（メソッド + ルート）、ステータス、IP。401 / 403 / 429 は色を変える。必要スコープと処理時間は出さない。取得の失敗と 0 件は、行の中にメッセージを出す。
+- カードの成功・失敗のメッセージはカードの中に出す。設定画面の上部の `error` / `success` とは分ける。`/scopes` の取得に失敗した（または古い形の応答だった）ときは、カードにエラーを出して作成ボタンを押せなくする。一覧と失効は使える。
+- 使い方ガイド（`agent-token-usage-guide.tsx`、`AgentTokenUsageGuide`）は、Agent API の `curl` 例（`/api/agent/v1/me` での動作確認と一覧の取得）、エラー応答、Quick task hook の例を載せる。OpenAPI docs へのリンクは API のホストを指す（Vercel が書き換えるのは `/api/*` だけのため）。
+- Web の hook token のクライアントコードと型は削除した。バックエンドの `/api/user/hook-tokens` は PR4b まで残る。
 
 ---
 
@@ -417,8 +438,8 @@ rollback の手順:
    - **PR3a**: 共通部分（ページネーション、差分取得）、`/me`、projects、goals、tasks
    - **PR3b**: quick-tasks、logs、work-sessions、context-notes、daily-plans、context export。PR3a のマージ後に `main` から作る
    - どちらもマイグレーションはない（`logs.updated_at`、トリガー、インデックスは PR1 の 035 に含まれる）
-4. **PR4: Web UI**
-   - 設定画面の置き換え、使い方ガイドの更新
-   - `HookToken` 関連のコードと `/api/user/hook-tokens` の削除
+4. **PR4: Web UI と hook token の削除**（2つに分ける）
+   - **PR4a**: 設定画面の置き換え、使い方ガイドの更新、プリセットを返すように `/scopes` の応答を変更、Web の hook token のコードの削除。マイグレーションはない
+   - **PR4b**: PR4a が本番で動くのを確かめてから着手する。`HookToken` モデル、hook token の Pydantic モデル、`routers/hook_tokens.py`、`/api/user/hook-tokens` を削除する（`HookTokenService` は PR1 で削除済み）。`hook_tokens` テーブルは残し、後続のマイグレーションで扱う
 
 各 PR は単体でデプロイしてよく、それぞれの時点で既存の hook が動き続けること。
