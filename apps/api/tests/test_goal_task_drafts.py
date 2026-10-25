@@ -17,7 +17,14 @@ from humancompiler_api.ai.goal_task_drafts import (
     MAX_DRAFT_OUTPUT_TOKENS,
     goal_task_draft_service,
 )
-from humancompiler_api.models import Goal, Project, Task, TaskDependency, User
+from humancompiler_api.models import (
+    Goal,
+    Project,
+    Task,
+    TaskDependency,
+    TaskStatus,
+    User,
+)
 
 JST = timezone(timedelta(hours=9))
 
@@ -419,6 +426,15 @@ def test_build_prompt_gives_goals_their_task_total_only(
             goal_id=goal.id,
             title="Existing task",
             estimate_hours=Decimal("1.50"),
+        )
+    )
+    session.add(
+        Task(
+            id=uuid4(),
+            goal_id=goal.id,
+            title="Cancelled task",
+            estimate_hours=Decimal("4.00"),
+            status=TaskStatus.CANCELLED,
         )
     )
     session.commit()

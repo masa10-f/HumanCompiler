@@ -295,7 +295,7 @@ SYSTEM_PROMPT = """あなたはHumanCompilerのゴール・タスク設計アシ
 - 提案はDBに直接作成されません。人間が編集・選択してから適用します。
 - タイトルは短く具体的にします。
 - 見積時間はタスクにだけ設定し、0.1から999時間の範囲で現実的にします。
-- ゴールには見積時間を設定しません。ゴールの見積は所属タスクの見積の合計として自動計算されるため、ゴールの説明やrationaleにも見積時間を書かないでください。
+- ゴールには見積時間を設定しません。ゴールの見積は所属タスク(キャンセル済みを除く)の見積の合計として自動計算されるため、ゴールの説明やrationaleにも見積時間を書かないでください。
 - タスクは1作業単位が0.25から4時間程度になるように分割します。
 - work_typeは light_work, study, focused_work のいずれかです。
 - priorityは1が最高、5が最低です。
@@ -1192,7 +1192,8 @@ class GoalTaskDraftService:
             "project_id": str(goal.project_id),
             "title": goal.title,
             "description": goal.description,
-            # Goals have no estimate of their own; this is their tasks' sum.
+            # Goals have no estimate of their own; this is the sum of their
+            # non-cancelled tasks' estimates.
             "task_estimate_total_hours": float(goal.estimate_hours),
             "status": goal.status,
         }
