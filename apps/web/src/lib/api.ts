@@ -78,6 +78,13 @@ import type {
   QuickTaskConvertRequest,
 } from "@/types/quick-task";
 import type {
+  AgentAuditLog,
+  AgentScopeCatalog,
+  AgentToken,
+  AgentTokenCreate,
+  AgentTokenCreated,
+} from "@/types/agent-token";
+import type {
   HookToken,
   HookTokenCreate,
   HookTokenCreated,
@@ -1594,6 +1601,47 @@ class ApiClient {
       method: "DELETE",
     });
   }
+
+  // === Agent Token API methods ===
+
+  async getAgentTokens(): Promise<AgentToken[]> {
+    return this.request<AgentToken[]>("/api/user/agent-tokens");
+  }
+
+  async createAgentToken(
+    tokenData: AgentTokenCreate,
+  ): Promise<AgentTokenCreated> {
+    return this.request<AgentTokenCreated>("/api/user/agent-tokens", {
+      method: "POST",
+      body: JSON.stringify(tokenData),
+    });
+  }
+
+  async revokeAgentToken(tokenId: string): Promise<void> {
+    return this.request<void>(`/api/user/agent-tokens/${tokenId}`, {
+      method: "DELETE",
+    });
+  }
+
+  async getAgentTokenScopes(): Promise<AgentScopeCatalog> {
+    const catalog = await this.request<AgentScopeCatalog>(
+      "/api/user/agent-tokens/scopes",
+    );
+    // An API that predates the preset catalog returns a bare array.
+    if (!Array.isArray(catalog?.scopes) || !Array.isArray(catalog?.presets)) {
+      throw new Error("Unexpected scope catalog response");
+    }
+    return catalog;
+  }
+
+  async getAgentTokenAuditLogs(
+    tokenId: string,
+    limit: number,
+  ): Promise<AgentAuditLog[]> {
+    return this.request<AgentAuditLog[]>(
+      `/api/user/agent-tokens/${tokenId}/audit-logs?limit=${limit}`,
+    );
+  }
 }
 
 export const apiClient = new ApiClient();
@@ -1910,6 +1958,19 @@ export const hookTokensApi = {
   getAll: () => apiClient.getHookTokens(),
   create: (tokenData: HookTokenCreate) => apiClient.createHookToken(tokenData),
   revoke: (tokenId: string) => apiClient.revokeHookToken(tokenId),
+};
+
+/**
+ * Agent Tokens API convenience wrapper.
+ * Provides methods for managing scoped agent tokens and reading their audit logs.
+ */
+export const agentTokensApi = {
+  getAll: () => apiClient.getAgentTokens(),
+  create: (tokenData: AgentTokenCreate) => apiClient.createAgentToken(tokenData),
+  revoke: (tokenId: string) => apiClient.revokeAgentToken(tokenId),
+  getScopes: () => apiClient.getAgentTokenScopes(),
+  getAuditLogs: (tokenId: string, limit: number) =>
+    apiClient.getAgentTokenAuditLogs(tokenId, limit),
 };
 
 // === Helper functions ===
