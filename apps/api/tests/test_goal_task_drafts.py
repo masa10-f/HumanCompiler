@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
@@ -16,7 +17,14 @@ from humancompiler_api.ai.goal_task_drafts import (
     MAX_DRAFT_OUTPUT_TOKENS,
     goal_task_draft_service,
 )
-from humancompiler_api.models import Goal, Project, Task, TaskDependency, User
+from humancompiler_api.models import (
+    Goal,
+    Project,
+    Task,
+    TaskDependency,
+    TaskStatus,
+    User,
+)
 
 JST = timezone(timedelta(hours=9))
 
@@ -405,6 +413,51 @@ def test_start_draft_job_uses_background_responses_api(
         "project_id": str(project.id),
         "mode": "project_goals",
     }
+
+
+def test_build_prompt_gives_goals_their_task_total_only(
+    session: Session, draft_workspace
+):
+    project = draft_workspace["project"]
+    goal = draft_workspace["goal"]
+    session.add(
+        Task(
+            id=uuid4(),
+            goal_id=goal.id,
+            title="Existing task",
+            estimate_hours=Decimal("1.50"),
+        )
+    )
+    session.add(
+        Task(
+            id=uuid4(),
+            goal_id=goal.id,
+            title="Cancelled task",
+            estimate_hours=Decimal("4.00"),
+            status=TaskStatus.CANCELLED,
+        )
+    )
+    session.commit()
+
+    prompt = json.loads(
+        goal_task_draft_service._build_prompt(
+            session,
+            GoalTaskDraftRequest(
+                project_id=project.id,
+                mode="goal_tasks",
+                goal_id=goal.id,
+                user_message="タスクを追加して",
+            ),
+            project,
+            goal,
+            None,
+        )
+    )
+
+    target_goal = prompt["target_goal"]
+    assert "estimate_hours" not in target_goal
+    assert target_goal["task_estimate_total_hours"] == 1.5
+    assert all("estimate_hours" not in g for g in prompt["existing_goals"])
 
 
 def test_get_draft_job_returns_completed_draft(

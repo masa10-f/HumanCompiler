@@ -643,10 +643,10 @@ function DraftGoalCard({
             />
           </div>
           <div className="space-y-1">
-            <div className="text-xs font-medium text-muted-foreground">見積(h)</div>
+            <div className="text-xs font-medium text-muted-foreground">タスク合計(h)</div>
             <div
               className="flex h-10 items-center rounded-md border bg-muted/50 px-3 text-sm"
-              title="選択中のタスクの見積の合計"
+              title="ゴールに見積はありません。選択中のタスクの見積の合計です"
             >
               {Math.round(estimateHours * 10) / 10}
             </div>
