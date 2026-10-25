@@ -160,6 +160,24 @@ def test_unmatched_route_with_junk_token_is_not_audited(session: Session):
     assert audit_rows(session) == []
 
 
+def test_wrong_method_with_junk_token_is_not_audited(session: Session):
+    response = client.get("/api/hooks/quick-tasks", headers=bearer("junk"))
+
+    assert response.status_code == 405
+    assert audit_rows(session) == []
+
+
+def test_malformed_json_with_junk_token_is_not_audited(session: Session):
+    response = client.post(
+        "/api/hooks/quick-tasks",
+        content="{not json",
+        headers={**bearer("junk"), "Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 422
+    assert audit_rows(session) == []
+
+
 def test_audit_row_never_contains_secret_body_or_query(session: Session):
     agent_token, token = create_token(session)
     secret = token[len(agent_token.token_prefix) + 1 :]

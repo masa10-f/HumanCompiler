@@ -201,8 +201,8 @@ async def purge_expired_agent_audit_logs():
             deleted_count = agent_audit.purge_expired_audit_logs(session)
             if deleted_count:
                 logger.info("Purged %s expired agent audit logs", deleted_count)
-    except Exception as e:
-        logger.error(f"Error in agent audit log retention: {e}")
+    except Exception:
+        logger.exception("Error in agent audit log retention")
 
 
 async def _process_user_deadline_notifications(

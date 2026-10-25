@@ -35,9 +35,11 @@ _FALLBACK_HEADERS = ("x-humancompiler-agent-token", "x-humancompiler-hook-token"
 # prefix must be matched positionally, never by splitting on "_".
 _TOKEN_PREFIX_PATTERN = re.compile(r"^(hc_agent_|hc_hook_)([A-Za-z0-9_-]{8})_")
 
-# ``request.state`` attribute that, when truthy, tells AgentAuditMiddleware not
-# to record the request.
-SKIP_AUDIT_STATE = "skip_agent_audit"
+# ``request.state`` attribute that, when truthy, tells AgentAuditMiddleware to
+# record the request. Set only once the token is looked up, so requests that
+# never reach the lookup (unmatched route, 405, malformed body, auth-failure
+# 429) leave no row that nobody can see and no limit caps.
+AUDIT_STATE = "agent_audit"
 
 
 @dataclass(frozen=True)
@@ -107,13 +109,13 @@ def get_agent_principal(
     client_ip = get_client_ip(request)
     retry_after = agent_rate_limiter.auth_failure_retry_after(client_ip)
     if retry_after is not None:
-        setattr(request.state, SKIP_AUDIT_STATE, True)
         # Not audited, so this is the only server-side trace of the lockout.
         logger.warning("Agent auth failure limit exceeded for IP: %s", client_ip)
         raise _too_many_requests(
             "Too many failed agent authentication attempts", retry_after
         )
 
+    setattr(request.state, AUDIT_STATE, True)
     agent_token = agent_token_service.get_active_token_by_secret(session, token)
     if agent_token is None or agent_token.id is None:
         agent_rate_limiter.record_auth_failure(client_ip)

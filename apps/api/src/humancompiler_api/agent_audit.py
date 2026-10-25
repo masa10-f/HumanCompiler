@@ -6,9 +6,10 @@
 
 """Audit logging for agent-facing endpoints.
 
-Every HTTP request under the agent prefixes that carries an agent token header
-is recorded in ``agent_audit_logs``. Request bodies, query values and token
-secrets are never stored, and ``route`` is the route template, not the path.
+HTTP requests under the agent prefixes whose token reached the lookup in
+``get_agent_principal`` are recorded in ``agent_audit_logs``. Request bodies,
+query values and token secrets are never stored, and ``route`` is the route
+template, not the path.
 """
 
 import logging
@@ -25,7 +26,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from sqlmodel import Session, col, delete, select
 
 from humancompiler_api.agent_auth import (
-    SKIP_AUDIT_STATE,
+    AUDIT_STATE,
     AgentPrincipal,
     extract_agent_token,
     extract_token_prefix,
@@ -139,11 +140,7 @@ class AgentAuditMiddleware:
         finally:
             duration_ms = int((time.monotonic() - start) * 1000)
             state = scope.get("state", {})
-            # Without a matched route no auth dependency runs, so the row would
-            # have no user_id and no auth-failure limit would cap it.
-            unmatched = route_template(scope) == UNMATCHED_ROUTE
-            has_principal = isinstance(state.get("agent_principal"), AgentPrincipal)
-            if not state.get(SKIP_AUDIT_STATE) and (has_principal or not unmatched):
+            if state.get(AUDIT_STATE):
                 await self._record(scope, state, token, status_code, duration_ms)
 
     @staticmethod
