@@ -19,6 +19,7 @@
 - **daily plans の一覧は文書がある日だけ**を返す（schedule だけある日は返さない）。`date_from > date_to` は 422 にせず空の一覧
 - **`AgentDailyPlanResponse` は `routers/agent_v1.py` に置く**（`routers/daily_plans.py` の `DailyPlanResponse` を継承し、`id: UUID` と `updated_at: datetime` を必須にする）。`date` は `document.date.isoformat()`、`document` は `DailyPlanDocumentV1.model_validate(document.document_json)`
 - **context export の他人の ID と存在しない ID**は、既存の `ResourceNotFoundError` がそのまま 404 になる
+- **埋め込む値は `updated_at` を進めない**（PR3a と同じ方針）: daily plan の `schedule`（書き込み経路が 5 か所以上ある）と work session の `task` の要約は、変わっても親の `updated_at` は進まない。`INCREMENTAL_SYNC_GUIDE` とは別に、daily-plans の説明に「schedule の変更を拾うには日付の範囲で読み直す」と書き、spec にも書く
 
 ## Global Constraints
 
@@ -30,6 +31,7 @@
 - 一覧のレスポンスは PR3a の `AgentPage`。並び順は `(updated_at, id)` の昇順
 - テストに JWT のような文字列を直接書かない
 - preview 用の DB は作らない。PR はマージしない
+- `apps/api/src` で `assert` を使わない（CI の bandit は B101 を除外しない）
 
 ## Review Focus
 
@@ -222,7 +224,7 @@ def test_context_export_requires_context_read_scope(session):
 - [ ] **Step 1: spec を更新する** — 「共通」に context note の親なしの扱いと絞り込みの意味、work sessions の `task` を含めること、daily plans は文書がある日だけ返すこと、`date_from > date_to` は空の一覧になることを書く
 - [ ] **Step 2: Commit** — `docs(agent): Record Read API decisions for notes and daily plans`
 - [ ] **Step 3: バックエンドのチェックをすべて流す**（`apps/api`）
-  Run: `ruff check . --fix && ruff format . && mypy src && bandit -r src -s B101 && uv run pytest -v`
+  Run: `ruff check . --fix && ruff format . && mypy src && bandit -r src && uv run pytest -v`
   Expected: すべて成功
 - [ ] **Step 4: push して PR を作る**（タイトル `feat(agent): Add remaining Agent Read API endpoints and context export`、本文は英語。`Refs #360`）
   本文の **Deployment Notes**: マイグレーションはない。デプロイ後、`daily_plans:read` と `context:read` を持つトークンで `GET /api/agent/v1/daily-plans` と `GET /api/agent/v1/context-export/projects/{id}` を呼び、200 になることを確かめる
