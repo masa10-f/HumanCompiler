@@ -225,7 +225,7 @@ cd /home/masato/projects/humancompiler/HumanCompiler
 rm -rf .venv
 python -m venv .venv
 source .venv/bin/activate
-pip install -r apps/api/requirements.txt
+uv sync --locked --active --project apps/api
 ```
 
 #### 4. cronが実行されない
@@ -248,7 +248,7 @@ cd /home/masato/projects/humancompiler/HumanCompiler/apps/api && source ../../.v
 # 依存関係の更新
 cd /home/masato/projects/humancompiler/HumanCompiler/apps/api
 source ../../.venv/bin/activate
-pip install -r requirements.txt
+uv sync --locked --active
 
 # マイグレーション実行
 python migrate.py status

@@ -63,7 +63,8 @@ HumanCompiler/
 │       │       ├── models/
 │       │       ├── ai/
 │       │       └── scheduler/
-│       └── requirements.txt
+│       ├── pyproject.toml
+│       └── uv.lock       # Locked versions (used by Docker/CI, updated by Dependabot)
 └── packages/             # Shared packages (future use)
 ```
 
@@ -96,7 +97,7 @@ pnpm install
 cd apps/api
 python -m venv ../../.venv
 source ../../.venv/bin/activate  # Windows: ../../.venv/Scripts/activate
-uv pip install -r requirements.txt
+uv sync --locked --extra dev --active
 ```
 
 4. **Configure environment variables:**

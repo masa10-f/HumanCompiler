@@ -62,7 +62,7 @@ cd apps/api
 uv venv
 source .venv/bin/activate  # Linux/Mac
 # or: .venv\Scripts\activate  # Windows
-uv pip install -e ".[dev]"
+uv sync --locked --extra dev  # installs the versions pinned in uv.lock
 
 # 3. Setup pre-commit hooks (REQUIRED!)
 pre-commit install

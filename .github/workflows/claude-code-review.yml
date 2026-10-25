@@ -39,7 +39,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.13"
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v5
@@ -47,8 +47,7 @@ jobs:
       - name: Install backend dependencies
         working-directory: apps/api
         run: |
-          uv venv
-          uv pip install -e ".[dev]"
+          uv sync --locked --extra dev
 
       - name: Run Claude Code Review
         id: claude-review

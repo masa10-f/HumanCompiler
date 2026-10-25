@@ -27,17 +27,22 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 🐍 Set up Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: '3.13'
+
+      - name: 📦 Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
 
       - name: 📦 Install dependencies
         working-directory: ./apps/api
         run: |
-          python -m pip install --upgrade pip
-          # Install dependencies
-          pip install -r requirements.txt
+          # Same uv.lock versions as the Docker image, plus dev extras.
+          # --locked fails if uv.lock is out of date with pyproject.toml.
+          uv sync --locked --extra dev
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: 🔍 Run Ruff Linting
         working-directory: ./apps/api
