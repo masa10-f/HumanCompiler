@@ -11,7 +11,7 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import event
+from sqlalchemy import event, update
 from sqlmodel import Session, select
 
 from humancompiler_api.database import get_session
@@ -21,10 +21,12 @@ from humancompiler_api.models import (
     AgentScope,
     GoalDependency,
     GoalStatus,
+    Project,
     ProjectStatus,
     TaskDependency,
     TaskStatus,
 )
+from humancompiler_api.services import goal_service, task_service
 from tests.agent_api_helpers import (
     bearer,
     client,
@@ -431,3 +433,76 @@ def test_list_tasks_paging_walk_with_shared_updated_at(session: Session):
 
     assert pages == 3
     assert seen == [str(t.id) for t in sorted(shared, key=lambda t: t.id)]
+
+
+def _synced_ids(path: str, secret: str, since: datetime) -> set[str]:
+    response = client.get(
+        path, headers=bearer(secret), params={"updated_since": since.isoformat()}
+    )
+    assert response.status_code == 200
+    return {item["id"] for item in response.json()["items"]}
+
+
+def test_dependency_changes_reach_incremental_sync(session: Session):
+    old = datetime(2026, 1, 1, tzinfo=UTC)
+    since = old + timedelta(days=1)
+    project = seed_project(session, USER_A, updated_at=old)
+    goal_1 = seed_goal(session, project, updated_at=old)
+    goal_2 = seed_goal(session, project, updated_at=old)
+    task_1 = seed_task(session, goal_1, updated_at=old)
+    task_2 = seed_task(session, goal_1, updated_at=old)
+    secret = issue_token(
+        session, USER_A, [AgentScope.GOALS_READ, AgentScope.TASKS_READ]
+    )
+    assert _synced_ids("/api/agent/v1/goals", secret, since) == set()
+    assert _synced_ids("/api/agent/v1/tasks", secret, since) == set()
+
+    goal_dep = goal_service.add_goal_dependency(session, goal_2.id, goal_1.id, USER_A)
+    task_dep = task_service.add_task_dependency(session, task_2.id, task_1.id, USER_A)
+
+    assert _synced_ids("/api/agent/v1/goals", secret, since) == {str(goal_2.id)}
+    assert _synced_ids("/api/agent/v1/tasks", secret, since) == {str(task_2.id)}
+
+    goal_2.updated_at = old
+    task_2.updated_at = old
+    session.commit()
+    goal_service.delete_goal_dependency(session, goal_2.id, goal_dep.id, USER_A)
+    task_service.delete_task_dependency(session, task_2.id, task_dep.id, USER_A)
+
+    assert _synced_ids("/api/agent/v1/goals", secret, since) == {str(goal_2.id)}
+    assert _synced_ids("/api/agent/v1/tasks", secret, since) == {str(task_2.id)}
+
+
+def test_goal_dependency_delete_by_id_reaches_incremental_sync(session: Session):
+    old = datetime(2026, 1, 1, tzinfo=UTC)
+    project = seed_project(session, USER_A, updated_at=old)
+    goal_1 = seed_goal(session, project, updated_at=old)
+    goal_2 = seed_goal(session, project, updated_at=old)
+    dependency = goal_service.add_goal_dependency(session, goal_2.id, goal_1.id, USER_A)
+    goal_2.updated_at = old
+    session.commit()
+    secret = issue_token(session, USER_A, [AgentScope.GOALS_READ])
+
+    goal_service.delete_goal_dependency_by_id(session, dependency.id, USER_A)
+
+    assert _synced_ids("/api/agent/v1/goals", secret, old + timedelta(days=1)) == {
+        str(goal_2.id)
+    }
+
+
+def test_rows_without_updated_at_are_skipped_instead_of_failing(session: Session):
+    dated = seed_project(session, USER_A)
+    undated = seed_project(session, USER_A)
+    session.exec(
+        update(Project).where(Project.id == undated.id).values(updated_at=None)
+    )
+    session.commit()
+    secret = issue_token(session, USER_A, [AgentScope.PROJECTS_READ])
+
+    response = client.get(
+        "/api/agent/v1/projects", headers=bearer(secret), params={"limit": 1}
+    )
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["items"]] == [str(dated.id)]
+    assert response.json()["next_cursor"] is None

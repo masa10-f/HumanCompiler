@@ -12,6 +12,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
+from sqlmodel.sql.expression import SelectOfScalar
 
 from humancompiler_api.agent_auth import (
     AgentPrincipal,
@@ -51,8 +52,34 @@ INCREMENTAL_SYNC_GUIDE = (
     "as updated_since on the next call. The 5 minutes absorb commits that become "
     "visible late, so drop rows whose (id, updated_at) pair you already have. "
     "Deletions never appear in a diff; to detect them, fetch the full set of IDs "
-    "and compare it with your local set."
+    "and compare it with your local set. Adding or removing a dependency advances "
+    "the dependent goal or task's updated_at. Derived and embedded values do not: "
+    "a goal's estimate_hours (the sum of its tasks), the depends_on_* summaries, "
+    "and dependencies on a deleted item. Read those from the referenced items "
+    "you sync."
 )
+
+
+def _owned_goals(user_id: UUID) -> SelectOfScalar[Goal]:
+    """The user's goals, with dependencies loaded in one query per page."""
+    return (
+        select(Goal)
+        .where(goal_service._get_user_filter(user_id))
+        .options(
+            selectinload(Goal.dependencies).selectinload(GoalDependency.depends_on_goal)
+        )
+    )
+
+
+def _owned_tasks(user_id: UUID) -> SelectOfScalar[Task]:
+    """The user's tasks, with dependencies loaded in one query per page."""
+    return (
+        select(Task)
+        .where(task_service._get_user_filter(user_id))
+        .options(
+            selectinload(Task.dependencies).selectinload(TaskDependency.depends_on_task)
+        )
+    )
 
 
 @router.get("/me", response_model=AgentMeResponse)
@@ -134,13 +161,7 @@ async def list_goals(
         GoalStatus | None, Query(alias="status", description="Filter by status.")
     ] = None,
 ) -> AgentPage[GoalResponse]:
-    statement = (
-        select(Goal)
-        .where(goal_service._get_user_filter(principal.user_id))
-        .options(
-            selectinload(Goal.dependencies).selectinload(GoalDependency.depends_on_goal)
-        )
-    )
+    statement = _owned_goals(principal.user_id)
     if project_id is not None:
         statement = statement.where(Goal.project_id == project_id)
     if goal_status is not None:
@@ -159,10 +180,11 @@ async def get_goal(
     principal: Annotated[AgentPrincipal, Depends(require_scope(AgentScope.GOALS_READ))],
 ) -> GoalResponse:
     """Return one goal; another user's goal is reported as not found."""
-    try:
-        goal = goal_service.get_goal(session, goal_id, principal.user_id)
-    except ResourceNotFoundError:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Goal not found") from None
+    goal = session.exec(
+        _owned_goals(principal.user_id).where(Goal.id == goal_id)
+    ).first()
+    if goal is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Goal not found")
     return GoalResponse.model_validate(goal)
 
 
@@ -187,13 +209,7 @@ async def list_tasks(
         TaskStatus | None, Query(alias="status", description="Filter by status.")
     ] = None,
 ) -> AgentPage[TaskResponse]:
-    statement = (
-        select(Task)
-        .where(task_service._get_user_filter(principal.user_id))
-        .options(
-            selectinload(Task.dependencies).selectinload(TaskDependency.depends_on_task)
-        )
-    )
+    statement = _owned_tasks(principal.user_id)
     if project_id is not None:
         statement = statement.where(
             col(Task.goal_id).in_(select(Goal.id).where(Goal.project_id == project_id))
@@ -216,17 +232,9 @@ async def get_task(
     principal: Annotated[AgentPrincipal, Depends(require_scope(AgentScope.TASKS_READ))],
 ) -> TaskResponse:
     """Return one task; another user's task is reported as not found."""
-    statement = (
-        select(Task)
-        .where(
-            Task.id == task_id,
-            task_service._get_user_filter(principal.user_id),
-        )
-        .options(
-            selectinload(Task.dependencies).selectinload(TaskDependency.depends_on_task)
-        )
-    )
-    task = session.exec(statement).first()
+    task = session.exec(
+        _owned_tasks(principal.user_id).where(Task.id == task_id)
+    ).first()
     if task is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found")
     return TaskResponse.model_validate(task)

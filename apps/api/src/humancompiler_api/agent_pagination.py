@@ -140,6 +140,9 @@ def paginate(
     One extra row is read to tell whether another page exists, so a final page
     that is exactly full does not produce a cursor to an empty page.
     """
+    # A NULL updated_at can be neither filtered by updated_since nor encoded
+    # in a cursor, so such rows are left out of every page.
+    statement = statement.where(model.updated_at.is_not(None))
     if params.updated_since is not None:
         statement = statement.where(model.updated_at >= params.updated_since)
     if params.after is not None:
