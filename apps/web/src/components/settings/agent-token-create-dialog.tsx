@@ -70,6 +70,8 @@ export function AgentTokenCreateDialog({
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
+    // A late failure must not land on a form that was already closed and reset.
+    if (!nextOpen && isSubmitting) return;
     if (!nextOpen) reset();
     onOpenChange(nextOpen);
   };
@@ -220,7 +222,12 @@ export function AgentTokenCreateDialog({
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSubmitting}
+              onClick={() => handleOpenChange(false)}
+            >
               キャンセル
             </Button>
             <Button type="submit" disabled={!canSubmit}>

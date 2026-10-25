@@ -188,4 +188,33 @@ describe('AgentTokenCreateDialog', () => {
     resolveCreate()
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
   })
+
+  it('ignores close requests while submitting and keeps the input on failure', async () => {
+    let rejectCreate: (reason: Error) => void = () => {}
+    const onCreate = jest.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectCreate = reject
+        }),
+    )
+    const { onOpenChange } = renderDialog(onCreate)
+
+    fireEvent.change(screen.getByLabelText('名前'), { target: { value: 'Agent' } })
+    fireEvent.click(scopeBox('tasks:read'))
+    fireEvent.click(createButton())
+
+    const cancel = screen.getByRole('button', { name: 'キャンセル' })
+    await waitFor(() => expect(cancel).toBeDisabled())
+    fireEvent.click(cancel)
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    expect(onOpenChange).not.toHaveBeenCalled()
+
+    rejectCreate(new Error('boom'))
+
+    expect(await screen.findByText('エージェントトークンの作成に失敗しました')).toBeInTheDocument()
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('名前')).toHaveValue('Agent')
+    expect(scopeBox('tasks:read')).toBeChecked()
+    expect(screen.getByRole('button', { name: 'キャンセル' })).toBeEnabled()
+  })
 })
