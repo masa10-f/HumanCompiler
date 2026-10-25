@@ -211,7 +211,7 @@ API は Fly.io のマシン1台で動いているので、カウンタは in-mem
   - `id`、`user_id`、`name`、`token_hash`、`token_prefix`、`last_used_at`、`revoked_at`、`created_at`、`updated_at` はそのまま移す。
   - `scopes` は `{quick_tasks:write}` とする。
   - `hook_tokens.created_at` と `updated_at` は NULL を許すため、COALESCE で埋める（`agent_tokens` 側は NOT NULL）。
-- `hook_tokens` は PR4 まで残し、COMMENT に deprecated と書く。PR1 以降のコードは `hook_tokens` を読み書きしない。
+- `hook_tokens` は後続の別のマイグレーションで削除するまで残し、COMMENT に deprecated と書く。PR1 以降のコードは `hook_tokens` を読み書きしない。
 - `HookToken` モデル、hook token の Pydantic モデル、`routers/hook_tokens.py`、`/api/user/hook-tokens` は、Web を新しいエージェントトークン画面に移した PR4a が本番で動くのを確かめてから、PR4b で削除する（実装順序を参照）。`HookTokenService` は PR1 で削除済み。
 
 ```sql
@@ -440,6 +440,6 @@ rollback の手順:
    - どちらもマイグレーションはない（`logs.updated_at`、トリガー、インデックスは PR1 の 035 に含まれる）
 4. **PR4: Web UI と hook token の削除**（2つに分ける）
    - **PR4a**: 設定画面の置き換え、使い方ガイドの更新、プリセットを返すように `/scopes` の応答を変更、Web の hook token のコードの削除。マイグレーションはない
-   - **PR4b**: PR4a が本番で動くのを確かめてから着手する。`HookToken` モデル、hook token の Pydantic モデル、`routers/hook_tokens.py`、`/api/user/hook-tokens` を削除する（`HookTokenService` は PR1 で削除済み）。`hook_tokens` テーブルは残し、後続のマイグレーションで扱う
+   - **PR4b**: PR4a が本番で動くのを確かめてから着手する。`HookToken` モデル、hook token の Pydantic モデル、`routers/hook_tokens.py`、`/api/user/hook-tokens` を削除する（`HookTokenService` は PR1 で削除済み）。`hook_tokens` テーブルは残し、後続の別のマイグレーションで削除する
 
 各 PR は単体でデプロイしてよく、それぞれの時点で既存の hook が動き続けること。
