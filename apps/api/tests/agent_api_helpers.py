@@ -19,11 +19,14 @@ from humancompiler_api.models import (
     AgentScope,
     Goal,
     GoalStatus,
+    Log,
     Project,
     ProjectStatus,
+    QuickTask,
     Task,
     TaskStatus,
     User,
+    WorkSession,
 )
 from humancompiler_api.services import agent_token_service
 
@@ -127,3 +130,69 @@ def seed_task(
     session.commit()
     session.refresh(task)
     return task
+
+
+def seed_quick_task(
+    session: Session,
+    owner_id: UUID,
+    *,
+    status: TaskStatus = TaskStatus.PENDING,
+    updated_at: datetime | None = None,
+) -> QuickTask:
+    stamp = updated_at or datetime.now(UTC)
+    quick_task = QuickTask(
+        id=uuid4(),
+        owner_id=owner_id,
+        title="Quick task",
+        status=status,
+        created_at=stamp,
+        updated_at=stamp,
+    )
+    session.add(quick_task)
+    session.commit()
+    session.refresh(quick_task)
+    return quick_task
+
+
+def seed_log(
+    session: Session,
+    task: Task,
+    *,
+    updated_at: datetime | None = None,
+) -> Log:
+    stamp = updated_at or datetime.now(UTC)
+    log = Log(
+        id=uuid4(),
+        task_id=task.id,
+        actual_minutes=30,
+        comment="Worked on it",
+        created_at=stamp,
+        updated_at=stamp,
+    )
+    session.add(log)
+    session.commit()
+    session.refresh(log)
+    return log
+
+
+def seed_work_session(
+    session: Session,
+    user_id: UUID,
+    task: Task,
+    *,
+    updated_at: datetime | None = None,
+) -> WorkSession:
+    stamp = updated_at or datetime.now(UTC)
+    work_session = WorkSession(
+        id=uuid4(),
+        user_id=user_id,
+        task_id=task.id,
+        planned_checkout_at=stamp,
+        started_at=stamp,
+        created_at=stamp,
+        updated_at=stamp,
+    )
+    session.add(work_session)
+    session.commit()
+    session.refresh(work_session)
+    return work_session

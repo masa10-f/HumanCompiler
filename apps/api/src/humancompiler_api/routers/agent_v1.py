@@ -35,15 +35,28 @@ from humancompiler_api.models import (
     GoalDependency,
     GoalResponse,
     GoalStatus,
+    Log,
+    LogResponse,
     Project,
     ProjectResponse,
     ProjectStatus,
+    QuickTask,
+    QuickTaskResponse,
     Task,
     TaskDependency,
     TaskResponse,
     TaskStatus,
+    WorkSession,
+    WorkSessionResponse,
 )
-from humancompiler_api.services import goal_service, project_service, task_service
+from humancompiler_api.services import (
+    goal_service,
+    log_service,
+    project_service,
+    quick_task_service,
+    task_service,
+    work_session_service,
+)
 
 router = APIRouter(prefix="/api/agent/v1", tags=["agent"])
 
@@ -238,3 +251,88 @@ async def get_task(
     if task is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found")
     return TaskResponse.model_validate(task)
+
+
+@router.get(
+    "/quick-tasks",
+    response_model=AgentPage[QuickTaskResponse],
+    description=f"List the user's quick tasks ordered by (updated_at, id). {INCREMENTAL_SYNC_GUIDE}",
+)
+async def list_quick_tasks(
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[
+        AgentPrincipal, Depends(require_scope(AgentScope.QUICK_TASKS_READ))
+    ],
+    params: Annotated[PageParams, Depends(page_params())],
+    task_status: Annotated[
+        TaskStatus | None, Query(alias="status", description="Filter by status.")
+    ] = None,
+) -> AgentPage[QuickTaskResponse]:
+    statement = select(QuickTask).where(
+        quick_task_service._get_user_filter(principal.user_id)
+    )
+    if task_status is not None:
+        statement = statement.where(QuickTask.status == task_status)
+    rows, next_cursor = paginate(session, statement, QuickTask, params)
+    return AgentPage[QuickTaskResponse](
+        items=[QuickTaskResponse.model_validate(row) for row in rows],
+        next_cursor=next_cursor,
+    )
+
+
+@router.get(
+    "/logs",
+    response_model=AgentPage[LogResponse],
+    description=f"List the user's work logs ordered by (updated_at, id). {INCREMENTAL_SYNC_GUIDE}",
+)
+async def list_logs(
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[AgentPrincipal, Depends(require_scope(AgentScope.LOGS_READ))],
+    params: Annotated[PageParams, Depends(page_params())],
+    task_id: Annotated[
+        UUID | None,
+        Query(description="Filter by task. Another user's task yields no rows."),
+    ] = None,
+) -> AgentPage[LogResponse]:
+    statement = select(Log).where(log_service._get_user_filter(principal.user_id))
+    if task_id is not None:
+        statement = statement.where(Log.task_id == task_id)
+    rows, next_cursor = paginate(session, statement, Log, params)
+    return AgentPage[LogResponse](
+        items=[LogResponse.model_validate(row) for row in rows],
+        next_cursor=next_cursor,
+    )
+
+
+@router.get(
+    "/work-sessions",
+    response_model=AgentPage[WorkSessionResponse],
+    description=(
+        "List the user's work sessions ordered by (updated_at, id). "
+        f"{INCREMENTAL_SYNC_GUIDE} The embedded task summary does not advance a "
+        "work session's updated_at; read task changes from /tasks."
+    ),
+)
+async def list_work_sessions(
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[
+        AgentPrincipal, Depends(require_scope(AgentScope.WORK_SESSIONS_READ))
+    ],
+    params: Annotated[PageParams, Depends(page_params())],
+    task_id: Annotated[
+        UUID | None,
+        Query(description="Filter by task. Another user's task yields no rows."),
+    ] = None,
+) -> AgentPage[WorkSessionResponse]:
+    statement = (
+        select(WorkSession)
+        .where(work_session_service._get_user_filter(principal.user_id))
+        .options(selectinload(WorkSession.task))
+    )
+    if task_id is not None:
+        statement = statement.where(WorkSession.task_id == task_id)
+    rows, next_cursor = paginate(session, statement, WorkSession, params)
+    return AgentPage[WorkSessionResponse](
+        items=[WorkSessionResponse.model_validate(row) for row in rows],
+        next_cursor=next_cursor,
+    )
