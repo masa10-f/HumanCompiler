@@ -13,14 +13,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint src --ext .js,.jsx,.ts,.tsx",
     "type-check": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "analyze": "ANALYZE=true next build",
-    "analyze:server": "ANALYZE=true BUNDLE_ANALYZE=server next build",
-    "analyze:browser": "ANALYZE=true BUNDLE_ANALYZE=browser next build",
+    "analyze": "ANALYZE=true next build --webpack",
+    "analyze:server": "ANALYZE=true BUNDLE_ANALYZE=server next build --webpack",
+    "analyze:browser": "ANALYZE=true BUNDLE_ANALYZE=browser next build --webpack",
     "bundle-analyzer": "pnpm run analyze"
   },
   "dependencies": {
