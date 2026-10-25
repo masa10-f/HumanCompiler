@@ -147,7 +147,9 @@ def test_request_without_token_header_is_not_audited(session: Session):
 def test_unmatched_route_is_not_audited(session: Session):
     _, token = create_token(session)
 
-    response = client.get(f"/api/agent/v1/tasks/{uuid4()}", headers=bearer(token))
+    response = client.get(
+        f"/api/agent/v1/no-such-route/{uuid4()}", headers=bearer(token)
+    )
 
     assert response.status_code == 404
     assert audit_rows(session) == []

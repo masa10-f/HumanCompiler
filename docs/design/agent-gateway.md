@@ -282,10 +282,20 @@ context_notes は `user_id` を直接持つが、Read API の役割はユーザ�
 | `limit` | 既定 100、最大 200（daily-plans だけは既定 7、最大 31） |
 
 - 並び順は `(updated_at, id)` の昇順に固定する。カーソルは最後の行の `(updated_at, id)` をエンコードしたもので、keyset pagination で次のページを取る。同じ時刻の行があっても、漏れや重複は出ない。
-- レスポンスは `{"items": [...], "next_cursor": "…" | null}`。
+- レスポンスは `{"items": [...], "next_cursor": "…" | null}`。次のページがあるかは `limit + 1` 件を読んで判定する。ちょうど `limit` 件で終わるときに、空のページを1回余計に返さないため。
+- **cursor の形式**: `{"u": "<updated_at を UTC の ISO 8601 で>", "i": "<id>"}` の JSON を、URL-safe base64（`=` なし）にしたもの。クライアントは中身を解釈しない。
+  - **署名はしない**。他人のデータには所有の条件で届かないので、cursor を改ざんされても、自分のデータの範囲で位置が変わるだけで済むため。
+- **日時は UTC にそろえる**。`updated_since` はタイムゾーン付きで受けて、UTC に変換してから使う。DB から読んだ naive な日時（SQLite）は UTC とみなして cursor に入れる。範囲外の `updated_since` も 422。
+- **絞り込みに他人の ID を指定したとき**（`/tasks?project_id=<他人のもの>` など）は、404 ではなく空の一覧を返す。存在の有無を漏らさないため。所有の条件と絞り込みを AND するだけで実装できる。
 - **クライアント向けの指針**（使い方ガイドと OpenAPI の description に書く）:
   - 次回の `updated_since` には、取得した中で最大の `updated_at` から 5 分引いた値を使う。`(id, updated_at)` が同じ行は重複として捨てる。トランザクションのコミット遅延による取りこぼしを防ぐため。
   - 削除は差分に現れない。削除を検知したい場合は、`updated_since` を付けずに全件を取り、ID の集合を比べる。
+  - 依存関係を追加・削除すると、依存する側の goal / task の `updated_at` が進み、差分に現れる（サービス層で進める。DB のトリガーは自分の行の UPDATE にしか反応しないため）。
+  - 次の値は、変わっても `updated_at` が進まない。参照先の項目を同期して、そちらを使う。
+    - goal の `estimate_hours`（配下の task の見積もりの合計）
+    - `depends_on_goal` / `depends_on_task` の要約
+    - 削除された項目への依存関係
+- `updated_at` が NULL の行は、`updated_since` でも cursor でも扱えないので、一覧に含めない。
 
 ### `updated_at` の信頼性
 
@@ -398,8 +408,10 @@ rollback の手順:
    - migration 037（`agent_audit_logs` の作成、インデックス、RLS、`REVOKE` と列単位の `GRANT`）
    - ミドルウェア、保持ジョブ
    - トークン管理 API のバックエンド（`/api/user/agent-tokens` の一覧・作成・失効・`/scopes`・`/{id}/audit-logs`）。PR3 の Read API を、スコープ付きのトークンで確かめられるようにするため
-3. **PR3: Agent Read API**
-   - `/api/agent/v1/*`、差分取得、context export
+3. **PR3: Agent Read API**（2つに分ける）
+   - **PR3a**: 共通部分（ページネーション、差分取得）、`/me`、projects、goals、tasks
+   - **PR3b**: quick-tasks、logs、work-sessions、context-notes、daily-plans、context export。PR3a のマージ後に `main` から作る
+   - どちらもマイグレーションはない（`logs.updated_at`、トリガー、インデックスは PR1 の 035 に含まれる）
 4. **PR4: Web UI**
    - 設定画面の置き換え、使い方ガイドの更新
    - `HookToken` 関連のコードと `/api/user/hook-tokens` の削除

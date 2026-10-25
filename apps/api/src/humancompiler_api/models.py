@@ -1802,6 +1802,15 @@ class AgentAuditLogResponse(BaseModel):
         return _serialize_utc(value)
 
 
+class AgentMeResponse(BaseModel):
+    """Identity of the agent token that made the request."""
+
+    token_name: str
+    token_prefix: str
+    scopes: list[str]
+    user_id: UUID
+
+
 class EmailNotificationSettingsUpdate(BaseModel):
     """Email notification settings update request (Issue #261)"""
 

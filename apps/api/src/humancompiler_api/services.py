@@ -94,6 +94,15 @@ def _dependency_path_exists(
     return False
 
 
+def _touch(session: Session, entity: Goal | Task | None) -> None:
+    """Advance updated_at when a change to related rows alters this entity's
+    response (e.g. its dependencies), so incremental sync picks it up. The DB
+    triggers only fire when the entity's own row is updated."""
+    if entity is not None:
+        entity.updated_at = datetime.now(UTC)
+        session.add(entity)
+
+
 class UserService:
     """User service for authentication-related operations"""
 
@@ -467,6 +476,7 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
             id=uuid4(), goal_id=goal_id, depends_on_goal_id=depends_on_goal_id
         )
         session.add(dependency)
+        _touch(session, goal)
         session.commit()
         session.refresh(dependency)
 
@@ -519,6 +529,7 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
             )
 
         session.delete(dependency)
+        _touch(session, goal)
         session.commit()
 
         return True
@@ -549,6 +560,7 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
             )
 
         session.delete(dependency)
+        _touch(session, session.get(Goal, owned_goal_id))
         session.commit()
 
         return True
@@ -1067,6 +1079,7 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             id=uuid4(), task_id=task_id, depends_on_task_id=depends_on_task_id
         )
         session.add(dependency)
+        _touch(session, task)
         session.commit()
         session.refresh(dependency)
 
@@ -1149,6 +1162,7 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             )
 
         session.delete(dependency)
+        _touch(session, task)
         session.commit()
 
         return True
