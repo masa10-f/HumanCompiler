@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle, Copy, Key, Plus, Trash2 } from 'lucide-react';
 import { AgentTokenAuditLog } from '@/components/settings/agent-token-audit-log';
 import { AgentTokenCreateDialog } from '@/components/settings/agent-token-create-dialog';
-import { HookTokenUsageGuide } from '@/components/settings/hook-token-usage-guide';
+import { AgentTokenUsageGuide } from '@/components/settings/agent-token-usage-guide';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -279,7 +279,7 @@ export function AgentTokensCard() {
           </ul>
         )}
 
-        <HookTokenUsageGuide />
+        <AgentTokenUsageGuide />
       </CardContent>
 
       {catalog && (
