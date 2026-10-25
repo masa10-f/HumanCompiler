@@ -17,6 +17,7 @@ from humancompiler_api.database import get_session
 from humancompiler_api.main import app
 from humancompiler_api.models import (
     AgentScope,
+    ContextNote,
     Goal,
     GoalStatus,
     Log,
@@ -196,3 +197,29 @@ def seed_work_session(
     session.commit()
     session.refresh(work_session)
     return work_session
+
+
+def seed_note(
+    session: Session,
+    user_id: UUID,
+    *,
+    project: Project | None = None,
+    goal: Goal | None = None,
+    task: Task | None = None,
+    updated_at: datetime | None = None,
+) -> ContextNote:
+    stamp = updated_at or datetime.now(UTC)
+    note = ContextNote(
+        id=uuid4(),
+        user_id=user_id,
+        project_id=project.id if project else None,
+        goal_id=goal.id if goal else None,
+        task_id=task.id if task else None,
+        content="Note",
+        created_at=stamp,
+        updated_at=stamp,
+    )
+    session.add(note)
+    session.commit()
+    session.refresh(note)
+    return note

@@ -10,6 +10,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import ColumnElement, and_, or_
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
 from sqlmodel.sql.expression import SelectOfScalar
@@ -31,6 +32,8 @@ from humancompiler_api.models import (
     AgentMeResponse,
     AgentScope,
     AgentToken,
+    ContextNote,
+    ContextNoteResponse,
     Goal,
     GoalDependency,
     GoalResponse,
@@ -92,6 +95,36 @@ def _owned_tasks(user_id: UUID) -> SelectOfScalar[Task]:
         .options(
             selectinload(Task.dependencies).selectinload(TaskDependency.depends_on_task)
         )
+    )
+
+
+def _owned_note_filter(user_id: UUID) -> ColumnElement[bool]:
+    """Notes the user owns whose every set parent is also the user's.
+
+    A note carries ``user_id`` plus up to one parent. The ``user_id`` alone is
+    not enough, so each parent column must be NULL or point at the user's own
+    row. A note with no parent is decided by ``user_id`` only.
+    """
+    return and_(
+        ContextNote.user_id == user_id,
+        or_(
+            col(ContextNote.project_id).is_(None),
+            col(ContextNote.project_id).in_(
+                select(Project.id).where(project_service._get_user_filter(user_id))
+            ),
+        ),
+        or_(
+            col(ContextNote.goal_id).is_(None),
+            col(ContextNote.goal_id).in_(
+                select(Goal.id).where(goal_service._get_user_filter(user_id))
+            ),
+        ),
+        or_(
+            col(ContextNote.task_id).is_(None),
+            col(ContextNote.task_id).in_(
+                select(Task.id).where(task_service._get_user_filter(user_id))
+            ),
+        ),
     )
 
 
@@ -334,5 +367,45 @@ async def list_work_sessions(
     rows, next_cursor = paginate(session, statement, WorkSession, params)
     return AgentPage[WorkSessionResponse](
         items=[WorkSessionResponse.model_validate(row) for row in rows],
+        next_cursor=next_cursor,
+    )
+
+
+@router.get(
+    "/context-notes",
+    response_model=AgentPage[ContextNoteResponse],
+    description=(
+        "List the user's context notes ordered by (updated_at, id). "
+        f"{INCREMENTAL_SYNC_GUIDE} Each filter matches only notes attached "
+        "directly to that item, not notes on its goals or tasks."
+    ),
+)
+async def list_context_notes(
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[AgentPrincipal, Depends(require_scope(AgentScope.NOTES_READ))],
+    params: Annotated[PageParams, Depends(page_params())],
+    project_id: Annotated[
+        UUID | None,
+        Query(description="Filter by project. Another user's project yields no rows."),
+    ] = None,
+    goal_id: Annotated[
+        UUID | None,
+        Query(description="Filter by goal. Another user's goal yields no rows."),
+    ] = None,
+    task_id: Annotated[
+        UUID | None,
+        Query(description="Filter by task. Another user's task yields no rows."),
+    ] = None,
+) -> AgentPage[ContextNoteResponse]:
+    statement = select(ContextNote).where(_owned_note_filter(principal.user_id))
+    if project_id is not None:
+        statement = statement.where(ContextNote.project_id == project_id)
+    if goal_id is not None:
+        statement = statement.where(ContextNote.goal_id == goal_id)
+    if task_id is not None:
+        statement = statement.where(ContextNote.task_id == task_id)
+    rows, next_cursor = paginate(session, statement, ContextNote, params)
+    return AgentPage[ContextNoteResponse](
+        items=[ContextNoteResponse.model_validate(row) for row in rows],
         next_cursor=next_cursor,
     )

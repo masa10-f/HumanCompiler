@@ -20,6 +20,7 @@ from tests.agent_api_helpers import (
     issue_token,
     seed_goal,
     seed_log,
+    seed_note,
     seed_project,
     seed_quick_task,
     seed_task,
@@ -154,6 +155,7 @@ def test_edited_log_appears_in_incremental_sync(session: Session):
         ("/api/agent/v1/quick-tasks", "quick_tasks:read"),
         ("/api/agent/v1/logs", "logs:read"),
         ("/api/agent/v1/work-sessions", "work_sessions:read"),
+        ("/api/agent/v1/context-notes", "notes:read"),
     ],
 )
 def test_record_lists_require_their_scopes(session: Session, path: str, scope: str):
@@ -163,3 +165,69 @@ def test_record_lists_require_their_scopes(session: Session, path: str, scope: s
 
     assert response.status_code == 403
     assert response.json()["detail"] == f"Missing required scope: {scope}"
+
+
+def test_list_notes_returns_only_own_and_filters_by_parent(session: Session):
+    project = seed_project(session, USER_A)
+    goal = seed_goal(session, project)
+    task = seed_task(session, goal)
+    project_note = seed_note(session, USER_A, project=project)
+    goal_note = seed_note(session, USER_A, goal=goal)
+    task_note = seed_note(session, USER_A, task=task)
+    other_project = seed_project(session, USER_B)
+    seed_note(session, USER_B, project=other_project)
+    secret = issue_token(session, USER_A, [AgentScope.NOTES_READ])
+
+    response = client.get("/api/agent/v1/context-notes", headers=bearer(secret))
+
+    assert response.status_code == 200
+    assert {item["id"] for item in response.json()["items"]} == {
+        str(project_note.id),
+        str(goal_note.id),
+        str(task_note.id),
+    }
+
+    for key, parent, expected in (
+        ("project_id", project, project_note),
+        ("goal_id", goal, goal_note),
+        ("task_id", task, task_note),
+    ):
+        filtered = client.get(
+            "/api/agent/v1/context-notes",
+            headers=bearer(secret),
+            params={key: str(parent.id)},
+        )
+        assert [item["id"] for item in filtered.json()["items"]] == [str(expected.id)]
+
+
+def test_note_with_foreign_parent_is_not_returned(session: Session):
+    others_project = seed_project(session, USER_B)
+    others_goal = seed_goal(session, others_project)
+    others_task = seed_task(session, others_goal)
+    seed_note(session, USER_A, project=others_project)
+    seed_note(session, USER_A, goal=others_goal)
+    seed_note(session, USER_A, task=others_task)
+    secret = issue_token(session, USER_A, [AgentScope.NOTES_READ])
+
+    response = client.get("/api/agent/v1/context-notes", headers=bearer(secret))
+
+    assert response.status_code == 200
+    assert response.json()["items"] == []
+
+    filtered = client.get(
+        "/api/agent/v1/context-notes",
+        headers=bearer(secret),
+        params={"project_id": str(others_project.id)},
+    )
+
+    assert filtered.json()["items"] == []
+
+
+def test_note_without_parent_is_returned_to_its_owner_only(session: Session):
+    own = seed_note(session, USER_A)
+    seed_note(session, USER_B)
+    secret = issue_token(session, USER_A, [AgentScope.NOTES_READ])
+
+    response = client.get("/api/agent/v1/context-notes", headers=bearer(secret))
+
+    assert [item["id"] for item in response.json()["items"]] == [str(own.id)]
