@@ -13,7 +13,14 @@ from sqlmodel import Session
 
 from humancompiler_api.database import get_session
 from humancompiler_api.main import app
-from humancompiler_api.models import AgentScope, LogUpdate, TaskStatus
+from humancompiler_api.models import (
+    AgentScope,
+    DailyPlanDocument,
+    LogUpdate,
+    Schedule,
+    TaskStatus,
+)
+from humancompiler_api.routers.agent_v1 import _calendar_date
 from humancompiler_api.services import log_service
 from tests.agent_api_helpers import (
     bearer,
@@ -340,6 +347,55 @@ def test_daily_plan_schedule_matches_its_own_date(session: Session):
         "violations": [],
     }
     assert by_date["2026-03-02"]["schedule"] is None
+
+
+def test_daily_plans_emit_updated_at_with_a_timezone(session: Session):
+    seed_daily_plan(session, USER_A, date(2026, 3, 1))
+    secret = issue_token(session, USER_A, [AgentScope.DAILY_PLANS_READ])
+
+    def load_updated_at_naive(target: DailyPlanDocument, _context: object) -> None:
+        # Some drivers hand back naive datetimes (stored as UTC).
+        target.__dict__["updated_at"] = target.updated_at.replace(tzinfo=None)
+
+    event.listen(DailyPlanDocument, "load", load_updated_at_naive)
+    try:
+        response = client.get("/api/agent/v1/daily-plans", headers=bearer(secret))
+    finally:
+        event.remove(DailyPlanDocument, "load", load_updated_at_naive)
+
+    updated_at = datetime.fromisoformat(response.json()["items"][0]["updated_at"])
+    assert updated_at.tzinfo is not None
+    assert updated_at.utcoffset() == timedelta(0)
+
+
+def test_calendar_date_accepts_date_and_datetime():
+    assert _calendar_date(date(2026, 3, 1)) == date(2026, 3, 1)
+    assert _calendar_date(datetime(2026, 3, 1)) == date(2026, 3, 1)
+
+
+def test_daily_plan_schedule_is_found_when_schedule_date_loads_as_date(
+    session: Session,
+):
+    # Production's schedules.date column is DATE, so psycopg2 loads a plain
+    # ``date`` even though the model maps DateTime; SQLite returns a datetime.
+    day = date(2026, 3, 1)
+    seed_daily_plan(session, USER_A, day)
+    plan_json = _plan_json(2.5)
+    seed_schedule(session, USER_A, day, plan_json)
+    secret = issue_token(session, USER_A, [AgentScope.DAILY_PLANS_READ])
+
+    def load_date_as_date(target: Schedule, _context: object) -> None:
+        target.__dict__["date"] = target.date.date()
+
+    event.listen(Schedule, "load", load_date_as_date)
+    try:
+        response = client.get("/api/agent/v1/daily-plans", headers=bearer(secret))
+    finally:
+        event.remove(Schedule, "load", load_date_as_date)
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["schedule"]["total_scheduled_hours"] == 2.5
 
 
 def test_daily_plan_schedules_are_loaded_in_one_query(session: Session):

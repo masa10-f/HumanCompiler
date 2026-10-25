@@ -6,11 +6,12 @@
 
 """Read-only agent API (``/api/agent/v1``), authenticated by agent token."""
 
-from datetime import date, datetime, time
+from datetime import UTC, date, datetime, time
 from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import field_serializer
 from sqlalchemy import ColumnElement, and_, or_
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
@@ -99,6 +100,23 @@ class AgentDailyPlanResponse(DailyPlanResponse):
     id: UUID
     updated_at: datetime
 
+    @field_serializer("updated_at")
+    def serialize_updated_at(self, value: datetime) -> str:
+        """Ensure datetime is serialized with UTC timezone info"""
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
+
+def _calendar_date(value: date) -> date:
+    """The calendar date of a loaded ``schedules.date`` value.
+
+    The database column is ``DATE`` but the model maps it as ``DateTime``, so
+    psycopg2 returns a ``date`` where SQLite returns a ``datetime``.
+    ``datetime`` is a ``date`` subclass, so it is checked first.
+    """
+    return value.date() if isinstance(value, datetime) else value
+
 
 def _owned_goals(user_id: UUID) -> SelectOfScalar[Goal]:
     """The user's goals, with dependencies loaded in one query per page."""
@@ -167,7 +185,7 @@ def _schedules_by_date(
             Schedule.user_id == user_id, col(Schedule.date).in_(midnights)
         )
     ).all()
-    return {row.date.date(): row.plan_json for row in rows}
+    return {_calendar_date(row.date): row.plan_json for row in rows}
 
 
 @router.get("/me", response_model=AgentMeResponse)
