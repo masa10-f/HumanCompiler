@@ -290,6 +290,12 @@ context_notes は `user_id` を直接持つが、Read API の役割はユーザ�
 - **クライアント向けの指針**（使い方ガイドと OpenAPI の description に書く）:
   - 次回の `updated_since` には、取得した中で最大の `updated_at` から 5 分引いた値を使う。`(id, updated_at)` が同じ行は重複として捨てる。トランザクションのコミット遅延による取りこぼしを防ぐため。
   - 削除は差分に現れない。削除を検知したい場合は、`updated_since` を付けずに全件を取り、ID の集合を比べる。
+  - 依存関係を追加・削除すると、依存する側の goal / task の `updated_at` が進み、差分に現れる（サービス層で進める。DB のトリガーは自分の行の UPDATE にしか反応しないため）。
+  - 次の値は、変わっても `updated_at` が進まない。参照先の項目を同期して、そちらを使う。
+    - goal の `estimate_hours`（配下の task の見積もりの合計）
+    - `depends_on_goal` / `depends_on_task` の要約
+    - 削除された項目への依存関係
+- `updated_at` が NULL の行は、`updated_since` でも cursor でも扱えないので、一覧に含めない。
 
 ### `updated_at` の信頼性
 
