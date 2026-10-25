@@ -4,10 +4,11 @@
 # This file is part of HumanCompiler.
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
 import pytest
+from sqlalchemy import event
 from sqlmodel import Session
 
 from humancompiler_api.database import get_session
@@ -18,11 +19,13 @@ from tests.agent_api_helpers import (
     bearer,
     client,
     issue_token,
+    seed_daily_plan,
     seed_goal,
     seed_log,
     seed_note,
     seed_project,
     seed_quick_task,
+    seed_schedule,
     seed_task,
     seed_user,
     seed_work_session,
@@ -231,3 +234,147 @@ def test_note_without_parent_is_returned_to_its_owner_only(session: Session):
     response = client.get("/api/agent/v1/context-notes", headers=bearer(secret))
 
     assert [item["id"] for item in response.json()["items"]] == [str(own.id)]
+
+
+def _plan_json(hours: float) -> dict:
+    return {
+        "success": True,
+        "assignments": [],
+        "total_scheduled_hours": hours,
+        "optimization_status": "OPTIMAL",
+        "generated_at": "2026-01-01T00:00:00Z",
+    }
+
+
+def test_daily_plans_always_have_id_and_updated_at(session: Session):
+    own = [seed_daily_plan(session, USER_A, date(2026, 3, 1 + i)) for i in range(3)]
+    seed_daily_plan(session, USER_B, date(2026, 3, 1))
+    secret = issue_token(session, USER_A, [AgentScope.DAILY_PLANS_READ])
+
+    response = client.get("/api/agent/v1/daily-plans", headers=bearer(secret))
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert {item["id"] for item in items} == {str(doc.id) for doc in own}
+    assert all(item["updated_at"] is not None for item in items)
+    assert {item["date"] for item in items} == {
+        "2026-03-01",
+        "2026-03-02",
+        "2026-03-03",
+    }
+    assert all(item["revision"] == 1 for item in items)
+
+
+def test_daily_plans_filter_by_date_range_and_default_limit(session: Session):
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    for i in range(10):
+        seed_daily_plan(
+            session,
+            USER_A,
+            date(2026, 3, 1) + timedelta(days=i),
+            updated_at=base + timedelta(minutes=i),
+        )
+    secret = issue_token(session, USER_A, [AgentScope.DAILY_PLANS_READ])
+    path = "/api/agent/v1/daily-plans"
+
+    first = client.get(path, headers=bearer(secret))
+
+    assert first.status_code == 200
+    assert len(first.json()["items"]) == 7
+    assert first.json()["next_cursor"] is not None
+
+    ranged = client.get(
+        path,
+        headers=bearer(secret),
+        params={"date_from": "2026-03-03", "date_to": "2026-03-05"},
+    )
+
+    assert [item["date"] for item in ranged.json()["items"]] == [
+        "2026-03-03",
+        "2026-03-04",
+        "2026-03-05",
+    ]
+    assert ranged.json()["next_cursor"] is None
+    too_many = client.get(path, headers=bearer(secret), params={"limit": 32})
+    assert too_many.status_code == 422
+
+
+def test_daily_plans_with_reversed_range_are_empty(session: Session):
+    seed_daily_plan(session, USER_A, date(2026, 3, 3))
+    secret = issue_token(session, USER_A, [AgentScope.DAILY_PLANS_READ])
+
+    response = client.get(
+        "/api/agent/v1/daily-plans",
+        headers=bearer(secret),
+        params={"date_from": "2026-03-05", "date_to": "2026-03-01"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["items"] == []
+    assert response.json()["next_cursor"] is None
+
+
+def test_daily_plan_schedule_matches_its_own_date(session: Session):
+    first, second = date(2026, 3, 1), date(2026, 3, 2)
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    seed_daily_plan(session, USER_A, first, updated_at=base)
+    seed_daily_plan(session, USER_A, second, updated_at=base + timedelta(minutes=1))
+    plan_json = _plan_json(2.5)
+    seed_schedule(session, USER_A, first, plan_json)
+    # Another user's schedule on the second day must not leak in.
+    seed_schedule(session, USER_B, second, _plan_json(9))
+    secret = issue_token(session, USER_A, [AgentScope.DAILY_PLANS_READ])
+
+    response = client.get("/api/agent/v1/daily-plans", headers=bearer(secret))
+
+    by_date = {item["date"]: item for item in response.json()["items"]}
+    assert by_date["2026-03-01"]["schedule"] == {
+        **plan_json,
+        "assignments": [],
+        "source": None,
+        "source_document_revision": None,
+        "source_scheduling_blocks": None,
+        "directive_diagnostics": [],
+        "unused_minutes": 0,
+        "unscheduled_tasks": [],
+        "violations": [],
+    }
+    assert by_date["2026-03-02"]["schedule"] is None
+
+
+def test_daily_plan_schedules_are_loaded_in_one_query(session: Session):
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    for i in range(31):
+        day = date(2026, 3, 1) + timedelta(days=i)
+        seed_daily_plan(session, USER_A, day, updated_at=base + timedelta(minutes=i))
+        seed_schedule(session, USER_A, day, _plan_json(float(i)))
+    secret = issue_token(session, USER_A, [AgentScope.DAILY_PLANS_READ])
+    path = "/api/agent/v1/daily-plans"
+    # Warm up so one-time statements (e.g. token lookup caching) do not count.
+    assert client.get(path, headers=bearer(secret)).status_code == 200
+    statements: list[str] = []
+    session.expire_all()
+
+    def record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    engine = session.get_bind()
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        response = client.get(path, params={"limit": 31}, headers=bearer(secret))
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+
+    assert response.status_code == 200
+    assert len(response.json()["items"]) == 31
+    assert all(item["schedule"] is not None for item in response.json()["items"])
+    assert len([s for s in statements if "FROM schedules" in s]) == 1
+
+
+def test_daily_plans_require_daily_plans_read_scope(session: Session):
+    secret = issue_token(session, USER_A, [AgentScope.PROJECTS_READ])
+
+    response = client.get("/api/agent/v1/daily-plans", headers=bearer(secret))
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Missing required scope: daily_plans:read"

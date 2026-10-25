@@ -6,7 +6,7 @@
 
 """Shared helpers for the agent read API tests."""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -18,17 +18,20 @@ from humancompiler_api.main import app
 from humancompiler_api.models import (
     AgentScope,
     ContextNote,
+    DailyPlanDocument,
     Goal,
     GoalStatus,
     Log,
     Project,
     ProjectStatus,
     QuickTask,
+    Schedule,
     Task,
     TaskStatus,
     User,
     WorkSession,
 )
+from humancompiler_api.routers.daily_plans import DailyPlanDocumentV1
 from humancompiler_api.services import agent_token_service
 
 client = TestClient(app)
@@ -223,3 +226,40 @@ def seed_note(
     session.commit()
     session.refresh(note)
     return note
+
+
+def seed_daily_plan(
+    session: Session,
+    user_id: UUID,
+    day: date,
+    *,
+    updated_at: datetime | None = None,
+) -> DailyPlanDocument:
+    stamp = updated_at or datetime.now(UTC)
+    document = DailyPlanDocument(
+        id=uuid4(),
+        user_id=user_id,
+        date=day,
+        document_json=DailyPlanDocumentV1().model_dump(mode="json"),
+        created_at=stamp,
+        updated_at=stamp,
+    )
+    session.add(document)
+    session.commit()
+    session.refresh(document)
+    return document
+
+
+def seed_schedule(
+    session: Session, user_id: UUID, day: date, plan_json: dict
+) -> Schedule:
+    schedule = Schedule(
+        id=uuid4(),
+        user_id=user_id,
+        date=datetime.combine(day, time.min),
+        plan_json=plan_json,
+    )
+    session.add(schedule)
+    session.commit()
+    session.refresh(schedule)
+    return schedule

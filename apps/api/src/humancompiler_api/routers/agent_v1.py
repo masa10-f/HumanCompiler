@@ -6,7 +6,8 @@
 
 """Read-only agent API (``/api/agent/v1``), authenticated by agent token."""
 
-from typing import Annotated
+from datetime import date, datetime, time
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -34,6 +35,7 @@ from humancompiler_api.models import (
     AgentToken,
     ContextNote,
     ContextNoteResponse,
+    DailyPlanDocument,
     Goal,
     GoalDependency,
     GoalResponse,
@@ -45,12 +47,17 @@ from humancompiler_api.models import (
     ProjectStatus,
     QuickTask,
     QuickTaskResponse,
+    Schedule,
     Task,
     TaskDependency,
     TaskResponse,
     TaskStatus,
     WorkSession,
     WorkSessionResponse,
+)
+from humancompiler_api.routers.daily_plans import (
+    DailyPlanDocumentV1,
+    DailyPlanResponse,
 )
 from humancompiler_api.services import (
     goal_service,
@@ -74,6 +81,13 @@ INCREMENTAL_SYNC_GUIDE = (
     "and dependencies on a deleted item. Read those from the referenced items "
     "you sync."
 )
+
+
+class AgentDailyPlanResponse(DailyPlanResponse):
+    """A daily plan document; the agent API always has its id and updated_at."""
+
+    id: UUID
+    updated_at: datetime
 
 
 def _owned_goals(user_id: UUID) -> SelectOfScalar[Goal]:
@@ -126,6 +140,24 @@ def _owned_note_filter(user_id: UUID) -> ColumnElement[bool]:
             ),
         ),
     )
+
+
+def _schedules_by_date(
+    session: Session, user_id: UUID, days: list[date]
+) -> dict[date, dict[str, Any]]:
+    """Load the schedules of ``days`` in one query, keyed by calendar date.
+
+    Schedules are keyed by naive midnight, as ``daily_plans._get_schedule`` does.
+    """
+    if not days:
+        return {}
+    midnights = [datetime.combine(day, time.min) for day in days]
+    rows = session.exec(
+        select(Schedule).where(
+            Schedule.user_id == user_id, col(Schedule.date).in_(midnights)
+        )
+    ).all()
+    return {row.date.date(): row.plan_json for row in rows}
 
 
 @router.get("/me", response_model=AgentMeResponse)
@@ -407,5 +439,58 @@ async def list_context_notes(
     rows, next_cursor = paginate(session, statement, ContextNote, params)
     return AgentPage[ContextNoteResponse](
         items=[ContextNoteResponse.model_validate(row) for row in rows],
+        next_cursor=next_cursor,
+    )
+
+
+@router.get(
+    "/daily-plans",
+    response_model=AgentPage[AgentDailyPlanResponse],
+    description=(
+        "List the user's daily plan documents ordered by (updated_at, id). "
+        "Only days that have a document are returned, even if a schedule exists "
+        f"for the day. {INCREMENTAL_SYNC_GUIDE} The embedded schedule does not "
+        "advance a daily plan's updated_at; to pick up schedule changes, re-read "
+        "the date range with date_from and date_to."
+    ),
+)
+async def list_daily_plans(
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[
+        AgentPrincipal, Depends(require_scope(AgentScope.DAILY_PLANS_READ))
+    ],
+    params: Annotated[PageParams, Depends(page_params(7, 31))],
+    date_from: Annotated[
+        date | None,
+        Query(description="Only plans on or after this date (YYYY-MM-DD)."),
+    ] = None,
+    date_to: Annotated[
+        date | None,
+        Query(description="Only plans on or before this date (YYYY-MM-DD)."),
+    ] = None,
+) -> AgentPage[AgentDailyPlanResponse]:
+    if date_from is not None and date_to is not None and date_from > date_to:
+        return AgentPage[AgentDailyPlanResponse](items=[])
+    statement = select(DailyPlanDocument).where(
+        DailyPlanDocument.user_id == principal.user_id
+    )
+    if date_from is not None:
+        statement = statement.where(DailyPlanDocument.date >= date_from)
+    if date_to is not None:
+        statement = statement.where(DailyPlanDocument.date <= date_to)
+    rows, next_cursor = paginate(session, statement, DailyPlanDocument, params)
+    schedules = _schedules_by_date(session, principal.user_id, [r.date for r in rows])
+    return AgentPage[AgentDailyPlanResponse](
+        items=[
+            AgentDailyPlanResponse(
+                id=row.id,
+                date=row.date.isoformat(),
+                revision=row.revision,
+                document=DailyPlanDocumentV1.model_validate(row.document_json),
+                schedule=schedules.get(row.date),
+                updated_at=row.updated_at,
+            )
+            for row in rows
+        ],
         next_cursor=next_cursor,
     )
