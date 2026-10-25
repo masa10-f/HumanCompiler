@@ -7,7 +7,7 @@
 /**
  * @jest-environment jsdom
  */
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 
 const mockGetApiEndpoint = jest.fn()
 const mockGetFallbackApiEndpoint = jest.fn()
@@ -43,8 +43,27 @@ describe('AgentTokenUsageGuide', () => {
     ).toBeInTheDocument()
   })
 
-  it('falls back to the current origin when the API base is relative', () => {
+  it('sends examples to the direct API host when the API base is relative', () => {
     mockGetApiEndpoint.mockReturnValue('')
+    mockGetFallbackApiEndpoint.mockReturnValue('https://api.example.com')
+
+    render(<AgentTokenUsageGuide />)
+    fireEvent.click(screen.getByRole('button', { name: /使用方法/ }))
+
+    expect(
+      screen.getByText(
+        'curl -H "Authorization: Bearer <AGENT_TOKEN>" https://api.example.com/api/agent/v1/me'
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('POST https://api.example.com/api/hooks/quick-tasks')
+    ).toBeInTheDocument()
+    expect(screen.queryByText(window.location.origin, { exact: false })).not.toBeInTheDocument()
+  })
+
+  it('falls back to the current origin when no API host is known', () => {
+    mockGetApiEndpoint.mockReturnValue('')
+    mockGetFallbackApiEndpoint.mockReturnValue('')
 
     render(<AgentTokenUsageGuide />)
     fireEvent.click(screen.getByRole('button', { name: /使用方法/ }))
@@ -52,6 +71,12 @@ describe('AgentTokenUsageGuide', () => {
     expect(
       screen.getByText(`POST ${window.location.origin}/api/hooks/quick-tasks`)
     ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        `curl -H "Authorization: Bearer <AGENT_TOKEN>" ${window.location.origin}/api/agent/v1/me`
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/\/docs/)).not.toBeInTheDocument()
   })
 
   it('shows how to check a token with /api/agent/v1/me', () => {
@@ -91,8 +116,8 @@ describe('AgentTokenUsageGuide', () => {
     fireEvent.click(screen.getByRole('button', { name: /使用方法/ }))
 
     expect(screen.getAllByText(/^401:/).length).toBeGreaterThan(0)
-    expect(screen.getByText(/^403:.*Missing required scope/)).toBeInTheDocument()
-    expect(screen.getByText(/^429:.*Retry-After/)).toBeInTheDocument()
+    expect(screen.getByText(/^403:.*Missing required scope: <scope>/)).toBeInTheDocument()
+    expect(screen.getByText(/^429:.*Retry-After.*再試行/)).toBeInTheDocument()
   })
 
   it('keeps the quick task hook example with an agent token', () => {
@@ -107,7 +132,7 @@ describe('AgentTokenUsageGuide', () => {
     expect(screen.getByText(/curl -X POST .*\/api\/hooks\/quick-tasks/)).toHaveTextContent(
       '<AGENT_TOKEN>'
     )
-    expect(screen.getByText(/quick_tasks:write/)).toBeInTheDocument()
+    expect(screen.getByText(/^quick_tasks:write スコープのtoken/)).toBeInTheDocument()
     expect(screen.getByText('X-HumanCompiler-Hook-Token: <AGENT_TOKEN>')).toBeInTheDocument()
   })
 
@@ -139,5 +164,30 @@ describe('AgentTokenUsageGuide', () => {
     fireEvent.click(screen.getByRole('button', { name: /使用方法/ }))
 
     expect(screen.queryByText(/\/docs/)).not.toBeInTheDocument()
+  })
+
+  it('lists the 403 and 429 responses of the quick task hook', () => {
+    mockGetApiEndpoint.mockReturnValue('https://api.example.com')
+
+    render(<AgentTokenUsageGuide />)
+    fireEvent.click(screen.getByRole('button', { name: /使用方法/ }))
+
+    const hook = within(
+      screen.getByRole('heading', { name: 'Quick task hook' }).closest('section') as HTMLElement
+    )
+    expect(
+      hook.getByText(/^403:.*quick_tasks:write.*Missing required scope: quick_tasks:write/)
+    ).toBeInTheDocument()
+    expect(hook.getByText(/^429:.*Retry-After.*秒.*待/)).toBeInTheDocument()
+  })
+
+  it('links the docs on the same base as the examples', () => {
+    mockGetApiEndpoint.mockReturnValue('')
+    mockGetFallbackApiEndpoint.mockReturnValue('https://api.example.com')
+
+    render(<AgentTokenUsageGuide />)
+    fireEvent.click(screen.getByRole('button', { name: /使用方法/ }))
+
+    expect(screen.getByText(/https:\/\/api\.example\.com\/docs/)).toBeInTheDocument()
   })
 })

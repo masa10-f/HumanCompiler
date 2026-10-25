@@ -78,15 +78,17 @@ const buildCurlExample = (endpoint: string) => `curl -X POST ${endpoint} \\
 export function AgentTokenUsageGuide() {
   const [isOpen, setIsOpen] = useState(false);
   const [apiBaseUrl, setApiBaseUrl] = useState("");
-  const [docsBaseUrl, setDocsBaseUrl] = useState("");
+  const [showDocs, setShowDocs] = useState(false);
 
   useEffect(() => {
-    // Production uses a relative API base behind Vercel rewrites, but external
-    // services need an absolute URL, so fall back to the current origin.
-    setApiBaseUrl(getApiEndpoint() || window.location.origin);
-    // The OpenAPI UI is served by the API host only; the web origin has no
-    // /docs route, so use the direct API host rather than the request base.
-    setDocsBaseUrl(getApiEndpoint() || getFallbackApiEndpoint());
+    // Production's API base is relative (Vercel rewrites to Fly). Examples
+    // sent through that proxy make Fly see Vercel's egress IP for every user,
+    // which would share the per-IP auth-failure limit and skew audit-log IPs,
+    // so prefer the direct API host. The web origin is the last resort and
+    // never serves /docs, so the docs pointer needs a real API host.
+    const apiHost = getApiEndpoint() || getFallbackApiEndpoint();
+    setApiBaseUrl(apiHost || window.location.origin);
+    setShowDocs(apiHost !== "");
   }, []);
 
   const endpoint = `${apiBaseUrl}${HOOK_PATH}`;
@@ -177,9 +179,9 @@ export function AgentTokenUsageGuide() {
               </ul>
             </div>
 
-            {docsBaseUrl && (
+            {showDocs && (
               <p className="text-muted-foreground">
-                エンドポイントごとの詳しい仕様は、APIの {docsBaseUrl}/docs
+                エンドポイントごとの詳しい仕様は、APIの {apiBaseUrl}/docs
                 で確認できます。
               </p>
             )}
@@ -247,7 +249,14 @@ export function AgentTokenUsageGuide() {
               <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
                 <li>201: 作成したQuick TaskをJSONで返します</li>
                 <li>401: tokenがない・無効・失効済み</li>
+                <li>
+                  403: tokenに quick_tasks:write スコープがない（detail は
+                  Missing required scope: quick_tasks:write）
+                </li>
                 <li>422: フィールドの値が不正</li>
+                <li>
+                  429: rate limit。Retry-After ヘッダーの秒数だけ待ってください
+                </li>
               </ul>
             </div>
 
