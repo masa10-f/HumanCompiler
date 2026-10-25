@@ -455,9 +455,8 @@ it.each(["bulletList", "orderedList", "taskList", "blockquote"])(
       window.getSelection()!.collapse(line, 0);
     });
     fireEvent(document, new Event("selectionchange"));
-    // Nested nodes are never decorated, so the guide cannot repeat per level.
-    await waitFor(() => expect(guides()).toHaveLength(1));
-    expect(guides()[0]!.parentElement).toBe(editor);
+    // Only top-level text blocks are decorated, so no guide appears inside it.
+    await waitFor(() => expect(guides()).toHaveLength(0));
     expect(editor.querySelector(":scope > p.is-empty")).toBeNull();
 
     const paragraph = editor.lastElementChild!;

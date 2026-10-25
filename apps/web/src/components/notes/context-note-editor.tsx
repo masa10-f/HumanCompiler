@@ -1,6 +1,7 @@
 'use client';
 
-import { useEditor, EditorContent, BubbleMenu } from '@tiptap/react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import { BubbleMenu } from '@tiptap/react/menus';
 import { useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { createContextNoteExtensions } from './context-note-extensions';
@@ -52,6 +53,9 @@ export function ContextNoteEditor({
     extensions: createContextNoteExtensions(placeholder),
     content,
     editable: !readOnly,
+    immediatelyRender: false,
+    // The toolbar reads editor.isActive() during render.
+    shouldRerenderOnTransaction: true,
     onUpdate: ({ editor }) => {
       const html = editor.getHTML();
       onUpdate(html);
@@ -318,7 +322,6 @@ export function ContextNoteEditor({
       {editor && !readOnly && (
         <BubbleMenu
           editor={editor}
-          tippyOptions={{ duration: 100 }}
           className="flex items-center gap-1 p-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700"
         >
           <Button
