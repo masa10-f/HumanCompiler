@@ -86,7 +86,12 @@ function AgentTokenRow({ token, catalog, disabled, onRevoke }: AgentTokenRowProp
           </div>
           <div className="flex shrink-0 gap-2">
             <CollapsibleTrigger asChild>
-              <Button type="button" variant="outline" size="sm">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-label={`${token.name} の監査ログ`}
+              >
                 監査ログ
               </Button>
             </CollapsibleTrigger>
@@ -96,6 +101,7 @@ function AgentTokenRow({ token, catalog, disabled, onRevoke }: AgentTokenRowProp
               size="sm"
               onClick={() => onRevoke(token)}
               disabled={disabled}
+              aria-label={`${token.name} を失効`}
             >
               <Trash2 className="mr-2 h-4 w-4" />
               失効
@@ -295,7 +301,7 @@ export function AgentTokensCard() {
         onClose={() => setTokenToRevoke(null)}
         onConfirm={confirmRevoke}
         title="エージェントトークンを失効"
-        description="このエージェントトークンを失効してもよろしいですか？ 失効はすぐに反映され、元に戻せません。"
+        description={`「${tokenToRevoke?.name ?? ''}」を失効してもよろしいですか？ 失効はすぐに反映され、元に戻せません。`}
         confirmText="失効"
         cancelText="キャンセル"
         variant="destructive"

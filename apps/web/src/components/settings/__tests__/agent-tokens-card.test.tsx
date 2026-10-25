@@ -213,11 +213,11 @@ describe('AgentTokensCard', () => {
     expect(await screen.findByText('hc_hook_' + 'b'.repeat(8) + '…')).toBeInTheDocument()
     expect(screen.getByText('quick_tasks:write')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: '失効' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Paper intake を失効' }))
     const dialog = await screen.findByRole('dialog')
     expect(
       within(dialog).getByText(
-        'このエージェントトークンを失効してもよろしいですか？ 失効はすぐに反映され、元に戻せません。',
+        '「Paper intake」を失効してもよろしいですか？ 失効はすぐに反映され、元に戻せません。',
       ),
     ).toBeInTheDocument()
     expect(revoke).not.toHaveBeenCalled()
@@ -228,6 +228,27 @@ describe('AgentTokensCard', () => {
     expect(await screen.findByText('エージェントトークンを失効しました')).toBeInTheDocument()
   })
 
+  it('names the token in the revoke confirmation and revokes the chosen one', async () => {
+    getAll.mockResolvedValue([
+      makeToken({ id: 't1', name: 'First agent' }),
+      makeToken({ id: 't2', name: 'Second agent' }),
+    ])
+    revoke.mockResolvedValue(undefined)
+
+    render(<AgentTokensCard />)
+    await screen.findByText('First agent')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Second agent を失効' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent('「Second agent」を失効してもよろしいですか？')
+    expect(dialog).not.toHaveTextContent('First agent')
+    fireEvent.click(within(dialog).getByRole('button', { name: '失効' }))
+
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith('t2'))
+    await waitFor(() => expect(screen.queryByText('Second agent')).not.toBeInTheDocument())
+    expect(screen.getByText('First agent')).toBeInTheDocument()
+  })
+
   it('keeps the token and shows an error when revoking fails', async () => {
     getAll.mockResolvedValue([makeToken()])
     revoke.mockRejectedValue(new Error('boom'))
@@ -235,7 +256,7 @@ describe('AgentTokensCard', () => {
     render(<AgentTokensCard />)
     await screen.findByText('Research agent')
 
-    fireEvent.click(screen.getByRole('button', { name: '失効' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Research agent を失効' }))
     const dialog = await screen.findByRole('dialog')
     fireEvent.click(within(dialog).getByRole('button', { name: '失効' }))
 
@@ -251,14 +272,14 @@ describe('AgentTokensCard', () => {
 
     expect(getAuditLogs).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole('button', { name: '監査ログ' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Research agent の監査ログ' }))
 
     await waitFor(() => expect(getAuditLogs).toHaveBeenCalledWith('t1', 20))
     expect(
       await screen.findByText('まだ記録はありません（記録は 90 日で削除されます）'),
     ).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: '監査ログ' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Research agent の監査ログ' }))
     await waitFor(() =>
       expect(
         screen.queryByText('まだ記録はありません（記録は 90 日で削除されます）'),
@@ -278,7 +299,7 @@ describe('AgentTokensCard', () => {
     expect(screen.getByText('Research agent')).toBeInTheDocument()
     expect(screen.getByText('tasks:read')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: '失効' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Research agent を失効' }))
     fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: '失効' }))
 
     await waitFor(() => expect(revoke).toHaveBeenCalledWith('t1'))
