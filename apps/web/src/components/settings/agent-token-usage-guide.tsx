@@ -14,7 +14,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { getApiEndpoint } from "@/lib/config";
+import { getApiEndpoint, getFallbackApiEndpoint } from "@/lib/config";
 
 const AGENT_API_PATH = "/api/agent/v1";
 const HOOK_PATH = "/api/hooks/quick-tasks";
@@ -78,11 +78,15 @@ const buildCurlExample = (endpoint: string) => `curl -X POST ${endpoint} \\
 export function AgentTokenUsageGuide() {
   const [isOpen, setIsOpen] = useState(false);
   const [apiBaseUrl, setApiBaseUrl] = useState("");
+  const [docsBaseUrl, setDocsBaseUrl] = useState("");
 
   useEffect(() => {
     // Production uses a relative API base behind Vercel rewrites, but external
     // services need an absolute URL, so fall back to the current origin.
     setApiBaseUrl(getApiEndpoint() || window.location.origin);
+    // The OpenAPI UI is served by the API host only; the web origin has no
+    // /docs route, so use the direct API host rather than the request base.
+    setDocsBaseUrl(getApiEndpoint() || getFallbackApiEndpoint());
   }, []);
 
   const endpoint = `${apiBaseUrl}${HOOK_PATH}`;
@@ -173,10 +177,12 @@ export function AgentTokenUsageGuide() {
               </ul>
             </div>
 
-            <p className="text-muted-foreground">
-              エンドポイントごとの詳しい仕様は、APIの {apiBaseUrl}/docs
-              で確認できます。
-            </p>
+            {docsBaseUrl && (
+              <p className="text-muted-foreground">
+                エンドポイントごとの詳しい仕様は、APIの {docsBaseUrl}/docs
+                で確認できます。
+              </p>
+            )}
           </section>
 
           <section className="space-y-4 border-t pt-4">

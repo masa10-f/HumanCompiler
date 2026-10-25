@@ -10,16 +10,18 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 
 const mockGetApiEndpoint = jest.fn()
+const mockGetFallbackApiEndpoint = jest.fn()
 
 jest.mock('@/lib/config', () => ({
   getApiEndpoint: () => mockGetApiEndpoint(),
+  getFallbackApiEndpoint: () => mockGetFallbackApiEndpoint(),
 }))
 
 import { AgentTokenUsageGuide } from '../agent-token-usage-guide'
 
 describe('AgentTokenUsageGuide', () => {
   beforeEach(() => {
-    jest.clearAllMocks()
+    jest.resetAllMocks()
   })
 
   it('is collapsed until the usage toggle is clicked', () => {
@@ -107,5 +109,35 @@ describe('AgentTokenUsageGuide', () => {
     )
     expect(screen.getByText(/quick_tasks:write/)).toBeInTheDocument()
     expect(screen.getByText('X-HumanCompiler-Hook-Token: <AGENT_TOKEN>')).toBeInTheDocument()
+  })
+
+  it('points to the API host docs, not the web origin, when the API base is relative', () => {
+    mockGetApiEndpoint.mockReturnValue('')
+    mockGetFallbackApiEndpoint.mockReturnValue('https://api.example.com')
+
+    render(<AgentTokenUsageGuide />)
+    fireEvent.click(screen.getByRole('button', { name: /使用方法/ }))
+
+    expect(screen.getByText(/https:\/\/api\.example\.com\/docs/)).toBeInTheDocument()
+    expect(screen.queryByText(`${window.location.origin}/docs`, { exact: false })).not.toBeInTheDocument()
+  })
+
+  it('points to the configured API base docs', () => {
+    mockGetApiEndpoint.mockReturnValue('https://api.example.com')
+
+    render(<AgentTokenUsageGuide />)
+    fireEvent.click(screen.getByRole('button', { name: /使用方法/ }))
+
+    expect(screen.getByText(/https:\/\/api\.example\.com\/docs/)).toBeInTheDocument()
+  })
+
+  it('omits the docs pointer when no API host is known', () => {
+    mockGetApiEndpoint.mockReturnValue('')
+    mockGetFallbackApiEndpoint.mockReturnValue('')
+
+    render(<AgentTokenUsageGuide />)
+    fireEvent.click(screen.getByRole('button', { name: /使用方法/ }))
+
+    expect(screen.queryByText(/\/docs/)).not.toBeInTheDocument()
   })
 })
