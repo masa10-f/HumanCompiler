@@ -242,6 +242,25 @@ def test_migrated_hook_token_works_with_both_headers(session: Session):
     assert header_response.status_code == 201
 
 
+def test_migrated_hook_token_cannot_read_tasks(session: Session):
+    seed_user(session)
+    install_overrides(session)
+    _, token = insert_agent_token(
+        session,
+        TEST_USER_ID,
+        ["quick_tasks:write"],
+        token="hc_hook_AbCdEfGh_migratedsecret",
+        token_prefix="hc_hook_AbCdEfGh",
+    )
+
+    response = client.get(
+        "/api/agent/v1/tasks", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Missing required scope: tasks:read"
+
+
 def test_hook_rejects_token_without_quick_tasks_write(session: Session):
     seed_user(session)
     install_overrides(session)
