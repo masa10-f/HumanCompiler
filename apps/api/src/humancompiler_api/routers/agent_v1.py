@@ -11,7 +11,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import selectinload
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from humancompiler_api.agent_auth import (
     AgentPrincipal,
@@ -38,10 +38,10 @@ from humancompiler_api.models import (
     ProjectResponse,
     ProjectStatus,
     Task,
+    TaskDependency,
     TaskResponse,
     TaskStatus,
 )
-from humancompiler_api.routers.tasks import build_task_responses_with_dependencies
 from humancompiler_api.services import goal_service, project_service, task_service
 
 router = APIRouter(prefix="/api/agent/v1", tags=["agent"])
@@ -61,14 +61,10 @@ async def get_me(
     principal: Annotated[AgentPrincipal, Depends(get_agent_principal)],
 ) -> AgentMeResponse:
     """Return the identity and scopes of the calling agent token."""
+    # Authentication loaded this row moments ago, and revocation only sets
+    # revoked_at, so the row is always present.
     agent_token = session.get(AgentToken, principal.token_id)
-    if agent_token is None:
-        # Revoked between authentication and this lookup.
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED,
-            "Invalid agent token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    assert agent_token is not None
     return AgentMeResponse(
         token_name=agent_token.name,
         token_prefix=principal.token_prefix,
@@ -116,9 +112,7 @@ async def get_project(
     try:
         project = project_service.get_project(session, project_id, principal.user_id)
     except ResourceNotFoundError:
-        project = None
-    if project is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found") from None
     return ProjectResponse.model_validate(project)
 
 
@@ -167,9 +161,7 @@ async def get_goal(
     try:
         goal = goal_service.get_goal(session, goal_id, principal.user_id)
     except ResourceNotFoundError:
-        goal = None
-    if goal is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Goal not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Goal not found") from None
     return GoalResponse.model_validate(goal)
 
 
@@ -194,10 +186,16 @@ async def list_tasks(
         TaskStatus | None, Query(alias="status", description="Filter by status.")
     ] = None,
 ) -> AgentPage[TaskResponse]:
-    statement = select(Task).where(task_service._get_user_filter(principal.user_id))
+    statement = (
+        select(Task)
+        .where(task_service._get_user_filter(principal.user_id))
+        .options(
+            selectinload(Task.dependencies).selectinload(TaskDependency.depends_on_task)
+        )
+    )
     if project_id is not None:
         statement = statement.where(
-            Task.goal_id.in_(select(Goal.id).where(Goal.project_id == project_id))  # type: ignore[attr-defined]
+            col(Task.goal_id).in_(select(Goal.id).where(Goal.project_id == project_id))
         )
     if goal_id is not None:
         statement = statement.where(Task.goal_id == goal_id)
@@ -205,9 +203,7 @@ async def list_tasks(
         statement = statement.where(Task.status == task_status)
     rows, next_cursor = paginate(session, statement, Task, params)
     return AgentPage[TaskResponse](
-        items=build_task_responses_with_dependencies(
-            session, list(rows), principal.user_id
-        ),
+        items=[TaskResponse.model_validate(row) for row in rows],
         next_cursor=next_cursor,
     )
 
@@ -219,10 +215,17 @@ async def get_task(
     principal: Annotated[AgentPrincipal, Depends(require_scope(AgentScope.TASKS_READ))],
 ) -> TaskResponse:
     """Return one task; another user's task is reported as not found."""
-    try:
-        task = task_service.get_task(session, task_id, principal.user_id)
-    except ResourceNotFoundError:
-        task = None
+    statement = (
+        select(Task)
+        .where(
+            Task.id == task_id,
+            task_service._get_user_filter(principal.user_id),
+        )
+        .options(
+            selectinload(Task.dependencies).selectinload(TaskDependency.depends_on_task)
+        )
+    )
+    task = session.exec(statement).first()
     if task is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found")
-    return build_task_responses_with_dependencies(session, [task], principal.user_id)[0]
+    return TaskResponse.model_validate(task)
