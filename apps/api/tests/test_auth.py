@@ -20,7 +20,7 @@ from humancompiler_api.auth import (
 )
 
 # Fake values: the secret part must never appear in logs.
-AGENT_TOKEN_PREFIX = "hc_agent_Ab3dE5gH"
+AGENT_TOKEN_PREFIX = "hc_agent_" + "p" * 8
 AGENT_TOKEN = AGENT_TOKEN_PREFIX + "_" + "s" * 32
 OPAQUE_TOKEN = "opaque-test-value-" + "x" * 32
 
