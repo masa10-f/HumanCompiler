@@ -1,3 +1,5 @@
+FROM ghcr.io/astral-sh/uv:0.11.32 AS uv
+
 FROM python:3.13-slim
 
 # Set working directory
@@ -6,7 +8,12 @@ WORKDIR /app
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app/src
+    PYTHONPATH=/app/src \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never \
+    PATH="/opt/venv/bin:$PATH"
 
 # Install system dependencies for builds and health checks
 RUN apt-get update && apt-get install -y \
@@ -18,17 +25,17 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
-COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies pinned in uv.lock (the file Dependabot updates),
+# without dev extras. --locked fails the build if uv.lock is out of date.
+COPY --from=uv /uv /usr/local/bin/uv
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --no-install-project --no-cache
 
 # Copy application code
 COPY . .
 
 # Daily scheduling uses the PyPI package humancompiler-scheduler, installed
-# through requirements.txt above. The API router keeps the existing response
+# through uv.lock above. The API router keeps the existing response
 # contract while adapting database objects to that package.
 
 # Create non-root user for security

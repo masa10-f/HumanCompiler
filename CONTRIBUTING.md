@@ -125,7 +125,7 @@ pnpm install
 cd apps/api
 python -m venv ../../.venv
 source ../../.venv/bin/activate
-uv pip install -r requirements.txt
+uv sync --locked --extra dev --active
 ```
 
 3. **Enable pre-commit hooks (required):**
