@@ -22,6 +22,7 @@ export function ContextNoteViewer({
     extensions: createContextNoteExtensions(),
     content,
     editable: false,
+    immediatelyRender: false,
     editorProps: {
       attributes: {
         'aria-label': 'Note content',
@@ -31,7 +32,7 @@ export function ContextNoteViewer({
 
   useEffect(() => {
     if (editor && content !== editor.getHTML()) {
-      editor.commands.setContent(content, false);
+      editor.commands.setContent(content, { emitUpdate: false });
     }
   }, [content, editor]);
 

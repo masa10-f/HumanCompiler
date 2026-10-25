@@ -14,6 +14,11 @@ export function createContextNoteExtensions(placeholder?: string) {
   return [
     StarterKit.configure({
       codeBlock: false,
+      // Tiptap v3 bundles these into StarterKit; Link is configured below and
+      // the others are kept off to preserve the v2 schema and behavior.
+      link: false,
+      underline: false,
+      trailingNode: false,
       heading: {
         levels: [1, 2, 3],
       },

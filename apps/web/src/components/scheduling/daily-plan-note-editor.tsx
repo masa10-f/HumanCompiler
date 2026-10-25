@@ -8,6 +8,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -188,10 +189,24 @@ export function DailyPlanNoteEditor({
   const changeRef = useRef(onChange);
   changeRef.current = onChange;
   const menuKeys = useRef<(key: string) => void>(() => {});
+  // Tiptap re-renders node views a microtask after the document changes, so
+  // schedules render the parent's latest block to keep controlled inputs in sync.
+  const latestBlocks = useMemo(
+    () => new Map(document.blocks.map((block) => [block.id, block])),
+    [document],
+  );
+  const renderLatestBlock = (block: DailyPlanBlock) =>
+    renderBlock(latestBlocks.get(block.id) ?? block);
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
-      StarterKit.configure({ document: false }),
+      StarterKit.configure({
+        document: false,
+        // Tiptap v3 bundles these; Link is configured below.
+        link: false,
+        underline: false,
+        trailingNode: false,
+      }),
       NoteDocument,
       TaskList,
       TaskItem.configure({ nested: true }),
@@ -271,7 +286,7 @@ export function DailyPlanNoteEditor({
     const next = dailyPlanToNote(document);
     if (JSON.stringify(editor.getJSON()) === JSON.stringify(next)) return;
     const position = editor.state.selection.from;
-    editor.commands.setContent(next, false);
+    editor.commands.setContent(next, { emitUpdate: false });
     editor.view.dispatch(
       editor.state.tr.setSelection(
         TextSelection.near(
@@ -298,7 +313,7 @@ export function DailyPlanNoteEditor({
   };
 
   return (
-    <BlockRenderer.Provider value={renderBlock}>
+    <BlockRenderer.Provider value={renderLatestBlock}>
       <div
         className="relative"
         onBlur={(event) => {
