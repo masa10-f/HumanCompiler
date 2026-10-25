@@ -329,7 +329,7 @@ context_notes は `user_id` を直接持つが、Read API の役割はユーザ�
 
 ### `035_add_agent_tokens.sql` と `035_add_agent_tokens_rollback.sql`（PR1）
 
-追加だけにして、旧コードと互換にする。`agent_audit_logs` は含めない（036 に分ける）。
+追加だけにして、旧コードと互換にする。`agent_audit_logs` は含めない（037 に分ける）。
 
 1. 前提チェック（依存するテーブルと `update_updated_at_column()` がなければ、分かるメッセージで失敗させる）
 2. `agent_tokens` の作成（インデックス、RLS、`REVOKE ALL` の後に必要な列だけ `GRANT SELECT`、COMMENT）
@@ -347,14 +347,14 @@ rollback の手順:
 
 移行後に新しく作ったトークンは、rollback すると使えなくなる。その場合は旧コードで作り直す。
 
-### `036_add_agent_audit_logs.sql`（PR2）
+### `037_add_agent_audit_logs.sql`（PR2）
 
 1. `agent_audit_logs` の作成（「データモデル: `agent_audit_logs`」の定義）
 2. インデックス `(user_id, created_at DESC)`、`(token_id, created_at DESC)`
 3. RLS を有効にし、`authenticated` には自分の `user_id` の行の SELECT のみ許可する
 4. `REVOKE ALL ON public.agent_audit_logs FROM anon, authenticated` を先に実行し、その後で `authenticated` に 11 列すべてを列単位で `GRANT SELECT` する（#360 のレビューで PR2 に振り分けた項目）。`client_ip` と `route` も含める。理由は「データモデル: `agent_audit_logs`」の GRANT のとおり（RLS で自分の行だけ、表に secret がない、管理 API が同じ列を返す、`client_ip` は本人が不審な利用を確かめるのに使う）。`anon` には GRANT しない
 
-036 の rollback は `agent_audit_logs` を削除する。
+037 の rollback は `agent_audit_logs` を削除する。
 
 ## セキュリティ
 
@@ -394,7 +394,7 @@ rollback の手順:
    - Deployment Notes: マイグレーションを適用してからデプロイするまでの間は、トークンを作成・失効させない
 2. **PR2: 監査ログと rate limit**
    - 前提: #358 がマージ済みであること
-   - migration 036（`agent_audit_logs` の作成、インデックス、RLS、`REVOKE` と列単位の `GRANT`）
+   - migration 037（`agent_audit_logs` の作成、インデックス、RLS、`REVOKE` と列単位の `GRANT`）
    - ミドルウェア、保持ジョブ
    - トークン管理 API のバックエンド（`/api/user/agent-tokens` の一覧・作成・失効・`/scopes`・`/{id}/audit-logs`）。PR3 の Read API を、スコープ付きのトークンで確かめられるようにするため
 3. **PR3: Agent Read API**

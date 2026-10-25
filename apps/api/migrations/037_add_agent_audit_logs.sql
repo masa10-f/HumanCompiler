@@ -13,10 +13,10 @@
 DO '
 BEGIN
     IF to_regclass(''public.users'') IS NULL THEN
-        RAISE EXCEPTION ''Required table public.users is missing. Apply earlier migrations before 036_add_agent_audit_logs.sql.'';
+        RAISE EXCEPTION ''Required table public.users is missing. Apply earlier migrations before 037_add_agent_audit_logs.sql.'';
     END IF;
     IF to_regclass(''public.agent_tokens'') IS NULL THEN
-        RAISE EXCEPTION ''Required table public.agent_tokens is missing. Apply 035_add_agent_tokens.sql before 036_add_agent_audit_logs.sql.'';
+        RAISE EXCEPTION ''Required table public.agent_tokens is missing. Apply 035_add_agent_tokens.sql before 037_add_agent_audit_logs.sql.'';
     END IF;
 END
 ';

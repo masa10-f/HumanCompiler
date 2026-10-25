@@ -4,7 +4,7 @@
 # This file is part of HumanCompiler.
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-"""Run migration 036 and its rollback against an isolated PostgreSQL schema."""
+"""Run migration 037 and its rollback against an isolated PostgreSQL schema."""
 
 from collections.abc import Iterator
 import os
@@ -19,8 +19,8 @@ pytestmark = pytest.mark.skipif(
     not os.environ.get("NOTEBOOK_TEST_POSTGRES_URL"), reason="requires test PostgreSQL"
 )
 
-MIGRATION = "036_add_agent_audit_logs.sql"
-ROLLBACK = "036_add_agent_audit_logs_rollback.sql"
+MIGRATION = "037_add_agent_audit_logs.sql"
+ROLLBACK = "037_add_agent_audit_logs_rollback.sql"
 
 USER_ID = "00000000-0000-0000-0000-000000000001"
 TOKEN_ID = "00000000-0000-0000-0000-0000000000a1"
@@ -42,7 +42,7 @@ COLUMNS = {
 
 
 def create_minimal_tables(cursor, schema: str) -> None:
-    """Create only the tables that 036 references."""
+    """Create only the tables that 037 references."""
     s = f'"{schema}"'
     cursor.execute(f"CREATE TABLE {s}.users (id UUID PRIMARY KEY)")
     cursor.execute(
@@ -79,7 +79,7 @@ def db() -> Iterator[tuple]:
             create_supabase_objects(cursor)
             cursor.execute(f'CREATE SCHEMA "{schema}"')
             # Supabase grants new tables to these roles by default. Mirror that
-            # so the privilege assertions actually exercise 036's REVOKE.
+            # so the privilege assertions actually exercise 037's REVOKE.
             cursor.execute(
                 f'ALTER DEFAULT PRIVILEGES IN SCHEMA "{schema}" '
                 "GRANT ALL ON TABLES TO anon, authenticated"
@@ -91,7 +91,7 @@ def db() -> Iterator[tuple]:
         connection.close()
 
 
-def test_036_creates_table_and_indexes(db):
+def test_037_creates_table_and_indexes(db):
     cursor, schema = db
     run_migration(cursor, schema, MIGRATION)
 
@@ -112,9 +112,9 @@ def test_036_creates_table_and_indexes(db):
     assert "idx_agent_audit_logs_token_created" in indexes
 
 
-def test_036_can_be_applied_twice(db):
+def test_037_can_be_applied_twice(db):
     # A manual application is not recorded in schema_migrations, so the
-    # migration manager runs 036 again when the new API starts.
+    # migration manager runs 037 again when the new API starts.
     cursor, schema = db
     run_migration(cursor, schema, MIGRATION)
     insert_audit_row(cursor, schema)
@@ -124,7 +124,7 @@ def test_036_can_be_applied_twice(db):
     assert cursor.fetchall() == [(LOG_ID,)]
 
 
-def test_036_grants_select_only_on_listed_columns(db):
+def test_037_grants_select_only_on_listed_columns(db):
     cursor, schema = db
     run_migration(cursor, schema, MIGRATION)
     table = f'"{schema}".agent_audit_logs'
@@ -155,7 +155,7 @@ def test_036_grants_select_only_on_listed_columns(db):
     assert cursor.fetchall() == [("agent_audit_logs_own_rows",)]
 
 
-def test_036_deleting_user_deletes_their_audit_rows(db):
+def test_037_deleting_user_deletes_their_audit_rows(db):
     cursor, schema = db
     run_migration(cursor, schema, MIGRATION)
     insert_audit_row(cursor, schema)
@@ -165,7 +165,7 @@ def test_036_deleting_user_deletes_their_audit_rows(db):
     assert cursor.fetchone()[0] == 0
 
 
-def test_036_deleting_token_keeps_row_with_null_token_id(db):
+def test_037_deleting_token_keeps_row_with_null_token_id(db):
     cursor, schema = db
     run_migration(cursor, schema, MIGRATION)
     insert_audit_row(cursor, schema)
@@ -179,7 +179,7 @@ def test_036_deleting_token_keeps_row_with_null_token_id(db):
     assert cursor.fetchone() == (True, USER_ID)
 
 
-def test_036_rollback_drops_table(db):
+def test_037_rollback_drops_table(db):
     cursor, schema = db
     run_migration(cursor, schema, MIGRATION)
     run_migration(cursor, schema, ROLLBACK)

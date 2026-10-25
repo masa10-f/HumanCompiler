@@ -4,11 +4,11 @@
 
 **Goal:** `/api/agent/*` と `/api/hooks/*` へのトークン付きリクエストを `agent_audit_logs` に記録し、トークン単位と認証失敗の rate limit をかけ、スコープ付きトークンを作成・一覧・失効できる管理 API `/api/user/agent-tokens` を用意する。
 
-**Architecture:** migration 036 で `agent_audit_logs` を作る。記録は新しいモジュール `agent_audit.py` の pure ASGI ミドルウェアで行い、応答を送り終えてから `run_in_threadpool` で1行 INSERT する。rate limit は新しいモジュール `agent_rate_limit.py`（`limits` の in-memory moving window）に置き、`agent_auth.get_agent_principal` から呼ぶ。管理 API は `routers/agent_tokens.py` に置き、PR1 の `AgentTokenService` を使う。
+**Architecture:** migration 037 で `agent_audit_logs` を作る。記録は新しいモジュール `agent_audit.py` の pure ASGI ミドルウェアで行い、応答を送り終えてから `run_in_threadpool` で1行 INSERT する。rate limit は新しいモジュール `agent_rate_limit.py`（`limits` の in-memory moving window）に置き、`agent_auth.get_agent_principal` から呼ぶ。管理 API は `routers/agent_tokens.py` に置き、PR1 の `AgentTokenService` を使う。
 
 **Tech Stack:** FastAPI 0.116 / Starlette 0.47、SQLModel（テストは SQLite in-memory）、`limits` 5.6、APScheduler、PostgreSQL 16（マイグレーションのテストのみ）、pytest、psycopg2
 
-**Spec:** `docs/design/agent-gateway.md`（「監査ログの書き込み」「Rate limit」「トークン管理 API」「`036_add_agent_audit_logs.sql`」「テスト」）。トラッキング: masa10-f/HumanCompiler#360 の PR2 の節
+**Spec:** `docs/design/agent-gateway.md`（「監査ログの書き込み」「Rate limit」「トークン管理 API」「`037_add_agent_audit_logs.sql`」「テスト」）。トラッキング: masa10-f/HumanCompiler#360 の PR2 の節
 
 ## 決めたこと（spec からの変更点。Task 6 で spec と #360 に反映する）
 
@@ -25,7 +25,7 @@
 - 作業ディレクトリは `apps/api`。テストは `uv run pytest`。プッシュ前のチェックは `CLAUDE.md` の「Backend Changes」（`ruff check . --fix`、`ruff format .`、`mypy src`、`bandit -r src -s B101`、`pytest -v`）
 - commit は英語・Conventional Commits。`--amend` は使わない。末尾に `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
 - 新しいファイルには SPDX ヘッダー（`.spdx-header-python.txt`）を付ける
-- migration 036 は**追加だけ**にして旧コードと互換にし、**2回流しても壊れない**ようにする（`IF NOT EXISTS`、`DROP POLICY IF EXISTS`）。オブジェクト参照はすべて `public.` で修飾する。`DO` ブロックは `$$` ではなく `DO '...'`（中のクォートは2重）で書く
+- migration 037 は**追加だけ**にして旧コードと互換にし、**2回流しても壊れない**ようにする（`IF NOT EXISTS`、`DROP POLICY IF EXISTS`）。オブジェクト参照はすべて `public.` で修飾する。`DO` ブロックは `$$` ではなく `DO '...'`（中のクォートは2重）で書く
 - 監査ログには、リクエストボディ、クエリの値、トークンの secret を記録しない。`route` はテンプレート（一致しなければ `<unmatched>`）。`token_prefix` は認証済みなら principal の値、未認証なら `extract_token_prefix()` に一致した場合だけ
 - 監査ログの対象は `scope["path"]` が `/api/agent/` か `/api/hooks/` で始まる HTTP リクエストのうち、トークンのヘッダーがあるもの（`extract_agent_token` が 401 を出さないもの）だけ
 - 監査ログの書き込みに失敗しても応答は変えない（`logger.exception` で出力する）
@@ -50,11 +50,11 @@
 
 | ファイル | 役割 |
 |---|---|
-| Create `apps/api/migrations/036_add_agent_audit_logs.sql` / `036_add_agent_audit_logs_rollback.sql` | `agent_audit_logs` の作成と削除 |
-| Create `apps/api/tests/postgres_migration_helpers.py` | 035 のテストにある `migration_statements` / `run_migration` / `create_supabase_objects` を移す（036 のテストと共有する） |
+| Create `apps/api/migrations/037_add_agent_audit_logs.sql` / `037_add_agent_audit_logs_rollback.sql` | `agent_audit_logs` の作成と削除 |
+| Create `apps/api/tests/postgres_migration_helpers.py` | 035 のテストにある `migration_statements` / `run_migration` / `create_supabase_objects` を移す（037 のテストと共有する） |
 | Modify `apps/api/tests/test_agent_tokens_migration_postgres.py` | 上のヘルパーを import する |
-| Create `apps/api/tests/test_agent_audit_logs_migration_postgres.py` | 036 と rollback を、隔離したスキーマの Postgres で確かめる |
-| Modify `.github/workflows/notebook-search.yml`、`apps/api/migrations/README.md` | 036 のテストを CI で流す。036 の説明 |
+| Create `apps/api/tests/test_agent_audit_logs_migration_postgres.py` | 037 と rollback を、隔離したスキーマの Postgres で確かめる |
+| Modify `.github/workflows/notebook-search.yml`、`apps/api/migrations/README.md` | 037 のテストを CI で流す。037 の説明 |
 | Modify `apps/api/src/humancompiler_api/models.py` | `AgentAuditLog`、`AGENT_SCOPE_DESCRIPTIONS`、管理 API のスキーマ |
 | Create `apps/api/src/humancompiler_api/agent_audit.py` | 監査ミドルウェア、書き込み、保持期間の削除、トークンごとの一覧 |
 | Create `apps/api/src/humancompiler_api/agent_rate_limit.py` | トークン単位と認証失敗の rate limit |
@@ -71,19 +71,19 @@
 
 ---
 
-### Task 1: migration 036 と rollback
+### Task 1: migration 037 と rollback
 
 **Files:**
-- Create: `apps/api/migrations/036_add_agent_audit_logs.sql`、`036_add_agent_audit_logs_rollback.sql`
+- Create: `apps/api/migrations/037_add_agent_audit_logs.sql`、`037_add_agent_audit_logs_rollback.sql`
 - Create: `apps/api/tests/postgres_migration_helpers.py`、`apps/api/tests/test_agent_audit_logs_migration_postgres.py`
 - Modify: `apps/api/tests/test_agent_tokens_migration_postgres.py`、`.github/workflows/notebook-search.yml`、`apps/api/migrations/README.md`
 
 **Interfaces:**
 - Produces: テーブル `public.agent_audit_logs`。Task 2 のモデルはこの定義に合わせる
 
-**036 の中身（この順で）:**
+**037 の中身（この順で）:**
 1. ヘッダーのコメント（035 と同じ形: 追加だけで旧コードと互換、2回流してよい、`DO` を単引用符で書く理由）
-2. 事前確認の `DO '...'`: `public.users` と `public.agent_tokens` があること（なければ「Apply 035_add_agent_tokens.sql before 036_add_agent_audit_logs.sql.」）
+2. 事前確認の `DO '...'`: `public.users` と `public.agent_tokens` があること（なければ「Apply 035_add_agent_tokens.sql before 037_add_agent_audit_logs.sql.」）
 3. `CREATE TABLE IF NOT EXISTS public.agent_audit_logs`。列は spec の「データモデル: `agent_audit_logs`」のとおり: `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`、`token_id UUID REFERENCES public.agent_tokens(id) ON DELETE SET NULL`、`user_id UUID REFERENCES public.users(id) ON DELETE CASCADE`、`token_prefix VARCHAR(32)`、`method VARCHAR(10) NOT NULL`、`route VARCHAR(200) NOT NULL`、`required_scope VARCHAR(50)`、`status_code SMALLINT NOT NULL`、`duration_ms INTEGER NOT NULL`、`client_ip VARCHAR(45)`、`created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
 4. `idx_agent_audit_logs_user_created ON (user_id, created_at DESC)`、`idx_agent_audit_logs_token_created ON (token_id, created_at DESC)`（`IF NOT EXISTS`）
 5. RLS を有効にし、`DROP POLICY IF EXISTS` の後に `agent_audit_logs_own_rows`（`FOR SELECT TO authenticated USING (auth.uid()::text = user_id::text)`。035 と同じ形）
@@ -98,43 +98,43 @@ rollback: `DROP TABLE IF EXISTS public.agent_audit_logs;`。コメントに「�
 - [ ] **Step 2: 失敗する Postgres テストを書く**（035 のテストと同じ fixture の形。セットアップでは `create_supabase_objects` の後に、テスト用スキーマへ最小のテーブル `users (id UUID PRIMARY KEY)` と `agent_tokens (id UUID PRIMARY KEY, user_id UUID REFERENCES users(id) ON DELETE CASCADE)` を作る）
 
 ```python
-def test_036_creates_table_and_indexes(db):
+def test_037_creates_table_and_indexes(db):
     # information_schema.columns の列名の集合 == spec の 11 列
     # pg_indexes に idx_agent_audit_logs_user_created と idx_agent_audit_logs_token_created がある
 
-def test_036_can_be_applied_twice(db):
+def test_037_can_be_applied_twice(db):
     # 2回流してもエラーにならず、入れておいた1行が残る
 
-def test_036_grants_select_only_on_listed_columns(db):
+def test_037_grants_select_only_on_listed_columns(db):
     # 11 列それぞれ has_column_privilege('authenticated', tbl, col, 'SELECT') is True
     # has_table_privilege('authenticated', tbl, 'INSERT') / 'UPDATE' / 'DELETE' is False
     # has_any_column_privilege('anon', tbl, 'SELECT') is False
     # pg_class.relrowsecurity is True、pg_policies に agent_audit_logs_own_rows がある
 
-def test_036_deleting_user_deletes_their_audit_rows(db):
+def test_037_deleting_user_deletes_their_audit_rows(db):
     # user と token と行を入れ、users を DELETE → 行が消える
 
-def test_036_deleting_token_keeps_row_with_null_token_id(db):
+def test_037_deleting_token_keeps_row_with_null_token_id(db):
     # agent_tokens を DELETE → 行は残り token_id IS NULL
 
-def test_036_rollback_drops_table(db):
+def test_037_rollback_drops_table(db):
     # rollback → to_regclass('"<schema>".agent_audit_logs') IS NULL
 ```
 
 - [ ] **Step 3: ローカルの Postgres で実行して失敗を確認する**
   Docker はないので、scratchpad の Python 3.12 venv に `pgserver` を入れ、同梱の `initdb -D <dir> -U notebook_test --auth=trust`、`pg_ctl -D <dir> -o "-p 55432 -c unix_socket_directories='' -c listen_addresses=localhost" -l <log> start`、`createdb -h localhost -p 55432 -U notebook_test notebook_test` で起動する
   Run: `NOTEBOOK_TEST_POSTGRES_URL=postgresql://notebook_test@localhost:55432/notebook_test uv run pytest tests/test_agent_audit_logs_migration_postgres.py -v`
-  Expected: `FileNotFoundError: …036_add_agent_audit_logs.sql` で FAIL
+  Expected: `FileNotFoundError: …037_add_agent_audit_logs.sql` で FAIL
 
-- [ ] **Step 4: 036 と rollback を書く**（上の「036 の中身」のとおり）
+- [ ] **Step 4: 037 と rollback を書く**（上の「037 の中身」のとおり）
 
 - [ ] **Step 5: 実行して成功を確認する** — Step 3 と同じコマンドで 6 passed。035 のテストも 6 passed。`NOTEBOOK_TEST_POSTGRES_URL` なしでは skipped
 
 - [ ] **Step 6: CI と README を更新する**
-  - `notebook-search.yml` の `paths` に `apps/api/migrations/036*`、`apps/api/tests/test_agent_audit_logs_migration_postgres.py`、`apps/api/tests/postgres_migration_helpers.py` を足し、`Check agent audit log migration and rollback` という step で `uv run pytest -q tests/test_agent_audit_logs_migration_postgres.py` を実行する
-  - `migrations/README.md` の一覧に 036 を追加する。内容: `agent_audit_logs` の作成。追加だけで旧コードと互換。rollback は旧 API に戻した後、035 の rollback より先に流す
+  - `notebook-search.yml` の `paths` に `apps/api/migrations/037*`、`apps/api/tests/test_agent_audit_logs_migration_postgres.py`、`apps/api/tests/postgres_migration_helpers.py` を足し、`Check agent audit log migration and rollback` という step で `uv run pytest -q tests/test_agent_audit_logs_migration_postgres.py` を実行する
+  - `migrations/README.md` の一覧に 037 を追加する。内容: `agent_audit_logs` の作成。追加だけで旧コードと互換。rollback は旧 API に戻した後、035 の rollback より先に流す
 
-- [ ] **Step 7: Commit** — `feat(db): Add agent_audit_logs (migration 036)`
+- [ ] **Step 7: Commit** — `feat(db): Add agent_audit_logs (migration 037)`
 
 ---
 
@@ -391,17 +391,17 @@ def test_audit_logs_for_other_users_token_returns_404(session):
 - [ ] **Step 1: spec を更新する**
   - 「Rate limit」: 3段を2段（トークン単位、認証失敗）に書き直す。IP 単位の制御は `DefaultRateLimitMiddleware`（200/分、全リクエスト）が担うと書く。認証失敗は「ハッシュで照合する前に判定する」「ヘッダーがない 401 は数えない」「上限にかかった IP は正しいトークンでも 429」。`auth.py:42` の `_check_rate_limit` への言及を消す（#359 で削除済み）。「クライアント IP について」の #358 の前提は済んだことにする
   - 「監査ログの書き込み」: 応答を送り終えた後に書くこと、例外は 500 として記録すること、記録しない 429（既定の上限、認証失敗の上限）と記録する 429（トークン単位）、ミドルウェアを既定の rate limit の内側に置くこと
-  - 「データモデル: `agent_audit_logs`」と「`036_add_agent_audit_logs.sql`」: `authenticated` に GRANT する列（11 列すべて）とその理由
+  - 「データモデル: `agent_audit_logs`」と「`037_add_agent_audit_logs.sql`」: `authenticated` に GRANT する列（11 列すべて）とその理由
   - 「テスト」の Rate limit の行: 「偽の prefix を毎回変えても IP 単位の上限で 429」を「認証失敗の上限で 429」に、ヘッダーなしは数えないことを足す
 - [ ] **Step 2: Commit** — `docs(agent): Update the spec for PR2 rate limit and audit decisions`
 - [ ] **Step 3: バックエンドのチェックをすべて流す**（`apps/api`）
-  Run: `ruff check . --fix && ruff format . && mypy src && bandit -r src -s B101 && uv run pytest -v`。Postgres のテスト（035、036）は pgserver で流す
+  Run: `ruff check . --fix && ruff format . && mypy src && bandit -r src -s B101 && uv run pytest -v`。Postgres のテスト（035、037）は pgserver で流す
   Expected: すべて成功
 - [ ] **Step 4: push して PR を作る**（タイトル `feat(agent): Add audit log, rate limits and token management API`、本文は英語。`Refs #360`）
   本文の **Deployment Notes**:
-  1. マージの前に `036_add_agent_audit_logs.sql` を本番 DB に手動で適用する（新しいテーブルだけなので旧コードと互換。2回流してもよい）
+  1. マージの前に `037_add_agent_audit_logs.sql` を本番 DB に手動で適用する（新しいテーブルだけなので旧コードと互換。2回流してもよい）
   2. 確認用 SQL: `SELECT to_regclass('public.agent_audit_logs');` が NULL でないこと、`SELECT has_column_privilege('authenticated', 'public.agent_audit_logs', 'client_ip', 'SELECT'), has_table_privilege('authenticated', 'public.agent_audit_logs', 'INSERT'), has_any_column_privilege('anon', 'public.agent_audit_logs', 'SELECT');` が `t, f, f`
   3. デプロイ後、既存の hook で quick task を1件作り、`SELECT route, status_code, token_prefix FROM agent_audit_logs ORDER BY created_at DESC LIMIT 1;` に `/api/hooks/quick-tasks`、201 が入ること
   4. rate limit のカウンタは in-memory なので、デプロイや再起動でリセットされる（マシン1台の前提）
-  5. 戻すときは、旧コードに戻した**後に** `036_add_agent_audit_logs_rollback.sql` を流す。035 も戻す場合は 036 を先に戻す
+  5. 戻すときは、旧コードに戻した**後に** `037_add_agent_audit_logs_rollback.sql` を流す。035 も戻す場合は 037 を先に戻す
 - [ ] **Step 5: #360 を更新する** — PR2 のチェックリストに PR へのリンクを足し、Decisions に「IP 単位の段はやめて既定の 200/分に任せる」「ヘッダーなしの 401 は認証失敗に数えない」「`authenticated` には 11 列すべてを GRANT する」を理由付きで追記する

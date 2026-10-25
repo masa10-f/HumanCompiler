@@ -11,7 +11,7 @@ on:
       - 'apps/api/tests/test_context_export_postgres.py'
       - 'apps/api/migrations/035*'
       - 'apps/api/tests/test_agent_tokens_migration_postgres.py'
-      - 'apps/api/migrations/036*'
+      - 'apps/api/migrations/037*'
       - 'apps/api/tests/test_agent_audit_logs_migration_postgres.py'
       - 'apps/api/tests/postgres_migration_helpers.py'
       - 'apps/api/src/humancompiler_api/migration_manager.py'
