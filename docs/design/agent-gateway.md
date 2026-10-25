@@ -150,7 +150,7 @@ HumanCompiler の情報を安全に取得し、将来的に更新を反映でき
 - 応答の後に `request.state` から principal、必要スコープ、ルートのテンプレートを読み、1行 INSERT する。
 - INSERT は同期の `Session` で行うため、`run_in_threadpool` で実行し、イベントループを止めない。
 - アプリが応答を送る前に例外を出した場合は、status 500 として記録する。同じ `try/finally` で扱える。ただし、外側の `ServerErrorMiddleware` が 500 を返す前に書くことになる。頻度が低いので許容する。
-- ルートのテンプレートは `request.scope["route"].path` から取る。どのルートにも一致しなかったリクエストは、生のパス（ID を含みうる）ではなく固定値 `<unmatched>` を記録する。
+- ルートのテンプレートは `request.scope["route"].path` から取る。どのルートにも一致しなかったリクエストは記録しない。認証の依存関数が動かないので `user_id = NULL` になって誰にも見えず、認証失敗の上限もかからないため。テンプレートが取れない場合の値は、生のパス（ID を含みうる）ではなく固定値 `<unmatched>` にする。
 - 認証に失敗したリクエストの `token_prefix` は、トークン形式の正規表現（後述の prefix 抽出）に一致した場合だけ記録する。一致しなければ NULL。任意の値がそのまま保存されないようにするため。
 - 認証の失敗（401）とスコープ不足（403）も記録する。ただし、トークンのヘッダー自体がないリクエストは記録しない。誰にも見えない `user_id = NULL` の行が、無制限に増えないようにするため。
 - 429 の扱いは次のとおり。
@@ -350,7 +350,7 @@ rollback の手順:
 ### `037_add_agent_audit_logs.sql`（PR2）
 
 1. `agent_audit_logs` の作成（「データモデル: `agent_audit_logs`」の定義）
-2. インデックス `(user_id, created_at DESC)`、`(token_id, created_at DESC)`
+2. インデックス `(user_id, created_at DESC)`、`(token_id, created_at DESC)`、`(created_at)`（保持期間の削除ジョブ用）
 3. RLS を有効にし、`authenticated` には自分の `user_id` の行の SELECT のみ許可する
 4. `REVOKE ALL ON public.agent_audit_logs FROM anon, authenticated` を先に実行し、その後で `authenticated` に 11 列すべてを列単位で `GRANT SELECT` する（#360 のレビューで PR2 に振り分けた項目）。`client_ip` と `route` も含める。理由は「データモデル: `agent_audit_logs`」の GRANT のとおり（RLS で自分の行だけ、表に secret がない、管理 API が同じ列を返す、`client_ip` は本人が不審な利用を確かめるのに使う）。`anon` には GRANT しない
 
@@ -375,7 +375,7 @@ rollback の手順:
 - rollback: 移行後に失効させたトークンが、rollback の後も旧コードで 401 になる。
 - prefix の抽出: `public_id` に `_` を含むトークンでも、正しい prefix が取り出せる。形式に合わない値は監査ログに記録されない。
 - Rate limit: 偽の prefix を毎回変えても認証失敗の上限で 429 になる。トークンのヘッダーがない 401 は認証失敗に数えない。`X-Forwarded-For` を毎回変えても、認証失敗のカウンタはリセットされない。トークン単位の上限は検証済みのトークンにだけ効く。1分間に 20 回を超えて認証に失敗した IP は 429 になり、正しいトークンでも 429 になる。429 には `Retry-After` が付く。
-- 監査ログ: 成功、401、403 のいずれでも1行記録される。ボディや secret が含まれない。一致するルートがないリクエストは `<unmatched>` で記録される。90 日を過ぎた行が削除ジョブで消える。ユーザーを削除すると、その人の監査ログも消える。
+- 監査ログ: 成功、401、403 のいずれでも1行記録される。ボディや secret が含まれない。一致するルートがないリクエストは記録されない。90 日を過ぎた行が削除ジョブで消える。ユーザーを削除すると、その人の監査ログも消える。
 - daily plans: `AgentDailyPlanResponse` の `id` と `updated_at` が常に入っている。31 件の一覧で、schedule の問い合わせが件数に比例して増えない。
 - `last_used_at`: 5 分以内の連続アクセスでは更新されない。
 - Read API: ユーザー A のトークンでユーザー B のデータが見えない（一覧と個別取得の両方。リソースごとの所有の判定すべてについて確認する）。`user_id` は自分だが親が他人の context note は返らない。作業ログを編集すると `/logs` の差分に現れる。`updated_since` と `cursor` で、同じ時刻の行が混ざっていても漏れや重複がない。タイムゾーンのない `updated_since` は 422 になる。壊れた cursor は 500 ではなく 422 になる。

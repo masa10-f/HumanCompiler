@@ -110,6 +110,7 @@ def test_037_creates_table_and_indexes(db):
     indexes = {row[0] for row in cursor.fetchall()}
     assert "idx_agent_audit_logs_user_created" in indexes
     assert "idx_agent_audit_logs_token_created" in indexes
+    assert "idx_agent_audit_logs_created" in indexes
 
 
 def test_037_can_be_applied_twice(db):

@@ -41,6 +41,10 @@ CREATE INDEX IF NOT EXISTS idx_agent_audit_logs_user_created
 CREATE INDEX IF NOT EXISTS idx_agent_audit_logs_token_created
     ON public.agent_audit_logs(token_id, created_at DESC);
 
+-- The daily retention job deletes by created_at alone.
+CREATE INDEX IF NOT EXISTS idx_agent_audit_logs_created
+    ON public.agent_audit_logs(created_at);
+
 ALTER TABLE public.agent_audit_logs ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "agent_audit_logs_own_rows" ON public.agent_audit_logs;

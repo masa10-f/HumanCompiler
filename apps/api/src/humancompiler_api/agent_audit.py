@@ -139,7 +139,11 @@ class AgentAuditMiddleware:
         finally:
             duration_ms = int((time.monotonic() - start) * 1000)
             state = scope.get("state", {})
-            if not state.get(SKIP_AUDIT_STATE):
+            # Without a matched route no auth dependency runs, so the row would
+            # have no user_id and no auth-failure limit would cap it.
+            unmatched = route_template(scope) == UNMATCHED_ROUTE
+            has_principal = isinstance(state.get("agent_principal"), AgentPrincipal)
+            if not state.get(SKIP_AUDIT_STATE) and (has_principal or not unmatched):
                 await self._record(scope, state, token, status_code, duration_ms)
 
     @staticmethod

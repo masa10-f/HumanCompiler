@@ -144,23 +144,20 @@ def test_request_without_token_header_is_not_audited(session: Session):
     assert audit_rows(session) == []
 
 
-def test_unmatched_route_is_recorded_as_placeholder(session: Session):
-    agent_token, token = create_token(session)
-    token_prefix = agent_token.token_prefix
-    unknown_id = str(uuid4())
+def test_unmatched_route_is_not_audited(session: Session):
+    _, token = create_token(session)
 
-    response = client.get(f"/api/agent/v1/tasks/{unknown_id}", headers=bearer(token))
+    response = client.get(f"/api/agent/v1/tasks/{uuid4()}", headers=bearer(token))
 
     assert response.status_code == 404
-    rows = audit_rows(session)
-    assert len(rows) == 1
-    row = rows[0]
-    assert row.route == "<unmatched>"
-    assert row.status_code == 404
-    assert row.method == "GET"
-    assert row.token_prefix == token_prefix
-    for value in row.model_dump().values():
-        assert unknown_id not in str(value)
+    assert audit_rows(session) == []
+
+
+def test_unmatched_route_with_junk_token_is_not_audited(session: Session):
+    response = client.get("/api/hooks/unknown", headers=bearer("junk"))
+
+    assert response.status_code == 404
+    assert audit_rows(session) == []
 
 
 def test_audit_row_never_contains_secret_body_or_query(session: Session):
