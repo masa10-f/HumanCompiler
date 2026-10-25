@@ -5,7 +5,7 @@
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
 from datetime import UTC, date, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import event
@@ -378,3 +378,77 @@ def test_daily_plans_require_daily_plans_read_scope(session: Session):
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Missing required scope: daily_plans:read"
+
+
+def test_context_export_returns_markdown_for_own_project_and_goal(session: Session):
+    project = seed_project(session, USER_A)
+    goal = seed_goal(session, project)
+    secret = issue_token(session, USER_A, [AgentScope.CONTEXT_READ])
+
+    project_response = client.get(
+        f"/api/agent/v1/context-export/projects/{project.id}", headers=bearer(secret)
+    )
+    goal_response = client.get(
+        f"/api/agent/v1/context-export/goals/{goal.id}", headers=bearer(secret)
+    )
+
+    assert project_response.status_code == 200
+    project_body = project_response.json()
+    assert set(project_body) == {"filename", "markdown", "generated_at"}
+    assert project.title in project_body["markdown"]
+    assert goal.title in project_body["markdown"]
+    assert goal_response.status_code == 200
+    assert project.title in goal_response.json()["markdown"]
+    assert goal.title in goal_response.json()["markdown"]
+
+
+def test_context_export_of_other_user_or_missing_is_404(session: Session):
+    other_project = seed_project(session, USER_B)
+    other_goal = seed_goal(session, other_project)
+    secret = issue_token(session, USER_A, [AgentScope.CONTEXT_READ])
+
+    for path in (
+        f"projects/{other_project.id}",
+        f"goals/{other_goal.id}",
+        f"projects/{uuid4()}",
+        f"goals/{uuid4()}",
+    ):
+        response = client.get(
+            f"/api/agent/v1/context-export/{path}", headers=bearer(secret)
+        )
+        assert response.status_code == 404, path
+
+
+def test_context_export_validates_options(session: Session):
+    project = seed_project(session, USER_A)
+    secret = issue_token(session, USER_A, [AgentScope.CONTEXT_READ])
+
+    response = client.get(
+        f"/api/agent/v1/context-export/projects/{project.id}",
+        params={"period_days": 0},
+        headers=bearer(secret),
+    )
+
+    assert response.status_code == 422
+
+
+def test_context_export_requires_context_read_scope(session: Session):
+    project = seed_project(session, USER_A)
+    goal = seed_goal(session, project)
+    secret = issue_token(
+        session,
+        USER_A,
+        [
+            AgentScope.PROJECTS_READ,
+            AgentScope.GOALS_READ,
+            AgentScope.TASKS_READ,
+            AgentScope.NOTES_READ,
+        ],
+    )
+
+    for path in (f"projects/{project.id}", f"goals/{goal.id}"):
+        response = client.get(
+            f"/api/agent/v1/context-export/{path}", headers=bearer(secret)
+        )
+        assert response.status_code == 403, path
+        assert response.json()["detail"] == "Missing required scope: context:read"

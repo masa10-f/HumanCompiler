@@ -27,6 +27,11 @@ from humancompiler_api.agent_pagination import (
     page_params,
     paginate,
 )
+from humancompiler_api.ai.context_export import (
+    ContextExportOptions,
+    build_goal_context_export,
+    build_project_context_export,
+)
 from humancompiler_api.common.error_handlers import ResourceNotFoundError
 from humancompiler_api.database import get_session
 from humancompiler_api.models import (
@@ -54,6 +59,11 @@ from humancompiler_api.models import (
     TaskStatus,
     WorkSession,
     WorkSessionResponse,
+)
+from humancompiler_api.routers.context_export import (
+    _NOT_FOUND_RESPONSES,
+    ContextExportResponse,
+    get_export_options,
 )
 from humancompiler_api.routers.daily_plans import (
     DailyPlanDocumentV1,
@@ -494,3 +504,44 @@ async def list_daily_plans(
         ],
         next_cursor=next_cursor,
     )
+
+
+# The export does heavy synchronous DB work, so these handlers are plain ``def``
+# and run in the threadpool, as the web endpoints do. ``ResourceNotFoundError``
+# becomes a 404 through the global service error handler.
+@router.get(
+    "/context-export/projects/{project_id}",
+    response_model=ContextExportResponse,
+    responses=_NOT_FOUND_RESPONSES,
+)
+def export_project_context(
+    project_id: UUID,
+    options: Annotated[ContextExportOptions, Depends(get_export_options)],
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[
+        AgentPrincipal, Depends(require_scope(AgentScope.CONTEXT_READ))
+    ],
+) -> ContextExportResponse:
+    """Export a project's notes, tasks, and work history as Markdown."""
+    result = build_project_context_export(
+        session, principal.user_id, project_id, options
+    )
+    return ContextExportResponse.from_result(result)
+
+
+@router.get(
+    "/context-export/goals/{goal_id}",
+    response_model=ContextExportResponse,
+    responses=_NOT_FOUND_RESPONSES,
+)
+def export_goal_context(
+    goal_id: UUID,
+    options: Annotated[ContextExportOptions, Depends(get_export_options)],
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[
+        AgentPrincipal, Depends(require_scope(AgentScope.CONTEXT_READ))
+    ],
+) -> ContextExportResponse:
+    """Export a goal's notes, tasks, and work history as Markdown."""
+    result = build_goal_context_export(session, principal.user_id, goal_id, options)
+    return ContextExportResponse.from_result(result)
