@@ -58,18 +58,21 @@ jobs:
           # Allow bots (e.g. codex) to trigger the review
           allowed_bots: "*"
 
-          # Reuse a single sticky summary comment across pushes
-          use_sticky_comment: true
-
           # Use Opus for higher-quality review, and grant the tools Claude needs:
-          # - the comment MCP tools so it can actually POST its review
-          # - gh CLI for PR context
+          # - the inline comment MCP tool for line-level findings
+          # - gh CLI for PR context and the summary comment (`gh pr comment`).
+          #   With a `prompt` and no `track_progress`, the action runs in
+          #   automation mode and creates no tracking comment, so
+          #   `mcp__github_comment__update_claude_comment` has nothing to update.
           # - the project check commands (frontend + backend)
           claude_args: |
             --model opus
-            --allowed-tools "mcp__github_comment__update_claude_comment,mcp__github_inline_comment__create_inline_comment,Bash(gh pr:*),Bash(gh api:*),Bash(cd:*),Bash(pnpm:*),Bash(uv:*),Bash(npx tsc:*),Bash(ruff:*),Bash(mypy:*),Bash(pytest:*),Bash(bandit:*)"
+            --allowed-tools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr:*),Bash(gh api:*),Bash(cd:*),Bash(pnpm:*),Bash(uv:*),Bash(npx tsc:*),Bash(ruff:*),Bash(mypy:*),Bash(pytest:*),Bash(bandit:*)"
 
           prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
             You are reviewing a pull request for **HumanCompiler**, an AI-powered task
             management app. Tech stack: Next.js 15 (App Router) + React 18 + TypeScript
             (strict) + TailwindCSS on the frontend (apps/web), and FastAPI + SQLModel +
@@ -94,11 +97,15 @@ jobs:
               `cd apps/api && uv run ruff check .`, `cd apps/api && uv run mypy src`
 
             Post your review by:
-            - Using `mcp__github_inline_comment__create_inline_comment` for specific,
-              line-level issues (cite the concern and a concrete fix).
-            - Updating the sticky summary comment via
-              `mcp__github_comment__update_claude_comment` with an overall assessment,
-              the check results you ran, and any blocking issues.
+            - Using `mcp__github_inline_comment__create_inline_comment` (with
+              `confirmed: true`) for specific, line-level issues (cite the concern and
+              a concrete fix).
+            - Posting exactly one summary comment with `gh pr comment <PR NUMBER>
+              --body "..."`: an overall assessment, the check results you ran, and any
+              blocking issues. Post it even when there are no findings.
+
+            Only post GitHub comments. Text you return as a message is not shown to
+            anyone.
 
             Be concise and constructive. If the PR looks good, say so clearly rather than
             inventing nitpicks.
