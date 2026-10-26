@@ -26,7 +26,7 @@ describe('Timeline Utils', () => {
 
     it('should handle empty input', () => {
       const result = analyzeDependencies([])
-      expect(result).toEqual({ sortedIds: [], hasCycle: false })
+      expect(result).toEqual({ nodes: [], edges: [], has_cycle: false, topological_order: [] })
     })
 
     it('should sort goals with no dependencies', () => {
@@ -37,9 +37,9 @@ describe('Timeline Utils', () => {
       ]
       const result = analyzeDependencies(goals)
 
-      expect(result.hasCycle).toBe(false)
-      expect(result.sortedIds).toHaveLength(3)
-      expect(result.sortedIds).toEqual(expect.arrayContaining(['A', 'B', 'C']))
+      expect(result.has_cycle).toBe(false)
+      expect(result.topological_order).toHaveLength(3)
+      expect(result.topological_order).toEqual(expect.arrayContaining(['A', 'B', 'C']))
     })
 
     it('should sort goals with linear dependencies', () => {
@@ -50,8 +50,8 @@ describe('Timeline Utils', () => {
       ]
       const result = analyzeDependencies(goals)
 
-      expect(result.hasCycle).toBe(false)
-      expect(result.sortedIds).toEqual(['A', 'B', 'C'])
+      expect(result.has_cycle).toBe(false)
+      expect(result.topological_order).toEqual(['A', 'B', 'C'])
     })
 
     it('should detect cycles', () => {
@@ -62,8 +62,8 @@ describe('Timeline Utils', () => {
       ]
       const result = analyzeDependencies(goals)
 
-      expect(result.hasCycle).toBe(true)
-      expect(result.sortedIds).toHaveLength(3) // Should still return all nodes
+      expect(result.has_cycle).toBe(true)
+      expect(result.topological_order).toEqual(['A', 'B', 'C']) // Falls back to input order
     })
 
     it('should handle missing dependencies gracefully', () => {
@@ -73,8 +73,9 @@ describe('Timeline Utils', () => {
       ]
       const result = analyzeDependencies(goals)
 
-      expect(result.hasCycle).toBe(false)
-      expect(result.sortedIds).toEqual(expect.arrayContaining(['A', 'B']))
+      expect(result.has_cycle).toBe(false)
+      expect(result.topological_order).toEqual(['A', 'B'])
+      expect(result.edges).toEqual([{ from: 'A', to: 'B' }]) // Edge from MISSING is dropped
     })
   })
 
@@ -186,8 +187,8 @@ describe('Timeline Utils', () => {
       expect(calculateProjectDurationWeeks(40, 10)).toBe(4) // 40 hours / 10 per week = 4 weeks
     })
 
-    it('should round up fractional weeks', () => {
-      expect(calculateProjectDurationWeeks(25, 10)).toBe(3) // 25 hours / 10 per week = 2.5 → 3 weeks
+    it('should keep fractional weeks', () => {
+      expect(calculateProjectDurationWeeks(25, 10)).toBe(2.5) // 25 hours / 10 per week = 2.5 weeks
     })
 
     it('should handle zero weekly work hours', () => {
@@ -207,11 +208,11 @@ describe('Timeline Utils', () => {
       expect(endDate.toISOString()).toBe('2024-01-29T00:00:00.000Z')
     })
 
-    it('should handle fractional weeks by rounding up', () => {
+    it('should handle fractional weeks without rounding', () => {
       const startDate = new Date('2024-01-01T00:00:00Z')
-      const endDate = calculateGoalEndDate(startDate, 25, 10) // 2.5 → 3 weeks
+      const endDate = calculateGoalEndDate(startDate, 25, 10) // 2.5 weeks = 17.5 days
 
-      expect(endDate.toISOString()).toBe('2024-01-22T00:00:00.000Z')
+      expect(endDate.toISOString()).toBe('2024-01-18T12:00:00.000Z')
     })
   })
 })

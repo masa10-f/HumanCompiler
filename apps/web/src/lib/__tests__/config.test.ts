@@ -1,15 +1,20 @@
 /**
+ * @jest-environment node
+ */
+/**
  * Tests for configuration management
+ *
+ * Runs in the node environment: jsdom's window and window.location are
+ * non-configurable, so they can be neither replaced nor deleted. config.ts only
+ * reads `typeof window` and `window.location.hostname`, so a plain object is
+ * enough to simulate a browser host, and leaving it unset simulates SSR.
  */
 
 import { getApiEndpoint, getFallbackApiEndpoint, shouldLog, safeLog, appConfig } from '../config';
 
 // Mock window object for testing
 const mockWindow = (hostname: string) => {
-  Object.defineProperty(window, 'location', {
-    value: { hostname },
-    writable: true,
-  });
+  (globalThis as unknown as { window: unknown }).window = { location: { hostname } };
 };
 
 // Mock environment variables
@@ -32,6 +37,7 @@ describe('Configuration Management', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+    delete (globalThis as unknown as { window?: unknown }).window;
   });
 
   describe('getApiEndpoint', () => {
@@ -46,7 +52,7 @@ describe('Configuration Management', () => {
     });
 
     it('should return development API for localhost', () => {
-      mockWindow('localhost:3000');
+      mockWindow('localhost');
       expect(getApiEndpoint()).toBe(appConfig.api.endpoints.development);
     });
 
@@ -59,15 +65,12 @@ describe('Configuration Management', () => {
       // Mock server-side environment
       const restoreEnv = mockEnv({ NODE_ENV: 'production' });
 
-      // Temporarily remove window
-      const originalWindow = global.window;
-      delete (global as unknown as { window: unknown }).window;
-
-      expect(getApiEndpoint()).toBe('');
-
-      // Restore
-      global.window = originalWindow;
-      restoreEnv();
+      // No window is defined in the node environment
+      try {
+        expect(getApiEndpoint()).toBe('');
+      } finally {
+        restoreEnv();
+      }
     });
   });
 
@@ -174,16 +177,21 @@ describe('Configuration Management', () => {
         NODE_ENV: 'production',
       });
 
-      // Re-import to get fresh config with new env vars
-      delete require.cache[require.resolve('../config')];
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { appConfig: freshConfig } = require('../config');
+      // Re-import to get fresh config with new env vars. Jest keeps its own
+      // module registry, so deleting from require.cache has no effect.
+      let freshConfig: typeof appConfig | undefined;
+      try {
+        jest.isolateModules(() => {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          freshConfig = require('../config').appConfig;
+        });
+      } finally {
+        restoreEnv();
+      }
 
-      expect(freshConfig.api.timeout).toBe(5000);
-      expect(freshConfig.api.retryAttempts).toBe(5);
-      expect(freshConfig.security.enforceHttps).toBe(true);
-
-      restoreEnv();
+      expect(freshConfig?.api.timeout).toBe(5000);
+      expect(freshConfig?.api.retryAttempts).toBe(5);
+      expect(freshConfig?.security.enforceHttps).toBe(true);
     });
   });
 });

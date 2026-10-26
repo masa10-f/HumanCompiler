@@ -71,12 +71,21 @@ const shouldAllowRequest = (): boolean => {
 };
 
 /**
- * Create an AbortController with timeout
+ * Fetch with a timeout on the wait for the response. The timer is cleared once
+ * fetch settles, so it cannot abort a body that is still downloading.
  */
-const createTimeoutController = (timeout: number): AbortController => {
+const fetchWithTimeout = async (
+  url: string,
+  init: RequestInit,
+  timeout: number
+): Promise<Response> => {
   const controller = new AbortController();
-  setTimeout(() => controller.abort(), timeout);
-  return controller;
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 };
 
 /**
@@ -91,6 +100,17 @@ const isDnsError = (error: Error): boolean => {
     errorMessage.includes('dns') ||
     errorMessage.includes('getaddrinfo')
   );
+};
+
+// Methods RFC 9110 defines as idempotent: repeating them has the same effect
+// on the server as sending them once.
+const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'TRACE', 'PUT', 'DELETE']);
+
+/**
+ * Check if a request method is safe to repeat
+ */
+const isIdempotentMethod = (method: string | undefined): boolean => {
+  return IDEMPOTENT_METHODS.has((method ?? 'GET').toUpperCase());
 };
 
 /**
@@ -141,11 +161,7 @@ export const fetchWithFallback = async (
       try {
         safeLog('debug', `🎯 Attempting primary endpoint (${attempt}/${maxRetries})`, primaryFullUrl);
 
-        const controller = createTimeoutController(timeout);
-        const response = await fetch(primaryFullUrl, {
-          ...fetchOptions,
-          signal: controller.signal,
-        });
+        const response = await fetchWithTimeout(primaryFullUrl, fetchOptions, timeout);
 
         if (response.ok) {
           updateCircuitBreaker(true);
@@ -183,7 +199,14 @@ export const fetchWithFallback = async (
           isDnsError: isDnsError(error as Error)
         });
 
-        if (isDnsError(error as Error) || isLastAttempt) {
+        // A DNS-like error skips the remaining retries only to reach the
+        // fallback sooner. Without a fallback, retry idempotent requests; a
+        // non-idempotent one may already have reached the server before the
+        // connection dropped, so retrying it could duplicate the write.
+        const stopRetrying = isDnsError(error as Error)
+          && (canFallback || !isIdempotentMethod(fetchOptions.method));
+
+        if (stopRetrying || isLastAttempt) {
           updateCircuitBreaker(false);
           break;
         }
@@ -214,11 +237,7 @@ export const fetchWithFallback = async (
       try {
         safeLog('debug', `🎯 Attempting fallback endpoint (${attempt}/${maxRetries})`, fallbackFullUrl);
 
-        const controller = createTimeoutController(timeout);
-        const response = await fetch(fallbackFullUrl, {
-          ...fetchOptions,
-          signal: controller.signal,
-        });
+        const response = await fetchWithTimeout(fallbackFullUrl, fetchOptions, timeout);
 
         if (response.ok) {
           safeLog('info', '✅ Fallback endpoint request successful', {
