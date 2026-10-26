@@ -71,12 +71,21 @@ const shouldAllowRequest = (): boolean => {
 };
 
 /**
- * Create an AbortController with timeout
+ * Fetch with a timeout on the wait for the response. The timer is cleared once
+ * fetch settles, so it cannot abort a body that is still downloading.
  */
-const createTimeoutController = (timeout: number): AbortController => {
+const fetchWithTimeout = async (
+  url: string,
+  init: RequestInit,
+  timeout: number
+): Promise<Response> => {
   const controller = new AbortController();
-  setTimeout(() => controller.abort(), timeout);
-  return controller;
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 };
 
 /**
@@ -152,11 +161,7 @@ export const fetchWithFallback = async (
       try {
         safeLog('debug', `🎯 Attempting primary endpoint (${attempt}/${maxRetries})`, primaryFullUrl);
 
-        const controller = createTimeoutController(timeout);
-        const response = await fetch(primaryFullUrl, {
-          ...fetchOptions,
-          signal: controller.signal,
-        });
+        const response = await fetchWithTimeout(primaryFullUrl, fetchOptions, timeout);
 
         if (response.ok) {
           updateCircuitBreaker(true);
@@ -232,11 +237,7 @@ export const fetchWithFallback = async (
       try {
         safeLog('debug', `🎯 Attempting fallback endpoint (${attempt}/${maxRetries})`, fallbackFullUrl);
 
-        const controller = createTimeoutController(timeout);
-        const response = await fetch(fallbackFullUrl, {
-          ...fetchOptions,
-          signal: controller.signal,
-        });
+        const response = await fetchWithTimeout(fallbackFullUrl, fetchOptions, timeout);
 
         if (response.ok) {
           safeLog('info', '✅ Fallback endpoint request successful', {

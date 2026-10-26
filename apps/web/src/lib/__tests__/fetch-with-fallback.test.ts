@@ -275,5 +275,22 @@ describe('fetchWithFallback', () => {
         fetchWithFallback('/test-endpoint', { timeout: 100 })
       ).rejects.toThrow(NetworkError);
     });
+
+    it('should not abort the response body after the response arrived', async () => {
+      jest.useFakeTimers();
+      try {
+        (fetch as jest.Mock).mockResolvedValueOnce(reply(200));
+
+        await fetchWithFallback('/test-endpoint', { timeout: 100 });
+
+        // The body may still be downloading; the timeout must not abort it
+        const { signal } = (fetch as jest.Mock).mock.calls[0][1] as RequestInit;
+        jest.advanceTimersByTime(1000);
+        expect(signal?.aborted).toBe(false);
+        expect(jest.getTimerCount()).toBe(0);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
   });
 });
