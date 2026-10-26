@@ -109,6 +109,50 @@ describe('fetchWithFallback', () => {
     });
   });
 
+  describe('DNS-like errors', () => {
+    const dnsLikeError = () => new TypeError('Failed to fetch');
+
+    it('should retry idempotent requests when there is no fallback', async () => {
+      (fetch as jest.Mock).mockRejectedValue(dnsLikeError());
+
+      await expect(
+        fetchWithFallback('/test-endpoint', { enableFallback: false, maxRetries: 3, retryDelay: 1 })
+      ).rejects.toThrow(NetworkError);
+
+      expect(fetch).toHaveBeenCalledTimes(3);
+      expect(fetch).toHaveBeenCalledWith('https://primary-api.com/test-endpoint', expect.any(Object));
+      expect(fetch).not.toHaveBeenCalledWith('https://fallback-api.com/test-endpoint', expect.any(Object));
+    });
+
+    it('should not retry non-idempotent requests when there is no fallback', async () => {
+      (fetch as jest.Mock).mockRejectedValue(dnsLikeError());
+
+      await expect(
+        fetchWithFallback('/test-endpoint', {
+          method: 'post',
+          enableFallback: false,
+          maxRetries: 3,
+          retryDelay: 1,
+        })
+      ).rejects.toThrow(NetworkError);
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should switch to the fallback after the first DNS-like error', async () => {
+      (fetch as jest.Mock)
+        .mockRejectedValueOnce(dnsLikeError())
+        .mockResolvedValueOnce(reply(200));
+
+      const response = await fetchWithFallback('/test-endpoint', { maxRetries: 3, retryDelay: 1 });
+
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(fetch).toHaveBeenNthCalledWith(1, 'https://primary-api.com/test-endpoint', expect.any(Object));
+      expect(fetch).toHaveBeenNthCalledWith(2, 'https://fallback-api.com/test-endpoint', expect.any(Object));
+      expect(response.status).toBe(200);
+    });
+  });
+
   describe('circuit breaker', () => {
     it('should open circuit breaker after multiple failures', async () => {
       // Simulate multiple failures to open circuit breaker

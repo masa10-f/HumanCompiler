@@ -93,6 +93,17 @@ const isDnsError = (error: Error): boolean => {
   );
 };
 
+// Methods RFC 9110 defines as idempotent: repeating them has the same effect
+// on the server as sending them once.
+const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'TRACE', 'PUT', 'DELETE']);
+
+/**
+ * Check if a request method is safe to repeat
+ */
+const isIdempotentMethod = (method: string | undefined): boolean => {
+  return IDEMPOTENT_METHODS.has((method ?? 'GET').toUpperCase());
+};
+
 /**
  * Wait for specified delay with exponential backoff
  */
@@ -183,7 +194,14 @@ export const fetchWithFallback = async (
           isDnsError: isDnsError(error as Error)
         });
 
-        if (isDnsError(error as Error) || isLastAttempt) {
+        // A DNS-like error skips the remaining retries only to reach the
+        // fallback sooner. Without a fallback, retry idempotent requests; a
+        // non-idempotent one may already have reached the server before the
+        // connection dropped, so retrying it could duplicate the write.
+        const stopRetrying = isDnsError(error as Error)
+          && (canFallback || !isIdempotentMethod(fetchOptions.method));
+
+        if (stopRetrying || isLastAttempt) {
           updateCircuitBreaker(false);
           break;
         }
