@@ -212,7 +212,7 @@ API は Fly.io のマシン1台で動いているので、カウンタは in-mem
   - `scopes` は `{quick_tasks:write}` とする。
   - `hook_tokens.created_at` と `updated_at` は NULL を許すため、COALESCE で埋める（`agent_tokens` 側は NOT NULL）。
 - `hook_tokens` は後続の別のマイグレーションで削除するまで残し、COMMENT に deprecated と書く。PR1 以降のコードは `hook_tokens` を読み書きしない。
-- `HookToken` モデル、hook token の Pydantic モデル、`routers/hook_tokens.py`、`/api/user/hook-tokens` は、Web を新しいエージェントトークン画面に移した PR4a が本番で動くのを確かめてから、PR4b で削除する（実装順序を参照）。`HookTokenService` は PR1 で削除済み。
+- `HookToken` モデル、hook token の Pydantic モデル、`routers/hook_tokens.py`、`/api/user/hook-tokens` は PR4b で削除した。`hook_tokens` テーブルは別のマイグレーションで削除する。`HookTokenService` は PR1 で削除済み。
 
 ```sql
 INSERT INTO agent_tokens (id, user_id, name, scopes, token_hash, token_prefix,
@@ -267,7 +267,7 @@ ON CONFLICT (id) DO NOTHING;
 - 監査ログ（`agent-token-audit-log.tsx`）は、トークンの行を展開すると直近 20 行を表で出す。列は日時、リクエスト（メソッド + ルート）、ステータス、IP。401 / 403 / 429 は色を変える。必要スコープと処理時間は出さない。取得の失敗と 0 件は、行の中にメッセージを出す。
 - カードの成功・失敗のメッセージはカードの中に出す。設定画面の上部の `error` / `success` とは分ける。`/scopes` の取得に失敗した（または古い形の応答だった）ときは、カードにエラーを出して作成ボタンを押せなくする。一覧と失効は使える。
 - 使い方ガイド（`agent-token-usage-guide.tsx`、`AgentTokenUsageGuide`）は、Agent API の `curl` 例（`/api/agent/v1/me` での動作確認と一覧の取得）、エラー応答、Quick task hook の例を載せる。OpenAPI docs へのリンクは API のホストを指す（Vercel が書き換えるのは `/api/*` だけのため）。
-- Web の hook token のクライアントコードと型は削除した。バックエンドの `/api/user/hook-tokens` は PR4b まで残る。
+- Web の hook token のクライアントコードと型は削除した。バックエンドの `/api/user/hook-tokens` は PR4b で削除した。
 
 ---
 
@@ -440,6 +440,6 @@ rollback の手順:
    - どちらもマイグレーションはない（`logs.updated_at`、トリガー、インデックスは PR1 の 035 に含まれる）
 4. **PR4: Web UI と hook token の削除**（2つに分ける）
    - **PR4a**: 設定画面の置き換え、使い方ガイドの更新、プリセットを返すように `/scopes` の応答を変更、Web の hook token のコードの削除。マイグレーションはない
-   - **PR4b**: PR4a が本番で動くのを確かめてから着手する。`HookToken` モデル、hook token の Pydantic モデル、`routers/hook_tokens.py`、`/api/user/hook-tokens` を削除する（`HookTokenService` は PR1 で削除済み）。`hook_tokens` テーブルは残し、後続の別のマイグレーションで削除する
+   - **PR4b**: PR4a が本番で動くのを確かめてから着手した。`HookToken` モデル、hook token の Pydantic モデル、`routers/hook_tokens.py`、`/api/user/hook-tokens` を削除した（`HookTokenService` は PR1 で削除済み）。`hook_tokens` テーブルは残し、後続の別のマイグレーションで削除する
 
 各 PR は単体でデプロイしてよく、それぞれの時点で既存の hook が動き続けること。

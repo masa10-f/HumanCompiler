@@ -42,7 +42,6 @@ from humancompiler_api.routers import (
     data_export,
     goal_dependencies,
     goals,
-    hook_tokens,
     hooks,
     logs,
     monitoring,
@@ -333,7 +332,6 @@ app.include_router(user_settings.router)
 app.include_router(monitoring.router)
 app.include_router(simple_backup_api.router)
 app.include_router(data_export.router, tags=["data-export"])
-app.include_router(hook_tokens.router)
 app.include_router(agent_tokens.router)
 app.include_router(agent_v1.router)
 app.include_router(hooks.router, prefix="/api")

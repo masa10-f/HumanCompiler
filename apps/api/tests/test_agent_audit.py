@@ -208,7 +208,7 @@ def test_paths_outside_agent_prefixes_are_not_audited(session: Session):
     )
 
     agentic_response = client.get("/api/agentic", headers=bearer(token))
-    tokens_response = client.get("/api/user/hook-tokens", headers=bearer(token))
+    tokens_response = client.get("/api/user/agent-tokens", headers=bearer(token))
 
     assert agentic_response.status_code == 404
     assert tokens_response.status_code == 200
