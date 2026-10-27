@@ -108,7 +108,7 @@ def test_038_does_not_drop_dependent_objects(db):
 
 - [ ] **Step 2: 実行して失敗を確かめる**
 
-ローカルの Postgres はメモリの [[local-postgres-pgserver]] の手順で起動する（PG16、`NOTEBOOK_TEST_POSTGRES_URL=postgresql://notebook_test@localhost:55432/notebook_test`）。
+ローカルの PostgreSQL 16 を起動し、`NOTEBOOK_TEST_POSTGRES_URL` にその URL を渡す（例: `postgresql://notebook_test@localhost:55432/notebook_test`）。CI では `.github/workflows/notebook-search.yml` が同じテストを流す。
 
 Run: `cd apps/api && NOTEBOOK_TEST_POSTGRES_URL=... uv run pytest tests/test_drop_hook_tokens_migration_postgres.py -v`
 Expected: 038 のファイルがないので、5件とも FAIL（または ERROR）
