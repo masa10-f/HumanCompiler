@@ -11,7 +11,7 @@
 -- foreign key that still depends on hook_tokens makes the migration fail
 -- instead of being dropped silently.
 -- Safe to apply twice: a manual application is not recorded in
--- schema_migrations, so the migration manager runs it again at startup.
+-- schema_migrations, so `migrate.py apply` runs it again.
 -- The DO body is single-quoted (not $$) because the migration manager splits
 -- statements on semicolons outside quotes.
 

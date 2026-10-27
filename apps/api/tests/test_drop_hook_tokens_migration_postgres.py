@@ -80,7 +80,7 @@ def test_038_drops_hook_tokens(db):
 
 def test_038_can_be_applied_twice(db):
     # A manual application is not recorded in schema_migrations, so the
-    # migration manager runs 038 again when the API starts.
+    # `migrate.py apply` runs 038 again.
     cursor, schema = db
     run_migration(cursor, schema, MIGRATION)
     run_migration(cursor, schema, MIGRATION)

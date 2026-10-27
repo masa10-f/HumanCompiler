@@ -383,6 +383,8 @@ rollback の手順:
 
 移行後に新しく作ったトークンは、rollback すると使えなくなる。その場合は旧コードで作り直す。
 
+038 の後は 035 を再実行できない（前提チェックが `hook_tokens` の不在で失敗する）。
+
 ### `037_add_agent_audit_logs.sql`（PR2）
 
 1. `agent_audit_logs` の作成（「データモデル: `agent_audit_logs`」の定義）
@@ -399,7 +401,13 @@ rollback の手順:
 1. 前提チェック: `hook_tokens` があり `agent_tokens` がなければ、035 を先に適用するよう伝えて失敗させる（コピー前に削除しないため）
 2. `DROP TABLE IF EXISTS public.hook_tokens`。`CASCADE` は付けない。ビューなど依存するオブジェクトが残っていれば、黙って消さずに失敗する
 
-2回目は何もしない（マイグレーションマネージャーが起動時にもう一度実行しても安全）。
+2回目は何もしない（`migrate.py apply` がもう一度実行しても安全）。
+
+適用の前に確認する。詳しい SQL は `migrations/README.md` にある。
+
+- 035 の後に旧 API で失効させたトークンは、失効が `hook_tokens` にしか残らず、`agent_tokens` 側のコピーは有効なままになる。`hook_tokens.revoked_at` が入っていて `agent_tokens.revoked_at` が NULL の行があれば、先に `agent_tokens` へ `revoked_at` を書き戻す。038 はこの記録を消してしまう。
+- `migrate.py` を使う場合は、`schema_migrations` に 035 が記録されていることを確かめる。038 の後は 035 を実行できないため、未記録のまま `migrate.py apply` を実行すると 035 で止まる。
+- `users` への外部キーが消えるとき、`public.users` に短く `ACCESS EXCLUSIVE` ロックを取る。適用の前に `SET lock_timeout = '5s';` を実行し、タイムアウトしたらやり直す。
 
 rollback はない。行を残したい場合は、適用の前にバックアップを取る。038 の後は、035 の rollback も実行できない（最初の `UPDATE public.hook_tokens` で失敗する）。
 
