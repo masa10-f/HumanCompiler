@@ -13,6 +13,10 @@ primary_region = "nrt"  # Tokyo region for lower latency
   # Trust the Fly edge for X-Forwarded-* (read by uvicorn, see Dockerfile).
   # Client IPs come from Fly-Client-IP, not X-Forwarded-For (Issue #358).
   FORWARDED_ALLOW_IPS = "*"
+  # The preview app uses the production database (DATABASE_URL_PREVIEW is not
+  # set). Its background jobs would mark production checkout notifications as
+  # sent while no production WebSocket is connected to it, so turn them off.
+  NOTIFICATION_SCHEDULER_ENABLED = "false"
   # Optional: Enable read-only mode for shared database safety
   # READ_ONLY_MODE = "true"  # Uncomment to prevent write operations
 

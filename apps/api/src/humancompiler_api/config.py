@@ -75,6 +75,15 @@ class Settings(BaseSettings):
         default="development", pattern="^(development|staging|production|test)$"
     )
 
+    # Background jobs (checkout notifications, deadline emails, triage
+    # suggestions, audit log retention). The Fly preview app shares the
+    # production database and turns them off, so it cannot act on production
+    # rows while it is awake.
+    notification_scheduler_enabled: bool = Field(
+        default=True,
+        description="Run the APScheduler background jobs in this process",
+    )
+
     # CORS Configuration
     # Allow Vercel deployments, custom domain, and local development
     cors_origins: list[str] | str = Field(
@@ -230,6 +239,7 @@ except Exception as e:
     settings.resend_api_key = None
     settings.email_from = "HumanCompiler <noreply@example.com>"
     settings.email_notifications_enabled = False
+    settings.notification_scheduler_enabled = True
 
 
 # Production security check
