@@ -225,7 +225,7 @@ jobs:
         working-directory: ./apps/api
         run: |
           for attempt in 1 2 3; do
-            if timeout 600s flyctl deploy --config fly.toml --remote-only; then
+            if timeout 600s flyctl deploy --config fly.toml --remote-only --ha=false; then
               break
             fi
 
