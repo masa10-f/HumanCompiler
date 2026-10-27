@@ -24,7 +24,6 @@ HumanCompiler の情報を安全に取得し、将来的に更新を反映でき
 - G3: 提案インボックス（`proposals:write`）
 - G4: HumanCompiler MCP サーバー
 - G5: 書き込みスコープの追加（`quick_tasks:write` 以外）
-- `hook_tokens` テーブルの削除（本番で移行を確認した後、別マイグレーションで行う）
 
 ---
 
@@ -211,8 +210,8 @@ API は Fly.io のマシン1台で動いているので、カウンタは in-mem
   - `id`、`user_id`、`name`、`token_hash`、`token_prefix`、`last_used_at`、`revoked_at`、`created_at`、`updated_at` はそのまま移す。
   - `scopes` は `{quick_tasks:write}` とする。
   - `hook_tokens.created_at` と `updated_at` は NULL を許すため、COALESCE で埋める（`agent_tokens` 側は NOT NULL）。
-- `hook_tokens` は後続の別のマイグレーションで削除するまで残し、COMMENT に deprecated と書く。PR1 以降のコードは `hook_tokens` を読み書きしない。
-- `HookToken` モデル、hook token の Pydantic モデル、`routers/hook_tokens.py`、`/api/user/hook-tokens` は PR4b で削除した。`hook_tokens` テーブルは別のマイグレーションで削除する。`HookTokenService` は PR1 で削除済み。
+- `hook_tokens` は 038 で削除するまで残し、COMMENT に deprecated と書いた。PR1 以降のコードは `hook_tokens` を読み書きしない。038 の rollback はない。
+- `HookToken` モデル、hook token の Pydantic モデル、`routers/hook_tokens.py`、`/api/user/hook-tokens` は PR4b で削除した。`hook_tokens` テーブルは 038 で削除した。`HookTokenService` は PR1 で削除済み。
 
 ```sql
 INSERT INTO agent_tokens (id, user_id, name, scopes, token_hash, token_prefix,
@@ -393,6 +392,17 @@ rollback の手順:
 
 037 の rollback は `agent_audit_logs` を削除する。
 
+### `038_drop_hook_tokens.sql`（PR4b の後）
+
+`hook_tokens` を削除する。PR4b の API をデプロイした後に適用する。
+
+1. 前提チェック: `hook_tokens` があり `agent_tokens` がなければ、035 を先に適用するよう伝えて失敗させる（コピー前に削除しないため）
+2. `DROP TABLE IF EXISTS public.hook_tokens`。`CASCADE` は付けない。ビューなど依存するオブジェクトが残っていれば、黙って消さずに失敗する
+
+2回目は何もしない（マイグレーションマネージャーが起動時にもう一度実行しても安全）。
+
+rollback はない。行を残したい場合は、適用の前にバックアップを取る。038 の後は、035 の rollback も実行できない（最初の `UPDATE public.hook_tokens` で失敗する）。
+
 ## セキュリティ
 
 - secret は保存せず、ハッシュのみを保存する。secret はログにも監査ログにも出さない。
@@ -440,6 +450,6 @@ rollback の手順:
    - どちらもマイグレーションはない（`logs.updated_at`、トリガー、インデックスは PR1 の 035 に含まれる）
 4. **PR4: Web UI と hook token の削除**（2つに分ける）
    - **PR4a**: 設定画面の置き換え、使い方ガイドの更新、プリセットを返すように `/scopes` の応答を変更、Web の hook token のコードの削除。マイグレーションはない
-   - **PR4b**: PR4a が本番で動くのを確かめてから着手した。`HookToken` モデル、hook token の Pydantic モデル、`routers/hook_tokens.py`、`/api/user/hook-tokens` を削除した（`HookTokenService` は PR1 で削除済み）。`hook_tokens` テーブルは残し、後続の別のマイグレーションで削除する
+   - **PR4b**: PR4a が本番で動くのを確かめてから着手した。`HookToken` モデル、hook token の Pydantic モデル、`routers/hook_tokens.py`、`/api/user/hook-tokens` を削除した（`HookTokenService` は PR1 で削除済み）。`hook_tokens` テーブルは残し、後続の 038 で削除した（rollback はない）
 
 各 PR は単体でデプロイしてよく、それぞれの時点で既存の hook が動き続けること。
