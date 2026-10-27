@@ -10,7 +10,7 @@ from humancompiler_api.scheduler import notification_scheduler
 
 
 @pytest.fixture
-def scheduler(monkeypatch: pytest.MonkeyPatch):
+def stubbed_scheduler(monkeypatch: pytest.MonkeyPatch):
     scheduler = notification_scheduler.get_scheduler()
     job_ids_before = {job.id for job in scheduler.get_jobs()}
     started = []
@@ -25,9 +25,9 @@ def scheduler(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_scheduler_does_not_start_when_disabled(
-    scheduler, monkeypatch: pytest.MonkeyPatch
+    stubbed_scheduler, monkeypatch: pytest.MonkeyPatch
 ):
-    scheduler, started = scheduler
+    scheduler, started = stubbed_scheduler
     monkeypatch.setattr(
         notification_scheduler.settings, "notification_scheduler_enabled", False
     )
@@ -37,8 +37,10 @@ def test_scheduler_does_not_start_when_disabled(
     assert scheduler.get_job("notification_check") is None
 
 
-def test_scheduler_starts_when_enabled(scheduler, monkeypatch: pytest.MonkeyPatch):
-    scheduler, started = scheduler
+def test_scheduler_starts_when_enabled(
+    stubbed_scheduler, monkeypatch: pytest.MonkeyPatch
+):
+    scheduler, started = stubbed_scheduler
     monkeypatch.setattr(
         notification_scheduler.settings, "notification_scheduler_enabled", True
     )
