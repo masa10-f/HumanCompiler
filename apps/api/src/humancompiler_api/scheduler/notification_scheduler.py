@@ -521,13 +521,16 @@ def start_notification_scheduler() -> bool:
     return True
 
 
-def stop_notification_scheduler():
-    """Stop the notification scheduler"""
+def stop_notification_scheduler() -> bool:
+    """Stop the notification scheduler. Returns whether it was running."""
     scheduler = get_scheduler()
 
-    if scheduler.running:
-        scheduler.shutdown(wait=False)
-        logger.info("Notification scheduler stopped")
+    if not scheduler.running:
+        return False
+
+    scheduler.shutdown(wait=False)
+    logger.info("Notification scheduler stopped")
+    return True
 
 
 def is_scheduler_running() -> bool:
