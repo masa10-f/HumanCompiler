@@ -206,7 +206,7 @@ API は Fly.io のマシン1台で動いているので、カウンタは in-mem
 ### 既存 hook の移行
 
 - `POST /api/hooks/quick-tasks` は URL、受け付けるヘッダー、レスポンスを変えない。内部の認証を `require_scope(AgentScope.QUICK_TASKS_WRITE)` に置き換える。
-- `human-compiler.vercel.app` では、旧ガイドで設定された hook のために、Vercel が `/api/hooks/quick-tasks` だけを Fly に rewrite し続ける。この経由の呼び出しは Vercel の IP で API に届くため、認証失敗の上限は共有の枠になる（#393）。この URL を使う hook がなくなったら、rewrite は削除してよい。
+- `human-compiler.vercel.app` では、旧ガイドで設定された hook のために、Vercel が `/api/hooks/quick-tasks` だけを Fly に rewrite し続ける。この経由の呼び出しは Vercel の IP で API に届くため、既定の上限（200/分）と認証失敗の上限（20/分）は、この経路を使う全員で共有の枠になる（#393）。この URL を使う hook がなくなったら、rewrite は削除してよい。
 - マイグレーションで `hook_tokens` の全行（失効済みも含む）を `agent_tokens` にコピーする。
   - `id`、`user_id`、`name`、`token_hash`、`token_prefix`、`last_used_at`、`revoked_at`、`created_at`、`updated_at` はそのまま移す。
   - `scopes` は `{quick_tasks:write}` とする。
