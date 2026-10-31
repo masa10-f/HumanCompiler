@@ -81,9 +81,10 @@ export function AgentTokenUsageGuide() {
   const [showDocs, setShowDocs] = useState(false);
 
   useEffect(() => {
-    // Production's API base is relative (Vercel rewrites to Fly). Examples
-    // sent through that proxy make Fly see Vercel's egress IP for every user,
-    // which would share the per-IP auth-failure limit and skew audit-log IPs,
+    // On the client every branch of getApiEndpoint() returns an absolute API
+    // URL; '' only comes back during SSR. The fallbacks are kept defensively:
+    // a relative base would go through a proxy and make Fly see its egress IP
+    // for every user (shared per-IP auth-failure limit, skewed audit-log IPs),
     // so prefer the direct API host. The web origin is the last resort and
     // never serves /docs, so the docs pointer needs a real API host.
     const apiHost = getApiEndpoint() || getFallbackApiEndpoint();

@@ -206,6 +206,7 @@ API は Fly.io のマシン1台で動いているので、カウンタは in-mem
 ### 既存 hook の移行
 
 - `POST /api/hooks/quick-tasks` は URL、受け付けるヘッダー、レスポンスを変えない。内部の認証を `require_scope(AgentScope.QUICK_TASKS_WRITE)` に置き換える。
+- `human-compiler.vercel.app` では、旧ガイドで設定された hook のために、Vercel が `/api/hooks/quick-tasks` だけを Fly に rewrite し続ける。この経由の呼び出しは Vercel の IP で API に届くため、既定の上限（200/分）と認証失敗の上限（20/分）は、この経路を使う全員で共有の枠になる（#393）。この URL を使う hook がなくなったら、rewrite は削除してよい。
 - マイグレーションで `hook_tokens` の全行（失効済みも含む）を `agent_tokens` にコピーする。
   - `id`、`user_id`、`name`、`token_hash`、`token_prefix`、`last_used_at`、`revoked_at`、`created_at`、`updated_at` はそのまま移す。
   - `scopes` は `{quick_tasks:write}` とする。
@@ -265,7 +266,7 @@ ON CONFLICT (id) DO NOTHING;
 - 失効は確認ダイアログを挟む。
 - 監査ログ（`agent-token-audit-log.tsx`）は、トークンの行を展開すると直近 20 行を表で出す。列は日時、リクエスト（メソッド + ルート）、ステータス、IP。401 / 403 / 429 は色を変える。必要スコープと処理時間は出さない。取得の失敗と 0 件は、行の中にメッセージを出す。
 - カードの成功・失敗のメッセージはカードの中に出す。設定画面の上部の `error` / `success` とは分ける。`/scopes` の取得に失敗した（または古い形の応答だった）ときは、カードにエラーを出して作成ボタンを押せなくする。一覧と失効は使える。
-- 使い方ガイド（`agent-token-usage-guide.tsx`、`AgentTokenUsageGuide`）は、Agent API の `curl` 例（`/api/agent/v1/me` での動作確認と一覧の取得）、エラー応答、Quick task hook の例を載せる。OpenAPI docs へのリンクは API のホストを指す（Vercel が書き換えるのは `/api/*` だけのため）。
+- 使い方ガイド（`agent-token-usage-guide.tsx`、`AgentTokenUsageGuide`）は、Agent API の `curl` 例（`/api/agent/v1/me` での動作確認と一覧の取得）、エラー応答、Quick task hook の例を載せる。OpenAPI docs へのリンクは API のホストを指す。
 - Web の hook token のクライアントコードと型は削除した。バックエンドの `/api/user/hook-tokens` は PR4b で削除した。
 
 ---

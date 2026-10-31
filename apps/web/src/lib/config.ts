@@ -59,13 +59,10 @@ export const getApiEndpoint = (): string => {
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
 
-    // Production domain - use relative URL for Vercel rewrites
-    if (hostname === 'human-compiler.vercel.app') {
-      return ''; // Relative URL for production to leverage Vercel rewrites
-    }
-
-    // Production custom domain
-    if (hostname === 'human-compiler.rityo-lab.com') {
+    // Production domains - the browser calls the API directly on both.
+    // Going through a Vercel rewrite would show the API only Vercel's egress IP,
+    // so every user would share one IP-based rate limit (#393).
+    if (hostname === 'human-compiler.vercel.app' || hostname === 'human-compiler.rityo-lab.com') {
       return appConfig.api.endpoints.production;
     }
 
