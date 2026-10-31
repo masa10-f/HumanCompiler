@@ -2,6 +2,12 @@
   "buildCommand": "pnpm run build",
   "devCommand": "pnpm run dev",
   "framework": "nextjs",
+  "rewrites": [
+    {
+      "source": "/api/hooks/quick-tasks",
+      "destination": "https://humancompiler-api-masa.fly.dev/api/hooks/quick-tasks"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
