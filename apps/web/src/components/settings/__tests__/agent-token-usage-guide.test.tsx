@@ -43,7 +43,7 @@ describe('AgentTokenUsageGuide', () => {
     ).toBeInTheDocument()
   })
 
-  it('sends examples to the direct API host when the API base is relative', () => {
+  it('sends examples to the direct API host when getApiEndpoint() returns an empty string', () => {
     mockGetApiEndpoint.mockReturnValue('')
     mockGetFallbackApiEndpoint.mockReturnValue('https://api.example.com')
 
@@ -136,7 +136,7 @@ describe('AgentTokenUsageGuide', () => {
     expect(screen.getByText('X-HumanCompiler-Hook-Token: <AGENT_TOKEN>')).toBeInTheDocument()
   })
 
-  it('points to the API host docs, not the web origin, when the API base is relative', () => {
+  it('points to the API host docs, not the web origin, when getApiEndpoint() returns an empty string', () => {
     mockGetApiEndpoint.mockReturnValue('')
     mockGetFallbackApiEndpoint.mockReturnValue('https://api.example.com')
 
