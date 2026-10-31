@@ -12,6 +12,12 @@ from humancompiler_api.main import app
 
 client = TestClient(app)
 
+# Matches the project preview pattern, so it is allowed whether or not the
+# full settings load (the static list is replaced by a localhost-only fallback).
+ALLOWED_PREVIEW_ORIGIN = (
+    "https://human-compiler-abc123-masato-fukushimas-projects.vercel.app"
+)
+
 
 @pytest.mark.parametrize(
     "origin",
@@ -59,3 +65,32 @@ def test_preflight_echoes_only_allowed_origins():
 
     assert allowed_response.headers.get("access-control-allow-origin") == allowed
     assert "access-control-allow-origin" not in blocked_response.headers
+
+
+def test_preflight_reflects_requested_headers_including_authorization():
+    response = client.options(
+        "/api/tasks/",
+        headers={
+            "Origin": ALLOWED_PREVIEW_ORIGIN,
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    allow_headers = response.headers["access-control-allow-headers"].lower()
+    assert "authorization" in allow_headers
+    assert "content-type" in allow_headers
+
+
+def test_preflight_without_requested_headers_keeps_wildcard():
+    response = client.options(
+        "/api/tasks/",
+        headers={
+            "Origin": ALLOWED_PREVIEW_ORIGIN,
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-headers"] == "*"
