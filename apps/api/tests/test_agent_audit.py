@@ -376,6 +376,9 @@ def test_retention_job_is_registered_daily(monkeypatch: pytest.MonkeyPatch):
     job_ids_before = {job.id for job in scheduler.get_jobs()}
     # Keep the shared module-level scheduler from actually starting.
     monkeypatch.setattr(scheduler, "start", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        notification_scheduler.settings, "notification_scheduler_enabled", True
+    )
 
     try:
         notification_scheduler.start_notification_scheduler()

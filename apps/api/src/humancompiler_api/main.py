@@ -117,8 +117,8 @@ async def lifespan(app: FastAPI):
                     start_notification_scheduler,
                 )
 
-                start_notification_scheduler()
-                logger.info("✅ Notification scheduler started")
+                if start_notification_scheduler():
+                    logger.info("✅ Notification scheduler started")
             except Exception as e:
                 logger.warning(f"⚠️ Failed to start notification scheduler: {e}")
         else:
@@ -139,8 +139,8 @@ async def lifespan(app: FastAPI):
             stop_notification_scheduler,
         )
 
-        stop_notification_scheduler()
-        logger.info("✅ Notification scheduler stopped")
+        if stop_notification_scheduler():
+            logger.info("✅ Notification scheduler stopped")
     except Exception as e:
         logger.warning(f"⚠️ Failed to stop notification scheduler: {e}")
 

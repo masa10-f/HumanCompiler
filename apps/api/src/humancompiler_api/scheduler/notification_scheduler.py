@@ -452,13 +452,19 @@ async def _send_overdue_email(
         logger.info(f"Sent overdue alert for task {task_id} to {user.email}")
 
 
-def start_notification_scheduler():
-    """Start the notification scheduler"""
+def start_notification_scheduler() -> bool:
+    """Start the notification scheduler. Returns whether it is running."""
+    if not settings.notification_scheduler_enabled:
+        logger.info(
+            "Notification scheduler disabled (NOTIFICATION_SCHEDULER_ENABLED=false)"
+        )
+        return False
+
     scheduler = get_scheduler()
 
     if scheduler.running:
         logger.warning("Notification scheduler is already running")
-        return
+        return True
 
     # Add the notification check job to run every 30 seconds
     scheduler.add_job(
@@ -512,15 +518,19 @@ def start_notification_scheduler():
         "(checkout notifications: 30s, deadline emails: 5min, "
         "triage suggestions: 1h, agent audit log retention: 1d)"
     )
+    return True
 
 
-def stop_notification_scheduler():
-    """Stop the notification scheduler"""
+def stop_notification_scheduler() -> bool:
+    """Stop the notification scheduler. Returns whether it was running."""
     scheduler = get_scheduler()
 
-    if scheduler.running:
-        scheduler.shutdown(wait=False)
-        logger.info("Notification scheduler stopped")
+    if not scheduler.running:
+        return False
+
+    scheduler.shutdown(wait=False)
+    logger.info("Notification scheduler stopped")
+    return True
 
 
 def is_scheduler_running() -> bool:
