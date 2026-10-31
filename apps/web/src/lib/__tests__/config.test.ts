@@ -41,9 +41,14 @@ describe('Configuration Management', () => {
   });
 
   describe('getApiEndpoint', () => {
-    it('should return empty string for production hostname', () => {
+    it('should return the production API for the vercel.app production hostname', () => {
       mockWindow('human-compiler.vercel.app');
-      expect(getApiEndpoint()).toBe('');
+      expect(getApiEndpoint()).toBe(appConfig.api.endpoints.production);
+    });
+
+    it('should return the production API for the custom domain', () => {
+      mockWindow('human-compiler.rityo-lab.com');
+      expect(getApiEndpoint()).toBe(appConfig.api.endpoints.production);
     });
 
     it('should return preview API for humancompiler preview domains', () => {

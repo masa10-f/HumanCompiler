@@ -265,7 +265,7 @@ ON CONFLICT (id) DO NOTHING;
 - 失効は確認ダイアログを挟む。
 - 監査ログ（`agent-token-audit-log.tsx`）は、トークンの行を展開すると直近 20 行を表で出す。列は日時、リクエスト（メソッド + ルート）、ステータス、IP。401 / 403 / 429 は色を変える。必要スコープと処理時間は出さない。取得の失敗と 0 件は、行の中にメッセージを出す。
 - カードの成功・失敗のメッセージはカードの中に出す。設定画面の上部の `error` / `success` とは分ける。`/scopes` の取得に失敗した（または古い形の応答だった）ときは、カードにエラーを出して作成ボタンを押せなくする。一覧と失効は使える。
-- 使い方ガイド（`agent-token-usage-guide.tsx`、`AgentTokenUsageGuide`）は、Agent API の `curl` 例（`/api/agent/v1/me` での動作確認と一覧の取得）、エラー応答、Quick task hook の例を載せる。OpenAPI docs へのリンクは API のホストを指す（Vercel が書き換えるのは `/api/*` だけのため）。
+- 使い方ガイド（`agent-token-usage-guide.tsx`、`AgentTokenUsageGuide`）は、Agent API の `curl` 例（`/api/agent/v1/me` での動作確認と一覧の取得）、エラー応答、Quick task hook の例を載せる。OpenAPI docs へのリンクは API のホストを指す。
 - Web の hook token のクライアントコードと型は削除した。バックエンドの `/api/user/hook-tokens` は PR4b で削除した。
 
 ---
