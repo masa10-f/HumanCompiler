@@ -15,6 +15,7 @@ from humancompiler_api.models import ProposalKind
 from humancompiler_api.proposal_payloads import (
     EDITABLE_KINDS,
     PAYLOAD_MODELS,
+    ProposalAcceptRequest,
     ProposalCreateRequest,
     normalize_payload,
 )
@@ -207,3 +208,37 @@ def test_request_replaces_payload_with_normalized_form():
         ProposalKind.QUICK_TASK, {"title": "Quick", "estimate_hours": 2.5}
     )
     assert request.payload["description"] is None
+
+
+def experiment_payload(**overrides: Any) -> dict[str, Any]:
+    return {**MINIMAL_PAYLOADS[ProposalKind.EXPERIMENT], **overrides}
+
+
+@pytest.mark.parametrize("hours", ["1e400", 1000, 0, "1.001"])
+def test_experiment_estimated_hours_rejects_out_of_range(hours: Any):
+    with pytest.raises(ValidationError):
+        make_request(ProposalKind.EXPERIMENT, experiment_payload(estimated_hours=hours))
+
+
+def test_experiment_estimated_hours_accepts_upper_bound():
+    request = make_request(
+        ProposalKind.EXPERIMENT, experiment_payload(estimated_hours="999.99")
+    )
+
+    assert request.payload["estimated_hours"] == 999.99
+
+
+def test_accept_decision_option_bounds():
+    assert ProposalAcceptRequest(decision_option=5).decision_option == 5
+    assert ProposalAcceptRequest(decision_option=0).decision_option == 0
+    with pytest.raises(ValidationError):
+        ProposalAcceptRequest(decision_option=6)
+    with pytest.raises(ValidationError):
+        ProposalAcceptRequest(decision_option=-1)
+
+
+def test_payload_error_is_chained_and_names_the_field():
+    with pytest.raises(ValidationError) as excinfo:
+        make_request(ProposalKind.TASK, {"goal_id": GOAL_ID, "title": "Task"})
+
+    assert "estimate_hours" in str(excinfo.value)

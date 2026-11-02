@@ -157,7 +157,9 @@ class ExperimentPayload(_Payload):
     supports_if: str = Field(min_length=1, max_length=4000)
     refutes_if: str = Field(min_length=1, max_length=4000)
     effort: str = Field(min_length=1, max_length=4000)
-    estimated_hours: Annotated[Hours, Field(gt=0)] | None = None
+    estimated_hours: (
+        Annotated[Hours, Field(gt=0, max_digits=5, decimal_places=2)] | None
+    ) = None
     prerequisites: str | None = Field(default=None, max_length=4000)
 
 
@@ -222,7 +224,7 @@ class ProposalCreateRequest(BaseModel):
         except ValidationError as error:
             raise ValueError(
                 f"invalid payload for {self.kind.value}: {_describe(error)}"
-            )
+            ) from error
         return self
 
 
@@ -233,7 +235,7 @@ class ProposalAcceptRequest(BaseModel):
 
     payload: dict[str, Any] | None = None
     decision_note: str | None = Field(default=None, max_length=4000)
-    decision_option: int | None = Field(default=None, ge=0)
+    decision_option: int | None = Field(default=None, ge=0, le=5)
 
 
 class ProposalRejectRequest(BaseModel):
