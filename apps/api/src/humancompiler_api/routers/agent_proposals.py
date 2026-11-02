@@ -155,7 +155,10 @@ router.include_router(intake_router)
     description=(
         "List all of the user's proposals, whichever token sent them, ordered by "
         "(updated_at, id). Pass updated_since to see decisions made since your "
-        "last call. "
+        "last call: use the largest updated_at you received minus 5 minutes, and "
+        "drop rows whose (id, updated_at) pair you already have. The overlap "
+        "absorbs decisions that commit late (updated_at is the time the deciding "
+        "transaction started). "
         f"{ACCEPTED_EXPERIMENTS_GUIDE}"
     ),
 )
