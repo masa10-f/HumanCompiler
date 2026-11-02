@@ -10,10 +10,12 @@ Agents send what they think the user should do; the user decides in the web
 inbox. These endpoints only receive proposals and show their state.
 """
 
-from typing import Annotated
+from collections.abc import Callable, Coroutine
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.routing import APIRoute
 from sqlmodel import Session, col, select
 
 from humancompiler_api import proposal_service
@@ -62,21 +64,34 @@ ACCEPTED_EXPERIMENTS_GUIDE = (
 )
 
 
-async def limit_body_size(request: Request) -> None:
-    """Reject a request body over 64 KB with 413.
+class BodyCappedRoute(APIRoute):
+    """A route that answers 413 for a body over 64 KB before parsing it.
 
-    FastAPI has already read the body to parse it; ``request.body()`` returns the
-    same cached bytes.
+    FastAPI parses and validates the body before any dependency runs, so the cap
+    has to sit in the route handler. ``request.body()`` caches the bytes, and the
+    default handler reuses them.
     """
-    body = await request.body()
-    if len(body) > MAX_BODY_BYTES:
-        raise HTTPException(
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            f"Request body exceeds {MAX_BODY_BYTES} bytes",
-        )
+
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        default_handler = super().get_route_handler()
+
+        async def capped_handler(request: Request) -> Response:
+            body = await request.body()
+            if len(body) > MAX_BODY_BYTES:
+                raise HTTPException(
+                    status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    f"Request body exceeds {MAX_BODY_BYTES} bytes",
+                )
+            return await default_handler(request)
+
+        return capped_handler
 
 
-@router.post(
+# Only the intake endpoint is capped; the reads below keep the default route class.
+intake_router = APIRouter(route_class=BodyCappedRoute)
+
+
+@intake_router.post(
     "/proposals",
     response_model=AgentProposalResponse,
     status_code=status.HTTP_201_CREATED,
@@ -86,7 +101,9 @@ async def limit_body_size(request: Request) -> None:
         "new proposal and 200 when the idempotency_key was already used. Returns "
         "409 when the user has 200 pending proposals, 413 when the body is over "
         "64 KB, and 422 when the payload does not match the kind or points at a "
-        "project, goal or task that is not the user's. "
+        "project, goal or task that is not the user's. The 413 is decided before "
+        "authentication, so an oversized request gets 413 even without a valid "
+        "token, and it is not recorded in the audit log. "
         f"{IDEMPOTENCY_GUIDE} "
         f"{BODY_CAP_GUIDE}"
     ),
@@ -104,12 +121,14 @@ async def create_proposal(
     principal: Annotated[
         AgentPrincipal, Depends(require_scope(AgentScope.PROPOSALS_WRITE))
     ],
-    _size: Annotated[None, Depends(limit_body_size)],
 ) -> AgentProposalResponse:
     row, created = proposal_service.create_proposal(session, principal, data)
     if not created:
         response.status_code = status.HTTP_200_OK
     return AgentProposalResponse.from_row(row)
+
+
+router.include_router(intake_router)
 
 
 @router.get(

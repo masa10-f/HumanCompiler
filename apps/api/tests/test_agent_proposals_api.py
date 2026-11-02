@@ -472,10 +472,63 @@ def test_body_over_64kb_returns_413(session: Session):
     body = quick_task_body(rationale="x" * 70_000)
 
     response = client.post(URL, json=body, headers=bearer(secret))
-    unauthenticated = client.post(URL, json=body)
 
     assert response.status_code == 413
-    assert unauthenticated.status_code == 401
+    assert response.json()["detail"] == "Request body exceeds 65536 bytes"
+    assert count_proposals(session) == 0
+
+
+def test_oversized_invalid_body_returns_413_not_422(session: Session):
+    secret = issue_token(session, USER_A, WRITE)
+    body = quick_task_body(kind="not-a-kind", rationale="x" * 70_000)
+
+    response = client.post(URL, json=body, headers=bearer(secret))
+
+    assert response.status_code == 413
+
+
+def test_oversized_body_returns_413_without_a_token_and_is_not_audited(
+    session: Session, monkeypatch
+):
+    monkeypatch.setattr(
+        agent_audit, "session_factory", lambda: Session(session.get_bind())
+    )
+    body = quick_task_body(rationale="x" * 70_000)
+
+    response = client.post(URL, json=body)
+
+    assert response.status_code == 413
+    assert session.exec(select(AgentAuditLog)).all() == []
+
+
+def test_small_unauthenticated_body_still_gets_401(session: Session):
+    response = client.post(URL, json=quick_task_body())
+
+    assert response.status_code == 401
+
+
+def test_body_cap_applies_only_to_the_post_route():
+    from humancompiler_api.routers.agent_proposals import BodyCappedRoute
+
+    capped = {
+        (route.path, tuple(sorted(route.methods)))
+        for route in app.routes
+        if isinstance(route, BodyCappedRoute)
+    }
+
+    assert capped == {("/api/agent/v1/proposals", ("POST",))}
+
+
+def test_deeply_nested_body_is_422_not_500(session: Session):
+    secret = issue_token(session, USER_A, WRITE)
+    nested: Any = "leaf"
+    for _ in range(2000):
+        nested = [nested]
+    body = quick_task_body(payload={"title": "Try it", "extra": nested})
+
+    response = client.post(URL, json=body, headers=bearer(secret))
+
+    assert response.status_code == 422
     assert count_proposals(session) == 0
 
 
