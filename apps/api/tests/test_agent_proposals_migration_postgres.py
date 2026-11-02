@@ -120,11 +120,14 @@ def db() -> Iterator[tuple]:
         connection.close()
 
 
-def assert_violation(cursor, error_type, schema: str, **overrides) -> None:
-    """The insert must fail with error_type without poisoning the transaction."""
+def assert_violation(
+    cursor, error_type, constraint: str, schema: str, **overrides
+) -> None:
+    """The insert must fail on the named constraint without poisoning the transaction."""
     cursor.execute("SAVEPOINT before_insert")
-    with pytest.raises(error_type):
+    with pytest.raises(error_type) as excinfo:
         insert_proposal(cursor, schema, **overrides)
+    assert excinfo.value.diag.constraint_name == constraint
     cursor.execute("ROLLBACK TO SAVEPOINT before_insert")
 
 
@@ -152,11 +155,44 @@ def test_039_rejects_unknown_kind_status_category(db):
     cursor, schema = db
     run_migration(cursor, schema, MIGRATION)
 
-    assert_violation(cursor, errors.CheckViolation, schema, kind="foo")
-    assert_violation(cursor, errors.CheckViolation, schema, status="done")
-    assert_violation(cursor, errors.CheckViolation, schema, reject_category="meh")
-    assert_violation(cursor, errors.CheckViolation, schema, result_type="project")
-    assert_violation(cursor, errors.CheckViolation, schema, title="")
+    assert_violation(
+        cursor, errors.CheckViolation, "ck_agent_proposals_kind", schema, kind="foo"
+    )
+    assert_violation(
+        cursor,
+        errors.CheckViolation,
+        "ck_agent_proposals_status",
+        schema,
+        status="done",
+    )
+    assert_violation(
+        cursor,
+        errors.CheckViolation,
+        "ck_agent_proposals_reject_category",
+        schema,
+        reject_category="meh",
+    )
+    assert_violation(
+        cursor,
+        errors.CheckViolation,
+        "ck_agent_proposals_result_type",
+        schema,
+        result_type="project",
+    )
+    assert_violation(
+        cursor,
+        errors.CheckViolation,
+        "ck_agent_proposals_title_nonempty",
+        schema,
+        title="",
+    )
+    assert_violation(
+        cursor,
+        errors.CheckViolation,
+        "ck_agent_proposals_idempotency_key_nonempty",
+        schema,
+        idempotency_key="",
+    )
 
     for kind in (
         "goal",
@@ -180,7 +216,13 @@ def test_039_rejected_requires_category(db):
     cursor, schema = db
     run_migration(cursor, schema, MIGRATION)
 
-    assert_violation(cursor, errors.CheckViolation, schema, status="rejected")
+    assert_violation(
+        cursor,
+        errors.CheckViolation,
+        "ck_agent_proposals_rejected_has_category",
+        schema,
+        status="rejected",
+    )
     insert_proposal(cursor, schema, status="rejected", reject_category="wrong")
 
 
@@ -188,7 +230,13 @@ def test_039_decision_note_length(db):
     cursor, schema = db
     run_migration(cursor, schema, MIGRATION)
 
-    assert_violation(cursor, errors.CheckViolation, schema, decision_note="a" * 4001)
+    assert_violation(
+        cursor,
+        errors.CheckViolation,
+        "ck_agent_proposals_decision_note_length",
+        schema,
+        decision_note="a" * 4001,
+    )
     insert_proposal(cursor, schema, decision_note="a" * 4000)
 
 
@@ -197,7 +245,13 @@ def test_039_idempotency_key_unique_per_user(db):
     run_migration(cursor, schema, MIGRATION)
     insert_proposal(cursor, schema, idempotency_key="same-key")
 
-    assert_violation(cursor, errors.UniqueViolation, schema, idempotency_key="same-key")
+    assert_violation(
+        cursor,
+        errors.UniqueViolation,
+        "uq_agent_proposals_user_idempotency",
+        schema,
+        idempotency_key="same-key",
+    )
     insert_proposal(
         cursor, schema, user_id=OTHER_USER_ID, token_id=None, idempotency_key="same-key"
     )
@@ -223,6 +277,40 @@ def test_039_updated_at_trigger(db):
         (proposal_id,),
     )
     assert cursor.fetchone()[0] > before
+
+
+def test_039_grants_select_only_to_authenticated_with_rls(db):
+    cursor, schema = db
+    run_migration(cursor, schema, MIGRATION)
+    table = f'"{schema}".agent_proposals'
+
+    for column in COLUMNS:
+        cursor.execute(
+            "SELECT has_column_privilege('authenticated', %s, %s, 'SELECT')",
+            (table, column),
+        )
+        assert cursor.fetchone()[0] is True, column
+    for privilege in ("INSERT", "UPDATE", "DELETE"):
+        cursor.execute(
+            "SELECT has_table_privilege('authenticated', %s, %s)", (table, privilege)
+        )
+        assert cursor.fetchone()[0] is False, privilege
+    for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE"):
+        cursor.execute("SELECT has_table_privilege('anon', %s, %s)", (table, privilege))
+        assert cursor.fetchone()[0] is False, privilege
+    cursor.execute("SELECT has_any_column_privilege('anon', %s, 'SELECT')", (table,))
+    assert cursor.fetchone()[0] is False
+
+    cursor.execute(
+        "SELECT relrowsecurity FROM pg_class WHERE oid = %s::regclass", (table,)
+    )
+    assert cursor.fetchone()[0] is True
+    cursor.execute(
+        """SELECT policyname FROM pg_policies
+        WHERE schemaname = %s AND tablename = 'agent_proposals'""",
+        (schema,),
+    )
+    assert cursor.fetchall() == [("agent_proposals_own_rows",)]
 
 
 def test_039_deleting_token_keeps_proposal(db):

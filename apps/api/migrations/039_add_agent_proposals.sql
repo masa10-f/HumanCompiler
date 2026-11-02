@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS public.agent_proposals (
         decision_note IS NULL OR char_length(decision_note) <= 4000
     ),
     CONSTRAINT ck_agent_proposals_title_nonempty CHECK (char_length(title) >= 1),
+    CONSTRAINT ck_agent_proposals_idempotency_key_nonempty CHECK (char_length(idempotency_key) >= 1),
     CONSTRAINT uq_agent_proposals_user_idempotency UNIQUE (user_id, idempotency_key)
 );
 
