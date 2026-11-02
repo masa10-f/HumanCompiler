@@ -18,6 +18,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy import event
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, func, select
 
 from humancompiler_api import proposal_service
@@ -727,3 +728,63 @@ def test_reject_body_rejects_nul():
         ProposalRejectRequest.model_validate(
             {"reject_category": "other", "decision_note": "a\x00b"}
         )
+
+
+def test_accept_integrity_error_during_materialise_is_409_and_rolls_back(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+):
+    row = make_proposal(session, ProposalKind.QUICK_TASK, {"title": "Quick"})
+
+    def failing_build(*args: Any, **kwargs: Any) -> None:
+        raise IntegrityError("insert", {}, Exception("fk_quick_tasks_goal"))
+
+    monkeypatch.setattr(proposal_service.quick_task_service, "build", failing_build)
+
+    with pytest.raises(HTTPException) as caught:
+        accept(session, row)
+
+    assert caught.value.status_code == 409
+    assert caught.value.detail == "Proposal target no longer exists; reject it instead"
+    assert count(session, QuickTask) == 0
+    stored = reload(session, row)
+    assert stored.status == ProposalStatus.PENDING.value
+    assert stored.final_payload is None
+
+
+def test_accept_other_errors_still_roll_back_and_reraise(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+):
+    row = make_proposal(session, ProposalKind.QUICK_TASK, {"title": "Quick"})
+
+    def failing_build(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(proposal_service.quick_task_service, "build", failing_build)
+
+    with pytest.raises(RuntimeError):
+        accept(session, row)
+
+    assert reload(session, row).status == ProposalStatus.PENDING.value
+
+
+@pytest.mark.parametrize("edit", [False, True])
+def test_accept_with_stale_stored_payload_is_409_and_stays_pending(
+    session: Session, edit: bool
+):
+    row = make_proposal(session, ProposalKind.QUICK_TASK, {"title": "Quick"})
+    # A later, stricter schema no longer accepts what was stored.
+    row.payload = {"title": "", "legacy_field": 1}
+    session.add(row)
+    session.commit()
+
+    body: dict[str, Any] = {"payload": {"title": "Fixed"}} if edit else {}
+    with pytest.raises(HTTPException) as caught:
+        accept(session, row, **body)
+
+    assert caught.value.status_code == 409
+    assert (
+        caught.value.detail
+        == "Stored proposal no longer matches its schema; reject it instead"
+    )
+    assert count(session, QuickTask) == 0
+    assert reload(session, row).status == ProposalStatus.PENDING.value

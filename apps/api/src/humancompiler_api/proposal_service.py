@@ -361,6 +361,14 @@ def _apply_accept(
     kind = ProposalKind(row.kind)
     if data.payload is not None and kind not in EDITABLE_KINDS:
         raise _unprocessable("This kind cannot be edited")
+    try:
+        original = parse_payload(kind, row.payload)
+    except ValidationError:
+        # Checked first: a stale stored payload is not the caller's input error.
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Stored proposal no longer matches its schema; reject it instead",
+        ) from None
     used_payload = data.payload if data.payload is not None else row.payload
     try:
         parsed = parse_payload(kind, used_payload)
@@ -370,7 +378,7 @@ def _apply_accept(
     _check_decision(kind, parsed, data)
 
     used_dump = parsed.model_dump(mode="json")
-    original_dump = parse_payload(kind, row.payload).model_dump(mode="json")
+    original_dump = original.model_dump(mode="json")
     # A payload sent back unchanged (or only re-spelled) counts as not edited.
     edited = used_dump != original_dump
     try:
@@ -417,6 +425,15 @@ def accept_proposal(
         row = _lock_pending(session, user_id, proposal_id)
         _apply_accept(session, user_id, row, data)
         session.commit()
+    except IntegrityError:
+        # A constraint failed while writing (typically the target was deleted
+        # after the ownership check, a foreign key violation). Note-creation
+        # races are mapped to their own 409 where they happen.
+        session.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Proposal target no longer exists; reject it instead",
+        ) from None
     except Exception:
         session.rollback()
         raise
