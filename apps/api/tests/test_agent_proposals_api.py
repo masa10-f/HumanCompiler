@@ -200,6 +200,92 @@ def test_create_rejects_other_users_reference_like_missing(session: Session):
     assert count_proposals(session) == 0
 
 
+def test_create_rejects_other_users_project_and_target_goal_like_missing(
+    session: Session,
+):
+    other_project = seed_project(session, USER_B)
+    other_goal = seed_goal(session, other_project)
+    secret = issue_token(session, USER_A, WRITE)
+
+    def goal_body(project_id: UUID, key: str) -> dict[str, Any]:
+        return {
+            "kind": "goal",
+            "title": "G",
+            "payload": {"project_id": str(project_id), "title": "G"},
+            "idempotency_key": key,
+        }
+
+    def note_body(goal_id: UUID, key: str) -> dict[str, Any]:
+        return {
+            "kind": "note_append",
+            "title": "N",
+            "payload": {"target": {"goal_id": str(goal_id)}, "content_markdown": "x"},
+            "idempotency_key": key,
+        }
+
+    other = client.post(
+        URL, json=goal_body(other_project.id, "a"), headers=bearer(secret)
+    )
+    missing = client.post(URL, json=goal_body(uuid4(), "b"), headers=bearer(secret))
+    note_other = client.post(
+        URL, json=note_body(other_goal.id, "c"), headers=bearer(secret)
+    )
+    note_missing = client.post(
+        URL, json=note_body(uuid4(), "d"), headers=bearer(secret)
+    )
+
+    assert other.status_code == missing.status_code == 422
+    assert other.json()["detail"] == missing.json()["detail"] == "Unknown project_id"
+    assert note_other.status_code == note_missing.status_code == 422
+    assert (
+        note_other.json()["detail"]
+        == note_missing.json()["detail"]
+        == "Unknown target.goal_id"
+    )
+    assert count_proposals(session) == 0
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"title": "a\x00b"},
+        {"rationale": "a\x00b"},
+        {"idempotency_key": "key\x00"},
+        {"sources": [{"ref": "paper:1", "quote": "a\x00b"}]},
+        {"payload": {"title": "a\x00b"}},
+        {"payload": {"title": "ok", "description": "a\x00b"}},
+    ],
+)
+def test_create_rejects_nul_with_422(session: Session, overrides: dict[str, Any]):
+    secret = issue_token(session, USER_A, WRITE)
+
+    response = client.post(
+        URL, json=quick_task_body(**overrides), headers=bearer(secret)
+    )
+
+    assert response.status_code == 422
+    assert "NUL" in response.text
+    assert count_proposals(session) == 0
+
+
+def test_create_rejects_nul_in_nested_payload_list(session: Session):
+    secret = issue_token(session, USER_A, WRITE)
+    body = {
+        "kind": "contradiction",
+        "title": "C",
+        "payload": {
+            "claims": [{"text": "a"}, {"text": "b\x00"}],
+            "explanation": "x",
+        },
+        "idempotency_key": "key-c",
+    }
+
+    response = client.post(URL, json=body, headers=bearer(secret))
+
+    assert response.status_code == 422
+    assert count_proposals(session) == 0
+
+
 def test_resolves_project_for_each_kind(session: Session):
     project = seed_project(session, USER_A)
     goal = seed_goal(session, project)

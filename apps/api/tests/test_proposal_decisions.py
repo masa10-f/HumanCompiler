@@ -16,6 +16,8 @@ from zoneinfo import ZoneInfo
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
+from sqlalchemy import event
+from sqlalchemy.dialects import postgresql
 from sqlmodel import Session, func, select
 
 from humancompiler_api import proposal_service
@@ -358,6 +360,58 @@ def test_unchanged_payload_sent_back_after_target_deleted_is_409(session: Sessio
     assert reload(session, row).status == ProposalStatus.PENDING.value
 
 
+def test_edited_title_with_deleted_goal_is_409(session: Session):
+    """Editing other fields does not make a vanished target an input error."""
+    project = seed_project(session, USER_A)
+    goal = seed_goal(session, project)
+    original = {"goal_id": str(goal.id), "title": "Orphan", "estimate_hours": 1}
+    row = make_proposal(session, ProposalKind.TASK, original, project_id=project.id)
+    session.delete(goal)
+    session.commit()
+
+    with pytest.raises(HTTPException) as caught:
+        accept(session, row, payload={**original, "title": "Renamed"})
+
+    assert caught.value.status_code == 409
+    assert caught.value.detail == "Proposal target no longer exists; reject it instead"
+    assert count(session, Task) == 0
+    assert reload(session, row).status == ProposalStatus.PENDING.value
+
+
+def test_edited_note_text_with_deleted_target_is_409(session: Session):
+    project = seed_project(session, USER_A)
+    goal = seed_goal(session, project)
+    original = {"target": {"goal_id": str(goal.id)}, "content_markdown": "Old"}
+    row = make_proposal(
+        session, ProposalKind.NOTE_APPEND, original, project_id=project.id
+    )
+    session.delete(goal)
+    session.commit()
+
+    with pytest.raises(HTTPException) as caught:
+        accept(session, row, payload={**original, "content_markdown": "New"})
+
+    assert caught.value.status_code == 409
+    assert count(session, ContextNote) == 0
+    assert reload(session, row).status == ProposalStatus.PENDING.value
+
+
+def test_edit_moving_note_target_to_missing_id_is_422(session: Session):
+    project = seed_project(session, USER_A)
+    original = {"target": {"project_id": str(project.id)}, "content_markdown": "x"}
+    row = make_proposal(
+        session, ProposalKind.NOTE_APPEND, original, project_id=project.id
+    )
+
+    with pytest.raises(HTTPException) as caught:
+        accept(session, row, payload={**original, "target": {"goal_id": str(uuid4())}})
+
+    assert caught.value.status_code == 422
+    assert caught.value.detail == "Unknown target.goal_id"
+    assert count(session, ContextNote) == 0
+    assert reload(session, row).status == ProposalStatus.PENDING.value
+
+
 def test_accept_rejects_edit_for_non_editable_kind(session: Session):
     payload = {
         "claims": [{"text": "a"}, {"text": "b"}],
@@ -517,6 +571,41 @@ def test_note_append_converts_markdown_note_to_html(session: Session):
     assert result.project_id == project.id
 
 
+def test_note_append_locks_the_note_row(session: Session):
+    """Two accepts appending to one note must serialise on the note row.
+
+    SQLite ignores FOR UPDATE, so check the statement itself as PostgreSQL
+    would compile it."""
+    project = seed_project(session, USER_A)
+    seed_note(session, USER_A, project=project)
+    row = make_proposal(
+        session,
+        ProposalKind.NOTE_APPEND,
+        {"target": {"project_id": str(project.id)}, "content_markdown": "x"},
+        project_id=project.id,
+    )
+    note_lookups: list[Any] = []
+
+    def capture(state: Any) -> None:
+        if state.is_select and any(
+            getattr(entity, "class_", None) is ContextNote
+            for entity in state.all_mappers
+        ):
+            note_lookups.append(state)
+
+    event.listen(session, "do_orm_execute", capture)
+    try:
+        accept(session, row)
+    finally:
+        event.remove(session, "do_orm_execute", capture)
+
+    assert note_lookups, "the note must have been looked up"
+    lookup = note_lookups[0]
+    compiled = str(lookup.statement.compile(dialect=postgresql.dialect()))
+    assert "FOR UPDATE" in compiled
+    assert lookup.execution_options.get("populate_existing") is True
+
+
 def test_failed_accept_rolls_back(session: Session, monkeypatch):
     project = seed_project(session, USER_A)
     row = make_proposal(
@@ -618,3 +707,23 @@ def test_other_users_proposal_is_404(session: Session):
 
     assert count(session, QuickTask) == 0
     assert reload(session, row).status == ProposalStatus.PENDING.value
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"decision_note": "a\x00b"},
+        {"payload": {"title": "a\x00b"}},
+        {"payload": {"title": "ok", "description": "a\x00b"}},
+    ],
+)
+def test_accept_body_rejects_nul(body: dict[str, Any]):
+    with pytest.raises(ValidationError, match="NUL"):
+        ProposalAcceptRequest.model_validate(body)
+
+
+def test_reject_body_rejects_nul():
+    with pytest.raises(ValidationError, match="NUL"):
+        ProposalRejectRequest.model_validate(
+            {"reject_category": "other", "decision_note": "a\x00b"}
+        )

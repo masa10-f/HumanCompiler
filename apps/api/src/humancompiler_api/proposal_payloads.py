@@ -198,6 +198,34 @@ def normalize_payload(kind: ProposalKind, data: dict[str, Any]) -> dict[str, Any
     return parse_payload(kind, data).model_dump(mode="json")
 
 
+def _contains_nul(value: Any) -> bool:
+    """Whether any string in ``value`` (keys included) holds a NUL character."""
+    if isinstance(value, str):
+        return "\x00" in value
+    if isinstance(value, dict):
+        return any(
+            _contains_nul(key) or _contains_nul(item) for key, item in value.items()
+        )
+    if isinstance(value, list | tuple):
+        return any(_contains_nul(item) for item in value)
+    return False
+
+
+class _NoNulRequest(BaseModel):
+    """A request body in which no string may contain NUL.
+
+    PostgreSQL refuses NUL (U+0000) in TEXT and in JSONB, so such a
+    string would fail at commit with a 500. Checking the raw body here covers
+    every field, nested payload strings included, and answers 422."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_nul(cls, data: Any) -> Any:
+        if _contains_nul(data):
+            raise ValueError("strings must not contain the NUL character (U+0000)")
+        return data
+
+
 def _describe(error: ValidationError) -> str:
     return "; ".join(
         ".".join(str(part) for part in item["loc"]) + ": " + item["msg"]
@@ -205,7 +233,7 @@ def _describe(error: ValidationError) -> str:
     )
 
 
-class ProposalCreateRequest(BaseModel):
+class ProposalCreateRequest(_NoNulRequest):
     """Body of POST /api/agent/v1/proposals."""
 
     model_config = _FORBID_EXTRA
@@ -228,7 +256,7 @@ class ProposalCreateRequest(BaseModel):
         return self
 
 
-class ProposalAcceptRequest(BaseModel):
+class ProposalAcceptRequest(_NoNulRequest):
     """Body of the accept action. ``payload`` is the user's edited version."""
 
     model_config = _FORBID_EXTRA
@@ -238,7 +266,7 @@ class ProposalAcceptRequest(BaseModel):
     decision_option: int | None = Field(default=None, ge=0, le=5)
 
 
-class ProposalRejectRequest(BaseModel):
+class ProposalRejectRequest(_NoNulRequest):
     """Body of the reject action."""
 
     model_config = _FORBID_EXTRA

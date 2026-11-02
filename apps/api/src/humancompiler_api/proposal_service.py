@@ -275,7 +275,13 @@ def _append_to_note(
         query = query.where(ContextNote.goal_id == target.goal_id)
     else:
         query = query.where(ContextNote.task_id == target.task_id)
-    note = session.exec(query).first()
+    # Lock the note row (a no-op on SQLite) so that two accepts appending to
+    # the same note run one after the other; otherwise both read the same
+    # content and the later write drops the earlier append. The proposal row is
+    # always locked first, then the note, so the order cannot deadlock.
+    note = session.exec(
+        query.with_for_update().execution_options(populate_existing=True)
+    ).first()
     if note is None:
         note = ContextNote(
             id=uuid4(),
@@ -334,6 +340,17 @@ def _materialise(
     return None
 
 
+def _references(kind: ProposalKind, dump: dict[str, Any]) -> Any:
+    """The IDs a normalised payload points at, as resolve_project_id reads them."""
+    if kind is ProposalKind.QUICK_TASK:
+        return None
+    if kind is ProposalKind.TASK:
+        return dump.get("goal_id")
+    if kind is ProposalKind.NOTE_APPEND:
+        return dump.get("target")
+    return dump.get("project_id")
+
+
 def _apply_accept(
     session: Session, user_id: UUID, row: AgentProposal, data: ProposalAcceptRequest
 ) -> None:
@@ -349,15 +366,18 @@ def _apply_accept(
     _check_decision(kind, parsed, data)
 
     used_dump = parsed.model_dump(mode="json")
+    original_dump = parse_payload(kind, row.payload).model_dump(mode="json")
     # A payload sent back unchanged (or only re-spelled) counts as not edited.
-    edited = used_dump != parse_payload(kind, row.payload).model_dump(mode="json")
+    edited = used_dump != original_dump
     try:
         project_id = resolve_project_id(session, user_id, kind, used_dump)
     except HTTPException:
-        if edited:
+        if _references(kind, used_dump) != _references(kind, original_dump):
             # The user's edit points somewhere invalid: an input error.
             raise
-        # The proposal was fine when it arrived; its target has since gone.
+        # The proposal pointed at a valid target when it arrived, and the user
+        # did not change where it points (whatever else they edited); the
+        # target has since gone.
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             "Proposal target no longer exists; reject it instead",

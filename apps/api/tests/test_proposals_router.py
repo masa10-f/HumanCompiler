@@ -389,6 +389,26 @@ def test_accept_and_reject_via_router(session: Session):
     assert bad.status_code == 422
 
 
+def test_accept_and_reject_reject_nul_with_422(session: Session):
+    row = experiment(session)
+
+    accepted = client.post(f"{BASE}/{row.id}/accept", json={"decision_note": "a\x00"})
+    edited = client.post(
+        f"{BASE}/{row.id}/accept",
+        json={"payload": {**EXPERIMENT_PAYLOAD, "method": "a\x00"}},
+    )
+    rejected = client.post(
+        f"{BASE}/{row.id}/reject",
+        json={"reject_category": "other", "decision_note": "a\x00"},
+    )
+
+    assert accepted.status_code == edited.status_code == rejected.status_code == 422
+    session.expire_all()
+    fresh = session.get(AgentProposal, row.id)
+    assert fresh is not None
+    assert fresh.status == ProposalStatus.PENDING.value
+
+
 def test_other_users_proposal_is_404_everywhere(session: Session):
     foreign = experiment(session, user_id=USER_B)
     experiment(session)
