@@ -26,13 +26,18 @@ from humancompiler_api.agent_auth import AgentPrincipal
 from humancompiler_api.common.error_handlers import ResourceNotFoundError
 from humancompiler_api.models import (
     AgentProposal,
+    AgentProposalResponse,
     AgentToken,
     ContextNote,
+    Goal,
     GoalCreate,
+    Project,
     ProposalKind,
+    ProposalResponse,
     ProposalResultType,
     ProposalStatus,
     QuickTaskCreate,
+    Task,
     TaskCreate,
 )
 from humancompiler_api.note_markdown import (
@@ -414,3 +419,90 @@ def reject_proposal(
         raise
     session.refresh(row)
     return row
+
+
+def _uuid_or_none(value: Any) -> UUID | None:
+    if isinstance(value, UUID):
+        return value
+    try:
+        return UUID(str(value))
+    except (ValueError, TypeError):
+        return None
+
+
+def _referenced_ids(row: AgentProposal) -> tuple[UUID | None, UUID | None]:
+    """The goal and task IDs a proposal's payload points at, if any.
+
+    What the user approved (``final_payload``) wins over what the agent sent."""
+    payload = row.final_payload if row.final_payload is not None else row.payload
+    kind = ProposalKind(row.kind)
+    if kind is ProposalKind.TASK:
+        return _uuid_or_none(payload.get("goal_id")), None
+    if kind is ProposalKind.NOTE_APPEND:
+        target = payload.get("target") or {}
+        return _uuid_or_none(target.get("goal_id")), _uuid_or_none(
+            target.get("task_id")
+        )
+    return None, None
+
+
+def _names(
+    session: Session,
+    id_column: Any,
+    name_column: Any,
+    ids: set[UUID],
+    service: Any,
+    user_id: UUID,
+) -> dict[UUID, str]:
+    """``{id: name}`` for the user's own rows among ``ids``, in one query."""
+    if not ids:
+        return {}
+    rows = session.exec(
+        select(id_column, name_column).where(
+            col(id_column).in_(ids), service._get_user_filter(user_id)
+        )
+    )
+    return {row_id: name for row_id, name in rows}
+
+
+def to_web_responses(
+    session: Session, user_id: UUID, rows: list[AgentProposal]
+) -> list[ProposalResponse]:
+    """Build the inbox responses for a page of proposals.
+
+    Names come from one query per referenced table, however many rows the page
+    has, limited to the user's own projects, goals and tasks. A missing or
+    foreign target gives None."""
+    project_ids: set[UUID] = set()
+    goal_ids: set[UUID] = set()
+    task_ids: set[UUID] = set()
+    for row in rows:
+        if row.project_id is not None:
+            project_ids.add(row.project_id)
+        goal_id, task_id = _referenced_ids(row)
+        if goal_id is not None:
+            goal_ids.add(goal_id)
+        if task_id is not None:
+            task_ids.add(task_id)
+
+    project_names = _names(
+        session, Project.id, Project.title, project_ids, project_service, user_id
+    )
+    goal_titles = _names(session, Goal.id, Goal.title, goal_ids, goal_service, user_id)
+    task_titles = _names(session, Task.id, Task.title, task_ids, task_service, user_id)
+
+    responses: list[ProposalResponse] = []
+    for row in rows:
+        goal_id, task_id = _referenced_ids(row)
+        base = AgentProposalResponse.from_row(row)
+        responses.append(
+            ProposalResponse(
+                **dict(base),
+                project_name=project_names.get(row.project_id)
+                if row.project_id is not None
+                else None,
+                goal_title=goal_titles.get(goal_id) if goal_id is not None else None,
+                task_title=task_titles.get(task_id) if task_id is not None else None,
+            )
+        )
+    return responses

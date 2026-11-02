@@ -1,7 +1,7 @@
 # 提案インボックス設計（G3）
 
 作成日: 2026-11-02
-状態: ドラフト（ユーザーの承認待ち）
+状態: 承認済み（実装: G3 PR1〜PR3）
 関連: [Agent Gateway 設計（G1 / G2）](agent-gateway.md)、ResearchDistillator `docs/roadmap.md`（Track G の G3）
 
 ## 概要
@@ -103,6 +103,7 @@
 | `payload` | JSONB NOT NULL | エージェントが送ってきたままの payload。変えない |
 | `final_payload` | JSONB NULL | 承認したときの payload（編集した場合は編集後）。承認前と却下では NULL |
 | `sources` | JSONB NOT NULL DEFAULT '[]' | |
+| `project_id` | UUID NULL | 外部キーなし。受け付けるときに payload から求め、承認で編集されたら求め直す。Web 用 API の `project_id` での絞り込みに使う。求め方: `goal` は `payload.project_id`、`task` は `goal_id` の Goal の `project_id`、`note_append` は `target` の Project / Goal / Task からたどる、`quick_task` は NULL、その他は `payload.project_id`（なければ NULL） |
 | `idempotency_key` | VARCHAR(200) NOT NULL | `UNIQUE (user_id, idempotency_key)` |
 | `status` | TEXT NOT NULL DEFAULT 'pending' | CHECK で `pending` / `accepted` / `edited` / `rejected` |
 | `reject_category` | TEXT NULL | CHECK で `duplicate` / `wrong` / `not_valuable` / `not_now` / `other`。却下のときだけ必須 |
@@ -228,7 +229,7 @@
 | POST | `/{proposal_id}/accept` | `{payload?, decision_note?, decision_option?}`。成功したら提案（`result` 入り）を返す |
 | POST | `/{proposal_id}/reject` | `{reject_category, decision_note?}` |
 
-- `project_id` で絞るとき、payload の `project_id` を見る（`task` は `goal_id` から、`note_append` は `target` から、プロジェクトをたどる）。実装の方法は実装者が決める（例: 受け付けるときにプロジェクトの ID を求めて隠れた列に持つ）。
+- `project_id` で絞るときは、`agent_proposals.project_id` 列（受け付けるときに求めて保存し、承認で編集されたら求め直した値）で絞る。payload を毎回たどることはしない。
 - 応答には、表示のために、参照先の名前（プロジェクト名、Goal 名、Task 名）を添える。参照先が消えていれば null。
 
 ---

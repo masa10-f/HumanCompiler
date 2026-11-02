@@ -967,7 +967,8 @@ class AgentProposal(SQLModel, table=True):  # type: ignore[call-arg]
     """A change an agent proposes. The user accepts, edits or rejects it.
 
     ``payload`` is what the agent sent and is never modified; ``final_payload``
-    is what the user approved when it differs. The enum-like columns are plain
+    is set on every accept (the user's edited payload if they edited it, else
+    the original) and stays NULL until then. The enum-like columns are plain
     TEXT holding the ``.value`` of the matching ``Proposal*`` enum."""
 
     __tablename__ = "agent_proposals"
@@ -1952,6 +1953,35 @@ class ProposalResponse(AgentProposalResponse):
     project_name: str | None = None
     goal_title: str | None = None
     task_title: str | None = None
+
+
+class ProposalListResponse(BaseModel):
+    """One page of the inbox. ``total`` counts all rows matching the filters."""
+
+    items: list[ProposalResponse]
+    total: int
+
+
+class ProposalSummaryItem(BaseModel):
+    """A pending proposal in the dashboard and header summary."""
+
+    id: UUID
+    kind: ProposalKind
+    title: str
+    agent_name: str
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str | None:
+        """Ensure created_at is serialized with UTC timezone info."""
+        return _serialize_utc(value)
+
+
+class ProposalSummaryResponse(BaseModel):
+    """How many proposals wait, and the newest three."""
+
+    pending_count: int
+    latest: list[ProposalSummaryItem]
 
 
 class AgentAuditLogResponse(BaseModel):
