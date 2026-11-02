@@ -68,23 +68,40 @@ class BodyCappedRoute(APIRoute):
     """A route that answers 413 for a body over 64 KB before parsing it.
 
     FastAPI parses and validates the body before any dependency runs, so the cap
-    has to sit in the route handler. ``request.body()`` caches the bytes, and the
-    default handler reuses them.
+    has to sit in the route handler. A declared Content-Length over the cap is
+    refused without reading anything; otherwise the body is read chunk by chunk
+    and refused as soon as the running size passes the cap, so memory stays
+    bounded by the cap plus one chunk. A body within the cap is stored in
+    Starlette's body cache (``request._body``), which ``request.body()`` and
+    ``request.json()`` reuse, so the default handler does not read it again.
     """
 
     def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
         default_handler = super().get_route_handler()
 
         async def capped_handler(request: Request) -> Response:
-            body = await request.body()
-            if len(body) > MAX_BODY_BYTES:
-                raise HTTPException(
-                    status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    f"Request body exceeds {MAX_BODY_BYTES} bytes",
-                )
+            declared = request.headers.get("content-length")
+            if declared is not None and declared.isdigit():
+                if int(declared) > MAX_BODY_BYTES:
+                    raise _body_too_large()
+            chunks: list[bytes] = []
+            size = 0
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > MAX_BODY_BYTES:
+                    raise _body_too_large()
+                chunks.append(chunk)
+            request._body = b"".join(chunks)
             return await default_handler(request)
 
         return capped_handler
+
+
+def _body_too_large() -> HTTPException:
+    return HTTPException(
+        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        f"Request body exceeds {MAX_BODY_BYTES} bytes",
+    )
 
 
 # Only the intake endpoint is capped; the reads below keep the default route class.

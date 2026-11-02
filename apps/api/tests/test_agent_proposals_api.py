@@ -6,6 +6,8 @@
 
 """Agent API: proposal intake (POST) and reads (GET) under /api/agent/v1."""
 
+import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -693,3 +695,101 @@ def test_proposal_requests_are_audited(session: Session, monkeypatch):
     assert logs[0].required_scope == "proposals:write"
     assert logs[0].route == "/api/agent/v1/proposals"
     assert logs[0].status_code == 201
+
+
+def _post_request(chunks: list[bytes], headers: dict[str, str]):
+    """A Request whose body arrives as ``chunks``; ``reads`` counts chunks taken."""
+    from starlette.requests import Request
+
+    reads = {"n": 0}
+    messages = [
+        {"type": "http.request", "body": chunk, "more_body": i < len(chunks) - 1}
+        for i, chunk in enumerate(chunks)
+    ]
+
+    async def receive():
+        reads["n"] += 1
+        if messages:
+            return messages.pop(0)
+        raise AssertionError("body read past its end")
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/echo",
+        "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+        "query_string": b"",
+    }
+    return Request(scope, receive), reads
+
+
+def _capped_echo_handler():
+    from fastapi import Request
+
+    from humancompiler_api.routers.agent_proposals import BodyCappedRoute
+
+    async def echo(request: Request) -> dict[str, Any]:
+        return {"size": len(await request.body()), "json": await request.json()}
+
+    route = BodyCappedRoute("/echo", echo, methods=["POST"])
+    return route.get_route_handler()
+
+
+def test_declared_content_length_over_cap_is_413_without_reading_the_body():
+    from fastapi import HTTPException
+
+    from humancompiler_api.routers.agent_proposals import MAX_BODY_BYTES
+
+    handler = _capped_echo_handler()
+    request, reads = _post_request([b"{}"], {"content-length": str(MAX_BODY_BYTES + 1)})
+
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(handler(request))
+
+    assert caught.value.status_code == 413
+    assert reads["n"] == 0
+
+
+def test_streamed_body_over_cap_stops_reading_early():
+    from fastapi import HTTPException
+
+    from humancompiler_api.routers.agent_proposals import MAX_BODY_BYTES
+
+    handler = _capped_echo_handler()
+    chunk = b" " * (MAX_BODY_BYTES // 4)
+    # No Content-Length (chunked): 100 chunks offered, the cap trips at the 5th.
+    request, reads = _post_request([chunk] * 100, {})
+
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(handler(request))
+
+    assert caught.value.status_code == 413
+    assert caught.value.detail == f"Request body exceeds {MAX_BODY_BYTES} bytes"
+    assert reads["n"] == 5
+
+
+def test_streamed_body_within_cap_is_reused_by_the_handler():
+    handler = _capped_echo_handler()
+    request, _ = _post_request([b'{"a":', b" 1}"], {})
+
+    response = asyncio.run(handler(request))
+
+    assert response.body == b'{"size":8,"json":{"a":1}}'
+
+
+def test_chunked_upload_over_cap_returns_413(session: Session):
+    secret = issue_token(session, USER_A, WRITE)
+    payload = json.dumps(quick_task_body(rationale="x" * 70_000)).encode()
+
+    def chunks():
+        for start in range(0, len(payload), 8192):
+            yield payload[start : start + 8192]
+
+    response = client.post(
+        URL,
+        content=chunks(),
+        headers={**bearer(secret), "content-type": "application/json"},
+    )
+
+    assert response.status_code == 413
+    assert count_proposals(session) == 0
