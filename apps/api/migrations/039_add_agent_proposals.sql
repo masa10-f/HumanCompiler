@@ -120,8 +120,8 @@ CREATE TRIGGER update_agent_proposals_updated_at
     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 COMMENT ON TABLE public.agent_proposals IS 'Changes proposed by agents, waiting for the user to accept, edit or reject';
-COMMENT ON COLUMN public.agent_proposals.agent_name IS 'Agent-reported label; not verified, so not an identity';
+COMMENT ON COLUMN public.agent_proposals.agent_name IS 'Copy of the name of the sending token at intake, chosen by the user; not supplied by the agent';
 COMMENT ON COLUMN public.agent_proposals.payload IS 'Exactly what the agent sent; never modified after creation';
-COMMENT ON COLUMN public.agent_proposals.final_payload IS 'What the user approved, set when the payload was edited; NULL otherwise';
+COMMENT ON COLUMN public.agent_proposals.final_payload IS 'Payload used at accept (the edited one if the user edited it); set on every accept, NULL while pending and on reject';
 COMMENT ON COLUMN public.agent_proposals.project_id IS 'Project the proposal belongs to, derived from the payload; no foreign key, used for filtering only';
 COMMENT ON COLUMN public.agent_proposals.result_id IS 'ID of the entity created on accept; no foreign key, the entity may be deleted later';

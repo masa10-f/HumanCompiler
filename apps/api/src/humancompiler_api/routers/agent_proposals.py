@@ -47,6 +47,14 @@ IDEMPOTENCY_GUIDE = (
     "recreated under the same key. Send a new key only for new evidence."
 )
 
+BODY_CAP_GUIDE = (
+    "The 64 KB cap is on the raw request body in bytes, not on characters. "
+    "Non-ASCII text costs about 3 bytes per character in UTF-8, and 6 or more "
+    "when the client escapes it as \\uXXXX, so send UTF-8 JSON without escaping. "
+    "A long note_append may not fit even within the content_markdown limit; split "
+    "it into several proposals."
+)
+
 ACCEPTED_EXPERIMENTS_GUIDE = (
     "To collect the experiments the user approved, call "
     "GET /api/agent/v1/proposals?kind=experiment&status=accepted&status=edited. "
@@ -79,7 +87,8 @@ async def limit_body_size(request: Request) -> None:
         "409 when the user has 200 pending proposals, 413 when the body is over "
         "64 KB, and 422 when the payload does not match the kind or points at a "
         "project, goal or task that is not the user's. "
-        f"{IDEMPOTENCY_GUIDE}"
+        f"{IDEMPOTENCY_GUIDE} "
+        f"{BODY_CAP_GUIDE}"
     ),
     responses={
         status.HTTP_200_OK: {
