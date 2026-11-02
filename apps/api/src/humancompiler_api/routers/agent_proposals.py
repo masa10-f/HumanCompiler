@@ -1,0 +1,172 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2024-2025 Masato Fukushima <masa1063fuk@gmail.com>
+#
+# This file is part of HumanCompiler.
+# For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
+
+"""Agent API for proposals (``/api/agent/v1/proposals``).
+
+Agents send what they think the user should do; the user decides in the web
+inbox. These endpoints only receive proposals and show their state.
+"""
+
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from sqlmodel import Session, col, select
+
+from humancompiler_api import proposal_service
+from humancompiler_api.agent_auth import AgentPrincipal, require_scope
+from humancompiler_api.agent_pagination import (
+    AgentPage,
+    PageParams,
+    page_params,
+    paginate,
+)
+from humancompiler_api.database import get_session
+from humancompiler_api.models import (
+    AgentProposal,
+    AgentProposalResponse,
+    AgentScope,
+    ProposalKind,
+    ProposalStatus,
+)
+from humancompiler_api.proposal_payloads import ProposalCreateRequest
+
+router = APIRouter(prefix="/api/agent/v1", tags=["agent"])
+
+MAX_BODY_BYTES = 64 * 1024
+
+IDEMPOTENCY_GUIDE = (
+    "idempotency_key is unique per user. Derive it from the evidence, so the same "
+    "evidence always gives the same key, for example "
+    "'distiller:<kind>:<source logical id>@<version hash>'. A repeated key returns "
+    "the stored proposal with 200 and creates nothing, whatever the new body says "
+    "and even when the user already rejected it: a rejected proposal is never "
+    "recreated under the same key. Send a new key only for new evidence."
+)
+
+ACCEPTED_EXPERIMENTS_GUIDE = (
+    "To collect the experiments the user approved, call "
+    "GET /api/agent/v1/proposals?kind=experiment&status=accepted&status=edited. "
+    "An edited proposal's final_payload is what the user approved."
+)
+
+
+async def limit_body_size(request: Request) -> None:
+    """Reject a request body over 64 KB with 413.
+
+    FastAPI has already read the body to parse it; ``request.body()`` returns the
+    same cached bytes.
+    """
+    body = await request.body()
+    if len(body) > MAX_BODY_BYTES:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            f"Request body exceeds {MAX_BODY_BYTES} bytes",
+        )
+
+
+@router.post(
+    "/proposals",
+    response_model=AgentProposalResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Send a proposal to the user's inbox",
+    description=(
+        "Send a proposal for the user to accept, edit or reject. Returns 201 for a "
+        "new proposal and 200 when the idempotency_key was already used. Returns "
+        "409 when the user has 200 pending proposals, 413 when the body is over "
+        "64 KB, and 422 when the payload does not match the kind or points at a "
+        "project, goal or task that is not the user's. "
+        f"{IDEMPOTENCY_GUIDE}"
+    ),
+    responses={
+        status.HTTP_200_OK: {
+            "model": AgentProposalResponse,
+            "description": "The idempotency_key was already used; the stored proposal.",
+        }
+    },
+)
+async def create_proposal(
+    data: ProposalCreateRequest,
+    response: Response,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[
+        AgentPrincipal, Depends(require_scope(AgentScope.PROPOSALS_WRITE))
+    ],
+    _size: Annotated[None, Depends(limit_body_size)],
+) -> AgentProposalResponse:
+    row, created = proposal_service.create_proposal(session, principal, data)
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return AgentProposalResponse.from_row(row)
+
+
+@router.get(
+    "/proposals",
+    response_model=AgentPage[AgentProposalResponse],
+    summary="List the user's proposals",
+    description=(
+        "List all of the user's proposals, whichever token sent them, ordered by "
+        "(updated_at, id). Pass updated_since to see decisions made since your "
+        "last call. "
+        f"{ACCEPTED_EXPERIMENTS_GUIDE}"
+    ),
+)
+async def list_proposals(
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[
+        AgentPrincipal, Depends(require_scope(AgentScope.PROPOSALS_READ))
+    ],
+    params: Annotated[PageParams, Depends(page_params())],
+    kind: Annotated[
+        list[ProposalKind] | None,
+        Query(description="Only these kinds. Repeat the parameter for several."),
+    ] = None,
+    proposal_status: Annotated[
+        list[ProposalStatus] | None,
+        Query(
+            alias="status",
+            description="Only these statuses. Repeat the parameter for several.",
+        ),
+    ] = None,
+) -> AgentPage[AgentProposalResponse]:
+    statement = select(AgentProposal).where(AgentProposal.user_id == principal.user_id)
+    if kind:
+        statement = statement.where(
+            col(AgentProposal.kind).in_([item.value for item in kind])
+        )
+    if proposal_status:
+        statement = statement.where(
+            col(AgentProposal.status).in_([item.value for item in proposal_status])
+        )
+    rows, next_cursor = paginate(session, statement, AgentProposal, params)
+    return AgentPage[AgentProposalResponse](
+        items=[AgentProposalResponse.from_row(row) for row in rows],
+        next_cursor=next_cursor,
+    )
+
+
+@router.get(
+    "/proposals/{proposal_id}",
+    response_model=AgentProposalResponse,
+    summary="Get one proposal",
+)
+async def get_proposal(
+    proposal_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[
+        AgentPrincipal, Depends(require_scope(AgentScope.PROPOSALS_READ))
+    ],
+) -> AgentProposalResponse:
+    """Return one proposal; another user's proposal is reported as not found."""
+    row = session.exec(
+        select(AgentProposal).where(
+            AgentProposal.id == proposal_id,
+            AgentProposal.user_id == principal.user_id,
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Proposal not found")
+    return AgentProposalResponse.from_row(row)
