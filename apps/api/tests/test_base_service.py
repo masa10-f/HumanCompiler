@@ -161,3 +161,22 @@ def test_invalid_uuid(service, session, user_id):
     """Test handling invalid UUID format"""
     with pytest.raises(ValidationError):
         service.get_by_id(session, "invalid-uuid", user_id)
+
+
+def test_build_flushes_without_commit(service, session, user_id, project_data):
+    """build assigns an ID and flushes, but leaves commit to the caller"""
+    project = service.build(session, project_data, user_id)
+    assert project.id is not None
+    assert session.get(Project, project.id) is not None
+
+    session.rollback()
+    assert session.get(Project, project.id) is None
+
+
+def test_create_still_commits(service, session, user_id, project_data):
+    """create keeps committing: a rollback afterwards does not remove the row"""
+    project = service.create(session, project_data, user_id)
+    project_id = project.id
+
+    session.rollback()
+    assert session.get(Project, project_id) is not None
