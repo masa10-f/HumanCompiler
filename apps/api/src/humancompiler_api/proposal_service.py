@@ -11,10 +11,14 @@ router, live beside the intake here and share its helpers.
 """
 
 import logging
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
+from fastapi.encoders import jsonable_encoder
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, func, select
 
@@ -23,15 +27,42 @@ from humancompiler_api.common.error_handlers import ResourceNotFoundError
 from humancompiler_api.models import (
     AgentProposal,
     AgentToken,
+    ContextNote,
+    GoalCreate,
     ProposalKind,
+    ProposalResultType,
     ProposalStatus,
+    QuickTaskCreate,
+    TaskCreate,
 )
-from humancompiler_api.proposal_payloads import ProposalCreateRequest
-from humancompiler_api.services import goal_service, project_service, task_service
+from humancompiler_api.note_markdown import (
+    agent_append_heading,
+    append_html,
+    markdown_to_note_html,
+)
+from humancompiler_api.proposal_payloads import (
+    EDITABLE_KINDS,
+    DecisionRequestPayload,
+    NoteAppendPayload,
+    ProposalAcceptRequest,
+    ProposalCreateRequest,
+    ProposalRejectRequest,
+    normalize_payload,
+    parse_payload,
+)
+from humancompiler_api.services import (
+    goal_service,
+    project_service,
+    quick_task_service,
+    task_service,
+)
 
 logger = logging.getLogger(__name__)
 
 MAX_PENDING_PROPOSALS = 200
+
+# The date in the heading of an agent's note append is the user's calendar day.
+APP_TIMEZONE = ZoneInfo("Asia/Tokyo")
 
 
 def _unknown(field: str) -> HTTPException:
@@ -167,3 +198,219 @@ def create_proposal(
         return winner, False
     session.refresh(row)
     return row, True
+
+
+def _unprocessable(detail: Any) -> HTTPException:
+    return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail)
+
+
+def _validation_detail(error: ValidationError) -> Any:
+    """Pydantic errors in a form that serialises to JSON."""
+    return jsonable_encoder(error.errors(include_url=False, include_context=False))
+
+
+def _lock_pending(session: Session, user_id: UUID, proposal_id: UUID) -> AgentProposal:
+    """Read the user's proposal under a row lock and require it to be pending.
+
+    The lock (a no-op on SQLite) makes a second accept or reject wait for the
+    first to commit, then see it is decided and get 409, so a double click or two
+    tabs never act twice."""
+    row = session.exec(
+        select(AgentProposal)
+        .where(AgentProposal.id == proposal_id, AgentProposal.user_id == user_id)
+        .with_for_update()
+        # Use the locked row's values, not a copy the session already holds.
+        .execution_options(populate_existing=True)
+    ).first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Proposal not found")
+    if row.status != ProposalStatus.PENDING.value:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Proposal already decided")
+    return row
+
+
+def _check_decision(
+    kind: ProposalKind, parsed: BaseModel, data: ProposalAcceptRequest
+) -> None:
+    """A decision request needs an answer; only it takes an option number."""
+    if kind is not ProposalKind.DECISION_REQUEST:
+        if data.decision_option is not None:
+            raise _unprocessable("decision_option is only for decision_request")
+        return
+    options = parsed.options if isinstance(parsed, DecisionRequestPayload) else []
+    if data.decision_option is not None:
+        if data.decision_option >= len(options):
+            raise _unprocessable("decision_option is out of range")
+        return
+    if not (data.decision_note or "").strip():
+        raise _unprocessable(
+            "A decision_request needs decision_option or decision_note"
+        )
+
+
+def _create_input(model: type[BaseModel], parsed: BaseModel) -> Any:
+    """Build a ``*Create`` from a payload; unset fields keep the model defaults."""
+    try:
+        return model.model_validate(parsed.model_dump(exclude_none=True))
+    except ValidationError as error:
+        raise _unprocessable(_validation_detail(error)) from error
+
+
+def _append_to_note(
+    session: Session, user_id: UUID, agent_name: str, payload: NoteAppendPayload
+) -> ContextNote:
+    """Append the agent's text to the target's note, creating the note if needed.
+
+    The same lookup as ``routers/notes.get_or_create_note``, without its commit."""
+    target = payload.target
+    query = select(ContextNote)
+    if target.project_id is not None:
+        query = query.where(ContextNote.project_id == target.project_id)
+    elif target.goal_id is not None:
+        query = query.where(ContextNote.goal_id == target.goal_id)
+    else:
+        query = query.where(ContextNote.task_id == target.task_id)
+    note = session.exec(query).first()
+    if note is None:
+        note = ContextNote(
+            id=uuid4(),
+            user_id=user_id,
+            project_id=target.project_id,
+            goal_id=target.goal_id,
+            task_id=target.task_id,
+            content="",
+            content_type="html",
+        )
+        session.add(note)
+        try:
+            session.flush()
+        except IntegrityError:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "Note was created concurrently; retry"
+            ) from None
+
+    heading = agent_append_heading(agent_name, datetime.now(APP_TIMEZONE).date())
+    note.content = append_html(
+        note.content, heading + markdown_to_note_html(payload.content_markdown)
+    )
+    # The web editor loads every note as HTML, whatever content_type says.
+    note.content_type = "html"
+    note.updated_at = datetime.now(UTC)
+    session.add(note)
+    session.flush()
+    return note
+
+
+def _materialise(
+    session: Session,
+    user_id: UUID,
+    row: AgentProposal,
+    kind: ProposalKind,
+    parsed: BaseModel,
+) -> tuple[ProposalResultType, UUID] | None:
+    """Create what an accepted proposal stands for, flushed but not committed.
+
+    Ownership of every referenced ID has been checked by ``resolve_project_id``."""
+    if kind is ProposalKind.GOAL:
+        goal = goal_service.build(session, _create_input(GoalCreate, parsed), user_id)
+        return ProposalResultType.GOAL, goal.id  # type: ignore[return-value]
+    if kind is ProposalKind.TASK:
+        task = task_service.build(session, _create_input(TaskCreate, parsed), user_id)
+        return ProposalResultType.TASK, task.id  # type: ignore[return-value]
+    if kind is ProposalKind.QUICK_TASK:
+        quick_task = quick_task_service.build(
+            session, _create_input(QuickTaskCreate, parsed), user_id
+        )
+        return ProposalResultType.QUICK_TASK, quick_task.id  # type: ignore[return-value]
+    if isinstance(parsed, NoteAppendPayload):
+        note = _append_to_note(session, user_id, row.agent_name, parsed)
+        return ProposalResultType.CONTEXT_NOTE, note.id  # type: ignore[return-value]
+    # contradiction, decision_request and experiment record the decision only.
+    return None
+
+
+def _apply_accept(
+    session: Session, user_id: UUID, row: AgentProposal, data: ProposalAcceptRequest
+) -> None:
+    kind = ProposalKind(row.kind)
+    if data.payload is not None and kind not in EDITABLE_KINDS:
+        raise _unprocessable("This kind cannot be edited")
+    used_payload = data.payload if data.payload is not None else row.payload
+    try:
+        parsed = parse_payload(kind, used_payload)
+    except ValidationError as error:
+        raise _unprocessable(_validation_detail(error)) from error
+
+    _check_decision(kind, parsed, data)
+
+    used_dump = parsed.model_dump(mode="json")
+    # A payload sent back unchanged (or only re-spelled) counts as not edited.
+    edited = used_dump != parse_payload(kind, row.payload).model_dump(mode="json")
+    try:
+        project_id = resolve_project_id(session, user_id, kind, used_dump)
+    except HTTPException:
+        if edited:
+            # The user's edit points somewhere invalid: an input error.
+            raise
+        # The proposal was fine when it arrived; its target has since gone.
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Proposal target no longer exists; reject it instead",
+        ) from None
+
+    result = _materialise(session, user_id, row, kind, parsed)
+
+    now = datetime.now(UTC)
+    row.status = (
+        ProposalStatus.EDITED.value if edited else ProposalStatus.ACCEPTED.value
+    )
+    row.final_payload = normalize_payload(kind, used_payload)
+    row.project_id = project_id
+    row.decision_note = data.decision_note
+    row.decision_option = data.decision_option
+    row.result_type = result[0].value if result else None
+    row.result_id = result[1] if result else None
+    row.decided_at = now
+    # Set here too: agents poll by updated_at and not every database has the
+    # trigger that advances it.
+    row.updated_at = now
+    session.add(row)
+
+
+def accept_proposal(
+    session: Session, user_id: UUID, proposal_id: UUID, data: ProposalAcceptRequest
+) -> AgentProposal:
+    """Accept a pending proposal, creating what it proposes.
+
+    The entity and the decision are written in one transaction, committed once
+    at the end; any failure rolls both back and leaves the proposal pending."""
+    try:
+        row = _lock_pending(session, user_id, proposal_id)
+        _apply_accept(session, user_id, row, data)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    session.refresh(row)
+    return row
+
+
+def reject_proposal(
+    session: Session, user_id: UUID, proposal_id: UUID, data: ProposalRejectRequest
+) -> AgentProposal:
+    """Reject a pending proposal. Nothing is created; final_payload stays NULL."""
+    try:
+        row = _lock_pending(session, user_id, proposal_id)
+        now = datetime.now(UTC)
+        row.status = ProposalStatus.REJECTED.value
+        row.reject_category = data.reject_category.value
+        row.decision_note = data.decision_note
+        row.decided_at = now
+        row.updated_at = now
+        session.add(row)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    session.refresh(row)
+    return row
