@@ -215,7 +215,7 @@
 
 ### 応答の形（`AgentProposalResponse`）
 
-`id`、`kind`、`status`、`title`、`rationale`、`payload`、`final_payload`、`sources`、`idempotency_key`、`agent_name`、`reject_category`、`decision_note`、`decision_option`、`result`（`{type, id}` か `null`）、`created_at`、`decided_at`、`updated_at`。日時は UTC のタイムゾーン付き。`token_id` は返さない。
+`id`、`kind`、`status`、`title`、`rationale`、`payload`、`final_payload`、`sources`、`idempotency_key`、`agent_name`、`project_id`、`reject_category`、`decision_note`、`decision_option`、`result`（`{type, id}` か `null`）、`created_at`、`decided_at`、`updated_at`。日時は UTC のタイムゾーン付き。`token_id` は返さない。
 
 ---
 
