@@ -242,3 +242,33 @@ def test_payload_error_is_chained_and_names_the_field():
         make_request(ProposalKind.TASK, {"goal_id": GOAL_ID, "title": "Task"})
 
     assert "estimate_hours" in str(excinfo.value)
+
+
+def _nested_list(depth: int, leaf: Any) -> Any:
+    value = leaf
+    for _ in range(depth):
+        value = [value]
+    return value
+
+
+def _quick_task_request(extra: Any) -> dict[str, Any]:
+    return {
+        "kind": "quick_task",
+        "title": "Try it",
+        "payload": {"title": "Try it", "extra": extra},
+        "idempotency_key": "key-1",
+    }
+
+
+def test_deeply_nested_payload_is_rejected_without_recursion_error():
+    body = _quick_task_request(_nested_list(2000, "leaf"))
+
+    with pytest.raises(ValidationError):
+        ProposalCreateRequest.model_validate(body)
+
+
+def test_nul_deep_inside_a_nested_payload_is_rejected_as_nul():
+    body = _quick_task_request(_nested_list(2000, "a\x00b"))
+
+    with pytest.raises(ValidationError, match="NUL"):
+        ProposalCreateRequest.model_validate(body)

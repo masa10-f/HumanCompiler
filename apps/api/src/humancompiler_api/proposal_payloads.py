@@ -199,15 +199,23 @@ def normalize_payload(kind: ProposalKind, data: dict[str, Any]) -> dict[str, Any
 
 
 def _contains_nul(value: Any) -> bool:
-    """Whether any string in ``value`` (keys included) holds a NUL character."""
-    if isinstance(value, str):
-        return "\x00" in value
-    if isinstance(value, dict):
-        return any(
-            _contains_nul(key) or _contains_nul(item) for key, item in value.items()
-        )
-    if isinstance(value, list | tuple):
-        return any(_contains_nul(item) for item in value)
+    """Whether any string in ``value`` (keys included) holds a NUL character.
+
+    Walks with an explicit stack, so a deeply nested body cannot hit the
+    recursion limit.
+    """
+    stack = [value]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, str):
+            if "\x00" in current:
+                return True
+        elif isinstance(current, dict):
+            for key, item in current.items():
+                stack.append(key)
+                stack.append(item)
+        elif isinstance(current, list | tuple):
+            stack.extend(current)
     return False
 
 
