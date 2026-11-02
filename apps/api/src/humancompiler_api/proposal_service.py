@@ -167,6 +167,10 @@ def create_proposal(
     if existing is not None:
         return existing, False
 
+    # Best-effort cap: the count and the insert are not atomic, so concurrent
+    # intakes with different keys could exceed it slightly. Production runs one
+    # uvicorn worker on one machine and this handler uses a sync session, so in
+    # practice requests are serialised. No locking on purpose.
     if _pending_count(session, user_id) >= MAX_PENDING_PROPOSALS:
         raise HTTPException(status.HTTP_409_CONFLICT, "Proposal inbox is full")
 
