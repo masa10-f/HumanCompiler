@@ -211,7 +211,7 @@ def test_unknown_stored_scope_does_not_break_auth(client: TestClient, session: S
             id=uuid4(),
             user_id=USER_ID,
             name="future scopes",
-            scopes=["quick_tasks:write", "proposals:write"],
+            scopes=["quick_tasks:write", "proposals:future"],
             token_hash=hashlib.sha256(token.encode()).hexdigest(),
             token_prefix="hc_agent_unknown1",
         )

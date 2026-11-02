@@ -165,7 +165,7 @@ def test_create_rejects_unknown_or_empty_scopes(session: Session):
     setup_user(session)
 
     unknown = client.post(
-        BASE_URL, json={"name": "agent", "scopes": ["proposals:write"]}
+        BASE_URL, json={"name": "agent", "scopes": ["proposals:admin"]}
     )
     empty = client.post(BASE_URL, json={"name": "agent", "scopes": []})
 
@@ -241,6 +241,7 @@ def test_scopes_lists_every_scope_with_description(session: Session):
     assert all(item["description"] for item in body["scopes"])
     descriptions = {item["scope"]: item["description"] for item in body["scopes"]}
     assert "広い読み取り権限" in descriptions["context:read"]
+    assert {"proposals:read", "proposals:write"} <= set(descriptions)
 
 
 def test_scopes_marks_only_context_read_as_broad(session: Session):
@@ -256,7 +257,7 @@ def test_scopes_returns_presets_from_the_spec(session: Session):
 
     presets = {p["key"]: p for p in client.get(f"{BASE_URL}/scopes").json()["presets"]}
 
-    assert list(presets) == ["quick_task_hook", "read_only"]
+    assert list(presets) == ["quick_task_hook", "read_only", "proposing_agent"]
     assert presets["quick_task_hook"]["label"] == "Quick task hook"
     assert presets["quick_task_hook"]["scopes"] == ["quick_tasks:write"]
     assert presets["read_only"]["label"] == "読み取り専用エージェント"
@@ -270,6 +271,12 @@ def test_scopes_returns_presets_from_the_spec(session: Session):
         "notes:read",
         "daily_plans:read",
         "context:read",
+        "proposals:read",
+    ]
+    assert presets["proposing_agent"]["label"] == "提案するエージェント"
+    assert presets["proposing_agent"]["scopes"] == [
+        *presets["read_only"]["scopes"],
+        "proposals:write",
     ]
     assert all(p["description"] for p in presets.values())
 

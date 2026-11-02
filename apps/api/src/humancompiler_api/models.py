@@ -826,7 +826,9 @@ class AgentScope(StrEnum):
     NOTES_READ = "notes:read"
     DAILY_PLANS_READ = "daily_plans:read"
     CONTEXT_READ = "context:read"
+    PROPOSALS_READ = "proposals:read"
     QUICK_TASKS_WRITE = "quick_tasks:write"
+    PROPOSALS_WRITE = "proposals:write"
 
 
 # User-facing (Japanese) descriptions shown in the token settings UI.
@@ -843,7 +845,9 @@ AGENT_SCOPE_DESCRIPTIONS: dict[AgentScope, str] = {
         "context export（Markdown）の取得。ノート、タスク、作業履歴、日次ノートを"
         "まとめて読むため、実質的に広い読み取り権限になる"
     ),
+    AgentScope.PROPOSALS_READ: "提案の一覧・取得（そのユーザーのすべての提案）",
     AgentScope.QUICK_TASKS_WRITE: "POST /api/hooks/quick-tasks（既存 hook の互換）",
+    AgentScope.PROPOSALS_WRITE: "提案の送信（POST /api/agent/v1/proposals）",
 }
 
 # Scopes the UI flags with a warning badge.
@@ -876,7 +880,59 @@ AGENT_TOKEN_PRESETS: tuple[AgentTokenPresetInfo, ...] = (
         ),
         scopes=[scope.value for scope in AgentScope if scope.value.endswith(":read")],
     ),
+    AgentTokenPresetInfo(
+        key="proposing_agent",
+        label="提案するエージェント",
+        description=(
+            "Agent API の読み取りすべてと、提案の送信を許可する。"
+            "context:read（広い読み取り権限）を含む"
+        ),
+        scopes=[
+            *(scope.value for scope in AgentScope if scope.value.endswith(":read")),
+            AgentScope.PROPOSALS_WRITE.value,
+        ],
+    ),
 )
+
+
+class ProposalKind(StrEnum):
+    """What an agent proposal asks the user to do."""
+
+    GOAL = "goal"
+    TASK = "task"
+    QUICK_TASK = "quick_task"
+    NOTE_APPEND = "note_append"
+    CONTRADICTION = "contradiction"
+    DECISION_REQUEST = "decision_request"
+    EXPERIMENT = "experiment"
+
+
+class ProposalStatus(StrEnum):
+    """Where a proposal is in the inbox."""
+
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    EDITED = "edited"
+    REJECTED = "rejected"
+
+
+class ProposalRejectCategory(StrEnum):
+    """Why the user rejected a proposal."""
+
+    DUPLICATE = "duplicate"
+    WRONG = "wrong"
+    NOT_VALUABLE = "not_valuable"
+    NOT_NOW = "not_now"
+    OTHER = "other"
+
+
+class ProposalResultType(StrEnum):
+    """What entity an accepted proposal created."""
+
+    GOAL = "goal"
+    TASK = "task"
+    QUICK_TASK = "quick_task"
+    CONTEXT_NOTE = "context_note"
 
 
 class AgentToken(SQLModel, table=True):  # type: ignore[call-arg]
@@ -905,6 +961,81 @@ class AgentToken(SQLModel, table=True):  # type: ignore[call-arg]
     revoked_at: datetime | None = SQLField(default=None)
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+
+
+class AgentProposal(SQLModel, table=True):  # type: ignore[call-arg]
+    """A change an agent proposes. The user accepts, edits or rejects it.
+
+    ``payload`` is what the agent sent and is never modified; ``final_payload``
+    is what the user approved when it differs. The enum-like columns are plain
+    TEXT holding the ``.value`` of the matching ``Proposal*`` enum."""
+
+    __tablename__ = "agent_proposals"
+
+    id: UUID | None = SQLField(
+        default=None,
+        sa_column=Column(
+            "id",
+            SQLAlchemyUUID,
+            primary_key=True,
+            server_default=text("gen_random_uuid()"),
+        ),
+    )
+    user_id: UUID = SQLField(foreign_key="users.id", index=True)
+    token_id: UUID | None = SQLField(
+        default=None, foreign_key="agent_tokens.id", ondelete="SET NULL"
+    )
+    agent_name: str = SQLField(max_length=100)
+    kind: str = SQLField(sa_column=Column("kind", Text(), nullable=False))
+    title: str = SQLField(min_length=1, max_length=200)
+    rationale: str = SQLField(
+        default="", sa_column=Column("rationale", Text(), nullable=False)
+    )
+    payload: dict[str, Any] = SQLField(
+        sa_column=Column(JSON().with_variant(JSONB(), "postgresql"), nullable=False)
+    )
+    final_payload: dict[str, Any] | None = SQLField(
+        default=None,
+        # none_as_null: None must be SQL NULL, not the JSON value null.
+        sa_column=Column(
+            JSON(none_as_null=True).with_variant(
+                JSONB(none_as_null=True), "postgresql"
+            ),
+            nullable=True,
+        ),
+    )
+    sources: list[dict[str, Any]] = SQLField(
+        default_factory=list,
+        sa_column=Column(JSON().with_variant(JSONB(), "postgresql"), nullable=False),
+    )
+    idempotency_key: str = SQLField(min_length=1, max_length=200)
+    project_id: UUID | None = SQLField(default=None)
+    status: str = SQLField(
+        default=ProposalStatus.PENDING.value,
+        sa_column=Column("status", Text(), nullable=False),
+    )
+    reject_category: str | None = SQLField(
+        default=None, sa_column=Column("reject_category", Text(), nullable=True)
+    )
+    decision_note: str | None = SQLField(
+        default=None, sa_column=Column("decision_note", Text(), nullable=True)
+    )
+    decision_option: int | None = SQLField(default=None)
+    result_type: str | None = SQLField(
+        default=None, sa_column=Column("result_type", Text(), nullable=True)
+    )
+    result_id: UUID | None = SQLField(default=None)
+    decided_at: datetime | None = SQLField(
+        default=None, sa_column=Column("decided_at", DateTime(timezone=True))
+    )
+    created_at: datetime = SQLField(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column("created_at", DateTime(timezone=True), nullable=False),
+    )
+    updated_at: datetime = SQLField(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column("updated_at", DateTime(timezone=True), nullable=False),
+    )
 
 
 class AgentAuditLog(SQLModel, table=True):  # type: ignore[call-arg]
@@ -1745,6 +1876,82 @@ class AgentScopeCatalog(BaseModel):
 
     scopes: list[AgentScopeInfo]
     presets: list[AgentTokenPresetInfo]
+
+
+class ProposalResult(BaseModel):
+    """The entity an accepted proposal created."""
+
+    type: ProposalResultType
+    id: UUID
+
+
+class AgentProposalResponse(BaseModel):
+    """A proposal as the Agent API shows it. ``token_id`` is never exposed."""
+
+    id: UUID
+    kind: ProposalKind
+    status: ProposalStatus
+    title: str
+    rationale: str
+    payload: dict[str, Any]
+    final_payload: dict[str, Any] | None
+    sources: list[dict[str, Any]]
+    idempotency_key: str
+    agent_name: str
+    project_id: UUID | None
+    reject_category: ProposalRejectCategory | None
+    decision_note: str | None
+    decision_option: int | None
+    result: ProposalResult | None
+    created_at: datetime
+    decided_at: datetime | None
+    updated_at: datetime
+
+    @classmethod
+    def from_row(cls, row: AgentProposal) -> "AgentProposalResponse":
+        """Build the response from a stored row."""
+        result = (
+            ProposalResult(type=ProposalResultType(row.result_type), id=row.result_id)
+            if row.result_type is not None and row.result_id is not None
+            else None
+        )
+        return cls(
+            id=row.id,  # type: ignore[arg-type]
+            kind=ProposalKind(row.kind),
+            status=ProposalStatus(row.status),
+            title=row.title,
+            rationale=row.rationale,
+            payload=row.payload,
+            final_payload=row.final_payload,
+            sources=row.sources,
+            idempotency_key=row.idempotency_key,
+            agent_name=row.agent_name,
+            project_id=row.project_id,
+            reject_category=(
+                ProposalRejectCategory(row.reject_category)
+                if row.reject_category is not None
+                else None
+            ),
+            decision_note=row.decision_note,
+            decision_option=row.decision_option,
+            result=result,
+            created_at=row.created_at,
+            decided_at=row.decided_at,
+            updated_at=row.updated_at,
+        )
+
+    @field_serializer("created_at", "decided_at", "updated_at")
+    def serialize_datetimes(self, value: datetime | None) -> str | None:
+        """Ensure datetimes are serialized with UTC timezone info."""
+        return _serialize_utc(value)
+
+
+class ProposalResponse(AgentProposalResponse):
+    """A proposal as the web inbox shows it, with names of what it points at."""
+
+    project_name: str | None = None
+    goal_title: str | None = None
+    task_title: str | None = None
 
 
 class AgentAuditLogResponse(BaseModel):
