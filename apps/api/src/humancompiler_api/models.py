@@ -1113,7 +1113,7 @@ class EmailNotificationLog(EmailNotificationLogBase, table=True):  # type: ignor
 
     __tablename__ = "email_notification_logs"
 
-    id: UUID | None = SQLField(default=None, primary_key=True)
+    id: UUID = SQLField(default_factory=uuid4, primary_key=True)
     user_id: UUID = SQLField(foreign_key="users.id", index=True)
     task_id: UUID | None = SQLField(default=None, index=True)
     quick_task_id: UUID | None = SQLField(default=None, index=True)

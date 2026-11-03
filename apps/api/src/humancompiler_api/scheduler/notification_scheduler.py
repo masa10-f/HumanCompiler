@@ -15,11 +15,12 @@ For multi-instance deployments, consider using a persistent job store (e.g., Red
 
 import logging
 from datetime import datetime, timedelta, UTC
+from uuid import UUID, uuid4
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.memory import MemoryJobStore
 from sqlalchemy.orm import selectinload
-from sqlmodel import Session, select
+from sqlmodel import Session, col, func, select
 
 from humancompiler_api import agent_audit
 from humancompiler_api.daily_digest import run_daily_digest
@@ -45,6 +46,10 @@ from humancompiler_api.email_service import get_email_service
 from humancompiler_api.config import settings
 
 logger = logging.getLogger(__name__)
+
+# A task's deadline email is retried on later runs after a failed send, at
+# most this many times per (UTC) day.
+MAX_FAILURES_PER_DAY = 3
 
 # Global scheduler instance
 _scheduler: AsyncIOScheduler | None = None
@@ -161,13 +166,19 @@ async def check_and_send_deadline_emails():
                 return
 
             for user, user_settings in users_with_settings:
+                # Read before processing: after a failed flush, touching an
+                # expired attribute would raise again.
+                user_id = user.id
                 try:
                     await _process_user_deadline_notifications(
                         session, user, user_settings, now, email_service
                     )
                 except Exception as e:
+                    # Discard this user's failed transaction so the shared
+                    # session stays usable for the next user.
+                    session.rollback()
                     logger.error(
-                        f"Error processing deadline notifications for user {user.id}: {e}"
+                        f"Error processing deadline notifications for user {user_id}: {e}"
                     )
 
     except Exception as e:
@@ -275,6 +286,83 @@ async def _process_user_deadline_notifications(
         await _process_overdue_notifications(session, user, now, email_service)
 
 
+def _handled_today(
+    session: Session,
+    user_id: UUID,
+    task_id: UUID,
+    is_quick_task: bool,
+    notification_type: EmailNotificationType,
+    today_start: datetime,
+) -> bool:
+    """True when today's logs for this task hold a sent or pending email, or
+    ``MAX_FAILURES_PER_DAY`` failed ones.
+
+    A ``pending`` row is a reservation made before sending. One left behind by
+    a failed update or a crash blocks the rest of the day: missing one email is
+    acceptable, mailing the user on every run is not.
+    """
+    task_match = (
+        EmailNotificationLog.quick_task_id == task_id
+        if is_quick_task
+        else EmailNotificationLog.task_id == task_id
+    )
+    rows = session.exec(
+        select(EmailNotificationLog.status, func.count())
+        .where(
+            EmailNotificationLog.user_id == user_id,
+            task_match,
+            EmailNotificationLog.notification_type == notification_type,
+            col(EmailNotificationLog.created_at) >= today_start,
+        )
+        .group_by(EmailNotificationLog.status)
+    ).all()
+    counts = {status: count for status, count in rows}
+    return (
+        counts.get(EmailNotificationStatus.SENT, 0) > 0
+        or counts.get(EmailNotificationStatus.PENDING, 0) > 0
+        or counts.get(EmailNotificationStatus.FAILED, 0) >= MAX_FAILURES_PER_DAY
+    )
+
+
+def _reserve_log(
+    session: Session,
+    user_id: UUID,
+    task_id: UUID,
+    is_quick_task: bool,
+    notification_type: EmailNotificationType,
+    now: datetime,
+) -> EmailNotificationLog:
+    """Commit a ``pending`` log row for this task before its email is sent."""
+    log_entry = EmailNotificationLog(
+        id=uuid4(),
+        user_id=user_id,
+        task_id=None if is_quick_task else task_id,
+        quick_task_id=task_id if is_quick_task else None,
+        notification_type=notification_type,
+        status=EmailNotificationStatus.PENDING,
+        sent_at=None,
+        error_message=None,
+        created_at=now,
+    )
+    session.add(log_entry)
+    session.commit()
+    return log_entry
+
+
+def _record_outcome(
+    session: Session, log_entry: EmailNotificationLog, success: bool, now: datetime
+) -> None:
+    """Mark a reserved log row ``sent`` or ``failed`` and commit."""
+    if success:
+        log_entry.status = EmailNotificationStatus.SENT
+        log_entry.sent_at = now
+    else:
+        log_entry.status = EmailNotificationStatus.FAILED
+        log_entry.error_message = "Failed to send email"
+    session.add(log_entry)
+    session.commit()
+
+
 async def _send_task_deadline_email(
     session: Session,
     user: User,
@@ -291,23 +379,12 @@ async def _send_task_deadline_email(
     task_id = task.id
     notification_type = EmailNotificationType.DEADLINE_REMINDER
 
-    # Check if we already sent a notification for this task today
+    # Skip a task already sent, being sent, or failing too often today
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    existing_log_stmt = select(EmailNotificationLog).where(
-        EmailNotificationLog.user_id == user.id,
-        (
-            EmailNotificationLog.quick_task_id == task_id
-            if is_quick_task
-            else EmailNotificationLog.task_id == task_id
-        ),
-        EmailNotificationLog.notification_type == notification_type,
-        EmailNotificationLog.created_at >= today_start,  # type: ignore[operator]
-        EmailNotificationLog.status == EmailNotificationStatus.SENT,
-    )
-    existing_log = session.exec(existing_log_stmt).first()
-
-    if existing_log:
-        logger.debug(f"Already sent deadline reminder for task {task_id} today")
+    if _handled_today(
+        session, user.id, task_id, is_quick_task, notification_type, today_start
+    ):
+        logger.debug(f"Already handled deadline reminder for task {task_id} today")
         return
 
     # Calculate hours until due (due_date is guaranteed non-None by guard clause)
@@ -321,34 +398,32 @@ async def _send_task_deadline_email(
         if task.goal.project:
             project_title = task.goal.project.title
 
-    # Send email
+    # Plain values: the commits below expire the ORM objects.
+    to_email = user.email
+    task_title = task.title
+    due_date = task.due_date
+
+    # Reserve today's row before sending (see _handled_today).
+    log_entry = _reserve_log(
+        session, user.id, task_id, is_quick_task, notification_type, now
+    )
+
     success = email_service.send_deadline_reminder(
-        to_email=user.email,
-        task_title=task.title,
+        to_email=to_email,
+        task_title=task_title,
         task_id=task_id,
-        due_date=task.due_date,
+        due_date=due_date,
         hours_until_due=hours_until_due,
         project_title=project_title,
         goal_title=goal_title,
     )
 
-    # Log the notification
-    log_entry = EmailNotificationLog(
-        user_id=user.id,
-        task_id=None if is_quick_task else task_id,
-        quick_task_id=task_id if is_quick_task else None,
-        notification_type=notification_type,
-        status=EmailNotificationStatus.SENT
-        if success
-        else EmailNotificationStatus.FAILED,
-        sent_at=now if success else None,
-        error_message=None if success else "Failed to send email",
-    )
-    session.add(log_entry)
-    session.commit()
+    _record_outcome(session, log_entry, success, now)
 
     if success:
-        logger.info(f"Sent deadline reminder for task {task_id} to {user.email}")
+        logger.info(f"Sent deadline reminder for task {task_id} to {to_email}")
+    else:
+        logger.warning(f"Failed to send deadline reminder for task {task_id}")
 
 
 async def _process_overdue_notifications(
@@ -409,23 +484,12 @@ async def _send_overdue_email(
     task_id = task.id
     notification_type = EmailNotificationType.OVERDUE_ALERT
 
-    # Check if we already sent an overdue notification for this task today
+    # Skip a task already sent, being sent, or failing too often today
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    existing_log_stmt = select(EmailNotificationLog).where(
-        EmailNotificationLog.user_id == user.id,
-        (
-            EmailNotificationLog.quick_task_id == task_id
-            if is_quick_task
-            else EmailNotificationLog.task_id == task_id
-        ),
-        EmailNotificationLog.notification_type == notification_type,
-        EmailNotificationLog.created_at >= today_start,  # type: ignore[operator]
-        EmailNotificationLog.status == EmailNotificationStatus.SENT,
-    )
-    existing_log = session.exec(existing_log_stmt).first()
-
-    if existing_log:
-        logger.debug(f"Already sent overdue alert for task {task_id} today")
+    if _handled_today(
+        session, user.id, task_id, is_quick_task, notification_type, today_start
+    ):
+        logger.debug(f"Already handled overdue alert for task {task_id} today")
         return
 
     # Calculate hours overdue (due_date is guaranteed non-None by guard clause)
@@ -439,34 +503,32 @@ async def _send_overdue_email(
         if task.goal.project:
             project_title = task.goal.project.title
 
-    # Send email
+    # Plain values: the commits below expire the ORM objects.
+    to_email = user.email
+    task_title = task.title
+    due_date = task.due_date
+
+    # Reserve today's row before sending (see _handled_today).
+    log_entry = _reserve_log(
+        session, user.id, task_id, is_quick_task, notification_type, now
+    )
+
     success = email_service.send_overdue_alert(
-        to_email=user.email,
-        task_title=task.title,
+        to_email=to_email,
+        task_title=task_title,
         task_id=task_id,
-        due_date=task.due_date,
+        due_date=due_date,
         hours_overdue=hours_overdue,
         project_title=project_title,
         goal_title=goal_title,
     )
 
-    # Log the notification
-    log_entry = EmailNotificationLog(
-        user_id=user.id,
-        task_id=None if is_quick_task else task_id,
-        quick_task_id=task_id if is_quick_task else None,
-        notification_type=notification_type,
-        status=EmailNotificationStatus.SENT
-        if success
-        else EmailNotificationStatus.FAILED,
-        sent_at=now if success else None,
-        error_message=None if success else "Failed to send email",
-    )
-    session.add(log_entry)
-    session.commit()
+    _record_outcome(session, log_entry, success, now)
 
     if success:
-        logger.info(f"Sent overdue alert for task {task_id} to {user.email}")
+        logger.info(f"Sent overdue alert for task {task_id} to {to_email}")
+    else:
+        logger.warning(f"Failed to send overdue alert for task {task_id}")
 
 
 def start_notification_scheduler() -> bool:
