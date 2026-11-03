@@ -7,7 +7,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -75,6 +75,9 @@ export function ProposalActions({ proposal, onEdit }: ProposalActionsProps) {
   const [option, setOption] = useState('');
   const [rejectOpen, setRejectOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Synchronous guard: isPending only updates after a re-render, so two quick
+  // clicks could otherwise both send a request.
+  const inFlight = useRef(false);
 
   const busy = accept.isPending || reject.isPending;
   const isDecisionRequest = proposal.kind === 'decision_request';
@@ -86,13 +89,19 @@ export function ProposalActions({ proposal, onEdit }: ProposalActionsProps) {
     run: () => Promise<T>,
     onDone: (result: T) => void
   ): Promise<void> {
-    if (busy) return;
+    if (inFlight.current || busy) return;
+    inFlight.current = true;
     setError(null);
+    let result: T;
     try {
-      onDone(await run());
+      result = await run();
     } catch (e) {
       setError(proposalErrorMessage(e));
+      return;
+    } finally {
+      inFlight.current = false;
     }
+    onDone(result);
   }
 
   function submitAccept(body: ProposalAcceptRequest) {

@@ -148,9 +148,11 @@ describe('ProposalActions', () => {
 
       const button = screen.getByRole('button', { name: '承認' });
       fireEvent.click(button);
-      await waitFor(() => expect(button).toBeDisabled());
       fireEvent.click(button);
 
+      // TanStack starts the mutation function asynchronously.
+      await waitFor(() => expect(mockAccept).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(button).toBeDisabled());
       expect(mockAccept).toHaveBeenCalledTimes(1);
       expect(screen.getByRole('button', { name: '却下' })).toBeDisabled();
 
@@ -285,6 +287,34 @@ describe('ProposalActions', () => {
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     });
 
+    it('sends one request when 却下する is clicked twice while pending', async () => {
+      const pending = deferred<Proposal>();
+      mockReject.mockReturnValue(pending.promise);
+      renderWithClient(<ProposalActions proposal={makeProposal()} />);
+
+      fireEvent.click(screen.getByRole('button', { name: '却下' }));
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.keyDown(within(dialog).getByRole('combobox', { name: '理由' }), {
+        key: 'Enter',
+      });
+      fireEvent.keyDown(await screen.findByRole('option', { name: '重複している' }), {
+        key: 'Enter',
+      });
+      const submit = within(dialog).getByRole('button', { name: '却下する' });
+      await waitFor(() => expect(submit).toBeEnabled());
+
+      fireEvent.click(submit);
+      fireEvent.click(submit);
+
+      await waitFor(() => expect(mockReject).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(submit).toBeDisabled());
+      expect(mockReject).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        pending.resolve(makeProposal({ status: 'rejected' }));
+      });
+    });
+
     it('keeps the dialog and its input open when rejecting fails', async () => {
       mockReject.mockRejectedValue(
         new ApiError(409, 'Proposal is already decided', {}, 'Proposal is already decided')
@@ -363,6 +393,8 @@ describe('ProposalActions', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent(
         'decision_option: Input should be less than or equal to 5'
       );
+      expect(screen.getByRole('radio', { name: 'Postgres' })).toBeChecked();
+      expect(screen.getByRole('button', { name: 'この内容で承認' })).toBeEnabled();
     });
 
     it('clears the error when the next attempt starts', async () => {
