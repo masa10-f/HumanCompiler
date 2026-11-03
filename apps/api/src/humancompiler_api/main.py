@@ -33,6 +33,7 @@ from humancompiler_api.exceptions import (
     validation_exception_handler,
 )
 from humancompiler_api.routers import (
+    agent_proposals,
     agent_tokens,
     agent_v1,
     ai_planning,
@@ -48,6 +49,7 @@ from humancompiler_api.routers import (
     notes,
     notifications,
     progress,
+    proposals,
     projects,
     quick_tasks,
     reports,
@@ -340,6 +342,8 @@ app.include_router(simple_backup_api.router)
 app.include_router(data_export.router, tags=["data-export"])
 app.include_router(agent_tokens.router)
 app.include_router(agent_v1.router)
+app.include_router(agent_proposals.router)
+app.include_router(proposals.router, prefix="/api")
 app.include_router(hooks.router, prefix="/api")
 app.include_router(work_sessions.router, prefix="/api")
 # Issue #227: Reschedule router

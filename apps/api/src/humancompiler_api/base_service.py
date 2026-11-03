@@ -37,20 +37,28 @@ class BaseService(ABC, Generic[T, CreateT, UpdateT]):
         """Get the filter condition for user ownership. Must be implemented by subclasses."""
         pass
 
+    def build(
+        self, session: Session, data: CreateT, user_id: str | UUID, **kwargs
+    ) -> T:
+        """Create a new entity and flush it without committing.
+
+        The caller owns the transaction (commit or rollback), which lets several
+        writes succeed or fail together.
+        """
+        user_id_validated = validate_uuid(user_id, "user_id")
+        instance = self._create_instance(data, user_id=user_id_validated, **kwargs)
+        instance.id = uuid4()
+        session.add(instance)
+        session.flush()  # Get ID without committing
+        return instance
+
     def create(
         self, session: Session, data: CreateT, user_id: str | UUID, **kwargs
     ) -> T:
         """Create a new entity"""
-        user_id_validated = validate_uuid(user_id, "user_id")
-
-        def create_operation():
-            instance = self._create_instance(data, user_id=user_id_validated, **kwargs)
-            instance.id = uuid4()
-            session.add(instance)
-            session.flush()  # Get ID without committing
-            return instance
-
-        return safe_execute(session, create_operation)
+        return safe_execute(
+            session, lambda: self.build(session, data, user_id, **kwargs)
+        )
 
     def get_by_id(
         self, session: Session, entity_id: str | UUID, user_id: str | UUID
