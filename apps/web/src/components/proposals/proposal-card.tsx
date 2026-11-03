@@ -7,7 +7,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,23 +21,17 @@ import { formatJapaneseDate } from '@/lib/date-utils';
 import { proposalResultHref } from '@/lib/proposal-links';
 import {
   PROPOSAL_KIND_LABELS,
+  PROPOSAL_RESULT_LINK_LABELS,
   PROPOSAL_STATUS_LABELS,
   REJECT_CATEGORY_LABELS,
   type Proposal,
-  type ProposalResultType,
 } from '@/types/proposal';
+import { ProposalActions } from './proposal-actions';
 import { ProposalPayloadView } from './proposal-payload-view';
 import { ProposalSources } from './proposal-sources';
 
 const RATIONALE_MAX_CHARS = 300;
 const RATIONALE_MAX_LINES = 5;
-
-const RESULT_LINK_LABELS: Record<ProposalResultType, string> = {
-  goal: '作成した Goal を開く',
-  task: '作成したタスクを開く',
-  quick_task: 'クイックタスクを開く',
-  context_note: 'ノートを開く',
-};
 
 // formatJapaneseDate (not safeFormatJapaneseDate, which cannot include the time).
 function formatTimestamp(iso: string): string {
@@ -127,7 +121,7 @@ function Decision({ proposal }: { proposal: Proposal }) {
       ) : null}
       {proposal.result && resultHref ? (
         <Link href={resultHref} className="text-primary underline underline-offset-2">
-          {RESULT_LINK_LABELS[proposal.result.type]}
+          {PROPOSAL_RESULT_LINK_LABELS[proposal.result.type]}
         </Link>
       ) : null}
     </div>
@@ -136,11 +130,9 @@ function Decision({ proposal }: { proposal: Proposal }) {
 
 interface ProposalCardProps {
   proposal: Proposal;
-  /** Rendered in the card footer (accept / reject / edit controls). */
-  actions?: ReactNode;
 }
 
-export function ProposalCard({ proposal, actions }: ProposalCardProps) {
+export function ProposalCard({ proposal }: ProposalCardProps) {
   const projectName = proposal.project_id
     ? (proposal.project_name ?? '（削除済み）')
     : null;
@@ -166,7 +158,11 @@ export function ProposalCard({ proposal, actions }: ProposalCardProps) {
         <ProposalSources sources={proposal.sources} />
         <Decision proposal={proposal} />
       </CardContent>
-      {actions ? <CardFooter className="flex-wrap gap-2">{actions}</CardFooter> : null}
+      {proposal.status === 'pending' ? (
+        <CardFooter>
+          <ProposalActions proposal={proposal} />
+        </CardFooter>
+      ) : null}
     </Card>
   );
 }

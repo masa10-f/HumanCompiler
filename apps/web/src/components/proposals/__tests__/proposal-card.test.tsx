@@ -307,7 +307,37 @@ describe('ProposalCard', () => {
     });
   });
 
+  describe('final payload', () => {
+    it('shows the final_payload title when it differs from the payload', () => {
+      renderWithClient(
+        <ProposalCard
+          proposal={makeProposal({
+            status: 'edited',
+            payload: { project_id: 'p1', title: 'Original title' },
+            final_payload: { project_id: 'p1', title: 'Edited title' },
+          })}
+        />
+      );
+      expect(screen.getByText('Edited title')).toBeInTheDocument();
+      expect(screen.queryByText('Original title')).toBeNull();
+    });
+  });
+
   describe('unexpected payloads', () => {
+    it('shows （削除済み） for the goal of a task whose goal was deleted', () => {
+      renderWithClient(
+        <ProposalCard
+          proposal={makeProposal({
+            kind: 'task',
+            goal_title: null,
+            payload: { goal_id: 'g1', title: 'Orphan task' },
+          })}
+        />
+      );
+      expect(screen.getByText('Orphan task')).toBeInTheDocument();
+      expect(screen.getByText('（削除済み）')).toBeInTheDocument();
+    });
+
     it('renders a task without due_date and with a non-numeric priority', () => {
       renderWithClient(
         <ProposalCard
@@ -400,13 +430,19 @@ describe('ProposalCard', () => {
     });
   });
 
-  it('renders the actions slot', () => {
-    renderWithClient(
-      <ProposalCard
-        proposal={makeProposal()}
-        actions={<button type="button">slot</button>}
-      />
-    );
-    expect(screen.getByRole('button', { name: 'slot' })).toBeInTheDocument();
+  describe('actions', () => {
+    it('renders accept and reject buttons for a pending proposal', () => {
+      renderWithClient(<ProposalCard proposal={makeProposal()} />);
+      expect(screen.getByRole('button', { name: '承認' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '却下' })).toBeInTheDocument();
+    });
+
+    it('renders no action buttons for a decided proposal', () => {
+      renderWithClient(
+        <ProposalCard proposal={makeProposal({ status: 'accepted' })} />
+      );
+      expect(screen.queryByRole('button', { name: '承認' })).toBeNull();
+      expect(screen.queryByRole('button', { name: '却下' })).toBeNull();
+    });
   });
 });

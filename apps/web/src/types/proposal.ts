@@ -123,3 +123,10 @@ export const REJECT_CATEGORY_LABELS: Record<ProposalRejectCategory, string> = {
   not_now: '今はやらない',
   other: 'その他',
 };
+
+export const PROPOSAL_RESULT_LINK_LABELS: Record<ProposalResultType, string> = {
+  goal: '作成した Goal を開く',
+  task: '作成したタスクを開く',
+  quick_task: 'クイックタスクを開く',
+  context_note: 'ノートを開く',
+};
