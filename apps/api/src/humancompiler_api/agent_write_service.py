@@ -640,6 +640,21 @@ def _check_note_version(note: ContextNote | None, expected: datetime | None) -> 
     check_expected_updated_at(stored, expected)
 
 
+def _create_note_for_replace(
+    session: Session, user_id: UUID, note_target: _NoteTarget
+) -> ContextNote:
+    """Create the missing note; a concurrent first create gives the stale 409.
+
+    ``create_note`` answers that race with a plain-text 409; the PUT answers
+    every 409 with ``{message, current_updated_at}``."""
+    try:
+        return proposal_service.create_note(session, user_id, note_target.target)
+    except HTTPException as error:
+        if error.status_code == status.HTTP_409_CONFLICT:
+            raise _stale(None) from None
+        raise
+
+
 def append_note(
     session: Session,
     principal: AgentPrincipal,
@@ -694,18 +709,20 @@ def replace_note(
     """Replace the note of one of the user's projects, goals or tasks. Destructive.
 
     ``expected_updated_at`` must be the note's updated_at, or None when the
-    item has no note yet; then the note is created."""
+    item has no note yet; then the note is created. Replacing an existing note
+    with the HTML it already has changes nothing and records nothing."""
     try:
         note_target = _owned_note_target(session, principal.user_id, kind, target_id)
         note = proposal_service.lock_note(session, note_target.target)
         _check_note_version(note, data.expected_updated_at)
         require_destructive_allowed(principal)
-        if note is None:
-            note = proposal_service.create_note(
-                session, principal.user_id, note_target.target
-            )
-        old_html = note.content
         new_html = markdown_to_note_html(data.content_markdown)
+        if note is not None and note.content == new_html:
+            session.commit()
+            return note
+        if note is None:
+            note = _create_note_for_replace(session, principal.user_id, note_target)
+        old_html = note.content
         note.content = new_html
         note.content_type = "html"
         note.updated_at = datetime.now(UTC)

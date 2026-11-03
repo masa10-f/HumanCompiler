@@ -13,6 +13,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi import HTTPException
 from sqlmodel import Session, func, select
 
 from humancompiler_api import agent_write_service
@@ -1246,6 +1247,57 @@ def test_replace_missing_note(session: Session):
     assert change.after == {"content": ""}
     assert change.project_id == project.id
     assert change.goal_id == goal.id
+
+
+def test_identical_replace_is_noop(session: Session):
+    _, _, task = _tree(session)
+    note = seed_note(session, USER_A, task=task, updated_at=STAMP)
+    markdown = "Same *text*"
+    _set(session, note, content=markdown_to_note_html(markdown), content_type="html")
+    token = issue_token(session, USER_A, NOTES_UNCONFIRMED)
+
+    response = _replace(token, "tasks", task.id, markdown, STAMP.isoformat())
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["content"] == markdown_to_note_html(markdown)
+    assert datetime.fromisoformat(body["updated_at"]) == STAMP
+    (stored,) = _notes(session)
+    assert stored.content == markdown_to_note_html(markdown)
+    assert _utc(stored.updated_at) == STAMP
+    assert _changes(session) == []
+
+    # The checks before it still apply: stale gives 409, no scope gives 403.
+    response = _replace(token, "tasks", task.id, markdown, None)
+    assert response.status_code == 409
+    response = _replace(
+        issue_token(session, USER_A, NOTES),
+        "tasks",
+        task.id,
+        markdown,
+        STAMP.isoformat(),
+    )
+    assert response.status_code == 403
+    assert _changes(session) == []
+
+
+def test_replace_create_race_is_stale_409(session: Session, monkeypatch):
+    _, _, task = _tree(session)
+    token = issue_token(session, USER_A, NOTES_UNCONFIRMED)
+
+    def created_concurrently(*args: Any, **kwargs: Any) -> ContextNote:
+        raise HTTPException(409, "Note was created concurrently; retry")
+
+    monkeypatch.setattr(
+        agent_write_service.proposal_service, "create_note", created_concurrently
+    )
+    response = _replace(token, "tasks", task.id, "New", None)
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "message": STALE_MESSAGE,
+        "current_updated_at": None,
+    }
+    assert _notes(session) == []
+    assert _changes(session) == []
 
 
 @pytest.mark.parametrize("kind", NOTE_KINDS)
