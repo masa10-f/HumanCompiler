@@ -271,7 +271,8 @@ def lock_note(session: Session, target: NoteTarget) -> ContextNote | None:
 
     The same lookup as ``routers/notes.get_or_create_note``. The lock makes two
     writes to the same note run one after the other; otherwise both read the
-    same content and the later write drops the earlier one."""
+    same content and the later write drops the earlier one. It is
+    ``FOR NO KEY UPDATE``, so adding an attachment to the note does not wait."""
     query = select(ContextNote)
     if target.project_id is not None:
         query = query.where(ContextNote.project_id == target.project_id)
@@ -280,7 +281,7 @@ def lock_note(session: Session, target: NoteTarget) -> ContextNote | None:
     else:
         query = query.where(ContextNote.task_id == target.task_id)
     return session.exec(
-        query.with_for_update().execution_options(populate_existing=True)
+        query.with_for_update(key_share=True).execution_options(populate_existing=True)
     ).first()
 
 

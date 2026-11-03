@@ -38,11 +38,13 @@
   - On a mismatch, return 409 with `detail = {"message": "Changed since you read it; read it again and retry", "current_updated_at": <iso UTC>}`, and write nothing.
 - **Destructive (消える操作).** A change is destructive when it does any of the following:
   - sets `status` to `cancelled` (Goal or Task);
-  - sets `description` to a value different from the stored one (Goal or Task, including clearing it);
-  - sets `memo` to a value different from the stored one (Task);
+  - sets `description` to a value different from a non-empty stored value (Goal or Task, including clearing it);
+  - sets `memo` to a value different from a non-empty stored value (Task);
   - sets `goal_id` to a different goal (Task);
-  - is a note replace;
+  - is a replace of a note whose stored content is non-empty;
   - removes a dependency.
+
+  A stored value is empty when it is None or "" after `.strip()`; a note is empty when it does not exist or its HTML has no text once tags, entities and whitespace are stripped (TipTap's `<p></p>`), and holds no image or horizontal rule. Filling an empty field erases nothing, so it is an ordinary write with `destructive=false` (final review F3, controller ruling).
 
   Appends (`memo_append`, note append) are never destructive. Without `writes:unconfirmed`, a request containing any destructive change gets 403 with `detail = "This change needs the writes:unconfirmed scope"`, and nothing is written. This includes a PATCH that mixes ordinary and destructive fields.
 - **No-op updates.** A PATCH whose fields all equal the stored values returns 200 with the entity, records no change and does not bump `updated_at`.
@@ -314,8 +316,8 @@
 - **Replace.**
   - Convert with `markdown_to_note_html`. An empty markdown gives an empty note.
   - Compare `expected_updated_at`. If the note does not exist and `expected_updated_at` is null, create it. If the note exists and the value is null, return 409 with `current_updated_at`.
-  - Destructive, so it calls `require_destructive_allowed`.
-  - The change row has `action=replace`, `before={"content": old_html}`, `after={"content": new_html}` and `destructive=true`.
+  - Destructive when the note exists and its stored content is non-empty; then it calls `require_destructive_allowed`. Creating the note or filling an empty one is ordinary.
+  - The change row has `action=replace`, `before={"content": old_html}`, `after={"content": new_html}` and `destructive` as decided above.
 - **Parents on the change row:** a project note sets `project_id`; a goal note sets `goal_id` and its project; a task note sets the task's `goal_id` and project.
 - **Agent-supplied markdown** never reaches the HTML unconverted: raw HTML is disabled in `note_markdown`.
 

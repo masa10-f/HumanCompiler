@@ -12,6 +12,8 @@ commit (``record_change``, ``require_destructive_allowed``,
 ``check_expected_updated_at``) are shared with the other agent writes.
 """
 
+import html
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -67,6 +69,26 @@ CYCLE_DETAIL = "Creating this dependency would create a circular dependency"
 STALE_MESSAGE = "Changed since you read it; read it again and retry"
 MEMO_MAX_LENGTH = 2000
 MEMO_APPEND_SEPARATOR = "\n"
+_TAG = re.compile(r"<[^>]*>")
+# Elements that are content without any text; a note holding one is not blank.
+_CONTENT_ELEMENT = re.compile(
+    r"<\s*(?:img|hr|video|audio|iframe|embed|object|svg|picture)\b", re.IGNORECASE
+)
+
+
+def _is_blank(value: str | None) -> bool:
+    """True for a stored text the user has written nothing in."""
+    return value is None or not value.strip()
+
+
+def _is_blank_html(content: str) -> bool:
+    """True for note HTML with no text, such as TipTap's empty ``<p></p>``.
+
+    Strips the tags, decodes entities (``&nbsp;``) and whitespace. A note with
+    an image or a horizontal rule is not blank, though it has no text."""
+    if _CONTENT_ELEMENT.search(content):
+        return False
+    return not html.unescape(_TAG.sub("", content)).strip()
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -206,12 +228,17 @@ def _owned_task(
 def _lock(session: Session, entity: Goal | Task) -> None:
     """Lock the entity's row (a no-op on SQLite), then reread it.
 
-    Only the id is selected under ``FOR UPDATE`` so the goal's computed
-    ``estimate_hours`` subquery never sits in a locking query. The refresh reads
-    the values committed before the lock was granted."""
+    ``FOR NO KEY UPDATE`` serializes agent writes to the row, but does not wait
+    for (or deadlock with) the ``FOR KEY SHARE`` that inserting a row with a
+    foreign key to it takes, such as a new task under a locked goal. Only the
+    id is selected so the goal's computed ``estimate_hours`` subquery never
+    sits in a locking query. The refresh reads the values committed before the
+    lock was granted."""
     model = type(entity)
     session.exec(
-        select(col(model.id)).where(col(model.id) == entity.id).with_for_update()
+        select(col(model.id))
+        .where(col(model.id) == entity.id)
+        .with_for_update(key_share=True)
     ).one()
     session.refresh(entity)
 
@@ -280,7 +307,7 @@ def update_goal(
 ) -> Goal:
     """Change the sent fields of one of the user's goals.
 
-    Cancelling and changing the description are destructive."""
+    Cancelling and changing a non-empty description are destructive."""
     try:
         goal = _owned_goal(session, principal.user_id, goal_id)
         _lock(session, goal)
@@ -293,10 +320,9 @@ def update_goal(
             return goal
         if "status" in changes:
             goal_service._validate_status_transition(*changes["status"])
-        destructive = (
-            changes.get("status", (None, None))[1] == GoalStatus.CANCELLED
-            or "description" in changes
-        )
+        destructive = changes.get("status", (None, None))[
+            1
+        ] == GoalStatus.CANCELLED or _overwrites_text(changes, {"description"})
         if destructive:
             require_destructive_allowed(principal)
         _apply(goal, changes)
@@ -379,10 +405,18 @@ def create_task(
     return task
 
 
+def _overwrites_text(changes: dict[str, tuple[Any, Any]], fields: set[str]) -> bool:
+    """True if a change replaces or clears text the user wrote in ``fields``.
+
+    Filling an empty field erases nothing, so it is not destructive."""
+    return any(name in changes and not _is_blank(changes[name][0]) for name in fields)
+
+
 def _is_destructive_task_change(changes: dict[str, tuple[Any, Any]]) -> bool:
     return bool(
         changes.get("status", (None, None))[1] == TaskStatus.CANCELLED
-        or {"description", "memo", "goal_id"} & changes.keys()
+        or "goal_id" in changes
+        or _overwrites_text(changes, {"description", "memo"})
     )
 
 
@@ -391,8 +425,9 @@ def update_task(
 ) -> Task:
     """Change the sent fields of one of the user's tasks.
 
-    Cancelling, changing the description or memo, and moving the task to
-    another goal are destructive. ``memo_append`` adds to the memo and is not."""
+    Cancelling, changing a non-empty description or memo, and moving the task
+    to another goal are destructive. ``memo_append`` adds to the memo and is
+    not."""
     user_id = principal.user_id
     try:
         task = _owned_task(session, user_id, task_id)
@@ -706,16 +741,20 @@ def replace_note(
     target_id: UUID,
     data: AgentNoteReplace,
 ) -> ContextNote:
-    """Replace the note of one of the user's projects, goals or tasks. Destructive.
+    """Replace the note of one of the user's projects, goals or tasks.
 
-    ``expected_updated_at`` must be the note's updated_at, or None when the
-    item has no note yet; then the note is created. Replacing an existing note
-    with the HTML it already has changes nothing and records nothing."""
+    Destructive when the note has text (see ``_is_blank_html``); creating the
+    note or filling an empty one is not. ``expected_updated_at`` must be the
+    note's updated_at, or None when the item has no note yet; then the note is
+    created. Replacing an existing note with the HTML it already has changes
+    nothing and records nothing."""
     try:
         note_target = _owned_note_target(session, principal.user_id, kind, target_id)
         note = proposal_service.lock_note(session, note_target.target)
         _check_note_version(note, data.expected_updated_at)
-        require_destructive_allowed(principal)
+        destructive = note is not None and not _is_blank_html(note.content)
+        if destructive:
+            require_destructive_allowed(principal)
         new_html = markdown_to_note_html(data.content_markdown)
         if note is not None and note.content == new_html:
             session.commit()
@@ -736,7 +775,7 @@ def replace_note(
             action=AgentChangeAction.REPLACE,
             before={"content": old_html},
             after={"content": new_html},
-            destructive=True,
+            destructive=destructive,
             project_id=note_target.project_id,
             goal_id=note_target.goal_id,
         )

@@ -575,8 +575,8 @@ def test_note_append_converts_markdown_note_to_html(session: Session):
 def test_note_append_locks_the_note_row(session: Session):
     """Two accepts appending to one note must serialise on the note row.
 
-    SQLite ignores FOR UPDATE, so check the statement itself as PostgreSQL
-    would compile it."""
+    SQLite ignores the row lock, so check the statement itself as PostgreSQL
+    would compile it: FOR NO KEY UPDATE, which still makes writers wait."""
     project = seed_project(session, USER_A)
     seed_note(session, USER_A, project=project)
     row = make_proposal(
@@ -603,7 +603,7 @@ def test_note_append_locks_the_note_row(session: Session):
     assert note_lookups, "the note must have been looked up"
     lookup = note_lookups[0]
     compiled = str(lookup.statement.compile(dialect=postgresql.dialect()))
-    assert "FOR UPDATE" in compiled
+    assert compiled.rstrip().endswith("FOR NO KEY UPDATE")
     assert lookup.execution_options.get("populate_existing") is True
 
 

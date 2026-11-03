@@ -29,6 +29,7 @@ from humancompiler_api.agent_write_models import (
     AgentTaskCreate,
     AgentTaskUpdate,
     NoteTargetKind,
+    NOTE_REPLACE_LOSES,
 )
 from humancompiler_api.database import get_session
 from humancompiler_api.models import (
@@ -54,7 +55,7 @@ UPDATE_GUIDE = (
     "detail.current_updated_at; read it again and retry. A request whose values "
     "all equal the stored ones changes nothing and keeps updated_at. "
     "A request with any destructive change (cancelling, changing or clearing "
-    "description or memo, moving a task to another goal) needs the "
+    "a non-empty description or memo, moving a task to another goal) needs the "
     "writes:unconfirmed scope; without it the whole request is refused with 403 "
     "and nothing is written. Send the destructive change as a proposal instead."
 )
@@ -168,6 +169,12 @@ async def update_task(
     "/tasks/{task_id}/dependencies",
     response_model=TaskResponse,
     status_code=status.HTTP_201_CREATED,
+    responses={
+        200: {
+            "model": TaskResponse,
+            "description": "The dependency already existed; nothing changed",
+        }
+    },
     summary="Add a task dependency",
     description=(
         "Make the task depend on depends_on_task_id (it comes after that task). "
@@ -253,9 +260,11 @@ async def append_note(
     summary="Replace a note",
     description=(
         "Replace the whole note of a project, goal or task with the Markdown "
-        "sent; an empty string empties it. This is a destructive change: it "
-        "needs the writes:unconfirmed scope, else 403 and nothing changes; send "
-        "it as a proposal instead. expected_updated_at must be the note's "
+        "sent; an empty string empties it. Replacing a note that has text is a "
+        "destructive change: it needs the writes:unconfirmed scope, else 403 "
+        "and nothing changes; send it as a proposal instead. Creating the note "
+        "or filling an empty one is not destructive. "
+        f"{NOTE_REPLACE_LOSES} expected_updated_at must be the note's "
         "updated_at you last read, or null when the item has no note yet (that "
         "creates it). If they differ, nothing is written and the answer is 409 "
         "with detail.current_updated_at (null when there is no note); read it "

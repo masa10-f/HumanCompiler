@@ -32,6 +32,12 @@ EXPECTED_UPDATED_AT_DESCRIPTION = (
     "written and the answer is 409 with the current updated_at."
 )
 
+NOTE_REPLACE_LOSES = (
+    "A replace keeps headings, lists, checklists (- [ ] / - [x]), bold, italic, "
+    "code and links, but loses what Markdown cannot carry here: tables, text "
+    "colour and highlight, images and attachments."
+)
+
 
 class _AgentWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -175,6 +181,7 @@ class AgentNoteReplace(_AgentWrite):
         max_length=100000,
         description=(
             "Markdown that becomes the whole note; an empty string empties it. "
-            "Raw HTML is shown as text."
+            "Raw HTML is shown as text. "
+            f"{NOTE_REPLACE_LOSES}"
         ),
     )

@@ -508,6 +508,48 @@ def test_destructive_with_unconfirmed(session: Session):
     assert goal.description is None
 
 
+@pytest.mark.parametrize("stored", [None, "", "  \n "])
+def test_filling_an_empty_field_is_ordinary(session: Session, stored: str | None):
+    """Writing into an empty description or memo erases nothing."""
+    _, goal, task = _tree(session)
+    _set(session, task, description=stored, memo=stored)
+    _set(session, task, updated_at=STAMP)
+    _set(session, goal, description=stored)
+    _set(session, goal, updated_at=STAMP)
+    token = issue_token(session, USER_A, WRITE)
+
+    response = _patch(f"/tasks/{task.id}", token, description="New", memo="Memo")
+    assert response.status_code == 200, response.text
+    response = _patch(f"/goals/{goal.id}", token, description="Why")
+    assert response.status_code == 200, response.text
+
+    session.expire_all()
+    current_task = session.get(Task, task.id)
+    current_goal = session.get(Goal, goal.id)
+    assert current_task is not None and current_goal is not None
+    assert (current_task.description, current_task.memo) == ("New", "Memo")
+    assert current_goal.description == "Why"
+    changes = sorted(_changes(session), key=lambda row: row.entity_type)
+    assert [row.entity_type for row in changes] == ["goal", "task"]
+    assert all(row.destructive is False for row in changes)
+    assert changes[0].before == {"description": stored}
+    assert changes[1].after == {"description": "New", "memo": "Memo"}
+
+
+def test_filling_an_empty_field_with_a_destructive_change_is_403(session: Session):
+    _, _, task = _tree(session)
+    token = issue_token(session, USER_A, WRITE)
+    _set(session, task, memo="Old memo")
+    _set(session, task, updated_at=STAMP)
+
+    response = _patch(f"/tasks/{task.id}", token, description="New", memo="Other")
+    assert response.status_code == 403
+    assert response.json()["detail"] == NEEDS_UNCONFIRMED
+    session.expire_all()
+    assert session.get(Task, task.id).description is None  # type: ignore[union-attr]
+    assert _changes(session) == []
+
+
 def test_move_to_foreign_goal_is_404(session: Session):
     _, _, task = _tree(session)
     _, foreign_goal, _ = _tree(session, owner=USER_B)
@@ -1167,11 +1209,51 @@ def test_replace_note_needs_unconfirmed(session: Session):
     assert _utc(note.updated_at) == STAMP
     assert _changes(session) == []
 
-    # A replace that would create the note is destructive too.
+
+@pytest.mark.parametrize("stored", ["", "  ", "<p></p>", "<p> </p>\n<p><br></p>"])
+def test_replacing_an_empty_note_is_ordinary(session: Session, stored: str):
+    """A note with no text erases nothing when it is replaced."""
+    project, goal, task = _tree(session)
+    note = seed_note(session, USER_A, task=task, updated_at=STAMP)
+    _set(session, note, content=stored, content_type="html")
+    _set(session, note, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES)
+
+    response = _replace(token, "tasks", task.id, "New", STAMP.isoformat())
+    assert response.status_code == 200, response.text
+    assert response.json()["content"] == "<p>New</p>\n"
+    (change,) = _changes(session)
+    assert change.action == "replace"
+    assert change.destructive is False
+    assert change.before == {"content": stored}
+    assert change.after == {"content": "<p>New</p>\n"}
+    assert (change.project_id, change.goal_id) == (project.id, goal.id)
+
+
+def test_replace_creating_a_note_is_ordinary(session: Session):
     _, goal, _ = _tree(session)
+    token = issue_token(session, USER_A, NOTES)
+
     response = _replace(token, "goals", goal.id, "New", None)
+    assert response.status_code == 200, response.text
+    (note,) = _notes(session)
+    assert note.goal_id == goal.id
+    assert note.content == "<p>New</p>\n"
+    (change,) = _changes(session)
+    assert change.destructive is False
+    assert change.before == {"content": ""}
+
+
+def test_replacing_a_note_with_text_inside_tags_is_403(session: Session):
+    _, _, task = _tree(session)
+    note = seed_note(session, USER_A, task=task, updated_at=STAMP)
+    _set(session, note, content="<ul><li><p>x</p></li></ul>", content_type="html")
+    _set(session, note, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES)
+
+    response = _replace(token, "tasks", task.id, "New", STAMP.isoformat())
     assert response.status_code == 403
-    assert len(_notes(session)) == 1
+    assert response.json()["detail"] == NEEDS_UNCONFIRMED
     assert _changes(session) == []
 
 
@@ -1242,7 +1324,7 @@ def test_replace_missing_note(session: Session):
     assert note.content_type == "html"
     (change,) = _changes(session)
     assert change.action == "replace"
-    assert change.destructive is True
+    assert change.destructive is False
     assert change.before == {"content": ""}
     assert change.after == {"content": ""}
     assert change.project_id == project.id
@@ -1405,3 +1487,82 @@ def test_proposals_body_cap_unchanged(session: Session):
     response = _raw("POST", "/proposals", token, b" " * (64 * 1024 + 1))
     assert response.status_code == 413
     assert response.json()["detail"] == "Request body exceeds 65536 bytes"
+
+
+def test_openapi_states_what_a_note_replace_loses():
+    spec = app.openapi()
+    put = spec["paths"][f"{BASE}/context-notes/{{kind}}/{{target_id}}"]["put"]
+    field = spec["components"]["schemas"]["AgentNoteReplace"]["properties"][
+        "content_markdown"
+    ]
+    for description in (put["description"], field["description"]):
+        assert "tables, text colour and highlight, images and attachments" in (
+            description
+        )
+
+
+def test_openapi_documents_existing_dependency_as_200():
+    spec = app.openapi()
+    responses = spec["paths"][f"{BASE}/tasks/{{task_id}}/dependencies"]["post"][
+        "responses"
+    ]
+    assert set(responses) >= {"200", "201"}
+    assert responses["200"]["description"] == (
+        "The dependency already existed; nothing changed"
+    )
+    schema = responses["200"]["content"]["application/json"]["schema"]
+    assert schema == {"$ref": "#/components/schemas/TaskResponse"}
+
+
+def test_is_blank_html():
+    blank = agent_write_service._is_blank_html
+    for content in ("", " \n", "<p></p>", "<p><br></p>\n<p>&nbsp;</p>", "<h1> </h1>"):
+        assert blank(content), content
+    for content in (
+        "x",
+        "<p>x</p>",
+        "<p>&lt;</p>",
+        '<ul data-type="taskList"><li data-type="taskItem"><p>a</p></li></ul>',
+        '<p><img src="https://example.com/a.png"></p>',
+        "<hr>",
+    ):
+        assert not blank(content), content
+
+
+def _locking_sql(session: Session, monkeypatch, run: Any) -> list[str]:
+    """The Postgres SQL of each locking query ``run`` sends."""
+    from sqlalchemy.dialects import postgresql
+
+    sent: list[str] = []
+    real_exec = session.exec
+
+    def recording_exec(statement: Any, *args: Any, **kwargs: Any) -> Any:
+        if getattr(statement, "_for_update_arg", None) is not None:
+            sent.append(str(statement.compile(dialect=postgresql.dialect())))
+        return real_exec(statement, *args, **kwargs)
+
+    monkeypatch.setattr(session, "exec", recording_exec)
+    run()
+    return sent
+
+
+def test_row_locks_do_not_block_foreign_key_checks(session: Session, monkeypatch):
+    """FOR NO KEY UPDATE serializes writers but lets FK inserts (FOR KEY SHARE)
+    that reference the row go ahead."""
+    from humancompiler_api import proposal_service
+    from humancompiler_api.proposal_payloads import NoteTarget
+
+    _, goal, task = _tree(session)
+    seed_note(session, USER_A, task=task)
+    sent = _locking_sql(
+        session,
+        monkeypatch,
+        lambda: (
+            agent_write_service._lock(session, goal),
+            agent_write_service._lock(session, task),
+            proposal_service.lock_note(session, NoteTarget(task_id=task.id)),
+        ),
+    )
+    assert len(sent) == 3
+    for sql in sent:
+        assert sql.rstrip().endswith("FOR NO KEY UPDATE"), sql
