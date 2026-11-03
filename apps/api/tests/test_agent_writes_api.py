@@ -14,6 +14,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlmodel import Session, func, select
 
+from humancompiler_api import agent_write_service
 from humancompiler_api.database import get_session
 from humancompiler_api.main import app
 from humancompiler_api.models import (
@@ -25,6 +26,7 @@ from humancompiler_api.models import (
     Project,
     Task,
     TaskStatus,
+    WorkType,
 )
 from tests.agent_api_helpers import (
     bearer,
@@ -574,22 +576,90 @@ def test_clear_optional_task_fields(session: Session):
     _set(
         session,
         task,
+        description="Old",
+        memo="Old memo",
         due_date=datetime(2026, 12, 1, tzinfo=UTC),
-        priority=1,
         updated_at=STAMP,
     )
-    token = issue_token(session, USER_A, WRITE)
+    token = issue_token(session, USER_A, UNCONFIRMED)
     response = _patch(
-        f"/tasks/{task.id}", token, due_date=None, priority=None, work_type=None
+        f"/tasks/{task.id}", token, description=None, memo=None, due_date=None
     )
     assert response.status_code == 200, response.text
     body = response.json()
+    assert body["description"] is None
+    assert body["memo"] is None
     assert body["due_date"] is None
-    assert body["priority"] == 3
-    assert body["work_type"] == "light_work"
     change = _changes(session)[0]
-    assert set(change.after) == {"due_date", "priority"}
-    assert change.destructive is False
+    assert change.after == {"description": None, "memo": None, "due_date": None}
+
+
+@pytest.mark.parametrize("field", ["priority", "work_type"])
+def test_null_priority_or_work_type_is_422(session: Session, field: str):
+    _, goal, task = _tree(session)
+    _set(session, task, priority=1, work_type=WorkType.STUDY, updated_at=STAMP)
+    token = issue_token(session, USER_A, UNCONFIRMED)
+
+    response = _patch(f"/tasks/{task.id}", token, **{field: None})
+    assert response.status_code == 422, response.text
+    response = client.post(
+        f"{BASE}/tasks",
+        json={"goal_id": str(goal.id), "title": "T", "estimate_hours": 1, field: None},
+        headers=bearer(token),
+    )
+    assert response.status_code == 422, response.text
+
+    session.expire_all()
+    stored = session.get(Task, task.id)
+    assert stored is not None
+    assert stored.priority == 1
+    assert stored.work_type == WorkType.STUDY
+    assert _utc(stored.updated_at) == STAMP
+    assert _count(session, Task) == 1
+    assert _changes(session) == []
+
+
+def test_move_to_goal_in_another_project(session: Session):
+    project, old_goal, task = _tree(session)
+    other_project = seed_project(session, USER_A, updated_at=STAMP)
+    new_goal = seed_goal(session, other_project, updated_at=STAMP)
+    token = issue_token(session, USER_A, UNCONFIRMED)
+
+    response = _patch(f"/tasks/{task.id}", token, goal_id=str(new_goal.id))
+    assert response.status_code == 200, response.text
+    assert response.json()["goal_id"] == str(new_goal.id)
+
+    changes = _changes(session)
+    assert len(changes) == 1
+    change = changes[0]
+    assert change.destructive is True
+    assert change.before == {"goal_id": str(old_goal.id)}
+    assert change.after == {"goal_id": str(new_goal.id)}
+    assert change.goal_id == new_goal.id
+    assert change.project_id == other_project.id
+    assert change.project_id != project.id
+
+
+def test_memo_append_with_destructive_field_without_unconfirmed_is_403(
+    session: Session,
+):
+    _, _, task = _tree(session)
+    _set(session, task, memo="Kept", updated_at=STAMP)
+    token = issue_token(session, USER_A, WRITE)
+
+    response = _patch(
+        f"/tasks/{task.id}", token, memo_append="More", status="cancelled"
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == NEEDS_UNCONFIRMED
+
+    session.expire_all()
+    stored = session.get(Task, task.id)
+    assert stored is not None
+    assert stored.memo == "Kept"
+    assert stored.status == TaskStatus.PENDING
+    assert _utc(stored.updated_at) == STAMP
+    assert _changes(session) == []
 
 
 def test_change_row_agent_name_and_token(session: Session):
@@ -613,3 +683,10 @@ def test_change_row_agent_name_and_token(session: Session):
     assert all(row.agent_token_id == token_row.id for row in changes)
     assert all(row.actor == "agent" for row in changes)
     assert all(row.user_id == USER_A for row in changes)
+
+
+def test_missing_stored_updated_at_is_a_server_fault():
+    task = Task(id=uuid4(), goal_id=uuid4(), title="T", estimate_hours=Decimal("1"))
+    task.updated_at = None
+    with pytest.raises(RuntimeError):
+        agent_write_service._stored_updated_at(task)

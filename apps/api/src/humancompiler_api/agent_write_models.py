@@ -79,17 +79,25 @@ class AgentTaskCreate(_AgentWrite):
     estimate_hours: Hours
     description: str | None = Field(default=None, max_length=1000)
     due_date: DueDate = None
-    priority: Priority | None = Field(
-        default=None, description="1 (highest) to 5 (lowest). Omitted or null: 3."
+    priority: Priority = Field(
+        default=3, description="1 (highest) to 5 (lowest). Cannot be null."
     )
-    work_type: WorkType | None = Field(
-        default=None, description="Omitted or null: light_work."
+    work_type: WorkType = Field(
+        default=WorkType.LIGHT_WORK, description="Cannot be null."
     )
 
 
 class AgentTaskUpdate(_AgentUpdate):
     NOT_NULLABLE: ClassVar[frozenset[str]] = frozenset(
-        {"title", "estimate_hours", "status", "goal_id", "memo_append"}
+        {
+            "title",
+            "estimate_hours",
+            "status",
+            "priority",
+            "work_type",
+            "goal_id",
+            "memo_append",
+        }
     )
 
     title: str | None = Field(default=None, min_length=1, max_length=200)
@@ -108,11 +116,9 @@ class AgentTaskUpdate(_AgentUpdate):
     due_date: DueDate = None
     status: TaskStatus | None = None
     priority: Priority | None = Field(
-        default=None, description="1 (highest) to 5 (lowest). null resets it to 3."
+        default=None, description="1 (highest) to 5 (lowest). Cannot be null."
     )
-    work_type: WorkType | None = Field(
-        default=None, description="null resets it to light_work."
-    )
+    work_type: WorkType | None = Field(default=None, description="Cannot be null.")
     goal_id: UUID | None = Field(
         default=None, description="Move the task to another goal (destructive)."
     )

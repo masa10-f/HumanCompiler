@@ -42,7 +42,6 @@ from humancompiler_api.models import (
     Task,
     TaskCreate,
     TaskStatus,
-    WorkType,
 )
 from humancompiler_api.services import goal_service, project_service, task_service
 
@@ -50,9 +49,6 @@ DESTRUCTIVE_DETAIL = "This change needs the writes:unconfirmed scope"
 STALE_MESSAGE = "Changed since you read it; read it again and retry"
 MEMO_MAX_LENGTH = 2000
 MEMO_APPEND_SEPARATOR = "\n"
-
-# The columns are NOT NULL, so a null sent for these resets the default.
-_TASK_DEFAULTS: dict[str, Any] = {"priority": 3, "work_type": WorkType.LIGHT_WORK}
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -180,10 +176,8 @@ def _lock(session: Session, entity: Goal | Task) -> None:
 
 def _stored_updated_at(entity: Goal | Task) -> datetime:
     if entity.updated_at is None:
-        # Every row gets updated_at on insert; a NULL means the row is broken.
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, "Stored updated_at is missing; contact support"
-        )
+        # Every row gets updated_at on insert; a NULL is a server fault (500).
+        raise RuntimeError(f"{type(entity).__name__} {entity.id} has no updated_at")
     return entity.updated_at
 
 
@@ -304,12 +298,8 @@ def create_task(
                 estimate_hours=data.estimate_hours,
                 due_date=data.due_date,
                 status=TaskStatus.PENDING,
-                priority=(
-                    data.priority
-                    if data.priority is not None
-                    else _TASK_DEFAULTS["priority"]
-                ),
-                work_type=data.work_type or _TASK_DEFAULTS["work_type"],
+                priority=data.priority,
+                work_type=data.work_type,
             ),
             principal.user_id,
         )
@@ -354,13 +344,13 @@ def update_task(
         _lock(session, task)
         check_expected_updated_at(_stored_updated_at(task), data.expected_updated_at)
 
-        requested: dict[str, Any] = {}
-        for name in data.sent_fields() - {"memo_append"}:
-            value = getattr(data, name)
-            if value is None and name in _TASK_DEFAULTS:
-                value = _TASK_DEFAULTS[name]
-            requested[name] = value
-        changes = _diff(task, requested)
+        changes = _diff(
+            task,
+            {
+                name: getattr(data, name)
+                for name in data.sent_fields() - {"memo_append"}
+            },
+        )
 
         if "goal_id" in changes:
             goal = _owned_goal(session, user_id, changes["goal_id"][1])

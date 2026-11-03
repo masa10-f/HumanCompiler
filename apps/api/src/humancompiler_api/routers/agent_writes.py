@@ -32,7 +32,7 @@ router = APIRouter(prefix="/api/agent/v1", tags=["agent"])
 
 UPDATE_GUIDE = (
     "Only the fields you send change; send null to clear description, memo or "
-    "due_date (null resets priority to 3 and work_type to light_work). "
+    "due_date. Any other field sent as null is rejected with 422. "
     "expected_updated_at must be the updated_at you last read: if the item "
     "changed since, nothing is written and the answer is 409 with "
     "detail.current_updated_at; read it again and retry. A request whose values "
