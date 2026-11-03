@@ -337,4 +337,7 @@ def test_web_base_url_normalized() -> None:
     assert normalize("ftp://x") is None
     assert normalize("hc.example") is None
     assert normalize("https://") is None
+    # urlsplit raises ValueError on mismatched brackets; still ignored.
+    assert normalize("http://[abc") is None
+    assert normalize("http://a]b") is None
     assert Settings(web_base_url="ftp://x").web_base_url is None

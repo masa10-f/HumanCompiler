@@ -125,8 +125,11 @@ class Settings(BaseSettings):
         v = v.strip()
         if not v:
             return None
-        parts = urlsplit(v)
-        if parts.scheme not in ("http", "https") or not parts.netloc:
+        try:
+            parts = urlsplit(v)
+        except ValueError:  # e.g. "Invalid IPv6 URL" for mismatched brackets
+            parts = None
+        if parts is None or parts.scheme not in ("http", "https") or not parts.netloc:
             logging.getLogger(__name__).warning(
                 "Ignoring WEB_BASE_URL: it must be an http(s) URL with a host"
             )
