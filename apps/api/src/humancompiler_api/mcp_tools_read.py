@@ -89,6 +89,16 @@ def _note_for(session: Session, user_id: UUID, column: Any, item_id: UUID) -> An
     return session.exec(statement).first()
 
 
+def _readable_note(
+    session: Session, principal: AgentPrincipal, column: Any, item_id: UUID
+) -> ContextNote | None:
+    """The item's note, only for a token with ``notes:read`` (as in REST)."""
+    if AgentScope.NOTES_READ.value not in principal.scopes:
+        return None
+    note: ContextNote | None = _note_for(session, principal.user_id, column, item_id)
+    return note
+
+
 # --- find ---------------------------------------------------------------------
 
 
@@ -197,8 +207,9 @@ async def find(
 @mcp_server.tool(
     name="get_goal",
     description=(
-        "Get one of the user's goals and its context note as Markdown "
-        f"(note is null when there is none). {_USER_DATA}"
+        "Get one of the user's goals and its context note as Markdown. The "
+        "note is returned only to a token with notes:read; it is null without "
+        f"that scope or when there is no note. {_USER_DATA}"
     ),
     annotations=_READ_ONLY,
 )
@@ -209,7 +220,7 @@ async def get_goal(goal_id: UUID, ctx: Context) -> CallToolResult:
         ).first()
         if goal is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Goal not found")
-        note = _note_for(session, principal.user_id, ContextNote.goal_id, goal_id)
+        note = _readable_note(session, principal, ContextNote.goal_id, goal_id)
         return {
             "goal": GoalResponse.model_validate(goal).model_dump(mode="json"),
             "note": _note_payload(note),
@@ -221,8 +232,9 @@ async def get_goal(goal_id: UUID, ctx: Context) -> CallToolResult:
 @mcp_server.tool(
     name="get_task",
     description=(
-        "Get one of the user's tasks and its context note as Markdown "
-        f"(note is null when there is none). {_USER_DATA}"
+        "Get one of the user's tasks and its context note as Markdown. The "
+        "note is returned only to a token with notes:read; it is null without "
+        f"that scope or when there is no note. {_USER_DATA}"
     ),
     annotations=_READ_ONLY,
 )
@@ -233,7 +245,7 @@ async def get_task(task_id: UUID, ctx: Context) -> CallToolResult:
         ).first()
         if task is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found")
-        note = _note_for(session, principal.user_id, ContextNote.task_id, task_id)
+        note = _readable_note(session, principal, ContextNote.task_id, task_id)
         return {
             "task": TaskResponse.model_validate(task).model_dump(mode="json"),
             "note": _note_payload(note),

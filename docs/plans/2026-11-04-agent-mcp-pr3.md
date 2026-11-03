@@ -191,7 +191,7 @@
   | `remove_dependency` | `tasks:write` | `task_id, depends_on_task_id` | `{applied: true, task}` |
   | `append_note` | `notes:write` | `kind: "project"\|"goal"\|"task", id, content_markdown` | `{note: {id, updated_at, content_markdown}}` |
   | `replace_note` | `notes:write` | `kind, id, expected_updated_at \| None, content_markdown` | `{applied: true, note}` |
-  | `list_my_changes` | `goals:read` | `limit: int = 20` (max 100) | see below |
+  | `list_my_changes` | none (any valid token; `proposals` only with `proposals:read`) | `limit: int = 20` (max 100) | see below |
 
   `list_my_changes` returns `{changes: [...], proposals: [...]}`:
   - `changes` are this token's `agent_changes` rows, newest first: `{id, created_at, entity_type, entity_id, action, destructive, reverted_at}`.

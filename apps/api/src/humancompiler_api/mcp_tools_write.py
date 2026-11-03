@@ -495,7 +495,10 @@ def _proposal_payload(row: AgentProposal) -> dict[str, Any]:
         "changes {id, created_at, entity_type, entity_id, action, destructive, "
         "reverted_at} (reverted_at is set when the user undid it) and proposals "
         "{id, kind, title, status, created_at, decided_at}. Up to limit of each. "
-        "Use it to check what you already did before repeating work."
+        "Any valid token may call it, since it shows only that token's own rows; "
+        "proposals are listed only for a token with proposals:read and are an "
+        "empty list without it. Use it to check what you already did before "
+        "repeating work."
     ),
     annotations=_READ_ONLY,
 )
@@ -513,6 +516,11 @@ async def list_my_changes(
             .order_by(col(AgentChange.created_at).desc(), col(AgentChange.id).desc())
             .limit(limit)
         ).all()
+        if AgentScope.PROPOSALS_READ.value not in principal.scopes:
+            return {
+                "changes": [_change_payload(row) for row in changes],
+                "proposals": [],
+            }
         proposals = session.exec(
             select(AgentProposal)
             .where(AgentProposal.user_id == principal.user_id)
@@ -527,4 +535,6 @@ async def list_my_changes(
             "proposals": [_proposal_payload(row) for row in proposals],
         }
 
-    return await guarded_call("list_my_changes", AgentScope.GOALS_READ, run, ctx)
+    # No scope: the token reads only its own rows. Still authenticated,
+    # rate-limited and audited.
+    return await guarded_call("list_my_changes", (), run, ctx)

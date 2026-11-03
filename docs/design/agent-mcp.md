@@ -375,15 +375,15 @@ G3 の `agent_proposals` に、種類を3つ足す。
 
 | ツール | 必要なスコープ | 内容 |
 |---|---|---|
-| `find` | 読み取り | Project / Goal / Task を題で探す。部分一致。各候補の ID、親、状態を返す |
+| `find` | 探す種類の読み取り（`projects:read` / `goals:read` / `tasks:read`。種類を指定しなければ3つすべて） | Project / Goal / Task を題で探す。部分一致。各候補の ID、親、状態を返す |
 | `get_context` | `context:read` | Project か Goal の context export（Markdown）を返す。作業を始める前に読む想定 |
-| `get_task` / `get_goal` | `tasks:read` / `goals:read` | 1件と、そのノートを返す |
+| `get_task` / `get_goal` | `tasks:read` / `goals:read` | 1件と、そのノートを返す。ノートは REST と同じく `notes:read` があるときだけ返し、無ければ `null` |
 | `create_goal` / `create_task` | `goals:write` / `tasks:write` | 作る |
 | `update_goal` / `update_task` | `goals:write` / `tasks:write` | 送った項目だけ変える。`expected_updated_at` が必須 |
 | `add_dependency` / `remove_dependency` | `tasks:write` | Task の依存関係を足す・外す。`create_task` も `depends_on` を受け取る |
 | `append_note` | `notes:write` | Project / Goal / Task のノートに追記する |
 | `replace_note` | `notes:write` | ノートを書き換える。`expected_updated_at` が必須 |
-| `list_my_changes` | 読み取り | このトークンが最近行った変更と、出した提案の状態 |
+| `list_my_changes` | 不要（認証は要る） | このトークンが最近行った変更と、出した提案の状態。自分のトークンの行だけなので、スコープは問わない。提案は `proposals:read` があるときだけ返し、無ければ空のリスト |
 
 **消える操作を含むツール**
 - 結果が「書き込んだ」か「提案にした」かを、必ず返す。提案にしたときは、提案の ID と「ユーザーの承認待ち」を返す。

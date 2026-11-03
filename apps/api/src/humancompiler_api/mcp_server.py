@@ -353,7 +353,8 @@ async def _write_audit(
             token_prefix=principal.token_prefix if principal else state.token_prefix,
             method=AUDIT_METHOD,
             route=f"mcp:{tool}",
-            required_scope=",".join(scope.value for scope in scopes),
+            # No scopes: any valid token may call the tool (nullable column).
+            required_scope=",".join(scope.value for scope in scopes) or None,
             status_code=state.status_code,
             duration_ms=duration_ms,
             client_ip=get_client_ip(request) if request is not None else None,
@@ -383,7 +384,8 @@ async def guarded_call(
     ``fn(session, principal)`` returns the JSON-serializable result. Raise
     ``HTTPException`` for a REST-style error; a ``pydantic.ValidationError``
     becomes 422, and anything else 500 ``Internal error``. Every scope in
-    ``scope`` is required.
+    ``scope`` is required; an empty sequence means any valid token, which is
+    still rate-limited and audited.
     """
     scopes = (scope,) if isinstance(scope, AgentScope) else tuple(scope)
     request = _http_request(ctx)

@@ -360,7 +360,16 @@ async def test_get_task_returns_markdown_note(session: Session, mcp: httpx.Async
     )
     session.add(note)
     session.commit()
-    secret = issue_token(session, USER_A, [AgentScope.TASKS_READ])
+    secret = issue_token(
+        session, USER_A, [AgentScope.TASKS_READ, AgentScope.NOTES_READ], name="notes"
+    )
+    no_notes = issue_token(session, USER_A, [AgentScope.TASKS_READ], name="plain")
+
+    # As in REST, the note needs notes:read on top of tasks:read.
+    is_error, body = await call(mcp, "get_task", {"task_id": str(task.id)}, no_notes)
+    assert not is_error
+    assert body["task"]["id"] == str(task.id)
+    assert body["note"] is None
 
     is_error, body = await call(mcp, "get_task", {"task_id": str(task.id)}, secret)
 
@@ -387,13 +396,21 @@ async def test_get_goal_returns_goal_and_markdown_note(
         )
     )
     session.commit()
-    secret = issue_token(session, USER_A, [AgentScope.GOALS_READ])
+    secret = issue_token(
+        session, USER_A, [AgentScope.GOALS_READ, AgentScope.NOTES_READ], name="notes"
+    )
+    no_notes = issue_token(session, USER_A, [AgentScope.GOALS_READ], name="plain")
 
     is_error, body = await call(mcp, "get_goal", {"goal_id": str(goal.id)}, secret)
 
     assert not is_error
     assert body["goal"]["id"] == str(goal.id)
     assert body["note"]["content_markdown"] == "# Plain"
+
+    is_error, body = await call(mcp, "get_goal", {"goal_id": str(goal.id)}, no_notes)
+    assert not is_error
+    assert body["goal"]["id"] == str(goal.id)
+    assert body["note"] is None
 
 
 async def test_get_goal_foreign_is_404(session: Session, mcp: httpx.AsyncClient):
@@ -599,7 +616,6 @@ WRITE_TOOL_SCOPES = {
     "remove_dependency": "tasks:write",
     "append_note": "notes:write",
     "replace_note": "notes:write",
-    "list_my_changes": "goals:read",
 }
 
 
@@ -626,7 +642,6 @@ def _minimal_arguments() -> dict[str, dict[str, Any]]:
             "expected_updated_at": None,
             "content_markdown": "",
         },
-        "list_my_changes": {},
     }
 
 
@@ -678,7 +693,7 @@ async def test_write_tools_listed_with_scopes(session: Session, mcp: httpx.Async
     )
     tools = {tool["name"]: tool for tool in (await rpc(mcp, "tools/list"))["tools"]}
 
-    assert set(WRITE_TOOL_SCOPES) <= set(tools)
+    assert {*WRITE_TOOL_SCOPES, "list_my_changes"} <= set(tools)
     assert "retry_after" in init["instructions"]
     assert "schema" in init["instructions"]
     assert NOTE_REPLACE_LOSES in tools["replace_note"]["description"]
@@ -1149,9 +1164,9 @@ def _seed_proposal(session: Session, token_id: UUID, user_id: UUID, minute: int)
 async def test_list_my_changes_only_this_token(
     session: Session, mcp: httpx.AsyncClient
 ):
-    mine = issue_token(session, USER_A, [AgentScope.GOALS_READ], name="mine")
-    issue_token(session, USER_A, [AgentScope.GOALS_READ], name="sibling")
-    issue_token(session, USER_B, [AgentScope.GOALS_READ], name="other")
+    mine = issue_token(session, USER_A, [AgentScope.PROPOSALS_READ], name="mine")
+    issue_token(session, USER_A, [AgentScope.PROPOSALS_READ], name="sibling")
+    issue_token(session, USER_B, [AgentScope.PROPOSALS_READ], name="other")
     mine_id = _token_id(session, "mine")
     sibling_id = _token_id(session, "sibling")
     other_id = _token_id(session, "other")
@@ -1220,3 +1235,29 @@ async def test_list_my_changes_only_this_token(
     )
     assert result.get("isError") is True
     assert [row.status_code for row in audit_rows(session)] == [200, 200, 200]
+
+
+async def test_list_my_changes_needs_no_scope_and_hides_proposals(
+    session: Session, mcp: httpx.AsyncClient
+):
+    writer = issue_token(session, USER_A, [AgentScope.TASKS_WRITE], name="writer")
+    writer_id = _token_id(session, "writer")
+    change = _seed_change(session, writer_id, USER_A, 1)
+    _seed_proposal(session, writer_id, USER_A, 2)
+
+    is_error, body = await call(mcp, "list_my_changes", {}, writer)
+
+    assert not is_error, body
+    assert [row["id"] for row in body["changes"]] == [str(change.id)]
+    # Proposals need proposals:read, as in REST.
+    assert body["proposals"] == []
+    rows = audit_rows(session)
+    assert [(row.route, row.required_scope, row.status_code) for row in rows] == [
+        ("mcp:list_my_changes", None, 200)
+    ]
+
+    # Still authenticated: no token is REST's 401 and is not audited.
+    is_error, body = await call(mcp, "list_my_changes", {})
+    assert is_error
+    assert body == {"status": 401, "detail": "Agent token required"}
+    assert len(audit_rows(session)) == 1
