@@ -513,7 +513,8 @@ def to_web_responses(
 
     Names come from one query per referenced table, however many rows the page
     has, limited to the user's own projects, goals and tasks. A missing or
-    foreign target gives None."""
+    foreign target gives None. ``task_goal_id`` is the goal of the referenced
+    task, from the same task query, so the web can link to the task."""
     project_ids: set[UUID] = set()
     goal_ids: set[UUID] = set()
     task_ids: set[UUID] = set()
@@ -530,7 +531,19 @@ def to_web_responses(
         session, Project.id, Project.title, project_ids, project_service, user_id
     )
     goal_titles = _names(session, Goal.id, Goal.title, goal_ids, goal_service, user_id)
-    task_titles = _names(session, Task.id, Task.title, task_ids, task_service, user_id)
+    task_titles: dict[UUID, str] = {}
+    task_goal_ids: dict[UUID, UUID] = {}
+    if task_ids:
+        task_rows = session.exec(
+            select(Task.id, Task.title, Task.goal_id).where(
+                col(Task.id).in_(task_ids), task_service._get_user_filter(user_id)
+            )
+        )
+        for found_id, found_title, found_goal_id in task_rows:
+            if found_id is None:
+                continue
+            task_titles[found_id] = found_title
+            task_goal_ids[found_id] = found_goal_id
 
     responses: list[ProposalResponse] = []
     for row in rows:
@@ -544,6 +557,9 @@ def to_web_responses(
                 else None,
                 goal_title=goal_titles.get(goal_id) if goal_id is not None else None,
                 task_title=task_titles.get(task_id) if task_id is not None else None,
+                task_goal_id=task_goal_ids.get(task_id)
+                if task_id is not None
+                else None,
             )
         )
     return responses

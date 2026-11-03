@@ -1953,6 +1953,7 @@ class ProposalResponse(AgentProposalResponse):
     project_name: str | None = None
     goal_title: str | None = None
     task_title: str | None = None
+    task_goal_id: UUID | None = None
 
 
 class ProposalListResponse(BaseModel):
