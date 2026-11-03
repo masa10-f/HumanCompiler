@@ -161,6 +161,8 @@ describe('GoalDetailPage note conflict', () => {
     expect(
       screen.getByText('このノートは、開いた後に別の場所（エージェントなど）で更新されました。')
     ).toBeInTheDocument()
+    // Sticky, so it stays in view while the user scrolls a long note.
+    expect(screen.getByRole('alert').closest('.sticky')).toHaveClass('top-16', 'z-10')
     fireEvent.click(screen.getByRole('button', { name: '最新を読み込む' }))
     expect(reloadLatest).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByRole('button', { name: 'この内容で上書き' }))

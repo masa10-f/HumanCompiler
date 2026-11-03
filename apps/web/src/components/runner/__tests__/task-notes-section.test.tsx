@@ -76,6 +76,10 @@ describe('TaskNotesSection conflict banner', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent(BANNER);
     expect(screen.getByLabelText('note panel')).toBeInTheDocument();
+    // Above the scroll box, so it is in view at any scroll position.
+    const scrollBox = screen.getByTestId('task-note-scroll');
+    expect(scrollBox).toContainElement(screen.getByLabelText('note panel'));
+    expect(scrollBox).not.toContainElement(screen.getByRole('alert'));
     fireEvent.click(screen.getByRole('button', { name: RELOAD }));
     expect(state.reloadLatest).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: OVERWRITE }));

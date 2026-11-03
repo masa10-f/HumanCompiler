@@ -104,6 +104,7 @@ describe('NotePageLayout conflict banner', () => {
     expect(screen.getByText(RELOAD_HINT)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: OVERWRITE })).toBeEnabled();
     expect(screen.getByLabelText('note panel')).toBeInTheDocument();
+    expect(screen.getByRole('alert').closest('.sticky')).toHaveClass('top-16', 'z-10');
   });
 
   it('calls reloadLatest and remounts the panel with the reloaded content', async () => {

@@ -15,7 +15,7 @@ const RELOAD = '最新を読み込む';
 const RELOAD_HINT = 'この画面で保存していない変更は消えます';
 const OVERWRITE = 'この内容で上書き';
 
-function renderAlert(props: { conflict: boolean; saving?: boolean }) {
+function renderAlert(props: { conflict: boolean; saving?: boolean; sticky?: boolean }) {
   const onReload = jest.fn();
   const onOverwrite = jest.fn();
   render(
@@ -24,6 +24,7 @@ function renderAlert(props: { conflict: boolean; saving?: boolean }) {
       saving={props.saving ?? false}
       onReload={onReload}
       onOverwrite={onOverwrite}
+      sticky={props.sticky}
     />
   );
   return { onReload, onOverwrite };
@@ -57,6 +58,21 @@ describe('NoteConflictAlert', () => {
     fireEvent.click(screen.getByRole('button', { name: OVERWRITE }));
     expect(onOverwrite).toHaveBeenCalledTimes(1);
     expect(onReload).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not sticky by default', () => {
+    renderAlert({ conflict: true });
+
+    expect(screen.getByRole('alert').closest('.sticky')).toBeNull();
+  });
+
+  it('stays in view below the app header when sticky', () => {
+    renderAlert({ conflict: true, sticky: true });
+
+    const holder = screen.getByRole('alert').closest('.sticky');
+    expect(holder).not.toBeNull();
+    // top-16 clears the h-16 sticky AppHeader (z-50) that would cover top-0.
+    expect(holder).toHaveClass('top-16', 'z-10');
   });
 
   it('disables both buttons while saving', () => {

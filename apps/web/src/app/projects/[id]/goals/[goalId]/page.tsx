@@ -275,6 +275,7 @@ export default function GoalDetailPage() {
             ) : (
               <>
                 <NoteConflictAlert
+                  sticky
                   conflict={noteConflict}
                   saving={noteSaving}
                   onReload={reloadLatestNote}

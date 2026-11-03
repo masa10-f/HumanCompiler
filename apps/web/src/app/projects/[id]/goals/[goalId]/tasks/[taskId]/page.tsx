@@ -237,6 +237,7 @@ export default function TaskDetailPage() {
             ) : (
               <div>
                 <NoteConflictAlert
+                  sticky
                   conflict={noteConflict}
                   saving={saving}
                   onReload={reloadLatestNote}

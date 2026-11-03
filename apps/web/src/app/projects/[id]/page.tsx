@@ -137,6 +137,7 @@ export default function ProjectDetailPage() {
               ) : (
                 <>
                   <NoteConflictAlert
+                    sticky
                     conflict={noteConflict}
                     saving={noteSaving}
                     onReload={reloadLatestNote}

@@ -18,6 +18,11 @@ interface NoteConflictAlertProps {
   saving: boolean;
   onReload: () => void | Promise<void>;
   onOverwrite: () => void | Promise<void>;
+  /**
+   * Stick below the sticky AppHeader (h-16) while the page scrolls, so the
+   * banner stays in view under a long note. Needs no overflow ancestor.
+   */
+  sticky?: boolean;
   className?: string;
 }
 
@@ -30,11 +35,12 @@ export function NoteConflictAlert({
   saving,
   onReload,
   onOverwrite,
+  sticky = false,
   className,
 }: NoteConflictAlertProps) {
   if (!conflict) return null;
 
-  return (
+  const alert = (
     <Alert
       className={cn(
         'mb-4 border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400',
@@ -73,4 +79,8 @@ export function NoteConflictAlert({
       </AlertDescription>
     </Alert>
   );
+
+  // The Alert's own amber background is opaque, so the note scrolling under
+  // it does not show through.
+  return sticky ? <div className="sticky top-16 z-10">{alert}</div> : alert;
 }

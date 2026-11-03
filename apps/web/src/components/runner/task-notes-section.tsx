@@ -46,7 +46,8 @@ export function TaskNotesSection({ taskId }: TaskNotesSectionProps) {
       <CardContent
         className={cn(
           'transition-all duration-200 overflow-hidden',
-          isExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0 py-0'
+          // Room for the conflict banner above the 500px note box.
+          isExpanded ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0 py-0'
         )}
       >
         {loading ? (
@@ -54,22 +55,26 @@ export function TaskNotesSection({ taskId }: TaskNotesSectionProps) {
             <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
           </div>
         ) : (
-          <div className="max-h-[500px] overflow-y-auto pr-1">
+          <>
+            {/* Outside the scroll box: saves are paused, so the banner must be
+                in view wherever the user is in a long note. */}
             <NoteConflictAlert
               conflict={conflict}
               saving={saving}
               onReload={reloadLatest}
               onOverwrite={overwrite}
             />
-            <ContextNotePanel
-              content={note?.content ?? ''}
-              onUpdate={(content) => updateNote({ content, content_type: 'html' })}
-              saving={saving}
-              placeholder="作業メモを入力..."
-              updatedAt={note?.updated_at}
-              variant="compact"
-            />
-          </div>
+            <div data-testid="task-note-scroll" className="max-h-[500px] overflow-y-auto pr-1">
+              <ContextNotePanel
+                content={note?.content ?? ''}
+                onUpdate={(content) => updateNote({ content, content_type: 'html' })}
+                saving={saving}
+                placeholder="作業メモを入力..."
+                updatedAt={note?.updated_at}
+                variant="compact"
+              />
+            </div>
+          </>
         )}
       </CardContent>
     </Card>

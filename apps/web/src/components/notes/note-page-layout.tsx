@@ -88,6 +88,7 @@ export function NotePageLayout({
       </div>
 
       <NoteConflictAlert
+        sticky
         conflict={conflict}
         saving={saving}
         onReload={handleReloadLatest}
