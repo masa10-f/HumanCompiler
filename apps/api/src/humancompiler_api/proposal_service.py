@@ -49,6 +49,7 @@ from humancompiler_api.proposal_payloads import (
     EDITABLE_KINDS,
     DecisionRequestPayload,
     NoteAppendPayload,
+    NoteTarget,
     ProposalAcceptRequest,
     ProposalCreateRequest,
     ProposalRejectRequest,
@@ -265,13 +266,13 @@ def _create_input(model: type[BaseModel], parsed: BaseModel) -> Any:
         raise _unprocessable(_validation_detail(error)) from error
 
 
-def _append_to_note(
-    session: Session, user_id: UUID, agent_name: str, payload: NoteAppendPayload
-) -> ContextNote:
-    """Append the agent's text to the target's note, creating the note if needed.
+def lock_note(session: Session, target: NoteTarget) -> ContextNote | None:
+    """The target's note, locked (a no-op on SQLite), or None if it has none.
 
-    The same lookup as ``routers/notes.get_or_create_note``, without its commit."""
-    target = payload.target
+    The same lookup as ``routers/notes.get_or_create_note``. The lock makes two
+    writes to the same note run one after the other; otherwise both read the
+    same content and the later write drops the earlier one. It is
+    ``FOR NO KEY UPDATE``, so adding an attachment to the note does not wait."""
     query = select(ContextNote)
     if target.project_id is not None:
         query = query.where(ContextNote.project_id == target.project_id)
@@ -279,38 +280,57 @@ def _append_to_note(
         query = query.where(ContextNote.goal_id == target.goal_id)
     else:
         query = query.where(ContextNote.task_id == target.task_id)
-    # Lock the note row (a no-op on SQLite) so that two accepts appending to
-    # the same note run one after the other; otherwise both read the same
-    # content and the later write drops the earlier append. The proposal row is
-    # always locked first, then the note, so the order cannot deadlock.
-    note = session.exec(
-        query.with_for_update().execution_options(populate_existing=True)
+    return session.exec(
+        query.with_for_update(key_share=True).execution_options(populate_existing=True)
     ).first()
-    if note is None:
-        note = ContextNote(
-            id=uuid4(),
-            user_id=user_id,
-            project_id=target.project_id,
-            goal_id=target.goal_id,
-            task_id=target.task_id,
-            content="",
-            content_type="html",
-        )
-        session.add(note)
-        try:
-            session.flush()
-        except IntegrityError:
-            raise HTTPException(
-                status.HTTP_409_CONFLICT, "Note was created concurrently; retry"
-            ) from None
 
-    heading = agent_append_heading(agent_name, datetime.now(APP_TIMEZONE).date())
-    note.content = append_html(
-        note.content, heading + markdown_to_note_html(payload.content_markdown)
+
+def create_note(session: Session, user_id: UUID, target: NoteTarget) -> ContextNote:
+    """Create the target's empty HTML note, flushed but not committed.
+
+    A note created by another request in the meantime gives 409."""
+    note = ContextNote(
+        id=uuid4(),
+        user_id=user_id,
+        project_id=target.project_id,
+        goal_id=target.goal_id,
+        task_id=target.task_id,
+        content="",
+        content_type="html",
     )
+    session.add(note)
+    try:
+        session.flush()
+    except IntegrityError:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Note was created concurrently; retry"
+        ) from None
+    return note
+
+
+def append_agent_markdown(note: ContextNote, agent_name: str, markdown: str) -> str:
+    """Append the agent's Markdown under the agent heading; return the block added.
+
+    Sets ``content``, ``content_type`` and ``updated_at``; does not flush."""
+    heading = agent_append_heading(agent_name, datetime.now(APP_TIMEZONE).date())
+    block = heading + markdown_to_note_html(markdown)
+    note.content = append_html(note.content, block)
     # The web editor loads every note as HTML, whatever content_type says.
     note.content_type = "html"
     note.updated_at = datetime.now(UTC)
+    return block
+
+
+def _append_to_note(
+    session: Session, user_id: UUID, agent_name: str, payload: NoteAppendPayload
+) -> ContextNote:
+    """Append the agent's text to the target's note, creating the note if needed."""
+    # The proposal row is always locked first, then the note, so the order
+    # cannot deadlock.
+    note = lock_note(session, payload.target)
+    if note is None:
+        note = create_note(session, user_id, payload.target)
+    append_agent_markdown(note, agent_name, payload.content_markdown)
     session.add(note)
     session.flush()
     return note

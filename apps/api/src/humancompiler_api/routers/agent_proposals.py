@@ -64,8 +64,8 @@ ACCEPTED_EXPERIMENTS_GUIDE = (
 )
 
 
-class BodyCappedRoute(APIRoute):
-    """A route that answers 413 for a body over 64 KB before parsing it.
+def body_capped_route(max_bytes: int) -> type[APIRoute]:
+    """A route class that answers 413 for a body over ``max_bytes`` before parsing.
 
     FastAPI parses and validates the body before any dependency runs, so the cap
     has to sit in the route handler. A declared Content-Length over the cap is
@@ -74,34 +74,47 @@ class BodyCappedRoute(APIRoute):
     bounded by the cap plus one chunk. A body within the cap is stored in
     Starlette's body cache (``request._body``), which ``request.body()`` and
     ``request.json()`` reuse, so the default handler does not read it again.
+
+    Each call returns a new class, so routes with different caps stay apart.
     """
 
-    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
-        default_handler = super().get_route_handler()
+    class _BodyCappedRoute(APIRoute):
+        def get_route_handler(
+            self,
+        ) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+            default_handler = super().get_route_handler()
 
-        async def capped_handler(request: Request) -> Response:
-            declared = request.headers.get("content-length")
-            if declared is not None and declared.isdigit():
-                if int(declared) > MAX_BODY_BYTES:
-                    raise _body_too_large()
-            chunks: list[bytes] = []
-            size = 0
-            async for chunk in request.stream():
-                size += len(chunk)
-                if size > MAX_BODY_BYTES:
-                    raise _body_too_large()
-                chunks.append(chunk)
-            request._body = b"".join(chunks)
-            return await default_handler(request)
+            async def capped_handler(request: Request) -> Response:
+                declared = request.headers.get("content-length")
+                if declared is not None and declared.isdigit():
+                    if int(declared) > max_bytes:
+                        raise _body_too_large(max_bytes)
+                chunks: list[bytes] = []
+                size = 0
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > max_bytes:
+                        raise _body_too_large(max_bytes)
+                    chunks.append(chunk)
+                request._body = b"".join(chunks)
+                return await default_handler(request)
 
-        return capped_handler
+            return capped_handler
+
+    _BodyCappedRoute.__name__ = f"BodyCappedRoute{max_bytes}"
+    _BodyCappedRoute.__qualname__ = _BodyCappedRoute.__name__
+    return _BodyCappedRoute
 
 
-def _body_too_large() -> HTTPException:
+def _body_too_large(max_bytes: int) -> HTTPException:
     return HTTPException(
         status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-        f"Request body exceeds {MAX_BODY_BYTES} bytes",
+        f"Request body exceeds {max_bytes} bytes",
     )
+
+
+# The proposals intake route: 413 for a body over 64 KB.
+BodyCappedRoute = body_capped_route(MAX_BODY_BYTES)
 
 
 # Only the intake endpoint is capped; the reads below keep the default route class.

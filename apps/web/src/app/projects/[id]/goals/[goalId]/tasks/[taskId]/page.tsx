@@ -11,6 +11,7 @@ import { AppHeader } from '@/components/layout/app-header';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ContextNotePanel } from '@/components/notes/context-note-panel';
+import { NoteConflictAlert } from '@/components/notes/note-conflict-alert';
 import { GoalTaskAssistantDialog } from '@/components/ai/goal-task-assistant-dialog';
 import { useTaskNote } from '@/hooks/use-notes';
 import {
@@ -51,7 +52,15 @@ export default function TaskDetailPage() {
     error: taskError,
     refetch: refetchTask,
   } = useTask(taskId);
-  const { note, loading: noteLoading, saving, updateNote } = useTaskNote(taskId);
+  const {
+    note,
+    loading: noteLoading,
+    saving,
+    conflict: noteConflict,
+    updateNote,
+    reloadLatest: reloadLatestNote,
+    overwrite: overwriteNote,
+  } = useTaskNote(taskId);
 
   const [activeTab, setActiveTab] = useState('notes');
 
@@ -227,6 +236,13 @@ export default function TaskDetailPage() {
               </div>
             ) : (
               <div>
+                <NoteConflictAlert
+                  sticky
+                  conflict={noteConflict}
+                  saving={saving}
+                  onReload={reloadLatestNote}
+                  onOverwrite={overwriteNote}
+                />
                 <ContextNotePanel
                   content={note?.content || ''}
                   onUpdate={(content) => updateNote({ content, content_type: 'html' })}

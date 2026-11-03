@@ -26,8 +26,9 @@ def test_markdown_to_note_html_basic():
     assert "<p>段落です</p>" in html
     assert "<strong>強調</strong>" in html
     assert "<ul>" in html and "<li>項目1</li>" in html
-    # CommonMark has no task lists: the marker stays as text
+    # A list where only some items have a checkbox stays a plain list.
     assert "[ ] タスク" in html
+    assert "taskList" not in html
     assert "<pre><code" in html and "print(1)" in html
     assert '<a href="https://example.com">a</a>' in html
 
@@ -73,3 +74,59 @@ def test_append_html_on_empty_and_existing():
     assert append_html("", "<p>x</p>") == "<p>x</p>"
     assert append_html("  \n ", "<p>x</p>") == "<p>x</p>"
     assert append_html("<p>a</p>", "<p>x</p>") == "<p>a</p><p>x</p>"
+
+
+def test_task_list_uses_tiptap_markup():
+    html = markdown_to_note_html("- [ ] やること\n- [x] 済み\n- [X] **太字** も\n")
+    assert html == (
+        '<ul data-type="taskList">\n'
+        '<li data-type="taskItem" data-checked="false">\n<p>やること</p>\n</li>\n'
+        '<li data-type="taskItem" data-checked="true">\n<p>済み</p>\n</li>\n'
+        '<li data-type="taskItem" data-checked="true">\n'
+        "<p><strong>太字</strong> も</p>\n</li>\n"
+        "</ul>\n"
+    )
+
+
+def test_nested_task_list():
+    html = markdown_to_note_html("- [ ] 親\n  - [x] 子\n")
+    assert html == (
+        '<ul data-type="taskList">\n'
+        '<li data-type="taskItem" data-checked="false">\n<p>親</p>\n'
+        '<ul data-type="taskList">\n'
+        '<li data-type="taskItem" data-checked="true">\n<p>子</p>\n</li>\n'
+        "</ul>\n</li>\n</ul>\n"
+    )
+
+
+def test_plain_list_is_unchanged():
+    assert markdown_to_note_html("- a\n- b\n") == (
+        "<ul>\n<li>a</li>\n<li>b</li>\n</ul>\n"
+    )
+    # An ordered list is never a task list.
+    assert markdown_to_note_html("1. [ ] a\n") == "<ol>\n<li>[ ] a</li>\n</ol>\n"
+    # A marker needs a space or the end of the line after it.
+    assert markdown_to_note_html("- [x]a\n") == "<ul>\n<li>[x]a</li>\n</ul>\n"
+
+
+def test_mixed_list_stays_a_plain_list():
+    html = markdown_to_note_html("- [ ] a\n- b\n- [x] c\n")
+    assert html == "<ul>\n<li>[ ] a</li>\n<li>b</li>\n<li>[x] c</li>\n</ul>\n"
+
+
+def test_empty_task_item():
+    html = markdown_to_note_html("- [ ]\n- [x] done\n")
+    assert html == (
+        '<ul data-type="taskList">\n'
+        '<li data-type="taskItem" data-checked="false">\n<p></p>\n</li>\n'
+        '<li data-type="taskItem" data-checked="true">\n<p>done</p>\n</li>\n'
+        "</ul>\n"
+    )
+
+
+def test_task_item_escapes_raw_html():
+    html = markdown_to_note_html('- [ ] <script>x</script> <img src=x onerror="y">\n')
+    assert html.startswith('<ul data-type="taskList">')
+    assert "<script" not in html
+    assert "<img" not in html
+    assert "&lt;script&gt;x&lt;/script&gt;" in html

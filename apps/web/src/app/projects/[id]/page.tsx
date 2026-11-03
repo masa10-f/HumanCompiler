@@ -9,6 +9,7 @@ import { ProjectHeader } from '@/components/projects/project-header'
 import { ProjectProgressCard } from '@/components/progress/progress-card'
 import { GoalList } from '@/components/goals/goal-list'
 import { ContextNotePanel } from '@/components/notes/context-note-panel'
+import { NoteConflictAlert } from '@/components/notes/note-conflict-alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowLeft, FileText, Loader2, AlertCircle } from 'lucide-react'
@@ -37,8 +38,11 @@ export default function ProjectDetailPage() {
     loading: noteLoading,
     saving: noteSaving,
     error: noteError,
+    conflict: noteConflict,
     updateNote,
     refetch: refetchNote,
+    reloadLatest: reloadLatestNote,
+    overwrite: overwriteNote,
   } = useProjectNote(id)
 
   useEffect(() => {
@@ -131,13 +135,22 @@ export default function ProjectDetailPage() {
                   </Button>
                 </div>
               ) : (
-                <ContextNotePanel
-                  content={projectNote?.content || ''}
-                  onUpdate={(content) => updateNote({ content, content_type: 'html' })}
-                  saving={noteSaving}
-                  placeholder="プロジェクトに関するメモや背景情報を記録..."
-                  updatedAt={projectNote?.updated_at}
-                />
+                <>
+                  <NoteConflictAlert
+                    sticky
+                    conflict={noteConflict}
+                    saving={noteSaving}
+                    onReload={reloadLatestNote}
+                    onOverwrite={overwriteNote}
+                  />
+                  <ContextNotePanel
+                    content={projectNote?.content || ''}
+                    onUpdate={(content) => updateNote({ content, content_type: 'html' })}
+                    saving={noteSaving}
+                    placeholder="プロジェクトに関するメモや背景情報を記録..."
+                    updatedAt={projectNote?.updated_at}
+                  />
+                </>
               )}
             </CardContent>
           </Card>

@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useTaskNote } from '@/hooks/use-notes';
 import { ContextNotePanel } from '@/components/notes/context-note-panel';
+import { NoteConflictAlert } from '@/components/notes/note-conflict-alert';
 import { FileText, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -17,7 +18,8 @@ interface TaskNotesSectionProps {
 
 export function TaskNotesSection({ taskId }: TaskNotesSectionProps) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const { note, loading, saving, updateNote } = useTaskNote(taskId);
+  const { note, loading, saving, conflict, updateNote, reloadLatest, overwrite } =
+    useTaskNote(taskId);
 
   return (
     <Card>
@@ -44,7 +46,8 @@ export function TaskNotesSection({ taskId }: TaskNotesSectionProps) {
       <CardContent
         className={cn(
           'transition-all duration-200 overflow-hidden',
-          isExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0 py-0'
+          // Room for the conflict banner above the 500px note box.
+          isExpanded ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0 py-0'
         )}
       >
         {loading ? (
@@ -52,16 +55,26 @@ export function TaskNotesSection({ taskId }: TaskNotesSectionProps) {
             <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
           </div>
         ) : (
-          <div className="max-h-[500px] overflow-y-auto pr-1">
-            <ContextNotePanel
-              content={note?.content ?? ''}
-              onUpdate={(content) => updateNote({ content, content_type: 'html' })}
+          <>
+            {/* Outside the scroll box: saves are paused, so the banner must be
+                in view wherever the user is in a long note. */}
+            <NoteConflictAlert
+              conflict={conflict}
               saving={saving}
-              placeholder="作業メモを入力..."
-              updatedAt={note?.updated_at}
-              variant="compact"
+              onReload={reloadLatest}
+              onOverwrite={overwrite}
             />
-          </div>
+            <div data-testid="task-note-scroll" className="max-h-[500px] overflow-y-auto pr-1">
+              <ContextNotePanel
+                content={note?.content ?? ''}
+                onUpdate={(content) => updateNote({ content, content_type: 'html' })}
+                saving={saving}
+                placeholder="作業メモを入力..."
+                updatedAt={note?.updated_at}
+                variant="compact"
+              />
+            </div>
+          </>
         )}
       </CardContent>
     </Card>

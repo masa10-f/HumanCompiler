@@ -27,6 +27,8 @@ export interface ContextNote {
 export interface ContextNoteUpdate {
   content?: string;
   content_type?: 'markdown' | 'html' | 'tiptap_json';
+  /** The note's updated_at as last read; a note changed since gives 409. */
+  expected_updated_at?: string;
 }
 
 export type NoteEntityType = 'project' | 'goal' | 'task';

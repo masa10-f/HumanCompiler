@@ -832,6 +832,10 @@ class AgentScope(StrEnum):
     PROPOSALS_READ = "proposals:read"
     QUICK_TASKS_WRITE = "quick_tasks:write"
     PROPOSALS_WRITE = "proposals:write"
+    GOALS_WRITE = "goals:write"
+    TASKS_WRITE = "tasks:write"
+    NOTES_WRITE = "notes:write"
+    WRITES_UNCONFIRMED = "writes:unconfirmed"
 
 
 # User-facing (Japanese) descriptions shown in the token settings UI.
@@ -851,10 +855,18 @@ AGENT_SCOPE_DESCRIPTIONS: dict[AgentScope, str] = {
     AgentScope.PROPOSALS_READ: "提案の一覧・取得（そのユーザーのすべての提案）",
     AgentScope.QUICK_TASKS_WRITE: "POST /api/hooks/quick-tasks（既存 hook の互換）",
     AgentScope.PROPOSALS_WRITE: "提案の送信（POST /api/agent/v1/proposals）",
+    AgentScope.GOALS_WRITE: "Goal の作成・更新",
+    AgentScope.TASKS_WRITE: "Task の作成・更新と依存関係の追加・削除",
+    AgentScope.NOTES_WRITE: "Project / Goal / Task のノートへの追記と書き換え",
+    AgentScope.WRITES_UNCONFIRMED: (
+        "中止・書き換え・移動・依存関係の削除を、承認なしで実行する（強い権限）"
+    ),
 }
 
 # Scopes the UI flags with a warning badge.
-AGENT_BROAD_SCOPES: frozenset[AgentScope] = frozenset({AgentScope.CONTEXT_READ})
+AGENT_BROAD_SCOPES: frozenset[AgentScope] = frozenset(
+    {AgentScope.CONTEXT_READ, AgentScope.WRITES_UNCONFIRMED}
+)
 
 
 class AgentTokenPresetInfo(BaseModel):
@@ -1039,6 +1051,89 @@ class AgentProposal(SQLModel, table=True):  # type: ignore[call-arg]
     updated_at: datetime = SQLField(
         default_factory=lambda: datetime.now(UTC),
         sa_column=Column("updated_at", DateTime(timezone=True), nullable=False),
+    )
+
+
+class AgentChangeActor(StrEnum):
+    """Who made a change recorded in ``agent_changes``."""
+
+    AGENT = "agent"
+    USER = "user"
+
+
+class AgentChangeEntity(StrEnum):
+    """Kind of entity a change touched."""
+
+    GOAL = "goal"
+    TASK = "task"
+    CONTEXT_NOTE = "context_note"
+    TASK_DEPENDENCY = "task_dependency"
+
+
+class AgentChangeAction(StrEnum):
+    """What a change did to its entity."""
+
+    CREATE = "create"
+    UPDATE = "update"
+    APPEND = "append"
+    REPLACE = "replace"
+    REVERT = "revert"
+
+
+class AgentChange(SQLModel, table=True):  # type: ignore[call-arg]
+    """One change made through the Agent Gateway, or a user's revert of one.
+
+    ``before`` and ``after`` hold the entity state as JSON (``before`` is NULL
+    for creates). ``entity_id``, ``project_id``, ``goal_id``, ``proposal_id``
+    and ``reverts_change_id`` have no foreign key: the history outlives the
+    entities. ``agent_name`` copies the token's name at write time. The
+    enum-like columns are plain TEXT holding the ``.value`` of the matching
+    ``AgentChange*`` enum."""
+
+    __tablename__ = "agent_changes"
+
+    id: UUID = SQLField(
+        default_factory=uuid4,
+        sa_column=Column(
+            "id",
+            SQLAlchemyUUID,
+            primary_key=True,
+            server_default=text("gen_random_uuid()"),
+        ),
+    )
+    user_id: UUID = SQLField(foreign_key="users.id", ondelete="CASCADE")
+    actor: str = SQLField(sa_column=Column("actor", Text(), nullable=False))
+    agent_token_id: UUID | None = SQLField(
+        default=None, foreign_key="agent_tokens.id", ondelete="SET NULL"
+    )
+    agent_name: str | None = SQLField(default=None, max_length=100)
+    proposal_id: UUID | None = SQLField(default=None)
+    entity_type: str = SQLField(sa_column=Column("entity_type", Text(), nullable=False))
+    entity_id: UUID
+    project_id: UUID | None = SQLField(default=None)
+    goal_id: UUID | None = SQLField(default=None)
+    action: str = SQLField(sa_column=Column("action", Text(), nullable=False))
+    before: dict[str, Any] | None = SQLField(
+        default=None,
+        # none_as_null: None must be SQL NULL, not the JSON value null.
+        sa_column=Column(
+            JSON(none_as_null=True).with_variant(
+                JSONB(none_as_null=True), "postgresql"
+            ),
+            nullable=True,
+        ),
+    )
+    after: dict[str, Any] = SQLField(
+        sa_column=Column(JSON().with_variant(JSONB(), "postgresql"), nullable=False)
+    )
+    destructive: bool = SQLField(default=False)
+    reverts_change_id: UUID | None = SQLField(default=None)
+    reverted_at: datetime | None = SQLField(
+        default=None, sa_column=Column("reverted_at", DateTime(timezone=True))
+    )
+    created_at: datetime = SQLField(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column("created_at", DateTime(timezone=True), nullable=False),
     )
 
 
@@ -2812,10 +2907,14 @@ class ContextNoteCreate(BaseModel):
 
 
 class ContextNoteUpdate(BaseModel):
-    """Context note update request"""
+    """Context note update request.
+
+    ``expected_updated_at`` is the note's updated_at when the editor read it; a
+    note changed since gives 409. Leaving it out overwrites, as before."""
 
     content: str | None = None
     content_type: str | None = Field(None, max_length=20)
+    expected_updated_at: datetime | None = None
 
 
 class NoteAttachmentResponse(BaseModel):

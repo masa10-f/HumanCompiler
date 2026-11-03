@@ -1,10 +1,11 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Loader2, AlertCircle, FileText } from 'lucide-react';
 import { ContextNotePanel } from './context-note-panel';
+import { NoteConflictAlert } from './note-conflict-alert';
 import { useNote } from '@/hooks/use-notes';
 import type { NoteEntityType } from '@/types/context-note';
 
@@ -24,10 +25,19 @@ export function NotePageLayout({
   backUrl,
 }: NotePageLayoutProps) {
   const router = useRouter();
-  const { note, loading, error, saving, updateNote } = useNote({
-    entityType,
-    entityId,
-  });
+  const { note, loading, error, saving, conflict, updateNote, reloadLatest, overwrite } =
+    useNote({
+      entityType,
+      entityId,
+    });
+  // A new key remounts the panel after a reload, so it starts over in view mode
+  // and the editor's undo history cannot bring back the dropped local text.
+  const [panelKey, setPanelKey] = useState(0);
+
+  const handleReloadLatest = async () => {
+    await reloadLatest();
+    setPanelKey((key) => key + 1);
+  };
 
   if (loading) {
     return (
@@ -77,7 +87,16 @@ export function NotePageLayout({
         </p>
       </div>
 
+      <NoteConflictAlert
+        sticky
+        conflict={conflict}
+        saving={saving}
+        onReload={handleReloadLatest}
+        onOverwrite={overwrite}
+      />
+
       <ContextNotePanel
+        key={panelKey}
         content={note?.content || ''}
         onUpdate={(content) => updateNote({ content, content_type: 'html' })}
         saving={saving}
