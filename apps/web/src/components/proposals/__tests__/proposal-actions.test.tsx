@@ -161,6 +161,42 @@ describe('ProposalActions', () => {
       });
     });
 
+    it('keeps every button disabled after a successful accept', async () => {
+      renderWithClient(<ProposalActions proposal={makeProposal()} onEdit={() => undefined} />);
+
+      fireEvent.click(screen.getByRole('button', { name: '承認' }));
+      await waitFor(() => expect(mockToast).toHaveBeenCalledTimes(1));
+
+      // Give the mutation state a chance to settle; the card is still mounted.
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screen.getByRole('button', { name: '承認' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: '編集して承認' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: '却下' })).toBeDisabled();
+
+      fireEvent.click(screen.getByRole('button', { name: '承認' }));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(mockAccept).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the buttons disabled after a successful reject', async () => {
+      renderWithClient(<ProposalActions proposal={makeProposal()} />);
+
+      fireEvent.click(screen.getByRole('button', { name: '却下' }));
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('combobox'));
+      fireEvent.click(await screen.findByRole('option', { name: '重複している' }));
+      fireEvent.click(within(dialog).getByRole('button', { name: '却下する' }));
+
+      await waitFor(() => expect(mockToast).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(screen.getByRole('button', { name: '承認' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: '却下' })).toBeDisabled();
+    });
+
     it('sends the experiment note only when it is not blank', async () => {
       renderWithClient(<ProposalActions proposal={experiment()} />);
 
@@ -233,6 +269,23 @@ describe('ProposalActions', () => {
 
       await waitFor(() => expect(mockAccept).toHaveBeenCalledTimes(1));
       expect(mockAccept).toHaveBeenCalledWith('prop-1', { decision_option: 1 });
+    });
+
+    it('lets a long option label wrap inside the panel', () => {
+      const long = 'x'.repeat(300);
+      renderWithClient(
+        <ProposalActions
+          proposal={makeProposal({
+            kind: 'decision_request',
+            payload: { question: 'Q', options: [{ label: long }] },
+          })}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: '承認' }));
+
+      const label = screen.getByText(long);
+      expect(label).toHaveClass('min-w-0');
+      expect(label).toHaveClass('[overflow-wrap:anywhere]');
     });
 
     it('accepts a free-text answer to a decision request', async () => {
@@ -348,6 +401,7 @@ describe('ProposalActions', () => {
   describe('errors', () => {
     it('shows the server message and keeps the experiment note', async () => {
       const message = 'Proposal target no longer exists; reject it instead';
+      const shown = '提案の対象が見つかりません（削除された可能性があります）。この提案は却下してください。';
       mockAccept.mockRejectedValue(new ApiError(409, message, {}, message));
       renderWithClient(<ProposalActions proposal={experiment()} />);
 
@@ -358,7 +412,7 @@ describe('ProposalActions', () => {
       );
       fireEvent.click(screen.getByRole('button', { name: 'この内容で承認' }));
 
-      expect(await screen.findByRole('alert')).toHaveTextContent(message);
+      expect(await screen.findByRole('alert')).toHaveTextContent(shown);
       expect(
         screen.getByLabelText('実行するエージェントへの追加の指示（任意）')
       ).toHaveValue('keep me');

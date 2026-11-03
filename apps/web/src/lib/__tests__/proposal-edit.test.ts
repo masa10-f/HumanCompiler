@@ -76,6 +76,22 @@ describe('buildEditedPayload', () => {
     expect(result).toEqual({ ...original, description: null });
   });
 
+  it('sends null for whitespace-only optional text', () => {
+    const initial = taskValues();
+    const result = buildEditedPayload('task', original, initial, {
+      ...initial,
+      description: '   \n ',
+      estimate_hours: '4',
+    });
+    expect(result).toEqual({ ...original, description: null, estimate_hours: 4 });
+  });
+
+  it('keeps whitespace-only required text empty', () => {
+    const initial = taskValues();
+    const result = buildEditedPayload('task', original, initial, { ...initial, title: '  ' });
+    expect(result).toEqual({ ...original, title: '' });
+  });
+
   it('converts numeric fields to numbers', () => {
     const initial = taskValues();
     const result = buildEditedPayload('task', original, initial, {

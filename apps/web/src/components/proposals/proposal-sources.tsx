@@ -15,6 +15,10 @@ export function ProposalSources({ sources }: { sources: ProposalSource[] }) {
     <ul className="space-y-2 text-sm">
       {sources.map((source, index) => {
         const href = sourceHref(source.ref);
+        // The label is agent text and may not match the target, so a link
+        // always shows where it really goes.
+        const host = href ? new URL(href).hostname : null;
+        const linkText = source.label ? `${source.label} (${host})` : host;
         return (
           <li key={`${index}-${source.ref}`} className="min-w-0">
             {href ? (
@@ -24,10 +28,15 @@ export function ProposalSources({ sources }: { sources: ProposalSource[] }) {
                 rel="noopener noreferrer"
                 className="break-words text-primary underline underline-offset-2"
               >
-                {source.label || source.ref}
+                {linkText}
               </a>
             ) : (
-              <code className="break-all font-mono text-xs">{source.ref}</code>
+              <>
+                {source.label ? (
+                  <span className="mr-2 whitespace-pre-wrap break-words">{source.label}</span>
+                ) : null}
+                <code className="break-all font-mono text-xs">{source.ref}</code>
+              </>
             )}
             {source.quote ? (
               <blockquote className="mt-1 whitespace-pre-wrap break-words border-l-2 pl-3 text-muted-foreground">

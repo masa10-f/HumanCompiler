@@ -276,7 +276,7 @@ describe('ProposalCard', () => {
           })}
         />
       );
-      const link = screen.getByRole('link', { name: 'The paper' });
+      const link = screen.getByRole('link', { name: 'The paper (example.com)' });
       expect(link).toHaveAttribute('href', 'https://example.com/paper');
       expect(link).toHaveAttribute('rel', 'noopener noreferrer');
       expect(link).toHaveAttribute('target', '_blank');
@@ -284,6 +284,40 @@ describe('ProposalCard', () => {
       expect(screen.getByText('artifact://notes/1')).toBeInTheDocument();
       expect(screen.getByText('javascript:alert(1)')).toBeInTheDocument();
       expect(screen.getAllByRole('link')).toHaveLength(1);
+    });
+
+    it('shows the real host next to the label so a label cannot hide the target', () => {
+      renderWithClient(
+        <ProposalCard
+          proposal={makeProposal({
+            sources: [{ ref: 'https://evil.example.net/x', label: 'https://trusted.example.org' }],
+          })}
+        />
+      );
+      const link = screen.getByRole('link');
+      expect(link).toHaveTextContent('https://trusted.example.org (evil.example.net)');
+    });
+
+    it('shows only the host for a link without a label', () => {
+      renderWithClient(
+        <ProposalCard
+          proposal={makeProposal({ sources: [{ ref: 'https://example.com/paper' }] })}
+        />
+      );
+      expect(screen.getByRole('link')).toHaveTextContent(/^example\.com$/);
+    });
+
+    it('keeps the label beside a non-link ref', () => {
+      renderWithClient(
+        <ProposalCard
+          proposal={makeProposal({
+            sources: [{ ref: 'artifact://notes/1', label: 'Lab notes' }],
+          })}
+        />
+      );
+      expect(screen.getByText('Lab notes')).toBeInTheDocument();
+      expect(screen.getByText('artifact://notes/1').tagName).toBe('CODE');
+      expect(screen.queryByRole('link')).toBeNull();
     });
   });
 
@@ -378,7 +412,28 @@ describe('ProposalCard', () => {
       );
       expect(screen.getByText('却下')).toBeInTheDocument();
       expect(screen.getByText('重複している')).toBeInTheDocument();
-      expect(screen.getByText('Already tracked elsewhere')).toBeInTheDocument();
+      expect(screen.getByText('補足:').parentElement).toHaveTextContent(
+        '補足: Already tracked elsewhere'
+      );
+    });
+
+    it.each([
+      ['experiment', '実行するエージェントへの追加の指示'],
+      ['decision_request', '答え'],
+      ['contradiction', 'コメント'],
+      ['goal', 'メモ'],
+    ] as const)('labels the decision note of a %s', (kind, label) => {
+      renderWithClient(
+        <ProposalCard
+          proposal={makeProposal({
+            kind,
+            status: 'accepted',
+            decision_note: 'My note',
+            decided_at: '2026-11-04T03:00:00Z',
+          })}
+        />
+      );
+      expect(screen.getByText(`${label}:`).parentElement).toHaveTextContent(`${label}: My note`);
     });
 
     it('links to the created goal', () => {

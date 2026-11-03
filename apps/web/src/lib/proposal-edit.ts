@@ -89,7 +89,7 @@ function toPayloadValue(
   field: string,
   value: string
 ): string | number | null {
-  if (value === '') {
+  if (value.trim() === '') {
     return REQUIRED_FIELDS[kind].includes(field) ? '' : null;
   }
   return NUMERIC_FIELDS.has(field) ? Number(value) : value;

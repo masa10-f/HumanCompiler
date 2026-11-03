@@ -5,7 +5,12 @@
 // For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
 import { ApiError } from '../errors'
-import { proposalErrorMessage, proposalResultHref, sourceHref } from '../proposal-links'
+import {
+  isAlreadyDecidedError,
+  proposalErrorMessage,
+  proposalResultHref,
+  sourceHref,
+} from '../proposal-links'
 import type { Proposal } from '@/types/proposal'
 
 function makeProposal(overrides: Partial<Proposal>): Proposal {
@@ -137,9 +142,14 @@ describe('proposalResultHref', () => {
 })
 
 describe('sourceHref', () => {
-  it('returns http and https refs unchanged', () => {
+  it('returns http and https refs as the parsed URL', () => {
     expect(sourceHref('https://example.com/a')).toBe('https://example.com/a')
     expect(sourceHref('http://example.com/a')).toBe('http://example.com/a')
+  })
+
+  it('returns the normalised href, not the raw ref', () => {
+    expect(sourceHref('  https://EXAMPLE.com  ')).toBe('https://example.com/')
+    expect(sourceHref('https://example.com/a b')).toBe('https://example.com/a%20b')
   })
 
   it('returns null for other schemes and non-URLs', () => {
@@ -193,17 +203,55 @@ describe('proposalErrorMessage', () => {
     expect(proposalErrorMessage(error)).toBe('Fallback text')
   })
 
-  it('uses the error message for a non-array detail', () => {
+  it('keeps an unknown error message for a non-array detail', () => {
     const error = new ApiError(
       409,
-      'Proposal already decided',
-      { responseData: { detail: 'Proposal already decided' } },
-      'Proposal already decided',
+      'Something else happened',
+      { responseData: { detail: 'Something else happened' } },
+      'Something else happened',
     )
-    expect(proposalErrorMessage(error)).toBe('Proposal already decided')
+    expect(proposalErrorMessage(error)).toBe('Something else happened')
+  })
+
+  it.each([
+    ['Proposal already decided', 'この提案はすでに処理されています。一覧を更新しました。'],
+    [
+      'Proposal target no longer exists; reject it instead',
+      '提案の対象が見つかりません（削除された可能性があります）。この提案は却下してください。',
+    ],
+    [
+      'Stored proposal no longer matches its schema; reject it instead',
+      'この提案は現在の形式に合わないため承認できません。却下してください。',
+    ],
+    [
+      'Note was created concurrently; retry',
+      'ノートが同時に作成されました。もう一度お試しください。',
+    ],
+    ['Proposal not found', '提案が見つかりません。'],
+  ])('translates the backend detail %j', (detail, expected) => {
+    const error = new ApiError(409, detail, { responseData: { detail } }, detail)
+    expect(proposalErrorMessage(error)).toBe(expected)
+  })
+
+  it('does not translate a near-match', () => {
+    const detail = 'Proposal already decided.'
+    const error = new ApiError(409, detail, { responseData: { detail } }, detail)
+    expect(proposalErrorMessage(error)).toBe(detail)
   })
 
   it('handles non-Error values', () => {
     expect(typeof proposalErrorMessage('oops')).toBe('string')
+  })
+})
+
+describe('isAlreadyDecidedError', () => {
+  it('is true only for a 409 with the already-decided detail', () => {
+    const msg = 'Proposal already decided'
+    expect(isAlreadyDecidedError(new ApiError(409, msg, { responseData: { detail: msg } }, msg))).toBe(true)
+    expect(isAlreadyDecidedError(new ApiError(409, msg, {}, msg))).toBe(true)
+    expect(isAlreadyDecidedError(new ApiError(422, msg, {}, msg))).toBe(false)
+    const gone = 'Proposal target no longer exists; reject it instead'
+    expect(isAlreadyDecidedError(new ApiError(409, gone, { responseData: { detail: gone } }, gone))).toBe(false)
+    expect(isAlreadyDecidedError(new Error(msg))).toBe(false)
   })
 })

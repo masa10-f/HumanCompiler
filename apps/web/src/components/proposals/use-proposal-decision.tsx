@@ -29,8 +29,11 @@ export function useProposalDecision(proposal: Proposal) {
   // Synchronous guard: isPending only updates after a re-render, so two quick
   // clicks could otherwise both send a request.
   const inFlight = useRef(false);
+  // Set on success and never cleared: the list refetch that removes the card
+  // lands after the mutation settles, and a click in between would hit a 409.
+  const [decided, setDecided] = useState(false);
 
-  const busy = acceptMutation.isPending || rejectMutation.isPending;
+  const busy = acceptMutation.isPending || rejectMutation.isPending || decided;
 
   async function decide<T>(
     run: () => Promise<T>,
@@ -48,6 +51,7 @@ export function useProposalDecision(proposal: Proposal) {
     } finally {
       inFlight.current = false;
     }
+    setDecided(true);
     onSuccess(result);
   }
 
@@ -86,7 +90,7 @@ export function useProposalDecision(proposal: Proposal) {
     accept,
     reject,
     busy,
-    rejectPending: rejectMutation.isPending,
+    rejectPending: rejectMutation.isPending || decided,
     error,
     clearError: () => setError(null),
   };

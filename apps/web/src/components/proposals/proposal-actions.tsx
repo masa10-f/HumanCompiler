@@ -116,7 +116,7 @@ export function ProposalActions({ proposal, onEdit }: ProposalActionsProps) {
                   <RadioGroupItem value={String(index)} id={`${fieldId}-option-${index}`} />
                   <Label
                     htmlFor={`${fieldId}-option-${index}`}
-                    className="whitespace-pre-wrap break-words font-normal"
+                    className="min-w-0 whitespace-pre-wrap break-words font-normal [overflow-wrap:anywhere]"
                   >
                     {label}
                   </Label>

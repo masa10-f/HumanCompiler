@@ -15,6 +15,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { proposalsApi } from '@/lib/api';
+import { isAlreadyDecidedError } from '@/lib/proposal-links';
 import { queryKeys } from '@/lib/query-keys';
 import type {
   ProposalAcceptRequest,
@@ -31,6 +32,7 @@ export function useProposals(filters: ProposalListFilters) {
     queryKey: queryKeys.proposals.list(filters),
     queryFn: () => proposalsApi.list(filters),
     staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
     placeholderData: keepPreviousData,
   });
 }
@@ -62,24 +64,42 @@ function useInvalidateAfterDecision() {
 }
 
 /**
- * Accept a proposal. On failure nothing is invalidated, so the card keeps its
- * error and the user's input.
+ * A proposal decided elsewhere (another tab) leaves a stale card behind. Refresh
+ * the proposals so it goes and the badge updates. Other failures keep the card,
+ * e.g. a deleted target must stay so the user can still reject it.
+ */
+function useInvalidateWhenAlreadyDecided() {
+  const queryClient = useQueryClient();
+  return (error: unknown) => {
+    if (isAlreadyDecidedError(error)) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.proposals.all });
+    }
+  };
+}
+
+/**
+ * Accept a proposal. On failure nothing is invalidated (except for an already
+ * decided proposal), so the card keeps its error and the user's input.
  */
 export function useAcceptProposal() {
   const invalidate = useInvalidateAfterDecision();
+  const invalidateStale = useInvalidateWhenAlreadyDecided();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: ProposalAcceptRequest }) =>
       proposalsApi.accept(id, body),
     onSuccess: invalidate,
+    onError: invalidateStale,
   });
 }
 
 /** Reject a proposal. Same invalidation rules as accepting. */
 export function useRejectProposal() {
   const invalidate = useInvalidateAfterDecision();
+  const invalidateStale = useInvalidateWhenAlreadyDecided();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: ProposalRejectRequest }) =>
       proposalsApi.reject(id, body),
     onSuccess: invalidate,
+    onError: invalidateStale,
   });
 }

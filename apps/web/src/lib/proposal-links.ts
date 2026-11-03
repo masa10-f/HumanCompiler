@@ -68,13 +68,14 @@ export function proposalResultHref(p: Proposal): string | null {
 }
 
 /**
- * The ref itself when it is an http(s) URL, otherwise null (it is then shown
- * as plain text, never as a link).
+ * The parsed (normalised) URL when the ref is an http(s) URL, otherwise null
+ * (it is then shown as plain text, never as a link). The href comes from the
+ * parsed URL so what is checked is exactly what is linked.
  */
 export function sourceHref(ref: string): string | null {
   try {
     const url = new URL(ref);
-    return url.protocol === 'http:' || url.protocol === 'https:' ? ref : null;
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
   } catch {
     return null;
   }
@@ -93,9 +94,48 @@ function validationLines(detail: unknown[]): string[] {
   return lines;
 }
 
+const ALREADY_DECIDED = 'Proposal already decided';
+
+/** Japanese text for the detail strings the proposals API is known to send. */
+const KNOWN_DETAIL_MESSAGES: ReadonlyMap<string, string> = new Map([
+  [ALREADY_DECIDED, 'この提案はすでに処理されています。一覧を更新しました。'],
+  [
+    'Proposal target no longer exists; reject it instead',
+    '提案の対象が見つかりません（削除された可能性があります）。この提案は却下してください。',
+  ],
+  [
+    'Stored proposal no longer matches its schema; reject it instead',
+    'この提案は現在の形式に合わないため承認できません。却下してください。',
+  ],
+  [
+    'Note was created concurrently; retry',
+    'ノートが同時に作成されました。もう一度お試しください。',
+  ],
+  ['Proposal not found', '提案が見つかりません。'],
+]);
+
+/** The string `detail` of an API error, or its message when there is none. */
+function errorDetail(error: ApiError): string {
+  const detail = asRecord(error.context?.responseData)?.detail;
+  return typeof detail === 'string' ? detail : error.message;
+}
+
+/**
+ * True when another tab or the agent already decided the proposal (HTTP 409
+ * with exactly that detail), so the card on screen is stale.
+ */
+export function isAlreadyDecidedError(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.statusCode === 409 &&
+    errorDetail(error) === ALREADY_DECIDED
+  );
+}
+
 /**
  * A readable message for a failed accept/reject: one line per Pydantic error
- * for a 422 with an array detail, otherwise the standard error message.
+ * for a 422 with an array detail, Japanese text for the known backend details,
+ * otherwise the standard error message.
  */
 export function proposalErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -104,6 +144,8 @@ export function proposalErrorMessage(error: unknown): string {
       const lines = validationLines(detail);
       if (lines.length > 0) return lines.join('\n');
     }
+    const known = KNOWN_DETAIL_MESSAGES.get(errorDetail(error));
+    if (known) return known;
   }
   return getErrorMessage(error instanceof Error ? error : new Error(String(error)));
 }

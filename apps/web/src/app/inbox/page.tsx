@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getErrorMessage } from '@/lib/errors';
+import { cn } from '@/lib/utils';
 import { PROPOSAL_KIND_LABELS } from '@/types/proposal';
 import type { ProposalKind, ProposalListFilters } from '@/types/proposal';
 
@@ -152,7 +153,7 @@ export default function InboxPage() {
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>{getErrorMessage(error as Error)}</AlertDescription>
           </Alert>
-        ) : isLoading || stranded ? (
+        ) : isLoading || stranded || (isPlaceholderData && items.length === 0) ? (
           <div className="flex justify-center py-12">
             <Loader2
               role="status"
@@ -165,14 +166,17 @@ export default function InboxPage() {
             {EMPTY_MESSAGES[status]}
           </p>
         ) : (
-          <div className="space-y-4">
+          <div
+            aria-busy={isPlaceholderData || undefined}
+            className={cn('space-y-4', isPlaceholderData && 'pointer-events-none opacity-60')}
+          >
             {items.map((proposal) => (
               <ProposalCard key={proposal.id} proposal={proposal} />
             ))}
           </div>
         )}
 
-        {total > 0 && (
+        {total > 0 && !isPlaceholderData && (
           <div className="mt-6 flex items-center justify-between">
             <span className="text-sm text-muted-foreground">
               {from}–{to} / {total} 件

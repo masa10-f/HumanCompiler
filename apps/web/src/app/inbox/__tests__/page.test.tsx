@@ -256,4 +256,44 @@ describe('InboxPage', () => {
     expect(mockReplace).not.toHaveBeenCalled();
     expect(screen.queryByRole('heading', { name: 'インボックス' })).not.toBeInTheDocument();
   });
-});
+
+  describe('placeholder data', () => {
+    it('shows the spinner instead of the empty message and hides the range', () => {
+      mockUseProposals.mockReturnValue({
+        ...listResult([], 0),
+        isPlaceholderData: true,
+      });
+      render(<InboxPage />);
+
+      expect(screen.getByRole('status', { name: '読み込み中' })).toBeInTheDocument();
+      expect(screen.queryByText('未処理の提案はありません')).toBeNull();
+      expect(screen.queryByText('処理済みの提案はありません')).toBeNull();
+    });
+
+    it('dims the stale cards, blocks interaction and hides the range text', () => {
+      mockUseProposals.mockReturnValue({
+        ...listResult([makeProposal('a'), makeProposal('b')], 2),
+        isPlaceholderData: true,
+      });
+      render(<InboxPage />);
+
+      const cards = screen.getAllByTestId('proposal-card');
+      expect(cards).toHaveLength(2);
+      const container = cards[0].parentElement as HTMLElement;
+      expect(container).toHaveAttribute('aria-busy', 'true');
+      expect(container).toHaveClass('opacity-60');
+      expect(container).toHaveClass('pointer-events-none');
+      expect(screen.queryByText(/件$/)).toBeNull();
+    });
+
+    it('renders live data as usual', () => {
+      mockUseProposals.mockReturnValue({ ...listResult([makeProposal('a')]), isPlaceholderData: false });
+      render(<InboxPage />);
+
+      const container = screen.getByTestId('proposal-card').parentElement as HTMLElement;
+      expect(container).not.toHaveAttribute('aria-busy', 'true');
+      expect(container).not.toHaveClass('opacity-60');
+      expect(screen.getByText('1–1 / 1 件')).toBeInTheDocument();
+    });
+  });
+})

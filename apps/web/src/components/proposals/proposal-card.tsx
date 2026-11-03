@@ -88,6 +88,21 @@ function Rationale({ text }: { text: string }) {
   );
 }
 
+/** What the decision note means, which depends on how the proposal was decided. */
+function decisionNoteLabel(proposal: Proposal): string {
+  if (proposal.status === 'rejected') return '補足';
+  switch (proposal.kind) {
+    case 'experiment':
+      return '実行するエージェントへの追加の指示';
+    case 'decision_request':
+      return '答え';
+    case 'contradiction':
+      return 'コメント';
+    default:
+      return 'メモ';
+  }
+}
+
 function Decision({ proposal }: { proposal: Proposal }) {
   if (proposal.status === 'pending') return null;
 
@@ -110,7 +125,12 @@ function Decision({ proposal }: { proposal: Proposal }) {
         <p>{REJECT_CATEGORY_LABELS[proposal.reject_category]}</p>
       ) : null}
       {proposal.decision_note ? (
-        <p className="whitespace-pre-wrap break-words">{proposal.decision_note}</p>
+        <p className="whitespace-pre-wrap break-words">
+          <span className="text-muted-foreground">
+            {`${decisionNoteLabel(proposal)}: `}
+          </span>
+          {proposal.decision_note}
+        </p>
       ) : null}
       {chosen ? (
         <p>
