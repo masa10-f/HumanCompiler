@@ -281,10 +281,6 @@ async def _process_user_deadline_notifications(
             session, user, quick_task, now, email_service, is_quick_task=True
         )
 
-    # Check for overdue tasks if enabled
-    if user_settings.email_overdue_alerts_enabled:
-        await _process_overdue_notifications(session, user, now, email_service)
-
 
 def _handled_today(
     session: Session,
@@ -424,111 +420,6 @@ async def _send_task_deadline_email(
         logger.info(f"Sent deadline reminder for task {task_id} to {to_email}")
     else:
         logger.warning(f"Failed to send deadline reminder for task {task_id}")
-
-
-async def _process_overdue_notifications(
-    session: Session,
-    user: User,
-    now: datetime,
-    email_service,
-) -> None:
-    """Process overdue task notifications for a user"""
-    # Get overdue regular tasks
-    overdue_tasks_stmt = (
-        select(Task)
-        .join(Goal, Task.goal_id == Goal.id)
-        .join(Project, Goal.project_id == Project.id)
-        .where(
-            Project.owner_id == user.id,
-            Task.due_date.isnot(None),
-            Task.due_date < now,  # type: ignore[operator]
-            Task.status.in_([TaskStatus.PENDING, TaskStatus.IN_PROGRESS]),
-        )
-        .options(selectinload(Task.goal).selectinload(Goal.project))
-    )
-    overdue_tasks = session.exec(overdue_tasks_stmt).all()
-
-    # Get overdue quick tasks
-    overdue_quick_tasks_stmt = select(QuickTask).where(
-        QuickTask.owner_id == user.id,
-        QuickTask.due_date.isnot(None),
-        QuickTask.due_date < now,  # type: ignore[operator]
-        QuickTask.status.in_([TaskStatus.PENDING, TaskStatus.IN_PROGRESS]),
-    )
-    overdue_quick_tasks = session.exec(overdue_quick_tasks_stmt).all()
-
-    for task in overdue_tasks:
-        await _send_overdue_email(
-            session, user, task, now, email_service, is_quick_task=False
-        )
-
-    for quick_task in overdue_quick_tasks:
-        await _send_overdue_email(
-            session, user, quick_task, now, email_service, is_quick_task=True
-        )
-
-
-async def _send_overdue_email(
-    session: Session,
-    user: User,
-    task: Task | QuickTask,
-    now: datetime,
-    email_service,
-    is_quick_task: bool,
-) -> None:
-    """Send an overdue alert email for a task if not already sent"""
-    # Guard: ensure due_date is not None (should be filtered by query, but for type safety)
-    if task.due_date is None:
-        return
-
-    task_id = task.id
-    notification_type = EmailNotificationType.OVERDUE_ALERT
-
-    # Skip a task already sent, being sent, or failing too often today
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    if _handled_today(
-        session, user.id, task_id, is_quick_task, notification_type, today_start
-    ):
-        logger.debug(f"Already handled overdue alert for task {task_id} today")
-        return
-
-    # Calculate hours overdue (due_date is guaranteed non-None by guard clause)
-    hours_overdue = int((now - task.due_date).total_seconds() / 3600)
-
-    # Get context info
-    project_title = None
-    goal_title = None
-    if not is_quick_task and hasattr(task, "goal") and task.goal:
-        goal_title = task.goal.title
-        if task.goal.project:
-            project_title = task.goal.project.title
-
-    # Plain values: the commits below expire the ORM objects.
-    to_email = user.email
-    task_title = task.title
-    due_date = task.due_date
-
-    # Reserve today's row before sending (see _handled_today).
-    log_entry = _reserve_log(
-        session, user.id, task_id, is_quick_task, notification_type, now
-    )
-
-    success = email_service.send_overdue_alert(
-        to_email=to_email,
-        task_title=task_title,
-        task_id=task_id,
-        due_date=due_date,
-        hours_overdue=hours_overdue,
-        project_title=project_title,
-        goal_title=goal_title,
-    )
-
-    _record_outcome(session, log_entry, success, now)
-
-    if success:
-        logger.info(f"Sent overdue alert for task {task_id} to {to_email}")
-    else:
-        logger.warning(f"Failed to send overdue alert for task {task_id}")
 
 
 def start_notification_scheduler() -> bool:

@@ -4,7 +4,7 @@
 # This file is part of HumanCompiler.
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-"""Tests for the deadline reminder and overdue alert email job (no real Resend)."""
+"""Tests for the deadline reminder email job (no real Resend)."""
 
 import logging
 from collections.abc import Awaitable, Callable
@@ -18,10 +18,12 @@ from sqlmodel import Session, select
 
 from humancompiler_api.models import (
     EmailNotificationLog,
+    EmailNotificationSettingsUpdate,
     EmailNotificationStatus,
     EmailNotificationType,
     Task,
     UserSettings,
+    UserSettingsResponse,
 )
 from humancompiler_api.scheduler import notification_scheduler
 from tests.agent_api_helpers import seed_goal, seed_project, seed_task, seed_user
@@ -71,17 +73,10 @@ class FakeEmailService:
     ) -> bool:
         return self._send("reminder", to_email, task_id)
 
-    def send_overdue_alert(
-        self,
-        to_email: str,
-        task_title: str,
-        task_id: UUID,
-        due_date: datetime,
-        hours_overdue: int,
-        project_title: str | None = None,
-        goal_title: str | None = None,
-    ) -> bool:
-        return self._send("overdue", to_email, task_id)
+    def send_overdue_alert(self, *args: Any, **kwargs: Any) -> bool:
+        """Spy only: the real service no longer has overdue alerts."""
+        self.calls.append(("overdue", kwargs.get("to_email", ""), kwargs["task_id"]))
+        return True
 
 
 def add_user(session: Session, user_id: UUID, **overrides: Any) -> UUID:
@@ -89,7 +84,6 @@ def add_user(session: Session, user_id: UUID, **overrides: Any) -> UUID:
     values: dict[str, Any] = {
         "email_notifications_enabled": True,
         "email_deadline_reminder_hours": 24,
-        "email_overdue_alerts_enabled": False,
     }
     values.update(overrides)
     session.add(UserSettings(id=uuid4(), user_id=user_id, **values))
@@ -172,19 +166,25 @@ async def test_deadline_reminder_sent_once_per_day(session: Session, run: Runner
     assert log.error_message is None
 
 
-async def test_overdue_alert_sent_once_per_day(session: Session, run: Runner):
-    add_user(session, USER_A, email_overdue_alerts_enabled=True)
-    task_id = add_task(session, USER_A, NOW - timedelta(hours=2))
+async def test_no_overdue_alert_is_sent(session: Session, run: Runner):
+    # The unused column still defaults to True; it must not matter.
+    add_user(session, USER_A)
+    add_task(session, USER_A, NOW - timedelta(hours=2))
     fake = FakeEmailService()
 
     await run(NOW, fake)
     await run(NOW + FIVE_MINUTES, fake)
 
-    assert fake.calls == [("overdue", email_of(USER_A), task_id)]
-    [log] = logs_of(session)
-    assert log.status == EmailNotificationStatus.SENT
-    assert log.notification_type == EmailNotificationType.OVERDUE_ALERT
-    assert log.task_id == task_id
+    assert fake.calls == []
+    assert logs_of(session) == []
+
+
+def test_settings_api_no_longer_exposes_overdue_alerts():
+    assert "email_overdue_alerts_enabled" not in UserSettingsResponse.model_fields
+    assert (
+        "email_overdue_alerts_enabled"
+        not in EmailNotificationSettingsUpdate.model_fields
+    )
 
 
 async def test_commit_failure_after_send_does_not_resend(
