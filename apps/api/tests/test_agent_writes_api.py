@@ -4,9 +4,10 @@
 # This file is part of HumanCompiler.
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-"""Agent API: goal and task writes and task dependencies under /api/agent/v1."""
+"""Agent API: goal, task, task dependency and note writes under /api/agent/v1."""
 
-from datetime import UTC, datetime
+import json
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
@@ -15,12 +16,15 @@ import pytest
 from sqlmodel import Session, func, select
 
 from humancompiler_api import agent_write_service
+from humancompiler_api.note_markdown import agent_append_heading, markdown_to_note_html
+from humancompiler_api.proposal_service import APP_TIMEZONE
 from humancompiler_api.database import get_session
 from humancompiler_api.main import app
 from humancompiler_api.models import (
     AgentChange,
     AgentScope,
     AgentToken,
+    ContextNote,
     Goal,
     GoalStatus,
     Project,
@@ -34,6 +38,7 @@ from tests.agent_api_helpers import (
     client,
     issue_token,
     seed_goal,
+    seed_note,
     seed_project,
     seed_task,
     seed_user,
@@ -1005,3 +1010,346 @@ def test_dependency_on_foreign_task_is_404(session: Session):
     assert _stored_updated_at(session, task.id) == STAMP
     assert _stored_updated_at(session, foreign.id) == STAMP
     assert _changes(session) == []
+
+
+NOTES = [AgentScope.NOTES_WRITE]
+NOTES_UNCONFIRMED = [AgentScope.NOTES_WRITE, AgentScope.WRITES_UNCONFIRMED]
+NOTE_KINDS = ["projects", "goals", "tasks"]
+NOTE_COLUMN = {"projects": "project_id", "goals": "goal_id", "tasks": "task_id"}
+NOT_FOUND = {
+    "projects": "Project not found",
+    "goals": "Goal not found",
+    "tasks": "Task not found",
+}
+NOTE_BODY_CAP = 512 * 1024
+
+
+def _note_target(kind: str, project: Project, goal: Goal, task: Task) -> UUID:
+    target = {"projects": project, "goals": goal, "tasks": task}[kind]
+    return target.id  # type: ignore[return-value]
+
+
+def _note_parents(
+    kind: str, project: Project, goal: Goal
+) -> tuple[UUID | None, UUID | None]:
+    """The project_id and goal_id the change row of a note on ``kind`` carries."""
+    if kind == "projects":
+        return project.id, None
+    return project.id, goal.id
+
+
+def _notes(session: Session) -> list[ContextNote]:
+    session.expire_all()
+    return list(session.exec(select(ContextNote)).all())
+
+
+def _append(token: str, kind: str, target_id: Any, markdown: str):
+    return client.post(
+        f"{BASE}/context-notes/{kind}/{target_id}/append",
+        json={"content_markdown": markdown},
+        headers=bearer(token),
+    )
+
+
+def _replace(token: str, kind: str, target_id: Any, markdown: str, expected: Any):
+    return client.put(
+        f"{BASE}/context-notes/{kind}/{target_id}",
+        json={"expected_updated_at": expected, "content_markdown": markdown},
+        headers=bearer(token),
+    )
+
+
+def _heading(name: str) -> str:
+    return agent_append_heading(name, datetime.now(APP_TIMEZONE).date())
+
+
+def test_note_writes_need_notes_write(session: Session):
+    _, _, task = _tree(session)
+    token = issue_token(session, USER_A, UNCONFIRMED)
+
+    for response in (
+        _append(token, "tasks", task.id, "Hello"),
+        _replace(token, "tasks", task.id, "Hello", None),
+    ):
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Missing required scope: notes:write"
+    assert _notes(session) == []
+    assert _changes(session) == []
+
+
+@pytest.mark.parametrize("kind", NOTE_KINDS)
+def test_append_note_creates_and_appends(session: Session, kind: str):
+    project, goal, task = _tree(session)
+    target_id = _note_target(kind, project, goal, task)
+    token = issue_token(session, USER_A, NOTES, name="distiller <bot>")
+    heading = _heading("distiller <bot>")
+    assert "distiller &lt;bot&gt;" in heading
+
+    response = _append(token, kind, target_id, "First **bold**")
+    assert response.status_code == 200, response.text
+    first_block = heading + markdown_to_note_html("First **bold**")
+    body = response.json()
+    assert body["content"] == first_block
+    assert body["content_type"] == "html"
+    assert body[NOTE_COLUMN[kind]] == str(target_id)
+    (note,) = _notes(session)
+    assert note.id == UUID(body["id"])
+    assert note.user_id == USER_A
+    assert getattr(note, NOTE_COLUMN[kind]) == target_id
+    assert note.content == first_block
+
+    response = _append(token, kind, target_id, "Second")
+    assert response.status_code == 200, response.text
+    second_block = heading + markdown_to_note_html("Second")
+    assert response.json()["content"] == first_block + second_block
+    (note,) = _notes(session)
+    assert note.content == first_block + second_block
+    assert note.content_type == "html"
+
+    changes = sorted(_changes(session), key=lambda row: (row.before or {})["length"])
+    assert len(changes) == 2
+    project_id, goal_id = _note_parents(kind, project, goal)
+    for row, length, block in (
+        (changes[0], 0, first_block),
+        (changes[1], len(first_block), second_block),
+    ):
+        assert row.entity_type == "context_note"
+        assert row.entity_id == note.id
+        assert row.action == "append"
+        assert row.destructive is False
+        assert row.agent_name == "distiller <bot>"
+        assert row.before == {"length": length}
+        assert row.after == {"appended_html": block}
+        assert row.project_id == project_id
+        assert row.goal_id == goal_id
+
+
+def test_append_to_existing_note_keeps_it(session: Session):
+    project, _, _ = _tree(session)
+    seed_note(session, USER_A, project=project, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES, name="distiller")
+
+    response = _append(token, "projects", project.id, "More")
+    assert response.status_code == 200, response.text
+    (note,) = _notes(session)
+    assert note.content == "Note" + _heading("distiller") + "<p>More</p>\n"
+    assert note.content_type == "html"
+    assert _utc(note.updated_at) > STAMP  # type: ignore[operator]
+    (change,) = _changes(session)
+    assert change.before == {"length": len("Note")}
+
+
+def test_append_escapes_raw_html(session: Session):
+    _, _, task = _tree(session)
+    token = issue_token(session, USER_A, NOTES)
+
+    response = _append(
+        token, "tasks", task.id, '<script>x</script>\n\n<img src=x onerror="y">'
+    )
+    assert response.status_code == 200, response.text
+    (note,) = _notes(session)
+    assert "<script" not in note.content
+    assert "<img" not in note.content
+    assert "&lt;script&gt;x&lt;/script&gt;" in note.content
+
+
+def test_replace_note_needs_unconfirmed(session: Session):
+    _, _, task = _tree(session)
+    seed_note(session, USER_A, task=task, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES)
+
+    response = _replace(token, "tasks", task.id, "New", STAMP.isoformat())
+    assert response.status_code == 403
+    assert response.json()["detail"] == NEEDS_UNCONFIRMED
+    (note,) = _notes(session)
+    assert note.content == "Note"
+    assert _utc(note.updated_at) == STAMP
+    assert _changes(session) == []
+
+    # A replace that would create the note is destructive too.
+    _, goal, _ = _tree(session)
+    response = _replace(token, "goals", goal.id, "New", None)
+    assert response.status_code == 403
+    assert len(_notes(session)) == 1
+    assert _changes(session) == []
+
+
+def test_replace_note(session: Session):
+    project, goal, _ = _tree(session)
+    seed_note(session, USER_A, goal=goal, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES_UNCONFIRMED, name="trusted")
+    stale = {"message": STALE_MESSAGE, "current_updated_at": STAMP.isoformat()}
+
+    for expected in ((STAMP - timedelta(minutes=1)).isoformat(), None):
+        response = _replace(token, "goals", goal.id, "New", expected)
+        assert response.status_code == 409, expected
+        assert response.json()["detail"] == stale
+    (note,) = _notes(session)
+    assert note.content == "Note"
+    assert _utc(note.updated_at) == STAMP
+    assert _changes(session) == []
+
+    markdown = "# New\n\nBody <b>raw</b>"
+    new_html = markdown_to_note_html(markdown)
+    assert "<b>" not in new_html
+    # The same instant in another offset matches.
+    expected = STAMP.astimezone(APP_TIMEZONE).isoformat()
+    response = _replace(token, "goals", goal.id, markdown, expected)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["content"] == new_html
+    assert body["content_type"] == "html"
+    (note,) = _notes(session)
+    assert note.content == new_html
+    assert note.content_type == "html"
+    assert _utc(note.updated_at) > STAMP  # type: ignore[operator]
+    assert datetime.fromisoformat(body["updated_at"]) == _utc(note.updated_at)
+
+    (change,) = _changes(session)
+    assert change.entity_type == "context_note"
+    assert change.entity_id == note.id
+    assert change.action == "replace"
+    assert change.destructive is True
+    assert change.agent_name == "trusted"
+    assert change.before == {"content": "Note"}
+    assert change.after == {"content": new_html}
+    assert change.project_id == project.id
+    assert change.goal_id == goal.id
+
+
+def test_replace_missing_note(session: Session):
+    project, goal, task = _tree(session)
+    token = issue_token(session, USER_A, NOTES_UNCONFIRMED)
+
+    # A version for a note that does not exist is stale: send null to create it.
+    response = _replace(token, "tasks", task.id, "New", STAMP.isoformat())
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "message": STALE_MESSAGE,
+        "current_updated_at": None,
+    }
+    assert _notes(session) == []
+    assert _changes(session) == []
+
+    response = _replace(token, "tasks", task.id, "", None)
+    assert response.status_code == 200, response.text
+    assert response.json()["content"] == ""
+    (note,) = _notes(session)
+    assert note.task_id == task.id
+    assert note.user_id == USER_A
+    assert note.content == ""
+    assert note.content_type == "html"
+    (change,) = _changes(session)
+    assert change.action == "replace"
+    assert change.destructive is True
+    assert change.before == {"content": ""}
+    assert change.after == {"content": ""}
+    assert change.project_id == project.id
+    assert change.goal_id == goal.id
+
+
+@pytest.mark.parametrize("kind", NOTE_KINDS)
+def test_note_on_foreign_target_is_404(session: Session, kind: str):
+    foreign_project, foreign_goal, foreign_task = _tree(session, owner=USER_B)
+    foreign_id = _note_target(kind, foreign_project, foreign_goal, foreign_task)
+    token = issue_token(session, USER_A, NOTES_UNCONFIRMED)
+
+    for target_id in (foreign_id, uuid4()):
+        for response in (
+            _append(token, kind, target_id, "Hello"),
+            _replace(token, kind, target_id, "Hello", None),
+        ):
+            assert response.status_code == 404, target_id
+            assert response.json()["detail"] == NOT_FOUND[kind]
+    assert _notes(session) == []
+    assert _changes(session) == []
+
+
+def test_note_on_foreign_target_with_a_note_is_404(session: Session):
+    _, _, foreign_task = _tree(session, owner=USER_B)
+    seed_note(session, USER_B, task=foreign_task, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES_UNCONFIRMED)
+
+    for response in (
+        _append(token, "tasks", foreign_task.id, "Hello"),
+        _replace(token, "tasks", foreign_task.id, "Hello", STAMP.isoformat()),
+    ):
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Task not found"
+    (note,) = _notes(session)
+    assert note.content == "Note"
+    assert _changes(session) == []
+
+
+def test_note_append_too_long_is_422(session: Session):
+    _, _, task = _tree(session)
+    seed_note(session, USER_A, task=task, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES_UNCONFIRMED)
+    path = f"{BASE}/context-notes/tasks/{task.id}"
+
+    responses = [
+        _append(token, "tasks", task.id, "x" * 20_001),
+        _append(token, "tasks", task.id, ""),
+        _replace(token, "tasks", task.id, "x" * 100_001, STAMP.isoformat()),
+        client.post(
+            f"{path}/append",
+            json={"content_markdown": "Hi", "extra": 1},
+            headers=bearer(token),
+        ),
+        client.put(path, json={"content_markdown": "Hi"}, headers=bearer(token)),
+        _append(token, "quick-tasks", task.id, "Hi"),
+    ]
+    for response in responses:
+        assert response.status_code == 422, response.text
+    (note,) = _notes(session)
+    assert note.content == "Note"
+    assert _changes(session) == []
+
+
+def _raw(method: str, path: str, token: str, body: bytes):
+    return client.request(
+        method,
+        f"{BASE}{path}",
+        content=body,
+        headers={**bearer(token), "content-type": "application/json"},
+    )
+
+
+def test_note_body_over_cap_is_413(session: Session):
+    _, _, task = _tree(session)
+    token = issue_token(session, USER_A, NOTES_UNCONFIRMED)
+    oversized = json.dumps(
+        {"content_markdown": "x" * NOTE_BODY_CAP, "expected_updated_at": None}
+    ).encode()
+
+    for method, path in (
+        ("POST", f"/context-notes/tasks/{task.id}/append"),
+        ("PUT", f"/context-notes/tasks/{task.id}"),
+    ):
+        response = _raw(method, path, token, oversized)
+        assert response.status_code == 413
+        assert (
+            response.json()["detail"] == f"Request body exceeds {NOTE_BODY_CAP} bytes"
+        )
+    assert _notes(session) == []
+    assert _changes(session) == []
+
+    # Over the proposals' 64 KB but within 512 KB: accepted.
+    markdown = "あ" * 90_000
+    body = json.dumps(
+        {"content_markdown": markdown, "expected_updated_at": None},
+        ensure_ascii=False,
+    ).encode()
+    assert 64 * 1024 < len(body) < NOTE_BODY_CAP
+    response = _raw("PUT", f"/context-notes/tasks/{task.id}", token, body)
+    assert response.status_code == 200, response.text
+    (note,) = _notes(session)
+    assert note.content == markdown_to_note_html(markdown)
+
+
+def test_proposals_body_cap_unchanged(session: Session):
+    token = issue_token(session, USER_A, [AgentScope.PROPOSALS_WRITE])
+
+    response = _raw("POST", "/proposals", token, b" " * (64 * 1024 + 1))
+    assert response.status_code == 413
+    assert response.json()["detail"] == "Request body exceeds 65536 bytes"

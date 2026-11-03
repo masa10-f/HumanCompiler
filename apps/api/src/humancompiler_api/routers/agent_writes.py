@@ -4,7 +4,9 @@
 # This file is part of HumanCompiler.
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-"""Agent API writes for goals, tasks and task dependencies (``/api/agent/v1``).
+"""Agent API writes for goals, tasks, task dependencies and context notes.
+
+All under ``/api/agent/v1``.
 
 Every write is recorded in ``agent_changes``. Updates need the updated_at the
 agent read, and destructive changes need the ``writes:unconfirmed`` scope.
@@ -22,14 +24,27 @@ from humancompiler_api.agent_write_models import (
     AgentDependencyCreate,
     AgentGoalCreate,
     AgentGoalUpdate,
+    AgentNoteAppend,
+    AgentNoteReplace,
     AgentTaskCreate,
     AgentTaskUpdate,
+    NoteTargetKind,
 )
 from humancompiler_api.database import get_session
-from humancompiler_api.models import AgentScope, Goal, GoalResponse, Task, TaskResponse
+from humancompiler_api.models import (
+    AgentScope,
+    ContextNoteResponse,
+    Goal,
+    GoalResponse,
+    Task,
+    TaskResponse,
+)
+from humancompiler_api.routers.agent_proposals import body_capped_route
 from humancompiler_api.routers.agent_v1 import _owned_goals, _owned_tasks
 
 router = APIRouter(prefix="/api/agent/v1", tags=["agent"])
+
+NOTE_MAX_BODY_BYTES = 512 * 1024
 
 UPDATE_GUIDE = (
     "Only the fields you send change; send null to clear description, memo or "
@@ -42,6 +57,14 @@ UPDATE_GUIDE = (
     "description or memo, moving a task to another goal) needs the "
     "writes:unconfirmed scope; without it the whole request is refused with 403 "
     "and nothing is written. Send the destructive change as a proposal instead."
+)
+
+
+NOTE_GUIDE = (
+    "kind is projects, goals or tasks, and target_id is that item's id. "
+    "Another user's item and a missing one both give 404. The request body is "
+    "capped at 512 KB (raw bytes, before parsing): a larger body gets 413, "
+    "decided before authentication. Raw HTML in the Markdown is shown as text."
 )
 
 
@@ -194,3 +217,62 @@ async def remove_task_dependency(
         session, principal, task_id, depends_on_task_id
     )
     return _task_response(session, principal.user_id, task_id)
+
+
+# The note writes take whole notes, so they get a larger cap than the default.
+notes_router = APIRouter(route_class=body_capped_route(NOTE_MAX_BODY_BYTES))
+
+
+@notes_router.post(
+    "/context-notes/{kind}/{target_id}/append",
+    response_model=ContextNoteResponse,
+    summary="Append to a note",
+    description=(
+        "Add Markdown to the end of the note of a project, goal or task, under a "
+        "heading with your token name and today's date. Creates the note if the "
+        "item has none. Not a destructive change, and no expected_updated_at is "
+        f"needed. {NOTE_GUIDE}"
+    ),
+)
+async def append_note(
+    kind: NoteTargetKind,
+    target_id: UUID,
+    data: AgentNoteAppend,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[
+        AgentPrincipal, Depends(require_scope(AgentScope.NOTES_WRITE))
+    ],
+) -> ContextNoteResponse:
+    note = agent_write_service.append_note(session, principal, kind, target_id, data)
+    return ContextNoteResponse.model_validate(note)
+
+
+@notes_router.put(
+    "/context-notes/{kind}/{target_id}",
+    response_model=ContextNoteResponse,
+    summary="Replace a note",
+    description=(
+        "Replace the whole note of a project, goal or task with the Markdown "
+        "sent; an empty string empties it. This is a destructive change: it "
+        "needs the writes:unconfirmed scope, else 403 and nothing changes; send "
+        "it as a proposal instead. expected_updated_at must be the note's "
+        "updated_at you last read, or null when the item has no note yet (that "
+        "creates it). If they differ, nothing is written and the answer is 409 "
+        "with detail.current_updated_at (null when there is no note); read it "
+        f"again and retry. {NOTE_GUIDE}"
+    ),
+)
+async def replace_note(
+    kind: NoteTargetKind,
+    target_id: UUID,
+    data: AgentNoteReplace,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[
+        AgentPrincipal, Depends(require_scope(AgentScope.NOTES_WRITE))
+    ],
+) -> ContextNoteResponse:
+    note = agent_write_service.replace_note(session, principal, kind, target_id, data)
+    return ContextNoteResponse.model_validate(note)
+
+
+router.include_router(notes_router)

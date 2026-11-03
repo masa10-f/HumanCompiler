@@ -4,7 +4,7 @@
 # This file is part of HumanCompiler.
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-"""Agent writes: goals, tasks and task dependencies written by an agent token.
+"""Agent writes: goals, tasks, task dependencies and notes written by an agent token.
 
 Each public write is one transaction: the entity and its ``agent_changes`` row
 are committed together, and any error rolls both back. The helpers that do not
@@ -12,6 +12,7 @@ commit (``record_change``, ``require_destructive_allowed``,
 ``check_expected_updated_at``) are shared with the other agent writes.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -21,12 +22,16 @@ from fastapi import HTTPException, status
 from fastapi.encoders import jsonable_encoder
 from sqlmodel import Session, SQLModel, col, select
 
+from humancompiler_api import proposal_service
 from humancompiler_api.agent_auth import AgentPrincipal
 from humancompiler_api.agent_write_models import (
     AgentGoalCreate,
     AgentGoalUpdate,
+    AgentNoteAppend,
+    AgentNoteReplace,
     AgentTaskCreate,
     AgentTaskUpdate,
+    NoteTargetKind,
 )
 from humancompiler_api.common.error_handlers import ResourceNotFoundError
 from humancompiler_api.models import (
@@ -36,14 +41,18 @@ from humancompiler_api.models import (
     AgentChangeEntity,
     AgentScope,
     AgentToken,
+    ContextNote,
     Goal,
     GoalCreate,
     GoalStatus,
+    Project,
     Task,
     TaskCreate,
     TaskDependency,
     TaskStatus,
 )
+from humancompiler_api.note_markdown import markdown_to_note_html
+from humancompiler_api.proposal_payloads import NoteTarget
 from humancompiler_api.services import (
     _dependency_path_exists,
     _touch,
@@ -88,19 +97,25 @@ def _unprocessable(detail: str) -> HTTPException:
     return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail)
 
 
+def _stale(current: datetime | None) -> HTTPException:
+    """409 with the stored updated_at in UTC (None: there is nothing stored)."""
+    return HTTPException(
+        status.HTTP_409_CONFLICT,
+        detail={
+            "message": STALE_MESSAGE,
+            "current_updated_at": (
+                _as_utc(current).isoformat() if current is not None else None
+            ),
+        },
+    )
+
+
 def check_expected_updated_at(stored: datetime, expected: datetime) -> None:
     """Raise 409 unless the caller read the stored version.
 
     Both values are compared in UTC; a naive value counts as UTC."""
-    current = _as_utc(stored)
-    if current != _as_utc(expected):
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            detail={
-                "message": STALE_MESSAGE,
-                "current_updated_at": current.isoformat(),
-            },
-        )
+    if _as_utc(stored) != _as_utc(expected):
+        raise _stale(stored)
 
 
 def require_destructive_allowed(principal: AgentPrincipal) -> None:
@@ -126,11 +141,7 @@ def record_change(
 
     ``agent_name`` copies the token's name now, so renaming the token later
     does not rewrite the history."""
-    agent_name = session.exec(
-        select(AgentToken.name).where(AgentToken.id == principal.token_id)
-    ).first()
-    if agent_name is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid agent token")
+    agent_name = _agent_name(session, principal)
     row = AgentChange(
         user_id=principal.user_id,
         actor=AgentChangeActor.AGENT.value,
@@ -148,6 +159,26 @@ def record_change(
     session.add(row)
     session.flush()
     return row
+
+
+def _agent_name(session: Session, principal: AgentPrincipal) -> str:
+    """The token's current name."""
+    agent_name = session.exec(
+        select(AgentToken.name).where(AgentToken.id == principal.token_id)
+    ).first()
+    if agent_name is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid agent token")
+    return agent_name
+
+
+def _owned_project(session: Session, user_id: UUID, project_id: UUID) -> Project:
+    try:
+        project = project_service.get_project(session, project_id, user_id)
+    except ResourceNotFoundError:
+        raise _not_found("Project not found") from None
+    if project is None:
+        raise _not_found("Project not found")
+    return project
 
 
 def _owned_goal(session: Session, user_id: UUID, goal_id: UUID) -> Goal:
@@ -185,7 +216,7 @@ def _lock(session: Session, entity: Goal | Task) -> None:
     session.refresh(entity)
 
 
-def _stored_updated_at(entity: Goal | Task) -> datetime:
+def _stored_updated_at(entity: Goal | Task | ContextNote) -> datetime:
     if entity.updated_at is None:
         # Every row gets updated_at on insert; a NULL is a server fault (500).
         raise RuntimeError(f"{type(entity).__name__} {entity.id} has no updated_at")
@@ -212,10 +243,7 @@ def create_goal(
 ) -> Goal:
     """Create a goal under one of the user's projects."""
     try:
-        try:
-            project_service.get_project(session, data.project_id, principal.user_id)
-        except ResourceNotFoundError:
-            raise _not_found("Project not found") from None
+        _owned_project(session, principal.user_id, data.project_id)
         goal = goal_service.build(
             session,
             GoalCreate(
@@ -565,3 +593,138 @@ def remove_task_dependency(
         session.rollback()
         raise
     return task
+
+
+@dataclass(frozen=True)
+class _NoteTarget:
+    """The item a note is on, with the parents its change rows carry."""
+
+    target: NoteTarget
+    project_id: UUID
+    goal_id: UUID | None
+
+
+def _owned_note_target(
+    session: Session, user_id: UUID, kind: NoteTargetKind, target_id: UUID
+) -> _NoteTarget:
+    """Check the note's project, goal or task is the user's (else 404)."""
+    if kind == "projects":
+        _owned_project(session, user_id, target_id)
+        return _NoteTarget(NoteTarget(project_id=target_id), target_id, None)
+    if kind == "goals":
+        goal = _owned_goal(session, user_id, target_id)
+        return _NoteTarget(NoteTarget(goal_id=target_id), goal.project_id, target_id)
+    task = _owned_task(session, user_id, target_id)
+    goal = _owned_goal(session, user_id, task.goal_id)
+    return _NoteTarget(NoteTarget(task_id=target_id), goal.project_id, task.goal_id)
+
+
+def _note_id(note: ContextNote) -> UUID:
+    if note.id is None:
+        raise RuntimeError("Context note has no id")
+    return note.id
+
+
+def _check_note_version(note: ContextNote | None, expected: datetime | None) -> None:
+    """Raise 409 unless ``expected`` is the note's updated_at.
+
+    ``expected`` is None only for an item without a note, and the 409 for a
+    missing note has ``current_updated_at`` None."""
+    if note is None:
+        if expected is not None:
+            raise _stale(None)
+        return
+    stored = _stored_updated_at(note)
+    if expected is None:
+        raise _stale(stored)
+    check_expected_updated_at(stored, expected)
+
+
+def append_note(
+    session: Session,
+    principal: AgentPrincipal,
+    kind: NoteTargetKind,
+    target_id: UUID,
+    data: AgentNoteAppend,
+) -> ContextNote:
+    """Append Markdown to the note of one of the user's projects, goals or tasks.
+
+    The text goes under a heading with the token's name and today's date (JST),
+    as an accepted note_append proposal does. Creates the note if the item has
+    none. Not destructive."""
+    try:
+        note_target = _owned_note_target(session, principal.user_id, kind, target_id)
+        note = proposal_service.lock_note(session, note_target.target)
+        if note is None:
+            note = proposal_service.create_note(
+                session, principal.user_id, note_target.target
+            )
+        old_length = len(note.content)
+        block = proposal_service.append_agent_markdown(
+            note, _agent_name(session, principal), data.content_markdown
+        )
+        session.add(note)
+        session.flush()
+        record_change(
+            session,
+            principal,
+            entity_type=AgentChangeEntity.CONTEXT_NOTE,
+            entity_id=_note_id(note),
+            action=AgentChangeAction.APPEND,
+            before={"length": old_length},
+            after={"appended_html": block},
+            destructive=False,
+            project_id=note_target.project_id,
+            goal_id=note_target.goal_id,
+        )
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    return note
+
+
+def replace_note(
+    session: Session,
+    principal: AgentPrincipal,
+    kind: NoteTargetKind,
+    target_id: UUID,
+    data: AgentNoteReplace,
+) -> ContextNote:
+    """Replace the note of one of the user's projects, goals or tasks. Destructive.
+
+    ``expected_updated_at`` must be the note's updated_at, or None when the
+    item has no note yet; then the note is created."""
+    try:
+        note_target = _owned_note_target(session, principal.user_id, kind, target_id)
+        note = proposal_service.lock_note(session, note_target.target)
+        _check_note_version(note, data.expected_updated_at)
+        require_destructive_allowed(principal)
+        if note is None:
+            note = proposal_service.create_note(
+                session, principal.user_id, note_target.target
+            )
+        old_html = note.content
+        new_html = markdown_to_note_html(data.content_markdown)
+        note.content = new_html
+        note.content_type = "html"
+        note.updated_at = datetime.now(UTC)
+        session.add(note)
+        session.flush()
+        record_change(
+            session,
+            principal,
+            entity_type=AgentChangeEntity.CONTEXT_NOTE,
+            entity_id=_note_id(note),
+            action=AgentChangeAction.REPLACE,
+            before={"content": old_html},
+            after={"content": new_html},
+            destructive=True,
+            project_id=note_target.project_id,
+            goal_id=note_target.goal_id,
+        )
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    return note

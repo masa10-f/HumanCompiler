@@ -4,7 +4,7 @@
 # This file is part of HumanCompiler.
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-"""Request bodies for agent writes (``/api/agent/v1`` POST and PATCH).
+"""Request bodies for agent writes (``/api/agent/v1`` POST, PATCH and PUT).
 
 The limits match ``GoalUpdate`` / ``TaskUpdate`` in ``models.py``. Updates only
 change the fields that were sent, so an unset field and an explicit ``null``
@@ -13,7 +13,7 @@ mean different things; ``model_fields_set`` tells them apart.
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, ClassVar
+from typing import Annotated, ClassVar, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -24,6 +24,8 @@ from humancompiler_api.proposal_payloads import DueDate
 Hours = Annotated[Decimal, Field(gt=0, max_digits=5, decimal_places=2)]
 Priority = Annotated[int, Field(ge=1, le=5)]
 DEPENDS_ON_MAX = 20
+
+NoteTargetKind = Literal["projects", "goals", "tasks"]
 
 EXPECTED_UPDATED_AT_DESCRIPTION = (
     "The updated_at you last read. If the stored value differs, nothing is "
@@ -149,3 +151,30 @@ class AgentTaskUpdate(_AgentUpdate):
         if {"memo", "memo_append"} <= self.model_fields_set:
             raise ValueError("Send memo or memo_append, not both")
         return self
+
+
+class AgentNoteAppend(_AgentWrite):
+    content_markdown: str = Field(
+        min_length=1,
+        max_length=20000,
+        description=(
+            "Markdown added to the end of the note under a heading with your "
+            "token name and today's date. Raw HTML is shown as text."
+        ),
+    )
+
+
+class AgentNoteReplace(_AgentWrite):
+    expected_updated_at: datetime | None = Field(
+        description=(
+            f"{EXPECTED_UPDATED_AT_DESCRIPTION} Required; send null only when "
+            "the item has no note yet, which creates it."
+        )
+    )
+    content_markdown: str = Field(
+        max_length=100000,
+        description=(
+            "Markdown that becomes the whole note; an empty string empties it. "
+            "Raw HTML is shown as text."
+        ),
+    )
