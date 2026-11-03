@@ -4,7 +4,7 @@
 # This file is part of HumanCompiler.
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-"""Agent API: goal and task create and update under /api/agent/v1."""
+"""Agent API: goal and task writes and task dependencies under /api/agent/v1."""
 
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -25,6 +25,7 @@ from humancompiler_api.models import (
     GoalStatus,
     Project,
     Task,
+    TaskDependency,
     TaskStatus,
     WorkType,
 )
@@ -123,10 +124,17 @@ def test_write_scopes_required(session: Session):
             {"expected_updated_at": expected, "title": "T"},
             "tasks:write",
         ),
+        (
+            "post",
+            f"/tasks/{task.id}/dependencies",
+            {"depends_on_task_id": str(uuid4())},
+            "tasks:write",
+        ),
+        ("delete", f"/tasks/{task.id}/dependencies/{uuid4()}", None, "tasks:write"),
     ]
     for method, path, body, scope in calls:
-        response = getattr(client, method)(
-            f"{BASE}{path}", json=body, headers=bearer(token)
+        response = client.request(
+            method.upper(), f"{BASE}{path}", json=body, headers=bearer(token)
         )
         assert response.status_code == 403, (method, path)
         assert response.json()["detail"] == f"Missing required scope: {scope}"
@@ -203,8 +211,8 @@ def test_create_goal_and_task(session: Session):
     assert task_change.after["priority"] == 2
 
 
-def test_create_rejects_extra_fields_including_depends_on(session: Session):
-    _, goal, _ = _tree(session)
+def test_create_rejects_extra_fields(session: Session):
+    _, goal, task = _tree(session)
     token = issue_token(session, USER_A, WRITE)
     response = client.post(
         f"{BASE}/tasks",
@@ -212,8 +220,14 @@ def test_create_rejects_extra_fields_including_depends_on(session: Session):
             "goal_id": str(goal.id),
             "title": "T",
             "estimate_hours": 1,
-            "depends_on": [],
+            "blocks": [],
         },
+        headers=bearer(token),
+    )
+    assert response.status_code == 422
+    response = client.post(
+        f"{BASE}/tasks/{task.id}/dependencies",
+        json={"depends_on_task_id": str(uuid4()), "kind": "blocks"},
         headers=bearer(token),
     )
     assert response.status_code == 422
@@ -690,3 +704,304 @@ def test_missing_stored_updated_at_is_a_server_fault():
     task.updated_at = None
     with pytest.raises(RuntimeError):
         agent_write_service._stored_updated_at(task)
+
+
+CYCLE_DETAIL = "Creating this dependency would create a circular dependency"
+
+
+def _depend(session: Session, task: Task, on: Task) -> TaskDependency:
+    """Seed ``task`` depends on ``on`` without touching either task."""
+    dependency = TaskDependency(id=uuid4(), task_id=task.id, depends_on_task_id=on.id)
+    session.add(dependency)
+    session.commit()
+    session.refresh(dependency)
+    return dependency
+
+
+def _dependencies(session: Session) -> list[tuple[UUID, UUID]]:
+    session.expire_all()
+    rows = session.exec(select(TaskDependency)).all()
+    return sorted((row.task_id, row.depends_on_task_id) for row in rows)
+
+
+def _stored_updated_at(session: Session, task_id: UUID) -> datetime | None:
+    session.expire_all()
+    stored = session.get(Task, task_id)
+    assert stored is not None
+    return _utc(stored.updated_at)
+
+
+def _add_dependency(token: str, task_id: Any, depends_on_task_id: Any):
+    return client.post(
+        f"{BASE}/tasks/{task_id}/dependencies",
+        json={"depends_on_task_id": str(depends_on_task_id)},
+        headers=bearer(token),
+    )
+
+
+def _remove_dependency(token: str, task_id: Any, depends_on_task_id: Any):
+    return client.delete(
+        f"{BASE}/tasks/{task_id}/dependencies/{depends_on_task_id}",
+        headers=bearer(token),
+    )
+
+
+def test_create_task_with_depends_on(session: Session):
+    project, goal, first = _tree(session)
+    second = seed_task(session, goal, updated_at=STAMP)
+    token = issue_token(session, USER_A, WRITE)
+
+    response = client.post(
+        f"{BASE}/tasks",
+        json={
+            "goal_id": str(goal.id),
+            "title": "After both",
+            "estimate_hours": 1,
+            "depends_on": [str(first.id), str(second.id)],
+        },
+        headers=bearer(token),
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    task_id = UUID(body["id"])
+    summary = {
+        UUID(item["depends_on_task_id"]): item["depends_on_task"]["title"]
+        for item in body["dependencies"]
+    }
+    assert summary == {first.id: "Task", second.id: "Task"}
+    assert all(UUID(item["task_id"]) == task_id for item in body["dependencies"])
+    assert _dependencies(session) == sorted([(task_id, first.id), (task_id, second.id)])
+
+    changes = _changes(session)
+    task_rows = [row for row in changes if row.entity_type == "task"]
+    dependency_rows = [row for row in changes if row.entity_type == "task_dependency"]
+    assert len(task_rows) == 1 and len(dependency_rows) == 2
+    assert task_rows[0].after["depends_on"] == [str(first.id), str(second.id)]
+    stored_ids = {
+        row.id
+        for row in session.exec(
+            select(TaskDependency).where(TaskDependency.task_id == task_id)
+        ).all()
+    }
+    assert {row.entity_id for row in dependency_rows} == stored_ids
+    for row in changes:
+        assert row.action == "create"
+        assert row.destructive is False
+        assert row.before is None
+        assert row.project_id == project.id
+        assert row.goal_id == goal.id
+    assert {row.after["depends_on_task_id"] for row in dependency_rows} == {
+        str(first.id),
+        str(second.id),
+    }
+    assert all(row.after["task_id"] == str(task_id) for row in dependency_rows)
+
+
+def test_create_task_with_foreign_depends_on_creates_nothing(session: Session):
+    _, goal, own = _tree(session)
+    _, _, foreign = _tree(session, owner=USER_B)
+    token = issue_token(session, USER_A, WRITE)
+    tasks_before = _count(session, Task)
+
+    for missing in (foreign.id, uuid4()):
+        response = client.post(
+            f"{BASE}/tasks",
+            json={
+                "goal_id": str(goal.id),
+                "title": "T",
+                "estimate_hours": 1,
+                "depends_on": [str(own.id), str(missing)],
+            },
+            headers=bearer(token),
+        )
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Dependency task not found"
+
+    assert _count(session, Task) == tasks_before
+    assert _dependencies(session) == []
+    assert _changes(session) == []
+
+
+def test_create_task_duplicate_depends_on_is_422(session: Session):
+    _, goal, own = _tree(session)
+    token = issue_token(session, USER_A, WRITE)
+    tasks_before = _count(session, Task)
+
+    for depends_on in (
+        [str(own.id), str(own.id)],
+        [str(uuid4()) for _ in range(21)],
+        None,
+    ):
+        response = client.post(
+            f"{BASE}/tasks",
+            json={
+                "goal_id": str(goal.id),
+                "title": "T",
+                "estimate_hours": 1,
+                "depends_on": depends_on,
+            },
+            headers=bearer(token),
+        )
+        assert response.status_code == 422, depends_on
+
+    assert _count(session, Task) == tasks_before
+    assert _dependencies(session) == []
+    assert _changes(session) == []
+
+
+def test_add_dependency_cycle_is_422(session: Session):
+    _, goal, task_a = _tree(session)
+    task_b = seed_task(session, goal, updated_at=STAMP)
+    task_c = seed_task(session, goal, updated_at=STAMP)
+    _depend(session, task_a, task_b)
+    _depend(session, task_b, task_c)
+    token = issue_token(session, USER_A, WRITE)
+
+    for dependent, on in ((task_b, task_a), (task_c, task_a)):
+        response = _add_dependency(token, dependent.id, on.id)
+        assert response.status_code == 422
+        assert response.json()["detail"] == CYCLE_DETAIL
+        assert _stored_updated_at(session, dependent.id) == STAMP
+
+    assert _dependencies(session) == sorted(
+        [(task_a.id, task_b.id), (task_b.id, task_c.id)]
+    )
+    assert _changes(session) == []
+
+
+def test_add_dependency_on_itself_is_422(session: Session):
+    _, _, task = _tree(session)
+    token = issue_token(session, USER_A, WRITE)
+
+    response = _add_dependency(token, task.id, task.id)
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Task cannot depend on itself"
+    assert _dependencies(session) == []
+    assert _stored_updated_at(session, task.id) == STAMP
+    assert _changes(session) == []
+
+
+def test_add_dependency_is_ordinary(session: Session):
+    project, goal, task = _tree(session)
+    other = seed_task(session, goal, updated_at=STAMP)
+    token = issue_token(session, USER_A, WRITE)
+
+    response = _add_dependency(token, task.id, other.id)
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["id"] == str(task.id)
+    assert [item["depends_on_task_id"] for item in body["dependencies"]] == [
+        str(other.id)
+    ]
+    assert _dependencies(session) == [(task.id, other.id)]
+
+    bumped = _stored_updated_at(session, task.id)
+    assert bumped is not None and bumped > STAMP
+    assert datetime.fromisoformat(body["updated_at"]) == bumped
+    assert _stored_updated_at(session, other.id) == STAMP
+
+    (change,) = _changes(session)
+    dependency = session.exec(select(TaskDependency)).one()
+    assert change.entity_type == "task_dependency"
+    assert change.entity_id == dependency.id
+    assert change.action == "create"
+    assert change.destructive is False
+    assert change.before is None
+    assert change.after == {
+        "task_id": str(task.id),
+        "depends_on_task_id": str(other.id),
+    }
+    assert change.project_id == project.id
+    assert change.goal_id == goal.id
+
+
+def test_add_existing_dependency_is_noop(session: Session):
+    _, goal, task = _tree(session)
+    other = seed_task(session, goal, updated_at=STAMP)
+    _depend(session, task, other)
+    token = issue_token(session, USER_A, WRITE)
+
+    response = _add_dependency(token, task.id, other.id)
+    assert response.status_code == 200, response.text
+    assert [item["depends_on_task_id"] for item in response.json()["dependencies"]] == [
+        str(other.id)
+    ]
+    assert _dependencies(session) == [(task.id, other.id)]
+    assert _stored_updated_at(session, task.id) == STAMP
+    assert _changes(session) == []
+
+
+def test_remove_dependency_needs_unconfirmed(session: Session):
+    project, goal, task = _tree(session)
+    other = seed_task(session, goal, updated_at=STAMP)
+    dependency = _depend(session, task, other)
+
+    token = issue_token(session, USER_A, WRITE)
+    response = _remove_dependency(token, task.id, other.id)
+    assert response.status_code == 403
+    assert response.json()["detail"] == NEEDS_UNCONFIRMED
+    assert _dependencies(session) == [(task.id, other.id)]
+    assert _stored_updated_at(session, task.id) == STAMP
+    assert _changes(session) == []
+
+    token = issue_token(session, USER_A, UNCONFIRMED, name="trusted")
+    response = _remove_dependency(token, task.id, other.id)
+    assert response.status_code == 200, response.text
+    assert response.json()["dependencies"] == []
+    assert _dependencies(session) == []
+    bumped = _stored_updated_at(session, task.id)
+    assert bumped is not None and bumped > STAMP
+
+    (change,) = _changes(session)
+    assert change.entity_type == "task_dependency"
+    assert change.entity_id == dependency.id
+    assert change.action == "update"
+    assert change.destructive is True
+    assert change.before == {
+        "task_id": str(task.id),
+        "depends_on_task_id": str(other.id),
+    }
+    assert change.after == {"removed": True}
+    assert change.project_id == project.id
+    assert change.goal_id == goal.id
+
+
+def test_remove_missing_dependency_is_404(session: Session):
+    _, goal, task = _tree(session)
+    other = seed_task(session, goal, updated_at=STAMP)
+    _, _, foreign = _tree(session, owner=USER_B)
+    _depend(session, foreign, other)
+    token = issue_token(session, USER_A, UNCONFIRMED)
+
+    response = _remove_dependency(token, task.id, other.id)
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Dependency not found"
+
+    for task_id in (foreign.id, uuid4()):
+        response = _remove_dependency(token, task_id, other.id)
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Task not found"
+
+    assert _dependencies(session) == [(foreign.id, other.id)]
+    assert _stored_updated_at(session, task.id) == STAMP
+    assert _changes(session) == []
+
+
+def test_dependency_on_foreign_task_is_404(session: Session):
+    _, _, task = _tree(session)
+    _, _, foreign = _tree(session, owner=USER_B)
+    token = issue_token(session, USER_A, WRITE)
+
+    for missing in (foreign.id, uuid4()):
+        response = _add_dependency(token, task.id, missing)
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Dependency task not found"
+
+        response = _add_dependency(token, missing, task.id)
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Task not found"
+
+    assert _dependencies(session) == []
+    assert _stored_updated_at(session, task.id) == STAMP
+    assert _stored_updated_at(session, foreign.id) == STAMP
+    assert _changes(session) == []

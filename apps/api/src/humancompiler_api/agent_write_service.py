@@ -4,7 +4,7 @@
 # This file is part of HumanCompiler.
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-"""Agent writes: goals and tasks created and updated by an agent token.
+"""Agent writes: goals, tasks and task dependencies written by an agent token.
 
 Each public write is one transaction: the entity and its ``agent_changes`` row
 are committed together, and any error rolls both back. The helpers that do not
@@ -15,7 +15,7 @@ commit (``record_change``, ``require_destructive_allowed``,
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 from fastapi.encoders import jsonable_encoder
@@ -41,11 +41,20 @@ from humancompiler_api.models import (
     GoalStatus,
     Task,
     TaskCreate,
+    TaskDependency,
     TaskStatus,
 )
-from humancompiler_api.services import goal_service, project_service, task_service
+from humancompiler_api.services import (
+    _dependency_path_exists,
+    _touch,
+    goal_service,
+    project_service,
+    task_service,
+)
 
 DESTRUCTIVE_DETAIL = "This change needs the writes:unconfirmed scope"
+SELF_DEPENDENCY_DETAIL = "Task cannot depend on itself"
+CYCLE_DETAIL = "Creating this dependency would create a circular dependency"
 STALE_MESSAGE = "Changed since you read it; read it again and retry"
 MEMO_MAX_LENGTH = 2000
 MEMO_APPEND_SEPARATOR = "\n"
@@ -151,13 +160,15 @@ def _owned_goal(session: Session, user_id: UUID, goal_id: UUID) -> Goal:
     return goal
 
 
-def _owned_task(session: Session, user_id: UUID, task_id: UUID) -> Task:
+def _owned_task(
+    session: Session, user_id: UUID, task_id: UUID, detail: str = "Task not found"
+) -> Task:
     try:
         task = task_service.get_task(session, task_id, user_id)
     except ResourceNotFoundError:
-        raise _not_found("Task not found") from None
+        raise _not_found(detail) from None
     if task is None:
-        raise _not_found("Task not found")
+        raise _not_found(detail)
     return task
 
 
@@ -286,7 +297,10 @@ def update_goal(
 def create_task(
     session: Session, principal: AgentPrincipal, data: AgentTaskCreate
 ) -> Task:
-    """Create a task under one of the user's goals."""
+    """Create a task under one of the user's goals, with its dependencies.
+
+    The task and every dependency in ``depends_on`` are one transaction: a
+    missing or foreign dependency (404) creates nothing."""
     try:
         goal = _owned_goal(session, principal.user_id, data.goal_id)
         task = task_service.build(
@@ -305,6 +319,11 @@ def create_task(
         )
         if task.id is None:
             raise RuntimeError("build() did not assign an id")
+        after = {
+            name: getattr(task, name) for name in data.model_fields_set - {"depends_on"}
+        }
+        if "depends_on" in data.model_fields_set:
+            after["depends_on"] = data.depends_on
         record_change(
             session,
             principal,
@@ -312,11 +331,19 @@ def create_task(
             entity_id=task.id,
             action=AgentChangeAction.CREATE,
             before=None,
-            after={name: getattr(task, name) for name in data.model_fields_set},
+            after=after,
             destructive=False,
             project_id=goal.project_id,
             goal_id=data.goal_id,
         )
+        for depends_on_task_id in data.depends_on:
+            depends_on = _owned_task(
+                session,
+                principal.user_id,
+                depends_on_task_id,
+                "Dependency task not found",
+            )
+            _insert_dependency(session, principal, task, depends_on, goal.project_id)
         session.commit()
     except Exception:
         session.rollback()
@@ -400,6 +427,138 @@ def update_task(
             destructive=destructive,
             project_id=goal.project_id,
             goal_id=goal.id,
+        )
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    return task
+
+
+def _task_id(task: Task) -> UUID:
+    if task.id is None:
+        raise RuntimeError("Task has no id")
+    return task.id
+
+
+def _insert_dependency(
+    session: Session,
+    principal: AgentPrincipal,
+    task: Task,
+    depends_on: Task,
+    project_id: UUID,
+) -> bool:
+    """Make ``task`` depend on ``depends_on``, flushed but not committed.
+
+    Both tasks must already be the user's. Applies the checks of
+    ``task_service.add_task_dependency`` with 422 instead of its 400. Returns
+    False, changing nothing, when the dependency already exists."""
+    task_id, depends_on_task_id = _task_id(task), _task_id(depends_on)
+    if task_id == depends_on_task_id:
+        raise _unprocessable(SELF_DEPENDENCY_DETAIL)
+    if _dependency_path_exists(
+        session,
+        TaskDependency.task_id,
+        TaskDependency.depends_on_task_id,
+        depends_on_task_id,
+        task_id,
+    ):
+        raise _unprocessable(CYCLE_DETAIL)
+    existing = session.exec(
+        select(TaskDependency.id)
+        .where(TaskDependency.task_id == task_id)
+        .where(TaskDependency.depends_on_task_id == depends_on_task_id)
+    ).first()
+    if existing is not None:
+        return False
+    dependency_id = uuid4()
+    session.add(
+        TaskDependency(
+            id=dependency_id, task_id=task_id, depends_on_task_id=depends_on_task_id
+        )
+    )
+    _touch(session, task)
+    session.flush()
+    record_change(
+        session,
+        principal,
+        entity_type=AgentChangeEntity.TASK_DEPENDENCY,
+        entity_id=dependency_id,
+        action=AgentChangeAction.CREATE,
+        before=None,
+        after={"task_id": task_id, "depends_on_task_id": depends_on_task_id},
+        destructive=False,
+        project_id=project_id,
+        goal_id=task.goal_id,
+    )
+    return True
+
+
+def add_task_dependency(
+    session: Session, principal: AgentPrincipal, task_id: UUID, depends_on_task_id: UUID
+) -> tuple[Task, bool]:
+    """Make one of the user's tasks depend on another of theirs.
+
+    Returns the dependent task and whether a dependency was added; adding an
+    existing one changes nothing and records nothing. Not destructive."""
+    user_id = principal.user_id
+    try:
+        task = _owned_task(session, user_id, task_id)
+        depends_on = _owned_task(
+            session, user_id, depends_on_task_id, "Dependency task not found"
+        )
+        # Lock both tasks in one order, so two requests adding A->B and B->A
+        # run one after the other and the second sees the first's row.
+        for entity in sorted((task, depends_on), key=lambda item: str(item.id)):
+            _lock(session, entity)
+        goal = _owned_goal(session, user_id, task.goal_id)
+        added = _insert_dependency(
+            session, principal, task, depends_on, goal.project_id
+        )
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    return task, added
+
+
+def remove_task_dependency(
+    session: Session, principal: AgentPrincipal, task_id: UUID, depends_on_task_id: UUID
+) -> Task:
+    """Remove a dependency of one of the user's tasks. Destructive.
+
+    There is no ``expected_updated_at``: a dependency has no version. A pair
+    that does not exist is 404."""
+    user_id = principal.user_id
+    try:
+        task = _owned_task(session, user_id, task_id)
+        _lock(session, task)
+        dependency = session.exec(
+            select(TaskDependency)
+            .where(TaskDependency.task_id == task_id)
+            .where(TaskDependency.depends_on_task_id == depends_on_task_id)
+        ).first()
+        if dependency is None:
+            raise _not_found("Dependency not found")
+        require_destructive_allowed(principal)
+        goal = _owned_goal(session, user_id, task.goal_id)
+        dependency_id = dependency.id
+        if dependency_id is None:
+            raise RuntimeError("Task dependency has no id")
+        session.delete(dependency)
+        _touch(session, task)
+        session.flush()
+        record_change(
+            session,
+            principal,
+            entity_type=AgentChangeEntity.TASK_DEPENDENCY,
+            entity_id=dependency_id,
+            action=AgentChangeAction.UPDATE,
+            before={"task_id": task_id, "depends_on_task_id": depends_on_task_id},
+            after={"removed": True},
+            destructive=True,
+            project_id=goal.project_id,
+            goal_id=task.goal_id,
         )
         session.commit()
     except Exception:

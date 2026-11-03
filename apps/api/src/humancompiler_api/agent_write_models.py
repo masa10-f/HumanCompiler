@@ -23,6 +23,7 @@ from humancompiler_api.proposal_payloads import DueDate
 
 Hours = Annotated[Decimal, Field(gt=0, max_digits=5, decimal_places=2)]
 Priority = Annotated[int, Field(ge=1, le=5)]
+DEPENDS_ON_MAX = 20
 
 EXPECTED_UPDATED_AT_DESCRIPTION = (
     "The updated_at you last read. If the stored value differs, nothing is "
@@ -84,6 +85,26 @@ class AgentTaskCreate(_AgentWrite):
     )
     work_type: WorkType = Field(
         default=WorkType.LIGHT_WORK, description="Cannot be null."
+    )
+    depends_on: list[UUID] = Field(
+        default_factory=list,
+        max_length=DEPENDS_ON_MAX,
+        description=(
+            "IDs of the user's tasks that must be finished first, without "
+            "duplicates. Any missing or foreign ID gives 404 and creates nothing."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def reject_duplicate_depends_on(self) -> "AgentTaskCreate":
+        if len(set(self.depends_on)) != len(self.depends_on):
+            raise ValueError("depends_on cannot list a task twice")
+        return self
+
+
+class AgentDependencyCreate(_AgentWrite):
+    depends_on_task_id: UUID = Field(
+        description="The user's task that must be finished first."
     )
 
 

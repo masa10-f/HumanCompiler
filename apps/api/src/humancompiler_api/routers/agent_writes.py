@@ -4,7 +4,7 @@
 # This file is part of HumanCompiler.
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-"""Agent API writes for goals and tasks (``/api/agent/v1``).
+"""Agent API writes for goals, tasks and task dependencies (``/api/agent/v1``).
 
 Every write is recorded in ``agent_changes``. Updates need the updated_at the
 agent read, and destructive changes need the ``writes:unconfirmed`` scope.
@@ -13,12 +13,13 @@ agent read, and destructive changes need the ``writes:unconfirmed`` scope.
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlmodel import Session
 
 from humancompiler_api import agent_write_service
 from humancompiler_api.agent_auth import AgentPrincipal, require_scope
 from humancompiler_api.agent_write_models import (
+    AgentDependencyCreate,
     AgentGoalCreate,
     AgentGoalUpdate,
     AgentTaskCreate,
@@ -102,7 +103,9 @@ async def update_goal(
     summary="Create a task",
     description=(
         "Create a task in one of the user's goals. Another user's goal and a "
-        "missing one both give 404."
+        "missing one both give 404. depends_on lists up to 20 of the user's "
+        "tasks that must be finished first; if any is missing or another "
+        "user's, the answer is 404 and nothing is created."
     ),
 )
 async def create_task(
@@ -135,4 +138,59 @@ async def update_task(
     ],
 ) -> TaskResponse:
     agent_write_service.update_task(session, principal, task_id, data)
+    return _task_response(session, principal.user_id, task_id)
+
+
+@router.post(
+    "/tasks/{task_id}/dependencies",
+    response_model=TaskResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add a task dependency",
+    description=(
+        "Make the task depend on depends_on_task_id (it comes after that task). "
+        "Both must be the user's tasks, else 404. A task cannot depend on "
+        "itself, and a dependency that would close a cycle is refused; both "
+        "give 422. If the dependency already exists, nothing changes and the "
+        "answer is 200 instead of 201. Not a destructive change."
+    ),
+)
+async def add_task_dependency(
+    task_id: UUID,
+    data: AgentDependencyCreate,
+    response: Response,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[
+        AgentPrincipal, Depends(require_scope(AgentScope.TASKS_WRITE))
+    ],
+) -> TaskResponse:
+    _, added = agent_write_service.add_task_dependency(
+        session, principal, task_id, data.depends_on_task_id
+    )
+    if not added:
+        response.status_code = status.HTTP_200_OK
+    return _task_response(session, principal.user_id, task_id)
+
+
+@router.delete(
+    "/tasks/{task_id}/dependencies/{depends_on_task_id}",
+    response_model=TaskResponse,
+    summary="Remove a task dependency",
+    description=(
+        "Remove the task's dependency on depends_on_task_id. This is a "
+        "destructive change: it needs the writes:unconfirmed scope, else 403 "
+        "and nothing changes; send it as a proposal instead. A dependency that "
+        "does not exist gives 404."
+    ),
+)
+async def remove_task_dependency(
+    task_id: UUID,
+    depends_on_task_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[
+        AgentPrincipal, Depends(require_scope(AgentScope.TASKS_WRITE))
+    ],
+) -> TaskResponse:
+    agent_write_service.remove_task_dependency(
+        session, principal, task_id, depends_on_task_id
+    )
     return _task_response(session, principal.user_id, task_id)
