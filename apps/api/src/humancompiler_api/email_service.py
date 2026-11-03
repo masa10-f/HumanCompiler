@@ -207,8 +207,14 @@ class EmailService:
             return True
 
         except Exception as e:
-            # Log the class only: the message may echo the recipient address.
-            logger.error("Failed to send daily digest: %s", type(e).__name__)
+            # Never log the message: it may echo the recipient address. The
+            # Resend code and type (e.g. 409 invalid_idempotent_request) are safe.
+            logger.error(
+                "Failed to send daily digest: %s (code=%s, error_type=%s)",
+                type(e).__name__,
+                getattr(e, "code", None),
+                getattr(e, "error_type", None),
+            )
             return False
 
     def send_overdue_alert(

@@ -11,6 +11,7 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from resend.exceptions import ResendError
 
 from humancompiler_api import email_service
 from humancompiler_api.config import Settings
@@ -324,6 +325,34 @@ def test_send_daily_digest_disabled_or_failing(
     with caplog.at_level("ERROR"):
         assert service.send_daily_digest("u@example.com", digest, USER_ID) is False
     assert "RuntimeError" in caplog.text
+    assert "u@example.com" not in caplog.text
+
+
+def test_send_daily_digest_logs_resend_error_code(
+    service: EmailService,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def conflicting_send(
+        params: dict[str, Any], options: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        raise ResendError(
+            code=409,
+            error_type="invalid_idempotent_request",
+            message="Key already used for u@example.com",
+            suggested_action="Use a new key.",
+        )
+
+    monkeypatch.setattr(email_service.resend.Emails, "send", conflicting_send)
+    service._enabled = True
+    with caplog.at_level("ERROR"):
+        assert (
+            service.send_daily_digest("u@example.com", digest_with_tasks(), USER_ID)
+            is False
+        )
+    assert "ResendError" in caplog.text
+    assert "409" in caplog.text
+    assert "invalid_idempotent_request" in caplog.text
     assert "u@example.com" not in caplog.text
 
 

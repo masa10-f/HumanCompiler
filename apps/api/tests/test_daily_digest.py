@@ -22,6 +22,8 @@ from humancompiler_api.models import (
     EmailNotificationStatus,
     EmailNotificationType,
     Goal,
+    GoalStatus,
+    ProjectStatus,
     ProposalKind,
     ProposalStatus,
     QuickTask,
@@ -415,6 +417,27 @@ def test_task_window(session: Session):
         None,
         "Project > Goal",
     ]
+
+
+def test_task_window_excludes_finished_goal_or_project(session: Session):
+    add_user(session, USER_A)
+    cases = [
+        ("Goal done", ProjectStatus.PENDING, GoalStatus.COMPLETED),
+        ("Goal cancelled", ProjectStatus.PENDING, GoalStatus.CANCELLED),
+        ("Project done", ProjectStatus.COMPLETED, GoalStatus.PENDING),
+        ("Project cancelled", ProjectStatus.CANCELLED, GoalStatus.PENDING),
+        ("Project paused", ProjectStatus.PAUSED, GoalStatus.PENDING),
+        ("Active", ProjectStatus.IN_PROGRESS, GoalStatus.IN_PROGRESS),
+    ]
+    for title, project_status, goal_status in cases:
+        project = seed_project(session, USER_A, status=project_status)
+        goal = seed_goal(session, project, status=goal_status)
+        due_task(session, goal, at(4, 12), title=title)
+    session.expire_all()
+
+    digest = daily_digest.build_digest(session, USER_A, at(3, 9))
+
+    assert sorted(t.title for t in digest.tasks) == ["Active", "Project paused"]
 
 
 def test_caps_sections_at_twenty(session: Session):

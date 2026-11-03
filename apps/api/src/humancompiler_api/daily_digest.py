@@ -37,7 +37,9 @@ from humancompiler_api.models import (
     EmailNotificationStatus,
     EmailNotificationType,
     Goal,
+    GoalStatus,
     Project,
+    ProjectStatus,
     ProposalStatus,
     QuickTask,
     Task,
@@ -58,6 +60,8 @@ UPCOMING_DAYS = 3
 MAX_FAILURES_PER_DAY = 3
 
 _OPEN_STATUSES = [TaskStatus.PENDING, TaskStatus.IN_PROGRESS]
+_FINISHED_GOAL_STATUSES = [GoalStatus.COMPLETED, GoalStatus.CANCELLED]
+_FINISHED_PROJECT_STATUSES = [ProjectStatus.COMPLETED, ProjectStatus.CANCELLED]
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -128,7 +132,10 @@ def _task_context(task: Task) -> str | None:
 
 
 def _window_tasks(session: Session, user_id: UUID, now: datetime) -> list[DigestTask]:
-    """Open tasks and quick tasks due before the JST day (today + 4), sorted."""
+    """Open tasks and quick tasks due before the JST day (today + 4), sorted.
+
+    Tasks under a completed or cancelled goal or project are left out; quick
+    tasks have no parents."""
     window_end = _jst_day_start(now, UPCOMING_DAYS + 1)
     tasks = session.exec(
         select(Task)
@@ -139,6 +146,8 @@ def _window_tasks(session: Session, user_id: UUID, now: datetime) -> list[Digest
             col(Task.due_date).isnot(None),
             col(Task.due_date) < window_end,
             col(Task.status).in_(_OPEN_STATUSES),
+            col(Goal.status).notin_(_FINISHED_GOAL_STATUSES),
+            col(Project.status).notin_(_FINISHED_PROJECT_STATUSES),
         )
         .options(selectinload(Task.goal).selectinload(Goal.project))
     ).all()
