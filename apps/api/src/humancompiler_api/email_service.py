@@ -74,6 +74,11 @@ def daily_digest_subject(digest: DailyDigest) -> str:
     return f"【HumanCompiler】{_format_digest_date(digest.digest_date)} のタスク期限サマリー"
 
 
+def deadline_reminder_idempotency_key(task_id: UUID, reminder_date: date) -> str:
+    """Resend idempotency key: one deadline reminder per task and JST day."""
+    return f"deadline-reminder/{task_id}/{reminder_date.isoformat()}"
+
+
 def daily_digest_idempotency_key(user_id: UUID, digest: DailyDigest) -> str:
     """Resend idempotency key: one daily digest per user and JST day."""
     return f"daily-digest/{user_id}/{digest.digest_date.isoformat()}"
@@ -111,9 +116,14 @@ class EmailService:
         hours_until_due: int,
         project_title: str | None = None,
         goal_title: str | None = None,
+        *,
+        reminder_date: date,
     ) -> bool:
         """
         Send a deadline reminder email for a specific task.
+
+        The Resend idempotency key is per task and ``reminder_date``, so a
+        retried request for the same day is not delivered twice.
 
         Args:
             to_email: Recipient email address
@@ -123,6 +133,8 @@ class EmailService:
             hours_until_due: Hours remaining until deadline
             project_title: Optional project title for context
             goal_title: Optional goal title for context
+            reminder_date: JST day the reminder belongs to, for the
+                idempotency key
 
         Returns:
             True if email was sent successfully, False otherwise
@@ -156,14 +168,17 @@ class EmailService:
                 "html": html_content,
             }
 
-            response = resend.Emails.send(params)
-            logger.info(
-                f"Deadline reminder sent to {to_email} for task {task_id}: {response}"
-            )
+            options: resend.Emails.SendOptions = {
+                "idempotency_key": deadline_reminder_idempotency_key(
+                    task_id, reminder_date
+                )
+            }
+            response = resend.Emails.send(params, options)
+            logger.info(f"Deadline reminder sent for task {task_id}: {response}")
             return True
 
         except Exception as e:
-            logger.error(f"Failed to send deadline reminder to {to_email}: {e}")
+            logger.error(f"Failed to send deadline reminder for task {task_id}: {e}")
             return False
 
     def send_daily_digest(

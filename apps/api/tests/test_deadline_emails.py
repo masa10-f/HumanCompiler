@@ -8,14 +8,20 @@
 
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
+from humancompiler_api import email_service
+from humancompiler_api.auth import get_current_user_id
+from humancompiler_api.database import get_session
+from humancompiler_api.email_service import EmailService
+from humancompiler_api.main import app
 from humancompiler_api.models import (
     EmailNotificationLog,
     EmailNotificationSettingsUpdate,
@@ -26,7 +32,13 @@ from humancompiler_api.models import (
     UserSettingsResponse,
 )
 from humancompiler_api.scheduler import notification_scheduler
-from tests.agent_api_helpers import seed_goal, seed_project, seed_task, seed_user
+from tests.agent_api_helpers import (
+    seed_goal,
+    seed_project,
+    seed_quick_task,
+    seed_task,
+    seed_user,
+)
 
 USER_A = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 USER_B = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
@@ -54,6 +66,7 @@ class FakeEmailService:
         self.default = default
         self.on_send = on_send
         self.calls: list[tuple[str, str, UUID]] = []
+        self.reminder_dates: list[date] = []
 
     def _send(self, kind: str, to_email: str, task_id: UUID) -> bool:
         self.calls.append((kind, to_email, task_id))
@@ -70,13 +83,11 @@ class FakeEmailService:
         hours_until_due: int,
         project_title: str | None = None,
         goal_title: str | None = None,
+        *,
+        reminder_date: date,
     ) -> bool:
+        self.reminder_dates.append(reminder_date)
         return self._send("reminder", to_email, task_id)
-
-    def send_overdue_alert(self, *args: Any, **kwargs: Any) -> bool:
-        """Spy only: the real service no longer has overdue alerts."""
-        self.calls.append(("overdue", kwargs.get("to_email", ""), kwargs["task_id"]))
-        return True
 
 
 def add_user(session: Session, user_id: UUID, **overrides: Any) -> UUID:
@@ -97,6 +108,14 @@ def add_task(session: Session, user_id: UUID, due: datetime) -> UUID:
     session.add(task)
     session.commit()
     return task.id
+
+
+def add_quick_task(session: Session, user_id: UUID, due: datetime) -> UUID:
+    quick_task = seed_quick_task(session, user_id)
+    quick_task.due_date = due
+    session.add(quick_task)
+    session.commit()
+    return quick_task.id
 
 
 def logs_of(session: Session, user_id: UUID = USER_A) -> list[EmailNotificationLog]:
@@ -148,15 +167,21 @@ def test_log_id_is_generated_client_side():
     assert isinstance(log.id, UUID)
 
 
-async def test_deadline_reminder_sent_once_per_day(session: Session, run: Runner):
+async def test_deadline_reminder_sent_once_per_day(
+    session: Session, run: Runner, caplog: pytest.LogCaptureFixture
+):
     add_user(session, USER_A)
     task_id = add_task(session, USER_A, NOW + timedelta(hours=2))
     fake = FakeEmailService()
 
-    await run(NOW, fake)
-    await run(NOW + FIVE_MINUTES, fake)
+    with caplog.at_level(logging.INFO, logger=notification_scheduler.__name__):
+        await run(NOW, fake)
+        await run(NOW + FIVE_MINUTES, fake)
 
     assert fake.calls == [("reminder", email_of(USER_A), task_id)]
+    assert fake.reminder_dates == [date(2026, 11, 3)]
+    assert f"Sent deadline reminder for task {task_id} to user {USER_A}" in caplog.text
+    assert email_of(USER_A) not in caplog.text
     [log] = logs_of(session)
     assert log.status == EmailNotificationStatus.SENT
     assert log.notification_type == EmailNotificationType.DEADLINE_REMINDER
@@ -166,17 +191,81 @@ async def test_deadline_reminder_sent_once_per_day(session: Session, run: Runner
     assert log.error_message is None
 
 
-async def test_no_overdue_alert_is_sent(session: Session, run: Runner):
-    # The unused column still defaults to True; it must not matter.
+async def test_quick_task_reminder_sent_once_per_day(session: Session, run: Runner):
     add_user(session, USER_A)
-    add_task(session, USER_A, NOW - timedelta(hours=2))
+    quick_task_id = add_quick_task(session, USER_A, NOW + timedelta(hours=2))
     fake = FakeEmailService()
 
     await run(NOW, fake)
     await run(NOW + FIVE_MINUTES, fake)
 
+    assert fake.calls == [("reminder", email_of(USER_A), quick_task_id)]
+    [log] = logs_of(session)
+    assert log.status == EmailNotificationStatus.SENT
+    assert log.quick_task_id == quick_task_id
+    assert log.task_id is None
+
+
+async def test_reminder_dedup_uses_the_jst_day_not_utc(session: Session, run: Runner):
+    # 23:55 UTC and 00:00 UTC are 08:55 and 09:00 JST on 2026-11-04.
+    first = datetime(2026, 11, 3, 23, 55, tzinfo=UTC)
+    add_user(session, USER_A)
+    add_task(session, USER_A, first + timedelta(hours=20))
+    fake = FakeEmailService()
+
+    await run(first, fake)
+    await run(first + FIVE_MINUTES, fake)
+
+    assert len(fake.calls) == 1
+    assert fake.reminder_dates == [date(2026, 11, 4)]
+    assert [log.status for log in logs_of(session)] == [EmailNotificationStatus.SENT]
+
+
+async def test_reminder_sent_again_on_the_next_jst_day(session: Session, run: Runner):
+    # 14:55 UTC is 23:55 JST on 2026-11-03; 15:00 UTC starts 2026-11-04 JST.
+    first = datetime(2026, 11, 3, 14, 55, tzinfo=UTC)
+    add_user(session, USER_A)
+    add_task(session, USER_A, first + timedelta(hours=20))
+    fake = FakeEmailService()
+
+    await run(first, fake)
+    await run(first + FIVE_MINUTES, fake)
+
+    assert len(fake.calls) == 2
+    assert fake.reminder_dates == [date(2026, 11, 3), date(2026, 11, 4)]
+    assert [log.status for log in logs_of(session)] == [
+        EmailNotificationStatus.SENT
+    ] * 2
+
+
+async def test_failure_cap_uses_the_jst_day(session: Session, run: Runner):
+    # All four runs are on 2026-11-04 JST, straddling the UTC midnight.
+    first = datetime(2026, 11, 3, 23, 50, tzinfo=UTC)
+    add_user(session, USER_A)
+    add_task(session, USER_A, first + timedelta(hours=20))
+    fake = FakeEmailService(default=False)
+
+    for step in range(4):
+        await run(first + step * FIVE_MINUTES, fake)
+
+    assert len(fake.calls) == notification_scheduler.MAX_FAILURES_PER_DAY
+
+
+async def test_no_overdue_alert_is_sent(
+    session: Session, run: Runner, caplog: pytest.LogCaptureFixture
+):
+    # The unused column still defaults to True; it must not matter.
+    add_user(session, USER_A)
+    add_task(session, USER_A, NOW - timedelta(hours=2))
+    fake = FakeEmailService()
+
+    with caplog.at_level(logging.ERROR, logger=notification_scheduler.__name__):
+        await run(NOW, fake)
+        await run(NOW + FIVE_MINUTES, fake)
+
     assert fake.calls == []
     assert logs_of(session) == []
+    assert caplog.records == []
 
 
 def test_settings_api_no_longer_exposes_overdue_alerts():
@@ -185,6 +274,79 @@ def test_settings_api_no_longer_exposes_overdue_alerts():
         "email_overdue_alerts_enabled"
         not in EmailNotificationSettingsUpdate.model_fields
     )
+
+
+def test_old_client_overdue_field_is_ignored(session: Session):
+    add_user(session, USER_A)
+
+    def override_session():
+        yield session
+
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_current_user_id] = lambda: USER_A
+    try:
+        response = TestClient(app).put(
+            "/api/user/settings/email-notifications",
+            json={
+                "email_notifications_enabled": True,
+                "email_deadline_reminder_hours": 12,
+                "email_overdue_alerts_enabled": False,
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_session, None)
+        app.dependency_overrides.pop(get_current_user_id, None)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["email_deadline_reminder_hours"] == 12
+    assert "email_overdue_alerts_enabled" not in body
+    stored = session.exec(
+        select(UserSettings).where(UserSettings.user_id == USER_A)
+    ).one()
+    session.refresh(stored)
+    assert stored.email_deadline_reminder_hours == 12
+    assert stored.email_overdue_alerts_enabled is True  # ignored, not written
+
+
+def test_send_deadline_reminder_passes_idempotency_key(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    monkeypatch.setattr(email_service.settings, "resend_api_key", None)
+    monkeypatch.setattr(
+        email_service.settings, "email_from", "HumanCompiler <noreply@example.com>"
+    )
+    sent: list[dict[str, Any]] = []
+    sent_options: list[dict[str, Any] | None] = []
+
+    def fake_send(
+        params: dict[str, Any], options: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        sent.append(params)
+        sent_options.append(options)
+        return {}
+
+    monkeypatch.setattr(email_service.resend.Emails, "send", fake_send)
+    service = EmailService()
+    service._enabled = True
+    task_id = uuid4()
+
+    with caplog.at_level(logging.INFO, logger=email_service.__name__):
+        ok = service.send_deadline_reminder(
+            to_email="u@example.com",
+            task_title="Task",
+            task_id=task_id,
+            due_date=NOW + timedelta(hours=2),
+            hours_until_due=2,
+            reminder_date=date(2026, 11, 4),
+        )
+
+    assert ok is True
+    assert sent_options == [
+        {"idempotency_key": f"deadline-reminder/{task_id}/2026-11-04"}
+    ]
+    assert sent[0]["to"] == ["u@example.com"]
+    assert "u@example.com" not in caplog.text
 
 
 async def test_commit_failure_after_send_does_not_resend(

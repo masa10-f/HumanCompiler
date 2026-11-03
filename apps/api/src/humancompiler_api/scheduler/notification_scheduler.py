@@ -23,7 +23,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, func, select
 
 from humancompiler_api import agent_audit
-from humancompiler_api.daily_digest import run_daily_digest
+from humancompiler_api.daily_digest import jst_day_start, run_daily_digest
 from humancompiler_api.database import db
 from humancompiler_api.notification_service import (
     NotificationService,
@@ -44,11 +44,12 @@ from humancompiler_api.models import (
 )
 from humancompiler_api.email_service import get_email_service
 from humancompiler_api.config import settings
+from humancompiler_api.proposal_service import APP_TIMEZONE
 
 logger = logging.getLogger(__name__)
 
-# A task's deadline email is retried on later runs after a failed send, at
-# most this many times per (UTC) day.
+# A task's deadline reminder is retried on later runs after a failed send, at
+# most this many times per JST day.
 MAX_FAILURES_PER_DAY = 3
 
 # Global scheduler instance
@@ -165,13 +166,17 @@ async def check_and_send_deadline_emails():
                 logger.debug("No users have email notifications enabled")
                 return
 
-            for user, user_settings in users_with_settings:
-                # Read before processing: after a failed flush, touching an
-                # expired attribute would raise again.
-                user_id = user.id
+            # Plain values: commits and rollbacks below expire the ORM objects,
+            # and reloading one outside the per-user try could end the run.
+            targets = [
+                (user.id, user.email, user_settings.email_deadline_reminder_hours)
+                for user, user_settings in users_with_settings
+            ]
+
+            for user_id, to_email, reminder_hours in targets:
                 try:
                     await _process_user_deadline_notifications(
-                        session, user, user_settings, now, email_service
+                        session, user_id, to_email, reminder_hours, now, email_service
                     )
                 except Exception as e:
                     # Discard this user's failed transaction so the shared
@@ -235,13 +240,13 @@ async def purge_expired_agent_audit_logs():
 
 async def _process_user_deadline_notifications(
     session: Session,
-    user: User,
-    user_settings: UserSettings,
+    user_id: UUID,
+    to_email: str,
+    reminder_hours: int,
     now: datetime,
     email_service,
 ) -> None:
     """Process deadline notifications for a single user"""
-    reminder_hours = user_settings.email_deadline_reminder_hours
     reminder_threshold = now + timedelta(hours=reminder_hours)
 
     # Get regular tasks with due dates in the reminder window
@@ -250,7 +255,7 @@ async def _process_user_deadline_notifications(
         .join(Goal, Task.goal_id == Goal.id)
         .join(Project, Goal.project_id == Project.id)
         .where(
-            Project.owner_id == user.id,
+            Project.owner_id == user_id,
             Task.due_date.isnot(None),
             Task.due_date <= reminder_threshold,  # type: ignore[operator]
             Task.due_date > now,  # type: ignore[operator]
@@ -262,7 +267,7 @@ async def _process_user_deadline_notifications(
 
     # Get quick tasks with due dates in the reminder window
     quick_tasks_stmt = select(QuickTask).where(
-        QuickTask.owner_id == user.id,
+        QuickTask.owner_id == user_id,
         QuickTask.due_date.isnot(None),
         QuickTask.due_date <= reminder_threshold,  # type: ignore[operator]
         QuickTask.due_date > now,  # type: ignore[operator]
@@ -273,12 +278,18 @@ async def _process_user_deadline_notifications(
     # Send deadline reminder emails
     for task in tasks:
         await _send_task_deadline_email(
-            session, user, task, now, email_service, is_quick_task=False
+            session, user_id, to_email, task, now, email_service, is_quick_task=False
         )
 
     for quick_task in quick_tasks:
         await _send_task_deadline_email(
-            session, user, quick_task, now, email_service, is_quick_task=True
+            session,
+            user_id,
+            to_email,
+            quick_task,
+            now,
+            email_service,
+            is_quick_task=True,
         )
 
 
@@ -361,7 +372,8 @@ def _record_outcome(
 
 async def _send_task_deadline_email(
     session: Session,
-    user: User,
+    user_id: UUID,
+    to_email: str,
     task: Task | QuickTask,
     now: datetime,
     email_service,
@@ -375,10 +387,13 @@ async def _send_task_deadline_email(
     task_id = task.id
     notification_type = EmailNotificationType.DEADLINE_REMINDER
 
-    # Skip a task already sent, being sent, or failing too often today
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Skip a task already sent, being sent, or failing too often today. The
+    # day is the JST day, as promised on the settings page; the Resend
+    # idempotency key uses the same date.
+    today_start = jst_day_start(now)
+    reminder_date = today_start.astimezone(APP_TIMEZONE).date()
     if _handled_today(
-        session, user.id, task_id, is_quick_task, notification_type, today_start
+        session, user_id, task_id, is_quick_task, notification_type, today_start
     ):
         logger.debug(f"Already handled deadline reminder for task {task_id} today")
         return
@@ -395,13 +410,12 @@ async def _send_task_deadline_email(
             project_title = task.goal.project.title
 
     # Plain values: the commits below expire the ORM objects.
-    to_email = user.email
     task_title = task.title
     due_date = task.due_date
 
     # Reserve today's row before sending (see _handled_today).
     log_entry = _reserve_log(
-        session, user.id, task_id, is_quick_task, notification_type, now
+        session, user_id, task_id, is_quick_task, notification_type, now
     )
 
     success = email_service.send_deadline_reminder(
@@ -412,12 +426,13 @@ async def _send_task_deadline_email(
         hours_until_due=hours_until_due,
         project_title=project_title,
         goal_title=goal_title,
+        reminder_date=reminder_date,
     )
 
     _record_outcome(session, log_entry, success, now)
 
     if success:
-        logger.info(f"Sent deadline reminder for task {task_id} to {to_email}")
+        logger.info(f"Sent deadline reminder for task {task_id} to user {user_id}")
     else:
         logger.warning(f"Failed to send deadline reminder for task {task_id}")
 
