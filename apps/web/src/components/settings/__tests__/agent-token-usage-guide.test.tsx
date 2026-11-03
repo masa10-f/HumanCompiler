@@ -190,4 +190,25 @@ describe('AgentTokenUsageGuide', () => {
 
     expect(screen.getByText(/https:\/\/api\.example\.com\/docs/)).toBeInTheDocument()
   })
+
+  it('shows the proposals section with both curl examples', () => {
+    mockGetApiEndpoint.mockReturnValue('https://api.example.com')
+
+    render(<AgentTokenUsageGuide />)
+    fireEvent.click(screen.getByRole('button', { name: /使用方法/ }))
+
+    const section = within(
+      screen.getByRole('heading', { name: '提案（proposals）' }).closest('section') as HTMLElement
+    )
+    expect(section.getByText(/proposals:write/)).toBeInTheDocument()
+    expect(section.getByText(/idempotency_key/, { selector: 'p' })).toBeInTheDocument()
+    expect(
+      section.getByText(/curl -X POST https:\/\/api\.example\.com\/api\/agent\/v1\/proposals/)
+    ).toHaveTextContent('"idempotency_key": "example:quick_task:fig3@v1"')
+    expect(
+      section.getByText(
+        'curl -H "Authorization: Bearer <AGENT_TOKEN>" "https://api.example.com/api/agent/v1/proposals?kind=experiment&status=accepted&status=edited"'
+      )
+    ).toBeInTheDocument()
+  })
 })
