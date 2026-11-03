@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useTaskNote } from '@/hooks/use-notes';
 import { ContextNotePanel } from '@/components/notes/context-note-panel';
+import { NoteConflictAlert } from '@/components/notes/note-conflict-alert';
 import { FileText, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -17,7 +18,8 @@ interface TaskNotesSectionProps {
 
 export function TaskNotesSection({ taskId }: TaskNotesSectionProps) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const { note, loading, saving, updateNote } = useTaskNote(taskId);
+  const { note, loading, saving, conflict, updateNote, reloadLatest, overwrite } =
+    useTaskNote(taskId);
 
   return (
     <Card>
@@ -53,6 +55,12 @@ export function TaskNotesSection({ taskId }: TaskNotesSectionProps) {
           </div>
         ) : (
           <div className="max-h-[500px] overflow-y-auto pr-1">
+            <NoteConflictAlert
+              conflict={conflict}
+              saving={saving}
+              onReload={reloadLatest}
+              onOverwrite={overwrite}
+            />
             <ContextNotePanel
               content={note?.content ?? ''}
               onUpdate={(content) => updateNote({ content, content_type: 'html' })}

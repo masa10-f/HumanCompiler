@@ -262,6 +262,11 @@ export function useNote({ entityType, entityId }: UseNoteConfig): UseNoteReturn 
     }
     if (await enqueueSave(normalizeNoteUpdate({ content }), false)) {
       markConflict(false);
+      // Text typed while the overwrite was in flight was kept but not sent.
+      const typedSince = latestContentRef.current;
+      if (typedSince !== null && typedSince !== content) {
+        await enqueueSave(normalizeNoteUpdate({ content: typedSince }), true);
+      }
     }
   }, [clearDebounce, enqueueSave, markConflict]);
 

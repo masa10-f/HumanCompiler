@@ -236,4 +236,46 @@ describe('useNote optimistic lock', () => {
       expected_updated_at: SECOND_SAVE_AT,
     })
   })
+
+  it('sends text typed while the overwrite was in flight, locked on its updated_at', async () => {
+    mockUpdateProjectNote.mockRejectedValueOnce(conflictError())
+    const { result } = await renderLoaded()
+    await act(async () => {
+      await result.current.updateNoteImmediate({ content: '<p>mine</p>' })
+    })
+    expect(result.current.conflict).toBe(true)
+
+    const overwriteResponse = deferred<ContextNote>()
+    mockUpdateProjectNote
+      .mockReturnValueOnce(overwriteResponse.promise)
+      .mockResolvedValueOnce(makeNote('<p>typed during overwrite</p>', AGENT_AT))
+
+    let overwriting!: Promise<void>
+    act(() => {
+      overwriting = result.current.overwrite()
+    })
+    await waitFor(() => expect(mockUpdateProjectNote).toHaveBeenCalledTimes(2))
+
+    // Still in conflict while the overwrite is in flight: kept, not sent.
+    act(() => {
+      result.current.updateNote({ content: '<p>typed during overwrite</p>' })
+    })
+
+    await act(async () => {
+      overwriteResponse.resolve(makeNote('<p>mine</p>', SECOND_SAVE_AT))
+      await overwriting
+    })
+
+    expect(sentBodies().slice(1)).toEqual([
+      { content: '<p>mine</p>', content_type: 'html' },
+      {
+        content: '<p>typed during overwrite</p>',
+        content_type: 'html',
+        expected_updated_at: SECOND_SAVE_AT,
+      },
+    ])
+    expect(result.current.conflict).toBe(false)
+    expect(result.current.note?.content).toBe('<p>typed during overwrite</p>')
+    expect(result.current.note?.updated_at).toBe(AGENT_AT)
+  })
 })

@@ -2,10 +2,10 @@
 
 import { ReactNode, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Loader2, AlertCircle, AlertTriangle, FileText } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle, FileText } from 'lucide-react';
 import { ContextNotePanel } from './context-note-panel';
+import { NoteConflictAlert } from './note-conflict-alert';
 import { useNote } from '@/hooks/use-notes';
 import type { NoteEntityType } from '@/types/context-note';
 
@@ -30,7 +30,8 @@ export function NotePageLayout({
       entityType,
       entityId,
     });
-  // The editor reads `content` only on mount; a new key remounts it after a reload.
+  // A new key remounts the panel after a reload, so it starts over in view mode
+  // and the editor's undo history cannot bring back the dropped local text.
   const [panelKey, setPanelKey] = useState(0);
 
   const handleReloadLatest = async () => {
@@ -86,38 +87,12 @@ export function NotePageLayout({
         </p>
       </div>
 
-      {conflict && (
-        <Alert className="mb-4 border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            <p>このノートは、開いた後に別の場所（エージェントなど）で更新されました。</p>
-            <div className="mt-3 flex flex-wrap items-start gap-3">
-              <div className="flex flex-col gap-1">
-                <Button
-                  size="sm"
-                  onClick={handleReloadLatest}
-                  disabled={saving}
-                >
-                  最新を読み込む
-                </Button>
-                <span className="text-xs text-amber-800 dark:text-amber-200">
-                  この画面で保存していない変更は消えます
-                </span>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  void overwrite();
-                }}
-                disabled={saving}
-              >
-                この内容で上書き
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
+      <NoteConflictAlert
+        conflict={conflict}
+        saving={saving}
+        onReload={handleReloadLatest}
+        onOverwrite={overwrite}
+      />
 
       <ContextNotePanel
         key={panelKey}

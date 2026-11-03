@@ -16,6 +16,7 @@ import { SortDropdown } from '@/components/ui/sort-dropdown';
 import { TaskFormDialog } from '@/components/tasks/task-form-dialog';
 import { GoalTaskList } from '@/components/tasks/goal-task-list';
 import { ContextNotePanel } from '@/components/notes/context-note-panel';
+import { NoteConflictAlert } from '@/components/notes/note-conflict-alert';
 import { GoalTaskAssistantDialog } from '@/components/ai/goal-task-assistant-dialog';
 import { ContextExportDialog } from '@/components/context-export/context-export-dialog';
 import { ArrowLeft, Plus, Clock, FileText, Loader2, AlertCircle, Sparkles, CalendarDays } from 'lucide-react';
@@ -58,8 +59,11 @@ export default function GoalDetailPage() {
     loading: noteLoading,
     saving: noteSaving,
     error: noteError,
+    conflict: noteConflict,
     updateNote,
     refetch: refetchNote,
+    reloadLatest: reloadLatestNote,
+    overwrite: overwriteNote,
   } = useGoalNote(goalId);
 
   // Get goal progress data for actual work hours
@@ -269,13 +273,21 @@ export default function GoalDetailPage() {
                 </Button>
               </div>
             ) : (
-              <ContextNotePanel
-                content={goalNote?.content || ''}
-                onUpdate={(content) => updateNote({ content, content_type: 'html' })}
-                saving={noteSaving}
-                placeholder="ゴールに関するメモや背景情報を記録..."
-                updatedAt={goalNote?.updated_at}
-              />
+              <>
+                <NoteConflictAlert
+                  conflict={noteConflict}
+                  saving={noteSaving}
+                  onReload={reloadLatestNote}
+                  onOverwrite={overwriteNote}
+                />
+                <ContextNotePanel
+                  content={goalNote?.content || ''}
+                  onUpdate={(content) => updateNote({ content, content_type: 'html' })}
+                  saving={noteSaving}
+                  placeholder="ゴールに関するメモや背景情報を記録..."
+                  updatedAt={goalNote?.updated_at}
+                />
+              </>
             )}
           </CardContent>
         </Card>
