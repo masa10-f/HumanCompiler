@@ -77,7 +77,7 @@ function workFields(payload: UnknownRecord): ReactNode {
   );
 }
 
-function noteTarget(
+export function noteTarget(
   proposal: Proposal,
   payload: UnknownRecord
 ): { label: string; name: string } | null {

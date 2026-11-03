@@ -27,6 +27,7 @@ import {
   type Proposal,
 } from '@/types/proposal';
 import { ProposalActions } from './proposal-actions';
+import { ProposalEditForm } from './proposal-edit-form';
 import { ProposalPayloadView } from './proposal-payload-view';
 import { ProposalSources } from './proposal-sources';
 
@@ -133,6 +134,7 @@ interface ProposalCardProps {
 }
 
 export function ProposalCard({ proposal }: ProposalCardProps) {
+  const [editing, setEditing] = useState(false);
   const projectName = proposal.project_id
     ? (proposal.project_name ?? '（削除済み）')
     : null;
@@ -160,7 +162,11 @@ export function ProposalCard({ proposal }: ProposalCardProps) {
       </CardContent>
       {proposal.status === 'pending' ? (
         <CardFooter>
-          <ProposalActions proposal={proposal} />
+          {editing ? (
+            <ProposalEditForm proposal={proposal} onCancel={() => setEditing(false)} />
+          ) : (
+            <ProposalActions proposal={proposal} onEdit={() => setEditing(true)} />
+          )}
         </CardFooter>
       ) : null}
     </Card>
