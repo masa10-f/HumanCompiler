@@ -4,7 +4,8 @@ Notification Scheduler using APScheduler (Issue #228, #261)
 Manages scheduled notification jobs:
 - Checkout reminders: Polls every 30 seconds for WebSocket/Web Push
 - Task deadline emails: Polls every 5 minutes for email notifications (Issue #261)
-- Daily digest emails: Runs daily at configured hour (Issue #261)
+- Daily digest emails: Polls every 10 minutes and sends each user's digest
+  once a day after their hour (Asia/Tokyo)
 - Agent audit log retention: Runs daily and purges rows older than 90 days
 
 Note: For MVP, we use a polling approach rather than scheduling individual
@@ -21,6 +22,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 
 from humancompiler_api import agent_audit
+from humancompiler_api.daily_digest import run_daily_digest
 from humancompiler_api.database import db
 from humancompiler_api.notification_service import (
     NotificationService,
@@ -170,6 +172,21 @@ async def check_and_send_deadline_emails():
 
     except Exception as e:
         logger.error(f"Error in deadline email check: {e}")
+
+
+async def send_daily_digest_emails():
+    """Send each user's daily digest once a day after their chosen hour."""
+    logger.debug("Running daily digest email check...")
+
+    try:
+        with Session(db.get_engine()) as session:
+            sent_count = run_daily_digest(
+                session, datetime.now(UTC), get_email_service()
+            )
+            if sent_count > 0:
+                logger.info("Sent %s daily digest emails", sent_count)
+    except Exception:
+        logger.exception("Error in daily digest email check")
 
 
 async def generate_due_triage_suggestions():
@@ -486,6 +503,17 @@ def start_notification_scheduler() -> bool:
         replace_existing=True,
     )
 
+    # Poll every 10 minutes; run_daily_digest sends each user's digest once a
+    # day, on the first run after their hour.
+    scheduler.add_job(
+        send_daily_digest_emails,
+        "interval",
+        minutes=10,
+        id="daily_digest_email",
+        name="Send daily digest emails",
+        replace_existing=True,
+    )
+
     # Add capacity triage suggestion generation to run hourly. This only creates
     # review runs; it never applies cancellation decisions automatically.
     scheduler.add_job(
@@ -515,7 +543,7 @@ def start_notification_scheduler() -> bool:
     scheduler.start()
     logger.info(
         "Notification scheduler started "
-        "(checkout notifications: 30s, deadline emails: 5min, "
+        "(checkout notifications: 30s, deadline emails: 5min, daily digest: 10min, "
         "triage suggestions: 1h, agent audit log retention: 1d)"
     )
     return True

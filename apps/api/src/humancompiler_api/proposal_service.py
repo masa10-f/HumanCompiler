@@ -143,7 +143,7 @@ def _find_by_key(
     ).first()
 
 
-def _pending_count(session: Session, user_id: UUID) -> int:
+def pending_count(session: Session, user_id: UUID) -> int:
     return session.exec(
         select(func.count())
         .select_from(AgentProposal)
@@ -171,7 +171,7 @@ def create_proposal(
     # intakes with different keys could exceed it slightly. Production runs one
     # uvicorn worker on one machine and this handler uses a sync session, so in
     # practice requests are serialised. No locking on purpose.
-    if _pending_count(session, user_id) >= MAX_PENDING_PROPOSALS:
+    if pending_count(session, user_id) >= MAX_PENDING_PROPOSALS:
         raise HTTPException(status.HTTP_409_CONFLICT, "Proposal inbox is full")
 
     project_id = resolve_project_id(session, user_id, data.kind, data.payload)

@@ -1,5 +1,7 @@
+import logging
 import os
 import re
+from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -104,6 +106,35 @@ class Settings(BaseSettings):
         default=False,
         description="Global flag to enable/disable email notifications",
     )
+    web_base_url: str | None = Field(
+        default=None,
+        description="Public URL of the web app, used for links in emails",
+    )
+
+    @field_validator("web_base_url")
+    @classmethod
+    def normalize_web_base_url(cls, v: str | None) -> str | None:
+        """Strip the value and its trailing slashes; empty means unset.
+
+        Never raises: a bad value would make ``Settings()`` fail and drop the
+        whole API into the development fallback below. An unusable URL is
+        logged and ignored, so emails go out without links instead.
+        """
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        try:
+            parts = urlsplit(v)
+        except ValueError:  # e.g. "Invalid IPv6 URL" for mismatched brackets
+            parts = None
+        if parts is None or parts.scheme not in ("http", "https") or not parts.netloc:
+            logging.getLogger(__name__).warning(
+                "Ignoring WEB_BASE_URL: it must be an http(s) URL with a host"
+            )
+            return None
+        return v.rstrip("/")
 
     @field_validator("supabase_url")
     @classmethod
@@ -239,6 +270,7 @@ except Exception as e:
     settings.resend_api_key = None
     settings.email_from = "HumanCompiler <noreply@example.com>"
     settings.email_notifications_enabled = False
+    settings.web_base_url = None
     settings.notification_scheduler_enabled = True
 
 
