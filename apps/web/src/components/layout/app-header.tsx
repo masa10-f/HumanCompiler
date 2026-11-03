@@ -26,7 +26,7 @@ import { NotebookPen, TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, Histo
 import { useAuth } from '@/hooks/use-auth'
 
 interface AppHeaderProps {
-  currentPage?: 'daily-notes' | 'dashboard' | 'tasks' | 'projects' | 'weekly-report' | 'triage' | 'scheduling' | 'scheduling-daily' | 'scheduler-tuning' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner'
+  currentPage?: 'daily-notes' | 'dashboard' | 'tasks' | 'projects' | 'weekly-report' | 'triage' | 'scheduling' | 'scheduling-daily' | 'scheduler-tuning' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner' | 'inbox'
 }
 
 const NAVIGATION_ITEMS = [
