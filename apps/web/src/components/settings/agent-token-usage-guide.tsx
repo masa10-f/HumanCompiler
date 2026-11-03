@@ -57,6 +57,20 @@ const buildMeExample = (base: string) =>
 const buildListExample = (base: string) =>
   `curl -H "Authorization: Bearer <AGENT_TOKEN>" "${base}${AGENT_API_PATH}/tasks?limit=50"`;
 
+const buildProposalExample = (base: string) => `curl -X POST ${base}${AGENT_API_PATH}/proposals \\
+  -H "Authorization: Bearer <AGENT_TOKEN>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "kind": "quick_task",
+    "title": "論文の図3を作り直す",
+    "rationale": "査読コメントで軸のラベルが読めないと指摘されたため",
+    "payload": { "title": "図3の軸ラベルを直す", "estimate_hours": 0.5 },
+    "idempotency_key": "example:quick_task:fig3@v1"
+  }'`;
+
+const buildAcceptedExperimentsExample = (base: string) =>
+  `curl -H "Authorization: Bearer <AGENT_TOKEN>" "${base}${AGENT_API_PATH}/proposals?kind=experiment&status=accepted&status=edited"`;
+
 const AGENT_ERROR_RESPONSES = [
   "401: tokenがない・無効・失効済み",
   "403: tokenに必要なスコープがない（detail は Missing required scope: <scope>）",
@@ -265,6 +279,29 @@ export function AgentTokenUsageGuide() {
               プロジェクトやゴールへの振り分けは、登録後に「タスク」画面のQuick
               Task一覧から行ってください。
             </p>
+          </section>
+
+          <section className="space-y-4 border-t pt-4">
+            <h4 className="text-sm font-semibold">提案（proposals）</h4>
+            <p className="text-muted-foreground">
+              提案を送るtokenには proposals:write
+              スコープが必要です（「提案するエージェント」プリセットに含まれています）。同じ
+              idempotency_key を送り直しても、2件目の提案は作られません。
+            </p>
+
+            <div className="space-y-1">
+              <div className="font-medium">提案を送る</div>
+              <pre className="overflow-x-auto rounded bg-muted p-2 text-xs">
+                <code>{buildProposalExample(apiBaseUrl)}</code>
+              </pre>
+            </div>
+
+            <div className="space-y-1">
+              <div className="font-medium">承認された実験の取得</div>
+              <pre className="overflow-x-auto rounded bg-muted p-2 text-xs">
+                <code>{buildAcceptedExperimentsExample(apiBaseUrl)}</code>
+              </pre>
+            </div>
           </section>
         </div>
       </CollapsibleContent>

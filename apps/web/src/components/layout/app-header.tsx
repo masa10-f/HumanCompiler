@@ -20,17 +20,19 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 // Icons
-import { NotebookPen, TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play, Timer, ListChecks, MoreHorizontal, ChevronDown, BarChart3, SlidersHorizontal, ListTodo } from 'lucide-react'
+import { NotebookPen, TrendingUp, Menu, Home, FolderOpen, Calendar, Clock, History, Settings, Play, Timer, ListChecks, MoreHorizontal, ChevronDown, BarChart3, SlidersHorizontal, ListTodo, Inbox } from 'lucide-react'
 
 // Hooks
 import { useAuth } from '@/hooks/use-auth'
+import { useProposalSummary } from '@/hooks/use-proposals'
 
 interface AppHeaderProps {
-  currentPage?: 'daily-notes' | 'dashboard' | 'tasks' | 'projects' | 'weekly-report' | 'triage' | 'scheduling' | 'scheduling-daily' | 'scheduler-tuning' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner'
+  currentPage?: 'daily-notes' | 'dashboard' | 'tasks' | 'projects' | 'weekly-report' | 'triage' | 'scheduling' | 'scheduling-daily' | 'scheduler-tuning' | 'schedule-history' | 'work-session-history' | 'timeline' | 'settings' | 'runner' | 'inbox'
 }
 
 const NAVIGATION_ITEMS = [
   { id: 'dashboard', label: 'ダッシュボード', path: '/dashboard', icon: Home },
+  { id: 'inbox', label: 'インボックス', path: '/inbox', icon: Inbox },
   { id: 'runner', label: 'Runner', path: '/runner', icon: Play },
   { id: 'tasks', label: 'タスク', path: '/tasks', icon: ListTodo },
   { id: 'projects', label: 'プロジェクト', path: '/projects', icon: FolderOpen },
@@ -52,6 +54,7 @@ const SCHEDULING_NAVIGATION_ITEMS = [
 
 const PRIMARY_NAVIGATION_IDS = new Set([
   'dashboard',
+  'inbox',
   'runner',
   'tasks',
   'projects',
@@ -71,8 +74,25 @@ const SCHEDULING_NAVIGATION_IDS = new Set(
   SCHEDULING_NAVIGATION_ITEMS.map((item) => item.id)
 )
 
+const MAX_BADGE_COUNT = 99
+
+function PendingCountBadge({ count, className = '' }: { count: number; className?: string }) {
+  if (count <= 0) return null
+  return (
+    <span
+      role="img"
+      aria-label={`未処理の提案 ${count} 件`}
+      className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-xs font-medium leading-none text-primary-foreground ${className}`}
+    >
+      {count > MAX_BADGE_COUNT ? `${MAX_BADGE_COUNT}+` : count}
+    </span>
+  )
+}
+
 export function AppHeader({ currentPage }: AppHeaderProps) {
   const { user, signOut } = useAuth()
+  const { data: proposalSummary } = useProposalSummary({ enabled: !!user })
+  const pendingProposals = proposalSummary?.pending_count ?? 0
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
   const getPageClass = (page: string) => {
@@ -151,7 +171,13 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                     title={item.label}
                   >
                     <Link href={item.path}>
-                      <item.icon className="h-4 w-4 xl:mr-2" />
+                      {/* The label is hidden below xl, so the badge sits on the icon. */}
+                      <span className="relative inline-flex xl:mr-2">
+                        <item.icon className="h-4 w-4" />
+                        {item.id === 'inbox' && (
+                          <PendingCountBadge count={pendingProposals} className="absolute -right-2 -top-2" />
+                        )}
+                      </span>
                       <span className="hidden xl:inline">{item.label}</span>
                     </Link>
                   </Button>
@@ -260,6 +286,9 @@ export function AppHeader({ currentPage }: AppHeaderProps) {
                           <Link href={item.path} onClick={() => setIsDialogOpen(false)}>
                             <item.icon className="h-4 w-4 mr-3" />
                             {item.label}
+                            {item.id === 'inbox' && (
+                              <PendingCountBadge count={pendingProposals} className="ml-2" />
+                            )}
                           </Link>
                         </Button>
                       )

@@ -3,6 +3,8 @@
  * Ensures consistency across the application
  */
 
+import type { ProposalListFilters } from '@/types/proposal';
+
 export const queryKeys = {
   // Dashboard keys
   dashboard: {
@@ -105,6 +107,14 @@ export const queryKeys = {
     suggestions: () => [...queryKeys.reschedule.all, 'suggestions'] as const,
     suggestion: (id: string) => [...queryKeys.reschedule.all, 'suggestion', id] as const,
     decisions: (limit?: number) => [...queryKeys.reschedule.all, 'decisions', { limit }] as const,
+  },
+
+  // Agent proposal inbox
+  proposals: {
+    all: ['proposals'] as const,
+    list: (filters: ProposalListFilters) =>
+      [...queryKeys.proposals.all, 'list', filters] as const,
+    summary: () => [...queryKeys.proposals.all, 'summary'] as const,
   },
 } as const;
 

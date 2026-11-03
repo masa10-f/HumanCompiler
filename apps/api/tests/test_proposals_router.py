@@ -233,6 +233,47 @@ def test_list_shows_reference_names(session: Session):
     assert after["project_name"] == "Project"
 
 
+def _note_append_on(session: Session, task_id: UUID) -> AgentProposal:
+    return make_proposal(
+        session,
+        ProposalKind.NOTE_APPEND,
+        {"target": {"task_id": str(task_id)}, "content_markdown": "x"},
+    )
+
+
+def test_note_append_on_task_has_task_goal_id(session: Session):
+    goal = seed_goal(session, seed_project(session, USER_A))
+    task = seed_task(session, goal)
+    row = _note_append_on(session, task.id)
+
+    body = client.get(f"{BASE}/{row.id}").json()
+    assert body["task_goal_id"] == str(task.goal_id)
+    assert body["task_title"] == task.title
+
+
+def test_task_goal_id_is_none_when_task_deleted(session: Session):
+    goal = seed_goal(session, seed_project(session, USER_A))
+    task = seed_task(session, goal)
+    row = _note_append_on(session, task.id)
+
+    session.delete(task)
+    session.commit()
+    body = client.get(f"{BASE}/{row.id}").json()
+    assert body["task_goal_id"] is None
+    assert body["task_title"] is None
+
+
+def test_task_goal_id_is_none_for_other_kinds(session: Session):
+    goal = seed_goal(session, seed_project(session, USER_A))
+    row = make_proposal(
+        session,
+        ProposalKind.TASK,
+        {"goal_id": str(goal.id), "title": "T", "estimate_hours": 1},
+    )
+    body = client.get(f"{BASE}/{row.id}").json()
+    assert body["task_goal_id"] is None
+
+
 def test_reference_names_are_scoped_to_the_owner(session: Session):
     # A proposal row that points at someone else's goal must not leak its title
     # (intake forbids this; the lookup is guarded anyway).
