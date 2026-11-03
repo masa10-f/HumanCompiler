@@ -177,6 +177,25 @@ describe('InboxPage', () => {
     expect(lastFilters()).toMatchObject({ kind: 'experiment', offset: 0 });
   });
 
+  it('steps back to the last page with items when the current page empties', () => {
+    mockUseProposals.mockReturnValue(listResult([makeProposal('a')], 51));
+    const { rerender } = render(<InboxPage />);
+    fireEvent.click(screen.getByRole('button', { name: '次へ' }));
+    expect(lastFilters()).toMatchObject({ offset: 50 });
+
+    // The only item on page 2 was decided; 50 remain on page 1.
+    // Page 1 has items again once the offset steps back.
+    mockUseProposals.mockImplementation(({ offset }: { offset: number }) =>
+      offset === 0
+        ? listResult([makeProposal('a')], 50)
+        : listResult([], 50),
+    );
+    rerender(<InboxPage />);
+
+    expect(lastFilters()).toMatchObject({ offset: 0 });
+    expect(screen.queryByText('未処理の提案はありません')).not.toBeInTheDocument();
+  });
+
   it('shows the pending empty state without a range or paging buttons', () => {
     mockUseProposals.mockReturnValue(listResult([], 0));
     render(<InboxPage />);

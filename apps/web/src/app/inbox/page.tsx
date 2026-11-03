@@ -59,8 +59,24 @@ export default function InboxPage() {
     limit: PAGE_SIZE,
     offset,
   };
-  const { data, isLoading, isError, error } = useProposals(filters);
+  const { data, isLoading, isPlaceholderData, isError, error } =
+    useProposals(filters);
   const { data: projects } = useProjectOptions();
+
+  // Deciding the last item of the last page leaves this page empty while
+  // earlier ones still have items, so step back to the last page that has some.
+  const stranded =
+    !isPlaceholderData &&
+    offset > 0 &&
+    data !== undefined &&
+    data.items.length === 0 &&
+    data.total > 0;
+  const lastPageOffset = data
+    ? Math.max(0, Math.floor((data.total - 1) / PAGE_SIZE) * PAGE_SIZE)
+    : 0;
+  useEffect(() => {
+    if (stranded) setOffset(lastPageOffset);
+  }, [stranded, lastPageOffset]);
 
   if (!ready) {
     return (
@@ -136,7 +152,7 @@ export default function InboxPage() {
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>{getErrorMessage(error as Error)}</AlertDescription>
           </Alert>
-        ) : isLoading ? (
+        ) : isLoading || stranded ? (
           <div className="flex justify-center py-12">
             <Loader2
               role="status"
