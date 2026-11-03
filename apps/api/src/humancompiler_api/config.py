@@ -1,5 +1,7 @@
+import logging
 import os
 import re
+from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -112,14 +114,23 @@ class Settings(BaseSettings):
     @field_validator("web_base_url")
     @classmethod
     def normalize_web_base_url(cls, v: str | None) -> str | None:
-        """Strip the value and its trailing slashes; empty means unset."""
+        """Strip the value and its trailing slashes; empty means unset.
+
+        Never raises: a bad value would make ``Settings()`` fail and drop the
+        whole API into the development fallback below. An unusable URL is
+        logged and ignored, so emails go out without links instead.
+        """
         if v is None:
             return None
         v = v.strip()
         if not v:
             return None
-        if not v.startswith(("http://", "https://")):
-            raise ValueError("WEB_BASE_URL must start with http:// or https://")
+        parts = urlsplit(v)
+        if parts.scheme not in ("http", "https") or not parts.netloc:
+            logging.getLogger(__name__).warning(
+                "Ignoring WEB_BASE_URL: it must be an http(s) URL with a host"
+            )
+            return None
         return v.rstrip("/")
 
     @field_validator("supabase_url")

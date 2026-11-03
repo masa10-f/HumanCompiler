@@ -8,6 +8,7 @@
 
 from datetime import UTC, date, datetime
 from typing import Any
+from uuid import UUID
 
 import pytest
 
@@ -22,6 +23,7 @@ from humancompiler_api.email_service import (
 )
 
 DUE = datetime(2026, 11, 3, 15, 30, tzinfo=UTC)
+USER_ID = UUID("dddddddd-dddd-4ddd-8ddd-dddddddddddd")
 
 
 def make_proposal(**overrides: Any) -> DigestProposal:
@@ -268,15 +270,24 @@ def test_send_daily_digest_calls_resend(
     service: EmailService, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sent: list[dict[str, Any]] = []
-    monkeypatch.setattr(
-        email_service.resend.Emails, "send", lambda params: sent.append(params) or {}
-    )
+    sent_options: list[dict[str, Any] | None] = []
+
+    def fake_send(
+        params: dict[str, Any], options: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        sent.append(params)
+        sent_options.append(options)
+        return {}
+
+    monkeypatch.setattr(email_service.resend.Emails, "send", fake_send)
     service._enabled = True
     digest = digest_with_proposals(1, task_count=0)
 
-    assert service.send_daily_digest("u@example.com", digest) is True
+    assert service.send_daily_digest("u@example.com", digest, USER_ID) is True
 
     assert len(sent) == 1
+    key = f"daily-digest/{USER_ID}/{digest.digest_date.isoformat()}"
+    assert sent_options == [{"idempotency_key": key}]
     assert sent[0]["to"] == ["u@example.com"]
     assert sent[0]["subject"] == daily_digest_subject(digest)
     assert sent[0]["from"] == "HumanCompiler <noreply@example.com>"
@@ -290,7 +301,9 @@ def test_send_daily_digest_disabled_or_failing(
 ) -> None:
     calls: list[dict[str, Any]] = []
 
-    def fake_send(params: dict[str, Any]) -> dict[str, Any]:
+    def fake_send(
+        params: dict[str, Any], options: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         calls.append(params)
         return {}
 
@@ -298,16 +311,18 @@ def test_send_daily_digest_disabled_or_failing(
     digest = digest_with_tasks()
 
     service._enabled = False
-    assert service.send_daily_digest("u@example.com", digest) is False
+    assert service.send_daily_digest("u@example.com", digest, USER_ID) is False
     assert calls == []
 
-    def failing_send(params: dict[str, Any]) -> dict[str, Any]:
+    def failing_send(
+        params: dict[str, Any], options: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         raise RuntimeError("boom for u@example.com")
 
     monkeypatch.setattr(email_service.resend.Emails, "send", failing_send)
     service._enabled = True
     with caplog.at_level("ERROR"):
-        assert service.send_daily_digest("u@example.com", digest) is False
+        assert service.send_daily_digest("u@example.com", digest, USER_ID) is False
     assert "RuntimeError" in caplog.text
     assert "u@example.com" not in caplog.text
 
@@ -318,7 +333,8 @@ def test_web_base_url_normalized() -> None:
     assert normalize("http://localhost:3000") == "http://localhost:3000"
     assert normalize("  ") is None
     assert normalize(None) is None
-    with pytest.raises(ValueError):
-        normalize("ftp://x")
-    with pytest.raises(ValueError):
-        normalize("hc.example")
+    # A bad value is ignored, never raised: raising would make Settings() fail.
+    assert normalize("ftp://x") is None
+    assert normalize("hc.example") is None
+    assert normalize("https://") is None
+    assert Settings(web_base_url="ftp://x").web_base_url is None

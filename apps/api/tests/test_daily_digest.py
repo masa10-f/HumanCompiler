@@ -76,7 +76,9 @@ class FakeEmailService:
         self.results: list[bool] = list(results or [])
         self.calls: list[tuple[str, DailyDigest]] = []
 
-    def send_daily_digest(self, to_email: str, digest: DailyDigest) -> bool:
+    def send_daily_digest(
+        self, to_email: str, digest: DailyDigest, user_id: UUID
+    ) -> bool:
         self.calls.append((to_email, digest))
         return self.results.pop(0) if self.results else True
 
@@ -137,7 +139,9 @@ def add_log(
             notification_type=EmailNotificationType.DAILY_DIGEST,
             status=status,
             sent_at=created_at if sent else None,
-            error_message=None if sent else "Failed to send email",
+            error_message="Failed to send email"
+            if status is EmailNotificationStatus.FAILED
+            else None,
             created_at=created_at,
         )
     )
@@ -373,7 +377,10 @@ def test_digest_names_project_and_agent(session: Session):
 
 
 def test_task_window(session: Session):
-    """Also covers SQLite naive read-back: values are reloaded after expire_all()."""
+    """Due dates are reloaded after expire_all() and come back as aware UTC.
+
+    In this SQLite fixture ``Task.due_date`` reads back aware, so naive input
+    is covered directly by ``test_as_utc_treats_naive_as_utc``."""
     add_user(session, USER_A)
     goal = goal_of(session, USER_A)
     last_in_window = datetime(2026, 11, 6, 23, 59, tzinfo=JST)
@@ -486,18 +493,106 @@ def test_exception_for_one_user_is_logged_and_others_continue(
     add_proposal(session, USER_B, at(2, 12))
 
     class RaisingForA(FakeEmailService):
-        def send_daily_digest(self, to_email: str, digest: DailyDigest) -> bool:
+        def send_daily_digest(
+            self, to_email: str, digest: DailyDigest, user_id: UUID
+        ) -> bool:
             if to_email == email_of(USER_A):
                 raise RuntimeError("boom")
-            return super().send_daily_digest(to_email, digest)
+            return super().send_daily_digest(to_email, digest, user_id)
 
     fake = RaisingForA()
     with caplog.at_level(logging.ERROR, logger=daily_digest.logger.name):
         assert daily_digest.run_daily_digest(session, at(3, 9), fake) == 1
 
     assert [to for to, _ in fake.calls] == [email_of(USER_B)]
-    assert logs_of(session, USER_A) == []
-    assert len(logs_of(session, USER_B)) == 1
+    # The reservation was committed before the send raised: it stays pending
+    # and blocks A for the rest of the day instead of retrying every run.
+    assert [log.status for log in logs_of(session, USER_A)] == [
+        EmailNotificationStatus.PENDING
+    ]
+    assert [log.status for log in logs_of(session, USER_B)] == [
+        EmailNotificationStatus.SENT
+    ]
     [record] = [r for r in caplog.records if r.exc_info]
     assert str(USER_A) in record.getMessage()
     assert email_of(USER_A) not in caplog.text
+
+
+def test_reservation_is_pending_while_sending(session: Session):
+    add_user(session, USER_A)
+    add_proposal(session, USER_A, at(2, 12))
+    seen: list[list[tuple[EmailNotificationStatus, datetime | None]]] = []
+
+    class Inspecting(FakeEmailService):
+        def send_daily_digest(
+            self, to_email: str, digest: DailyDigest, user_id: UUID
+        ) -> bool:
+            seen.append([(log.status, log.sent_at) for log in logs_of(session)])
+            return super().send_daily_digest(to_email, digest, user_id)
+
+    now = at(3, 9)
+    assert daily_digest.run_daily_digest(session, now, Inspecting()) == 1
+
+    assert seen == [[(EmailNotificationStatus.PENDING, None)]]
+    [log] = logs_of(session)
+    assert log.status == EmailNotificationStatus.SENT
+    assert as_utc(log.sent_at) == now
+    assert as_utc(log.created_at) == now
+
+
+def test_commit_failure_after_send_does_not_resend(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+):
+    add_user(session, USER_A)
+    add_proposal(session, USER_A, at(2, 12))
+    fake = FakeEmailService()
+    real_commit = session.commit
+    commits: list[int] = []
+
+    def commit_failing_after_send() -> None:
+        commits.append(1)
+        if len(commits) == 2:  # 1: the reservation, 2: the update after the send
+            raise RuntimeError("database went away")
+        real_commit()
+
+    monkeypatch.setattr(session, "commit", commit_failing_after_send)
+    assert daily_digest.run_daily_digest(session, at(3, 9), fake) == 0
+    assert len(fake.calls) == 1
+    monkeypatch.setattr(session, "commit", real_commit)
+
+    [log] = logs_of(session)
+    assert log.status == EmailNotificationStatus.PENDING
+    for minute in (10, 20, 30):
+        assert daily_digest.run_daily_digest(session, at(3, 9, minute), fake) == 0
+    assert len(fake.calls) == 1
+
+
+def test_pending_log_from_today_blocks(session: Session):
+    add_user(session, USER_A)
+    add_proposal(session, USER_A, at(2, 12))
+    add_log(session, USER_A, at(3, 0, 5), status=EmailNotificationStatus.PENDING)
+    fake = FakeEmailService()
+
+    assert daily_digest.run_daily_digest(session, at(3, 9), fake) == 0
+    assert fake.calls == []
+
+
+def test_pending_log_from_yesterday_does_not_block(session: Session):
+    add_user(session, USER_A)
+    add_proposal(session, USER_A, at(2, 12))
+    add_log(session, USER_A, at(2, 23, 55), status=EmailNotificationStatus.PENDING)
+    fake = FakeEmailService()
+
+    assert daily_digest.run_daily_digest(session, at(3, 9), fake) == 1
+    assert len(fake.calls) == 1
+    # A pending row is not a sent digest: the proposal still counts as new.
+    assert fake.calls[0][1].new_proposal_count == 1
+
+
+def test_as_utc_treats_naive_as_utc():
+    naive = datetime(2026, 11, 3, 15, 30)
+    assert daily_digest._as_utc(naive) == datetime(2026, 11, 3, 15, 30, tzinfo=UTC)
+    aware_jst = datetime(2026, 11, 4, 0, 30, tzinfo=JST)
+    converted = daily_digest._as_utc(aware_jst)
+    assert converted == datetime(2026, 11, 3, 15, 30, tzinfo=UTC)
+    assert converted.utcoffset() == timedelta(0)

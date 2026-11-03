@@ -10,6 +10,11 @@ The day and hour are Asia/Tokyo. A user gets at most one digest per JST day,
 on the first run at or after their chosen hour, and only when it has new
 proposals or tasks due soon. Failed sends are retried on later runs, up to
 ``MAX_FAILURES_PER_DAY`` a day.
+
+The log row is reserved as ``pending`` and committed before the send, then
+updated to ``sent`` or ``failed``. A ``pending`` row left behind by a failed
+update or a crash blocks the rest of that day: losing one digest is
+acceptable, mailing the user on every run is not.
 """
 
 import logging
@@ -190,7 +195,7 @@ def build_digest(session: Session, user_id: UUID, now: datetime) -> DailyDigest:
 
 
 def _blocked_today(session: Session, user_id: UUID, today_start: datetime) -> bool:
-    """True when today's logs hold a sent digest or too many failures."""
+    """True when today's logs hold a sent or pending digest, or too many failures."""
     rows = session.exec(
         select(EmailNotificationLog.status, func.count())
         .where(
@@ -204,6 +209,7 @@ def _blocked_today(session: Session, user_id: UUID, today_start: datetime) -> bo
     counts = {status: count for status, count in rows}
     return (
         counts.get(EmailNotificationStatus.SENT, 0) > 0
+        or counts.get(EmailNotificationStatus.PENDING, 0) > 0
         or counts.get(EmailNotificationStatus.FAILED, 0) >= MAX_FAILURES_PER_DAY
     )
 
@@ -235,28 +241,35 @@ def run_daily_digest(
 
     sent_count = 0
     for user_id, email, digest_hour in targets:
-        if hour < digest_hour:
-            continue
         try:
+            if digest_hour is None or hour < digest_hour:
+                continue
             if _blocked_today(session, user_id, today_start):
                 continue
             digest = build_digest(session, user_id, now)
             if digest.new_proposal_count == 0 and digest.task_count == 0:
                 continue
-            success = email_service.send_daily_digest(email, digest)
-            session.add(
-                EmailNotificationLog(
-                    id=uuid4(),
-                    user_id=user_id,
-                    notification_type=EmailNotificationType.DAILY_DIGEST,
-                    status=EmailNotificationStatus.SENT
-                    if success
-                    else EmailNotificationStatus.FAILED,
-                    sent_at=now if success else None,
-                    error_message=None if success else "Failed to send email",
-                    created_at=now,
-                )
+            # Reserve the day before sending (see the module docstring).
+            log = EmailNotificationLog(
+                id=uuid4(),
+                user_id=user_id,
+                notification_type=EmailNotificationType.DAILY_DIGEST,
+                status=EmailNotificationStatus.PENDING,
+                sent_at=None,
+                error_message=None,
+                created_at=now,
             )
+            session.add(log)
+            session.commit()
+
+            success = email_service.send_daily_digest(email, digest, user_id)
+            if success:
+                log.status = EmailNotificationStatus.SENT
+                log.sent_at = now
+            else:
+                log.status = EmailNotificationStatus.FAILED
+                log.error_message = "Failed to send email"
+            session.add(log)
             session.commit()
             if success:
                 sent_count += 1

@@ -74,6 +74,11 @@ def daily_digest_subject(digest: DailyDigest) -> str:
     return f"【HumanCompiler】{_format_digest_date(digest.digest_date)} のタスク期限サマリー"
 
 
+def daily_digest_idempotency_key(user_id: UUID, digest: DailyDigest) -> str:
+    """Resend idempotency key: one daily digest per user and JST day."""
+    return f"daily-digest/{user_id}/{digest.digest_date.isoformat()}"
+
+
 def _jst(value: datetime) -> datetime:
     """Convert to JST; naive values (SQLite read-back) are treated as UTC."""
     if value.tzinfo is None:
@@ -161,15 +166,20 @@ class EmailService:
             logger.error(f"Failed to send deadline reminder to {to_email}: {e}")
             return False
 
-    def send_daily_digest(self, to_email: str, digest: DailyDigest) -> bool:
+    def send_daily_digest(
+        self, to_email: str, digest: DailyDigest, user_id: UUID
+    ) -> bool:
         """
         Send the daily digest email (new proposals and tasks due soon).
 
-        The caller decides whether a digest is worth sending.
+        The caller decides whether a digest is worth sending. The Resend
+        idempotency key is per user and JST day, so a retried request for the
+        same day is not delivered twice.
 
         Args:
             to_email: Recipient email address
             digest: Digest contents
+            user_id: Recipient's user id, for the idempotency key
 
         Returns:
             True if email was sent successfully, False otherwise
@@ -185,7 +195,10 @@ class EmailService:
                 "subject": daily_digest_subject(digest),
                 "html": self._render_daily_digest_html(digest),
             }
-            resend.Emails.send(params)
+            options: resend.Emails.SendOptions = {
+                "idempotency_key": daily_digest_idempotency_key(user_id, digest)
+            }
+            resend.Emails.send(params, options)
             logger.info(
                 "Daily digest sent (%d new proposals, %d tasks)",
                 digest.new_proposal_count,
