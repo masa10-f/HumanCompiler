@@ -178,7 +178,15 @@ class EmailService:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to send deadline reminder for task {task_id}: {e}")
+            # Never log the message: it may echo the recipient address.
+            logger.error(
+                "Failed to send deadline reminder for task %s: %s "
+                "(code=%s, error_type=%s)",
+                task_id,
+                type(e).__name__,
+                getattr(e, "code", None),
+                getattr(e, "error_type", None),
+            )
             return False
 
     def send_daily_digest(

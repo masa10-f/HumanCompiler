@@ -15,6 +15,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from resend.exceptions import ResendError
 from sqlmodel import Session, select
 
 from humancompiler_api import email_service
@@ -346,6 +347,44 @@ def test_send_deadline_reminder_passes_idempotency_key(
         {"idempotency_key": f"deadline-reminder/{task_id}/2026-11-04"}
     ]
     assert sent[0]["to"] == ["u@example.com"]
+    assert "u@example.com" not in caplog.text
+
+
+def test_send_deadline_reminder_keeps_resend_error_text_out_of_the_log(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    monkeypatch.setattr(email_service.settings, "resend_api_key", None)
+
+    def failing_send(
+        params: dict[str, Any], options: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        raise ResendError(
+            code=422,
+            error_type="validation_error",
+            message="Invalid `to` field: u@example.com",
+            suggested_action="Check the address.",
+        )
+
+    monkeypatch.setattr(email_service.resend.Emails, "send", failing_send)
+    service = EmailService()
+    service._enabled = True
+    task_id = uuid4()
+
+    with caplog.at_level(logging.ERROR, logger=email_service.__name__):
+        ok = service.send_deadline_reminder(
+            to_email="u@example.com",
+            task_title="Task",
+            task_id=task_id,
+            due_date=NOW + timedelta(hours=2),
+            hours_until_due=2,
+            reminder_date=date(2026, 11, 4),
+        )
+
+    assert ok is False
+    assert str(task_id) in caplog.text
+    assert "ResendError" in caplog.text
+    assert "422" in caplog.text
+    assert "validation_error" in caplog.text
     assert "u@example.com" not in caplog.text
 
 
