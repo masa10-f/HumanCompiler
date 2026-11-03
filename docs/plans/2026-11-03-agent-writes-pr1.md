@@ -34,7 +34,7 @@
 - **Atomicity.** Each write, including its `agent_changes` row, is one transaction. Any failure leaves nothing written: no entity, no dependency, no change row.
 - **Optimistic lock.**
   - Every update and every note replace requires `expected_updated_at`.
-  - Compare it with the stored `updated_at` after locking the row (`with_for_update()`, a no-op on SQLite). Normalize naive values to UTC first; SQLite returns naive values.
+  - Compare it with the stored `updated_at` after locking the row (`with_for_update(key_share=True)`, i.e. FOR NO KEY UPDATE, a no-op on SQLite). Normalize naive values to UTC first; SQLite returns naive values.
   - On a mismatch, return 409 with `detail = {"message": "Changed since you read it; read it again and retry", "current_updated_at": <iso UTC>}`, and write nothing.
 - **Destructive (消える操作).** A change is destructive when it does any of the following:
   - sets `status` to `cancelled` (Goal or Task);
@@ -44,7 +44,7 @@
   - is a replace of a note whose stored content is non-empty;
   - removes a dependency.
 
-  A stored value is empty when it is None or "" after `.strip()`; a note is empty when it does not exist or its HTML has no text once tags, entities and whitespace are stripped (TipTap's `<p></p>`), and holds no image or horizontal rule. Filling an empty field erases nothing, so it is an ordinary write with `destructive=false` (final review F3, controller ruling).
+  A stored value is empty when it is None or "" after `.strip()`; a note is empty when it does not exist, or it is a markdown note whose content is "" after `.strip()`, or it is an HTML note whose HTML has no text once tags, entities and whitespace are stripped (TipTap's `<p></p>`), and holds no image or horizontal rule. Filling an empty field erases nothing, so it is an ordinary write with `destructive=false` (final review F3, controller ruling).
 
   Appends (`memo_append`, note append) are never destructive. Without `writes:unconfirmed`, a request containing any destructive change gets 403 with `detail = "This change needs the writes:unconfirmed scope"`, and nothing is written. This includes a PATCH that mixes ordinary and destructive fields.
 - **No-op updates.** A PATCH whose fields all equal the stored values returns 200 with the entity, records no change and does not bump `updated_at`.
@@ -221,7 +221,7 @@
   - `test_change_row_agent_name_and_token`.
 - [ ] **Step 2: Run** `uv run pytest tests/test_agent_writes_api.py -q`. Expected: FAIL (404 from the missing routes).
 - [ ] **Step 3: Implement** the models, the service functions and the router.
-  - **Locking:** load the row with `with_for_update()`, compare `expected_updated_at`, then decide which fields really changed (`new != stored`). If the destructive set is non-empty, call `require_destructive_allowed`.
+  - **Locking:** load the row with `with_for_update(key_share=True)` (FOR NO KEY UPDATE), compare `expected_updated_at`, then decide which fields really changed (`new != stored`). If the destructive set is non-empty, call `require_destructive_allowed`.
 - [ ] **Step 4: Run** the backend checks with `tests/test_agent_writes_api.py`. Also run `tests/test_agent_v1_records.py` and `tests/test_agent_proposals_api.py` for regressions.
 - [ ] **Step 5: Commit** with the message `feat(api): Let agent tokens create and update goals and tasks`.
 

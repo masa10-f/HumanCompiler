@@ -1244,6 +1244,38 @@ def test_replace_creating_a_note_is_ordinary(session: Session):
     assert change.before == {"content": ""}
 
 
+@pytest.mark.parametrize("stored", ["<TODO>", "<https://example.com>", "<!-- x -->"])
+def test_replacing_a_markdown_note_in_angle_brackets_is_403(
+    session: Session, stored: str
+):
+    """In a markdown note, <...> is the user's text, not a tag."""
+    _, _, task = _tree(session)
+    note = seed_note(session, USER_A, task=task, updated_at=STAMP)
+    _set(session, note, content=stored, content_type="markdown")
+    _set(session, note, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES)
+
+    response = _replace(token, "tasks", task.id, "New", STAMP.isoformat())
+    assert response.status_code == 403
+    assert response.json()["detail"] == NEEDS_UNCONFIRMED
+    (current,) = _notes(session)
+    assert current.content == stored
+    assert _changes(session) == []
+
+
+def test_replacing_an_empty_html_note_without_unconfirmed_is_200(session: Session):
+    _, _, task = _tree(session)
+    note = seed_note(session, USER_A, task=task, updated_at=STAMP)
+    _set(session, note, content="<p></p>", content_type="html")
+    _set(session, note, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES)
+
+    response = _replace(token, "tasks", task.id, "New", STAMP.isoformat())
+    assert response.status_code == 200, response.text
+    (change,) = _changes(session)
+    assert change.destructive is False
+
+
 def test_replacing_a_note_with_text_inside_tags_is_403(session: Session):
     _, _, task = _tree(session)
     note = seed_note(session, USER_A, task=task, updated_at=STAMP)

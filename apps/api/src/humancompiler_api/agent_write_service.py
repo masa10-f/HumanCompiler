@@ -91,6 +91,16 @@ def _is_blank_html(content: str) -> bool:
     return not html.unescape(_TAG.sub("", content)).strip()
 
 
+def _is_blank_note(note: ContextNote) -> bool:
+    """True for a note the user has written nothing in.
+
+    Only an HTML note has tags to strip; in a markdown note (the column's
+    default, so legacy notes may be one) ``<TODO>`` is the user's text."""
+    if note.content_type == "html":
+        return _is_blank_html(note.content)
+    return _is_blank(note.content)
+
+
 def _as_utc(value: datetime) -> datetime:
     """SQLite returns naive datetimes; they are UTC."""
     if value.tzinfo is None:
@@ -743,7 +753,7 @@ def replace_note(
 ) -> ContextNote:
     """Replace the note of one of the user's projects, goals or tasks.
 
-    Destructive when the note has text (see ``_is_blank_html``); creating the
+    Destructive when the note has text (see ``_is_blank_note``); creating the
     note or filling an empty one is not. ``expected_updated_at`` must be the
     note's updated_at, or None when the item has no note yet; then the note is
     created. Replacing an existing note with the HTML it already has changes
@@ -752,7 +762,7 @@ def replace_note(
         note_target = _owned_note_target(session, principal.user_id, kind, target_id)
         note = proposal_service.lock_note(session, note_target.target)
         _check_note_version(note, data.expected_updated_at)
-        destructive = note is not None and not _is_blank_html(note.content)
+        destructive = note is not None and not _is_blank_note(note)
         if destructive:
             require_destructive_allowed(principal)
         new_html = markdown_to_note_html(data.content_markdown)
