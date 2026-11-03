@@ -2907,10 +2907,14 @@ class ContextNoteCreate(BaseModel):
 
 
 class ContextNoteUpdate(BaseModel):
-    """Context note update request"""
+    """Context note update request.
+
+    ``expected_updated_at`` is the note's updated_at when the editor read it; a
+    note changed since gives 409. Leaving it out overwrites, as before."""
 
     content: str | None = None
     content_type: str | None = Field(None, max_length=20)
+    expected_updated_at: datetime | None = None
 
 
 class NoteAttachmentResponse(BaseModel):
