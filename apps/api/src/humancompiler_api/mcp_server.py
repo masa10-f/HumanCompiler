@@ -120,6 +120,13 @@ with _keep_root_logging():
 _TRANSPORT_SECURITY = TransportSecuritySettings(enable_dns_rebinding_protection=False)
 
 
+_METHOD_NOT_ALLOWED_BODY = {
+    "jsonrpc": "2.0",
+    "error": {"code": -32000, "message": "Method not allowed"},
+    "id": None,
+}
+
+
 class MCPHTTPApp:
     """ASGI entry mounted at ``/mcp``.
 
@@ -137,6 +144,18 @@ class MCPHTTPApp:
             response = JSONResponse(
                 {"detail": "MCP server is not running"},
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+            await response(scope, receive, send)
+            return
+        if scope.get("method") != "POST":
+            # Stateless JSON mode has no use for GET or DELETE, but the SDK still
+            # serves GET as a server-to-client SSE stream that never carries
+            # anything, never closes and needs no token. Clients open it after
+            # initialize; the MCP spec lets a server without one answer 405.
+            response = JSONResponse(
+                _METHOD_NOT_ALLOWED_BODY,
+                status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
+                headers={"Allow": "POST"},
             )
             await response(scope, receive, send)
             return

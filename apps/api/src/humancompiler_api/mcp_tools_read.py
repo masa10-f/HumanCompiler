@@ -165,7 +165,9 @@ def _find(
         "Find the user's projects, goals and tasks whose title contains the "
         "query (case-insensitive). Each hit has its kind, id, title, status, "
         "parent and updated_at, newest first. Use it to locate a target before "
-        f"reading or writing it. {_USER_DATA}"
+        "reading or writing it. Leaving kind out searches all three kinds and "
+        "needs the projects:read, goals:read and tasks:read scopes. "
+        f"{_USER_DATA}"
     ),
     annotations=_READ_ONLY,
 )

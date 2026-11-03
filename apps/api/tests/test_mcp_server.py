@@ -407,6 +407,78 @@ async def test_get_goal_foreign_is_404(session: Session, mcp: httpx.AsyncClient)
     assert [row.status_code for row in audit_rows(session)] == [404, 404]
 
 
+async def test_get_task_foreign_is_404(session: Session, mcp: httpx.AsyncClient):
+    other_task = seed_task(session, seed_goal(session, seed_project(session, USER_B)))
+    secret = issue_token(session, USER_A, [AgentScope.TASKS_READ])
+
+    foreign = await call(mcp, "get_task", {"task_id": str(other_task.id)}, secret)
+    missing = await call(mcp, "get_task", {"task_id": str(uuid4())}, secret)
+
+    assert foreign == missing == (True, {"status": 404, "detail": "Task not found"})
+    assert [row.status_code for row in audit_rows(session)] == [404, 404]
+
+
+async def test_get_context_foreign_is_404(session: Session, mcp: httpx.AsyncClient):
+    other_project = seed_project(session, USER_B)
+    other_goal = seed_goal(session, other_project)
+    secret = issue_token(session, USER_A, [AgentScope.CONTEXT_READ])
+
+    for kind, label, foreign_id in (
+        ("project", "Project", other_project.id),
+        ("goal", "Goal", other_goal.id),
+    ):
+        missing_id = uuid4()
+        foreign = await call(
+            mcp, "get_context", {"kind": kind, "id": str(foreign_id)}, secret
+        )
+        missing = await call(
+            mcp, "get_context", {"kind": kind, "id": str(missing_id)}, secret
+        )
+
+        # The detail echoes the requested ID, exactly as REST does; otherwise
+        # a foreign ID and a random one are indistinguishable.
+        assert foreign == (
+            True,
+            {"status": 404, "detail": f"{label} not found with ID: {foreign_id}"},
+        )
+        assert missing == (
+            True,
+            {"status": 404, "detail": f"{label} not found with ID: {missing_id}"},
+        )
+    assert [row.status_code for row in audit_rows(session)] == [404] * 4
+
+
+async def test_non_post_methods_are_405_without_stream(mcp: httpx.AsyncClient):
+    for method in ("GET", "DELETE"):
+        response = await asyncio.wait_for(
+            mcp.request(
+                method,
+                "/mcp",
+                headers={**MCP_HEADERS, "Accept": "text/event-stream"},
+            ),
+            timeout=5,
+        )
+
+        assert response.status_code == 405
+        assert response.headers["allow"] == "POST"
+        assert response.json() == {
+            "jsonrpc": "2.0",
+            "error": {"code": -32000, "message": "Method not allowed"},
+            "id": None,
+        }
+
+    init = await rpc(
+        mcp,
+        "initialize",
+        {
+            "protocolVersion": PROTOCOL_VERSION,
+            "capabilities": {},
+            "clientInfo": {"name": "test", "version": "1"},
+        },
+    )
+    assert init["serverInfo"]["name"] == "HumanCompiler"
+
+
 def _without_timestamp(markdown: str) -> str:
     return "\n".join(line for line in markdown.splitlines() if "出力日時" not in line)
 
