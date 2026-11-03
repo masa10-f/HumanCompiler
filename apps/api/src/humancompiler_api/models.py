@@ -778,6 +778,9 @@ class UserSettingsBase(SQLModel):
         default=24,
         description="Hours before deadline to send reminder email (e.g., 24, 48, 72)",
     )
+    # Unused since overdue alert emails were removed. The column is kept until
+    # a later migration drops it: the previous release still reads it during
+    # deploy.
     email_overdue_alerts_enabled: bool = SQLField(
         default=True,
         description="Send alerts when tasks become overdue",
@@ -1075,6 +1078,8 @@ class EmailNotificationType(StrEnum):
     """Type of email notification"""
 
     DEADLINE_REMINDER = "deadline_reminder"
+    # Overdue alert emails were removed (the daily digest lists overdue tasks).
+    # Kept only so existing log rows still load; never send with it.
     OVERDUE_ALERT = "overdue_alert"
     DAILY_DIGEST = "daily_digest"
 
@@ -1113,7 +1118,7 @@ class EmailNotificationLog(EmailNotificationLogBase, table=True):  # type: ignor
 
     __tablename__ = "email_notification_logs"
 
-    id: UUID | None = SQLField(default=None, primary_key=True)
+    id: UUID = SQLField(default_factory=uuid4, primary_key=True)
     user_id: UUID = SQLField(foreign_key="users.id", index=True)
     task_id: UUID | None = SQLField(default=None, index=True)
     quick_task_id: UUID | None = SQLField(default=None, index=True)
@@ -1789,7 +1794,6 @@ class UserSettingsResponse(BaseModel):
     # Email notification settings (Issue #261)
     email_notifications_enabled: bool = False
     email_deadline_reminder_hours: int = 24
-    email_overdue_alerts_enabled: bool = True
     email_daily_digest_enabled: bool = False
     email_daily_digest_hour: int = 9
 
@@ -2021,7 +2025,6 @@ class EmailNotificationSettingsUpdate(BaseModel):
 
     email_notifications_enabled: bool | None = None
     email_deadline_reminder_hours: int | None = Field(None, ge=1, le=168)
-    email_overdue_alerts_enabled: bool | None = None
     email_daily_digest_enabled: bool | None = None
     email_daily_digest_hour: int | None = Field(None, ge=0, le=23)
 

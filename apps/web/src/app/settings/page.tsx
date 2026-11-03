@@ -57,7 +57,6 @@ export default function SettingsPage() {
   // Email notification settings (Issue #261)
   const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(false)
   const [emailDeadlineReminderHours, setEmailDeadlineReminderHours] = useState(24)
-  const [emailOverdueAlertsEnabled, setEmailOverdueAlertsEnabled] = useState(true)
   const [emailDailyDigestEnabled, setEmailDailyDigestEnabled] = useState(false)
   const [emailDailyDigestHour, setEmailDailyDigestHour] = useState(9)
   const [emailSettingsLoading, setEmailSettingsLoading] = useState(false)
@@ -167,7 +166,6 @@ export default function SettingsPage() {
         // Email notification settings (Issue #261)
         setEmailNotificationsEnabled(data.email_notifications_enabled ?? false)
         setEmailDeadlineReminderHours(data.email_deadline_reminder_hours ?? 24)
-        setEmailOverdueAlertsEnabled(data.email_overdue_alerts_enabled ?? true)
         setEmailDailyDigestEnabled(data.email_daily_digest_enabled ?? false)
         setEmailDailyDigestHour(data.email_daily_digest_hour ?? 9)
       }
@@ -337,7 +335,6 @@ export default function SettingsPage() {
         body: JSON.stringify({
           email_notifications_enabled: emailNotificationsEnabled,
           email_deadline_reminder_hours: emailDeadlineReminderHours,
-          email_overdue_alerts_enabled: emailOverdueAlertsEnabled,
           email_daily_digest_enabled: emailDailyDigestEnabled,
           email_daily_digest_hour: emailDailyDigestHour,
         }),
@@ -827,20 +824,6 @@ export default function SettingsPage() {
                   <p className="text-sm text-muted-foreground">
                     タスク期限のどのくらい前に通知メールを送信するか設定します
                   </p>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="overdue-alerts" className="text-base">期限超過アラート</Label>
-                    <p className="text-sm text-muted-foreground">
-                      タスクが期限を超過した場合に通知を受け取ります
-                    </p>
-                  </div>
-                  <Switch
-                    id="overdue-alerts"
-                    checked={emailOverdueAlertsEnabled}
-                    onCheckedChange={setEmailOverdueAlertsEnabled}
-                  />
                 </div>
 
                 <div className="flex items-center justify-between">

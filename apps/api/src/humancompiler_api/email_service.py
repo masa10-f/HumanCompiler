@@ -74,6 +74,11 @@ def daily_digest_subject(digest: DailyDigest) -> str:
     return f"【HumanCompiler】{_format_digest_date(digest.digest_date)} のタスク期限サマリー"
 
 
+def deadline_reminder_idempotency_key(task_id: UUID, reminder_date: date) -> str:
+    """Resend idempotency key: one deadline reminder per task and JST day."""
+    return f"deadline-reminder/{task_id}/{reminder_date.isoformat()}"
+
+
 def daily_digest_idempotency_key(user_id: UUID, digest: DailyDigest) -> str:
     """Resend idempotency key: one daily digest per user and JST day."""
     return f"daily-digest/{user_id}/{digest.digest_date.isoformat()}"
@@ -111,9 +116,14 @@ class EmailService:
         hours_until_due: int,
         project_title: str | None = None,
         goal_title: str | None = None,
+        *,
+        reminder_date: date,
     ) -> bool:
         """
         Send a deadline reminder email for a specific task.
+
+        The Resend idempotency key is per task and ``reminder_date``, so a
+        retried request for the same day is not delivered twice.
 
         Args:
             to_email: Recipient email address
@@ -123,6 +133,8 @@ class EmailService:
             hours_until_due: Hours remaining until deadline
             project_title: Optional project title for context
             goal_title: Optional goal title for context
+            reminder_date: JST day the reminder belongs to, for the
+                idempotency key
 
         Returns:
             True if email was sent successfully, False otherwise
@@ -156,14 +168,25 @@ class EmailService:
                 "html": html_content,
             }
 
-            response = resend.Emails.send(params)
-            logger.info(
-                f"Deadline reminder sent to {to_email} for task {task_id}: {response}"
-            )
+            options: resend.Emails.SendOptions = {
+                "idempotency_key": deadline_reminder_idempotency_key(
+                    task_id, reminder_date
+                )
+            }
+            response = resend.Emails.send(params, options)
+            logger.info(f"Deadline reminder sent for task {task_id}: {response}")
             return True
 
         except Exception as e:
-            logger.error(f"Failed to send deadline reminder to {to_email}: {e}")
+            # Never log the message: it may echo the recipient address.
+            logger.error(
+                "Failed to send deadline reminder for task %s: %s "
+                "(code=%s, error_type=%s)",
+                task_id,
+                type(e).__name__,
+                getattr(e, "code", None),
+                getattr(e, "error_type", None),
+            )
             return False
 
     def send_daily_digest(
@@ -215,70 +238,6 @@ class EmailService:
                 getattr(e, "code", None),
                 getattr(e, "error_type", None),
             )
-            return False
-
-    def send_overdue_alert(
-        self,
-        to_email: str,
-        task_title: str,
-        task_id: UUID,
-        due_date: datetime,
-        hours_overdue: int,
-        project_title: str | None = None,
-        goal_title: str | None = None,
-    ) -> bool:
-        """
-        Send an overdue alert email for a task that has passed its deadline.
-
-        Args:
-            to_email: Recipient email address
-            task_title: Title of the task
-            task_id: UUID of the task
-            due_date: Task due date (already passed)
-            hours_overdue: Hours past the deadline
-            project_title: Optional project title for context
-            goal_title: Optional goal title for context
-
-        Returns:
-            True if email was sent successfully, False otherwise
-        """
-        if not self.is_enabled:
-            logger.warning("Email service is not enabled, skipping overdue alert")
-            return False
-
-        try:
-            subject = f"【期限超過】{task_title} - {hours_overdue}時間経過"
-
-            # Build context path
-            context_parts = []
-            if project_title:
-                context_parts.append(project_title)
-            if goal_title:
-                context_parts.append(goal_title)
-            context_path = " > ".join(context_parts) if context_parts else ""
-
-            html_content = self._render_overdue_alert_html(
-                task_title=task_title,
-                due_date=due_date,
-                hours_overdue=hours_overdue,
-                context_path=context_path,
-            )
-
-            params = {
-                "from": settings.email_from,
-                "to": [to_email],
-                "subject": subject,
-                "html": html_content,
-            }
-
-            response = resend.Emails.send(params)
-            logger.info(
-                f"Overdue alert sent to {to_email} for task {task_id}: {response}"
-            )
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to send overdue alert to {to_email}: {e}")
             return False
 
     def _render_deadline_reminder_html(
@@ -445,52 +404,6 @@ class EmailService:
     <div style="background: #f8f9fa; padding: 30px; border: 1px solid #e9ecef; border-top: none;">
         <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
 {sections}
-        </div>
-
-        <p style="color: #6c757d; font-size: 14px; margin-top: 20px; text-align: center;">
-            このメールは HumanCompiler から自動送信されています。
-        </p>
-    </div>
-</body>
-</html>
-"""
-
-    def _render_overdue_alert_html(
-        self,
-        task_title: str,
-        due_date: datetime,
-        hours_overdue: int,
-        context_path: str,
-    ) -> str:
-        """Render HTML template for overdue alert email"""
-        due_date_str = due_date.strftime("%Y年%m月%d日 %H:%M")
-
-        return f"""
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    <div style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); padding: 30px; border-radius: 10px 10px 0 0;">
-        <h1 style="color: white; margin: 0; font-size: 24px;">🚨 タスク期限超過のお知らせ</h1>
-    </div>
-
-    <div style="background: #f8f9fa; padding: 30px; border: 1px solid #e9ecef; border-top: none;">
-        <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <h2 style="margin-top: 0; color: #495057; font-size: 20px;">{task_title}</h2>
-
-            {f'<p style="color: #6c757d; font-size: 14px; margin-bottom: 15px;">📁 {context_path}</p>' if context_path else ""}
-
-            <div style="background: #f8d7da; border-left: 4px solid #dc3545; padding: 15px; margin: 20px 0;">
-                <p style="margin: 0; font-weight: bold; color: #721c24;">
-                    期限を <span style="font-size: 24px;">{hours_overdue}</span> 時間超過しています
-                </p>
-                <p style="margin: 5px 0 0 0; color: #721c24;">
-                    期限: {due_date_str}
-                </p>
-            </div>
         </div>
 
         <p style="color: #6c757d; font-size: 14px; margin-top: 20px; text-align: center;">

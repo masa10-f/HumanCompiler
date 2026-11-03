@@ -71,7 +71,7 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
-def _jst_day_start(now: datetime, days_ahead: int = 0) -> datetime:
+def jst_day_start(now: datetime, days_ahead: int = 0) -> datetime:
     """Start of the JST day ``days_ahead`` days after ``now``'s, as aware UTC."""
     day = now.astimezone(APP_TIMEZONE).date() + timedelta(days=days_ahead)
     return datetime.combine(day, time.min, tzinfo=APP_TIMEZONE).astimezone(UTC)
@@ -136,7 +136,7 @@ def _window_tasks(session: Session, user_id: UUID, now: datetime) -> list[Digest
 
     Tasks under a completed or cancelled goal or project are left out; quick
     tasks have no parents."""
-    window_end = _jst_day_start(now, UPCOMING_DAYS + 1)
+    window_end = jst_day_start(now, UPCOMING_DAYS + 1)
     tasks = session.exec(
         select(Task)
         .join(Goal, col(Task.goal_id) == col(Goal.id))
@@ -232,7 +232,7 @@ def run_daily_digest(
 
     now = _as_utc(now)
     hour = now.astimezone(APP_TIMEZONE).hour
-    today_start = _jst_day_start(now)
+    today_start = jst_day_start(now)
 
     rows = session.exec(
         select(User, UserSettings)
