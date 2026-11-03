@@ -342,6 +342,12 @@ G3 の `agent_proposals` に、種類を3つ足す。
 **MCP の SDK を使う**
 - MCP の SDK（Python の `mcp` パッケージ）を依存関係に足す。
 - Streamable HTTP の MCP サーバーとして、既存の FastAPI に `/mcp` で載せる。
+- 載せ方は `mount` ではなく `add_route`。`mount` だと、`POST /mcp` が `/mcp/` への 307 になってしまうため。
+
+**DNS リバインディング対策は切る（実装で決めた）**
+- SDK の対策は、アドレスだけを信用する（認証のない手元のサーバーを、ブラウザ経由で叩かれる）場合を守るためのもの。
+- このサーバーは、すべてのツール呼び出しにトークンが要り、API は Cookie などの自動で付く資格情報を使わない。書き換えられた DNS 名のページには、乗れるものがない。
+- ホストの許可リストを置くと、本番・プレビュー・独自ドメインで壊れる原因が増えるだけなので置かない。SDK が POST に求める JSON の `Content-Type` は、そのまま効く。
 
 **この方式を選んだ理由**
 - PC ごとに何かを入れたり動かしたりしなくてよい。
@@ -358,8 +364,12 @@ G3 の `agent_proposals` に、種類を3つ足す。
 **監査ログと流量制限**
 - 今の監査のミドルウェアとスコープの依存関数は、`/api/agent/` の FastAPI のルートにしか効かない。そこで MCP では、ツールの呼び出しを受ける入口で、同じ関数（トークンの検証、スコープの確認、監査ログの書き込み、流量制限）を明示的に呼ぶ。
 - 監査ログは、HTTP のリクエストごとではなく、**ツールの呼び出しごとに1行**にする。`route` に `mcp:<ツール名>`、`required_scope` にそのツールのスコープを入れる。トークンの監査ログの画面で、何をしたかが読めるようにするため。
-- ツールを持たない MCP のやり取り（初期化、ツールの一覧）は、`mcp:initialize` や `mcp:list_tools` として記録する。
-- 流量制限（トークンごとに1分120回）は、ツールの呼び出しの回数で数える。
+- ツールを持たない MCP のやり取り（初期化 `initialize`、ツールの一覧 `list_tools`）は、サーバーの説明を返すだけでトークンを要さないため、**監査も流量制限もしない**（実装で決めた。当初は `mcp:initialize` などで記録する案だった）。
+- 流量制限（トークンごとに1分120回）は、ツールの呼び出しの回数で数える。超えたときのツールのエラーは、REST の 429 と同じ `status` と `detail` に加えて、待つ秒数 `retry_after` を持つ（MCP には `Retry-After` ヘッダーを付ける場所がないため）。
+
+**ツールのエラーの形**
+- 失敗は、`{"status": <数>, "detail": ...}` の JSON をテキストにしたツールのエラーとして返す。`status` と `detail` は REST と同じ（401・403・404・409・422・429）。想定外の例外は `{"status": 500, "detail": "Internal error"}`。
+- ツールの入力スキーマに合わない引数は、ツールの関数に届く前に MCP の層が弾く。この場合は、上の JSON ではなく、MCP の層のテキストのエラーになる（監査もしない）。
 
 ### ツール
 
@@ -389,11 +399,11 @@ G3 の `agent_proposals` に、種類を3つ足す。
 
 設定画面のエージェントトークンの使い方ガイドに、MCP の節を足す。
 
-- **Claude Code：** `claude mcp add --transport http humancompiler https://humancompiler-api-masa.fly.dev/mcp --header "Authorization: Bearer ${HUMANCOMPILER_TOKEN}"` の形。
+- **Claude Code：** `claude mcp add --transport http humancompiler https://humancompiler-api-masa.fly.dev/mcp --header "Authorization: Bearer ${HUMANCOMPILER_TOKEN}"` の形。ただしダブルクォートの中の `${...}` は、シェルが先に展開するため、トークンの値が Claude Code の設定（`~/.claude.json`）に保存される。ガイドにはその旨を書き、保存したくない人向けに、`.mcp.json` の `headers` に `"Bearer ${HUMANCOMPILER_TOKEN}"` と書く形（起動のたびに環境変数から展開される）も載せる。
 - **Codex：** `~/.codex/config.toml` の `[mcp_servers.humancompiler]` に、`url` と、トークンを読む環境変数（`bearer_token_env_var`）を書く形。
 - **トークンの扱い：** トークンはファイルや環境変数に置く。設定ファイルやチャットに直接書かない、と注意書きを出す。
 
-正確なコマンドと設定の書き方は、実装のときに両方のクライアントの最新の文書で確かめる。
+コマンドと設定の書き方は、両方のクライアントの最新の文書で確かめた（Claude Code：https://code.claude.com/docs/en/mcp 、Codex：https://developers.openai.com/codex/mcp ）。Codex の `url` と `bearer_token_env_var` は、文書どおりのキー名。
 
 ---
 
