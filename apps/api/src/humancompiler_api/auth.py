@@ -1,22 +1,32 @@
 import hashlib
 import logging
 import threading
+from datetime import UTC, datetime
+from typing import TypeGuard
+from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlmodel import Session
 
 from humancompiler_api.agent_auth import extract_token_prefix
 from humancompiler_api.database import db
-from humancompiler_api.models import UserCreate
+from humancompiler_api.models import User, UserCreate
 from humancompiler_api.services import UserService
 
 logger = logging.getLogger(__name__)
 
-# In-memory cache of known user IDs to skip DB check on every request.
-# This eliminates the stale connection issue caused by ensure_user_exists()
-# creating independent Session(engine) on every authenticated request.
+# Placeholder used when the token carries no email. It is never a deliverable
+# address, so it must never be written over a stored real address.
+FALLBACK_EMAIL = "unknown@example.com"
+
+# In-memory cache of known users (user_id -> email last synced) to skip the DB
+# check on every request. This eliminates the stale connection issue caused by
+# ensure_user_exists() creating independent Session(engine) on every
+# authenticated request. A known user whose token now carries a different real
+# email takes the slow path once, so users.email follows the Supabase account.
 # Cache is cleared on server restart; users are re-verified on first request.
-_known_users: set[str] = set()
+_known_users: dict[str, str] = {}
 _known_users_lock = threading.Lock()
 
 # Security scheme
@@ -43,13 +53,42 @@ class AuthUser:
         self.email = email
 
 
-def _ensure_user_exists_sync(user_id: str, email: str) -> None:
+def _is_real_email(email: str | None) -> TypeGuard[str]:
+    """True for an address worth storing: not None, empty or the fallback."""
+    return bool(email) and email != FALLBACK_EMAIL
+
+
+def _remember_user(user_id: str, email: str | None) -> None:
+    with _known_users_lock:
+        _known_users[user_id] = email or ""
+
+
+def _sync_user_email(session: Session, user: User, email: str | None) -> None:
+    """Update users.email when the account now has a different real address.
+
+    Never blocks authentication: a failure is logged (without the address) and
+    rolled back. Logs carry the user id only.
+    """
+    if not _is_real_email(email) or user.email == email:
+        return
+    try:
+        user.email = email
+        user.updated_at = datetime.now(UTC)
+        session.add(user)
+        session.commit()
+        logger.info(f"✅ Updated email for user: {user.id}")
+    except Exception as update_error:
+        session.rollback()
+        logger.warning(
+            f"Failed to update email for user {user.id}: {type(update_error).__name__}"
+        )
+
+
+def _ensure_user_exists_sync(user_id: str, email: str | None) -> None:
     """
     Synchronous DB check/create for user existence.
     Runs in a thread to avoid blocking the event loop.
     """
-    from sqlmodel import Session
-
     engine = db.get_engine()
 
     with Session(engine) as session:
@@ -58,17 +97,16 @@ def _ensure_user_exists_sync(user_id: str, email: str) -> None:
 
             if existing_user:
                 logger.debug(f"✅ User already exists in database: {user_id}")
-                with _known_users_lock:
-                    _known_users.add(user_id)
+                _sync_user_email(session, existing_user, email)
+                _remember_user(user_id, email)
                 return
 
             # Create user if not exists
-            user_data = UserCreate(email=email)
+            user_data = UserCreate(email=email or FALLBACK_EMAIL)
             UserService.create_user(session, user_data, user_id)
             session.commit()
-            logger.info(f"✅ Created new user in database: {user_id} ({email})")
-            with _known_users_lock:
-                _known_users.add(user_id)
+            logger.info(f"✅ Created new user in database: {user_id}")
+            _remember_user(user_id, email)
 
         except Exception as service_error:
             # If UserService fails, try direct model creation
@@ -77,31 +115,25 @@ def _ensure_user_exists_sync(user_id: str, email: str) -> None:
             )
             session.rollback()
 
-            from datetime import UTC, datetime
-            from uuid import UUID
-
-            from humancompiler_api.models import User
-
             # Check if user exists directly
             existing_user = session.get(User, UUID(user_id))
             if existing_user:
                 logger.debug(f"✅ User already exists (direct check): {user_id}")
-                with _known_users_lock:
-                    _known_users.add(user_id)
+                _sync_user_email(session, existing_user, email)
+                _remember_user(user_id, email)
                 return
 
             # Create user directly
             new_user = User(
                 id=UUID(user_id),
-                email=email,
+                email=email or FALLBACK_EMAIL,
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
             )
             session.add(new_user)
             session.commit()
-            logger.info(f"✅ Created user via direct model: {user_id} ({email})")
-            with _known_users_lock:
-                _known_users.add(user_id)
+            logger.info(f"✅ Created user via direct model: {user_id}")
+            _remember_user(user_id, email)
 
 
 # Timeout for ensure_user_exists DB operations (seconds).
@@ -109,15 +141,18 @@ def _ensure_user_exists_sync(user_id: str, email: str) -> None:
 _ENSURE_USER_TIMEOUT = 10.0
 
 
-async def ensure_user_exists(user_id: str, email: str) -> None:
+async def ensure_user_exists(user_id: str, email: str | None) -> None:
     """
     Ensure user exists in public.users table.
     Uses in-memory cache to skip DB check for already-known users,
     preventing stale connection hangs from independent Session(engine) creation.
     DB operations are run in a thread with a timeout to bound worst-case latency.
     """
-    # Fast path: user already verified during this server lifetime
-    if user_id in _known_users:
+    # Fast path: user already verified during this server lifetime, and the
+    # token carries nothing new to sync (same email, or no real email at all).
+    with _known_users_lock:
+        known_email = _known_users.get(user_id)
+    if known_email is not None and (not _is_real_email(email) or known_email == email):
         logger.debug(f"✅ User known from cache: {user_id}")
         return
 
@@ -205,13 +240,13 @@ async def get_current_user(
 
         # Create user in database if not exists
         try:
-            await ensure_user_exists(user.id, user.email or "unknown@example.com")
+            await ensure_user_exists(user.id, user.email or FALLBACK_EMAIL)
             logger.info(f"✅ User ensured in database: {user.id}")
         except Exception as user_creation_error:
             logger.error(f"⚠️ Failed to ensure user exists: {user_creation_error}")
             # Continue with authentication - user creation failure shouldn't block login
 
-        return AuthUser(user_id=user.id, email=user.email or "unknown@example.com")
+        return AuthUser(user_id=user.id, email=user.email or FALLBACK_EMAIL)
 
     except HTTPException:
         # Re-raise HTTP exceptions as-is
@@ -295,8 +330,8 @@ async def verify_token_for_websocket(token: str) -> AuthUser:
 
     # Ensure user exists in database
     try:
-        await ensure_user_exists(user.id, user.email or "unknown@example.com")
+        await ensure_user_exists(user.id, user.email or FALLBACK_EMAIL)
     except Exception as e:
         logger.warning(f"⚠️ [WS AUTH] Failed to ensure user exists: {e}")
 
-    return AuthUser(user_id=user.id, email=user.email or "unknown@example.com")
+    return AuthUser(user_id=user.id, email=user.email or FALLBACK_EMAIL)
