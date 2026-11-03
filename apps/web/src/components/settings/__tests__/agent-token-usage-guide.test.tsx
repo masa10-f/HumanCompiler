@@ -225,13 +225,26 @@ describe('AgentTokenUsageGuide', () => {
     )
     expect(section.getByText('https://api.example.com/mcp')).toBeInTheDocument()
 
+    // The .mcp.json form comes first: it keeps the token in the environment.
+    const claudeJson = section.getByText(/"mcpServers"/)
+    expect(claudeJson).toHaveTextContent('"url": "https://api.example.com/mcp"')
+    expect(claudeJson).toHaveTextContent('Bearer ${HUMANCOMPILER_TOKEN}')
+
+    // The one-liner stays as a labelled fallback that says it stores the token.
+    const fallbackLabel = section.getByText(/手早く試す場合.*~\/\.claude\.json/)
+    expect(fallbackLabel).toHaveTextContent('トークンそのもの')
     const claudeCli = section.getByText(/claude mcp add --transport http humancompiler/)
     expect(claudeCli).toHaveTextContent('https://api.example.com/mcp')
     expect(claudeCli).toHaveTextContent('HUMANCOMPILER_TOKEN')
 
-    const claudeJson = section.getByText(/"mcpServers"/)
-    expect(claudeJson).toHaveTextContent('"url": "https://api.example.com/mcp"')
-    expect(claudeJson).toHaveTextContent('Bearer ${HUMANCOMPILER_TOKEN}')
+    expect(
+      claudeJson.compareDocumentPosition(fallbackLabel) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    expect(
+      fallbackLabel.compareDocumentPosition(claudeCli) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
 
     const codex = section.getByText(/\[mcp_servers\.humancompiler\]/)
     expect(codex).toHaveTextContent('url = "https://api.example.com/mcp"')

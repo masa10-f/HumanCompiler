@@ -355,18 +355,27 @@ export function AgentTokenUsageGuide() {
 
             <div className="space-y-1">
               <div className="font-medium">Claude Code</div>
+              <p className="text-muted-foreground">
+                プロジェクトの .mcp.json に次のように書きます。Claude Code
+                が読み込むたびに、環境変数から tokenを展開します。
+                ファイルに書くのは変数名だけなので、コミットしても安全です。プロジェクトのサーバーは、初回に
+                Claude Code が承認を求めます。
+              </p>
+              <pre className="overflow-x-auto rounded bg-muted p-2 text-xs">
+                <code>{buildClaudeJsonExample(mcpUrl)}</code>
+              </pre>
+              <div className="pt-2 font-medium">
+                手早く試す場合（この方法ではトークンそのものが ~/.claude.json
+                に保存されます）
+              </div>
               <pre className="overflow-x-auto rounded bg-muted p-2 text-xs">
                 <code>{buildClaudeCliExample(mcpUrl)}</code>
               </pre>
               <p className="text-muted-foreground">
                 このコマンドは、ダブルクォートの中の ${"{HUMANCOMPILER_TOKEN}"}{" "}
                 をシェルが先に展開するため、tokenの値が Claude Code
-                の設定ファイル（~/.claude.json）に保存されます。tokenを設定ファイルに残したくない場合は、プロジェクトの
-                .mcp.json に次のように書きます。Claude Code が起動のたびに環境変数から読み込みます。
+                の設定ファイル（~/.claude.json）に保存されます。
               </p>
-              <pre className="overflow-x-auto rounded bg-muted p-2 text-xs">
-                <code>{buildClaudeJsonExample(mcpUrl)}</code>
-              </pre>
             </div>
 
             <div className="space-y-1">

@@ -399,7 +399,8 @@ G3 の `agent_proposals` に、種類を3つ足す。
 
 設定画面のエージェントトークンの使い方ガイドに、MCP の節を足す。
 
-- **Claude Code：** `claude mcp add --transport http humancompiler https://humancompiler-api-masa.fly.dev/mcp --header "Authorization: Bearer ${HUMANCOMPILER_TOKEN}"` の形。ただしダブルクォートの中の `${...}` は、シェルが先に展開するため、トークンの値が Claude Code の設定（`~/.claude.json`）に保存される。ガイドにはその旨を書き、保存したくない人向けに、`.mcp.json` の `headers` に `"Bearer ${HUMANCOMPILER_TOKEN}"` と書く形（起動のたびに環境変数から展開される）も載せる。
+- **Claude Code：** 先に、プロジェクトの `.mcp.json` の `headers` に `"Authorization": "Bearer ${HUMANCOMPILER_TOKEN}"` と書く形を載せる（`url` は `https://humancompiler-api-masa.fly.dev/mcp`）。`${...}` は、Claude Code がファイルを読み込むたびに環境変数から展開されるので、トークンの値は設定に残らない。ファイルには変数名だけが入るため、コミットしても安全。プロジェクトのサーバーは、初回に Claude Code が承認を求める。
+  - その後に、手早く試すための代替として `claude mcp add --transport http humancompiler https://humancompiler-api-masa.fly.dev/mcp --header "Authorization: Bearer ${HUMANCOMPILER_TOKEN}"` を載せる。ダブルクォートの中の `${...}` は、シェルが先に展開するため、トークンの値が `~/.claude.json` に保存される。ガイドでは見出しにその旨を書く。
 - **Codex：** `~/.codex/config.toml` の `[mcp_servers.humancompiler]` に、`url` と、トークンを読む環境変数（`bearer_token_env_var`）を書く形。
 - **トークンの扱い：** トークンはファイルや環境変数に置く。設定ファイルやチャットに直接書かない、と注意書きを出す。
 
