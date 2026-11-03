@@ -792,7 +792,7 @@ export default function SettingsPage() {
             <div className="space-y-0.5">
               <Label htmlFor="email-notifications" className="text-base">メール通知を有効にする</Label>
               <p className="text-sm text-muted-foreground">
-                タスクの期限に関するメール通知を受け取ります
+                タスクの期限とデイリーダイジェストのメール通知を受け取ります
               </p>
             </div>
             <Switch
@@ -847,7 +847,7 @@ export default function SettingsPage() {
                   <div className="space-y-0.5">
                     <Label htmlFor="daily-digest" className="text-base">デイリーダイジェスト</Label>
                     <p className="text-sm text-muted-foreground">
-                      毎日の期限タスクサマリーをメールで受け取ります
+                      新しい提案と、期限が近いタスクを1日1通にまとめてメールで受け取ります
                     </p>
                   </div>
                   <Switch
@@ -916,7 +916,7 @@ export default function SettingsPage() {
               <li>• 通知メールはアカウントに登録されたメールアドレスに送信されます</li>
               <li>• 期限前通知は設定した時間より前にタスクがある場合に送信されます</li>
               <li>• 同じタスクに対して1日に複数回通知されることはありません</li>
-              <li>• デイリーダイジェストは当日期限のタスク一覧を送信します</li>
+              <li>• デイリーダイジェストは、設定した時刻以降に1日1通、新しい提案と、3日以内に期限が来るタスク・期限切れのタスクをまとめて送信します（メール通知がオフのときは送られません）</li>
             </ul>
           </div>
         </CardContent>
