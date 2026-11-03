@@ -18,18 +18,27 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from limits import parse
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 
 from humancompiler_api import agent_audit, agent_rate_limit
+from humancompiler_api.agent_write_models import NOTE_REPLACE_LOSES
 from humancompiler_api.agent_rate_limit import agent_rate_limiter
 from humancompiler_api.database import db, get_session
 from humancompiler_api.main import app
 from humancompiler_api.mcp_server import mcp_lifespan
 from humancompiler_api.models import (
     AgentAuditLog,
+    AgentChange,
+    AgentProposal,
     AgentScope,
     AgentToken,
     ContextNote,
+    Goal,
+    Project,
+    ProposalKind,
+    Task,
+    TaskDependency,
+    TaskStatus,
 )
 from humancompiler_api.services import agent_token_service
 from tests.agent_api_helpers import (
@@ -37,6 +46,7 @@ from tests.agent_api_helpers import (
     client,
     issue_token,
     seed_goal,
+    seed_note,
     seed_project,
     seed_task,
     seed_user,
@@ -500,3 +510,641 @@ def test_app_lifespan_serves_mcp(monkeypatch: pytest.MonkeyPatch):
     # Outside the lifespan the endpoint is unavailable, not a crash.
     response = client.post("/mcp", headers=MCP_HEADERS, json=body)
     assert response.status_code == 503
+
+
+# --- Write tools and list_my_changes -----------------------------------------
+
+STAMP = datetime(2026, 11, 1, 12, 0, tzinfo=UTC)
+NEEDS_UNCONFIRMED = "This change needs the writes:unconfirmed scope"
+STALE_MESSAGE = "Changed since you read it; read it again and retry"
+WRITE_ALL = [AgentScope.GOALS_WRITE, AgentScope.TASKS_WRITE, AgentScope.NOTES_WRITE]
+WRITE_TOOL_SCOPES = {
+    "create_goal": "goals:write",
+    "update_goal": "goals:write",
+    "create_task": "tasks:write",
+    "update_task": "tasks:write",
+    "add_dependency": "tasks:write",
+    "remove_dependency": "tasks:write",
+    "append_note": "notes:write",
+    "replace_note": "notes:write",
+    "list_my_changes": "goals:read",
+}
+
+
+def _minimal_arguments() -> dict[str, dict[str, Any]]:
+    """Schema-valid arguments for each write tool (the IDs exist nowhere)."""
+    stamp = STAMP.isoformat()
+    return {
+        "create_goal": {"project_id": str(uuid4()), "title": "G"},
+        "update_goal": {"goal_id": str(uuid4()), "expected_updated_at": stamp},
+        "create_task": {"goal_id": str(uuid4()), "title": "T", "estimate_hours": 1},
+        "update_task": {"task_id": str(uuid4()), "expected_updated_at": stamp},
+        "add_dependency": {
+            "task_id": str(uuid4()),
+            "depends_on_task_id": str(uuid4()),
+        },
+        "remove_dependency": {
+            "task_id": str(uuid4()),
+            "depends_on_task_id": str(uuid4()),
+        },
+        "append_note": {"kind": "task", "id": str(uuid4()), "content_markdown": "x"},
+        "replace_note": {
+            "kind": "task",
+            "id": str(uuid4()),
+            "expected_updated_at": None,
+            "content_markdown": "",
+        },
+        "list_my_changes": {},
+    }
+
+
+def _utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+def _agent_changes(session: Session) -> list[AgentChange]:
+    session.expire_all()
+    return list(session.exec(select(AgentChange)).all())
+
+
+def _count(session: Session, model: Any) -> int:
+    session.expire_all()
+    return session.exec(select(func.count()).select_from(model)).one()
+
+
+def _token_id(session: Session, name: str) -> UUID:
+    token = session.exec(select(AgentToken).where(AgentToken.name == name)).one()
+    return token.id  # type: ignore[return-value]
+
+
+def _tree(session: Session, owner: UUID = USER_A) -> tuple[Project, Goal, Task]:
+    project = seed_project(session, owner, updated_at=STAMP)
+    goal = seed_goal(session, project, updated_at=STAMP)
+    task = seed_task(session, goal, updated_at=STAMP)
+    return project, goal, task
+
+
+def _set(session: Session, entity: Any, **values: Any) -> None:
+    for name, value in values.items():
+        setattr(entity, name, value)
+    session.add(entity)
+    session.commit()
+    session.refresh(entity)
+
+
+async def test_write_tools_listed_with_scopes(session: Session, mcp: httpx.AsyncClient):
+    init = await rpc(
+        mcp,
+        "initialize",
+        {
+            "protocolVersion": PROTOCOL_VERSION,
+            "capabilities": {},
+            "clientInfo": {"name": "test", "version": "1"},
+        },
+    )
+    tools = {tool["name"]: tool for tool in (await rpc(mcp, "tools/list"))["tools"]}
+
+    assert set(WRITE_TOOL_SCOPES) <= set(tools)
+    assert "retry_after" in init["instructions"]
+    assert "schema" in init["instructions"]
+    assert NOTE_REPLACE_LOSES in tools["replace_note"]["description"]
+    update_task = tools["update_task"]
+    for words in ("writes:unconfirmed", "cancel", "goal_id", "memo_append", "null"):
+        assert words in update_task["description"], words
+    schema = update_task["inputSchema"]
+    assert set(schema["required"]) == {"task_id", "expected_updated_at"}
+    assert {"title", "memo", "memo_append", "due_date", "priority"} <= set(
+        schema["properties"]
+    )
+    assert "null" in tools["update_goal"]["description"]
+    assert (
+        tools["list_my_changes"]["inputSchema"]["properties"]["limit"]["maximum"] == 100
+    )
+
+    # A token with none of the tools' scopes gets REST's 403 for each.
+    secret = issue_token(session, USER_A, [AgentScope.PROJECTS_READ])
+    for tool, arguments in _minimal_arguments().items():
+        is_error, body = await call(mcp, tool, arguments, secret)
+        assert is_error, tool
+        assert body == {
+            "status": 403,
+            "detail": f"Missing required scope: {WRITE_TOOL_SCOPES[tool]}",
+        }, tool
+    rows = audit_rows(session)
+    assert sorted((row.route, row.required_scope) for row in rows) == sorted(
+        (f"mcp:{tool}", scope) for tool, scope in WRITE_TOOL_SCOPES.items()
+    )
+    assert _agent_changes(session) == []
+
+
+async def test_create_and_update_task_via_mcp(session: Session, mcp: httpx.AsyncClient):
+    _, goal, _ = _tree(session)
+    secret = issue_token(
+        session, USER_A, [AgentScope.TASKS_WRITE, AgentScope.TASKS_READ], name="mcp"
+    )
+
+    is_error, created = await call(
+        mcp,
+        "create_task",
+        {
+            "goal_id": str(goal.id),
+            "title": "Write the intro",
+            "estimate_hours": 1.5,
+            "priority": 2,
+            "due_date": "2026-12-01",
+        },
+        secret,
+    )
+    assert not is_error, created
+    assert set(created) == {"task"}
+    task_id = created["task"]["id"]
+    assert created["task"]["title"] == "Write the intro"
+    assert created["task"]["priority"] == 2
+    rest = client.get(f"/api/agent/v1/tasks/{task_id}", headers=bearer(secret))
+    assert rest.status_code == 200
+    assert created["task"] == rest.json()
+
+    is_error, updated = await call(
+        mcp,
+        "update_task",
+        {
+            "task_id": task_id,
+            "expected_updated_at": created["task"]["updated_at"],
+            "status": "completed",
+            "memo_append": "Done: drafted the intro",
+        },
+        secret,
+    )
+    assert not is_error, updated
+    assert set(updated) == {"applied", "task"}
+    assert updated["applied"] is True
+    assert updated["task"]["status"] == "completed"
+    assert updated["task"]["memo"] == "Done: drafted the intro"
+    assert updated["task"]["title"] == "Write the intro"
+    rest = client.get(f"/api/agent/v1/tasks/{task_id}", headers=bearer(secret))
+    assert updated["task"] == rest.json()
+
+    changes = sorted(_agent_changes(session), key=lambda row: row.created_at)
+    assert [(row.entity_type, row.action) for row in changes] == [
+        ("task", "create"),
+        ("task", "update"),
+    ]
+    assert {str(row.entity_id) for row in changes} == {task_id}
+    assert {row.agent_token_id for row in changes} == {_token_id(session, "mcp")}
+    assert changes[0].after["title"] == "Write the intro"
+    assert "description" not in changes[0].after  # only the sent fields
+    assert changes[1].after == {
+        "status": "completed",
+        "memo_append": "Done: drafted the intro",
+    }
+    mcp_rows = [row for row in audit_rows(session) if row.method == "MCP"]
+    assert sorted((row.route, row.status_code) for row in mcp_rows) == [
+        ("mcp:create_task", 200),
+        ("mcp:update_task", 200),
+    ]
+    assert {row.required_scope for row in mcp_rows} == {"tasks:write"}
+
+
+async def test_update_task_explicit_null_and_unset(
+    session: Session, mcp: httpx.AsyncClient
+):
+    _, goal, task = _tree(session)
+    _set(session, task, due_date=STAMP + timedelta(days=3), priority=2)
+    _set(session, task, updated_at=STAMP)
+    _set(session, goal, due_date=STAMP + timedelta(days=5))
+    _set(session, goal, updated_at=STAMP)
+    secret = issue_token(session, USER_A, WRITE_ALL)
+
+    is_error, body = await call(
+        mcp,
+        "update_task",
+        {
+            "task_id": str(task.id),
+            "expected_updated_at": STAMP.isoformat(),
+            "due_date": None,
+        },
+        secret,
+    )
+    assert not is_error, body
+    assert body["task"]["due_date"] is None
+    assert body["task"]["title"] == "Task"
+    assert body["task"]["priority"] == 2
+    changes = _agent_changes(session)
+    assert len(changes) == 1
+    assert set(changes[0].after) == {"due_date"}
+    assert changes[0].after["due_date"] is None
+
+    is_error, body = await call(
+        mcp,
+        "update_goal",
+        {
+            "goal_id": str(goal.id),
+            "expected_updated_at": STAMP.isoformat(),
+            "due_date": None,
+        },
+        secret,
+    )
+    assert not is_error, body
+    assert body["applied"] is True
+    assert body["goal"]["due_date"] is None
+    assert body["goal"]["title"] == "Goal"
+
+    session.expire_all()
+    stamp = _utc(session.get(Task, task.id).updated_at)  # type: ignore[union-attr]
+    is_error, body = await call(
+        mcp,
+        "update_task",
+        {
+            "task_id": str(task.id),
+            "expected_updated_at": stamp.isoformat(),  # type: ignore[union-attr]
+            "priority": None,
+        },
+        secret,
+    )
+    assert is_error
+    assert body["status"] == 422
+    assert "priority cannot be null" in json.dumps(body["detail"])
+    session.expire_all()
+    assert session.get(Task, task.id).priority == 2  # type: ignore[union-attr]
+
+    # memo with memo_append is the model's 422, audited like REST.
+    is_error, body = await call(
+        mcp,
+        "update_task",
+        {
+            "task_id": str(task.id),
+            "expected_updated_at": stamp.isoformat(),  # type: ignore[union-attr]
+            "memo": "a",
+            "memo_append": "b",
+        },
+        secret,
+    )
+    assert is_error
+    assert body["status"] == 422
+    assert "memo or memo_append" in json.dumps(body["detail"])
+    assert len(_agent_changes(session)) == 2
+    statuses = [row.status_code for row in audit_rows(session)]
+    assert sorted(statuses) == [200, 200, 422, 422]
+
+
+async def test_stale_update_is_409_error_with_dict_detail(
+    session: Session, mcp: httpx.AsyncClient
+):
+    _, goal, task = _tree(session)
+    secret = issue_token(session, USER_A, WRITE_ALL)
+    old = (STAMP - timedelta(hours=1)).isoformat()
+
+    for tool, arguments in (
+        ("update_task", {"task_id": str(task.id), "title": "New"}),
+        ("update_goal", {"goal_id": str(goal.id), "title": "New"}),
+    ):
+        is_error, body = await call(
+            mcp, tool, {**arguments, "expected_updated_at": old}, secret
+        )
+        assert is_error, tool
+        assert body["status"] == 409
+        detail = body["detail"]
+        assert set(detail) == {"message", "current_updated_at"}
+        assert detail["message"] == STALE_MESSAGE
+        assert datetime.fromisoformat(detail["current_updated_at"]) == STAMP
+    assert _agent_changes(session) == []
+
+
+def _destructive_setup(session: Session) -> tuple[Task, Task, ContextNote]:
+    _, goal, task = _tree(session)
+    first = seed_task(session, goal, updated_at=STAMP)
+    session.add(
+        TaskDependency(id=uuid4(), task_id=task.id, depends_on_task_id=first.id)
+    )
+    session.commit()
+    note = seed_note(session, USER_A, task=task, updated_at=STAMP)
+    return task, first, note
+
+
+def _destructive_calls(
+    task: Task, first: Task, note: ContextNote
+) -> list[tuple[str, dict[str, Any]]]:
+    return [
+        (
+            "update_task",
+            {
+                "task_id": str(task.id),
+                "expected_updated_at": STAMP.isoformat(),
+                "status": "cancelled",
+            },
+        ),
+        (
+            "remove_dependency",
+            {"task_id": str(task.id), "depends_on_task_id": str(first.id)},
+        ),
+        (
+            "replace_note",
+            {
+                "kind": "task",
+                "id": str(task.id),
+                "expected_updated_at": STAMP.isoformat(),
+                "content_markdown": "Replaced",
+            },
+        ),
+    ]
+
+
+async def test_destructive_without_unconfirmed_is_403_error(
+    session: Session, mcp: httpx.AsyncClient
+):
+    task, first, note = _destructive_setup(session)
+    secret = issue_token(session, USER_A, WRITE_ALL)
+
+    for tool, arguments in _destructive_calls(task, first, note):
+        is_error, body = await call(mcp, tool, arguments, secret)
+        assert is_error, tool
+        assert body == {"status": 403, "detail": NEEDS_UNCONFIRMED}, tool
+
+    assert _agent_changes(session) == []
+    session.expire_all()
+    stored = session.get(Task, task.id)
+    assert stored is not None
+    assert stored.status == TaskStatus.PENDING
+    assert _utc(stored.updated_at) == STAMP
+    assert _count(session, TaskDependency) == 1
+    stored_note = session.get(ContextNote, note.id)
+    assert stored_note is not None and stored_note.content == "Note"
+    assert sorted(row.status_code for row in audit_rows(session)) == [403, 403, 403]
+
+
+async def test_destructive_with_unconfirmed_applies(
+    session: Session, mcp: httpx.AsyncClient
+):
+    task, first, note = _destructive_setup(session)
+    secret = issue_token(session, USER_A, [*WRITE_ALL, AgentScope.WRITES_UNCONFIRMED])
+    calls = _destructive_calls(task, first, note)
+
+    is_error, body = await call(mcp, *calls[0], secret)
+    assert not is_error, body
+    assert body["applied"] is True
+    assert body["task"]["status"] == "cancelled"
+
+    is_error, body = await call(mcp, *calls[1], secret)
+    assert not is_error, body
+    assert body["applied"] is True
+    assert body["task"]["id"] == str(task.id)
+
+    is_error, body = await call(mcp, *calls[2], secret)
+    assert not is_error, body
+    assert set(body) == {"applied", "note"}
+    assert body["applied"] is True
+    assert set(body["note"]) == {"id", "updated_at", "content_markdown"}
+    assert body["note"]["id"] == str(note.id)
+    assert body["note"]["content_markdown"] == "Replaced"
+
+    changes = _agent_changes(session)
+    assert len(changes) == 3
+    assert all(row.destructive for row in changes)
+    assert _count(session, TaskDependency) == 0
+
+
+async def test_foreign_ids_are_404_errors(session: Session, mcp: httpx.AsyncClient):
+    own_project, own_goal, own_task = _tree(session)
+    other_project, other_goal, other_task = _tree(session, USER_B)
+    seed_note(session, USER_B, task=other_task)
+    secret = issue_token(session, USER_A, WRITE_ALL)
+    stamp = STAMP.isoformat()
+    counts = {
+        model: _count(session, model)
+        for model in (Goal, Task, TaskDependency, ContextNote)
+    }
+
+    def cases(project: Any, goal: Any, task: Any) -> list[tuple[str, dict[str, Any]]]:
+        return [
+            ("create_goal", {"project_id": str(project), "title": "G"}),
+            (
+                "create_task",
+                {"goal_id": str(goal), "title": "T", "estimate_hours": 1},
+            ),
+            (
+                "create_task",
+                {
+                    "goal_id": str(own_goal.id),
+                    "title": "T",
+                    "estimate_hours": 1,
+                    "depends_on": [str(task)],
+                },
+            ),
+            (
+                "update_goal",
+                {"goal_id": str(goal), "expected_updated_at": stamp, "title": "X"},
+            ),
+            (
+                "update_task",
+                {"task_id": str(task), "expected_updated_at": stamp, "title": "X"},
+            ),
+            (
+                "update_task",
+                {
+                    "task_id": str(own_task.id),
+                    "expected_updated_at": stamp,
+                    "goal_id": str(goal),
+                },
+            ),
+            (
+                "add_dependency",
+                {"task_id": str(own_task.id), "depends_on_task_id": str(task)},
+            ),
+            ("append_note", {"kind": "task", "id": str(task), "content_markdown": "x"}),
+            ("append_note", {"kind": "goal", "id": str(goal), "content_markdown": "x"}),
+            (
+                "append_note",
+                {"kind": "project", "id": str(project), "content_markdown": "x"},
+            ),
+            (
+                "replace_note",
+                {
+                    "kind": "task",
+                    "id": str(task),
+                    "expected_updated_at": None,
+                    "content_markdown": "x",
+                },
+            ),
+        ]
+
+    foreign = cases(other_project.id, other_goal.id, other_task.id)
+    missing = cases(uuid4(), uuid4(), uuid4())
+    for (tool, foreign_args), (_, missing_args) in zip(foreign, missing, strict=True):
+        foreign_result = await call(mcp, tool, foreign_args, secret)
+        missing_result = await call(mcp, tool, missing_args, secret)
+        assert foreign_result[0] is True, (tool, foreign_result)
+        assert foreign_result[1]["status"] == 404, (tool, foreign_result)
+        assert foreign_result == missing_result, tool
+
+    assert _agent_changes(session) == []
+    for model, count in counts.items():
+        assert _count(session, model) == count, model
+    session.expire_all()
+    assert session.get(Task, own_task.id).goal_id == own_goal.id  # type: ignore[union-attr]
+    assert session.get(Task, other_task.id).title == "Task"  # type: ignore[union-attr]
+
+
+async def test_append_note_returns_markdown(session: Session, mcp: httpx.AsyncClient):
+    _, _, task = _tree(session)
+    secret = issue_token(session, USER_A, [AgentScope.NOTES_WRITE])
+
+    is_error, body = await call(
+        mcp,
+        "append_note",
+        {
+            "kind": "task",
+            "id": str(task.id),
+            "content_markdown": "- [ ] Ship it\n- [x] Test it",
+        },
+        secret,
+    )
+
+    assert not is_error, body
+    assert set(body) == {"note"}
+    note = body["note"]
+    assert set(note) == {"id", "updated_at", "content_markdown"}
+    assert "- [ ] Ship it" in note["content_markdown"]
+    assert "- [x] Test it" in note["content_markdown"]
+    assert note["updated_at"].endswith("+00:00")
+    stored = session.exec(select(ContextNote)).one()
+    assert note["id"] == str(stored.id)
+    assert stored.task_id == task.id
+    changes = _agent_changes(session)
+    assert [(row.entity_type, row.action) for row in changes] == [
+        ("context_note", "append")
+    ]
+
+
+async def test_add_dependency_existing_reports_created_false(
+    session: Session, mcp: httpx.AsyncClient
+):
+    _, goal, task = _tree(session)
+    first = seed_task(session, goal)
+    secret = issue_token(session, USER_A, [AgentScope.TASKS_WRITE])
+    arguments = {"task_id": str(task.id), "depends_on_task_id": str(first.id)}
+
+    is_error, added = await call(mcp, "add_dependency", arguments, secret)
+    assert not is_error, added
+    assert set(added) == {"task", "created"}
+    assert added["created"] is True
+    assert added["task"]["id"] == str(task.id)
+
+    is_error, again = await call(mcp, "add_dependency", arguments, secret)
+    assert not is_error, again
+    assert again["created"] is False
+    assert again["task"]["id"] == str(task.id)
+
+    assert _count(session, TaskDependency) == 1
+    assert len(_agent_changes(session)) == 1
+
+
+def _seed_change(session: Session, token_id: UUID | None, user_id: UUID, minute: int):
+    row = AgentChange(
+        user_id=user_id,
+        actor="agent",
+        agent_token_id=token_id,
+        agent_name="agent",
+        entity_type="goal",
+        entity_id=uuid4(),
+        action="create",
+        after={},
+        created_at=STAMP + timedelta(minutes=minute),
+    )
+    session.add(row)
+    session.commit()
+    return row
+
+
+def _seed_proposal(session: Session, token_id: UUID, user_id: UUID, minute: int):
+    row = AgentProposal(
+        id=uuid4(),
+        user_id=user_id,
+        token_id=token_id,
+        agent_name="agent",
+        kind=ProposalKind.QUICK_TASK.value,
+        title=f"Proposal {minute}",
+        payload={"title": f"Proposal {minute}"},
+        idempotency_key=f"key-{token_id}-{minute}",
+        created_at=STAMP + timedelta(minutes=minute),
+    )
+    session.add(row)
+    session.commit()
+    return row
+
+
+async def test_list_my_changes_only_this_token(
+    session: Session, mcp: httpx.AsyncClient
+):
+    mine = issue_token(session, USER_A, [AgentScope.GOALS_READ], name="mine")
+    issue_token(session, USER_A, [AgentScope.GOALS_READ], name="sibling")
+    issue_token(session, USER_B, [AgentScope.GOALS_READ], name="other")
+    mine_id = _token_id(session, "mine")
+    sibling_id = _token_id(session, "sibling")
+    other_id = _token_id(session, "other")
+    old_change = _seed_change(session, mine_id, USER_A, 1)
+    new_change = _seed_change(session, mine_id, USER_A, 5)
+    _seed_change(session, sibling_id, USER_A, 3)
+    _seed_change(session, other_id, USER_B, 4)
+    _seed_change(session, None, USER_A, 6)  # the user's revert
+    old_proposal = _seed_proposal(session, mine_id, USER_A, 2)
+    new_proposal = _seed_proposal(session, mine_id, USER_A, 7)
+    _seed_proposal(session, sibling_id, USER_A, 8)
+    _seed_proposal(session, other_id, USER_B, 9)
+
+    is_error, body = await call(mcp, "list_my_changes", {}, mine)
+
+    assert not is_error, body
+    assert set(body) == {"changes", "proposals"}
+    assert [row["id"] for row in body["changes"]] == [
+        str(new_change.id),
+        str(old_change.id),
+    ]
+    assert set(body["changes"][0]) == {
+        "id",
+        "created_at",
+        "entity_type",
+        "entity_id",
+        "action",
+        "destructive",
+        "reverted_at",
+    }
+    assert body["changes"][0]["entity_type"] == "goal"
+    assert body["changes"][0]["action"] == "create"
+    assert body["changes"][0]["destructive"] is False
+    assert body["changes"][0]["reverted_at"] is None
+    assert datetime.fromisoformat(body["changes"][0]["created_at"]) == STAMP + (
+        timedelta(minutes=5)
+    )
+    assert [row["id"] for row in body["proposals"]] == [
+        str(new_proposal.id),
+        str(old_proposal.id),
+    ]
+    assert body["proposals"][0] == {
+        "id": str(new_proposal.id),
+        "kind": "quick_task",
+        "title": "Proposal 7",
+        "status": "pending",
+        "created_at": (STAMP + timedelta(minutes=7)).isoformat(),
+        "decided_at": None,
+    }
+
+    is_error, body = await call(mcp, "list_my_changes", {"limit": 1}, mine)
+    assert not is_error, body
+    assert [row["id"] for row in body["changes"]] == [str(new_change.id)]
+    assert [row["id"] for row in body["proposals"]] == [str(new_proposal.id)]
+
+    is_error, body = await call(mcp, "list_my_changes", {"limit": 100}, mine)
+    assert not is_error
+    assert len(body["changes"]) == 2
+
+    # Over the cap is refused by the tool's schema, before any call is made.
+    result = await rpc(
+        mcp,
+        "tools/call",
+        {"name": "list_my_changes", "arguments": {"limit": 101}},
+        mine,
+    )
+    assert result.get("isError") is True
+    assert [row.status_code for row in audit_rows(session)] == [200, 200, 200]
