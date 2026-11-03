@@ -104,6 +104,23 @@ class Settings(BaseSettings):
         default=False,
         description="Global flag to enable/disable email notifications",
     )
+    web_base_url: str | None = Field(
+        default=None,
+        description="Public URL of the web app, used for links in emails",
+    )
+
+    @field_validator("web_base_url")
+    @classmethod
+    def normalize_web_base_url(cls, v: str | None) -> str | None:
+        """Strip the value and its trailing slashes; empty means unset."""
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("WEB_BASE_URL must start with http:// or https://")
+        return v.rstrip("/")
 
     @field_validator("supabase_url")
     @classmethod
@@ -239,6 +256,7 @@ except Exception as e:
     settings.resend_api_key = None
     settings.email_from = "HumanCompiler <noreply@example.com>"
     settings.email_notifications_enabled = False
+    settings.web_base_url = None
     settings.notification_scheduler_enabled = True
 
 

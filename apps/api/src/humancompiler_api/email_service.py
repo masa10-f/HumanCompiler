@@ -3,19 +3,82 @@ Email notification service using Resend (Issue #261)
 
 Handles:
 - Sending task deadline reminder emails
-- Daily digest emails for upcoming tasks
+- Daily digest emails (new agent proposals and tasks due soon)
 - Email notification logging and tracking
 """
 
 import logging
-from datetime import datetime, UTC
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
+from html import escape
 from uuid import UUID
 
 import resend
 
 from humancompiler_api.config import settings
+from humancompiler_api.proposal_service import APP_TIMEZONE
 
 logger = logging.getLogger(__name__)
+
+# Japanese labels for ProposalKind values; unknown kinds show the raw value.
+PROPOSAL_KIND_LABELS: dict[str, str] = {
+    "goal": "Goal",
+    "task": "タスク",
+    "quick_task": "クイックタスク",
+    "note_append": "ノート追記",
+    "contradiction": "矛盾",
+    "decision_request": "判断の依頼",
+    "experiment": "実験",
+}
+
+
+@dataclass(frozen=True)
+class DigestProposal:
+    kind: str  # ProposalKind value
+    title: str
+    project_name: str | None
+    agent_name: str
+
+
+@dataclass(frozen=True)
+class DigestTask:
+    title: str
+    due_date: datetime  # aware UTC
+    is_overdue: bool
+    context: str | None  # "Project > Goal" for a task, None for a quick task
+
+
+@dataclass(frozen=True)
+class DailyDigest:
+    digest_date: date  # JST calendar date
+    proposals: list[DigestProposal]  # at most 20
+    new_proposal_count: int  # all new pending proposals, may exceed len(proposals)
+    pending_count: int  # all pending proposals of the user
+    tasks: list[DigestTask]  # at most 20
+    task_count: int  # all tasks in the window
+
+
+def _format_digest_date(value: date) -> str:
+    return value.strftime("%Y年%m月%d日")
+
+
+def daily_digest_subject(digest: DailyDigest) -> str:
+    """Plain-text subject line (not HTML-escaped)."""
+    if digest.new_proposal_count > 0 and digest.task_count > 0:
+        return (
+            f"【HumanCompiler】新しい提案 {digest.new_proposal_count} 件と"
+            f"期限の近いタスク {digest.task_count} 件"
+        )
+    if digest.new_proposal_count > 0:
+        return f"【HumanCompiler】新しい提案 {digest.new_proposal_count} 件"
+    return f"【HumanCompiler】{_format_digest_date(digest.digest_date)} のタスク期限サマリー"
+
+
+def _jst(value: datetime) -> datetime:
+    """Convert to JST; naive values (SQLite read-back) are treated as UTC."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(APP_TIMEZONE)
 
 
 class EmailService:
@@ -98,19 +161,15 @@ class EmailService:
             logger.error(f"Failed to send deadline reminder to {to_email}: {e}")
             return False
 
-    def send_daily_digest(
-        self,
-        to_email: str,
-        tasks: list[dict],
-        digest_date: datetime,
-    ) -> bool:
+    def send_daily_digest(self, to_email: str, digest: DailyDigest) -> bool:
         """
-        Send a daily digest email with upcoming task deadlines.
+        Send the daily digest email (new proposals and tasks due soon).
+
+        The caller decides whether a digest is worth sending.
 
         Args:
             to_email: Recipient email address
-            tasks: List of task dictionaries with title, due_date, priority
-            digest_date: Date of the digest
+            digest: Digest contents
 
         Returns:
             True if email was sent successfully, False otherwise
@@ -119,34 +178,24 @@ class EmailService:
             logger.warning("Email service is not enabled, skipping daily digest")
             return False
 
-        if not tasks:
-            logger.info(f"No tasks for daily digest to {to_email}")
-            return True
-
         try:
-            date_str = digest_date.strftime("%Y年%m月%d日")
-            subject = f"【HumanCompiler】{date_str} のタスク期限サマリー"
-
-            html_content = self._render_daily_digest_html(
-                tasks=tasks,
-                digest_date=digest_date,
-            )
-
             params = {
                 "from": settings.email_from,
                 "to": [to_email],
-                "subject": subject,
-                "html": html_content,
+                "subject": daily_digest_subject(digest),
+                "html": self._render_daily_digest_html(digest),
             }
-
-            response = resend.Emails.send(params)
+            resend.Emails.send(params)
             logger.info(
-                f"Daily digest sent to {to_email} with {len(tasks)} tasks: {response}"
+                "Daily digest sent (%d new proposals, %d tasks)",
+                digest.new_proposal_count,
+                digest.task_count,
             )
             return True
 
         except Exception as e:
-            logger.error(f"Failed to send daily digest to {to_email}: {e}")
+            # Log the class only: the message may echo the recipient address.
+            logger.error("Failed to send daily digest: %s", type(e).__name__)
             return False
 
     def send_overdue_alert(
@@ -259,43 +308,108 @@ class EmailService:
 </html>
 """
 
-    def _render_daily_digest_html(
-        self,
-        tasks: list[dict],
-        digest_date: datetime,
-    ) -> str:
+    def _render_daily_digest_html(self, digest: DailyDigest) -> str:
         """Render HTML template for daily digest email"""
-        date_str = digest_date.strftime("%Y年%m月%d日")
+        base_url = settings.web_base_url
+        card_cell = "padding: 10px 12px; border-bottom: 1px solid #e9ecef;"
+        head_cell = "padding: 10px 12px; border-bottom: 2px solid #dee2e6;"
+        link_style = "color: #667eea; font-weight: bold;"
 
-        # Build task list HTML
-        task_items = ""
-        for task in tasks:
-            due_date = task.get("due_date")
-            if isinstance(due_date, datetime):
-                due_str = due_date.strftime("%m/%d %H:%M")
-            else:
-                due_str = str(due_date) if due_date else "未設定"
+        def link(path: str, label: str) -> str:
+            if not base_url:
+                return ""
+            href = escape(f"{base_url}{path}", quote=True)
+            return (
+                f'<p style="margin: 15px 0 0 0;">'
+                f'<a href="{href}" style="{link_style}">{escape(label)}</a></p>'
+            )
 
-            priority = task.get("priority", 3)
-            priority_color = {
-                1: "#dc3545",
-                2: "#fd7e14",
-                3: "#ffc107",
-                4: "#20c997",
-                5: "#6c757d",
-            }.get(priority, "#6c757d")
+        def more_line(total: int, shown: int) -> str:
+            if total <= shown:
+                return ""
+            return (
+                '<p style="margin: 10px 0 0 0; color: #6c757d; font-size: 14px;">'
+                f"ほか {total - shown} 件</p>"
+            )
 
-            task_items += f"""
-            <tr>
-                <td style="padding: 12px; border-bottom: 1px solid #e9ecef;">
-                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: {priority_color}; margin-right: 8px;"></span>
-                    {task.get("title", "Untitled")}
-                </td>
-                <td style="padding: 12px; border-bottom: 1px solid #e9ecef; text-align: right; color: #6c757d;">
-                    {due_str}
-                </td>
-            </tr>
+        sections = ""
+
+        if digest.new_proposal_count > 0:
+            rows = ""
+            for proposal in digest.proposals:
+                kind_label = PROPOSAL_KIND_LABELS.get(proposal.kind, proposal.kind)
+                project = proposal.project_name if proposal.project_name else "—"
+                rows += f"""
+                    <tr>
+                        <td style="{card_cell} white-space: nowrap; color: #6c757d;">{escape(kind_label, quote=True)}</td>
+                        <td style="{card_cell}">
+                            {escape(proposal.title, quote=True)}
+                            <div style="color: #6c757d; font-size: 12px;">提案元: {escape(proposal.agent_name, quote=True)}</div>
+                        </td>
+                        <td style="{card_cell} color: #6c757d;">{escape(project, quote=True)}</td>
+                    </tr>
 """
+            sections += f"""
+            <h2 style="margin: 0 0 10px 0; color: #495057; font-size: 18px;">新しい提案（{digest.new_proposal_count} 件）</h2>
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: #f8f9fa;">
+                        <th style="{head_cell} text-align: left;">種類</th>
+                        <th style="{head_cell} text-align: left;">提案</th>
+                        <th style="{head_cell} text-align: left;">プロジェクト</th>
+                    </tr>
+                </thead>
+                <tbody>{rows}
+                </tbody>
+            </table>
+            {more_line(digest.new_proposal_count, len(digest.proposals))}
+            <p style="margin: 10px 0 0 0; color: #6c757d; font-size: 14px;">未処理の提案は全部で {digest.pending_count} 件です。</p>
+            {link("/inbox", "インボックスを開く")}
+"""
+        elif digest.pending_count > 0:
+            sections += f"""
+            <p style="margin: 0; color: #6c757d; font-size: 14px;">新しい提案はありません。未処理の提案は {digest.pending_count} 件です。</p>
+            {link("/inbox", "インボックスを開く")}
+"""
+
+        if digest.task_count > 0:
+            if sections:
+                sections += '<hr style="border: none; border-top: 1px solid #e9ecef; margin: 25px 0;">'
+            rows = ""
+            for task in digest.tasks:
+                due_str = _jst(task.due_date).strftime("%m/%d %H:%M")
+                context = task.context if task.context else "クイックタスク"
+                overdue_badge = (
+                    ' <span style="display: inline-block; background: #f8d7da; color: #721c24; font-size: 12px; padding: 1px 6px; border-radius: 4px;">期限切れ</span>'
+                    if task.is_overdue
+                    else ""
+                )
+                rows += f"""
+                    <tr>
+                        <td style="{card_cell}">
+                            {escape(task.title, quote=True)}{overdue_badge}
+                            <div style="color: #6c757d; font-size: 12px;">{escape(context, quote=True)}</div>
+                        </td>
+                        <td style="{card_cell} text-align: right; white-space: nowrap; color: #6c757d;">{due_str}</td>
+                    </tr>
+"""
+            sections += f"""
+            <h2 style="margin: 0 0 10px 0; color: #495057; font-size: 18px;">期限が近いタスク（{digest.task_count} 件）</h2>
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: #f8f9fa;">
+                        <th style="{head_cell} text-align: left;">タスク</th>
+                        <th style="{head_cell} text-align: right;">期限</th>
+                    </tr>
+                </thead>
+                <tbody>{rows}
+                </tbody>
+            </table>
+            {more_line(digest.task_count, len(digest.tasks))}
+            {link("/dashboard", "ダッシュボードを開く")}
+"""
+
+        date_str = _format_digest_date(digest.digest_date)
 
         return f"""
 <!DOCTYPE html>
@@ -306,26 +420,12 @@ class EmailService:
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0;">
-        <h1 style="color: white; margin: 0; font-size: 24px;">📋 {date_str} のタスクサマリー</h1>
+        <h1 style="color: white; margin: 0; font-size: 24px;">📋 {date_str} のダイジェスト</h1>
     </div>
 
     <div style="background: #f8f9fa; padding: 30px; border: 1px solid #e9ecef; border-top: none;">
         <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <p style="margin-top: 0; color: #495057;">
-                本日期限のタスクが <strong>{len(tasks)}件</strong> あります。
-            </p>
-
-            <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
-                <thead>
-                    <tr style="background: #f8f9fa;">
-                        <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">タスク</th>
-                        <th style="padding: 12px; text-align: right; border-bottom: 2px solid #dee2e6;">期限</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {task_items}
-                </tbody>
-            </table>
+{sections}
         </div>
 
         <p style="color: #6c757d; font-size: 14px; margin-top: 20px; text-align: center;">
