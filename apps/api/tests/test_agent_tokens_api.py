@@ -244,12 +244,34 @@ def test_scopes_lists_every_scope_with_description(session: Session):
     assert {"proposals:read", "proposals:write"} <= set(descriptions)
 
 
-def test_scopes_marks_only_context_read_as_broad(session: Session):
+def test_scopes_lists_the_write_scopes_with_exact_copy(session: Session):
     setup_user(session)
 
     body = client.get(f"{BASE_URL}/scopes").json()
 
-    assert [i["scope"] for i in body["scopes"] if i["broad"]] == ["context:read"]
+    descriptions = {item["scope"]: item["description"] for item in body["scopes"]}
+    assert descriptions["goals:write"] == "Goal の作成・更新"
+    assert descriptions["tasks:write"] == "Task の作成・更新と依存関係の追加・削除"
+    assert (
+        descriptions["notes:write"]
+        == "Project / Goal / Task のノートへの追記と書き換え"
+    )
+    assert descriptions["writes:unconfirmed"] == (
+        "中止・書き換え・移動・依存関係の削除を、承認なしで実行する（強い権限）"
+    )
+
+
+def test_scopes_marks_only_context_read_and_unconfirmed_writes_as_broad(
+    session: Session,
+):
+    setup_user(session)
+
+    body = client.get(f"{BASE_URL}/scopes").json()
+
+    assert [i["scope"] for i in body["scopes"] if i["broad"]] == [
+        "context:read",
+        "writes:unconfirmed",
+    ]
 
 
 def test_scopes_returns_presets_from_the_spec(session: Session):

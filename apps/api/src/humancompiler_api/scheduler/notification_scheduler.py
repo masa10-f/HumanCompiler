@@ -22,7 +22,7 @@ from apscheduler.jobstores.memory import MemoryJobStore
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, func, select
 
-from humancompiler_api import agent_audit
+from humancompiler_api import agent_audit, agent_changes
 from humancompiler_api.daily_digest import jst_day_start, run_daily_digest
 from humancompiler_api.database import db
 from humancompiler_api.notification_service import (
@@ -226,7 +226,7 @@ async def generate_due_triage_suggestions():
 
 
 async def purge_expired_agent_audit_logs():
-    """Delete agent audit logs past their retention period."""
+    """Delete agent audit logs and agent changes past their retention period."""
     logger.debug("Running agent audit log retention...")
 
     try:
@@ -234,6 +234,8 @@ async def purge_expired_agent_audit_logs():
             deleted_count = agent_audit.purge_expired_audit_logs(session)
             if deleted_count:
                 logger.info("Purged %s expired agent audit logs", deleted_count)
+            changes_deleted = agent_changes.purge_expired_changes(session)
+            logger.info("Purged %s expired agent changes", changes_deleted)
     except Exception:
         logger.exception("Error in agent audit log retention")
 
