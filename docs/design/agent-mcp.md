@@ -57,7 +57,8 @@ G1〜G3 と同じ前提に従う。
 
 - Project の作成・更新・削除
 - **完全な削除。** エージェントの「削除」は、すべて「中止（`cancelled`）」への変更にする。完全な削除は、ユーザーが普段の画面で行う。
-- 作業ログ（Log）、作業セッション、日次ノート、Quick Task の書き込み。Quick Task は既存の `quick_tasks:write` で作れる。
+- 作業セッション、日次ノート、Quick Task の書き込み。Quick Task は既存の `quick_tasks:write` で作れる。
+- 作業ログ（Log）の書き込みは、当初は範囲外だったが、後から足した（「作業ログの記録」の節）。
 - ノートの画像・添付ファイル（#408）
 - Goal の依存関係の書き込み（Task の依存関係だけを扱う）
 - HumanCompiler からエージェントに仕事を渡す経路
@@ -132,6 +133,7 @@ G1〜G3 と同じ前提に従う。
 | `goals:write` | Goal の作成・更新 |
 | `tasks:write` | Task の作成・更新 |
 | `notes:write` | Project / Goal / Task のノートへの追記と書き換え |
+| `logs:write` | 作業ログ（Log）の記録。後から足した（「作業ログの記録」の節） |
 | `writes:unconfirmed` | 「消える操作」を確認なしで実行する。無ければ、消える操作は提案になる |
 
 **提案になるときの条件。**
@@ -144,7 +146,7 @@ G1〜G3 と同じ前提に従う。
 
 | プリセット | スコープ |
 |---|---|
-| 作業するエージェント（確認あり） | 読み取りのすべて、`goals:write`、`tasks:write`、`notes:write`、`proposals:read`、`proposals:write` |
+| 作業するエージェント（確認あり） | 読み取りのすべて、`goals:write`、`tasks:write`、`notes:write`、`logs:write`、`proposals:read`、`proposals:write` |
 | 作業するエージェント（確認なし） | 上のすべてと、`writes:unconfirmed` |
 
 **モードの切り替え。** モードを変えたいときは、別のトークンを作る。スコープは作成後に変えない、という G1 の規則のまま。
@@ -383,6 +385,8 @@ G3 の `agent_proposals` に、種類を3つ足す。
 | `add_dependency` / `remove_dependency` | `tasks:write` | Task の依存関係を足す・外す。`create_task` も `depends_on` を受け取る |
 | `append_note` | `notes:write` | Project / Goal / Task のノートに追記する |
 | `replace_note` | `notes:write` | ノートを書き換える。`expected_updated_at` が必須 |
+| `list_logs` | `logs:read` | Task の作業ログを新しい順に返す。件数と合計の分も返す |
+| `create_log` | `logs:write` | Task に作業ログ（作業時間と作業内容）を記録する |
 | `list_my_changes` | 不要（認証は要る） | このトークンが最近行った変更と、出した提案の状態。自分のトークンの行だけなので、スコープは問わない。提案は `proposals:read` があるときだけ返し、無ければ空のリスト |
 
 **消える操作を含むツール**
@@ -405,6 +409,33 @@ G3 の `agent_proposals` に、種類を3つ足す。
 - **トークンの扱い：** トークンはファイルや環境変数に置く。設定ファイルやチャットに直接書かない、と注意書きを出す。
 
 コマンドと設定の書き方は、両方のクライアントの最新の文書で確かめた（Claude Code：https://code.claude.com/docs/en/mcp 、Codex：https://developers.openai.com/codex/mcp ）。Codex の `url` と `bearer_token_env_var` は、文書どおりのキー名。
+
+---
+
+## 作業ログの記録（2026-11-04 追加）
+
+**何のためか**
+- ユーザーは、作業ログ（Log）の `comment` に作業内容を書くことが多い。エージェントが作業の中身を一番よく知っているので、作業時間と一緒にエージェントに記録させる。
+
+**スコープ**
+- `logs:write` を新しく足す。`tasks:write` には含めない。スコープは作成後に変えない、という G1 の規則のとおり、今あるトークンの権限を黙って広げないため。
+- 「作業するエージェント」の2つのプリセットに入れる。今あるトークンで記録したいときは、トークンを作り直す。
+
+**操作**
+- REST：`POST /api/agent/v1/logs`（`task_id`、`actual_minutes`、任意で `comment`）。201 と、作ったログを返す。
+- MCP：`create_log`。結果は `{log, task}`。`list_logs`（`logs:read`）で、同じ作業を二重に記録していないかを先に確かめられる。
+- 入力の上限：`actual_minutes` は 1〜1440 分（Web には上限が無いが、エージェントの桁の間違いを止めるため）。`comment` は既存の列と同じ 500 文字。
+- 追加だけで、何も消さないので「ふつうの操作」。確認するモードでも直接書き込む。
+- 作業ログの更新・削除はしない。間違えたときは、ユーザーが普段の画面で直す。
+
+**Task のステータス**
+- Web と同じく、`pending` の Task に記録すると `in_progress` になる。
+- これで Task の `updated_at` が変わるので、MCP の結果には今の Task を入れる。エージェントは続けて `update_task` を呼ぶときに、その `updated_at` を使う。
+
+**変更の記録**
+- ログの作成は `agent_changes` に `entity_type = log`、`action = create` で残す。`after` には `task_id`、`actual_minutes`、`comment`。
+- ステータスが変わったときは、Task の `update` の行（`status` の前後）も別に残す。
+- `entity_type` の CHECK に `log` を足すマイグレーション `041_add_agent_log_changes.sql` を足す。追加だけで、2回実行しても安全。ロールバックは `log` の行を消してから、CHECK を 040 の4種類に戻す（作業ログ自体は残る）。
 
 ---
 

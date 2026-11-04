@@ -37,11 +37,14 @@ from humancompiler_api.agent_write_models import (
     NOTE_REPLACE_LOSES,
     AgentGoalCreate,
     AgentGoalUpdate,
+    AgentLogCreate,
     AgentNoteAppend,
     AgentNoteReplace,
     AgentTaskCreate,
     AgentTaskUpdate,
     Hours,
+    LOG_COMMENT_MAX,
+    LOG_MINUTES_MAX,
     NoteTargetKind,
 )
 from humancompiler_api.mcp_server import guarded_call, mcp_server
@@ -51,6 +54,7 @@ from humancompiler_api.models import (
     AgentProposal,
     AgentScope,
     GoalStatus,
+    LogResponse,
     TaskStatus,
     WorkType,
 )
@@ -456,6 +460,59 @@ async def replace_note(
         return {"applied": True, "note": _note_payload(note)}
 
     return await guarded_call("replace_note", AgentScope.NOTES_WRITE, run, ctx)
+
+
+# --- Work logs --------------------------------------------------------------------
+
+
+@mcp_server.tool(
+    name="create_log",
+    description=(
+        "Record a work log (time record) on one of the user's tasks: "
+        "actual_minutes is the time worked, and comment says what was done in "
+        f"it (up to {LOG_COMMENT_MAX} characters), written so the user can read "
+        "it later. Use it at the end of your work on a task. Logging work on a "
+        "pending task makes it in_progress, as in the web app, which changes "
+        "the task's updated_at; the result carries the task as it is now, so "
+        "use its updated_at for a following update_task. Returns {log: {id, "
+        "task_id, actual_minutes, comment, created_at, updated_at}, task}. "
+        f"{_NOT_FOUND} Not a destructive change."
+    ),
+    annotations=_CREATE,
+)
+async def create_log(
+    task_id: UUID,
+    actual_minutes: Annotated[
+        int,
+        Field(
+            gt=0,
+            le=LOG_MINUTES_MAX,
+            description=_field_description(AgentLogCreate, "actual_minutes"),
+        ),
+    ],
+    ctx: Context,
+    comment: Annotated[
+        str | None,
+        Field(
+            max_length=LOG_COMMENT_MAX,
+            description=_field_description(AgentLogCreate, "comment"),
+        ),
+    ]
+    | MISSING = MISSING,
+) -> CallToolResult:
+    def run(session: Session, principal: AgentPrincipal) -> dict[str, Any]:
+        data = AgentLogCreate(
+            task_id=task_id,
+            actual_minutes=actual_minutes,
+            **_sent(comment=comment),
+        )
+        log, task = agent_write_service.create_log(session, principal, data)
+        return {
+            "log": LogResponse.model_validate(log).model_dump(mode="json"),
+            "task": _task(session, principal, task.id),
+        }
+
+    return await guarded_call("create_log", AgentScope.LOGS_WRITE, run, ctx)
 
 
 # --- list_my_changes ----------------------------------------------------------------

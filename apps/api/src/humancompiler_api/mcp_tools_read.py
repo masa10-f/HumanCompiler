@@ -4,7 +4,9 @@
 # This file is part of HumanCompiler.
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-"""Read tools of the MCP server: ``find``, ``get_goal``, ``get_task``, ``get_context``.
+"""Read tools of the MCP server.
+
+``find``, ``get_goal``, ``get_task``, ``list_logs`` and ``get_context``.
 
 They reuse the agent read API's owned-row queries and the context export, so
 ownership and output match REST. Another user's ID is reported exactly like a
@@ -19,7 +21,7 @@ from fastapi import HTTPException, status
 from mcp.server.mcpserver import Context
 from mcp_types import CallToolResult, ToolAnnotations
 from pydantic import Field
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col, func, select
 
 from humancompiler_api.agent_auth import AgentPrincipal
 from humancompiler_api.ai.context_export import (
@@ -32,6 +34,8 @@ from humancompiler_api.models import (
     ContextNote,
     Goal,
     GoalResponse,
+    Log,
+    LogResponse,
     Project,
     Task,
     TaskResponse,
@@ -46,7 +50,12 @@ from humancompiler_api.routers.context_export import (
     ContextExportResponse,
     get_export_options,
 )
-from humancompiler_api.services import goal_service, project_service, task_service
+from humancompiler_api.services import (
+    goal_service,
+    log_service,
+    project_service,
+    task_service,
+)
 
 FindKind = Literal["project", "goal", "task"]
 
@@ -252,6 +261,57 @@ async def get_task(task_id: UUID, ctx: Context) -> CallToolResult:
         }
 
     return await guarded_call("get_task", AgentScope.TASKS_READ, run, ctx)
+
+
+# --- list_logs ------------------------------------------------------------------
+
+
+@mcp_server.tool(
+    name="list_logs",
+    description=(
+        "List the work logs (time records) of one of the user's tasks, newest "
+        "first: {id, task_id, actual_minutes, comment, created_at, updated_at}, "
+        "up to limit, with total_minutes and count over all of the task's logs. "
+        "Use it to see what was already recorded before create_log. Another "
+        f"user's task and a missing one both give a 404 error. {_USER_DATA}"
+    ),
+    annotations=_READ_ONLY,
+)
+async def list_logs(
+    task_id: UUID,
+    ctx: Context,
+    limit: Annotated[int, Field(ge=1, le=100, description="Most logs.")] = 20,
+) -> CallToolResult:
+    def run(session: Session, principal: AgentPrincipal) -> dict[str, Any]:
+        task = session.exec(
+            _owned_tasks(principal.user_id).where(Task.id == task_id)
+        ).first()
+        if task is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found")
+        owned = (
+            log_service._get_user_filter(principal.user_id),
+            Log.task_id == task_id,
+        )
+        logs = session.exec(
+            select(Log)
+            .where(*owned)
+            .order_by(col(Log.created_at).desc(), col(Log.id).desc())
+            .limit(limit)
+        ).all()
+        count, total = session.exec(
+            select(func.count(), func.coalesce(func.sum(Log.actual_minutes), 0)).where(
+                *owned
+            )
+        ).one()
+        return {
+            "items": [
+                LogResponse.model_validate(log).model_dump(mode="json") for log in logs
+            ],
+            "count": count,
+            "total_minutes": total,
+        }
+
+    return await guarded_call("list_logs", AgentScope.LOGS_READ, run, ctx)
 
 
 # --- get_context ------------------------------------------------------------------

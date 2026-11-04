@@ -4,7 +4,7 @@
 # This file is part of HumanCompiler.
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-"""Agent API writes for goals, tasks, task dependencies and context notes.
+"""Agent API writes for goals, tasks, task dependencies, context notes and work logs.
 
 All under ``/api/agent/v1``.
 
@@ -24,6 +24,7 @@ from humancompiler_api.agent_write_models import (
     AgentDependencyCreate,
     AgentGoalCreate,
     AgentGoalUpdate,
+    AgentLogCreate,
     AgentNoteAppend,
     AgentNoteReplace,
     AgentTaskCreate,
@@ -37,6 +38,7 @@ from humancompiler_api.models import (
     ContextNoteResponse,
     Goal,
     GoalResponse,
+    LogResponse,
     Task,
     TaskResponse,
 )
@@ -224,6 +226,28 @@ async def remove_task_dependency(
         session, principal, task_id, depends_on_task_id
     )
     return _task_response(session, principal.user_id, task_id)
+
+
+@router.post(
+    "/logs",
+    response_model=LogResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Record work time on a task",
+    description=(
+        "Record a work log (time record) on one of the user's tasks: the minutes "
+        "worked and, in comment, what was done. Logging work on a pending task "
+        "makes it in_progress, as in the web app, which changes the task's "
+        "updated_at. Another user's task and a missing one both give 404. Not "
+        "a destructive change."
+    ),
+)
+async def create_log(
+    data: AgentLogCreate,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[AgentPrincipal, Depends(require_scope(AgentScope.LOGS_WRITE))],
+) -> LogResponse:
+    log, _ = agent_write_service.create_log(session, principal, data)
+    return LogResponse.model_validate(log)
 
 
 # The note writes take whole notes, so they get a larger cap than the default.

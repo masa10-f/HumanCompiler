@@ -185,3 +185,24 @@ class AgentNoteReplace(_AgentWrite):
             f"{NOTE_REPLACE_LOSES}"
         ),
     )
+
+
+LOG_MINUTES_MAX = 24 * 60
+LOG_COMMENT_MAX = 500
+
+
+class AgentLogCreate(_AgentWrite):
+    task_id: UUID
+    actual_minutes: int = Field(
+        gt=0,
+        le=LOG_MINUTES_MAX,
+        description=f"Minutes worked, 1 to {LOG_MINUTES_MAX}.",
+    )
+    comment: str | None = Field(
+        default=None,
+        max_length=LOG_COMMENT_MAX,
+        description=(
+            "What was done in this time, written so the user can read it later. "
+            f"Up to {LOG_COMMENT_MAX} characters."
+        ),
+    )
