@@ -211,4 +211,60 @@ describe('AgentTokenUsageGuide', () => {
       )
     ).toBeInTheDocument()
   })
+
+  it('shows the MCP setup section for Claude Code and Codex', () => {
+    mockGetApiEndpoint.mockReturnValue('https://api.example.com')
+
+    render(<AgentTokenUsageGuide />)
+    fireEvent.click(screen.getByRole('button', { name: /使用方法/ }))
+
+    const section = within(
+      screen
+        .getByRole('heading', { name: 'MCP（Claude Code・Codex から使う）' })
+        .closest('section') as HTMLElement
+    )
+    expect(section.getByText('https://api.example.com/mcp')).toBeInTheDocument()
+
+    // The .mcp.json form comes first: it keeps the token in the environment.
+    const claudeJson = section.getByText(/"mcpServers"/)
+    expect(claudeJson).toHaveTextContent('"url": "https://api.example.com/mcp"')
+    expect(claudeJson).toHaveTextContent('Bearer ${HUMANCOMPILER_TOKEN}')
+
+    // The one-liner stays as a labelled fallback that says it stores the token.
+    const fallbackLabel = section.getByText(/手早く試す場合.*~\/\.claude\.json/)
+    expect(fallbackLabel).toHaveTextContent('トークンそのもの')
+    const claudeCli = section.getByText(/claude mcp add --transport http humancompiler/)
+    expect(claudeCli).toHaveTextContent('https://api.example.com/mcp')
+    expect(claudeCli).toHaveTextContent('HUMANCOMPILER_TOKEN')
+
+    expect(
+      claudeJson.compareDocumentPosition(fallbackLabel) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    expect(
+      fallbackLabel.compareDocumentPosition(claudeCli) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+
+    const codex = section.getByText(/\[mcp_servers\.humancompiler\]/)
+    expect(codex).toHaveTextContent('url = "https://api.example.com/mcp"')
+    expect(codex).toHaveTextContent('bearer_token_env_var = "HUMANCOMPILER_TOKEN"')
+
+    expect(
+      section.getByText(
+        'トークンは環境変数やファイルに置き、設定ファイルやチャットに直接書かないでください',
+        { exact: false }
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('builds the MCP URL on the same base as the other examples', () => {
+    mockGetApiEndpoint.mockReturnValue('')
+    mockGetFallbackApiEndpoint.mockReturnValue('https://api.example.com')
+
+    render(<AgentTokenUsageGuide />)
+    fireEvent.click(screen.getByRole('button', { name: /使用方法/ }))
+
+    expect(screen.getByText('https://api.example.com/mcp')).toBeInTheDocument()
+  })
 })

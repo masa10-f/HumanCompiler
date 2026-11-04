@@ -342,6 +342,12 @@ G3 の `agent_proposals` に、種類を3つ足す。
 **MCP の SDK を使う**
 - MCP の SDK（Python の `mcp` パッケージ）を依存関係に足す。
 - Streamable HTTP の MCP サーバーとして、既存の FastAPI に `/mcp` で載せる。
+- 載せ方は `mount` ではなく `add_route`。`mount` だと、`POST /mcp` が `/mcp/` への 307 になってしまうため。
+
+**DNS リバインディング対策は切る（実装で決めた）**
+- SDK の対策は、アドレスだけを信用する（認証のない手元のサーバーを、ブラウザ経由で叩かれる）場合を守るためのもの。
+- このサーバーは、すべてのツール呼び出しにトークンが要り、API は Cookie などの自動で付く資格情報を使わない。書き換えられた DNS 名のページには、乗れるものがない。
+- ホストの許可リストを置くと、本番・プレビュー・独自ドメインで壊れる原因が増えるだけなので置かない。SDK が POST に求める JSON の `Content-Type` は、そのまま効く。
 
 **この方式を選んだ理由**
 - PC ごとに何かを入れたり動かしたりしなくてよい。
@@ -358,22 +364,26 @@ G3 の `agent_proposals` に、種類を3つ足す。
 **監査ログと流量制限**
 - 今の監査のミドルウェアとスコープの依存関数は、`/api/agent/` の FastAPI のルートにしか効かない。そこで MCP では、ツールの呼び出しを受ける入口で、同じ関数（トークンの検証、スコープの確認、監査ログの書き込み、流量制限）を明示的に呼ぶ。
 - 監査ログは、HTTP のリクエストごとではなく、**ツールの呼び出しごとに1行**にする。`route` に `mcp:<ツール名>`、`required_scope` にそのツールのスコープを入れる。トークンの監査ログの画面で、何をしたかが読めるようにするため。
-- ツールを持たない MCP のやり取り（初期化、ツールの一覧）は、`mcp:initialize` や `mcp:list_tools` として記録する。
-- 流量制限（トークンごとに1分120回）は、ツールの呼び出しの回数で数える。
+- ツールを持たない MCP のやり取り（初期化 `initialize`、ツールの一覧 `list_tools`）は、サーバーの説明を返すだけでトークンを要さないため、**監査も流量制限もしない**（実装で決めた。当初は `mcp:initialize` などで記録する案だった）。
+- 流量制限（トークンごとに1分120回）は、ツールの呼び出しの回数で数える。超えたときのツールのエラーは、REST の 429 と同じ `status` と `detail` に加えて、待つ秒数 `retry_after` を持つ（MCP には `Retry-After` ヘッダーを付ける場所がないため）。
+
+**ツールのエラーの形**
+- 失敗は、`{"status": <数>, "detail": ...}` の JSON をテキストにしたツールのエラーとして返す。`status` と `detail` は REST と同じ（401・403・404・409・422・429）。想定外の例外は `{"status": 500, "detail": "Internal error"}`。
+- ツールの入力スキーマに合わない引数は、ツールの関数に届く前に MCP の層が弾く。この場合は、上の JSON ではなく、MCP の層のテキストのエラーになる（監査もしない）。
 
 ### ツール
 
 | ツール | 必要なスコープ | 内容 |
 |---|---|---|
-| `find` | 読み取り | Project / Goal / Task を題で探す。部分一致。各候補の ID、親、状態を返す |
+| `find` | 探す種類の読み取り（`projects:read` / `goals:read` / `tasks:read`。種類を指定しなければ3つすべて） | Project / Goal / Task を題で探す。部分一致。各候補の ID、親、状態を返す |
 | `get_context` | `context:read` | Project か Goal の context export（Markdown）を返す。作業を始める前に読む想定 |
-| `get_task` / `get_goal` | `tasks:read` / `goals:read` | 1件と、そのノートを返す |
+| `get_task` / `get_goal` | `tasks:read` / `goals:read` | 1件と、そのノートを返す。ノートは REST と同じく `notes:read` があるときだけ返し、無ければ `null` |
 | `create_goal` / `create_task` | `goals:write` / `tasks:write` | 作る |
 | `update_goal` / `update_task` | `goals:write` / `tasks:write` | 送った項目だけ変える。`expected_updated_at` が必須 |
 | `add_dependency` / `remove_dependency` | `tasks:write` | Task の依存関係を足す・外す。`create_task` も `depends_on` を受け取る |
 | `append_note` | `notes:write` | Project / Goal / Task のノートに追記する |
 | `replace_note` | `notes:write` | ノートを書き換える。`expected_updated_at` が必須 |
-| `list_my_changes` | 読み取り | このトークンが最近行った変更と、出した提案の状態 |
+| `list_my_changes` | 不要（認証は要る） | このトークンが最近行った変更と、出した提案の状態。自分のトークンの行だけなので、スコープは問わない。提案は `proposals:read` があるときだけ返し、無ければ空のリスト |
 
 **消える操作を含むツール**
 - 結果が「書き込んだ」か「提案にした」かを、必ず返す。提案にしたときは、提案の ID と「ユーザーの承認待ち」を返す。
@@ -389,11 +399,12 @@ G3 の `agent_proposals` に、種類を3つ足す。
 
 設定画面のエージェントトークンの使い方ガイドに、MCP の節を足す。
 
-- **Claude Code：** `claude mcp add --transport http humancompiler https://humancompiler-api-masa.fly.dev/mcp --header "Authorization: Bearer ${HUMANCOMPILER_TOKEN}"` の形。
+- **Claude Code：** 先に、プロジェクトの `.mcp.json` の `headers` に `"Authorization": "Bearer ${HUMANCOMPILER_TOKEN}"` と書く形を載せる（`url` は `https://humancompiler-api-masa.fly.dev/mcp`）。`${...}` は、Claude Code がファイルを読み込むたびに環境変数から展開されるので、トークンの値は設定に残らない。ファイルには変数名だけが入るため、コミットしても安全。プロジェクトのサーバーは、初回に Claude Code が承認を求める。
+  - その後に、手早く試すための代替として `claude mcp add --transport http humancompiler https://humancompiler-api-masa.fly.dev/mcp --header "Authorization: Bearer ${HUMANCOMPILER_TOKEN}"` を載せる。ダブルクォートの中の `${...}` は、シェルが先に展開するため、トークンの値が `~/.claude.json` に保存される。ガイドでは見出しにその旨を書く。
 - **Codex：** `~/.codex/config.toml` の `[mcp_servers.humancompiler]` に、`url` と、トークンを読む環境変数（`bearer_token_env_var`）を書く形。
 - **トークンの扱い：** トークンはファイルや環境変数に置く。設定ファイルやチャットに直接書かない、と注意書きを出す。
 
-正確なコマンドと設定の書き方は、実装のときに両方のクライアントの最新の文書で確かめる。
+コマンドと設定の書き方は、両方のクライアントの最新の文書で確かめた（Claude Code：https://code.claude.com/docs/en/mcp 、Codex：https://developers.openai.com/codex/mcp ）。Codex の `url` と `bearer_token_env_var` は、文書どおりのキー名。
 
 ---
 
