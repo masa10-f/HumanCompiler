@@ -835,6 +835,7 @@ class AgentScope(StrEnum):
     GOALS_WRITE = "goals:write"
     TASKS_WRITE = "tasks:write"
     NOTES_WRITE = "notes:write"
+    LOGS_WRITE = "logs:write"
     WRITES_UNCONFIRMED = "writes:unconfirmed"
 
 
@@ -858,6 +859,7 @@ AGENT_SCOPE_DESCRIPTIONS: dict[AgentScope, str] = {
     AgentScope.GOALS_WRITE: "Goal の作成・更新",
     AgentScope.TASKS_WRITE: "Task の作成・更新と依存関係の追加・削除",
     AgentScope.NOTES_WRITE: "Project / Goal / Task のノートへの追記と書き換え",
+    AgentScope.LOGS_WRITE: "作業ログ（Log：作業時間と作業内容）の記録",
     AgentScope.WRITES_UNCONFIRMED: (
         "中止・書き換え・移動・依存関係の削除を、承認なしで実行する（強い権限）"
     ),
@@ -880,6 +882,15 @@ class AgentTokenPresetInfo(BaseModel):
 
 # The web UI builds its presets from this list, so adding a preset here shows up
 # on screen without a web change. The response order is the definition order.
+_WORKING_AGENT_SCOPES: list[str] = [
+    *(scope.value for scope in AgentScope if scope.value.endswith(":read")),
+    AgentScope.GOALS_WRITE.value,
+    AgentScope.TASKS_WRITE.value,
+    AgentScope.NOTES_WRITE.value,
+    AgentScope.LOGS_WRITE.value,
+    AgentScope.PROPOSALS_WRITE.value,
+]
+
 AGENT_TOKEN_PRESETS: tuple[AgentTokenPresetInfo, ...] = (
     AgentTokenPresetInfo(
         key="quick_task_hook",
@@ -906,6 +917,26 @@ AGENT_TOKEN_PRESETS: tuple[AgentTokenPresetInfo, ...] = (
             *(scope.value for scope in AgentScope if scope.value.endswith(":read")),
             AgentScope.PROPOSALS_WRITE.value,
         ],
+    ),
+    AgentTokenPresetInfo(
+        key="working_agent_confirmed",
+        label="作業するエージェント（確認あり）",
+        description=(
+            "Agent API の読み取りすべてと、Goal・Task・ノート・作業ログの書き込み、"
+            "提案の送信を許可する。"
+            "中止・書き換え・移動などの消える操作は、承認が必要"
+            "（承認の仕組みは今後の更新で追加。それまでは拒否される）"
+        ),
+        scopes=list(_WORKING_AGENT_SCOPES),
+    ),
+    AgentTokenPresetInfo(
+        key="working_agent_unconfirmed",
+        label="作業するエージェント（確認なし）",
+        description=(
+            "上と同じ権限に加えて、消える操作（中止・書き換え・移動・依存関係の削除）を"
+            "承認なしで実行する（強い権限）"
+        ),
+        scopes=[*_WORKING_AGENT_SCOPES, AgentScope.WRITES_UNCONFIRMED.value],
     ),
 )
 
@@ -1068,6 +1099,7 @@ class AgentChangeEntity(StrEnum):
     TASK = "task"
     CONTEXT_NOTE = "context_note"
     TASK_DEPENDENCY = "task_dependency"
+    LOG = "log"
 
 
 class AgentChangeAction(StrEnum):

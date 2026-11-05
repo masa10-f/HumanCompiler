@@ -4,7 +4,7 @@
 # This file is part of HumanCompiler.
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-"""Agent writes: goals, tasks, task dependencies and notes written by an agent token.
+"""Agent writes: goals, tasks, dependencies, notes and work logs from an agent token.
 
 Each public write is one transaction: the entity and its ``agent_changes`` row
 are committed together, and any error rolls both back. The helpers that do not
@@ -29,6 +29,7 @@ from humancompiler_api.agent_auth import AgentPrincipal
 from humancompiler_api.agent_write_models import (
     AgentGoalCreate,
     AgentGoalUpdate,
+    AgentLogCreate,
     AgentNoteAppend,
     AgentNoteReplace,
     AgentTaskCreate,
@@ -47,6 +48,8 @@ from humancompiler_api.models import (
     Goal,
     GoalCreate,
     GoalStatus,
+    Log,
+    LogCreate,
     Project,
     Task,
     TaskCreate,
@@ -59,6 +62,7 @@ from humancompiler_api.services import (
     _dependency_path_exists,
     _touch,
     goal_service,
+    log_service,
     project_service,
     task_service,
 )
@@ -794,3 +798,67 @@ def replace_note(
         session.rollback()
         raise
     return note
+
+
+def create_log(
+    session: Session, principal: AgentPrincipal, data: AgentLogCreate
+) -> tuple[Log, Task]:
+    """Record work time, with what was done, on one of the user's tasks.
+
+    As in the web app, logging work on a pending task starts it: the task
+    becomes in_progress, recorded as its own task change. Returns the log and
+    the task. Not destructive."""
+    user_id = principal.user_id
+    try:
+        task = _owned_task(session, user_id, data.task_id)
+        _lock(session, task)
+        goal = _owned_goal(session, user_id, task.goal_id)
+        log = log_service.build(
+            session,
+            LogCreate(
+                task_id=data.task_id,
+                actual_minutes=data.actual_minutes,
+                comment=data.comment,
+            ),
+            user_id,
+        )
+        if log.id is None:
+            raise RuntimeError("build() did not assign an id")
+        record_change(
+            session,
+            principal,
+            entity_type=AgentChangeEntity.LOG,
+            entity_id=log.id,
+            action=AgentChangeAction.CREATE,
+            before=None,
+            after={
+                "task_id": data.task_id,
+                "actual_minutes": data.actual_minutes,
+                "comment": data.comment,
+            },
+            destructive=False,
+            project_id=goal.project_id,
+            goal_id=task.goal_id,
+        )
+        if task.status == TaskStatus.PENDING:
+            task.status = TaskStatus.IN_PROGRESS
+            task.updated_at = datetime.now(UTC)
+            session.add(task)
+            session.flush()
+            record_change(
+                session,
+                principal,
+                entity_type=AgentChangeEntity.TASK,
+                entity_id=_task_id(task),
+                action=AgentChangeAction.UPDATE,
+                before={"status": TaskStatus.PENDING},
+                after={"status": TaskStatus.IN_PROGRESS},
+                destructive=False,
+                project_id=goal.project_id,
+                goal_id=task.goal_id,
+            )
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    return log, task

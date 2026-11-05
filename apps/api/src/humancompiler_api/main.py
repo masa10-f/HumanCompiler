@@ -22,6 +22,7 @@ from humancompiler_api.common.error_handlers import (
     service_exception_handler,
 )
 from humancompiler_api.database import db
+from humancompiler_api.mcp_server import MCP_PATH, mcp_app, mcp_lifespan
 from humancompiler_api.performance_monitor import performance_monitor
 from humancompiler_api.rate_limiter import configure_rate_limiting, limiter
 from humancompiler_api.exceptions import (
@@ -69,6 +70,15 @@ from humancompiler_api.routers import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # The MCP session manager runs for the whole life of the app, around the
+    # existing startup and shutdown.
+    async with mcp_lifespan():
+        async with _app_lifespan(app):
+            yield
+
+
+@asynccontextmanager
+async def _app_lifespan(app: FastAPI):
     # Startup
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
@@ -358,6 +368,11 @@ app.include_router(notes.router, prefix="/api")
 app.include_router(context_export.router, prefix="/api")
 # Capacity triage router
 app.include_router(triage.router, prefix="/api")
+
+
+# MCP server (Streamable HTTP). A route, not a mount: a mount at /mcp would
+# redirect POST /mcp to /mcp/ with a 307.
+app.add_route(MCP_PATH, mcp_app, include_in_schema=False)
 
 
 # Health check endpoint
