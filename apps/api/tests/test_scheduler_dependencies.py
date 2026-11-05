@@ -423,8 +423,8 @@ class TestSchedulerDependencies:
         # Set up the mock so task2_id maps to completed_task_uuid
         with patch("humancompiler_api.routers.scheduler.UUID") as mock_uuid:
             # Configure UUID calls to return specific values
-            mock_uuid.side_effect = (
-                lambda x: completed_task_uuid if x == task2_id else uuid4()
+            mock_uuid.side_effect = lambda x: (
+                completed_task_uuid if x == task2_id else uuid4()
             )
 
             result = _batch_check_task_completion_status(
@@ -636,8 +636,8 @@ class TestSchedulerDependencies:
 
         # Set up the mock so goal2_id maps to completed_goal_uuid
         with patch("humancompiler_api.routers.scheduler.UUID") as mock_uuid:
-            mock_uuid.side_effect = (
-                lambda x: completed_goal_uuid if x == goal2_id else uuid4()
+            mock_uuid.side_effect = lambda x: (
+                completed_goal_uuid if x == goal2_id else uuid4()
             )
 
             result = _batch_check_goal_completion_status(

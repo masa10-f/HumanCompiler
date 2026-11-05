@@ -509,12 +509,28 @@ def test_small_unauthenticated_body_still_gets_401(session: Session):
     assert response.status_code == 401
 
 
+def _iter_app_routes(routes):
+    """Yield every route, descending into included routers.
+
+    FastAPI 0.16x keeps an included router nested (its ``original_router``)
+    instead of copying its routes into app.routes; older versions flatten them.
+    """
+    for route in routes:
+        included = getattr(route, "original_router", None)
+        if included is not None:
+            yield from _iter_app_routes(included.routes)
+        else:
+            yield route
+
+
 def test_body_cap_applies_only_to_the_post_route():
     from humancompiler_api.routers.agent_proposals import BodyCappedRoute
 
+    # A nested route's path lacks its routers' prefixes; url_path_for gives
+    # the full path the app serves it at.
     capped = {
-        (route.path, tuple(sorted(route.methods)))
-        for route in app.routes
+        (app.url_path_for(route.name), tuple(sorted(route.methods)))
+        for route in _iter_app_routes(app.routes)
         if isinstance(route, BodyCappedRoute)
     }
 
@@ -769,12 +785,34 @@ def test_streamed_body_over_cap_stops_reading_early():
 
 
 def test_streamed_body_within_cap_is_reused_by_the_handler():
-    handler = _capped_echo_handler()
-    request, _ = _post_request([b'{"a":', b" 1}"], {})
+    # Served through a real app: the default route handler relies on state
+    # FastAPI's middleware puts in the request scope, so it cannot be called
+    # on a bare Request. The body arrives in chunks and is fully consumed by
+    # the cap; the endpoint can only read it if the cached copy is reused.
+    from fastapi import APIRouter, FastAPI, Request
+    from fastapi.testclient import TestClient
 
-    response = asyncio.run(handler(request))
+    from humancompiler_api.routers.agent_proposals import BodyCappedRoute
 
-    assert response.body == b'{"size":8,"json":{"a":1}}'
+    echo_router = APIRouter(route_class=BodyCappedRoute)
+
+    @echo_router.post("/echo")
+    async def echo(request: Request) -> dict[str, Any]:
+        return {"size": len(await request.body()), "json": await request.json()}
+
+    echo_app = FastAPI()
+    echo_app.include_router(echo_router)
+
+    def chunks():
+        yield b'{"a":'
+        yield b" 1}"
+
+    response = TestClient(echo_app).post(
+        "/echo", content=chunks(), headers={"content-type": "application/json"}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"size": 8, "json": {"a": 1}}
 
 
 def test_chunked_upload_over_cap_returns_413(session: Session):
