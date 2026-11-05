@@ -1,6 +1,6 @@
 FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
 
-FROM python:3.15-slim
+FROM python:3.13-slim
 
 # Set working directory
 WORKDIR /app

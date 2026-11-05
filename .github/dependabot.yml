@@ -23,6 +23,12 @@ updates:
     directory: "/apps/api"
     schedule:
       interval: "monthly"
+    ignore:
+      # Raise the Python minor version by hand, once every locked dependency
+      # with compiled code (e.g. ortools) ships wheels for it. A bump before
+      # that breaks the image build: ortools 9.14 has no cp315 wheels.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   # GitHub Actions
   - package-ecosystem: "github-actions"

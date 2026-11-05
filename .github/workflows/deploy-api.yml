@@ -80,6 +80,28 @@ jobs:
           ENCRYPTION_SALT: ${{ secrets.ENCRYPTION_SALT }}
           PYTHONPATH: "src"
 
+  docker-build:
+    name: 🐳 Build Docker image
+    runs-on: ubuntu-latest
+    # Tests run on the runner's Python, not the image's, and Dependabot PRs
+    # skip the preview deploy. Building the image here catches base image or
+    # dependency changes that only break inside Docker before they reach main.
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v7
+
+      - name: 🐳 Build image (Dockerfile used by Fly.io)
+        working-directory: ./apps/api
+        run: docker build --file Dockerfile --tag humancompiler-api:ci .
+
+      - name: 🐳 Build image (Dockerfile.production)
+        working-directory: ./apps/api
+        run: docker build --file Dockerfile.production --tag humancompiler-api-production:ci .
+
   deploy-preview:
     name: 🚀 Deploy to Preview (Fly.io)
     runs-on: ubuntu-latest
