@@ -4,7 +4,7 @@
 # This file is part of HumanCompiler.
 # For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-"""Agent API: goal, task, task dependency and note writes under /api/agent/v1."""
+"""Agent API: goal, task, task dependency, note and log writes under /api/agent/v1."""
 
 import json
 from datetime import UTC, datetime, timedelta
@@ -28,6 +28,7 @@ from humancompiler_api.models import (
     ContextNote,
     Goal,
     GoalStatus,
+    Log,
     Project,
     Task,
     TaskDependency,
@@ -1598,3 +1599,73 @@ def test_row_locks_do_not_block_foreign_key_checks(session: Session, monkeypatch
     assert len(sent) == 3
     for sql in sent:
         assert sql.rstrip().endswith("FOR NO KEY UPDATE"), sql
+
+
+# --- Work logs ----------------------------------------------------------------------
+
+
+def test_create_log_rest(session: Session):
+    project, goal, task = _tree(session)
+    secret = issue_token(session, USER_A, [AgentScope.LOGS_WRITE], name="logger")
+
+    response = client.post(
+        f"{BASE}/logs",
+        headers=bearer(secret),
+        json={"task_id": str(task.id), "actual_minutes": 50, "comment": "Did X"},
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["task_id"] == str(task.id)
+    assert (body["actual_minutes"], body["comment"]) == (50, "Did X")
+    session.expire_all()
+    assert session.get(Log, UUID(body["id"])) is not None
+    assert session.get(Task, task.id).status == TaskStatus.IN_PROGRESS  # type: ignore[union-attr]
+    changes = sorted(_changes(session), key=lambda row: row.entity_type)
+    assert [(row.entity_type, row.action) for row in changes] == [
+        ("log", "create"),
+        ("task", "update"),
+    ]
+    assert {(row.project_id, row.goal_id) for row in changes} == {(project.id, goal.id)}
+
+
+def test_create_log_rest_errors(session: Session):
+    _, _, task = _tree(session)
+    _, _, foreign = _tree(session, USER_B)
+    writer = issue_token(session, USER_A, [AgentScope.LOGS_WRITE])
+    no_scope = issue_token(session, USER_A, [AgentScope.TASKS_WRITE])
+
+    response = client.post(
+        f"{BASE}/logs",
+        headers=bearer(no_scope),
+        json={"task_id": str(task.id), "actual_minutes": 30},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Missing required scope: logs:write"
+
+    for task_id in (foreign.id, uuid4()):
+        response = client.post(
+            f"{BASE}/logs",
+            headers=bearer(writer),
+            json={"task_id": str(task_id), "actual_minutes": 30},
+        )
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Task not found"
+
+    for extra in (
+        {"actual_minutes": 0},
+        {"actual_minutes": 1441},
+        {"actual_minutes": 30, "comment": "x" * 501},
+        {"actual_minutes": 30, "created_at": STAMP.isoformat()},
+    ):
+        response = client.post(
+            f"{BASE}/logs",
+            headers=bearer(writer),
+            json={"task_id": str(task.id), **extra},
+        )
+        assert response.status_code == 422, extra
+
+    assert _count(session, Log) == 0
+    assert _changes(session) == []
+    session.expire_all()
+    assert session.get(Task, task.id).status == TaskStatus.PENDING  # type: ignore[union-attr]

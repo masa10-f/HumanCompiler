@@ -34,6 +34,7 @@ from humancompiler_api.models import (
     AgentToken,
     ContextNote,
     Goal,
+    Log,
     Project,
     ProposalKind,
     Task,
@@ -46,6 +47,7 @@ from tests.agent_api_helpers import (
     client,
     issue_token,
     seed_goal,
+    seed_log,
     seed_note,
     seed_project,
     seed_task,
@@ -62,7 +64,7 @@ MCP_HEADERS = {
     "Content-Type": "application/json",
     "MCP-Protocol-Version": PROTOCOL_VERSION,
 }
-READ_TOOLS = {"find", "get_goal", "get_task", "get_context"}
+READ_TOOLS = {"find", "get_goal", "get_task", "list_logs", "get_context"}
 ALL_READ = [AgentScope.PROJECTS_READ, AgentScope.GOALS_READ, AgentScope.TASKS_READ]
 
 
@@ -616,6 +618,7 @@ WRITE_TOOL_SCOPES = {
     "remove_dependency": "tasks:write",
     "append_note": "notes:write",
     "replace_note": "notes:write",
+    "create_log": "logs:write",
 }
 
 
@@ -642,6 +645,7 @@ def _minimal_arguments() -> dict[str, dict[str, Any]]:
             "expected_updated_at": None,
             "content_markdown": "",
         },
+        "create_log": {"task_id": str(uuid4()), "actual_minutes": 30},
     }
 
 
@@ -1261,3 +1265,222 @@ async def test_list_my_changes_needs_no_scope_and_hides_proposals(
     assert is_error
     assert body == {"status": 401, "detail": "Agent token required"}
     assert len(audit_rows(session)) == 1
+
+
+# --- Work logs ----------------------------------------------------------------------
+
+
+async def test_create_log_records_time_and_starts_pending_task(
+    session: Session, mcp: httpx.AsyncClient
+):
+    project, goal, task = _tree(session)
+    secret = issue_token(session, USER_A, [AgentScope.LOGS_WRITE], name="logger")
+    comment = "Drafted the intro and fixed the outline"
+
+    is_error, body = await call(
+        mcp,
+        "create_log",
+        {"task_id": str(task.id), "actual_minutes": 45, "comment": comment},
+        secret,
+    )
+
+    assert not is_error, body
+    assert set(body) == {"log", "task"}
+    log = body["log"]
+    assert log["task_id"] == str(task.id)
+    assert log["actual_minutes"] == 45
+    assert log["comment"] == comment
+    # Logging work on a pending task starts it, as in the web app.
+    assert body["task"]["status"] == "in_progress"
+    session.expire_all()
+    stored = session.get(Log, UUID(log["id"]))
+    assert stored is not None
+    assert (stored.actual_minutes, stored.comment) == (45, comment)
+    stored_task = session.get(Task, task.id)
+    assert stored_task.status == TaskStatus.IN_PROGRESS  # type: ignore[union-attr]
+    assert _utc(stored_task.updated_at) > STAMP  # type: ignore[union-attr,operator]
+    # The task in the result is current, so a following update_task can use it.
+    returned = datetime.fromisoformat(body["task"]["updated_at"])
+    assert returned == _utc(stored_task.updated_at)  # type: ignore[union-attr]
+
+    changes = {row.entity_type: row for row in _agent_changes(session)}
+    assert set(changes) == {"log", "task"}
+    log_change = changes["log"]
+    assert (log_change.action, log_change.destructive) == ("create", False)
+    assert log_change.entity_id == UUID(log["id"])
+    assert log_change.before is None
+    assert log_change.after == {
+        "task_id": str(task.id),
+        "actual_minutes": 45,
+        "comment": comment,
+    }
+    assert (log_change.project_id, log_change.goal_id) == (project.id, goal.id)
+    assert log_change.agent_name == "logger"
+    task_change = changes["task"]
+    assert (task_change.action, task_change.entity_id) == ("update", task.id)
+    assert task_change.before == {"status": "pending"}
+    assert task_change.after == {"status": "in_progress"}
+    rows = audit_rows(session)
+    assert [(row.route, row.required_scope, row.status_code) for row in rows] == [
+        ("mcp:create_log", "logs:write", 200)
+    ]
+
+
+async def test_create_log_keeps_status_of_started_task(
+    session: Session, mcp: httpx.AsyncClient
+):
+    _, goal, _ = _tree(session)
+    task = seed_task(session, goal, status=TaskStatus.COMPLETED, updated_at=STAMP)
+    secret = issue_token(session, USER_A, [AgentScope.LOGS_WRITE])
+
+    is_error, body = await call(
+        mcp, "create_log", {"task_id": str(task.id), "actual_minutes": 15}, secret
+    )
+
+    assert not is_error, body
+    assert body["log"]["comment"] is None
+    assert body["task"]["status"] == "completed"
+    session.expire_all()
+    assert _utc(session.get(Task, task.id).updated_at) == STAMP  # type: ignore[union-attr]
+    assert [row.entity_type for row in _agent_changes(session)] == ["log"]
+
+
+async def test_create_log_on_foreign_or_missing_task_is_404(
+    session: Session, mcp: httpx.AsyncClient
+):
+    _, _, foreign = _tree(session, USER_B)
+    secret = issue_token(session, USER_A, [AgentScope.LOGS_WRITE])
+
+    for task_id in (foreign.id, uuid4()):
+        is_error, body = await call(
+            mcp, "create_log", {"task_id": str(task_id), "actual_minutes": 30}, secret
+        )
+        assert is_error
+        assert body == {"status": 404, "detail": "Task not found"}
+    assert _count(session, Log) == 0
+    assert _agent_changes(session) == []
+    session.expire_all()
+    assert session.get(Task, foreign.id).status == TaskStatus.PENDING  # type: ignore[union-attr]
+
+
+async def test_create_log_schema_limits(session: Session, mcp: httpx.AsyncClient):
+    _, _, task = _tree(session)
+    secret = issue_token(session, USER_A, [AgentScope.LOGS_WRITE])
+    tools = {tool["name"]: tool for tool in (await rpc(mcp, "tools/list"))["tools"]}
+    schema = tools["create_log"]["inputSchema"]
+    assert set(schema["required"]) == {"task_id", "actual_minutes"}
+    assert schema["properties"]["actual_minutes"]["maximum"] == 1440
+    assert "not a destructive" in tools["create_log"]["description"].lower()
+
+    for arguments in (
+        {"actual_minutes": 0},
+        {"actual_minutes": 1441},
+        {"actual_minutes": 30, "comment": "x" * 501},
+    ):
+        result = await rpc(
+            mcp,
+            "tools/call",
+            {"name": "create_log", "arguments": {"task_id": str(task.id), **arguments}},
+            secret,
+        )
+        assert result.get("isError") is True, arguments
+    assert _count(session, Log) == 0
+
+
+async def test_list_logs_newest_first_with_totals(
+    session: Session, mcp: httpx.AsyncClient
+):
+    _, goal, task = _tree(session)
+    other_task = seed_task(session, goal)
+    old = seed_log(session, task, updated_at=STAMP)
+    new = seed_log(session, task, updated_at=STAMP + timedelta(hours=1))
+    _set(session, new, actual_minutes=90, comment="Wrote tests")
+    seed_log(session, other_task)
+    secret = issue_token(session, USER_A, [AgentScope.LOGS_READ])
+
+    is_error, body = await call(mcp, "list_logs", {"task_id": str(task.id)}, secret)
+
+    assert not is_error, body
+    assert [item["id"] for item in body["items"]] == [str(new.id), str(old.id)]
+    assert body["items"][0]["comment"] == "Wrote tests"
+    assert (body["count"], body["total_minutes"]) == (2, 120)
+
+    is_error, body = await call(
+        mcp, "list_logs", {"task_id": str(task.id), "limit": 1}, secret
+    )
+    assert not is_error, body
+    assert [item["id"] for item in body["items"]] == [str(new.id)]
+    assert (body["count"], body["total_minutes"]) == (2, 120)
+
+    rows = audit_rows(session)
+    assert {(row.route, row.required_scope) for row in rows} == {
+        ("mcp:list_logs", "logs:read")
+    }
+
+
+async def test_list_logs_scope_and_ownership(session: Session, mcp: httpx.AsyncClient):
+    _, _, foreign = _tree(session, USER_B)
+    seed_log(session, foreign)
+    reader = issue_token(session, USER_A, [AgentScope.LOGS_READ])
+    no_scope = issue_token(session, USER_A, [AgentScope.TASKS_READ])
+
+    is_error, body = await call(mcp, "list_logs", {"task_id": str(foreign.id)}, reader)
+    assert is_error
+    assert body == {"status": 404, "detail": "Task not found"}
+
+    is_error, body = await call(
+        mcp, "list_logs", {"task_id": str(foreign.id)}, no_scope
+    )
+    assert is_error
+    assert body == {"status": 403, "detail": "Missing required scope: logs:read"}
+
+
+async def test_goal_note_append_read_and_replace(
+    session: Session, mcp: httpx.AsyncClient
+):
+    _, goal, _ = _tree(session)
+    secret = issue_token(
+        session,
+        USER_A,
+        [
+            AgentScope.GOALS_READ,
+            AgentScope.NOTES_READ,
+            AgentScope.NOTES_WRITE,
+            AgentScope.WRITES_UNCONFIRMED,
+        ],
+    )
+
+    is_error, body = await call(
+        mcp,
+        "append_note",
+        {"kind": "goal", "id": str(goal.id), "content_markdown": "First summary"},
+        secret,
+    )
+    assert not is_error, body
+
+    is_error, read = await call(mcp, "get_goal", {"goal_id": str(goal.id)}, secret)
+    assert not is_error, read
+    assert "First summary" in read["note"]["content_markdown"]
+
+    is_error, body = await call(
+        mcp,
+        "replace_note",
+        {
+            "kind": "goal",
+            "id": str(goal.id),
+            "expected_updated_at": read["note"]["updated_at"],
+            "content_markdown": "## Tidied\n\n- One point",
+        },
+        secret,
+    )
+    assert not is_error, body
+    assert body["applied"] is True
+    assert body["note"]["content_markdown"].startswith("## Tidied")
+    stored = session.exec(select(ContextNote)).one()
+    assert stored.goal_id == goal.id
+    assert "First summary" not in stored.content
+    changes = sorted(_agent_changes(session), key=lambda row: row.created_at)
+    assert [(row.action, row.destructive) for row in changes] == [
+        ("append", False),
+        ("replace", True),
+    ]

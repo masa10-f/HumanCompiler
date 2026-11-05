@@ -47,6 +47,7 @@ def test_enum_values_match_the_migration():
         "task",
         "context_note",
         "task_dependency",
+        "log",
     ]
     assert [m.value for m in AgentChangeAction] == [
         "create",

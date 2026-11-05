@@ -256,6 +256,7 @@ def test_scopes_lists_the_write_scopes_with_exact_copy(session: Session):
         descriptions["notes:write"]
         == "Project / Goal / Task のノートへの追記と書き換え"
     )
+    assert descriptions["logs:write"] == "作業ログ（Log：作業時間と作業内容）の記録"
     assert descriptions["writes:unconfirmed"] == (
         "中止・書き換え・移動・依存関係の削除を、承認なしで実行する（強い権限）"
     )
@@ -309,8 +310,8 @@ def test_scopes_returns_presets_from_the_spec(session: Session):
     confirmed = presets["working_agent_confirmed"]
     assert confirmed["label"] == "作業するエージェント（確認あり）"
     assert confirmed["description"] == (
-        "Agent API の読み取りすべてと、Goal・Task・ノートの書き込み、提案の送信を許可する。"
-        "中止・書き換え・移動などの消える操作は、承認が必要"
+        "Agent API の読み取りすべてと、Goal・Task・ノート・作業ログの書き込み、"
+        "提案の送信を許可する。中止・書き換え・移動などの消える操作は、承認が必要"
         "（承認の仕組みは今後の更新で追加。それまでは拒否される）"
     )
     assert confirmed["scopes"] == [
@@ -318,6 +319,7 @@ def test_scopes_returns_presets_from_the_spec(session: Session):
         "goals:write",
         "tasks:write",
         "notes:write",
+        "logs:write",
         "proposals:write",
     ]
     unconfirmed = presets["working_agent_unconfirmed"]

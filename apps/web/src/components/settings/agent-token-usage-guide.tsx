@@ -334,7 +334,7 @@ export function AgentTokenUsageGuide() {
             </h4>
             <p className="text-muted-foreground">
               MCP
-              に対応したエージェントから、tokenのスコープの範囲で、Goal・Task・ノートの読み書きができます。書き込みには「作業するエージェント」プリセットなどのtokenが必要です。
+              に対応したエージェントから、tokenのスコープの範囲で、Goal・Task・ノート・作業ログ（時間記録）の読み書きができます。書き込みには「作業するエージェント」プリセットなどのtokenが必要です。作業ログの記録には logs:write スコープが要ります。スコープは作成後に変えられないため、このスコープが無いtokenでは、tokenを作り直してください。
             </p>
 
             <div className="space-y-1">
