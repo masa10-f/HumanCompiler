@@ -1,0 +1,1671 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2024-2025 Masato Fukushima <masa1063fuk@gmail.com>
+#
+# This file is part of HumanCompiler.
+# For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
+
+"""Agent API: goal, task, task dependency, note and log writes under /api/agent/v1."""
+
+import json
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from typing import Any
+from uuid import UUID, uuid4
+
+import pytest
+from fastapi import HTTPException
+from sqlmodel import Session, func, select
+
+from humancompiler_api import agent_write_service
+from humancompiler_api.note_markdown import agent_append_heading, markdown_to_note_html
+from humancompiler_api.proposal_service import APP_TIMEZONE
+from humancompiler_api.database import get_session
+from humancompiler_api.main import app
+from humancompiler_api.models import (
+    AgentChange,
+    AgentScope,
+    AgentToken,
+    ContextNote,
+    Goal,
+    GoalStatus,
+    Log,
+    Project,
+    Task,
+    TaskDependency,
+    TaskStatus,
+    WorkType,
+)
+from tests.agent_api_helpers import (
+    bearer,
+    client,
+    issue_token,
+    seed_goal,
+    seed_note,
+    seed_project,
+    seed_task,
+    seed_user,
+    use_session,
+)
+
+USER_A = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+USER_B = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+
+BASE = "/api/agent/v1"
+WRITE = [AgentScope.GOALS_WRITE, AgentScope.TASKS_WRITE]
+UNCONFIRMED = [*WRITE, AgentScope.WRITES_UNCONFIRMED]
+STAMP = datetime(2026, 11, 1, 12, 0, tzinfo=UTC)
+NEEDS_UNCONFIRMED = "This change needs the writes:unconfirmed scope"
+STALE_MESSAGE = "Changed since you read it; read it again and retry"
+
+
+@pytest.fixture(autouse=True)
+def agent_session(session: Session):
+    use_session(session)
+    seed_user(session, USER_A)
+    seed_user(session, USER_B)
+    yield
+    app.dependency_overrides.pop(get_session, None)
+
+
+def _utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+def _changes(session: Session) -> list[AgentChange]:
+    session.expire_all()
+    return list(session.exec(select(AgentChange)).all())
+
+
+def _count(session: Session, model: Any) -> int:
+    return session.exec(select(func.count()).select_from(model)).one()
+
+
+def _tree(session: Session, owner: UUID = USER_A) -> tuple[Project, Goal, Task]:
+    project = seed_project(session, owner, updated_at=STAMP)
+    goal = seed_goal(session, project, updated_at=STAMP)
+    task = seed_task(session, goal, updated_at=STAMP)
+    return project, goal, task
+
+
+def _set(session: Session, entity: Any, **values: Any) -> None:
+    for name, value in values.items():
+        setattr(entity, name, value)
+    session.add(entity)
+    session.commit()
+    session.refresh(entity)
+
+
+def _patch(path: str, token: str, **body: Any):
+    body.setdefault("expected_updated_at", STAMP.isoformat())
+    return client.patch(f"{BASE}{path}", json=body, headers=bearer(token))
+
+
+def test_write_scopes_required(session: Session):
+    _, goal, task = _tree(session)
+    token = issue_token(session, USER_A, [AgentScope.GOALS_READ, AgentScope.TASKS_READ])
+    expected = STAMP.isoformat()
+    calls = [
+        (
+            "post",
+            "/goals",
+            {"project_id": str(goal.project_id), "title": "G"},
+            "goals:write",
+        ),
+        (
+            "patch",
+            f"/goals/{goal.id}",
+            {"expected_updated_at": expected, "title": "G"},
+            "goals:write",
+        ),
+        (
+            "post",
+            "/tasks",
+            {"goal_id": str(goal.id), "title": "T", "estimate_hours": 1},
+            "tasks:write",
+        ),
+        (
+            "patch",
+            f"/tasks/{task.id}",
+            {"expected_updated_at": expected, "title": "T"},
+            "tasks:write",
+        ),
+        (
+            "post",
+            f"/tasks/{task.id}/dependencies",
+            {"depends_on_task_id": str(uuid4())},
+            "tasks:write",
+        ),
+        ("delete", f"/tasks/{task.id}/dependencies/{uuid4()}", None, "tasks:write"),
+    ]
+    for method, path, body, scope in calls:
+        response = client.request(
+            method.upper(), f"{BASE}{path}", json=body, headers=bearer(token)
+        )
+        assert response.status_code == 403, (method, path)
+        assert response.json()["detail"] == f"Missing required scope: {scope}"
+    assert _changes(session) == []
+
+
+def test_create_goal_and_task(session: Session):
+    project = seed_project(session, USER_A)
+    token = issue_token(session, USER_A, WRITE, name="distiller")
+
+    response = client.post(
+        f"{BASE}/goals",
+        json={
+            "project_id": str(project.id),
+            "title": "New goal",
+            "description": "Why",
+            "due_date": "2026-12-01",
+        },
+        headers=bearer(token),
+    )
+    assert response.status_code == 201, response.text
+    goal_body = response.json()
+    assert goal_body["title"] == "New goal"
+    assert goal_body["description"] == "Why"
+    assert goal_body["project_id"] == str(project.id)
+    assert goal_body["dependencies"] == []
+    goal_id = UUID(goal_body["id"])
+
+    response = client.post(
+        f"{BASE}/tasks",
+        json={
+            "goal_id": str(goal_id),
+            "title": "New task",
+            "estimate_hours": "1.5",
+            "priority": 2,
+            "work_type": "study",
+        },
+        headers=bearer(token),
+    )
+    assert response.status_code == 201, response.text
+    task_body = response.json()
+    assert task_body["title"] == "New task"
+    assert task_body["estimate_hours"] == 1.5
+    assert task_body["priority"] == 2
+    assert task_body["work_type"] == "study"
+    assert task_body["goal_id"] == str(goal_id)
+    task_id = UUID(task_body["id"])
+
+    session.expire_all()
+    goal = session.get(Goal, goal_id)
+    task = session.get(Task, task_id)
+    assert goal is not None and goal.project.owner_id == USER_A
+    assert task is not None and task.goal_id == goal_id
+
+    changes = sorted(_changes(session), key=lambda row: row.entity_type)
+    assert [row.entity_type for row in changes] == ["goal", "task"]
+    goal_change, task_change = changes
+    token_row = session.exec(select(AgentToken)).one()
+    for row in changes:
+        assert row.action == "create"
+        assert row.destructive is False
+        assert row.before is None
+        assert row.actor == "agent"
+        assert row.user_id == USER_A
+        assert row.agent_name == "distiller"
+        assert row.agent_token_id == token_row.id
+        assert row.project_id == project.id
+        assert row.goal_id == goal_id
+    assert goal_change.entity_id == goal_id
+    assert goal_change.after["title"] == "New goal"
+    assert goal_change.after["due_date"].startswith("2026-11-30T15:00:00")
+    assert task_change.entity_id == task_id
+    assert task_change.after["title"] == "New task"
+    assert task_change.after["priority"] == 2
+
+
+def test_create_rejects_extra_fields(session: Session):
+    _, goal, task = _tree(session)
+    token = issue_token(session, USER_A, WRITE)
+    response = client.post(
+        f"{BASE}/tasks",
+        json={
+            "goal_id": str(goal.id),
+            "title": "T",
+            "estimate_hours": 1,
+            "blocks": [],
+        },
+        headers=bearer(token),
+    )
+    assert response.status_code == 422
+    response = client.post(
+        f"{BASE}/tasks/{task.id}/dependencies",
+        json={"depends_on_task_id": str(uuid4()), "kind": "blocks"},
+        headers=bearer(token),
+    )
+    assert response.status_code == 422
+    response = client.post(
+        f"{BASE}/goals",
+        json={"project_id": str(goal.project_id), "title": "G", "status": "pending"},
+        headers=bearer(token),
+    )
+    assert response.status_code == 422
+    assert _changes(session) == []
+
+
+def test_create_under_foreign_or_missing_parent_is_404(session: Session):
+    _, foreign_goal, _ = _tree(session, owner=USER_B)
+    token = issue_token(session, USER_A, WRITE)
+    goals_before = _count(session, Goal)
+    tasks_before = _count(session, Task)
+
+    for project_id in (foreign_goal.project_id, uuid4()):
+        response = client.post(
+            f"{BASE}/goals",
+            json={"project_id": str(project_id), "title": "G"},
+            headers=bearer(token),
+        )
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Project not found"
+
+    for goal_id in (foreign_goal.id, uuid4()):
+        response = client.post(
+            f"{BASE}/tasks",
+            json={"goal_id": str(goal_id), "title": "T", "estimate_hours": 1},
+            headers=bearer(token),
+        )
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Goal not found"
+
+    assert _count(session, Goal) == goals_before
+    assert _count(session, Task) == tasks_before
+    assert _changes(session) == []
+
+
+def test_update_ordinary_fields(session: Session):
+    _, goal, task = _tree(session)
+    token = issue_token(session, USER_A, WRITE)
+
+    response = _patch(
+        f"/tasks/{task.id}",
+        token,
+        title="Renamed",
+        estimate_hours="2.5",
+        due_date="2026-12-01",
+        status="completed",
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["title"] == "Renamed"
+    assert body["estimate_hours"] == 2.5
+    assert body["status"] == "completed"
+
+    session.expire_all()
+    stored = session.get(Task, task.id)
+    assert stored is not None
+    assert _utc(stored.due_date) == datetime(2026, 11, 30, 15, 0, tzinfo=UTC)
+    assert _utc(stored.updated_at) != STAMP
+    assert stored.estimate_hours == Decimal("2.5")
+
+    changes = _changes(session)
+    assert len(changes) == 1
+    change = changes[0]
+    fields = {"title", "estimate_hours", "due_date", "status"}
+    assert change.action == "update"
+    assert change.entity_type == "task"
+    assert change.entity_id == task.id
+    assert change.destructive is False
+    assert change.goal_id == goal.id
+    assert change.project_id == goal.project_id
+    assert set(change.before or {}) == fields
+    assert set(change.after) == fields
+    assert change.before is not None and change.before["title"] == "Task"
+    assert change.before["due_date"] is None
+    assert change.after["title"] == "Renamed"
+    assert change.after["status"] == "completed"
+    assert change.after["due_date"].startswith("2026-11-30T15:00:00")
+
+    response = _patch(
+        f"/goals/{goal.id}", token, title="Goal renamed", due_date="2026-12-01"
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["title"] == "Goal renamed"
+    goal_change = [row for row in _changes(session) if row.entity_type == "goal"]
+    assert len(goal_change) == 1
+    assert set(goal_change[0].after) == {"title", "due_date"}
+    assert goal_change[0].goal_id == goal.id
+    assert goal_change[0].project_id == goal.project_id
+
+
+def test_update_requires_expected_updated_at(session: Session):
+    _, goal, task = _tree(session)
+    token = issue_token(session, USER_A, WRITE)
+    for path in (f"/tasks/{task.id}", f"/goals/{goal.id}"):
+        response = client.patch(
+            f"{BASE}{path}", json={"title": "X"}, headers=bearer(token)
+        )
+        assert response.status_code == 422, path
+    assert _changes(session) == []
+
+
+def test_update_rejects_null_for_required_fields(session: Session):
+    _, goal, task = _tree(session)
+    token = issue_token(session, USER_A, UNCONFIRMED)
+    for field in ("title", "estimate_hours", "status", "goal_id"):
+        response = _patch(f"/tasks/{task.id}", token, **{field: None})
+        assert response.status_code == 422, field
+    for field in ("title", "status"):
+        response = _patch(f"/goals/{goal.id}", token, **{field: None})
+        assert response.status_code == 422, field
+    assert _changes(session) == []
+
+
+def test_stale_expected_updated_at_is_409(session: Session):
+    _, goal, task = _tree(session)
+    token = issue_token(session, USER_A, UNCONFIRMED)
+    stale = datetime(2026, 10, 1, tzinfo=UTC).isoformat()
+
+    for path in (f"/tasks/{task.id}", f"/goals/{goal.id}"):
+        response = _patch(path, token, title="Changed", expected_updated_at=stale)
+        assert response.status_code == 409, path
+        detail = response.json()["detail"]
+        assert detail["message"] == STALE_MESSAGE
+        assert datetime.fromisoformat(detail["current_updated_at"]) == STAMP
+
+    session.expire_all()
+    assert session.get(Task, task.id).title == "Task"  # type: ignore[union-attr]
+    assert session.get(Goal, goal.id).title == "Goal"  # type: ignore[union-attr]
+    assert _changes(session) == []
+
+
+def test_expected_updated_at_accepts_naive_and_other_offsets(session: Session):
+    _, _, task = _tree(session)
+    token = issue_token(session, USER_A, WRITE)
+    response = _patch(
+        f"/tasks/{task.id}",
+        token,
+        title="A",
+        expected_updated_at="2026-11-01T21:00:00+09:00",
+    )
+    assert response.status_code == 200, response.text
+    new_stamp = datetime.fromisoformat(response.json()["updated_at"])
+    response = _patch(
+        f"/tasks/{task.id}",
+        token,
+        title="B",
+        expected_updated_at=new_stamp.replace(tzinfo=None).isoformat(),
+    )
+    assert response.status_code == 200, response.text
+
+
+def test_noop_update(session: Session):
+    _, goal, task = _tree(session)
+    _set(session, task, description="Keep", due_date=datetime(2026, 12, 1, tzinfo=UTC))
+    _set(session, task, updated_at=STAMP)
+    token = issue_token(session, USER_A, WRITE)
+
+    response = _patch(
+        f"/tasks/{task.id}",
+        token,
+        title="Task",
+        description="Keep",
+        estimate_hours=1,
+        status="pending",
+        due_date="2026-12-01T09:00:00+09:00",
+        goal_id=str(goal.id),
+        priority=3,
+    )
+    assert response.status_code == 200, response.text
+    response = _patch(f"/goals/{goal.id}", token, title="Goal", status="pending")
+    assert response.status_code == 200, response.text
+
+    session.expire_all()
+    assert _utc(session.get(Task, task.id).updated_at) == STAMP  # type: ignore[union-attr]
+    assert _utc(session.get(Goal, goal.id).updated_at) == STAMP  # type: ignore[union-attr]
+    assert _changes(session) == []
+
+
+def _destructive_cases(
+    session: Session,
+) -> list[tuple[str, dict[str, Any], Any, dict[str, Any]]]:
+    """(path, body, entity, stored values) for each destructive change."""
+    _, goal, task = _tree(session)
+    other_goal = seed_goal(session, goal.project, updated_at=STAMP)
+    _set(session, task, description="Old description", memo="Old memo")
+    _set(session, task, updated_at=STAMP)
+    _set(session, goal, description="Goal description")
+    _set(session, goal, updated_at=STAMP)
+    task_values = {
+        "status": TaskStatus.PENDING,
+        "description": "Old description",
+        "memo": "Old memo",
+        "goal_id": goal.id,
+    }
+    goal_values = {"status": GoalStatus.PENDING, "description": "Goal description"}
+    return [
+        (f"/tasks/{task.id}", {"status": "cancelled"}, task, task_values),
+        (f"/tasks/{task.id}", {"description": "New"}, task, task_values),
+        (f"/tasks/{task.id}", {"memo": "New memo"}, task, task_values),
+        (f"/tasks/{task.id}", {"goal_id": str(other_goal.id)}, task, task_values),
+        (f"/goals/{goal.id}", {"status": "cancelled"}, goal, goal_values),
+        (f"/goals/{goal.id}", {"description": None}, goal, goal_values),
+    ]
+
+
+def test_destructive_without_unconfirmed_is_403(session: Session):
+    cases = _destructive_cases(session)
+    token = issue_token(session, USER_A, WRITE)
+    for path, body, entity, stored in cases:
+        response = _patch(path, token, **body)
+        assert response.status_code == 403, (path, body)
+        assert response.json()["detail"] == NEEDS_UNCONFIRMED
+        session.expire_all()
+        current = session.get(type(entity), entity.id)
+        for name, value in stored.items():
+            assert getattr(current, name) == value, (path, body, name)
+        assert _utc(current.updated_at) == STAMP
+    assert _changes(session) == []
+
+
+def test_mixed_patch_without_unconfirmed_writes_nothing(session: Session):
+    _, goal, task = _tree(session)
+    token = issue_token(session, USER_A, WRITE)
+    for path in (f"/tasks/{task.id}", f"/goals/{goal.id}"):
+        response = _patch(path, token, title="Renamed", status="cancelled")
+        assert response.status_code == 403, path
+        assert response.json()["detail"] == NEEDS_UNCONFIRMED
+    session.expire_all()
+    assert session.get(Task, task.id).title == "Task"  # type: ignore[union-attr]
+    assert session.get(Goal, goal.id).title == "Goal"  # type: ignore[union-attr]
+    assert _changes(session) == []
+
+
+def test_destructive_with_unconfirmed(session: Session):
+    cases = _destructive_cases(session)
+    token = issue_token(session, USER_A, UNCONFIRMED)
+    old_goal_id = cases[0][3]["goal_id"]
+    for path, body, entity, _ in cases:
+        session.expire_all()
+        current = session.get(type(entity), entity.id)
+        stamp = _utc(current.updated_at)
+        response = _patch(path, token, expected_updated_at=stamp.isoformat(), **body)
+        assert response.status_code == 200, (path, body, response.text)
+
+    changes = sorted(_changes(session), key=lambda row: row.created_at)
+    assert len(changes) == len(cases)
+    assert all(row.destructive for row in changes)
+    move = changes[3]
+    new_goal_id = UUID(cases[3][1]["goal_id"])
+    assert move.before == {"goal_id": str(old_goal_id)}
+    assert move.after == {"goal_id": str(new_goal_id)}
+    assert move.goal_id == new_goal_id
+    cleared = changes[5]
+    assert cleared.before == {"description": "Goal description"}
+    assert cleared.after == {"description": None}
+
+    session.expire_all()
+    task = session.get(Task, cases[0][2].id)
+    goal = session.get(Goal, cases[4][2].id)
+    assert task is not None and goal is not None
+    assert task.status == TaskStatus.CANCELLED
+    assert task.description == "New"
+    assert task.memo == "New memo"
+    assert task.goal_id == new_goal_id
+    assert goal.status == GoalStatus.CANCELLED
+    assert goal.description is None
+
+
+@pytest.mark.parametrize("stored", [None, "", "  \n "])
+def test_filling_an_empty_field_is_ordinary(session: Session, stored: str | None):
+    """Writing into an empty description or memo erases nothing."""
+    _, goal, task = _tree(session)
+    _set(session, task, description=stored, memo=stored)
+    _set(session, task, updated_at=STAMP)
+    _set(session, goal, description=stored)
+    _set(session, goal, updated_at=STAMP)
+    token = issue_token(session, USER_A, WRITE)
+
+    response = _patch(f"/tasks/{task.id}", token, description="New", memo="Memo")
+    assert response.status_code == 200, response.text
+    response = _patch(f"/goals/{goal.id}", token, description="Why")
+    assert response.status_code == 200, response.text
+
+    session.expire_all()
+    current_task = session.get(Task, task.id)
+    current_goal = session.get(Goal, goal.id)
+    assert current_task is not None and current_goal is not None
+    assert (current_task.description, current_task.memo) == ("New", "Memo")
+    assert current_goal.description == "Why"
+    changes = sorted(_changes(session), key=lambda row: row.entity_type)
+    assert [row.entity_type for row in changes] == ["goal", "task"]
+    assert all(row.destructive is False for row in changes)
+    assert changes[0].before == {"description": stored}
+    assert changes[1].after == {"description": "New", "memo": "Memo"}
+
+
+def test_filling_an_empty_field_with_a_destructive_change_is_403(session: Session):
+    _, _, task = _tree(session)
+    token = issue_token(session, USER_A, WRITE)
+    _set(session, task, memo="Old memo")
+    _set(session, task, updated_at=STAMP)
+
+    response = _patch(f"/tasks/{task.id}", token, description="New", memo="Other")
+    assert response.status_code == 403
+    assert response.json()["detail"] == NEEDS_UNCONFIRMED
+    session.expire_all()
+    assert session.get(Task, task.id).description is None  # type: ignore[union-attr]
+    assert _changes(session) == []
+
+
+def test_move_to_foreign_goal_is_404(session: Session):
+    _, _, task = _tree(session)
+    _, foreign_goal, _ = _tree(session, owner=USER_B)
+    token = issue_token(session, USER_A, UNCONFIRMED)
+    for goal_id in (foreign_goal.id, uuid4()):
+        response = _patch(f"/tasks/{task.id}", token, goal_id=str(goal_id))
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Goal not found"
+    session.expire_all()
+    assert session.get(Task, task.id).goal_id != foreign_goal.id  # type: ignore[union-attr]
+    assert _changes(session) == []
+
+
+def test_memo_append_is_ordinary(session: Session):
+    _, _, task = _tree(session)
+    token = issue_token(session, USER_A, WRITE)
+
+    response = _patch(f"/tasks/{task.id}", token, memo_append="First")
+    assert response.status_code == 200, response.text
+    assert response.json()["memo"] == "First"
+    stamp = response.json()["updated_at"]
+    response = _patch(
+        f"/tasks/{task.id}", token, memo_append="Second", expected_updated_at=stamp
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["memo"] == "First\nSecond"
+
+    changes = sorted(_changes(session), key=lambda row: row.created_at)
+    assert len(changes) == 2
+    assert changes[0].action == "update"
+    assert changes[0].destructive is False
+    assert changes[0].before == {"memo_length": 0}
+    assert changes[0].after == {"memo_append": "First"}
+    assert changes[1].before == {"memo_length": 5}
+    assert changes[1].after == {"memo_append": "Second"}
+
+    stamp = response.json()["updated_at"]
+    response = _patch(
+        f"/tasks/{task.id}",
+        token,
+        memo="x",
+        memo_append="y",
+        expected_updated_at=stamp,
+    )
+    assert response.status_code == 422
+
+    response = _patch(
+        f"/tasks/{task.id}", token, memo_append="z" * 2000, expected_updated_at=stamp
+    )
+    assert response.status_code == 422
+    session.expire_all()
+    assert session.get(Task, task.id).memo == "First\nSecond"  # type: ignore[union-attr]
+    assert len(_changes(session)) == 2
+
+
+def test_goal_invalid_status_transition_is_422(session: Session):
+    _, goal, _ = _tree(session)
+    token = issue_token(session, USER_A, UNCONFIRMED)
+    response = _patch(f"/goals/{goal.id}", token, status="completed")
+    assert response.status_code == 422
+    assert "Invalid status transition" in response.json()["detail"]
+    session.expire_all()
+    assert session.get(Goal, goal.id).status == GoalStatus.PENDING  # type: ignore[union-attr]
+    assert _changes(session) == []
+
+
+def test_other_users_task_is_404(session: Session):
+    _, foreign_goal, foreign_task = _tree(session, owner=USER_B)
+    token = issue_token(session, USER_A, UNCONFIRMED)
+    for task_id in (foreign_task.id, uuid4()):
+        response = _patch(f"/tasks/{task_id}", token, title="Mine")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Task not found"
+    for goal_id in (foreign_goal.id, uuid4()):
+        response = _patch(f"/goals/{goal_id}", token, title="Mine")
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Goal not found"
+    session.expire_all()
+    assert session.get(Task, foreign_task.id).title == "Task"  # type: ignore[union-attr]
+    assert session.get(Goal, foreign_goal.id).title == "Goal"  # type: ignore[union-attr]
+    assert _changes(session) == []
+
+
+def test_clear_optional_task_fields(session: Session):
+    _, _, task = _tree(session)
+    _set(
+        session,
+        task,
+        description="Old",
+        memo="Old memo",
+        due_date=datetime(2026, 12, 1, tzinfo=UTC),
+        updated_at=STAMP,
+    )
+    token = issue_token(session, USER_A, UNCONFIRMED)
+    response = _patch(
+        f"/tasks/{task.id}", token, description=None, memo=None, due_date=None
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["description"] is None
+    assert body["memo"] is None
+    assert body["due_date"] is None
+    change = _changes(session)[0]
+    assert change.after == {"description": None, "memo": None, "due_date": None}
+
+
+@pytest.mark.parametrize("field", ["priority", "work_type"])
+def test_null_priority_or_work_type_is_422(session: Session, field: str):
+    _, goal, task = _tree(session)
+    _set(session, task, priority=1, work_type=WorkType.STUDY, updated_at=STAMP)
+    token = issue_token(session, USER_A, UNCONFIRMED)
+
+    response = _patch(f"/tasks/{task.id}", token, **{field: None})
+    assert response.status_code == 422, response.text
+    response = client.post(
+        f"{BASE}/tasks",
+        json={"goal_id": str(goal.id), "title": "T", "estimate_hours": 1, field: None},
+        headers=bearer(token),
+    )
+    assert response.status_code == 422, response.text
+
+    session.expire_all()
+    stored = session.get(Task, task.id)
+    assert stored is not None
+    assert stored.priority == 1
+    assert stored.work_type == WorkType.STUDY
+    assert _utc(stored.updated_at) == STAMP
+    assert _count(session, Task) == 1
+    assert _changes(session) == []
+
+
+def test_move_to_goal_in_another_project(session: Session):
+    project, old_goal, task = _tree(session)
+    other_project = seed_project(session, USER_A, updated_at=STAMP)
+    new_goal = seed_goal(session, other_project, updated_at=STAMP)
+    token = issue_token(session, USER_A, UNCONFIRMED)
+
+    response = _patch(f"/tasks/{task.id}", token, goal_id=str(new_goal.id))
+    assert response.status_code == 200, response.text
+    assert response.json()["goal_id"] == str(new_goal.id)
+
+    changes = _changes(session)
+    assert len(changes) == 1
+    change = changes[0]
+    assert change.destructive is True
+    assert change.before == {"goal_id": str(old_goal.id)}
+    assert change.after == {"goal_id": str(new_goal.id)}
+    assert change.goal_id == new_goal.id
+    assert change.project_id == other_project.id
+    assert change.project_id != project.id
+
+
+def test_memo_append_with_destructive_field_without_unconfirmed_is_403(
+    session: Session,
+):
+    _, _, task = _tree(session)
+    _set(session, task, memo="Kept", updated_at=STAMP)
+    token = issue_token(session, USER_A, WRITE)
+
+    response = _patch(
+        f"/tasks/{task.id}", token, memo_append="More", status="cancelled"
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == NEEDS_UNCONFIRMED
+
+    session.expire_all()
+    stored = session.get(Task, task.id)
+    assert stored is not None
+    assert stored.memo == "Kept"
+    assert stored.status == TaskStatus.PENDING
+    assert _utc(stored.updated_at) == STAMP
+    assert _changes(session) == []
+
+
+def test_change_row_agent_name_and_token(session: Session):
+    _, _, task = _tree(session)
+    token = issue_token(session, USER_A, WRITE, name="first-name")
+    token_row = session.exec(select(AgentToken)).one()
+
+    response = _patch(f"/tasks/{task.id}", token, title="One")
+    assert response.status_code == 200, response.text
+    _set(session, token_row, name="second-name")
+    response = _patch(
+        f"/tasks/{task.id}",
+        token,
+        title="Two",
+        expected_updated_at=response.json()["updated_at"],
+    )
+    assert response.status_code == 200, response.text
+
+    changes = sorted(_changes(session), key=lambda row: row.created_at)
+    assert [row.agent_name for row in changes] == ["first-name", "second-name"]
+    assert all(row.agent_token_id == token_row.id for row in changes)
+    assert all(row.actor == "agent" for row in changes)
+    assert all(row.user_id == USER_A for row in changes)
+
+
+def test_missing_stored_updated_at_is_a_server_fault():
+    task = Task(id=uuid4(), goal_id=uuid4(), title="T", estimate_hours=Decimal("1"))
+    task.updated_at = None
+    with pytest.raises(RuntimeError):
+        agent_write_service._stored_updated_at(task)
+
+
+CYCLE_DETAIL = "Creating this dependency would create a circular dependency"
+
+
+def _depend(session: Session, task: Task, on: Task) -> TaskDependency:
+    """Seed ``task`` depends on ``on`` without touching either task."""
+    dependency = TaskDependency(id=uuid4(), task_id=task.id, depends_on_task_id=on.id)
+    session.add(dependency)
+    session.commit()
+    session.refresh(dependency)
+    return dependency
+
+
+def _dependencies(session: Session) -> list[tuple[UUID, UUID]]:
+    session.expire_all()
+    rows = session.exec(select(TaskDependency)).all()
+    return sorted((row.task_id, row.depends_on_task_id) for row in rows)
+
+
+def _stored_updated_at(session: Session, task_id: UUID) -> datetime | None:
+    session.expire_all()
+    stored = session.get(Task, task_id)
+    assert stored is not None
+    return _utc(stored.updated_at)
+
+
+def _add_dependency(token: str, task_id: Any, depends_on_task_id: Any):
+    return client.post(
+        f"{BASE}/tasks/{task_id}/dependencies",
+        json={"depends_on_task_id": str(depends_on_task_id)},
+        headers=bearer(token),
+    )
+
+
+def _remove_dependency(token: str, task_id: Any, depends_on_task_id: Any):
+    return client.delete(
+        f"{BASE}/tasks/{task_id}/dependencies/{depends_on_task_id}",
+        headers=bearer(token),
+    )
+
+
+def test_create_task_with_depends_on(session: Session):
+    project, goal, first = _tree(session)
+    second = seed_task(session, goal, updated_at=STAMP)
+    token = issue_token(session, USER_A, WRITE)
+
+    response = client.post(
+        f"{BASE}/tasks",
+        json={
+            "goal_id": str(goal.id),
+            "title": "After both",
+            "estimate_hours": 1,
+            "depends_on": [str(first.id), str(second.id)],
+        },
+        headers=bearer(token),
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    task_id = UUID(body["id"])
+    summary = {
+        UUID(item["depends_on_task_id"]): item["depends_on_task"]["title"]
+        for item in body["dependencies"]
+    }
+    assert summary == {first.id: "Task", second.id: "Task"}
+    assert all(UUID(item["task_id"]) == task_id for item in body["dependencies"])
+    assert _dependencies(session) == sorted([(task_id, first.id), (task_id, second.id)])
+
+    changes = _changes(session)
+    task_rows = [row for row in changes if row.entity_type == "task"]
+    dependency_rows = [row for row in changes if row.entity_type == "task_dependency"]
+    assert len(task_rows) == 1 and len(dependency_rows) == 2
+    assert task_rows[0].after["depends_on"] == [str(first.id), str(second.id)]
+    stored_ids = {
+        row.id
+        for row in session.exec(
+            select(TaskDependency).where(TaskDependency.task_id == task_id)
+        ).all()
+    }
+    assert {row.entity_id for row in dependency_rows} == stored_ids
+    for row in changes:
+        assert row.action == "create"
+        assert row.destructive is False
+        assert row.before is None
+        assert row.project_id == project.id
+        assert row.goal_id == goal.id
+    assert {row.after["depends_on_task_id"] for row in dependency_rows} == {
+        str(first.id),
+        str(second.id),
+    }
+    assert all(row.after["task_id"] == str(task_id) for row in dependency_rows)
+
+
+def test_create_task_with_foreign_depends_on_creates_nothing(session: Session):
+    _, goal, own = _tree(session)
+    _, _, foreign = _tree(session, owner=USER_B)
+    token = issue_token(session, USER_A, WRITE)
+    tasks_before = _count(session, Task)
+
+    for missing in (foreign.id, uuid4()):
+        response = client.post(
+            f"{BASE}/tasks",
+            json={
+                "goal_id": str(goal.id),
+                "title": "T",
+                "estimate_hours": 1,
+                "depends_on": [str(own.id), str(missing)],
+            },
+            headers=bearer(token),
+        )
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Dependency task not found"
+
+    assert _count(session, Task) == tasks_before
+    assert _dependencies(session) == []
+    assert _changes(session) == []
+
+
+def test_create_task_duplicate_depends_on_is_422(session: Session):
+    _, goal, own = _tree(session)
+    token = issue_token(session, USER_A, WRITE)
+    tasks_before = _count(session, Task)
+
+    for depends_on in (
+        [str(own.id), str(own.id)],
+        [str(uuid4()) for _ in range(21)],
+        None,
+    ):
+        response = client.post(
+            f"{BASE}/tasks",
+            json={
+                "goal_id": str(goal.id),
+                "title": "T",
+                "estimate_hours": 1,
+                "depends_on": depends_on,
+            },
+            headers=bearer(token),
+        )
+        assert response.status_code == 422, depends_on
+
+    assert _count(session, Task) == tasks_before
+    assert _dependencies(session) == []
+    assert _changes(session) == []
+
+
+def test_add_dependency_cycle_is_422(session: Session):
+    _, goal, task_a = _tree(session)
+    task_b = seed_task(session, goal, updated_at=STAMP)
+    task_c = seed_task(session, goal, updated_at=STAMP)
+    _depend(session, task_a, task_b)
+    _depend(session, task_b, task_c)
+    token = issue_token(session, USER_A, WRITE)
+
+    for dependent, on in ((task_b, task_a), (task_c, task_a)):
+        response = _add_dependency(token, dependent.id, on.id)
+        assert response.status_code == 422
+        assert response.json()["detail"] == CYCLE_DETAIL
+        assert _stored_updated_at(session, dependent.id) == STAMP
+
+    assert _dependencies(session) == sorted(
+        [(task_a.id, task_b.id), (task_b.id, task_c.id)]
+    )
+    assert _changes(session) == []
+
+
+def test_add_dependency_on_itself_is_422(session: Session):
+    _, _, task = _tree(session)
+    token = issue_token(session, USER_A, WRITE)
+
+    response = _add_dependency(token, task.id, task.id)
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Task cannot depend on itself"
+    assert _dependencies(session) == []
+    assert _stored_updated_at(session, task.id) == STAMP
+    assert _changes(session) == []
+
+
+def test_add_dependency_is_ordinary(session: Session):
+    project, goal, task = _tree(session)
+    other = seed_task(session, goal, updated_at=STAMP)
+    token = issue_token(session, USER_A, WRITE)
+
+    response = _add_dependency(token, task.id, other.id)
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["id"] == str(task.id)
+    assert [item["depends_on_task_id"] for item in body["dependencies"]] == [
+        str(other.id)
+    ]
+    assert _dependencies(session) == [(task.id, other.id)]
+
+    bumped = _stored_updated_at(session, task.id)
+    assert bumped is not None and bumped > STAMP
+    assert datetime.fromisoformat(body["updated_at"]) == bumped
+    assert _stored_updated_at(session, other.id) == STAMP
+
+    (change,) = _changes(session)
+    dependency = session.exec(select(TaskDependency)).one()
+    assert change.entity_type == "task_dependency"
+    assert change.entity_id == dependency.id
+    assert change.action == "create"
+    assert change.destructive is False
+    assert change.before is None
+    assert change.after == {
+        "task_id": str(task.id),
+        "depends_on_task_id": str(other.id),
+    }
+    assert change.project_id == project.id
+    assert change.goal_id == goal.id
+
+
+def test_add_existing_dependency_is_noop(session: Session):
+    _, goal, task = _tree(session)
+    other = seed_task(session, goal, updated_at=STAMP)
+    _depend(session, task, other)
+    token = issue_token(session, USER_A, WRITE)
+
+    response = _add_dependency(token, task.id, other.id)
+    assert response.status_code == 200, response.text
+    assert [item["depends_on_task_id"] for item in response.json()["dependencies"]] == [
+        str(other.id)
+    ]
+    assert _dependencies(session) == [(task.id, other.id)]
+    assert _stored_updated_at(session, task.id) == STAMP
+    assert _changes(session) == []
+
+
+def test_remove_dependency_needs_unconfirmed(session: Session):
+    project, goal, task = _tree(session)
+    other = seed_task(session, goal, updated_at=STAMP)
+    dependency = _depend(session, task, other)
+
+    token = issue_token(session, USER_A, WRITE)
+    response = _remove_dependency(token, task.id, other.id)
+    assert response.status_code == 403
+    assert response.json()["detail"] == NEEDS_UNCONFIRMED
+    assert _dependencies(session) == [(task.id, other.id)]
+    assert _stored_updated_at(session, task.id) == STAMP
+    assert _changes(session) == []
+
+    token = issue_token(session, USER_A, UNCONFIRMED, name="trusted")
+    response = _remove_dependency(token, task.id, other.id)
+    assert response.status_code == 200, response.text
+    assert response.json()["dependencies"] == []
+    assert _dependencies(session) == []
+    bumped = _stored_updated_at(session, task.id)
+    assert bumped is not None and bumped > STAMP
+
+    (change,) = _changes(session)
+    assert change.entity_type == "task_dependency"
+    assert change.entity_id == dependency.id
+    assert change.action == "update"
+    assert change.destructive is True
+    assert change.before == {
+        "task_id": str(task.id),
+        "depends_on_task_id": str(other.id),
+    }
+    assert change.after == {"removed": True}
+    assert change.project_id == project.id
+    assert change.goal_id == goal.id
+
+
+def test_remove_missing_dependency_is_404(session: Session):
+    _, goal, task = _tree(session)
+    other = seed_task(session, goal, updated_at=STAMP)
+    _, _, foreign = _tree(session, owner=USER_B)
+    _depend(session, foreign, other)
+    token = issue_token(session, USER_A, UNCONFIRMED)
+
+    response = _remove_dependency(token, task.id, other.id)
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Dependency not found"
+
+    for task_id in (foreign.id, uuid4()):
+        response = _remove_dependency(token, task_id, other.id)
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Task not found"
+
+    assert _dependencies(session) == [(foreign.id, other.id)]
+    assert _stored_updated_at(session, task.id) == STAMP
+    assert _changes(session) == []
+
+
+def test_dependency_on_foreign_task_is_404(session: Session):
+    _, _, task = _tree(session)
+    _, _, foreign = _tree(session, owner=USER_B)
+    token = issue_token(session, USER_A, WRITE)
+
+    for missing in (foreign.id, uuid4()):
+        response = _add_dependency(token, task.id, missing)
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Dependency task not found"
+
+        response = _add_dependency(token, missing, task.id)
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Task not found"
+
+    assert _dependencies(session) == []
+    assert _stored_updated_at(session, task.id) == STAMP
+    assert _stored_updated_at(session, foreign.id) == STAMP
+    assert _changes(session) == []
+
+
+NOTES = [AgentScope.NOTES_WRITE]
+NOTES_UNCONFIRMED = [AgentScope.NOTES_WRITE, AgentScope.WRITES_UNCONFIRMED]
+NOTE_KINDS = ["projects", "goals", "tasks"]
+NOTE_COLUMN = {"projects": "project_id", "goals": "goal_id", "tasks": "task_id"}
+NOT_FOUND = {
+    "projects": "Project not found",
+    "goals": "Goal not found",
+    "tasks": "Task not found",
+}
+NOTE_BODY_CAP = 512 * 1024
+
+
+def _note_target(kind: str, project: Project, goal: Goal, task: Task) -> UUID:
+    target = {"projects": project, "goals": goal, "tasks": task}[kind]
+    return target.id  # type: ignore[return-value]
+
+
+def _note_parents(
+    kind: str, project: Project, goal: Goal
+) -> tuple[UUID | None, UUID | None]:
+    """The project_id and goal_id the change row of a note on ``kind`` carries."""
+    if kind == "projects":
+        return project.id, None
+    return project.id, goal.id
+
+
+def _notes(session: Session) -> list[ContextNote]:
+    session.expire_all()
+    return list(session.exec(select(ContextNote)).all())
+
+
+def _append(token: str, kind: str, target_id: Any, markdown: str):
+    return client.post(
+        f"{BASE}/context-notes/{kind}/{target_id}/append",
+        json={"content_markdown": markdown},
+        headers=bearer(token),
+    )
+
+
+def _replace(token: str, kind: str, target_id: Any, markdown: str, expected: Any):
+    return client.put(
+        f"{BASE}/context-notes/{kind}/{target_id}",
+        json={"expected_updated_at": expected, "content_markdown": markdown},
+        headers=bearer(token),
+    )
+
+
+def _heading(name: str) -> str:
+    return agent_append_heading(name, datetime.now(APP_TIMEZONE).date())
+
+
+def test_note_writes_need_notes_write(session: Session):
+    _, _, task = _tree(session)
+    token = issue_token(session, USER_A, UNCONFIRMED)
+
+    for response in (
+        _append(token, "tasks", task.id, "Hello"),
+        _replace(token, "tasks", task.id, "Hello", None),
+    ):
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Missing required scope: notes:write"
+    assert _notes(session) == []
+    assert _changes(session) == []
+
+
+@pytest.mark.parametrize("kind", NOTE_KINDS)
+def test_append_note_creates_and_appends(session: Session, kind: str):
+    project, goal, task = _tree(session)
+    target_id = _note_target(kind, project, goal, task)
+    token = issue_token(session, USER_A, NOTES, name="distiller <bot>")
+    heading = _heading("distiller <bot>")
+    assert "distiller &lt;bot&gt;" in heading
+
+    response = _append(token, kind, target_id, "First **bold**")
+    assert response.status_code == 200, response.text
+    first_block = heading + markdown_to_note_html("First **bold**")
+    body = response.json()
+    assert body["content"] == first_block
+    assert body["content_type"] == "html"
+    assert body[NOTE_COLUMN[kind]] == str(target_id)
+    (note,) = _notes(session)
+    assert note.id == UUID(body["id"])
+    assert note.user_id == USER_A
+    assert getattr(note, NOTE_COLUMN[kind]) == target_id
+    assert note.content == first_block
+
+    response = _append(token, kind, target_id, "Second")
+    assert response.status_code == 200, response.text
+    second_block = heading + markdown_to_note_html("Second")
+    assert response.json()["content"] == first_block + second_block
+    (note,) = _notes(session)
+    assert note.content == first_block + second_block
+    assert note.content_type == "html"
+
+    changes = sorted(_changes(session), key=lambda row: (row.before or {})["length"])
+    assert len(changes) == 2
+    project_id, goal_id = _note_parents(kind, project, goal)
+    for row, length, block in (
+        (changes[0], 0, first_block),
+        (changes[1], len(first_block), second_block),
+    ):
+        assert row.entity_type == "context_note"
+        assert row.entity_id == note.id
+        assert row.action == "append"
+        assert row.destructive is False
+        assert row.agent_name == "distiller <bot>"
+        assert row.before == {"length": length}
+        assert row.after == {"appended_html": block}
+        assert row.project_id == project_id
+        assert row.goal_id == goal_id
+
+
+def test_append_to_existing_note_keeps_it(session: Session):
+    project, _, _ = _tree(session)
+    seed_note(session, USER_A, project=project, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES, name="distiller")
+
+    response = _append(token, "projects", project.id, "More")
+    assert response.status_code == 200, response.text
+    (note,) = _notes(session)
+    assert note.content == "Note" + _heading("distiller") + "<p>More</p>\n"
+    assert note.content_type == "html"
+    assert _utc(note.updated_at) > STAMP  # type: ignore[operator]
+    (change,) = _changes(session)
+    assert change.before == {"length": len("Note")}
+
+
+def test_append_escapes_raw_html(session: Session):
+    _, _, task = _tree(session)
+    token = issue_token(session, USER_A, NOTES)
+
+    response = _append(
+        token, "tasks", task.id, '<script>x</script>\n\n<img src=x onerror="y">'
+    )
+    assert response.status_code == 200, response.text
+    (note,) = _notes(session)
+    assert "<script" not in note.content
+    assert "<img" not in note.content
+    assert "&lt;script&gt;x&lt;/script&gt;" in note.content
+
+
+def test_replace_note_needs_unconfirmed(session: Session):
+    _, _, task = _tree(session)
+    seed_note(session, USER_A, task=task, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES)
+
+    response = _replace(token, "tasks", task.id, "New", STAMP.isoformat())
+    assert response.status_code == 403
+    assert response.json()["detail"] == NEEDS_UNCONFIRMED
+    (note,) = _notes(session)
+    assert note.content == "Note"
+    assert _utc(note.updated_at) == STAMP
+    assert _changes(session) == []
+
+
+@pytest.mark.parametrize("stored", ["", "  ", "<p></p>", "<p> </p>\n<p><br></p>"])
+def test_replacing_an_empty_note_is_ordinary(session: Session, stored: str):
+    """A note with no text erases nothing when it is replaced."""
+    project, goal, task = _tree(session)
+    note = seed_note(session, USER_A, task=task, updated_at=STAMP)
+    _set(session, note, content=stored, content_type="html")
+    _set(session, note, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES)
+
+    response = _replace(token, "tasks", task.id, "New", STAMP.isoformat())
+    assert response.status_code == 200, response.text
+    assert response.json()["content"] == "<p>New</p>\n"
+    (change,) = _changes(session)
+    assert change.action == "replace"
+    assert change.destructive is False
+    assert change.before == {"content": stored}
+    assert change.after == {"content": "<p>New</p>\n"}
+    assert (change.project_id, change.goal_id) == (project.id, goal.id)
+
+
+def test_replace_creating_a_note_is_ordinary(session: Session):
+    _, goal, _ = _tree(session)
+    token = issue_token(session, USER_A, NOTES)
+
+    response = _replace(token, "goals", goal.id, "New", None)
+    assert response.status_code == 200, response.text
+    (note,) = _notes(session)
+    assert note.goal_id == goal.id
+    assert note.content == "<p>New</p>\n"
+    (change,) = _changes(session)
+    assert change.destructive is False
+    assert change.before == {"content": ""}
+
+
+@pytest.mark.parametrize("stored", ["<TODO>", "<https://example.com>", "<!-- x -->"])
+def test_replacing_a_markdown_note_in_angle_brackets_is_403(
+    session: Session, stored: str
+):
+    """In a markdown note, <...> is the user's text, not a tag."""
+    _, _, task = _tree(session)
+    note = seed_note(session, USER_A, task=task, updated_at=STAMP)
+    _set(session, note, content=stored, content_type="markdown")
+    _set(session, note, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES)
+
+    response = _replace(token, "tasks", task.id, "New", STAMP.isoformat())
+    assert response.status_code == 403
+    assert response.json()["detail"] == NEEDS_UNCONFIRMED
+    (current,) = _notes(session)
+    assert current.content == stored
+    assert _changes(session) == []
+
+
+def test_replacing_an_empty_html_note_without_unconfirmed_is_200(session: Session):
+    _, _, task = _tree(session)
+    note = seed_note(session, USER_A, task=task, updated_at=STAMP)
+    _set(session, note, content="<p></p>", content_type="html")
+    _set(session, note, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES)
+
+    response = _replace(token, "tasks", task.id, "New", STAMP.isoformat())
+    assert response.status_code == 200, response.text
+    (change,) = _changes(session)
+    assert change.destructive is False
+
+
+def test_replacing_a_note_with_text_inside_tags_is_403(session: Session):
+    _, _, task = _tree(session)
+    note = seed_note(session, USER_A, task=task, updated_at=STAMP)
+    _set(session, note, content="<ul><li><p>x</p></li></ul>", content_type="html")
+    _set(session, note, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES)
+
+    response = _replace(token, "tasks", task.id, "New", STAMP.isoformat())
+    assert response.status_code == 403
+    assert response.json()["detail"] == NEEDS_UNCONFIRMED
+    assert _changes(session) == []
+
+
+def test_replace_note(session: Session):
+    project, goal, _ = _tree(session)
+    seed_note(session, USER_A, goal=goal, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES_UNCONFIRMED, name="trusted")
+    stale = {"message": STALE_MESSAGE, "current_updated_at": STAMP.isoformat()}
+
+    for expected in ((STAMP - timedelta(minutes=1)).isoformat(), None):
+        response = _replace(token, "goals", goal.id, "New", expected)
+        assert response.status_code == 409, expected
+        assert response.json()["detail"] == stale
+    (note,) = _notes(session)
+    assert note.content == "Note"
+    assert _utc(note.updated_at) == STAMP
+    assert _changes(session) == []
+
+    markdown = "# New\n\nBody <b>raw</b>"
+    new_html = markdown_to_note_html(markdown)
+    assert "<b>" not in new_html
+    # The same instant in another offset matches.
+    expected = STAMP.astimezone(APP_TIMEZONE).isoformat()
+    response = _replace(token, "goals", goal.id, markdown, expected)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["content"] == new_html
+    assert body["content_type"] == "html"
+    (note,) = _notes(session)
+    assert note.content == new_html
+    assert note.content_type == "html"
+    assert _utc(note.updated_at) > STAMP  # type: ignore[operator]
+    assert datetime.fromisoformat(body["updated_at"]) == _utc(note.updated_at)
+
+    (change,) = _changes(session)
+    assert change.entity_type == "context_note"
+    assert change.entity_id == note.id
+    assert change.action == "replace"
+    assert change.destructive is True
+    assert change.agent_name == "trusted"
+    assert change.before == {"content": "Note"}
+    assert change.after == {"content": new_html}
+    assert change.project_id == project.id
+    assert change.goal_id == goal.id
+
+
+def test_replace_missing_note(session: Session):
+    project, goal, task = _tree(session)
+    token = issue_token(session, USER_A, NOTES_UNCONFIRMED)
+
+    # A version for a note that does not exist is stale: send null to create it.
+    response = _replace(token, "tasks", task.id, "New", STAMP.isoformat())
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "message": STALE_MESSAGE,
+        "current_updated_at": None,
+    }
+    assert _notes(session) == []
+    assert _changes(session) == []
+
+    response = _replace(token, "tasks", task.id, "", None)
+    assert response.status_code == 200, response.text
+    assert response.json()["content"] == ""
+    (note,) = _notes(session)
+    assert note.task_id == task.id
+    assert note.user_id == USER_A
+    assert note.content == ""
+    assert note.content_type == "html"
+    (change,) = _changes(session)
+    assert change.action == "replace"
+    assert change.destructive is False
+    assert change.before == {"content": ""}
+    assert change.after == {"content": ""}
+    assert change.project_id == project.id
+    assert change.goal_id == goal.id
+
+
+def test_identical_replace_is_noop(session: Session):
+    _, _, task = _tree(session)
+    note = seed_note(session, USER_A, task=task, updated_at=STAMP)
+    markdown = "Same *text*"
+    _set(session, note, content=markdown_to_note_html(markdown), content_type="html")
+    token = issue_token(session, USER_A, NOTES_UNCONFIRMED)
+
+    response = _replace(token, "tasks", task.id, markdown, STAMP.isoformat())
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["content"] == markdown_to_note_html(markdown)
+    assert datetime.fromisoformat(body["updated_at"]) == STAMP
+    (stored,) = _notes(session)
+    assert stored.content == markdown_to_note_html(markdown)
+    assert _utc(stored.updated_at) == STAMP
+    assert _changes(session) == []
+
+    # The checks before it still apply: stale gives 409, no scope gives 403.
+    response = _replace(token, "tasks", task.id, markdown, None)
+    assert response.status_code == 409
+    response = _replace(
+        issue_token(session, USER_A, NOTES),
+        "tasks",
+        task.id,
+        markdown,
+        STAMP.isoformat(),
+    )
+    assert response.status_code == 403
+    assert _changes(session) == []
+
+
+def test_replace_create_race_is_stale_409(session: Session, monkeypatch):
+    _, _, task = _tree(session)
+    token = issue_token(session, USER_A, NOTES_UNCONFIRMED)
+
+    def created_concurrently(*args: Any, **kwargs: Any) -> ContextNote:
+        raise HTTPException(409, "Note was created concurrently; retry")
+
+    monkeypatch.setattr(
+        agent_write_service.proposal_service, "create_note", created_concurrently
+    )
+    response = _replace(token, "tasks", task.id, "New", None)
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "message": STALE_MESSAGE,
+        "current_updated_at": None,
+    }
+    assert _notes(session) == []
+    assert _changes(session) == []
+
+
+@pytest.mark.parametrize("kind", NOTE_KINDS)
+def test_note_on_foreign_target_is_404(session: Session, kind: str):
+    foreign_project, foreign_goal, foreign_task = _tree(session, owner=USER_B)
+    foreign_id = _note_target(kind, foreign_project, foreign_goal, foreign_task)
+    token = issue_token(session, USER_A, NOTES_UNCONFIRMED)
+
+    for target_id in (foreign_id, uuid4()):
+        for response in (
+            _append(token, kind, target_id, "Hello"),
+            _replace(token, kind, target_id, "Hello", None),
+        ):
+            assert response.status_code == 404, target_id
+            assert response.json()["detail"] == NOT_FOUND[kind]
+    assert _notes(session) == []
+    assert _changes(session) == []
+
+
+def test_note_on_foreign_target_with_a_note_is_404(session: Session):
+    _, _, foreign_task = _tree(session, owner=USER_B)
+    seed_note(session, USER_B, task=foreign_task, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES_UNCONFIRMED)
+
+    for response in (
+        _append(token, "tasks", foreign_task.id, "Hello"),
+        _replace(token, "tasks", foreign_task.id, "Hello", STAMP.isoformat()),
+    ):
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Task not found"
+    (note,) = _notes(session)
+    assert note.content == "Note"
+    assert _changes(session) == []
+
+
+def test_note_append_too_long_is_422(session: Session):
+    _, _, task = _tree(session)
+    seed_note(session, USER_A, task=task, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES_UNCONFIRMED)
+    path = f"{BASE}/context-notes/tasks/{task.id}"
+
+    responses = [
+        _append(token, "tasks", task.id, "x" * 20_001),
+        _append(token, "tasks", task.id, ""),
+        _replace(token, "tasks", task.id, "x" * 100_001, STAMP.isoformat()),
+        client.post(
+            f"{path}/append",
+            json={"content_markdown": "Hi", "extra": 1},
+            headers=bearer(token),
+        ),
+        client.put(path, json={"content_markdown": "Hi"}, headers=bearer(token)),
+        _append(token, "quick-tasks", task.id, "Hi"),
+    ]
+    for response in responses:
+        assert response.status_code == 422, response.text
+    (note,) = _notes(session)
+    assert note.content == "Note"
+    assert _changes(session) == []
+
+
+def _raw(method: str, path: str, token: str, body: bytes):
+    return client.request(
+        method,
+        f"{BASE}{path}",
+        content=body,
+        headers={**bearer(token), "content-type": "application/json"},
+    )
+
+
+def test_note_body_over_cap_is_413(session: Session):
+    _, _, task = _tree(session)
+    token = issue_token(session, USER_A, NOTES_UNCONFIRMED)
+    oversized = json.dumps(
+        {"content_markdown": "x" * NOTE_BODY_CAP, "expected_updated_at": None}
+    ).encode()
+
+    for method, path in (
+        ("POST", f"/context-notes/tasks/{task.id}/append"),
+        ("PUT", f"/context-notes/tasks/{task.id}"),
+    ):
+        response = _raw(method, path, token, oversized)
+        assert response.status_code == 413
+        assert (
+            response.json()["detail"] == f"Request body exceeds {NOTE_BODY_CAP} bytes"
+        )
+    assert _notes(session) == []
+    assert _changes(session) == []
+
+    # Over the proposals' 64 KB but within 512 KB: accepted.
+    markdown = "あ" * 90_000
+    body = json.dumps(
+        {"content_markdown": markdown, "expected_updated_at": None},
+        ensure_ascii=False,
+    ).encode()
+    assert 64 * 1024 < len(body) < NOTE_BODY_CAP
+    response = _raw("PUT", f"/context-notes/tasks/{task.id}", token, body)
+    assert response.status_code == 200, response.text
+    (note,) = _notes(session)
+    assert note.content == markdown_to_note_html(markdown)
+
+
+def test_proposals_body_cap_unchanged(session: Session):
+    token = issue_token(session, USER_A, [AgentScope.PROPOSALS_WRITE])
+
+    response = _raw("POST", "/proposals", token, b" " * (64 * 1024 + 1))
+    assert response.status_code == 413
+    assert response.json()["detail"] == "Request body exceeds 65536 bytes"
+
+
+def test_openapi_states_what_a_note_replace_loses():
+    spec = app.openapi()
+    put = spec["paths"][f"{BASE}/context-notes/{{kind}}/{{target_id}}"]["put"]
+    field = spec["components"]["schemas"]["AgentNoteReplace"]["properties"][
+        "content_markdown"
+    ]
+    for description in (put["description"], field["description"]):
+        assert "tables, text colour and highlight, images and attachments" in (
+            description
+        )
+
+
+def test_openapi_documents_existing_dependency_as_200():
+    spec = app.openapi()
+    responses = spec["paths"][f"{BASE}/tasks/{{task_id}}/dependencies"]["post"][
+        "responses"
+    ]
+    assert set(responses) >= {"200", "201"}
+    assert responses["200"]["description"] == (
+        "The dependency already existed; nothing changed"
+    )
+    schema = responses["200"]["content"]["application/json"]["schema"]
+    assert schema == {"$ref": "#/components/schemas/TaskResponse"}
+
+
+def test_is_blank_html():
+    blank = agent_write_service._is_blank_html
+    for content in ("", " \n", "<p></p>", "<p><br></p>\n<p>&nbsp;</p>", "<h1> </h1>"):
+        assert blank(content), content
+    for content in (
+        "x",
+        "<p>x</p>",
+        "<p>&lt;</p>",
+        '<ul data-type="taskList"><li data-type="taskItem"><p>a</p></li></ul>',
+        '<p><img src="https://example.com/a.png"></p>',
+        "<hr>",
+    ):
+        assert not blank(content), content
+
+
+def _locking_sql(session: Session, monkeypatch, run: Any) -> list[str]:
+    """The Postgres SQL of each locking query ``run`` sends."""
+    from sqlalchemy.dialects import postgresql
+
+    sent: list[str] = []
+    real_exec = session.exec
+
+    def recording_exec(statement: Any, *args: Any, **kwargs: Any) -> Any:
+        if getattr(statement, "_for_update_arg", None) is not None:
+            sent.append(str(statement.compile(dialect=postgresql.dialect())))
+        return real_exec(statement, *args, **kwargs)
+
+    monkeypatch.setattr(session, "exec", recording_exec)
+    run()
+    return sent
+
+
+def test_row_locks_do_not_block_foreign_key_checks(session: Session, monkeypatch):
+    """FOR NO KEY UPDATE serializes writers but lets FK inserts (FOR KEY SHARE)
+    that reference the row go ahead."""
+    from humancompiler_api import proposal_service
+    from humancompiler_api.proposal_payloads import NoteTarget
+
+    _, goal, task = _tree(session)
+    seed_note(session, USER_A, task=task)
+    sent = _locking_sql(
+        session,
+        monkeypatch,
+        lambda: (
+            agent_write_service._lock(session, goal),
+            agent_write_service._lock(session, task),
+            proposal_service.lock_note(session, NoteTarget(task_id=task.id)),
+        ),
+    )
+    assert len(sent) == 3
+    for sql in sent:
+        assert sql.rstrip().endswith("FOR NO KEY UPDATE"), sql
+
+
+# --- Work logs ----------------------------------------------------------------------
+
+
+def test_create_log_rest(session: Session):
+    project, goal, task = _tree(session)
+    secret = issue_token(session, USER_A, [AgentScope.LOGS_WRITE], name="logger")
+
+    response = client.post(
+        f"{BASE}/logs",
+        headers=bearer(secret),
+        json={"task_id": str(task.id), "actual_minutes": 50, "comment": "Did X"},
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["task_id"] == str(task.id)
+    assert (body["actual_minutes"], body["comment"]) == (50, "Did X")
+    session.expire_all()
+    assert session.get(Log, UUID(body["id"])) is not None
+    assert session.get(Task, task.id).status == TaskStatus.IN_PROGRESS  # type: ignore[union-attr]
+    changes = sorted(_changes(session), key=lambda row: row.entity_type)
+    assert [(row.entity_type, row.action) for row in changes] == [
+        ("log", "create"),
+        ("task", "update"),
+    ]
+    assert {(row.project_id, row.goal_id) for row in changes} == {(project.id, goal.id)}
+
+
+def test_create_log_rest_errors(session: Session):
+    _, _, task = _tree(session)
+    _, _, foreign = _tree(session, USER_B)
+    writer = issue_token(session, USER_A, [AgentScope.LOGS_WRITE])
+    no_scope = issue_token(session, USER_A, [AgentScope.TASKS_WRITE])
+
+    response = client.post(
+        f"{BASE}/logs",
+        headers=bearer(no_scope),
+        json={"task_id": str(task.id), "actual_minutes": 30},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Missing required scope: logs:write"
+
+    for task_id in (foreign.id, uuid4()):
+        response = client.post(
+            f"{BASE}/logs",
+            headers=bearer(writer),
+            json={"task_id": str(task_id), "actual_minutes": 30},
+        )
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Task not found"
+
+    for extra in (
+        {"actual_minutes": 0},
+        {"actual_minutes": 1441},
+        {"actual_minutes": 30, "comment": "x" * 501},
+        {"actual_minutes": 30, "created_at": STAMP.isoformat()},
+    ):
+        response = client.post(
+            f"{BASE}/logs",
+            headers=bearer(writer),
+            json={"task_id": str(task.id), **extra},
+        )
+        assert response.status_code == 422, extra
+
+    assert _count(session, Log) == 0
+    assert _changes(session) == []
+    session.expire_all()
+    assert session.get(Task, task.id).status == TaskStatus.PENDING  # type: ignore[union-attr]

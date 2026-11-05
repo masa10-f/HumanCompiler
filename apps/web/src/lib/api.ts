@@ -85,6 +85,14 @@ import type {
   AgentTokenCreated,
 } from "@/types/agent-token";
 import type {
+  Proposal,
+  ProposalAcceptRequest,
+  ProposalListFilters,
+  ProposalListResponse,
+  ProposalRejectRequest,
+  ProposalSummary,
+} from "@/types/proposal";
+import type {
   TriageApplyRequest,
   TriageApplyResponse,
   TriageCapacitySettings,
@@ -1618,6 +1626,52 @@ class ApiClient {
       `/api/user/agent-tokens/${tokenId}/audit-logs?limit=${limit}`,
     );
   }
+
+  // === Agent proposals ===
+
+  async getProposals(
+    filters: ProposalListFilters,
+  ): Promise<ProposalListResponse> {
+    const params = new URLSearchParams({ status: filters.status });
+    if (filters.kind !== undefined) params.append("kind", filters.kind);
+    if (filters.project_id !== undefined)
+      params.append("project_id", filters.project_id);
+    if (filters.limit !== undefined)
+      params.append("limit", String(filters.limit));
+    if (filters.offset !== undefined)
+      params.append("offset", String(filters.offset));
+    return this.request<ProposalListResponse>(
+      `/api/proposals?${params.toString()}`,
+    );
+  }
+
+  async getProposalSummary(): Promise<ProposalSummary> {
+    return this.request<ProposalSummary>("/api/proposals/summary");
+  }
+
+  async getProposal(proposalId: string): Promise<Proposal> {
+    return this.request<Proposal>(`/api/proposals/${proposalId}`);
+  }
+
+  async acceptProposal(
+    proposalId: string,
+    body: ProposalAcceptRequest,
+  ): Promise<Proposal> {
+    return this.request<Proposal>(`/api/proposals/${proposalId}/accept`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async rejectProposal(
+    proposalId: string,
+    body: ProposalRejectRequest,
+  ): Promise<Proposal> {
+    return this.request<Proposal>(`/api/proposals/${proposalId}/reject`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
 }
 
 export const apiClient = new ApiClient();
@@ -1937,6 +1991,20 @@ export const agentTokensApi = {
   getScopes: () => apiClient.getAgentTokenScopes(),
   getAuditLogs: (tokenId: string, limit: number) =>
     apiClient.getAgentTokenAuditLogs(tokenId, limit),
+};
+
+/**
+ * Proposals API convenience wrapper.
+ * Provides methods for the agent proposal inbox.
+ */
+export const proposalsApi = {
+  list: (filters: ProposalListFilters) => apiClient.getProposals(filters),
+  summary: () => apiClient.getProposalSummary(),
+  get: (proposalId: string) => apiClient.getProposal(proposalId),
+  accept: (proposalId: string, body: ProposalAcceptRequest) =>
+    apiClient.acceptProposal(proposalId, body),
+  reject: (proposalId: string, body: ProposalRejectRequest) =>
+    apiClient.rejectProposal(proposalId, body),
 };
 
 // === Helper functions ===

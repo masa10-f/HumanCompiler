@@ -11,6 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, and_, select
 
+from humancompiler_api import proposal_service
+from humancompiler_api.agent_write_service import check_expected_updated_at
 from humancompiler_api.auth import AuthUser, get_current_user
 from humancompiler_api.database import db
 from humancompiler_api.models import (
@@ -22,6 +24,7 @@ from humancompiler_api.models import (
     Goal,
     Task,
 )
+from humancompiler_api.proposal_payloads import NoteTarget
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +61,7 @@ def verify_goal_ownership(session: Session, goal_id: UUID, user_id: str) -> Goal
     result = session.exec(
         select(Goal)
         .join(Project, Goal.project_id == Project.id)
-        .where(and_(Goal.id == goal_id, Project.owner_id == user_id))
+        .where(and_(Goal.id == goal_id, Project.owner_id == UUID(user_id)))
     ).first()
     if not result:
         # Determine whether goal doesn't exist or user lacks access
@@ -80,7 +83,7 @@ def verify_task_ownership(session: Session, task_id: UUID, user_id: str) -> Task
         select(Task)
         .join(Goal, Task.goal_id == Goal.id)
         .join(Project, Goal.project_id == Project.id)
-        .where(and_(Task.id == task_id, Project.owner_id == user_id))
+        .where(and_(Task.id == task_id, Project.owner_id == UUID(user_id)))
     ).first()
     if not result:
         # Determine whether task doesn't exist or user lacks access
@@ -152,6 +155,51 @@ def get_or_create_note(
     return note
 
 
+def update_note(
+    session: Session,
+    user_id: str,
+    target: NoteTarget,
+    note_data: ContextNoteUpdate,
+) -> ContextNote:
+    """Write the editor's fields to the target's note (created if missing).
+
+    The note row is locked (a no-op on SQLite) before ``expected_updated_at`` is
+    compared, so an agent write cannot land between the check and the save. A
+    mismatch gives 409 ``{message, current_updated_at}`` and writes nothing;
+    without ``expected_updated_at`` the note is overwritten, as before."""
+    get_or_create_note(
+        session,
+        user_id,
+        project_id=target.project_id,
+        goal_id=target.goal_id,
+        task_id=target.task_id,
+    )
+    try:
+        note = proposal_service.lock_note(session, target)
+        if note is None or note.updated_at is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create or retrieve note",
+            )
+        if note_data.expected_updated_at is not None:
+            check_expected_updated_at(note.updated_at, note_data.expected_updated_at)
+
+        update_data = note_data.model_dump(
+            exclude_unset=True, exclude={"expected_updated_at"}
+        )
+        for field, value in update_data.items():
+            setattr(note, field, value)
+
+        note.updated_at = datetime.now(UTC)
+        session.add(note)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    session.refresh(note)
+    return note
+
+
 # Project Notes
 @router.get(
     "/projects/{project_id}",
@@ -178,6 +226,7 @@ async def get_project_note(
     responses={
         404: {"model": ErrorResponse, "description": "Project not found"},
         403: {"model": ErrorResponse, "description": "Not authorized"},
+        409: {"description": "The note changed since expected_updated_at"},
     },
 )
 async def update_project_note(
@@ -188,17 +237,9 @@ async def update_project_note(
 ) -> ContextNoteResponse:
     """Update a project's note (creates if doesn't exist)"""
     verify_project_ownership(session, project_id, current_user.user_id)
-    note = get_or_create_note(session, current_user.user_id, project_id=project_id)
-
-    # Update fields
-    update_data = note_data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(note, field, value)
-
-    note.updated_at = datetime.now(UTC)
-    session.add(note)
-    session.commit()
-    session.refresh(note)
+    note = update_note(
+        session, current_user.user_id, NoteTarget(project_id=project_id), note_data
+    )
 
     logger.info(f"Updated project note for project {project_id}")
     return ContextNoteResponse.model_validate(note)
@@ -230,6 +271,7 @@ async def get_goal_note(
     responses={
         404: {"model": ErrorResponse, "description": "Goal not found"},
         403: {"model": ErrorResponse, "description": "Not authorized"},
+        409: {"description": "The note changed since expected_updated_at"},
     },
 )
 async def update_goal_note(
@@ -240,17 +282,9 @@ async def update_goal_note(
 ) -> ContextNoteResponse:
     """Update a goal's note (creates if doesn't exist)"""
     verify_goal_ownership(session, goal_id, current_user.user_id)
-    note = get_or_create_note(session, current_user.user_id, goal_id=goal_id)
-
-    # Update fields
-    update_data = note_data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(note, field, value)
-
-    note.updated_at = datetime.now(UTC)
-    session.add(note)
-    session.commit()
-    session.refresh(note)
+    note = update_note(
+        session, current_user.user_id, NoteTarget(goal_id=goal_id), note_data
+    )
 
     logger.info(f"Updated goal note for goal {goal_id}")
     return ContextNoteResponse.model_validate(note)
@@ -282,6 +316,7 @@ async def get_task_note(
     responses={
         404: {"model": ErrorResponse, "description": "Task not found"},
         403: {"model": ErrorResponse, "description": "Not authorized"},
+        409: {"description": "The note changed since expected_updated_at"},
     },
 )
 async def update_task_note(
@@ -292,17 +327,9 @@ async def update_task_note(
 ) -> ContextNoteResponse:
     """Update a task's note (creates if doesn't exist)"""
     verify_task_ownership(session, task_id, current_user.user_id)
-    note = get_or_create_note(session, current_user.user_id, task_id=task_id)
-
-    # Update fields
-    update_data = note_data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(note, field, value)
-
-    note.updated_at = datetime.now(UTC)
-    session.add(note)
-    session.commit()
-    session.refresh(note)
+    note = update_note(
+        session, current_user.user_id, NoteTarget(task_id=task_id), note_data
+    )
 
     logger.info(f"Updated task note for task {task_id}")
     return ContextNoteResponse.model_validate(note)

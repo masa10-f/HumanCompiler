@@ -52,7 +52,6 @@ const defaultSettings = {
   openai_model: 'gpt-6-sol',
   email_notifications_enabled: false,
   email_deadline_reminder_hours: 24,
-  email_overdue_alerts_enabled: true,
   email_daily_digest_enabled: false,
   email_daily_digest_hour: 9,
 }
@@ -107,5 +106,51 @@ describe('SettingsPage agent tokens', () => {
 
     expect(await screen.findByText('Agent Tokens Card')).toBeInTheDocument()
     expect(screen.queryByText('Hook Tokens')).not.toBeInTheDocument()
+  })
+
+  it('describes the daily digest with proposals and due tasks', async () => {
+    const baseImplementation = mockSecureFetch.getMockImplementation()
+    mockSecureFetch.mockImplementation((endpoint: string, ...rest: unknown[]) => {
+      if (endpoint === '/api/user/settings') {
+        return Promise.resolve(
+          jsonResponse({
+            ...defaultSettings,
+            email_notifications_enabled: true,
+            email_daily_digest_enabled: true,
+          })
+        )
+      }
+      return baseImplementation?.(endpoint, ...rest)
+    })
+
+    render(<SettingsPage />)
+
+    expect(
+      await screen.findByText('新しい提案と、期限が近いタスクを1日1通にまとめてメールで受け取ります')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        '• デイリーダイジェストは、設定した時刻以降に1日1通、新しい提案と、3日以内に期限が来るタスク・期限切れのタスクをまとめて送信します（メール通知がオフのときは送られません）'
+      )
+    ).toBeInTheDocument()
+    expect(screen.getByText('タスクの期限とデイリーダイジェストのメール通知を受け取ります')).toBeInTheDocument()
+    expect(screen.queryByText('• デイリーダイジェストは当日期限のタスク一覧を送信します')).toBeNull()
+  })
+
+  it('has no overdue alert switch when email notifications are on', async () => {
+    const baseImplementation = mockSecureFetch.getMockImplementation()
+    mockSecureFetch.mockImplementation((endpoint: string, ...rest: unknown[]) => {
+      if (endpoint === '/api/user/settings') {
+        return Promise.resolve(
+          jsonResponse({ ...defaultSettings, email_notifications_enabled: true })
+        )
+      }
+      return baseImplementation?.(endpoint, ...rest)
+    })
+
+    render(<SettingsPage />)
+
+    expect(await screen.findByText('期限前通知タイミング')).toBeInTheDocument()
+    expect(screen.queryByText('期限超過アラート')).toBeNull()
   })
 })

@@ -34,7 +34,9 @@ jest.mock('@/hooks/use-project-query', () => ({
   useProject: () => ({ data: { id: 'project', title: 'Project' } }),
 }))
 
-jest.mock('@/hooks/use-notes', () => ({ useGoalNote: () => ({}) }))
+const mockUseGoalNote = jest.fn((): Record<string, unknown> => ({}))
+
+jest.mock('@/hooks/use-notes', () => ({ useGoalNote: () => mockUseGoalNote() }))
 jest.mock('@/hooks/use-logs-query', () => ({ useBatchLogsQuery: () => ({ data: {} }) }))
 jest.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: jest.fn() }) }))
 jest.mock('@tanstack/react-query', () => ({ useQuery: () => ({}) }))
@@ -131,5 +133,45 @@ describe('GoalDetailPage task sorting', () => {
     expect(mockUseAllTasksByGoal).toHaveBeenLastCalledWith('goal', undefined)
     expectTaskOrder(['Ready high', 'Ready low', 'Blocked'])
     expect(screen.queryByRole('button', { name: '並び順を降順に変更' })).not.toBeInTheDocument()
+  })
+})
+
+describe('GoalDetailPage note conflict', () => {
+  beforeEach(() => {
+    mockUseAllTasksByGoal.mockReturnValue({ data: [] })
+  })
+
+  afterEach(() => {
+    mockUseGoalNote.mockReset()
+    mockUseGoalNote.mockImplementation(() => ({}))
+  })
+
+  it('shows the conflict banner by the goal note editor and wires its buttons', () => {
+    const reloadLatest = jest.fn()
+    const overwrite = jest.fn()
+    mockUseGoalNote.mockImplementation(() => ({
+      conflict: true,
+      saving: false,
+      reloadLatest,
+      overwrite,
+    }))
+
+    render(<GoalDetailPage />)
+
+    expect(
+      screen.getByText('このノートは、開いた後に別の場所（エージェントなど）で更新されました。')
+    ).toBeInTheDocument()
+    // Sticky, so it stays in view while the user scrolls a long note.
+    expect(screen.getByRole('alert').closest('.sticky')).toHaveClass('top-16', 'z-10')
+    fireEvent.click(screen.getByRole('button', { name: '最新を読み込む' }))
+    expect(reloadLatest).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'この内容で上書き' }))
+    expect(overwrite).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows no banner without a conflict', () => {
+    render(<GoalDetailPage />)
+
+    expect(screen.queryByRole('button', { name: '最新を読み込む' })).not.toBeInTheDocument()
   })
 })

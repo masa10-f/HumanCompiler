@@ -48,3 +48,4 @@ def test_scheduler_starts_when_enabled(
     assert notification_scheduler.start_notification_scheduler() is True
     assert started == [1]
     assert scheduler.get_job("notification_check") is not None
+    assert scheduler.get_job("daily_digest_email") is not None

@@ -142,7 +142,6 @@ async def get_user_settings(
             # Email notification defaults
             email_notifications_enabled=False,
             email_deadline_reminder_hours=24,
-            email_overdue_alerts_enabled=True,
             email_daily_digest_enabled=False,
             email_daily_digest_hour=9,
         )
@@ -159,7 +158,6 @@ async def get_user_settings(
         # Email notification settings
         email_notifications_enabled=settings.email_notifications_enabled,
         email_deadline_reminder_hours=settings.email_deadline_reminder_hours,
-        email_overdue_alerts_enabled=settings.email_overdue_alerts_enabled,
         email_daily_digest_enabled=settings.email_daily_digest_enabled,
         email_daily_digest_hour=settings.email_daily_digest_hour,
     )
@@ -226,7 +224,6 @@ async def create_user_settings(
         # Email notification settings
         email_notifications_enabled=settings.email_notifications_enabled,
         email_deadline_reminder_hours=settings.email_deadline_reminder_hours,
-        email_overdue_alerts_enabled=settings.email_overdue_alerts_enabled,
         email_daily_digest_enabled=settings.email_daily_digest_enabled,
         email_daily_digest_hour=settings.email_daily_digest_hour,
     )
@@ -281,7 +278,6 @@ async def update_user_settings(
         # Email notification settings
         email_notifications_enabled=settings.email_notifications_enabled,
         email_deadline_reminder_hours=settings.email_deadline_reminder_hours,
-        email_overdue_alerts_enabled=settings.email_overdue_alerts_enabled,
         email_daily_digest_enabled=settings.email_daily_digest_enabled,
         email_daily_digest_hour=settings.email_daily_digest_hour,
     )
@@ -332,11 +328,6 @@ async def update_email_notification_settings(
             settings_data.email_deadline_reminder_hours
         )
 
-    if settings_data.email_overdue_alerts_enabled is not None:
-        settings.email_overdue_alerts_enabled = (
-            settings_data.email_overdue_alerts_enabled
-        )
-
     if settings_data.email_daily_digest_enabled is not None:
         settings.email_daily_digest_enabled = settings_data.email_daily_digest_enabled
 
@@ -357,7 +348,6 @@ async def update_email_notification_settings(
         # Email notification settings
         email_notifications_enabled=settings.email_notifications_enabled,
         email_deadline_reminder_hours=settings.email_deadline_reminder_hours,
-        email_overdue_alerts_enabled=settings.email_overdue_alerts_enabled,
         email_daily_digest_enabled=settings.email_daily_digest_enabled,
         email_daily_digest_hour=settings.email_daily_digest_hour,
     )
