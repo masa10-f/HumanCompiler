@@ -57,7 +57,6 @@ export default function SettingsPage() {
   // Email notification settings (Issue #261)
   const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(false)
   const [emailDeadlineReminderHours, setEmailDeadlineReminderHours] = useState(24)
-  const [emailOverdueAlertsEnabled, setEmailOverdueAlertsEnabled] = useState(true)
   const [emailDailyDigestEnabled, setEmailDailyDigestEnabled] = useState(false)
   const [emailDailyDigestHour, setEmailDailyDigestHour] = useState(9)
   const [emailSettingsLoading, setEmailSettingsLoading] = useState(false)
@@ -167,7 +166,6 @@ export default function SettingsPage() {
         // Email notification settings (Issue #261)
         setEmailNotificationsEnabled(data.email_notifications_enabled ?? false)
         setEmailDeadlineReminderHours(data.email_deadline_reminder_hours ?? 24)
-        setEmailOverdueAlertsEnabled(data.email_overdue_alerts_enabled ?? true)
         setEmailDailyDigestEnabled(data.email_daily_digest_enabled ?? false)
         setEmailDailyDigestHour(data.email_daily_digest_hour ?? 9)
       }
@@ -337,7 +335,6 @@ export default function SettingsPage() {
         body: JSON.stringify({
           email_notifications_enabled: emailNotificationsEnabled,
           email_deadline_reminder_hours: emailDeadlineReminderHours,
-          email_overdue_alerts_enabled: emailOverdueAlertsEnabled,
           email_daily_digest_enabled: emailDailyDigestEnabled,
           email_daily_digest_hour: emailDailyDigestHour,
         }),
@@ -792,7 +789,7 @@ export default function SettingsPage() {
             <div className="space-y-0.5">
               <Label htmlFor="email-notifications" className="text-base">メール通知を有効にする</Label>
               <p className="text-sm text-muted-foreground">
-                タスクの期限に関するメール通知を受け取ります
+                タスクの期限とデイリーダイジェストのメール通知を受け取ります
               </p>
             </div>
             <Switch
@@ -831,23 +828,9 @@ export default function SettingsPage() {
 
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label htmlFor="overdue-alerts" className="text-base">期限超過アラート</Label>
-                    <p className="text-sm text-muted-foreground">
-                      タスクが期限を超過した場合に通知を受け取ります
-                    </p>
-                  </div>
-                  <Switch
-                    id="overdue-alerts"
-                    checked={emailOverdueAlertsEnabled}
-                    onCheckedChange={setEmailOverdueAlertsEnabled}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
                     <Label htmlFor="daily-digest" className="text-base">デイリーダイジェスト</Label>
                     <p className="text-sm text-muted-foreground">
-                      毎日の期限タスクサマリーをメールで受け取ります
+                      新しい提案と、期限が近いタスクを1日1通にまとめてメールで受け取ります
                     </p>
                   </div>
                   <Switch
@@ -916,7 +899,7 @@ export default function SettingsPage() {
               <li>• 通知メールはアカウントに登録されたメールアドレスに送信されます</li>
               <li>• 期限前通知は設定した時間より前にタスクがある場合に送信されます</li>
               <li>• 同じタスクに対して1日に複数回通知されることはありません</li>
-              <li>• デイリーダイジェストは当日期限のタスク一覧を送信します</li>
+              <li>• デイリーダイジェストは、設定した時刻以降に1日1通、新しい提案と、3日以内に期限が来るタスク・期限切れのタスクをまとめて送信します（メール通知がオフのときは送られません）</li>
             </ul>
           </div>
         </CardContent>

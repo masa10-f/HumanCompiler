@@ -778,6 +778,9 @@ class UserSettingsBase(SQLModel):
         default=24,
         description="Hours before deadline to send reminder email (e.g., 24, 48, 72)",
     )
+    # Unused since overdue alert emails were removed. The column is kept until
+    # a later migration drops it: the previous release still reads it during
+    # deploy.
     email_overdue_alerts_enabled: bool = SQLField(
         default=True,
         description="Send alerts when tasks become overdue",
@@ -826,7 +829,14 @@ class AgentScope(StrEnum):
     NOTES_READ = "notes:read"
     DAILY_PLANS_READ = "daily_plans:read"
     CONTEXT_READ = "context:read"
+    PROPOSALS_READ = "proposals:read"
     QUICK_TASKS_WRITE = "quick_tasks:write"
+    PROPOSALS_WRITE = "proposals:write"
+    GOALS_WRITE = "goals:write"
+    TASKS_WRITE = "tasks:write"
+    NOTES_WRITE = "notes:write"
+    LOGS_WRITE = "logs:write"
+    WRITES_UNCONFIRMED = "writes:unconfirmed"
 
 
 # User-facing (Japanese) descriptions shown in the token settings UI.
@@ -843,11 +853,22 @@ AGENT_SCOPE_DESCRIPTIONS: dict[AgentScope, str] = {
         "context export（Markdown）の取得。ノート、タスク、作業履歴、日次ノートを"
         "まとめて読むため、実質的に広い読み取り権限になる"
     ),
+    AgentScope.PROPOSALS_READ: "提案の一覧・取得（そのユーザーのすべての提案）",
     AgentScope.QUICK_TASKS_WRITE: "POST /api/hooks/quick-tasks（既存 hook の互換）",
+    AgentScope.PROPOSALS_WRITE: "提案の送信（POST /api/agent/v1/proposals）",
+    AgentScope.GOALS_WRITE: "Goal の作成・更新",
+    AgentScope.TASKS_WRITE: "Task の作成・更新と依存関係の追加・削除",
+    AgentScope.NOTES_WRITE: "Project / Goal / Task のノートへの追記と書き換え",
+    AgentScope.LOGS_WRITE: "作業ログ（Log：作業時間と作業内容）の記録",
+    AgentScope.WRITES_UNCONFIRMED: (
+        "中止・書き換え・移動・依存関係の削除を、承認なしで実行する（強い権限）"
+    ),
 }
 
 # Scopes the UI flags with a warning badge.
-AGENT_BROAD_SCOPES: frozenset[AgentScope] = frozenset({AgentScope.CONTEXT_READ})
+AGENT_BROAD_SCOPES: frozenset[AgentScope] = frozenset(
+    {AgentScope.CONTEXT_READ, AgentScope.WRITES_UNCONFIRMED}
+)
 
 
 class AgentTokenPresetInfo(BaseModel):
@@ -861,6 +882,15 @@ class AgentTokenPresetInfo(BaseModel):
 
 # The web UI builds its presets from this list, so adding a preset here shows up
 # on screen without a web change. The response order is the definition order.
+_WORKING_AGENT_SCOPES: list[str] = [
+    *(scope.value for scope in AgentScope if scope.value.endswith(":read")),
+    AgentScope.GOALS_WRITE.value,
+    AgentScope.TASKS_WRITE.value,
+    AgentScope.NOTES_WRITE.value,
+    AgentScope.LOGS_WRITE.value,
+    AgentScope.PROPOSALS_WRITE.value,
+]
+
 AGENT_TOKEN_PRESETS: tuple[AgentTokenPresetInfo, ...] = (
     AgentTokenPresetInfo(
         key="quick_task_hook",
@@ -876,7 +906,79 @@ AGENT_TOKEN_PRESETS: tuple[AgentTokenPresetInfo, ...] = (
         ),
         scopes=[scope.value for scope in AgentScope if scope.value.endswith(":read")],
     ),
+    AgentTokenPresetInfo(
+        key="proposing_agent",
+        label="提案するエージェント",
+        description=(
+            "Agent API の読み取りすべてと、提案の送信を許可する。"
+            "context:read（広い読み取り権限）を含む"
+        ),
+        scopes=[
+            *(scope.value for scope in AgentScope if scope.value.endswith(":read")),
+            AgentScope.PROPOSALS_WRITE.value,
+        ],
+    ),
+    AgentTokenPresetInfo(
+        key="working_agent_confirmed",
+        label="作業するエージェント（確認あり）",
+        description=(
+            "Agent API の読み取りすべてと、Goal・Task・ノート・作業ログの書き込み、"
+            "提案の送信を許可する。"
+            "中止・書き換え・移動などの消える操作は、承認が必要"
+            "（承認の仕組みは今後の更新で追加。それまでは拒否される）"
+        ),
+        scopes=list(_WORKING_AGENT_SCOPES),
+    ),
+    AgentTokenPresetInfo(
+        key="working_agent_unconfirmed",
+        label="作業するエージェント（確認なし）",
+        description=(
+            "上と同じ権限に加えて、消える操作（中止・書き換え・移動・依存関係の削除）を"
+            "承認なしで実行する（強い権限）"
+        ),
+        scopes=[*_WORKING_AGENT_SCOPES, AgentScope.WRITES_UNCONFIRMED.value],
+    ),
 )
+
+
+class ProposalKind(StrEnum):
+    """What an agent proposal asks the user to do."""
+
+    GOAL = "goal"
+    TASK = "task"
+    QUICK_TASK = "quick_task"
+    NOTE_APPEND = "note_append"
+    CONTRADICTION = "contradiction"
+    DECISION_REQUEST = "decision_request"
+    EXPERIMENT = "experiment"
+
+
+class ProposalStatus(StrEnum):
+    """Where a proposal is in the inbox."""
+
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    EDITED = "edited"
+    REJECTED = "rejected"
+
+
+class ProposalRejectCategory(StrEnum):
+    """Why the user rejected a proposal."""
+
+    DUPLICATE = "duplicate"
+    WRONG = "wrong"
+    NOT_VALUABLE = "not_valuable"
+    NOT_NOW = "not_now"
+    OTHER = "other"
+
+
+class ProposalResultType(StrEnum):
+    """What entity an accepted proposal created."""
+
+    GOAL = "goal"
+    TASK = "task"
+    QUICK_TASK = "quick_task"
+    CONTEXT_NOTE = "context_note"
 
 
 class AgentToken(SQLModel, table=True):  # type: ignore[call-arg]
@@ -905,6 +1007,166 @@ class AgentToken(SQLModel, table=True):  # type: ignore[call-arg]
     revoked_at: datetime | None = SQLField(default=None)
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+
+
+class AgentProposal(SQLModel, table=True):  # type: ignore[call-arg]
+    """A change an agent proposes. The user accepts, edits or rejects it.
+
+    ``payload`` is what the agent sent and is never modified; ``final_payload``
+    is set on every accept (the user's edited payload if they edited it, else
+    the original) and stays NULL until then. The enum-like columns are plain
+    TEXT holding the ``.value`` of the matching ``Proposal*`` enum."""
+
+    __tablename__ = "agent_proposals"
+
+    id: UUID | None = SQLField(
+        default=None,
+        sa_column=Column(
+            "id",
+            SQLAlchemyUUID,
+            primary_key=True,
+            server_default=text("gen_random_uuid()"),
+        ),
+    )
+    user_id: UUID = SQLField(foreign_key="users.id", index=True)
+    token_id: UUID | None = SQLField(
+        default=None, foreign_key="agent_tokens.id", ondelete="SET NULL"
+    )
+    agent_name: str = SQLField(max_length=100)
+    kind: str = SQLField(sa_column=Column("kind", Text(), nullable=False))
+    title: str = SQLField(min_length=1, max_length=200)
+    rationale: str = SQLField(
+        default="", sa_column=Column("rationale", Text(), nullable=False)
+    )
+    payload: dict[str, Any] = SQLField(
+        sa_column=Column(JSON().with_variant(JSONB(), "postgresql"), nullable=False)
+    )
+    final_payload: dict[str, Any] | None = SQLField(
+        default=None,
+        # none_as_null: None must be SQL NULL, not the JSON value null.
+        sa_column=Column(
+            JSON(none_as_null=True).with_variant(
+                JSONB(none_as_null=True), "postgresql"
+            ),
+            nullable=True,
+        ),
+    )
+    sources: list[dict[str, Any]] = SQLField(
+        default_factory=list,
+        sa_column=Column(JSON().with_variant(JSONB(), "postgresql"), nullable=False),
+    )
+    idempotency_key: str = SQLField(min_length=1, max_length=200)
+    project_id: UUID | None = SQLField(default=None)
+    status: str = SQLField(
+        default=ProposalStatus.PENDING.value,
+        sa_column=Column("status", Text(), nullable=False),
+    )
+    reject_category: str | None = SQLField(
+        default=None, sa_column=Column("reject_category", Text(), nullable=True)
+    )
+    decision_note: str | None = SQLField(
+        default=None, sa_column=Column("decision_note", Text(), nullable=True)
+    )
+    decision_option: int | None = SQLField(default=None)
+    result_type: str | None = SQLField(
+        default=None, sa_column=Column("result_type", Text(), nullable=True)
+    )
+    result_id: UUID | None = SQLField(default=None)
+    decided_at: datetime | None = SQLField(
+        default=None, sa_column=Column("decided_at", DateTime(timezone=True))
+    )
+    created_at: datetime = SQLField(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column("created_at", DateTime(timezone=True), nullable=False),
+    )
+    updated_at: datetime = SQLField(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column("updated_at", DateTime(timezone=True), nullable=False),
+    )
+
+
+class AgentChangeActor(StrEnum):
+    """Who made a change recorded in ``agent_changes``."""
+
+    AGENT = "agent"
+    USER = "user"
+
+
+class AgentChangeEntity(StrEnum):
+    """Kind of entity a change touched."""
+
+    GOAL = "goal"
+    TASK = "task"
+    CONTEXT_NOTE = "context_note"
+    TASK_DEPENDENCY = "task_dependency"
+    LOG = "log"
+
+
+class AgentChangeAction(StrEnum):
+    """What a change did to its entity."""
+
+    CREATE = "create"
+    UPDATE = "update"
+    APPEND = "append"
+    REPLACE = "replace"
+    REVERT = "revert"
+
+
+class AgentChange(SQLModel, table=True):  # type: ignore[call-arg]
+    """One change made through the Agent Gateway, or a user's revert of one.
+
+    ``before`` and ``after`` hold the entity state as JSON (``before`` is NULL
+    for creates). ``entity_id``, ``project_id``, ``goal_id``, ``proposal_id``
+    and ``reverts_change_id`` have no foreign key: the history outlives the
+    entities. ``agent_name`` copies the token's name at write time. The
+    enum-like columns are plain TEXT holding the ``.value`` of the matching
+    ``AgentChange*`` enum."""
+
+    __tablename__ = "agent_changes"
+
+    id: UUID = SQLField(
+        default_factory=uuid4,
+        sa_column=Column(
+            "id",
+            SQLAlchemyUUID,
+            primary_key=True,
+            server_default=text("gen_random_uuid()"),
+        ),
+    )
+    user_id: UUID = SQLField(foreign_key="users.id", ondelete="CASCADE")
+    actor: str = SQLField(sa_column=Column("actor", Text(), nullable=False))
+    agent_token_id: UUID | None = SQLField(
+        default=None, foreign_key="agent_tokens.id", ondelete="SET NULL"
+    )
+    agent_name: str | None = SQLField(default=None, max_length=100)
+    proposal_id: UUID | None = SQLField(default=None)
+    entity_type: str = SQLField(sa_column=Column("entity_type", Text(), nullable=False))
+    entity_id: UUID
+    project_id: UUID | None = SQLField(default=None)
+    goal_id: UUID | None = SQLField(default=None)
+    action: str = SQLField(sa_column=Column("action", Text(), nullable=False))
+    before: dict[str, Any] | None = SQLField(
+        default=None,
+        # none_as_null: None must be SQL NULL, not the JSON value null.
+        sa_column=Column(
+            JSON(none_as_null=True).with_variant(
+                JSONB(none_as_null=True), "postgresql"
+            ),
+            nullable=True,
+        ),
+    )
+    after: dict[str, Any] = SQLField(
+        sa_column=Column(JSON().with_variant(JSONB(), "postgresql"), nullable=False)
+    )
+    destructive: bool = SQLField(default=False)
+    reverts_change_id: UUID | None = SQLField(default=None)
+    reverted_at: datetime | None = SQLField(
+        default=None, sa_column=Column("reverted_at", DateTime(timezone=True))
+    )
+    created_at: datetime = SQLField(
+        default_factory=lambda: datetime.now(UTC),
+        sa_column=Column("created_at", DateTime(timezone=True), nullable=False),
+    )
 
 
 class AgentAuditLog(SQLModel, table=True):  # type: ignore[call-arg]
@@ -943,6 +1205,8 @@ class EmailNotificationType(StrEnum):
     """Type of email notification"""
 
     DEADLINE_REMINDER = "deadline_reminder"
+    # Overdue alert emails were removed (the daily digest lists overdue tasks).
+    # Kept only so existing log rows still load; never send with it.
     OVERDUE_ALERT = "overdue_alert"
     DAILY_DIGEST = "daily_digest"
 
@@ -981,7 +1245,7 @@ class EmailNotificationLog(EmailNotificationLogBase, table=True):  # type: ignor
 
     __tablename__ = "email_notification_logs"
 
-    id: UUID | None = SQLField(default=None, primary_key=True)
+    id: UUID = SQLField(default_factory=uuid4, primary_key=True)
     user_id: UUID = SQLField(foreign_key="users.id", index=True)
     task_id: UUID | None = SQLField(default=None, index=True)
     quick_task_id: UUID | None = SQLField(default=None, index=True)
@@ -1657,7 +1921,6 @@ class UserSettingsResponse(BaseModel):
     # Email notification settings (Issue #261)
     email_notifications_enabled: bool = False
     email_deadline_reminder_hours: int = 24
-    email_overdue_alerts_enabled: bool = True
     email_daily_digest_enabled: bool = False
     email_daily_digest_hour: int = 9
 
@@ -1747,6 +2010,112 @@ class AgentScopeCatalog(BaseModel):
     presets: list[AgentTokenPresetInfo]
 
 
+class ProposalResult(BaseModel):
+    """The entity an accepted proposal created."""
+
+    type: ProposalResultType
+    id: UUID
+
+
+class AgentProposalResponse(BaseModel):
+    """A proposal as the Agent API shows it. ``token_id`` is never exposed."""
+
+    id: UUID
+    kind: ProposalKind
+    status: ProposalStatus
+    title: str
+    rationale: str
+    payload: dict[str, Any]
+    final_payload: dict[str, Any] | None
+    sources: list[dict[str, Any]]
+    idempotency_key: str
+    agent_name: str
+    project_id: UUID | None
+    reject_category: ProposalRejectCategory | None
+    decision_note: str | None
+    decision_option: int | None
+    result: ProposalResult | None
+    created_at: datetime
+    decided_at: datetime | None
+    updated_at: datetime
+
+    @classmethod
+    def from_row(cls, row: AgentProposal) -> "AgentProposalResponse":
+        """Build the response from a stored row."""
+        result = (
+            ProposalResult(type=ProposalResultType(row.result_type), id=row.result_id)
+            if row.result_type is not None and row.result_id is not None
+            else None
+        )
+        return cls(
+            id=row.id,  # type: ignore[arg-type]
+            kind=ProposalKind(row.kind),
+            status=ProposalStatus(row.status),
+            title=row.title,
+            rationale=row.rationale,
+            payload=row.payload,
+            final_payload=row.final_payload,
+            sources=row.sources,
+            idempotency_key=row.idempotency_key,
+            agent_name=row.agent_name,
+            project_id=row.project_id,
+            reject_category=(
+                ProposalRejectCategory(row.reject_category)
+                if row.reject_category is not None
+                else None
+            ),
+            decision_note=row.decision_note,
+            decision_option=row.decision_option,
+            result=result,
+            created_at=row.created_at,
+            decided_at=row.decided_at,
+            updated_at=row.updated_at,
+        )
+
+    @field_serializer("created_at", "decided_at", "updated_at")
+    def serialize_datetimes(self, value: datetime | None) -> str | None:
+        """Ensure datetimes are serialized with UTC timezone info."""
+        return _serialize_utc(value)
+
+
+class ProposalResponse(AgentProposalResponse):
+    """A proposal as the web inbox shows it, with names of what it points at."""
+
+    project_name: str | None = None
+    goal_title: str | None = None
+    task_title: str | None = None
+    task_goal_id: UUID | None = None
+
+
+class ProposalListResponse(BaseModel):
+    """One page of the inbox. ``total`` counts all rows matching the filters."""
+
+    items: list[ProposalResponse]
+    total: int
+
+
+class ProposalSummaryItem(BaseModel):
+    """A pending proposal in the dashboard and header summary."""
+
+    id: UUID
+    kind: ProposalKind
+    title: str
+    agent_name: str
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str | None:
+        """Ensure created_at is serialized with UTC timezone info."""
+        return _serialize_utc(value)
+
+
+class ProposalSummaryResponse(BaseModel):
+    """How many proposals wait, and the newest three."""
+
+    pending_count: int
+    latest: list[ProposalSummaryItem]
+
+
 class AgentAuditLogResponse(BaseModel):
     """One audit row of an agent request, as shown to the token's owner."""
 
@@ -1783,7 +2152,6 @@ class EmailNotificationSettingsUpdate(BaseModel):
 
     email_notifications_enabled: bool | None = None
     email_deadline_reminder_hours: int | None = Field(None, ge=1, le=168)
-    email_overdue_alerts_enabled: bool | None = None
     email_daily_digest_enabled: bool | None = None
     email_daily_digest_hour: int | None = Field(None, ge=0, le=23)
 
@@ -2571,10 +2939,14 @@ class ContextNoteCreate(BaseModel):
 
 
 class ContextNoteUpdate(BaseModel):
-    """Context note update request"""
+    """Context note update request.
+
+    ``expected_updated_at`` is the note's updated_at when the editor read it; a
+    note changed since gives 409. Leaving it out overwrites, as before."""
 
     content: str | None = None
     content_type: str | None = Field(None, max_length=20)
+    expected_updated_at: datetime | None = None
 
 
 class NoteAttachmentResponse(BaseModel):

@@ -18,6 +18,7 @@ import { getApiEndpoint, getFallbackApiEndpoint } from "@/lib/config";
 
 const AGENT_API_PATH = "/api/agent/v1";
 const HOOK_PATH = "/api/hooks/quick-tasks";
+const MCP_PATH = "/mcp";
 
 const REQUEST_FIELDS = [
   { name: "title", required: true, description: "タスク名（1〜200文字）" },
@@ -57,6 +58,20 @@ const buildMeExample = (base: string) =>
 const buildListExample = (base: string) =>
   `curl -H "Authorization: Bearer <AGENT_TOKEN>" "${base}${AGENT_API_PATH}/tasks?limit=50"`;
 
+const buildProposalExample = (base: string) => `curl -X POST ${base}${AGENT_API_PATH}/proposals \\
+  -H "Authorization: Bearer <AGENT_TOKEN>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "kind": "quick_task",
+    "title": "論文の図3を作り直す",
+    "rationale": "査読コメントで軸のラベルが読めないと指摘されたため",
+    "payload": { "title": "図3の軸ラベルを直す", "estimate_hours": 0.5 },
+    "idempotency_key": "example:quick_task:fig3@v1"
+  }'`;
+
+const buildAcceptedExperimentsExample = (base: string) =>
+  `curl -H "Authorization: Bearer <AGENT_TOKEN>" "${base}${AGENT_API_PATH}/proposals?kind=experiment&status=accepted&status=edited"`;
+
 const AGENT_ERROR_RESPONSES = [
   "401: tokenがない・無効・失効済み",
   "403: tokenに必要なスコープがない（detail は Missing required scope: <scope>）",
@@ -74,6 +89,28 @@ const buildCurlExample = (endpoint: string) => `curl -X POST ${endpoint} \\
     "work_type": "focused_work",
     "priority": 2
   }'`;
+
+// The shell expands ${HUMANCOMPILER_TOKEN} inside double quotes before `claude`
+// runs, so this one-liner stores the resolved token in Claude Code's config.
+const buildClaudeCliExample = (mcpUrl: string) =>
+  `claude mcp add --transport http humancompiler ${mcpUrl} --header "Authorization: Bearer \${HUMANCOMPILER_TOKEN}"`;
+
+// Claude Code expands ${VAR} in .mcp.json headers each time it loads the file.
+const buildClaudeJsonExample = (mcpUrl: string) => `{
+  "mcpServers": {
+    "humancompiler": {
+      "type": "http",
+      "url": "${mcpUrl}",
+      "headers": {
+        "Authorization": "Bearer \${HUMANCOMPILER_TOKEN}"
+      }
+    }
+  }
+}`;
+
+const buildCodexExample = (mcpUrl: string) => `[mcp_servers.humancompiler]
+url = "${mcpUrl}"
+bearer_token_env_var = "HUMANCOMPILER_TOKEN"`;
 
 export function AgentTokenUsageGuide() {
   const [isOpen, setIsOpen] = useState(false);
@@ -93,6 +130,7 @@ export function AgentTokenUsageGuide() {
   }, []);
 
   const endpoint = `${apiBaseUrl}${HOOK_PATH}`;
+  const mcpUrl = `${apiBaseUrl}${MCP_PATH}`;
 
   return (
     <Collapsible
@@ -264,6 +302,95 @@ export function AgentTokenUsageGuide() {
             <p className="text-muted-foreground">
               プロジェクトやゴールへの振り分けは、登録後に「タスク」画面のQuick
               Task一覧から行ってください。
+            </p>
+          </section>
+
+          <section className="space-y-4 border-t pt-4">
+            <h4 className="text-sm font-semibold">提案（proposals）</h4>
+            <p className="text-muted-foreground">
+              提案を送るtokenには proposals:write
+              スコープが必要です（「提案するエージェント」プリセットに含まれています）。同じ
+              idempotency_key を送り直しても、2件目の提案は作られません。
+            </p>
+
+            <div className="space-y-1">
+              <div className="font-medium">提案を送る</div>
+              <pre className="overflow-x-auto rounded bg-muted p-2 text-xs">
+                <code>{buildProposalExample(apiBaseUrl)}</code>
+              </pre>
+            </div>
+
+            <div className="space-y-1">
+              <div className="font-medium">承認された実験の取得</div>
+              <pre className="overflow-x-auto rounded bg-muted p-2 text-xs">
+                <code>{buildAcceptedExperimentsExample(apiBaseUrl)}</code>
+              </pre>
+            </div>
+          </section>
+
+          <section className="space-y-4 border-t pt-4">
+            <h4 className="text-sm font-semibold">
+              MCP（Claude Code・Codex から使う）
+            </h4>
+            <p className="text-muted-foreground">
+              MCP
+              に対応したエージェントから、tokenのスコープの範囲で、Goal・Task・ノート・作業ログ（時間記録）の読み書きができます。書き込みには「作業するエージェント」プリセットなどのtokenが必要です。作業ログの記録には logs:write スコープが要ります。スコープは作成後に変えられないため、このスコープが無いtokenでは、tokenを作り直してください。
+            </p>
+
+            <div className="space-y-1">
+              <div className="font-medium">サーバーURL</div>
+              <code className="block overflow-x-auto rounded bg-muted px-2 py-1 text-xs">
+                {mcpUrl}
+              </code>
+            </div>
+
+            <div className="space-y-1">
+              <div className="font-medium">事前の準備</div>
+              <p className="text-muted-foreground">
+                作成したtokenを、環境変数 HUMANCOMPILER_TOKEN
+                に入れておきます（例: シェルの設定ファイルの
+                export、またはパスワードマネージャー）。
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <div className="font-medium">Claude Code</div>
+              <p className="text-muted-foreground">
+                プロジェクトの .mcp.json に次のように書きます。Claude Code
+                が読み込むたびに、環境変数から tokenを展開します。
+                ファイルに書くのは変数名だけなので、コミットしても安全です。プロジェクトのサーバーは、初回に
+                Claude Code が承認を求めます。
+              </p>
+              <pre className="overflow-x-auto rounded bg-muted p-2 text-xs">
+                <code>{buildClaudeJsonExample(mcpUrl)}</code>
+              </pre>
+              <div className="pt-2 font-medium">
+                手早く試す場合（この方法ではトークンそのものが ~/.claude.json
+                に保存されます）
+              </div>
+              <pre className="overflow-x-auto rounded bg-muted p-2 text-xs">
+                <code>{buildClaudeCliExample(mcpUrl)}</code>
+              </pre>
+              <p className="text-muted-foreground">
+                このコマンドは、ダブルクォートの中の ${"{HUMANCOMPILER_TOKEN}"}{" "}
+                をシェルが先に展開するため、tokenの値が Claude Code
+                の設定ファイル（~/.claude.json）に保存されます。
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <div className="font-medium">Codex</div>
+              <p className="text-muted-foreground">
+                ~/.codex/config.toml に追記します。bearer_token_env_var
+                には環境変数の名前を書きます（tokenの値は書きません）。
+              </p>
+              <pre className="overflow-x-auto rounded bg-muted p-2 text-xs">
+                <code>{buildCodexExample(mcpUrl)}</code>
+              </pre>
+            </div>
+
+            <p className="text-muted-foreground">
+              トークンは環境変数やファイルに置き、設定ファイルやチャットに直接書かないでください
             </p>
           </section>
         </div>

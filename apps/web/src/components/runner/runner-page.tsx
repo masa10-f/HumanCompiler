@@ -239,8 +239,9 @@ export function RunnerPage() {
               isOverdue={isOverdue}
             />
 
-            {/* Task notes */}
-            <TaskNotesSection taskId={sessionDetails.task.id} />
+            {/* Task notes: keyed by task so a switch drops the previous
+                task's note, pending save and conflict state */}
+            <TaskNotesSection key={sessionDetails.task.id} taskId={sessionDetails.task.id} />
 
             {/* Countdown timer */}
             <CountdownTimer
