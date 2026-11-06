@@ -130,6 +130,30 @@ describe('buildSchedule', () => {
     expect(schedule.lateGoalCount).toBe(0)
   })
 
+  it('does not let a planned goal jump ahead when that would make the in-progress goal late', () => {
+    // 20h/week: 10h takes 3.5 days, 2h takes 0.7 days.
+    const schedule = buildSchedule(
+      project([
+        goal('active', {
+          status: 'in_progress',
+          // Deadline is the end of 11/9 JST = 11/9 15:00Z, 3.6 days after NOW.
+          due_date: '2026-11-09T00:00:00+09:00',
+          tasks: [task({ status: 'in_progress', estimate_hours: 12, actual_hours: 2 })],
+        }),
+        goal('short', {
+          // Deadline is the end of 11/6 JST = 11/6 15:00Z, 0.6 days after NOW.
+          due_date: '2026-11-06T00:00:00+09:00',
+          tasks: [task({ estimate_hours: 1 })],
+        }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    // `short` (0.35 days) could be rescued, but `active` would then end 3.85
+    // days out and miss its own deadline, so in-progress work stays first.
+    expect(schedule.goals.map((item) => item.id)).toEqual(['active', 'short'])
+  })
+
   it('keeps in-progress work first when the planned goal is late either way', () => {
     const schedule = buildSchedule(
       project([
