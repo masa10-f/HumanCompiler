@@ -1072,7 +1072,6 @@ class ApiClient {
    * @param startDate - Optional filter start date
    * @param endDate - Optional filter end date
    * @param timeUnit - Time granularity (day, week, month)
-   * @param weeklyWorkHours - Weekly capacity hours
    * @param sortOptions - Sorting configuration
    * @returns Project timeline data
    */
@@ -1081,15 +1080,12 @@ class ApiClient {
     startDate?: string,
     endDate?: string,
     timeUnit?: string,
-    weeklyWorkHours?: number,
     sortOptions?: SortOptions,
   ): Promise<ProjectTimelineData> {
     const params = new URLSearchParams();
     if (startDate) params.append("start_date", startDate);
     if (endDate) params.append("end_date", endDate);
     if (timeUnit) params.append("time_unit", timeUnit);
-    if (weeklyWorkHours !== undefined)
-      params.append("weekly_work_hours", weeklyWorkHours.toString());
     if (sortOptions?.sortBy) params.append("sort_by", sortOptions.sortBy);
     if (sortOptions?.sortOrder)
       params.append("sort_order", sortOptions.sortOrder);
@@ -1865,7 +1861,6 @@ export const timelineApi = {
     startDate?: string,
     endDate?: string,
     timeUnit?: string,
-    weeklyWorkHours?: number,
     sortOptions?: SortOptions,
   ) =>
     apiClient.getProjectTimeline(
@@ -1873,7 +1868,6 @@ export const timelineApi = {
       startDate,
       endDate,
       timeUnit,
-      weeklyWorkHours,
       sortOptions,
     ),
   getOverview: (startDate?: string, endDate?: string) =>

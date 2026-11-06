@@ -96,6 +96,7 @@ describe('useProjectTimeline', () => {
           title: 'My Project',
           description: 'desc',
           weekly_work_hours: 40,
+          capacity: createMockProjectTimelineData().project.capacity,
           created_at: '2025-01-01T00:00:00Z',
           updated_at: '2025-01-01T00:00:00Z',
         },

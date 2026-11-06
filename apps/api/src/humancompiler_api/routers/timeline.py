@@ -3,6 +3,7 @@
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Any, TypeVar
 from uuid import UUID
 
@@ -22,9 +23,11 @@ from ..models import (
     GoalStatus,
     SortBy,
     SortOrder,
+    TriageCapacitySettings,
 )
 from .schemas.timeline import (
     GoalTimelineData,
+    ProjectCapacity,
     ProjectInfo,
     ProjectOverviewData,
     ProjectStatistics,
@@ -40,6 +43,60 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 F = TypeVar("F", bound=Callable[..., Awaitable[Any]])
+
+
+# Defaults mirror a fresh TriageCapacitySettings row (40h/week, 5h buffer).
+DEFAULT_WEEKLY_CAPACITY_HOURS = Decimal("40.00")
+DEFAULT_MEETING_BUFFER_HOURS = Decimal("5.00")
+
+
+def resolve_project_capacity(
+    session: Session, user_id: UUID, project_id: UUID
+) -> ProjectCapacity:
+    """Derive a project's weekly work hours from the triage capacity settings.
+
+    The weekly hours available to a project are the user's effective weekly
+    capacity (working hours minus buffer) multiplied by the project's effort
+    ratio, the same budget capacity triage assigns once allocations are saved.
+
+    Without saved settings, triage splits the capacity equally among the
+    buckets that have candidates at that moment. The timeline does not mirror
+    that split; it reports a 0% effort ratio so the page can ask the user to
+    set one.
+    """
+    capacity_settings = session.exec(
+        select(TriageCapacitySettings).where(TriageCapacitySettings.user_id == user_id)
+    ).first()
+
+    if capacity_settings is None:
+        weekly_capacity = DEFAULT_WEEKLY_CAPACITY_HOURS
+        meeting_buffer = DEFAULT_MEETING_BUFFER_HOURS
+        effort_percent = 0
+    else:
+        weekly_capacity = Decimal(str(capacity_settings.weekly_capacity_hours))
+        meeting_buffer = Decimal(str(capacity_settings.meeting_buffer_hours))
+        allocations = capacity_settings.project_allocations_json or {}
+        raw_percent = allocations.get(str(project_id))
+        # Keys are saved without the "project:" prefix since normalisation was
+        # added; the prefixed lookup only covers rows saved before that.
+        if raw_percent is None:
+            raw_percent = allocations.get(f"project:{project_id}", 0)
+        try:
+            effort_percent = min(100, max(0, int(raw_percent)))
+        except (TypeError, ValueError):
+            effort_percent = 0
+
+    effective_capacity = max(Decimal("0"), weekly_capacity - meeting_buffer)
+    weekly_work_hours = effective_capacity * Decimal(effort_percent) / Decimal(100)
+
+    return ProjectCapacity(
+        weekly_capacity_hours=float(weekly_capacity),
+        meeting_buffer_hours=float(meeting_buffer),
+        effective_capacity_hours=float(effective_capacity),
+        effort_percent=effort_percent,
+        weekly_work_hours=round(float(weekly_work_hours), 2),
+        configured=capacity_settings is not None,
+    )
 
 
 def conditional_rate_limit(rate: str) -> Callable[[F], F]:
@@ -66,9 +123,6 @@ async def get_project_timeline(
     start_date: datetime = Query(None, description="Timeline start date"),
     end_date: datetime = Query(None, description="Timeline end date"),
     time_unit: str = Query("day", description="Time unit: day, week, month"),
-    weekly_work_hours: float = Query(
-        20.0, description="Weekly work hours for timeline calculation"
-    ),
     sort_by: SortBy = Query(SortBy.STATUS, description="Sort field"),
     sort_order: SortOrder = Query(SortOrder.ASC, description="Sort order"),
     current_user: AuthUser = Depends(get_current_user),
@@ -77,7 +131,9 @@ async def get_project_timeline(
     """
     Get timeline data for a specific project
 
-    Returns project timeline with goals and tasks arranged by time periods
+    Returns project timeline with goals and tasks arranged by time periods.
+    The project's weekly work hours come from the capacity triage settings
+    (effective weekly capacity x the project's effort ratio).
     """
     try:
         logger.info(
@@ -247,13 +303,16 @@ async def get_project_timeline(
         # Sort goals by created_at for timeline display
         goals_data.sort(key=lambda x: x.created_at)
 
+        capacity = resolve_project_capacity(session, project.owner_id, project.id)
+
         return ProjectTimelineResponse(
             project=ProjectInfo(
                 id=str(project.id),
                 title=project.title,
                 description=project.description,
                 status=project.status,
-                weekly_work_hours=weekly_work_hours,
+                weekly_work_hours=capacity.weekly_work_hours,
+                capacity=capacity,
                 created_at=project.created_at.isoformat(),
                 updated_at=project.updated_at.isoformat(),
             ),

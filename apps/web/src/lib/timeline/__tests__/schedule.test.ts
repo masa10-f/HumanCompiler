@@ -49,6 +49,14 @@ function project(goals: TimelineGoal[]): ProjectTimelineData {
       title: 'Project',
       description: null,
       weekly_work_hours: 20,
+      capacity: {
+        weekly_capacity_hours: 40,
+        meeting_buffer_hours: 5,
+        effective_capacity_hours: 35,
+        effort_percent: 60,
+        weekly_work_hours: 20,
+        configured: true,
+      },
       created_at: '2026-09-01T00:00:00Z',
       updated_at: '2026-09-01T00:00:00Z',
     },
@@ -74,6 +82,20 @@ describe('buildSchedule', () => {
       NOW.getTime() + 2 * HALF_WEEK,
     ])
     expect(schedule.projectedEnd?.getTime()).toBe(NOW.getTime() + 3 * HALF_WEEK)
+  })
+
+  it('keeps a weekly capacity below half an hour', () => {
+    // 0.25 h/week → 10 h of work takes 40 weeks.
+    const schedule = buildSchedule(project([goal('a')]), { weeklyHours: 0.25, now: NOW })
+
+    expect(schedule.weeklyHours).toBe(0.25)
+    expect(schedule.projectedEnd?.getTime()).toBe(NOW.getTime() + 40 * 7 * DAY_MS)
+  })
+
+  it('falls back to half an hour a week without a positive capacity', () => {
+    const schedule = buildSchedule(project([goal('a')]), { weeklyHours: 0, now: NOW })
+
+    expect(schedule.weeklyHours).toBe(0.5)
   })
 
   it('schedules predecessors before their dependents regardless of input order', () => {
