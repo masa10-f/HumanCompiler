@@ -342,7 +342,7 @@ export function TriageSettingsCard() {
                         <Slider
                           value={[allocation]}
                           max={100}
-                          step={5}
+                          step={1}
                           onValueChange={(values) => updateProjectAllocation(project.id, values[0] ?? 0)}
                         />
                       </div>
@@ -362,7 +362,7 @@ export function TriageSettingsCard() {
                     <Slider
                       value={[inboxAllocationPercent]}
                       max={100}
-                      step={5}
+                      step={1}
                       onValueChange={(values) => setInboxAllocationPercent(values[0] ?? 0)}
                     />
                   </div>
