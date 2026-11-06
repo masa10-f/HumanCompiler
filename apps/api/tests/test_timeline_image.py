@@ -98,12 +98,27 @@ def test_allows_http_to_local_renderer(monkeypatch: pytest.MonkeyPatch, base_url
 
 
 @pytest.mark.usefixtures("configured")
+def test_too_large_image_is_422_with_renderer_detail(monkeypatch: pytest.MonkeyPatch):
+    detail = 'Timeline image is too large; use scale "fit" or fewer rows'
+    _fake_post(monkeypatch, httpx.Response(422, json={"detail": detail}))
+
+    with pytest.raises(HTTPException) as exc_info:
+        timeline_image.render_timeline_image(DATA, OPTIONS)
+
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.detail == detail
+
+
+@pytest.mark.usefixtures("configured")
 @pytest.mark.parametrize(
     "response",
     [
         httpx.ConnectError("refused"),
         httpx.Response(401, json={"detail": "Unauthorized"}),
         httpx.Response(500, json={"detail": "Failed to render timeline image"}),
+        # A schema error from the renderer is our bug, not the agent's.
+        httpx.Response(422, json={"detail": {"errors": []}}),
+        httpx.Response(422, text="not json"),
         httpx.Response(200, text="not json"),
         httpx.Response(200, json={"mime_type": "image/png"}),
         httpx.Response(200, json={"data": "iVBOR", "width": 1, "height": 1}),

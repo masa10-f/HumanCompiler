@@ -470,7 +470,9 @@ G3 の `agent_proposals` に、種類を3つ足す。
 - 結果は、PNG の image content と、JSON の text（`project`、`width`、`height`、`summary`：進捗、残り時間、完了見込み、遅れているゴールの数など）。`structuredContent` にも同じ JSON を入れる。
 - スコープは `projects:read`、`goals:read`、`tasks:read`、`logs:read`。画像に Goal、Task、作業ログから描いた過去のバーが出るため。
 - 週の作業時間は、画面と同じく既定 20 時間。画面の入力は保存されないので、エージェントが指定する。
-- 画像の倍率は既定 2 倍で、キャンバスの上限（画面の書き出しと同じ）と一辺 8000px に収まるように下げる。
+- 画像の倍率は 1 倍。画像を見るモデルは長辺を約 1.5k px に縮めるので、2 倍にしてもバイト数が増えるだけになる。さらに、キャンバスの上限（画面の書き出しと同じ）と一辺 8000px に収まるように下げる。
+- PNG は 3.5MB まで。画像 API は約 5MB を超える画像を受け付けない（Anthropic は base64 の長さで数え、これは元の 4/3 になる）。超えたときは倍率を下げて描き直す。それでも収まらなければ、Web は 422 を返す。API はそれを 422 のままエージェントに返し、`scale=fit` や `expand_tasks=false` で呼び直すよう伝える。
+- 描画の呼び出しは、スレッドプールのワーカーを1つ使う。描画は 0.5 秒ほどで終わるので、タイムアウトは全体 20 秒、接続 5 秒にする。
 
 **デプロイ**
 - `openssl rand -hex 32` などで値を作り、Vercel（Production）と Fly（`flyctl secrets set TIMELINE_RENDER_SECRET=...`）に同じ値を入れる。

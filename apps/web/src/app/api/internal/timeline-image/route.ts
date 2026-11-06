@@ -16,7 +16,11 @@
 
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
-import { renderTimelineImage, timelineImageRequestSchema } from '@/lib/timeline/image-request'
+import {
+  renderTimelineImage,
+  TimelineImageTooLargeError,
+  timelineImageRequestSchema,
+} from '@/lib/timeline/image-request'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -70,6 +74,9 @@ export async function POST(request: Request) {
   try {
     return json(await renderTimelineImage(parsed.data), 200)
   } catch (error) {
+    if (error instanceof TimelineImageTooLargeError) {
+      return json({ detail: error.message }, 422)
+    }
     console.error('Timeline image rendering failed', error)
     return json({ detail: 'Failed to render timeline image' }, 500)
   }

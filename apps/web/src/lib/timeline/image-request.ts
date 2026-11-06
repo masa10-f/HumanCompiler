@@ -19,6 +19,13 @@ import type { ProjectTimelineData } from './types'
 
 /** Longest image side in pixels; larger images are scaled down to it. */
 const MAX_PIXEL_SIDE = 8000
+/**
+ * Largest PNG returned. Vision APIs reject images over about 5 MB (Anthropic's
+ * limit counts the base64 text, which is 4/3 of this), so larger renders are
+ * redrawn at a lower pixel ratio until they fit.
+ */
+export const MAX_PNG_BYTES = 3_500_000
+const MAX_RENDER_ATTEMPTS = 4
 
 // next.config.js ships these files with the route (outputFileTracingIncludes).
 // Written out in full so file tracing picks only these two of the nine weights.
@@ -126,6 +133,23 @@ export interface TimelineImageResult {
   }
 }
 
+/** The roadmap could not be drawn within MAX_PNG_BYTES. */
+export class TimelineImageTooLargeError extends Error {
+  constructor() {
+    super('Timeline image is too large; use scale "fit" or fewer rows')
+    this.name = 'TimelineImageTooLargeError'
+  }
+}
+
+function rasterize(svg: string, ratio: number): Buffer {
+  return new Resvg(svg, {
+    fitTo: { mode: 'zoom', value: ratio },
+    font: { fontFiles: FONT_FILES, loadSystemFonts: false, defaultFontFamily: FONT_FAMILY },
+  })
+    .render()
+    .asPng()
+}
+
 export async function renderTimelineImage({
   data,
   options,
@@ -139,17 +163,20 @@ export async function renderTimelineImage({
     showDependencies: options.show_dependencies,
     expandTasks: options.expand_tasks,
   })
-  const ratio = Math.min(
+  let ratio = Math.min(
     options.pixel_ratio,
     exportScale(rendered.width, rendered.height),
     MAX_PIXEL_SIDE / Math.max(rendered.width, rendered.height),
   )
-  const png = new Resvg(rendered.svg, {
-    fitTo: { mode: 'zoom', value: ratio },
-    font: { fontFiles: FONT_FILES, loadSystemFonts: false, defaultFontFamily: FONT_FAMILY },
-  })
-    .render()
-    .asPng()
+  let png = rasterize(rendered.svg, ratio)
+  for (let attempt = 1; png.length > MAX_PNG_BYTES && attempt < MAX_RENDER_ATTEMPTS; attempt++) {
+    // PNG size grows roughly with pixel count, i.e. with the square of the ratio.
+    ratio *= Math.sqrt(MAX_PNG_BYTES / png.length) * 0.9
+    png = rasterize(rendered.svg, ratio)
+  }
+  if (png.length > MAX_PNG_BYTES) {
+    throw new TimelineImageTooLargeError()
+  }
 
   const { schedule } = rendered
   return {

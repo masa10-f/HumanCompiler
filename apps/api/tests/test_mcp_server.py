@@ -1552,6 +1552,7 @@ async def test_get_timeline_image_returns_png_and_summary(
         "show_completed": True,
         "show_dependencies": True,
         "expand_tasks": True,
+        "pixel_ratio": 1,
     }
     assert sent["data"]["project"]["weekly_work_hours"] == 15
     (sent_goal,) = sent["data"]["goals"]

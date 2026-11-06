@@ -7,7 +7,7 @@
 // This file is part of HumanCompiler.
 // For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-import { renderTimelineImage, timelineImageRequestSchema } from '../image-request'
+import { MAX_PNG_BYTES, renderTimelineImage, timelineImageRequestSchema } from '../image-request'
 import { renderTimelineSvg } from '../render-image'
 import type { ProjectTimelineData, TimelineGoal } from '../types'
 
@@ -150,4 +150,22 @@ describe('renderTimelineImage', () => {
       has_cycle: false,
     })
   })
+
+  it('lowers the pixel ratio until a large roadmap fits the byte limit', async () => {
+    // 80 goals with 8 tasks each, at day zoom: about 7.5 MB at 2x.
+    const goals = Array.from({ length: 80 }, (_, i) => ({
+      ...goal(`g${i}`, `ゴール${i} 長いタイトルのテスト`, i ? [`g${i - 1}`] : []),
+      tasks: Array.from({ length: 8 }, (_, j) => ({ ...goal(`g${i}`, '').tasks[0]!, id: `t${i}-${j}` })),
+    }))
+    const request = timelineImageRequestSchema.parse({
+      data: { ...DATA, goals },
+      options: { weekly_hours: 20, now: NOW.toISOString(), scale: 'day', expand_tasks: true },
+    })
+
+    const result = await renderTimelineImage(request)
+
+    const png = Buffer.from(result.data, 'base64')
+    expect(png.length).toBeLessThanOrEqual(MAX_PNG_BYTES)
+    expect(png.readUInt32BE(16)).toBe(result.width)
+  }, 60_000)
 })

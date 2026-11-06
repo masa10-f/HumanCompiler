@@ -25,7 +25,9 @@ from humancompiler_api.config import settings
 logger = logging.getLogger(__name__)
 
 RENDER_PATH = "/api/internal/timeline-image"
-RENDER_TIMEOUT_SECONDS = 30.0
+# A render takes about 0.5 s. The call holds a threadpool worker, so give up
+# early on an unreachable renderer.
+RENDER_TIMEOUT = httpx.Timeout(20.0, connect=5.0)
 
 NOT_CONFIGURED = "Timeline image rendering is not configured"
 # Plain http is allowed only to a renderer on this machine (local development).
@@ -57,12 +59,19 @@ def render_timeline_image(
             f"{base_url}{RENDER_PATH}",
             json={"data": data, "options": options},
             headers={"Authorization": f"Bearer {secret}"},
-            timeout=RENDER_TIMEOUT_SECONDS,
+            timeout=RENDER_TIMEOUT,
         )
     except httpx.HTTPError as exc:
         logger.error("Timeline image renderer unreachable: %s", exc)
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, RENDERER_FAILED) from exc
 
+    if response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT:
+        # The renderer could not fit the image within its size limit. Its
+        # detail tells the agent to ask for a smaller one. (A schema error has
+        # a structured detail instead, and is our bug: 502 below.)
+        detail = _json_detail(response)
+        if isinstance(detail, str):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail)
     if response.status_code != status.HTTP_200_OK:
         # The body is our own renderer's error detail, never user data.
         logger.error(
@@ -83,3 +92,11 @@ def render_timeline_image(
         logger.error("Timeline image renderer sent an invalid body: %s", exc)
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, RENDERER_FAILED) from exc
     return dict(result)
+
+
+def _json_detail(response: httpx.Response) -> Any:
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    return body.get("detail") if isinstance(body, dict) else None
