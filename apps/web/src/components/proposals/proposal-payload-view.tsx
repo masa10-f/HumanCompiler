@@ -64,9 +64,15 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
+/** Note text, or null when empty or whitespace-only (the backend creates no note). */
+function noteText(markdown: unknown): string | null {
+  const body = text(markdown);
+  return body === null || body.trim() === '' ? null : body;
+}
+
 /** Agent note as collapsed plain text; renders nothing when empty. */
 export function NoteDetails({ markdown }: { markdown: unknown }): ReactNode {
-  const body = text(markdown);
+  const body = noteText(markdown);
   if (body === null) return null;
   return (
     <details>
@@ -82,7 +88,7 @@ function noteRow(markdown: unknown): ReactNode {
   return (
     <Row
       label="ノート"
-      value={text(markdown) === null ? null : <NoteDetails markdown={markdown} />}
+      value={noteText(markdown) === null ? null : <NoteDetails markdown={markdown} />}
     />
   );
 }

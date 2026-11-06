@@ -521,6 +521,18 @@ describe('ProposalCard', () => {
       expect(document.querySelector('b')).toBeNull();
     });
 
+    it('renders no note row for a whitespace-only task note', () => {
+      renderWithClient(
+        <ProposalCard
+          proposal={makeProposal({
+            kind: 'task',
+            payload: { goal_id: 'g1', title: 'T', note_markdown: '  \n ' },
+          })}
+        />
+      );
+      expect(screen.queryByText(/ノート（/)).toBeNull();
+    });
+
     it('renders no note row for an empty task note', () => {
       renderWithClient(
         <ProposalCard

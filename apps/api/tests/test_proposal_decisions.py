@@ -836,6 +836,7 @@ def test_task_note_neutralises_raw_html_and_js_links(session: Session):
 
     content = session.exec(select(ContextNote)).one().content
     assert "<script" not in content
+    assert "&lt;script&gt;" in content
     assert 'href="javascript:' not in content  # literal text is escaped, no link
 
 
