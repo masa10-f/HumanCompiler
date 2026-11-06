@@ -9,7 +9,7 @@
 // the timeline page. Also copies the two font weights the drawing uses and
 // the licences into the package.
 
-import { copyFileSync, mkdirSync, rmSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,6 +17,7 @@ import { build } from 'esbuild'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const require = createRequire(path.join(root, 'package.json'))
+const { version } = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'))
 
 rmSync(path.join(root, 'dist'), { recursive: true, force: true })
 await build({
@@ -31,7 +32,10 @@ await build({
   jsx: 'automatic',
   // The native rasterizer is installed as a dependency, not bundled.
   external: ['@resvg/resvg-js'],
-  define: { 'process.env.NODE_ENV': '"production"' },
+  define: {
+    'process.env.NODE_ENV': '"production"',
+    __VERSION__: JSON.stringify(version),
+  },
   banner: { js: '#!/usr/bin/env node' },
   // The web modules carry 'use client', which means nothing here.
   logOverride: { 'module-level-directive': 'silent' },

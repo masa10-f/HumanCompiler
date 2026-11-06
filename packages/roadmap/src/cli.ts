@@ -21,7 +21,9 @@ import { CliError, DEFAULT_API_URL, fetchTimeline, validateApiUrl } from './api'
 import { drawPages, MAX_WIDTH, MIN_WIDTH, planRoadmap, rasterize } from './render'
 import { type ImageFile, summaryJson, summaryMarkdown } from './summary'
 
-const VERSION = process.env.npm_package_version ?? '0.1.0'
+// Injected from package.json by scripts/build.mjs.
+declare const __VERSION__: string
+const VERSION = __VERSION__
 
 const HELP = `Usage: humancompiler-roadmap <project-id> [options]
        humancompiler-roadmap --input <timeline.json> [options]
@@ -64,11 +66,18 @@ Plan and view:
 
 const ZOOMS: readonly TimeScale[] = ['fit', 'day', 'week', 'month']
 
-function numberOption(name: string, raw: string | undefined, min: number, max: number) {
+function numberOption(
+  name: string,
+  raw: string | undefined,
+  min: number,
+  max: number,
+  { integer = false } = {},
+) {
   if (raw === undefined) return undefined
   const value = Number(raw)
-  if (!Number.isFinite(value) || value < min || value > max) {
-    throw new CliError(`--${name} must be a number from ${min} to ${max}`)
+  if (!Number.isFinite(value) || value < min || value > max || (integer && !Number.isInteger(value))) {
+    const kind = integer ? 'a whole number' : 'a number'
+    throw new CliError(`--${name} must be ${kind} from ${min} to ${max}`)
   }
   return value
 }
@@ -132,7 +141,7 @@ export async function main(argv: string[]): Promise<void> {
   if (now && Number.isNaN(now.getTime())) throw new CliError('--now must be an ISO date-time')
   const weeklyHours = numberOption('weekly-hours', values['weekly-hours'], 0.01, 168)
   const width = numberOption('width', values.width, MIN_WIDTH, MAX_WIDTH)!
-  const goalsPerPage = numberOption('goals-per-page', values['goals-per-page'], 0, 1000)!
+  const goalsPerPage = numberOption('goals-per-page', values['goals-per-page'], 0, 1000, { integer: true })!
   const pixelRatio = numberOption('pixel-ratio', values['pixel-ratio'], 1, 2)!
 
   let data: ProjectTimelineData

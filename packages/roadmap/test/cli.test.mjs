@@ -164,6 +164,7 @@ describe('drawing from a file', () => {
     [['-o', 'roadmap.jpg'], /--output must end in .png or .svg/],
     [['--now', 'yesterday'], /--now must be an ISO date-time/],
     [['--bogus'], /Unknown option/],
+    [['--goals-per-page', '2.5'], /--goals-per-page must be a whole number from 0 to 1000/],
   ]) {
     test(`rejects ${args.join(' ')}`, async () => {
       const { code, stderr } = await run(['--input', FIXTURE, ...args])
@@ -171,6 +172,13 @@ describe('drawing from a file', () => {
       assert.match(stderr, message)
     })
   }
+})
+
+test('--version prints the package version, not the surrounding project\'s', async () => {
+  const { version } = JSON.parse(readFileSync(path.join(here, '..', 'package.json'), 'utf8'))
+  const { code, stdout } = await run(['--version'], { npm_package_version: '9.9.9' })
+  assert.equal(code, 0)
+  assert.equal(stdout.trim(), version)
 })
 
 test('stops on Node versions without negative options', async () => {
