@@ -18,6 +18,8 @@ class TaskTimelineData(BaseModel):
     status_color: str
     actual_hours: float
     logs_count: int
+    first_logged_at: str | None = None
+    last_logged_at: str | None = None
 
 
 class GoalTimelineData(BaseModel):
@@ -35,6 +37,8 @@ class GoalTimelineData(BaseModel):
     created_at: str
     updated_at: str
     tasks: list[TaskTimelineData]
+    actual_start_date: str | None = None
+    actual_end_date: str | None = None
 
 
 class ProjectInfo(BaseModel):

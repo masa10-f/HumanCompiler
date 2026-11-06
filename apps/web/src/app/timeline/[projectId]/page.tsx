@@ -11,29 +11,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ArrowLeft, Clock3 } from 'lucide-react'
-import { subMonths, startOfMonth, endOfMonth } from 'date-fns'
-import type { TimelineFilters } from '@/types/timeline'
-import { getJSTDate } from '@/lib/date-utils'
 
 export default function ProjectTimelinePage() {
   const { isAuthenticated, loading } = useAuth()
   const router = useRouter()
   const params = useParams()
   const projectId = params.projectId as string
-
-  const [filters, setFilters] = useState<TimelineFilters>(() => {
-    const now = getJSTDate(new Date().toISOString().split('T')[0]!)
-    const startDate = startOfMonth(subMonths(now, 2))
-    const endDate = endOfMonth(now)
-
-    return {
-      start_date: startDate.toISOString().split('T')[0],
-      end_date: endDate.toISOString().split('T')[0],
-      time_unit: 'day',
-      show_dependencies: true,
-      show_task_segments: true,
-    }
-  })
 
   const [weeklyWorkHours, setWeeklyWorkHours] = useState(20)
 
@@ -42,7 +25,7 @@ export default function ProjectTimelinePage() {
     isLoading: timelineLoading,
     error: timelineError,
     refetch,
-  } = useProjectTimeline(projectId, filters, weeklyWorkHours)
+  } = useProjectTimeline(projectId)
 
   if (loading) {
     return (
@@ -58,10 +41,6 @@ export default function ProjectTimelinePage() {
   if (!isAuthenticated) {
     router.push('/login')
     return null
-  }
-
-  const handleFiltersChange = (newFilters: TimelineFilters) => {
-    setFilters(newFilters)
   }
 
   const handleRefresh = () => {
@@ -124,8 +103,7 @@ export default function ProjectTimelinePage() {
             data={timelineData}
             isLoading={timelineLoading}
             error={timelineError}
-            filters={filters}
-            onFiltersChange={handleFiltersChange}
+            weeklyWorkHours={weeklyWorkHours}
             onRefresh={handleRefresh}
           />
         </TimelineErrorBoundary>

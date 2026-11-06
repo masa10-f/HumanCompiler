@@ -426,6 +426,51 @@ class TestTimelineRouter:
         assert task_data["actual_hours"] == 2.5
         assert task_data["logs_count"] == 2
 
+    def test_timeline_exposes_logged_work_dates(
+        self, client: TestClient, test_session: Session
+    ):
+        """Goals and tasks expose when work was actually logged"""
+        user = create_test_user(test_session)
+        project = create_test_project(test_session, user.id)
+        goal = create_test_goal(test_session, project.id)
+        first_task = create_test_task(test_session, goal.id)
+        second_task = create_test_task(test_session, goal.id)
+        idle_task = create_test_task(test_session, goal.id)
+
+        early = create_test_log(test_session, first_task.id)
+        early.created_at = datetime(2026, 5, 1, 9, 0, tzinfo=UTC)
+        middle = create_test_log(test_session, first_task.id)
+        middle.created_at = datetime(2026, 5, 3, 9, 0, tzinfo=UTC)
+        late = create_test_log(test_session, second_task.id)
+        late.created_at = datetime(2026, 5, 8, 18, 0, tzinfo=UTC)
+        test_session.add_all([early, middle, late])
+        test_session.commit()
+
+        app.dependency_overrides[get_current_user] = lambda: AuthUser(
+            user_id=str(user.id), email=user.email
+        )
+        app.dependency_overrides[get_session] = lambda: test_session
+
+        response = client.get(f"/api/timeline/projects/{project.id}")
+
+        assert response.status_code == 200
+        goal_data = response.json()["goals"][0]
+
+        def parse(value: str) -> datetime:
+            parsed = datetime.fromisoformat(value)
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+        assert parse(goal_data["actual_start_date"]) == early.created_at
+        assert parse(goal_data["actual_end_date"]) == late.created_at
+
+        tasks_by_id = {task["id"]: task for task in goal_data["tasks"]}
+        first = tasks_by_id[str(first_task.id)]
+        assert parse(first["first_logged_at"]) == early.created_at
+        assert parse(first["last_logged_at"]) == middle.created_at
+        idle = tasks_by_id[str(idle_task.id)]
+        assert idle["first_logged_at"] is None
+        assert idle["last_logged_at"] is None
+
     def test_timeline_status_colors(self, client: TestClient, test_session: Session):
         """Test timeline status color assignment"""
         user = create_test_user(test_session)

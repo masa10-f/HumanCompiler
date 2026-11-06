@@ -1,0 +1,253 @@
+import { buildSchedule, DAY_MS } from '../schedule'
+import type { ProjectTimelineData, TimelineGoal, TimelineTask } from '../types'
+
+const NOW = new Date('2026-11-06T00:00:00Z')
+
+let taskSeq = 0
+function task(overrides: Partial<TimelineTask> = {}): TimelineTask {
+  taskSeq += 1
+  return {
+    id: `task-${taskSeq}`,
+    goal_id: 'goal',
+    title: `Task ${taskSeq}`,
+    description: null,
+    status: 'pending',
+    estimate_hours: 10,
+    due_date: null,
+    created_at: '2026-10-01T00:00:00Z',
+    updated_at: '2026-10-01T00:00:00Z',
+    progress_percentage: 0,
+    status_color: '#6b7280',
+    actual_hours: 0,
+    logs_count: 0,
+    ...overrides,
+  }
+}
+
+function goal(id: string, overrides: Partial<TimelineGoal> = {}): TimelineGoal {
+  return {
+    id,
+    title: `Goal ${id}`,
+    description: null,
+    status: 'pending',
+    estimate_hours: 10,
+    start_date: null,
+    end_date: null,
+    due_date: null,
+    dependencies: [],
+    created_at: '2026-10-01T00:00:00Z',
+    updated_at: '2026-10-01T00:00:00Z',
+    tasks: [task()],
+    ...overrides,
+  }
+}
+
+function project(goals: TimelineGoal[]): ProjectTimelineData {
+  return {
+    project: {
+      id: 'project',
+      title: 'Project',
+      description: null,
+      weekly_work_hours: 20,
+      created_at: '2026-09-01T00:00:00Z',
+      updated_at: '2026-09-01T00:00:00Z',
+    },
+    timeline: { start_date: '2026-09-01', end_date: '2026-12-31', time_unit: 'day' },
+    goals,
+  }
+}
+
+// 20 h/week → 10 h of work takes 3.5 days.
+const HALF_WEEK = 3.5 * DAY_MS
+
+describe('buildSchedule', () => {
+  it('lays out independent open goals one after another from today', () => {
+    const schedule = buildSchedule(project([goal('a'), goal('b'), goal('c')]), {
+      weeklyHours: 20,
+      now: NOW,
+    })
+
+    const starts = schedule.goals.map((item) => item.planned!.start.getTime())
+    expect(starts).toEqual([
+      NOW.getTime(),
+      NOW.getTime() + HALF_WEEK,
+      NOW.getTime() + 2 * HALF_WEEK,
+    ])
+    expect(schedule.projectedEnd?.getTime()).toBe(NOW.getTime() + 3 * HALF_WEEK)
+  })
+
+  it('schedules predecessors before their dependents regardless of input order', () => {
+    const schedule = buildSchedule(
+      project([goal('child', { dependencies: ['parent'] }), goal('parent')]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    expect(schedule.goals.map((item) => item.id)).toEqual(['parent', 'child'])
+    const [parent, child] = schedule.goals
+    expect(child!.planned!.start.getTime()).toBe(parent!.planned!.end.getTime())
+    expect(schedule.links).toEqual([
+      { id: 'parent->child', fromId: 'parent', toId: 'child', conflict: false },
+    ])
+    expect(child!.waitingOnIds).toEqual(['parent'])
+  })
+
+  it('continues work in progress first, then the earliest deadline', () => {
+    const schedule = buildSchedule(
+      project([
+        goal('later', { due_date: '2026-12-20T00:00:00+09:00' }),
+        goal('sooner', { due_date: '2026-11-20T00:00:00+09:00' }),
+        goal('active', {
+          status: 'in_progress',
+          tasks: [task({ status: 'in_progress', actual_hours: 4 })],
+        }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    expect(schedule.goals.map((item) => item.id)).toEqual(['active', 'sooner', 'later'])
+    const active = schedule.goals[0]!
+    expect(active.remainingHours).toBe(6)
+    expect(active.progress).toBeCloseTo(0.4)
+  })
+
+  it('pulls a goal forward when a dependent has an earlier deadline', () => {
+    const schedule = buildSchedule(
+      project([
+        goal('other', { due_date: '2026-11-30T00:00:00+09:00' }),
+        goal('base'),
+        goal('urgent', { dependencies: ['base'], due_date: '2026-11-15T00:00:00+09:00' }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    expect(schedule.goals.map((item) => item.id)).toEqual(['base', 'urgent', 'other'])
+  })
+
+  it('places finished goals at the time work was logged', () => {
+    const schedule = buildSchedule(
+      project([
+        goal('done', {
+          status: 'completed',
+          actual_start_date: '2026-10-01T09:00:00Z',
+          actual_end_date: '2026-10-10T18:00:00Z',
+          tasks: [task({ status: 'completed', actual_hours: 8 })],
+        }),
+        goal('next', { dependencies: ['done'] }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    const [done, next] = schedule.goals
+    expect(done!.phase).toBe('done')
+    expect(done!.actual).toEqual({
+      start: new Date('2026-10-01T09:00:00Z'),
+      end: new Date('2026-10-10T18:00:00Z'),
+    })
+    expect(done!.planned).toBeNull()
+    expect(next!.planned!.start).toEqual(NOW)
+    expect(next!.waitingOnIds).toEqual([])
+  })
+
+  it('shows recorded work and the remaining projection for active goals', () => {
+    const schedule = buildSchedule(
+      project([
+        goal('first', { status: 'in_progress', tasks: [task({ status: 'in_progress' })] }),
+        goal('second', {
+          status: 'in_progress',
+          actual_start_date: '2026-10-20T00:00:00Z',
+          tasks: [task({ status: 'in_progress', actual_hours: 5 })],
+        }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    const second = schedule.goals.find((item) => item.id === 'second')!
+    expect(second.actual).toEqual({ start: new Date('2026-10-20T00:00:00Z'), end: NOW })
+    expect(second.start).toEqual(new Date('2026-10-20T00:00:00Z'))
+    expect(second.planned!.start.getTime()).toBeGreaterThanOrEqual(NOW.getTime())
+  })
+
+  it('reports how late a goal is against its deadline', () => {
+    const schedule = buildSchedule(
+      project([
+        goal('big', {
+          due_date: '2026-11-07T00:00:00+09:00',
+          tasks: [task({ estimate_hours: 40 })],
+        }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    // 40h at 20h/week = 14 days → finishes 11/20 09:00 JST, deadline is end of 11/7 JST.
+    expect(schedule.goals[0]!.delayDays).toBe(13)
+    expect(schedule.lateGoalCount).toBe(1)
+  })
+
+  it('treats completed tasks as fully done and excludes cancelled work', () => {
+    const schedule = buildSchedule(
+      project([
+        goal('mixed', {
+          tasks: [
+            task({ status: 'completed', estimate_hours: 4, actual_hours: 1 }),
+            task({ status: 'cancelled', estimate_hours: 50 }),
+            task({ status: 'pending', estimate_hours: 6 }),
+          ],
+        }),
+        goal('dropped', { status: 'cancelled' }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    expect(schedule.goals).toHaveLength(1)
+    expect(schedule.hiddenCancelledCount).toBe(1)
+    const mixed = schedule.goals[0]!
+    expect(mixed.estimateHours).toBe(10)
+    expect(mixed.doneHours).toBe(4)
+    expect(mixed.remainingHours).toBe(6)
+  })
+
+  it('keeps a little work remaining for open tasks that overran their estimate', () => {
+    const schedule = buildSchedule(
+      project([goal('over', { tasks: [task({ status: 'in_progress', estimate_hours: 10, actual_hours: 15 })] })]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    expect(schedule.goals[0]!.remainingHours).toBeCloseTo(1)
+  })
+
+  it('still schedules every goal when dependencies form a cycle', () => {
+    const schedule = buildSchedule(
+      project([
+        goal('a', { dependencies: ['b'] }),
+        goal('b', { dependencies: ['a'] }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    expect(schedule.hasCycle).toBe(true)
+    expect(schedule.goals).toHaveLength(2)
+    expect(schedule.links.some((link) => link.conflict)).toBe(true)
+  })
+
+  it('schedules tasks inside the goal window in status order', () => {
+    const schedule = buildSchedule(
+      project([
+        goal('g', {
+          tasks: [
+            task({ id: 'p', status: 'pending', estimate_hours: 10 }),
+            task({ id: 'ip', status: 'in_progress', estimate_hours: 10 }),
+            task({ id: 'c', status: 'completed', estimate_hours: 10, last_logged_at: '2026-11-01T00:00:00Z' }),
+          ],
+        }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    const tasks = schedule.goals[0]!.tasks
+    expect(tasks.map((item) => item.id)).toEqual(['c', 'ip', 'p'])
+    expect(tasks[0]!.planned).toBeNull()
+    expect(tasks[0]!.finish).toEqual(new Date('2026-11-01T00:00:00Z'))
+    expect(tasks[1]!.planned!.start).toEqual(NOW)
+    expect(tasks[2]!.planned!.start.getTime()).toBe(NOW.getTime() + HALF_WEEK)
+  })
+})

@@ -1,149 +1,115 @@
-export interface TimelineGoal {
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2024-2025 Masato Fukushima <masa1063fuk@gmail.com>
+//
+// This file is part of HumanCompiler.
+// For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
+
+import type {
+  ProjectTimelineData,
+  TimelineGoal,
+  TimelineTask,
+} from '@/types/timeline'
+
+export type { ProjectTimelineData, TimelineGoal, TimelineTask }
+
+export type WorkStatus = TimelineGoal['status']
+
+/**
+ * Where a goal sits in its lifecycle on the roadmap.
+ * - done: finished, drawn from recorded work only
+ * - active: started (in progress or has logged work)
+ * - planned: not started yet, drawn as a projection
+ */
+export type GoalPhase = 'done' | 'active' | 'planned'
+
+export interface Span {
+  start: Date
+  end: Date
+}
+
+export interface ScheduledTask {
   id: string
   title: string
-  description: string | null
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
-  estimate_hours: number
-  start_date: string | null
-  end_date: string | null
-  due_date: string | null
-  created_at: string
-  updated_at: string
-  dependencies: string[] // Goal IDs that this goal depends on
-  tasks: TimelineTask[]
+  status: WorkStatus
+  estimateHours: number
+  doneHours: number
+  remainingHours: number
+  /** 0-1 */
+  progress: number
+  dueDate: Date | null
+  /** Period in which work was logged (first log → last log). */
+  actual: Span | null
+  /** Projected window for the remaining work. */
+  planned: Span | null
+  /** Completion date (done) or projected completion date (open). */
+  finish: Date | null
+  isLate: boolean
+  source: TimelineTask
 }
 
-export interface TimelineTask {
-  id: string
-  goal_id: string
-  title: string
-  description: string | null
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
-  estimate_hours: number
-  due_date: string | null
-  created_at: string
-  updated_at: string
-  progress_percentage: number
-  status_color: string
-  actual_hours: number
-  logs_count: number
-}
-
-export interface TimelineProject {
+export interface ScheduledGoal {
   id: string
   title: string
-  description: string | null
-  weekly_work_hours: number
-  created_at: string
-  updated_at: string
+  status: WorkStatus
+  phase: GoalPhase
+  estimateHours: number
+  doneHours: number
+  remainingHours: number
+  /** 0-1 */
+  progress: number
+  /** Recorded work: first log → last log (done) or → now (active). */
+  actual: Span | null
+  /** Projected window for the remaining work (sequential, capacity based). */
+  planned: Span | null
+  /** Overall horizontal extent of the goal on the chart. */
+  start: Date
+  end: Date
+  /** Completion date (done) or projected completion date (open). */
+  finish: Date
+  dueDate: Date | null
+  /** Whole days the finish date is past the due date (0 when on time). */
+  delayDays: number
+  /** Predecessors shown on the chart. */
+  dependencyIds: string[]
+  /** Successors shown on the chart. */
+  dependentIds: string[]
+  /** Predecessors that are not finished yet. */
+  waitingOnIds: string[]
+  tasks: ScheduledTask[]
+  source: TimelineGoal
 }
 
-export interface TimelineData {
-  project: TimelineProject
-  timeline: {
-    start_date: string
-    end_date: string
-    time_unit: string
-  }
-  goals: TimelineGoal[]
-}
-
-// Layout calculation results
-export interface LayoutGoal {
+export interface ScheduledLink {
   id: string
-  title: string
-  row: number // Y position (row index)
-  x0: number // Start X position in pixels
-  x1: number // End X position in pixels
-  progress: number // Overall progress (0-1)
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
-  segments: LayoutTaskSegment[] // Task segments within the goal bar
-  originalGoal: TimelineGoal
+  fromId: string
+  toId: string
+  /**
+   * The successor starts before the predecessor finishes (started early,
+   * or part of a dependency cycle).
+   */
+  conflict: boolean
 }
 
-export interface LayoutTaskSegment {
-  id: string
-  task_id: string
-  title: string
-  x0: number // Start X position within goal bar
-  x1: number // End X position within goal bar
-  progress: number // Task progress (0-1)
-  progress_percentage: number // Task progress (0-100)
-  status_color: string
-  originalTask: TimelineTask
-}
-
-export interface LayoutArrow {
-  id: string
-  from_goal_id: string
-  to_goal_id: string
-  path: { x: number; y: number }[] // Polyline points for arrow path
-  is_valid: boolean // False if circular dependency detected
-}
-
-export interface LayoutModel {
-  goals: LayoutGoal[]
-  arrows: LayoutArrow[]
-  timeline: {
-    start_date: string
-    end_date: string
-    total_days: number
-    pixels_per_day: number
+export interface TimelineSchedule {
+  /** Ordered for display: finished goals first, then by projected start. */
+  goals: ScheduledGoal[]
+  links: ScheduledLink[]
+  now: Date
+  /** Earliest start and latest end over all goals and `now`. */
+  extent: Span
+  /** When all remaining work is projected to finish (null when none left). */
+  projectedEnd: Date | null
+  totals: {
+    estimateHours: number
+    doneHours: number
+    remainingHours: number
+    /** 0-1 */
+    progress: number
   }
-  dimensions: {
-    width: number
-    height: number
-    row_height: number
-    goal_bar_height: number
-    goal_bar_offset_y: number
-    padding: {
-      top: number
-      right: number
-      bottom: number
-      left: number
-    }
-  }
+  weeklyHours: number
+  hasCycle: boolean
+  hiddenCancelledCount: number
+  lateGoalCount: number
 }
 
-export interface TimelineConfig {
-  canvas_width: number
-  canvas_height: number
-  row_height: number
-  goal_bar_height: number
-  goal_bar_offset_y: number
-  padding: {
-    top: number
-    right: number
-    bottom: number
-    left: number
-  }
-  colors: {
-    goal_background: string
-    goal_progress: string
-    arrow_stroke: string
-    arrow_invalid: string
-    grid_line: string
-    text_primary: string
-    text_secondary: string
-  }
-  arrow: {
-    stroke_width: number
-    marker_size: number
-    horizontal_offset: number
-  }
-}
-
-export interface DependencyGraph {
-  nodes: string[] // Goal IDs
-  edges: Array<{ from: string; to: string }>
-  has_cycle: boolean
-  topological_order: string[]
-}
-
-export interface TimelineFilters {
-  start_date?: string
-  end_date?: string
-  time_unit: 'day' | 'week' | 'month'
-  show_dependencies?: boolean
-  show_task_segments?: boolean
-}
+export type TimeScale = 'day' | 'week' | 'month' | 'fit'
