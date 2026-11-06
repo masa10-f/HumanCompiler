@@ -23,6 +23,8 @@ export function TimelineExportDocument({
   schedule,
   projectTitle,
   showDependencies,
+  // Exports always use the light palette so shared images look the same
+  // regardless of the viewer's theme.
   palette = LIGHT_PALETTE,
 }: {
   layout: ChartLayout

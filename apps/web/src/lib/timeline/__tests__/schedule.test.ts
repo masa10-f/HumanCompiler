@@ -248,6 +248,27 @@ describe('buildSchedule', () => {
     expect(second.planned!.start.getTime()).toBeGreaterThanOrEqual(NOW.getTime())
   })
 
+  it('does not show recorded work for a goal whose only logs are on cancelled tasks', () => {
+    const schedule = buildSchedule(
+      project([
+        goal('g', {
+          actual_start_date: '2026-10-01T00:00:00Z',
+          actual_end_date: '2026-10-02T00:00:00Z',
+          tasks: [
+            task({ status: 'cancelled', actual_hours: 3 }),
+            task({ status: 'pending', estimate_hours: 10 }),
+          ],
+        }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    const [scheduled] = schedule.goals
+    expect(scheduled!.phase).toBe('planned')
+    expect(scheduled!.actual).toBeNull()
+    expect(scheduled!.start).toEqual(NOW)
+  })
+
   it('reports how late a goal is against its deadline', () => {
     const schedule = buildSchedule(
       project([

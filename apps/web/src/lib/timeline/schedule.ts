@@ -276,7 +276,9 @@ export function buildSchedule(
       actual = { start, end: completedAt }
       finish = completedAt
     } else {
-      if (draft.actualStart && draft.actualStart < now) {
+      // Only started goals show recorded work; logs that belong solely to
+      // cancelled tasks don't make a goal look in progress.
+      if (phase === 'active' && draft.actualStart && draft.actualStart < now) {
         actual = { start: draft.actualStart, end: now }
       }
       finish = plan?.end ?? now
