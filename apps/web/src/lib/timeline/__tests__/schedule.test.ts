@@ -110,6 +110,44 @@ describe('buildSchedule', () => {
     expect(active.progress).toBeCloseTo(0.4)
   })
 
+  it('lets a planned goal jump ahead of in-progress work when it would otherwise miss its deadline', () => {
+    const schedule = buildSchedule(
+      project([
+        goal('long-active', {
+          status: 'in_progress',
+          due_date: '2027-05-01T00:00:00+09:00',
+          tasks: [task({ status: 'in_progress', estimate_hours: 90, actual_hours: 10 })],
+        }),
+        goal('urgent', {
+          due_date: '2026-11-12T00:00:00+09:00',
+          tasks: [task({ estimate_hours: 10 })],
+        }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    expect(schedule.goals.map((item) => item.id)).toEqual(['urgent', 'long-active'])
+    expect(schedule.lateGoalCount).toBe(0)
+  })
+
+  it('keeps in-progress work first when the planned goal is late either way', () => {
+    const schedule = buildSchedule(
+      project([
+        goal('active', {
+          status: 'in_progress',
+          tasks: [task({ status: 'in_progress', estimate_hours: 20, actual_hours: 10 })],
+        }),
+        goal('hopeless', {
+          due_date: '2026-11-06T00:00:00+09:00',
+          tasks: [task({ estimate_hours: 40 })],
+        }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    expect(schedule.goals.map((item) => item.id)).toEqual(['active', 'hopeless'])
+  })
+
   it('pulls a goal forward when a dependent has an earlier deadline', () => {
     const schedule = buildSchedule(
       project([
@@ -146,6 +184,25 @@ describe('buildSchedule', () => {
     expect(done!.planned).toBeNull()
     expect(next!.planned!.start).toEqual(NOW)
     expect(next!.waitingOnIds).toEqual([])
+  })
+
+  it('flags completion dates of finished goals without work logs as estimated', () => {
+    const schedule = buildSchedule(
+      project([
+        goal('logged', {
+          status: 'completed',
+          actual_start_date: '2026-10-01T00:00:00Z',
+          actual_end_date: '2026-10-03T00:00:00Z',
+        }),
+        goal('unlogged', { status: 'completed', updated_at: '2026-10-20T00:00:00Z' }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    const byId = new Map(schedule.goals.map((item) => [item.id, item]))
+    expect(byId.get('logged')!.finishIsEstimated).toBe(false)
+    expect(byId.get('unlogged')!.finishIsEstimated).toBe(true)
+    expect(byId.get('unlogged')!.finish).toEqual(new Date('2026-10-20T00:00:00Z'))
   })
 
   it('shows recorded work and the remaining projection for active goals', () => {

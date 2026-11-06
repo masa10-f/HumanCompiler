@@ -225,7 +225,24 @@ export function buildSchedule(
       ready = Array.from(pending)
     }
     ready.sort(priority)
-    const id = ready[0]!
+    let id = ready[0]!
+    // Work in progress goes first, unless that makes a not-yet-started goal
+    // miss a deadline it could still meet by going first.
+    if (drafts.get(id)!.phase === 'active') {
+      const activeDuration = durationMs(drafts.get(id)!.metrics.remaining)
+      const rescue = ready
+        .filter((candidate) => drafts.get(candidate)!.phase === 'planned')
+        .find((candidate) => {
+          const deadline = effectiveDeadline.get(candidate) ?? Infinity
+          const duration = durationMs(drafts.get(candidate)!.metrics.remaining)
+          return (
+            Number.isFinite(deadline) &&
+            cursor + duration <= deadline &&
+            cursor + activeDuration + duration > deadline
+          )
+        })
+      if (rescue) id = rescue
+    }
     const start = cursor
     const end = start + durationMs(drafts.get(id)!.metrics.remaining)
     planned.set(id, { start: new Date(start), end: new Date(end) })
@@ -241,7 +258,10 @@ export function buildSchedule(
 
     let actual: Span | null = null
     let finish: Date
+    let finishIsEstimated = false
     if (phase === 'done') {
+      // Without work logs the completion date is only known approximately.
+      finishIsEstimated = !draft.actualEnd && !draft.actualStart
       const updatedAt = parseOptionalDate(goal.updated_at)
       const completedAt =
         minDate(maxDate(draft.actualEnd, draft.actualStart) ?? updatedAt ?? now, now) ?? now
@@ -279,6 +299,7 @@ export function buildSchedule(
       start,
       end,
       finish,
+      finishIsEstimated,
       dueDate: draft.dueDate,
       delayDays: delayInDays(finish, draft.dueDate),
       dependencyIds: draft.deps,

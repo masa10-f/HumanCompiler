@@ -72,6 +72,11 @@ export interface ScheduledGoal {
   end: Date
   /** Completion date (done) or projected completion date (open). */
   finish: Date
+  /**
+   * The goal is done but has no work logs, so `finish` falls back to the
+   * goal's last update time and may not be the real completion date.
+   */
+  finishIsEstimated: boolean
   dueDate: Date | null
   /** Whole days the finish date is past the due date (0 when on time). */
   delayDays: number

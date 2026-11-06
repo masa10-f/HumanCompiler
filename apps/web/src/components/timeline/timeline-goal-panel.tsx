@@ -166,7 +166,7 @@ export function TimelineGoalPanel({
           <dl className="grid grid-cols-2 gap-3">
             <Fact label="着手" value={goal.actual ? formatJstDate(goal.actual.start, true) : goal.planned ? `${formatJstDate(goal.planned.start, true)} 予定` : '—'} />
             <Fact
-              label={goal.phase === 'done' ? '完了' : '完了見込み'}
+              label={goal.phase === 'done' ? (goal.finishIsEstimated ? '完了（推定）' : '完了') : '完了見込み'}
               value={formatJstDate(goal.finish, true)}
               tone={goal.delayDays > 0 ? 'late' : undefined}
             />
@@ -183,6 +183,11 @@ export function TimelineGoalPanel({
               tone={goal.delayDays > 0 ? 'late' : undefined}
             />
           </dl>
+          {goal.finishIsEstimated && (
+            <p className="mt-2 text-[11px] leading-4 text-slate-500 dark:text-slate-400">
+              作業ログがないため、完了日はゴールの最終更新日から推定しています。
+            </p>
+          )}
         </section>
 
         <GoalLinkList

@@ -306,7 +306,11 @@ export function TimelineVisualizer({
         projectTitle: data.project.title,
         showDependencies,
       })
-      const filename = `${data.project.title}_roadmap_${formatJstDate(schedule.now, true).split('/').join('-')}`
+      // Characters that are invalid in file names on common platforms.
+      const safeTitle =
+        data.project.title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/[. ]+$/, '') ||
+        'project'
+      const filename = `${safeTitle}_roadmap_${formatJstDate(schedule.now, true).split('/').join('-')}`
       if (format === 'svg') {
         downloadSvg(markup, `${filename}.svg`)
       } else {

@@ -59,7 +59,8 @@ const PHASE_LABEL = { done: '完了', active: '進行中', planned: '未着手' 
 
 export function goalSummaryText(goal: ScheduledGoal): string {
   if (goal.phase === 'done') {
-    return `完了 · ${formatJstDate(goal.finish)} · ${formatHours(goal.estimateHours)}`
+    const estimated = goal.finishIsEstimated ? '（推定）' : ''
+    return `完了 · ${formatJstDate(goal.finish)}${estimated} · ${formatHours(goal.estimateHours)}`
   }
   if (goal.phase === 'active') {
     return `進行中 · ${Math.round(goal.progress * 100)}% · 残り ${formatHours(goal.remainingHours)}`
@@ -555,7 +556,7 @@ function GoalBar({ row, layout, palette }: { row: GoalRow; layout: ChartLayout; 
   const endX = x(goal.end) + (isMilestone ? 10 : 8)
   const endLabel =
     goal.phase === 'done'
-      ? `${formatJstDate(goal.finish)} 完了`
+      ? `${formatJstDate(goal.finish)} 完了${goal.finishIsEstimated ? '（推定）' : ''}`
       : `〜${formatJstDate(goal.finish)}`
   const endLabelWidth = estimateTextWidth(endLabel, 10.5)
 
