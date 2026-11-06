@@ -34,6 +34,10 @@ export interface TimelineTask {
   actual_hours: number
   /** ログ件数 */
   logs_count: number
+  /** 最初に作業ログが記録された日時 (ISO 8601形式) */
+  first_logged_at?: string | null
+  /** 最後に作業ログが記録された日時 (ISO 8601形式) */
+  last_logged_at?: string | null
 }
 
 /**
@@ -65,6 +69,10 @@ export interface TimelineGoal {
   updated_at: string
   /** 所属タスク一覧 */
   tasks: TimelineTask[]
+  /** 配下タスクで最初に作業ログが記録された日時 */
+  actual_start_date?: string | null
+  /** 配下タスクで最後に作業ログが記録された日時 */
+  actual_end_date?: string | null
 }
 
 /**

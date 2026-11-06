@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2024-2025 Masato Fukushima <masa1063fuk@gmail.com>
+//
+// This file is part of HumanCompiler.
+// For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
+
 'use client'
 
 import React, {
@@ -7,155 +13,110 @@ import React, {
   useRef,
   useState,
 } from 'react'
-import { parseISO } from 'date-fns'
+import { useTheme } from 'next-themes'
 import {
   AlertTriangle,
-  CalendarDays,
-  Check,
-  Clock3,
+  CalendarClock,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Download,
   Flag,
   GitBranch,
-  Layers3,
+  ListChecks,
+  LocateFixed,
   RefreshCw,
-  Target,
-  ZoomIn,
-  ZoomOut,
+  Timer,
 } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useToast } from '@/hooks/use-toast'
-import { computeTimelineLayout } from '@/lib/timeline/layout-engine'
-import { clampPercentage, formatHours } from '@/lib/timeline/utils'
 import { logger } from '@/lib/logger'
-import type {
-  LayoutGoal,
-  LayoutModel,
-  LayoutTaskSegment,
-  TimelineData,
-  TimelineFilters,
-} from '@/lib/timeline/types'
-import { TimelineDependencyArrow } from './timeline-dependency-arrow'
-import { TimelineGoalBar } from './timeline-goal-bar'
-import { TimelineTooltip } from './timeline-tooltip'
+import {
+  buildChartLayout,
+  CHART,
+  HEADER_HEIGHT,
+  relatedGoalIds,
+} from '@/lib/timeline/chart-layout'
+import { formatJstDate } from '@/lib/timeline/geometry'
+import { buildSchedule, DAY_MS } from '@/lib/timeline/schedule'
+import type { ProjectTimelineData, TimeScale } from '@/lib/timeline/types'
+import { formatHours } from '@/lib/timeline/utils'
+import {
+  ChartBody,
+  ChartCorner,
+  ChartHeader,
+  ChartLabels,
+  type ChartFocus,
+} from './timeline-chart-layers'
+import {
+  downloadPng,
+  downloadSvg,
+  exportDimensions,
+  renderExportSvg,
+} from './timeline-export'
+import { TimelineGoalPanel } from './timeline-goal-panel'
+import { DARK_PALETTE, LIGHT_PALETTE, TIMELINE_FONT_FAMILY } from './timeline-palette'
 
 interface TimelineVisualizerProps {
-  data: TimelineData | null
+  data: ProjectTimelineData | null
   isLoading: boolean
   error?: string | null
-  filters: TimelineFilters
-  onFiltersChange: (filters: TimelineFilters) => void
+  weeklyWorkHours: number
   onRefresh: () => void
 }
 
-const CHART = {
-  labelWidth: 330,
-  rowHeight: 108,
-  barHeight: 42,
-  barOffsetY: 47,
-  headerHeight: 72,
-}
-
-const RENDER_LIMITS = {
-  goals: 100,
-  taskSegments: 500,
-}
+const SCALE_OPTIONS: Array<{ value: TimeScale; label: string }> = [
+  { value: 'fit', label: '全体' },
+  { value: 'month', label: '月' },
+  { value: 'week', label: '週' },
+  { value: 'day', label: '日' },
+]
 
 const CURRENT_TIME_REFRESH_MS = 60 * 60 * 1000
 
-const shortDateFormatter = new Intl.DateTimeFormat('ja-JP', {
-  timeZone: 'Asia/Tokyo',
-  month: 'numeric',
-  day: 'numeric',
-})
-
-const longDateFormatter = new Intl.DateTimeFormat('ja-JP', {
-  timeZone: 'Asia/Tokyo',
-  year: 'numeric',
-  month: 'numeric',
-  day: 'numeric',
-})
-
-const formatShortDate = (date: Date) => shortDateFormatter.format(date)
-const formatLongDate = (value: string) =>
-  longDateFormatter.format(new Date(value))
-
-function ProgressDial({ percentage }: { percentage: number }) {
-  const value = Math.round(clampPercentage(percentage))
-
-  return (
-    <div
-      className="relative grid h-28 w-28 shrink-0 place-items-center rounded-full"
-      style={{
-        background: `conic-gradient(#2563eb ${value * 3.6}deg, #e8edf5 0deg)`,
-      }}
-      role="img"
-      aria-label={`プロジェクト進捗 ${value}%`}
-    >
-      <div className="absolute inset-[9px] rounded-full bg-white shadow-inner dark:bg-slate-950" />
-      <div className="relative text-center">
-        <div className="font-mono text-3xl font-semibold tracking-[-0.08em] text-slate-950 dark:text-white">
-          {value}
-          <span className="ml-0.5 text-base tracking-normal text-slate-500">
-            %
-          </span>
-        </div>
-        <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
-          完了
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function MetricCard({
+function Kpi({
   icon: Icon,
   label,
   value,
   detail,
-  tone = 'slate',
+  tone = 'default',
 }: {
   icon: React.ComponentType<{ className?: string }>
   label: string
   value: string
-  detail: string
-  tone?: 'slate' | 'blue' | 'emerald' | 'amber'
+  detail?: string
+  tone?: 'default' | 'late' | 'good'
 }) {
-  const tones = {
-    slate: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-    blue: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
-    emerald:
-      'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
-    amber: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
-  }
-
+  const valueClass =
+    tone === 'late'
+      ? 'text-red-600 dark:text-red-400'
+      : tone === 'good'
+        ? 'text-emerald-600 dark:text-emerald-400'
+        : 'text-slate-950 dark:text-white'
   return (
-    <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200/80 bg-white/80 p-4 dark:border-slate-800 dark:bg-slate-950/70">
-      <div
-        className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${tones[tone]}`}
-      >
-        <Icon className="h-5 w-5" />
-      </div>
-      <div className="min-w-0">
-        <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-          {label}
-        </p>
-        <p className="mt-0.5 truncate text-xl font-semibold tracking-tight text-slate-950 dark:text-white">
-          {value}
-        </p>
-        <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
-          {detail}
-        </p>
-      </div>
+    <div className="min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+      <p className="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+        <Icon className="h-3.5 w-3.5" />
+        {label}
+      </p>
+      <p className={`mt-1 truncate text-xl font-semibold tracking-tight ${valueClass}`}>{value}</p>
+      {detail && <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">{detail}</p>}
     </div>
+  )
+}
+
+function LegendSwatch({ className, label }: { className: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={`h-2.5 w-5 rounded-[3px] ${className}`} />
+      {label}
+    </span>
   )
 }
 
@@ -163,401 +124,218 @@ export function TimelineVisualizer({
   data,
   isLoading,
   error,
-  filters,
-  onFiltersChange,
+  weeklyWorkHours,
   onRefresh,
 }: TimelineVisualizerProps) {
-  const svgRef = useRef<SVGSVGElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const tooltipTriggerRef = useRef<SVGGElement | null>(null)
   const { toast } = useToast()
-  const [zoomLevel, setZoomLevel] = useState(1)
-  const [selectedGoal, setSelectedGoal] = useState<LayoutGoal | null>(null)
-  const [selectedTask, setSelectedTask] = useState<LayoutTaskSegment | null>(
-    null,
-  )
-  const [liveRegionMessage, setLiveRegionMessage] = useState('')
-  const [currentTime, setCurrentTime] = useState<number | null>(null)
-  const [tooltipPosition, setTooltipPosition] = useState<{
-    x: number
-    y: number
-  } | null>(null)
+  const { resolvedTheme } = useTheme()
+  const palette = resolvedTheme === 'dark' ? DARK_PALETTE : LIGHT_PALETTE
 
-  const datasetSize = useMemo(
-    () => ({
-      goals: data?.goals.length ?? 0,
-      tasks:
-        data?.goals.reduce((count, goal) => count + goal.tasks.length, 0) ??
-        0,
-    }),
-    [data],
-  )
-  const goalsAreCapped = datasetSize.goals > RENDER_LIMITS.goals
-  const taskSegmentsAreCapped =
-    datasetSize.tasks > RENDER_LIMITS.taskSegments
-  const isLargeDataset = goalsAreCapped || taskSegmentsAreCapped
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const resizeObserverRef = useRef<ResizeObserver | null>(null)
+  const [viewportWidth, setViewportWidth] = useState(0)
+  const [now, setNow] = useState<Date | null>(null)
+  const [scaleMode, setScaleMode] = useState<TimeScale>('fit')
+  const [showCompleted, setShowCompleted] = useState(true)
+  const [showDependencies, setShowDependencies] = useState(true)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set())
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const [announcement, setAnnouncement] = useState('')
+  const [isExporting, setIsExporting] = useState(false)
 
   useEffect(() => {
-    const updateCurrentTime = () => setCurrentTime(Date.now())
-    updateCurrentTime()
-    const intervalId = window.setInterval(
-      updateCurrentTime,
-      CURRENT_TIME_REFRESH_MS,
-    )
-    return () => window.clearInterval(intervalId)
+    const update = () => setNow(new Date())
+    update()
+    const id = window.setInterval(update, CURRENT_TIME_REFRESH_MS)
+    return () => window.clearInterval(id)
   }, [])
 
-  const layoutModel = useMemo<LayoutModel | null>(() => {
-    if (!data) return null
+  // Track the visible chart width (used by the "fit" zoom level).
+  const setScrollElement = useCallback((element: HTMLDivElement | null) => {
+    scrollRef.current = element
+    resizeObserverRef.current?.disconnect()
+    resizeObserverRef.current = null
+    if (!element) return
+    setViewportWidth(element.clientWidth)
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => setViewportWidth(element.clientWidth))
+    observer.observe(element)
+    resizeObserverRef.current = observer
+  }, [])
+  useEffect(() => () => resizeObserverRef.current?.disconnect(), [])
+
+  const schedule = useMemo(() => {
+    if (!data || !now) return null
     try {
-      const visibleGoals = data.goals.slice(0, RENDER_LIMITS.goals)
-      const layoutData =
-        visibleGoals.length === data.goals.length
-          ? data
-          : { ...data, goals: visibleGoals }
-      const goalCount = visibleGoals.length
-
-      if (data.goals.length > RENDER_LIMITS.goals) {
-        logger.warn(
-          'Timeline goal rendering capped for a large dataset',
-          {
-            totalGoals: data.goals.length,
-            renderedGoals: RENDER_LIMITS.goals,
-          },
-          { component: 'TimelineVisualizer' },
-        )
-      }
-
-      return computeTimelineLayout(layoutData, {
-        canvas_width: Math.max(1440, 1120 + goalCount * 36),
-        canvas_height: Math.max(
-          320,
-          goalCount * CHART.rowHeight + CHART.headerHeight + 48,
-        ),
-        row_height: CHART.rowHeight,
-        goal_bar_height: CHART.barHeight,
-        goal_bar_offset_y: CHART.barOffsetY,
-        padding: {
-          top: CHART.headerHeight,
-          right: 88,
-          bottom: 48,
-          left: CHART.labelWidth,
-        },
-      })
-    } catch (layoutError) {
+      return buildSchedule(data, { weeklyHours: weeklyWorkHours, now })
+    } catch (scheduleError) {
       logger.error(
-        'Timeline layout computation failed',
-        layoutError instanceof Error
-          ? layoutError
-          : new Error(String(layoutError)),
+        'Timeline scheduling failed',
+        scheduleError instanceof Error ? scheduleError : new Error(String(scheduleError)),
         { component: 'TimelineVisualizer' },
       )
       return null
     }
-  }, [data])
+  }, [data, now, weeklyWorkHours])
 
-  const summary = useMemo(() => {
-    if (!data) return null
-    const tasks = data.goals.flatMap((goal) => goal.tasks)
-    const totalHours = tasks.reduce(
-      (sum, task) => sum + Math.max(0, task.estimate_hours),
-      0,
-    )
-    const completedEquivalentHours = tasks.reduce(
-      (sum, task) =>
-        sum +
-        Math.max(0, task.estimate_hours) *
-          (clampPercentage(task.progress_percentage) / 100),
-      0,
-    )
-    const completedTasks = tasks.filter(
-      (task) => task.status === 'completed',
-    ).length
-    const activeTasks = tasks.filter(
-      (task) => task.status === 'in_progress',
-    ).length
-    const now = currentTime ?? 0
-    const overdueTasks = tasks.filter((task) => {
-      if (
-        !task.due_date ||
-        task.status === 'completed' ||
-        task.status === 'cancelled'
-      )
-        return false
-      const due = Date.parse(task.due_date)
-      return Number.isFinite(due) && due < now
-    }).length
-    const progress =
-      totalHours > 0
-        ? (completedEquivalentHours / totalHours) * 100
-        : tasks.length > 0
-          ? (completedTasks / tasks.length) * 100
-          : 0
+  // A narrower name column keeps the bars visible on phones.
+  const labelWidth = viewportWidth > 0 && viewportWidth < 640 ? 176 : CHART.labelWidth
+  const availableWidth = Math.max(320, viewportWidth - labelWidth)
+  const layout = useMemo(
+    () =>
+      schedule
+        ? buildChartLayout(schedule, {
+            mode: scaleMode,
+            availableWidth,
+            expandedGoalIds: expandedIds,
+            showCompleted,
+            labelWidth,
+          })
+        : null,
+    [availableWidth, expandedIds, labelWidth, scaleMode, schedule, showCompleted],
+  )
 
-    return {
-      tasks,
-      totalHours,
-      completedEquivalentHours,
-      remainingHours: Math.max(0, totalHours - completedEquivalentHours),
-      completedTasks,
-      activeTasks,
-      overdueTasks,
-      progress,
+  // Drop the selection when the goal is no longer on the chart.
+  useEffect(() => {
+    if (selectedId && layout && !layout.goalRows.has(selectedId)) setSelectedId(null)
+  }, [layout, selectedId])
+
+  const focusId = hoveredId ?? selectedId
+  const focus: ChartFocus = useMemo(
+    () => ({
+      selectedId,
+      hoveredId,
+      related: schedule && focusId ? relatedGoalIds(schedule, focusId) : null,
+    }),
+    [focusId, hoveredId, schedule, selectedId],
+  )
+
+  const scrollToToday = useCallback(
+    (behavior: ScrollBehavior = 'smooth') => {
+      const element = scrollRef.current
+      if (!element || !layout) return
+      const visible = element.clientWidth - layout.labelWidth
+      element.scrollTo({ left: Math.max(0, layout.todayX - visible * 0.3), behavior })
+    },
+    [layout],
+  )
+
+  // Bring "today" into view whenever the zoom level changes.
+  const lastScrolledMode = useRef<string | null>(null)
+  useEffect(() => {
+    if (!layout) return
+    const key = `${scaleMode}:${data?.project.id ?? ''}`
+    if (lastScrolledMode.current === key) return
+    lastScrolledMode.current = key
+    scrollToToday('auto')
+  }, [data?.project.id, layout, scaleMode, scrollToToday])
+
+  // Row to bring into view once the layout containing it has rendered.
+  const [scrollTargetId, setScrollTargetId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!scrollTargetId || !layout || !scrollRef.current) return
+    const row = layout.goalRows.get(scrollTargetId)
+    if (!row) return
+    setScrollTargetId(null)
+    const element = scrollRef.current
+    const top = row.y
+    const bottom = row.y + row.height + HEADER_HEIGHT
+    if (top < element.scrollTop || bottom > element.scrollTop + element.clientHeight) {
+      element.scrollTo({ top: Math.max(0, top - 2 * CHART.goalRowHeight), behavior: 'smooth' })
     }
-  }, [currentTime, data])
+  }, [layout, scrollTargetId])
 
-  const timeAxisMarkers = useMemo(() => {
-    if (!layoutModel) return []
-    const startDate = parseISO(layoutModel.timeline.start_date)
-    const endDate = parseISO(layoutModel.timeline.end_date)
-    const dates: Date[] = []
-    const endTime = endDate.getTime()
-    const oneDay = 86_400_000
-
-    if (filters.time_unit === 'month') {
-      const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
-      while (cursor.getTime() <= endTime) {
-        dates.push(new Date(cursor))
-        cursor.setMonth(cursor.getMonth() + 1)
-      }
-    } else {
-      const stepMs = filters.time_unit === 'week' ? oneDay * 7 : oneDay
-      for (
-        let timestamp = startDate.getTime();
-        timestamp <= endTime;
-        timestamp += stepMs
-      ) {
-        dates.push(new Date(timestamp))
-      }
-    }
-
-    const maxMarkers = 14
-    const step = Math.max(1, Math.ceil(dates.length / maxMarkers))
-    const chartWidth =
-      layoutModel.dimensions.width -
-      layoutModel.dimensions.padding.left -
-      layoutModel.dimensions.padding.right
-
-    return dates
-      .filter((_, index) => index % step === 0)
-      .map((date) => {
-        const elapsedDays = (date.getTime() - startDate.getTime()) / 86_400_000
-        const x =
-          layoutModel.dimensions.padding.left +
-          (elapsedDays / Math.max(1, layoutModel.timeline.total_days)) *
-            chartWidth
-        const label =
-          filters.time_unit === 'month'
-            ? new Intl.DateTimeFormat('ja-JP', {
-                timeZone: 'Asia/Tokyo',
-                year: 'numeric',
-                month: 'short',
-              }).format(date)
-            : formatShortDate(date)
-        return { x, label, date }
-      })
-  }, [filters.time_unit, layoutModel])
-
-  const todayX = useMemo(() => {
-    if (!layoutModel) return null
-    const start = parseISO(layoutModel.timeline.start_date).getTime()
-    const end = parseISO(layoutModel.timeline.end_date).getTime()
-    if (currentTime === null) return null
-    const today = currentTime
-    if (today < start || today > end || end <= start) return null
-    const chartWidth =
-      layoutModel.dimensions.width -
-      layoutModel.dimensions.padding.left -
-      layoutModel.dimensions.padding.right
-    return (
-      layoutModel.dimensions.padding.left +
-      ((today - start) / (end - start)) * chartWidth
-    )
-  }, [currentTime, layoutModel])
-
-  const updateFilters = useCallback(
-    (patch: Partial<TimelineFilters>) => {
-      onFiltersChange({ ...filters, ...patch })
+  const selectGoal = useCallback(
+    (goalId: string, options: { scroll?: boolean } = {}) => {
+      const goal = schedule?.goals.find((item) => item.id === goalId)
+      // Navigating to a finished goal while they are hidden reveals them,
+      // otherwise the selection would be dropped as soon as it is made.
+      if (goal?.phase === 'done' && !showCompleted) setShowCompleted(true)
+      setSelectedId((current) => (current === goalId && !options.scroll ? null : goalId))
+      if (goal) setAnnouncement(`${goal.title}を選択しました`)
+      if (options.scroll) setScrollTargetId(goalId)
     },
-    [filters, onFiltersChange],
+    [schedule, showCompleted],
   )
 
-  const getActivationPosition = useCallback(
-    (event: React.SyntheticEvent<SVGGElement>) => {
-      const nativeEvent = event.nativeEvent
-      if (
-        'clientX' in nativeEvent &&
-        'clientY' in nativeEvent &&
-        typeof nativeEvent.clientX === 'number' &&
-        typeof nativeEvent.clientY === 'number' &&
-        nativeEvent.clientX > 0
-      ) {
-        return { x: nativeEvent.clientX, y: nativeEvent.clientY }
-      }
-
-      const bounds = event.currentTarget.getBoundingClientRect()
-      return { x: bounds.left + bounds.width / 2, y: bounds.top }
-    },
-    [],
-  )
-
-  const openGoal = useCallback(
-    (goal: LayoutGoal, event: React.SyntheticEvent<SVGGElement>) => {
-      event.stopPropagation()
-      tooltipTriggerRef.current = event.currentTarget
-      setSelectedGoal(goal)
-      setSelectedTask(null)
-      setTooltipPosition(getActivationPosition(event))
-      setLiveRegionMessage(
-        `ゴール「${goal.title}」を選択しました。進捗 ${Math.round(goal.progress * 100)}%。`,
-      )
-    },
-    [getActivationPosition],
-  )
-
-  const openTask = useCallback(
-    (task: LayoutTaskSegment, event: React.SyntheticEvent<SVGGElement>) => {
-      event.stopPropagation()
-      tooltipTriggerRef.current = event.currentTarget
-      setSelectedTask(task)
-      setSelectedGoal(null)
-      setTooltipPosition(getActivationPosition(event))
-      setLiveRegionMessage(
-        `タスク「${task.title}」を選択しました。進捗 ${Math.round(task.progress * 100)}%。`,
-      )
-    },
-    [getActivationPosition],
-  )
-
-  const closeTooltip = useCallback(() => {
-    const trigger = tooltipTriggerRef.current
-    setSelectedGoal(null)
-    setSelectedTask(null)
-    setTooltipPosition(null)
-    setLiveRegionMessage('詳細表示を閉じました。')
-    window.requestAnimationFrame(() => trigger?.focus())
-  }, [])
-
-  const handleZoomIn = useCallback(() => {
-    setZoomLevel((value) => {
-      const next = Math.min(1.8, value + 0.1)
-      setLiveRegionMessage(`表示倍率 ${Math.round(next * 100)}%。`)
+  const toggleExpand = useCallback((goalId: string) => {
+    setExpandedIds((current) => {
+      const next = new Set(current)
+      if (next.has(goalId)) next.delete(goalId)
+      else next.add(goalId)
       return next
     })
   }, [])
 
-  const handleZoomOut = useCallback(() => {
-    setZoomLevel((value) => {
-      const next = Math.max(0.7, value - 0.1)
-      setLiveRegionMessage(`表示倍率 ${Math.round(next * 100)}%。`)
-      return next
-    })
-  }, [])
+  const expandableIds = layout
+    ? Array.from(layout.goalRows.values())
+        .filter((row) => row.goal.tasks.length > 0)
+        .map((row) => row.goal.id)
+    : []
+  const allExpanded =
+    expandableIds.length > 0 && expandableIds.every((id) => expandedIds.has(id))
+  const toggleExpandAll = () => {
+    if (!layout) return
+    setExpandedIds(allExpanded ? new Set() : new Set(expandableIds))
+  }
 
-  const handleZoomReset = useCallback(() => {
-    setZoomLevel(1)
-    setLiveRegionMessage('表示倍率を100%に戻しました。')
-  }, [])
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!layout) return
+    if (event.key === 'Escape') {
+      setSelectedId(null)
+      return
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    event.preventDefault()
+    const ids = Array.from(layout.goalRows.keys())
+    if (ids.length === 0) return
+    const index = selectedId ? ids.indexOf(selectedId) : -1
+    const direction = event.key === 'ArrowDown' ? 1 : -1
+    const nextIndex = index < 0 ? (direction > 0 ? 0 : ids.length - 1) : (index + direction + ids.length) % ids.length
+    selectGoal(ids[nextIndex]!, { scroll: true })
+  }
 
-  const handleTimelineKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (!layoutModel) return
-
-      if (event.key === 'Escape') {
-        closeTooltip()
-        return
-      }
-      if (event.key === '+' || event.key === '=') {
-        event.preventDefault()
-        handleZoomIn()
-        return
-      }
-      if (event.key === '-') {
-        event.preventDefault()
-        handleZoomOut()
-        return
-      }
-      if (event.key === '0') {
-        event.preventDefault()
-        handleZoomReset()
-        return
-      }
-      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
-
-      event.preventDefault()
-      const selectedGoalId =
-        selectedGoal?.id ||
-        layoutModel.goals.find((goal) =>
-          goal.segments.some((segment) => segment.id === selectedTask?.id),
-        )?.id
-      const currentIndex = layoutModel.goals.findIndex(
-        (goal) => goal.id === selectedGoalId,
-      )
-      const direction = event.key === 'ArrowDown' ? 1 : -1
-      const nextIndex =
-        currentIndex < 0
-          ? direction > 0
-            ? 0
-            : layoutModel.goals.length - 1
-          : (currentIndex + direction + layoutModel.goals.length) %
-            layoutModel.goals.length
-      const nextGoal = layoutModel.goals[nextIndex]
-      if (!nextGoal) return
-
-      setSelectedGoal(nextGoal)
-      setSelectedTask(null)
-      setTooltipPosition(null)
-      setLiveRegionMessage(
-        `${nextIndex + 1}番目のゴール「${nextGoal.title}」。進捗 ${Math.round(nextGoal.progress * 100)}%。`,
-      )
-    },
-    [
-      closeTooltip,
-      handleZoomIn,
-      handleZoomOut,
-      handleZoomReset,
-      layoutModel,
-      selectedGoal,
-      selectedTask,
-    ],
-  )
-
-  const downloadSVG = useCallback(() => {
-    if (!svgRef.current || !data) return
+  const handleExport = async (format: 'png' | 'svg') => {
+    if (!layout || !schedule || !data) return
+    setIsExporting(true)
     try {
-      const source = new XMLSerializer().serializeToString(svgRef.current)
-      const url = URL.createObjectURL(
-        new Blob([source], { type: 'image/svg+xml;charset=utf-8' }),
-      )
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `${data.project.title}_timeline.svg`
-      link.click()
-      URL.revokeObjectURL(url)
-      toast({
-        title: 'タイムラインを書き出しました',
-        description: 'SVG形式で保存しました。',
+      const markup = await renderExportSvg({
+        layout,
+        schedule,
+        projectTitle: data.project.title,
+        showDependencies,
       })
-    } catch (downloadError) {
+      // Characters that are invalid in file names on common platforms.
+      const safeTitle =
+        data.project.title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/[. ]+$/, '') ||
+        'project'
+      const filename = `${safeTitle}_roadmap_${formatJstDate(schedule.now, true).split('/').join('-')}`
+      if (format === 'svg') {
+        downloadSvg(markup, `${filename}.svg`)
+      } else {
+        const { width, height } = exportDimensions(layout)
+        await downloadPng(markup, width, height, `${filename}.png`)
+      }
+      toast({ title: 'ロードマップを書き出しました', description: `${format.toUpperCase()}形式で保存しました。` })
+    } catch (exportError) {
       logger.error(
-        'Timeline download failed',
-        downloadError instanceof Error
-          ? downloadError
-          : new Error(String(downloadError)),
+        'Timeline export failed',
+        exportError instanceof Error ? exportError : new Error(String(exportError)),
         { component: 'TimelineVisualizer' },
       )
-      toast({
-        title: '書き出しに失敗しました',
-        description: 'もう一度お試しください。',
-        variant: 'destructive',
-      })
+      toast({ title: '書き出しに失敗しました', description: 'もう一度お試しください。', variant: 'destructive' })
+    } finally {
+      setIsExporting(false)
     }
-  }, [data, toast])
+  }
 
-  if (isLoading) {
+  // `now` is set after mount (avoids a hydration mismatch); show the
+  // skeleton until then instead of the scheduling error state.
+  if ((isLoading && !data) || (data && !now)) {
     return (
       <div className="space-y-5" aria-label="タイムラインを読み込み中">
-        <div className="h-48 animate-pulse rounded-3xl bg-slate-200/70 dark:bg-slate-800" />
+        <div className="h-32 animate-pulse rounded-3xl bg-slate-200/70 dark:bg-slate-800" />
         <div className="h-[460px] animate-pulse rounded-3xl bg-slate-200/70 dark:bg-slate-800" />
       </div>
     )
@@ -570,12 +348,8 @@ export function TimelineVisualizer({
           <div className="grid h-14 w-14 place-items-center rounded-2xl bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-300">
             <AlertTriangle className="h-7 w-7" />
           </div>
-          <h2 className="mt-5 text-lg font-semibold">
-            タイムラインを読み込めませんでした
-          </h2>
-          <p className="mt-2 max-w-lg text-sm text-slate-600 dark:text-slate-300">
-            {error}
-          </p>
+          <h2 className="mt-5 text-lg font-semibold">タイムラインを読み込めませんでした</h2>
+          <p className="mt-2 max-w-lg text-sm text-slate-600 dark:text-slate-300">{error}</p>
           <Button onClick={onRefresh} className="mt-6">
             <RefreshCw className="mr-2 h-4 w-4" />
             再試行
@@ -585,7 +359,7 @@ export function TimelineVisualizer({
     )
   }
 
-  if (!data || !summary) {
+  if (!data) {
     return (
       <Card className="border-dashed shadow-none">
         <CardContent className="px-6 py-16 text-center text-sm text-slate-500">
@@ -595,540 +369,282 @@ export function TimelineVisualizer({
     )
   }
 
+  const selectedGoal = selectedId ? schedule?.goals.find((goal) => goal.id === selectedId) ?? null : null
+  const totals = schedule?.totals
+  const weeksLeft = schedule?.projectedEnd
+    ? Math.max(0, (schedule.projectedEnd.getTime() - schedule.now.getTime()) / (7 * DAY_MS))
+    : 0
+  const doneGoalCount = schedule?.goals.filter((goal) => goal.phase === 'done').length ?? 0
+  const hasGoals = (layout?.goalRows.size ?? 0) > 0
+
   return (
     <div className="space-y-5">
-      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-        {liveRegionMessage}
+      <div className="sr-only" role="status" aria-live="polite">
+        {announcement}
       </div>
-      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-[radial-gradient(circle_at_top_right,_rgba(37,99,235,0.12),_transparent_38%),linear-gradient(135deg,#ffffff_0%,#f8fafc_100%)] p-5 shadow-[0_18px_60px_-34px_rgba(15,23,42,0.45)] dark:border-slate-800 dark:bg-[radial-gradient(circle_at_top_right,_rgba(37,99,235,0.18),_transparent_38%),linear-gradient(135deg,#0f172a_0%,#020617_100%)] sm:p-7">
-        <div className="flex min-w-0 flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex min-w-0 flex-col items-start gap-5 sm:flex-row sm:items-center">
-            <ProgressDial percentage={summary.progress} />
-            <div className="min-w-0">
-              <Badge className="border-0 bg-blue-100 text-blue-700 hover:bg-blue-100 dark:bg-blue-950 dark:text-blue-300">
-                PROJECT TIMELINE
-              </Badge>
-              <h1 className="mt-3 truncate text-2xl font-semibold tracking-tight text-slate-950 dark:text-white sm:text-3xl">
-                {data.project.title}
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-                見積工数を基準に、各タスクの進捗を加重平均しています。
-                <span className="ml-1 font-semibold text-slate-900 dark:text-white">
-                  {formatHours(summary.completedEquivalentHours)} 完了相当 / 全{' '}
-                  {formatHours(summary.totalHours)}
-                </span>
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                <span className="inline-flex items-center gap-1.5">
-                  <CalendarDays className="h-3.5 w-3.5" />
-                  {formatLongDate(
-                    layoutModel?.timeline.start_date ??
-                      data.timeline.start_date,
-                  )}{' '}
-                  —{' '}
-                  {formatLongDate(
-                    layoutModel?.timeline.end_date ?? data.timeline.end_date,
-                  )}
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Clock3 className="h-3.5 w-3.5" />週{' '}
-                  {data.project.weekly_work_hours}h
-                </span>
-              </div>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:min-w-[610px]">
-            <MetricCard
-              icon={Target}
-              label="残り工数"
-              value={formatHours(summary.remainingHours)}
-              detail={`全体 ${formatHours(summary.totalHours)}`}
-              tone="blue"
-            />
-            <MetricCard
-              icon={Check}
-              label="完了タスク"
-              value={`${summary.completedTasks} / ${summary.tasks.length}`}
-              detail={`${summary.activeTasks}件が進行中`}
-              tone="emerald"
-            />
-            <MetricCard
-              icon={Flag}
-              label="ゴール"
-              value={`${data.goals.length}件`}
-              detail={`${data.goals.filter((goal) => goal.status === 'completed').length}件完了`}
-            />
-            <MetricCard
-              icon={AlertTriangle}
-              label="期限超過"
-              value={`${summary.overdueTasks}件`}
-              detail={summary.overdueTasks ? '要確認' : '遅延なし'}
-              tone={summary.overdueTasks ? 'amber' : 'slate'}
-            />
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">Roadmap</p>
+            <h1 className="mt-1.5 truncate text-2xl font-semibold tracking-tight text-slate-950 dark:text-white sm:text-3xl">
+              {data.project.title}
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+              残り作業を週{weeklyWorkHours}時間のキャパシティで依存関係の順に並べた見込みです。過去のバーは記録された作業ログに基づきます。
+            </p>
           </div>
+          {totals && (
+            <div className="grid shrink-0 grid-cols-2 gap-3 sm:grid-cols-4 lg:w-[640px]">
+              <Kpi
+                icon={ListChecks}
+                label="進捗"
+                value={`${Math.round(totals.progress * 100)}%`}
+                detail={`ゴール ${doneGoalCount} / ${schedule?.goals.length ?? 0} 完了`}
+              />
+              <Kpi
+                icon={Timer}
+                label="残り工数"
+                value={formatHours(totals.remainingHours)}
+                detail={`実績 ${formatHours(totals.actualHours)}`}
+              />
+              <Kpi
+                icon={CalendarClock}
+                label="完了見込み"
+                value={schedule?.projectedEnd ? formatJstDate(schedule.projectedEnd, true) : '完了済み'}
+                detail={schedule?.projectedEnd ? `あと約${Math.ceil(weeksLeft)}週` : undefined}
+                tone={schedule?.projectedEnd ? 'default' : 'good'}
+              />
+              <Kpi
+                icon={Flag}
+                label="期限リスク"
+                value={schedule?.lateGoalCount ? `${schedule.lateGoalCount}件` : 'なし'}
+                detail={schedule?.lateGoalCount ? '期限超過の見込み' : '期限内の見込み'}
+                tone={schedule?.lateGoalCount ? 'late' : 'good'}
+              />
+            </div>
+          )}
         </div>
       </section>
 
-      <Card className="overflow-hidden rounded-3xl border-slate-200 shadow-[0_18px_60px_-40px_rgba(15,23,42,0.45)] dark:border-slate-800">
-        <div className="flex flex-col gap-4 border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="flex items-center gap-2 text-base font-semibold text-slate-950 dark:text-white">
-              <Layers3 className="h-4 w-4 text-blue-600" />
-              ロードマップ
-            </h2>
-            <p className="mt-1 text-xs text-slate-500">
-              バーを選択すると、ゴールやタスクの内訳を確認できます。
-            </p>
+      <Card className="overflow-hidden rounded-3xl border-slate-200 shadow-sm dark:border-slate-800">
+        <div className="flex flex-col gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
+          <div
+            className="inline-flex w-fit rounded-xl bg-slate-100 p-1 dark:bg-slate-900"
+            role="radiogroup"
+            aria-label="時間軸の表示単位"
+          >
+            {SCALE_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={scaleMode === option.value}
+                onClick={() => setScaleMode(option.value)}
+                className={`h-8 min-w-[3rem] rounded-lg px-3 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                  scaleMode === option.value
+                    ? 'bg-white text-slate-950 shadow-sm dark:bg-slate-700 dark:text-white'
+                    : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Select
-              value={filters.time_unit}
-              onValueChange={(value) =>
-                updateFilters({
-                  time_unit: value as TimelineFilters['time_unit'],
-                })
-              }
-            >
-              <SelectTrigger
-                className="h-9 w-[112px] rounded-xl bg-white dark:bg-slate-950"
-                aria-label="時間軸"
-              >
-                <SelectValue
-                  placeholder={
-                    filters.time_unit === 'day'
-                      ? '日単位'
-                      : filters.time_unit === 'month'
-                        ? '月単位'
-                        : '週単位'
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="day">日単位</SelectItem>
-                <SelectItem value="week">週単位</SelectItem>
-                <SelectItem value="month">月単位</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              variant={
-                filters.show_task_segments !== false &&
-                !taskSegmentsAreCapped
-                  ? 'secondary'
-                  : 'outline'
-              }
-              size="sm"
-              className="h-9 rounded-xl"
-              disabled={taskSegmentsAreCapped}
-              onClick={() =>
-                updateFilters({
-                  show_task_segments: filters.show_task_segments === false,
-                })
-              }
-            >
-              <Layers3 className="mr-1.5 h-3.5 w-3.5" />
-              タスク内訳
+            <Button variant="ghost" size="sm" className="h-8 rounded-lg" onClick={() => scrollToToday()}>
+              <LocateFixed className="mr-1.5 h-3.5 w-3.5" />
+              今日
             </Button>
             <Button
-              variant={
-                filters.show_dependencies !== false ? 'secondary' : 'outline'
-              }
+              variant={showCompleted ? 'secondary' : 'outline'}
               size="sm"
-              className="h-9 rounded-xl"
-              onClick={() =>
-                updateFilters({
-                  show_dependencies: filters.show_dependencies === false,
-                })
-              }
+              className="h-8 rounded-lg"
+              aria-pressed={showCompleted}
+              onClick={() => setShowCompleted((value) => !value)}
+            >
+              完了済み
+            </Button>
+            <Button
+              variant={showDependencies ? 'secondary' : 'outline'}
+              size="sm"
+              className="h-8 rounded-lg"
+              aria-pressed={showDependencies}
+              onClick={() => setShowDependencies((value) => !value)}
             >
               <GitBranch className="mr-1.5 h-3.5 w-3.5" />
               依存関係
             </Button>
-            <div
-              className="flex h-9 items-center rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-800 dark:bg-slate-900"
-              aria-label={`表示倍率 ${Math.round(zoomLevel * 100)}%`}
-            >
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 rounded-lg p-0"
-                onClick={handleZoomOut}
-                aria-label="縮小"
-              >
-                <ZoomOut className="h-3.5 w-3.5" />
-              </Button>
-              <span className="min-w-[92px] text-center text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                表示倍率 {Math.round(zoomLevel * 100)}%
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 rounded-lg p-0"
-                onClick={handleZoomIn}
-                aria-label="拡大"
-              >
-                <ZoomIn className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9 rounded-xl"
-              onClick={downloadSVG}
-            >
-              <Download className="mr-1.5 h-3.5 w-3.5" />
-              書き出す
+            <Button variant="outline" size="sm" className="h-8 rounded-lg" onClick={toggleExpandAll} disabled={expandableIds.length === 0}>
+              {allExpanded ? (
+                <ChevronsDownUp className="mr-1.5 h-3.5 w-3.5" />
+              ) : (
+                <ChevronsUpDown className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              {allExpanded ? 'タスクを閉じる' : 'タスクを展開'}
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 rounded-lg" disabled={!hasGoals || isExporting}>
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  書き出す
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => void handleExport('png')}>画像 (PNG)</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void handleExport('svg')}>ベクター (SVG)</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
-        {isLargeDataset && (
-          <div
-            className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-medium text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 sm:px-6"
-            role="status"
-          >
-            データ量が多いため、表示を最適化しています。
-            {goalsAreCapped && ` ゴールは先頭${RENDER_LIMITS.goals}件を表示します。`}
-            {taskSegmentsAreCapped &&
-              ' タスク内訳は省略し、ゴール単位で表示します。'}
+        {schedule && (schedule.hasCycle || schedule.hiddenCancelledCount > 0) && (
+          <div className="space-y-1 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 sm:px-5" role="status">
+            {schedule.hasCycle && (
+              <p className="flex items-center gap-1.5 font-medium">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                依存関係が循環しています。破線のオレンジの線を確認してください。
+              </p>
+            )}
+            {schedule.hiddenCancelledCount > 0 && (
+              <p>中止したゴール {schedule.hiddenCancelledCount}件は表示していません。</p>
+            )}
           </div>
         )}
 
-        {!layoutModel ? (
-          <CardContent className="px-4 py-5 sm:px-6">
-            <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
-                <div>
-                  <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
-                    簡易表示に切り替えました
-                  </p>
-                  <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                    チャートを描画できないため、ゴールの進捗を一覧で表示しています。
-                  </p>
+        <div className="flex min-h-0">
+          <div className="min-w-0 flex-1">
+            {!schedule || !layout ? (
+              <CardContent className="px-6 py-16 text-center text-sm text-slate-500">
+                ロードマップを計算できませんでした。
+                <Button variant="link" onClick={onRefresh}>再読み込み</Button>
+              </CardContent>
+            ) : !hasGoals ? (
+              <div ref={setScrollElement}>
+                <CardContent className="px-6 py-16 text-center text-sm text-slate-500">
+                  {schedule.goals.length > 0
+                    ? 'すべてのゴールが完了しています。「完了済み」をオンにすると履歴を表示します。'
+                    : 'このプロジェクトにはまだゴールがありません。'}
+                </CardContent>
+              </div>
+            ) : (
+              <div
+                ref={setScrollElement}
+                className="relative max-h-[72vh] overflow-auto overscroll-contain focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+                style={{ backgroundColor: palette.background, fontFamily: TIMELINE_FONT_FAMILY }}
+                tabIndex={0}
+                role="region"
+                aria-label={`${data.project.title}のロードマップ。上下キーでゴールを選択できます。`}
+                onKeyDown={handleKeyDown}
+              >
+                <div style={{ width: layout.labelWidth + layout.width }}>
+                  <div className="sticky top-0 z-20 flex">
+                    <div className="sticky left-0 z-30 shrink-0" style={{ width: layout.labelWidth }}>
+                      <svg width={layout.labelWidth} height={HEADER_HEIGHT} className="block">
+                        <ChartCorner
+                          palette={palette}
+                          goalCount={layout.goalRows.size}
+                          weeklyHours={schedule.weeklyHours}
+                          width={layout.labelWidth}
+                        />
+                      </svg>
+                    </div>
+                    <svg width={layout.width} height={HEADER_HEIGHT} className="block shrink-0" aria-hidden="true">
+                      <ChartHeader layout={layout} palette={palette} projectedEnd={schedule.projectedEnd} />
+                    </svg>
+                  </div>
+                  <div className="flex">
+                    <div className="sticky left-0 z-10 shrink-0" style={{ width: layout.labelWidth }}>
+                      <svg
+                        width={layout.labelWidth}
+                        height={layout.height}
+                        className="block select-none"
+                        role="list"
+                        aria-label="ゴール一覧"
+                      >
+                        <ChartLabels
+                          layout={layout}
+                          palette={palette}
+                          focus={focus}
+                          interaction={{
+                            expandedIds,
+                            onHover: setHoveredId,
+                            onSelect: (id) => selectGoal(id),
+                            onToggleExpand: toggleExpand,
+                          }}
+                        />
+                      </svg>
+                    </div>
+                    <svg
+                      width={layout.width}
+                      height={layout.height}
+                      className="block shrink-0 select-none"
+                      aria-hidden="true"
+                    >
+                      <ChartBody
+                        layout={layout}
+                        palette={palette}
+                        focus={focus}
+                        showDependencies={showDependencies}
+                        interaction={{
+                          expandedIds,
+                          onHover: setHoveredId,
+                          onSelect: (id) => selectGoal(id),
+                          onToggleExpand: toggleExpand,
+                        }}
+                      />
+                    </svg>
+                  </div>
                 </div>
               </div>
-              <Button variant="outline" size="sm" onClick={onRefresh}>
-                再読み込み
-              </Button>
-            </div>
-            <div
-              className="mt-4 max-h-[560px] space-y-2 overflow-auto"
-              role="list"
-              aria-label="ゴール進捗の簡易表示"
-            >
-              {data.goals.slice(0, RENDER_LIMITS.goals).map((goal) => {
-                const totalHours = goal.tasks.reduce(
-                  (sum, task) => sum + Math.max(0, task.estimate_hours),
-                  0,
-                )
-                const completedHours = goal.tasks.reduce(
-                  (sum, task) =>
-                    sum +
-                    Math.max(0, task.estimate_hours) *
-                      (clampPercentage(task.progress_percentage) / 100),
-                  0,
-                )
-                const percentage = totalHours
-                  ? Math.round((completedHours / totalHours) * 100)
-                  : 0
+            )}
+          </div>
 
-                return (
-                  <div
-                    key={goal.id}
-                    className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950"
-                    role="listitem"
-                  >
-                    <div className="flex items-center justify-between gap-4 text-sm">
-                      <span className="truncate font-semibold text-slate-900 dark:text-white">
-                        {goal.title}
-                      </span>
-                      <span className="shrink-0 font-mono font-semibold text-slate-600 dark:text-slate-300">
-                        {percentage}%
-                      </span>
-                    </div>
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                      <div
-                        className="h-full rounded-full bg-blue-600"
-                        style={{ width: `${percentage}%` }}
-                      />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </CardContent>
-        ) : layoutModel.goals.length === 0 ? (
-          <CardContent className="px-6 py-16 text-center text-sm text-slate-500">
-            この期間に表示できるゴールがありません。
-          </CardContent>
-        ) : (
-          <div
-            ref={containerRef}
-            className="overflow-auto bg-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 dark:bg-slate-950"
-            style={{ maxHeight: 720 }}
-            tabIndex={0}
-            role="region"
-            aria-label="プロジェクトのロードマップ"
-            aria-keyshortcuts="ArrowUp ArrowDown Escape + - 0"
-            onKeyDown={handleTimelineKeyDown}
-          >
-            <svg
-              ref={svgRef}
-              width={layoutModel.dimensions.width * zoomLevel}
-              height={layoutModel.dimensions.height * zoomLevel}
-              viewBox={`0 0 ${layoutModel.dimensions.width} ${layoutModel.dimensions.height}`}
-              role="group"
-              aria-labelledby="timeline-title"
-              aria-describedby="timeline-description"
-              onClick={(event) => {
-                if (event.target === svgRef.current) closeTooltip()
-              }}
-            >
-              <title id="timeline-title">{`${data.project.title}のタイムライン`}</title>
-              <desc id="timeline-description">{`${layoutModel.goals.length}個のゴールを、期間と進捗率で表示しています。`}</desc>
-              <defs>
-                <filter
-                  id="timeline-soft-shadow"
-                  x="-20%"
-                  y="-50%"
-                  width="140%"
-                  height="200%"
-                >
-                  <feDropShadow
-                    dx="0"
-                    dy="3"
-                    stdDeviation="4"
-                    floodColor="#0f172a"
-                    floodOpacity="0.12"
-                  />
-                </filter>
-                <marker
-                  id="arrowhead"
-                  viewBox="0 0 8 8"
-                  markerWidth="7"
-                  markerHeight="7"
-                  refX="7"
-                  refY="4"
-                  orient="auto"
-                >
-                  <path
-                    d="M 1 1.25 L 6.5 4 L 1 6.75"
-                    fill="none"
-                    stroke="#64748b"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </marker>
-                <marker
-                  id="arrowhead-invalid"
-                  viewBox="0 0 8 8"
-                  markerWidth="7"
-                  markerHeight="7"
-                  refX="7"
-                  refY="4"
-                  orient="auto"
-                >
-                  <path
-                    d="M 1 1.25 L 6.5 4 L 1 6.75"
-                    fill="none"
-                    stroke="#ef4444"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </marker>
-              </defs>
-
-              <rect
-                width="100%"
-                height="100%"
-                fill="#ffffff"
-                className="dark:fill-slate-950"
+          {selectedGoal && schedule && (
+            <aside className="hidden w-[360px] shrink-0 border-l border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 xl:block">
+              <TimelineGoalPanel
+                goal={selectedGoal}
+                schedule={schedule}
+                onClose={() => setSelectedId(null)}
+                onSelectGoal={(id) => selectGoal(id, { scroll: true })}
               />
-              <rect
-                x="0"
-                y="0"
-                width={CHART.labelWidth}
-                height="100%"
-                fill="#f8fafc"
-                className="dark:fill-slate-900"
-              />
-              <rect
-                x="0"
-                y="0"
-                width="100%"
-                height={CHART.headerHeight}
-                fill="#ffffff"
-                className="dark:fill-slate-950"
-              />
-              <line
-                x1="0"
-                y1={CHART.headerHeight}
-                x2="100%"
-                y2={CHART.headerHeight}
-                stroke="#cbd5e1"
-              />
-              <line
-                x1={CHART.labelWidth}
-                y1="0"
-                x2={CHART.labelWidth}
-                y2="100%"
-                stroke="#cbd5e1"
-              />
+            </aside>
+          )}
+        </div>
 
-              <text
-                x="28"
-                y="30"
-                fontSize="10"
-                fontWeight="700"
-                letterSpacing="1.4"
-                fill="#64748b"
-              >
-                GOALS
-              </text>
-              <text
-                x="28"
-                y="51"
-                fontSize="13"
-                fontWeight="600"
-                fill="#0f172a"
-                className="dark:fill-white"
-              >
-                ゴールと完了率
-              </text>
-              {timeAxisMarkers.map((marker) => (
-                <g key={marker.date.toISOString()}>
-                  <line
-                    x1={marker.x}
-                    y1={CHART.headerHeight}
-                    x2={marker.x}
-                    y2="100%"
-                    stroke="#e2e8f0"
-                    strokeDasharray="3 5"
-                  />
-                  <text
-                    x={marker.x + 8}
-                    y="43"
-                    fontSize="11"
-                    fontWeight="600"
-                    fill="#64748b"
-                  >
-                    {marker.label}
-                  </text>
-                </g>
-              ))}
-
-              {layoutModel.goals.map((goal, index) => {
-                const y = CHART.headerHeight + index * CHART.rowHeight
-                return (
-                  <rect
-                    key={`row-${goal.id}`}
-                    x="0"
-                    y={y}
-                    width="100%"
-                    height={CHART.rowHeight}
-                    fill={index % 2 === 0 ? '#ffffff' : '#f8fafc'}
-                    className={
-                      index % 2 === 0
-                        ? 'dark:fill-slate-950'
-                        : 'dark:fill-slate-900/60'
-                    }
-                  />
-                )
-              })}
-
-              {todayX !== null && (
-                <g className="pointer-events-none">
-                  <line
-                    x1={todayX}
-                    y1="22"
-                    x2={todayX}
-                    y2="100%"
-                    stroke="#f97316"
-                    strokeWidth="1.5"
-                  />
-                  <rect
-                    x={todayX - 22}
-                    y="16"
-                    width="44"
-                    height="20"
-                    rx="10"
-                    fill="#fff7ed"
-                    stroke="#fdba74"
-                  />
-                  <text
-                    x={todayX}
-                    y="26"
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    fontSize="10"
-                    fontWeight="700"
-                    fill="#c2410c"
-                  >
-                    今日
-                  </text>
-                </g>
-              )}
-
-              {filters.show_dependencies !== false &&
-                layoutModel.arrows.map((arrow) => (
-                  <TimelineDependencyArrow
-                    key={arrow.id}
-                    arrow={arrow}
-                    isHighlighted={
-                      selectedGoal?.id === arrow.from_goal_id ||
-                      selectedGoal?.id === arrow.to_goal_id
-                    }
-                  />
-                ))}
-
-              {layoutModel.goals.map((goal) => (
-                <TimelineGoalBar
-                  key={goal.id}
-                  goal={goal}
-                  dimensions={layoutModel.dimensions}
-                  isSelected={selectedGoal?.id === goal.id}
-                  onGoalClick={openGoal}
-                  onTaskClick={openTask}
-                  showTaskSegments={
-                    filters.show_task_segments !== false &&
-                    !taskSegmentsAreCapped
-                  }
-                />
-              ))}
-            </svg>
+        {selectedGoal && schedule && (
+          <div className="border-t border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950 xl:hidden">
+            <TimelineGoalPanel
+              goal={selectedGoal}
+              schedule={schedule}
+              onClose={() => setSelectedId(null)}
+              onSelectGoal={(id) => selectGoal(id, { scroll: true })}
+            />
           </div>
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 sm:px-6">
-          <div className="flex flex-wrap items-center gap-4">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />
-              進行中
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-              完了
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-slate-300" />
-              未着手
-            </span>
-          </div>
-          <span>完了率は見積工数で重み付けしています</span>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 sm:px-5">
+          <LegendSwatch className="bg-emerald-500" label="完了" />
+          <LegendSwatch className="bg-blue-600" label="実施済み（進行中）" />
+          <LegendSwatch className="border border-blue-400 bg-blue-100 dark:bg-blue-950" label="残り作業の見込み" />
+          <LegendSwatch className="border border-slate-400 bg-slate-100 dark:bg-slate-800" label="未着手の見込み" />
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-3 w-0.5 bg-orange-500" />
+            今日
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-3 w-0 border-l border-dashed border-violet-500" />
+            完了見込み
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-3 w-0 border-l border-dashed border-slate-400" />
+            期限
+          </span>
+          <span className="ml-auto hidden text-slate-500 md:inline">
+            ゴールにカーソルを合わせると依存チェーンを強調します
+          </span>
         </div>
       </Card>
-
-      {(selectedGoal || selectedTask) && tooltipPosition && (
-        <TimelineTooltip
-          goal={selectedGoal}
-          task={selectedTask}
-          position={tooltipPosition}
-          onClose={closeTooltip}
-        />
-      )}
     </div>
   )
 }

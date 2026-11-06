@@ -155,11 +155,36 @@ async def get_project_timeline(
             dependency_ids = [str(dep.depends_on_goal_id) for dep in goal.dependencies]
 
             tasks_data: list[TaskTimelineData] = []
+            # Timestamps of recorded work, used to place past work on the chart.
+            # Logs on cancelled tasks are included: that effort was really spent.
+            goal_log_times: list[datetime] = []
             for task in tasks:
                 # Use preloaded logs from the relationship (N+1 problem fixed)
                 logs = task.logs
 
                 total_actual_minutes = sum(log.actual_minutes for log in logs)
+                # A log is recorded after its work, so the work began
+                # `actual_minutes` before the log's timestamp. Logs carry no
+                # separate work date, so work entered in bulk later is placed
+                # at the time it was entered.
+                work_spans = [
+                    (
+                        log.created_at - timedelta(minutes=log.actual_minutes),
+                        log.created_at,
+                    )
+                    for log in logs
+                    if log.created_at is not None
+                ]
+                first_logged_at = (
+                    min(start for start, _ in work_spans) if work_spans else None
+                )
+                last_logged_at = (
+                    max(end for _, end in work_spans) if work_spans else None
+                )
+                if first_logged_at is not None:
+                    goal_log_times.append(first_logged_at)
+                if last_logged_at is not None:
+                    goal_log_times.append(last_logged_at)
                 estimate_minutes = float(task.estimate_hours) * 60
                 progress_percentage = (
                     min((total_actual_minutes / estimate_minutes) * 100, 100)
@@ -184,6 +209,12 @@ async def get_project_timeline(
                         status_color=status_color,
                         actual_hours=round(total_actual_minutes / 60, 2),
                         logs_count=len(logs),
+                        first_logged_at=first_logged_at.isoformat()
+                        if first_logged_at
+                        else None,
+                        last_logged_at=last_logged_at.isoformat()
+                        if last_logged_at
+                        else None,
                     )
                 )
 
@@ -204,6 +235,12 @@ async def get_project_timeline(
                     created_at=goal.created_at.isoformat(),
                     updated_at=goal.updated_at.isoformat(),
                     tasks=tasks_data,
+                    actual_start_date=min(goal_log_times).isoformat()
+                    if goal_log_times
+                    else None,
+                    actual_end_date=max(goal_log_times).isoformat()
+                    if goal_log_times
+                    else None,
                 )
             )
 

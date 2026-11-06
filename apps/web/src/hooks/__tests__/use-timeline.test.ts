@@ -7,7 +7,7 @@ import {
   createMockTimelineOverviewData,
   resetIdCounter,
 } from './helpers/mock-factories'
-import type { ProjectTimelineData, TimelineOverviewData, TimelineFilters } from '@/types/timeline'
+import type { ProjectTimelineData, TimelineOverviewData } from '@/types/timeline'
 
 // Mock toast
 const mockToast = jest.fn()
@@ -84,51 +84,9 @@ describe('useProjectTimeline', () => {
         undefined,
         undefined,
         undefined,
-        40
+        undefined
       )
       expect(result.current.data).toEqual(mockData)
-    })
-
-    it('should pass filters to API', async () => {
-      const mockData = createMockProjectTimelineData()
-      mockGetProjectTimeline.mockResolvedValue(mockData)
-
-      const filters: TimelineFilters = {
-        start_date: '2025-01-01',
-        end_date: '2025-01-31',
-        time_unit: 'week',
-      }
-
-      const { result } = renderHook(() => useProjectTimeline('project-123', filters))
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false)
-      })
-
-      expect(mockGetProjectTimeline).toHaveBeenCalledWith(
-        'project-123',
-        '2025-01-01',
-        '2025-01-31',
-        'week',
-        40
-      )
-    })
-
-    it('should pass weeklyWorkHours to API (default 40)', async () => {
-      const mockData = createMockProjectTimelineData()
-      mockGetProjectTimeline.mockResolvedValue(mockData)
-
-      renderHook(() => useProjectTimeline('project-123', undefined, 30))
-
-      await waitFor(() => {
-        expect(mockGetProjectTimeline).toHaveBeenCalledWith(
-          'project-123',
-          undefined,
-          undefined,
-          undefined,
-          30
-        )
-      })
     })
 
     it('should update data on successful fetch', async () => {
@@ -152,79 +110,50 @@ describe('useProjectTimeline', () => {
     })
   })
 
-  describe('memoization', () => {
-    it('should not refetch when filters object reference changes but values are same', async () => {
+  describe('project changes', () => {
+    it('should refetch when the project changes', async () => {
       const mockData = createMockProjectTimelineData()
       mockGetProjectTimeline.mockResolvedValue(mockData)
 
-      const filters1: TimelineFilters = {
-        start_date: '2025-01-01',
-        end_date: '2025-01-31',
-        time_unit: 'day',
-      }
-
       const { result, rerender } = renderHook(
-        ({ filters }) => useProjectTimeline('project-123', filters),
-        { initialProps: { filters: filters1 } }
+        ({ projectId }) => useProjectTimeline(projectId),
+        { initialProps: { projectId: 'project-123' } }
       )
 
       await waitFor(() => {
         expect(result.current.isLoading).toBe(false)
       })
 
+      rerender({ projectId: 'project-456' })
+
+      await waitFor(() => {
+        expect(mockGetProjectTimeline).toHaveBeenLastCalledWith(
+          'project-456',
+          undefined,
+          undefined,
+          undefined,
+          undefined
+        )
+      })
+    })
+
+    it('should not refetch on rerender with the same project', async () => {
+      const mockData = createMockProjectTimelineData()
+      mockGetProjectTimeline.mockResolvedValue(mockData)
+
+      const { result, rerender } = renderHook(() => useProjectTimeline('project-123'))
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false)
+      })
+
       const callCount = mockGetProjectTimeline.mock.calls.length
-
-      // Create new object reference with same values
-      const filters2: TimelineFilters = {
-        start_date: '2025-01-01',
-        end_date: '2025-01-31',
-        time_unit: 'day',
-      }
-
-      rerender({ filters: filters2 })
-
-      // Wait for any potential async operations to complete
+      rerender()
       await act(async () => {
         await Promise.resolve()
       })
 
-      // Should not have made additional API calls due to memoization
       expect(mockGetProjectTimeline.mock.calls.length).toBe(callCount)
-    })
-
-    it('should refetch when filter values change', async () => {
-      const mockData = createMockProjectTimelineData()
-      mockGetProjectTimeline.mockResolvedValue(mockData)
-
-      const filters1: TimelineFilters = {
-        start_date: '2025-01-01',
-        end_date: '2025-01-31',
-        time_unit: 'day',
-      }
-
-      const { result, rerender } = renderHook(
-        ({ filters }) => useProjectTimeline('project-123', filters),
-        { initialProps: { filters: filters1 } }
-      )
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false)
-      })
-
-      const callCount = mockGetProjectTimeline.mock.calls.length
-
-      // Change filter values
-      const filters2: TimelineFilters = {
-        start_date: '2025-02-01',
-        end_date: '2025-02-28',
-        time_unit: 'week',
-      }
-
-      rerender({ filters: filters2 })
-
-      await waitFor(() => {
-        expect(mockGetProjectTimeline.mock.calls.length).toBeGreaterThan(callCount)
-      })
     })
   })
 

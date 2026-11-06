@@ -7,31 +7,18 @@ import { timelineApi } from '@/lib/api'
 import { logger } from '@/lib/logger'
 
 /**
- * Hook for fetching project timeline data with filtering support.
- * Handles date range filtering and weekly work hours configuration.
+ * Hook for fetching a project's timeline data (goals, tasks and logged work).
+ * The roadmap schedule itself is computed in the browser, so no date range
+ * or capacity is sent to the API.
  *
  * @param projectId - Project UUID to fetch timeline for (null to skip)
- * @param filters - Optional date range and time unit filters
- * @param weeklyWorkHours - Weekly capacity in hours (default: 40)
  * @returns Timeline data, loading state, error, and refetch method
  */
-export function useProjectTimeline(projectId: string | null, filters?: TimelineFilters, weeklyWorkHours?: number) {
+export function useProjectTimeline(projectId: string | null) {
   const [data, setData] = useState<ProjectTimelineData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
-
-  // Memoize filters with stable reference - only create new object when filters actually change
-  const memoizedFilters = useMemo(() => {
-    if (!filters) return null
-    return {
-      start_date: filters.start_date,
-      end_date: filters.end_date,
-      time_unit: filters.time_unit
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters?.start_date, filters?.end_date, filters?.time_unit])
-  // Note: we specifically want to avoid including the full filters object to prevent unnecessary re-renders
 
   const fetchTimeline = useCallback(async () => {
     if (!projectId) {
@@ -43,13 +30,7 @@ export function useProjectTimeline(projectId: string | null, filters?: TimelineF
     setError(null)
 
     try {
-      const timelineData = await timelineApi.getProjectTimeline(
-        projectId,
-        memoizedFilters?.start_date,
-        memoizedFilters?.end_date,
-        memoizedFilters?.time_unit,
-        weeklyWorkHours || 40
-      )
+      const timelineData = await timelineApi.getProjectTimeline(projectId)
       setData(timelineData)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'タイムラインの取得に失敗しました'
@@ -64,7 +45,7 @@ export function useProjectTimeline(projectId: string | null, filters?: TimelineF
       setIsLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, memoizedFilters, weeklyWorkHours])
+  }, [projectId])
   // Note: toast is intentionally excluded from dependencies to prevent infinite loops
 
   useEffect(() => {
