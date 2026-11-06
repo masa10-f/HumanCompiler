@@ -285,6 +285,35 @@ describe('buildSchedule', () => {
     expect(schedule.lateGoalCount).toBe(1)
   })
 
+  it('does not mark finished tasks late when their date is only estimated', () => {
+    const schedule = buildSchedule(
+      project([
+        goal('g', {
+          tasks: [
+            task({
+              id: 'edited',
+              status: 'completed',
+              due_date: '2026-10-01T00:00:00+09:00',
+              updated_at: '2026-11-05T00:00:00Z',
+            }),
+            task({
+              id: 'logged-late',
+              status: 'completed',
+              due_date: '2026-10-01T00:00:00+09:00',
+              first_logged_at: '2026-10-05T00:00:00Z',
+              last_logged_at: '2026-10-06T00:00:00Z',
+            }),
+          ],
+        }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    const byId = new Map(schedule.goals[0]!.tasks.map((item) => [item.id, item]))
+    expect(byId.get('edited')!.isLate).toBe(false)
+    expect(byId.get('logged-late')!.isLate).toBe(true)
+  })
+
   it('counts only open goals as a deadline risk', () => {
     const schedule = buildSchedule(
       project([

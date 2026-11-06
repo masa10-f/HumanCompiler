@@ -440,7 +440,12 @@ function scheduleTasks(
       actual,
       planned,
       finish,
-      isLate: task.status !== 'cancelled' && delayInDays(finish, dueDate) > 0,
+      // Without logs a finished task's date comes from its last update, so it
+      // can't show whether the task was late (same rule as for goals).
+      isLate:
+        task.status !== 'cancelled' &&
+        !(isFinished && !lastLog) &&
+        delayInDays(finish, dueDate) > 0,
       source: task,
     }
   })
