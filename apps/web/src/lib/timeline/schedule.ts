@@ -289,6 +289,7 @@ export function buildSchedule(
       estimateHours: metrics.estimate,
       doneHours: metrics.done,
       remainingHours: metrics.remaining,
+      // Effort actually spent, so hours logged on cancelled tasks count too.
       actualHours: goal.tasks.reduce(
         (sum, task) => sum + Math.max(0, Number(task.actual_hours) || 0),
         0,
