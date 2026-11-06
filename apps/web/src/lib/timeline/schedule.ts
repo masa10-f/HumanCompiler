@@ -301,7 +301,8 @@ export function buildSchedule(
       finish,
       finishIsEstimated,
       dueDate: draft.dueDate,
-      delayDays: delayInDays(finish, draft.dueDate),
+      // An estimated completion date can't tell whether the goal was late.
+      delayDays: finishIsEstimated ? 0 : delayInDays(finish, draft.dueDate),
       dependencyIds: draft.deps,
       dependentIds: successors.get(id) ?? [],
       waitingOnIds: openDepsOf(id),
@@ -352,7 +353,8 @@ export function buildSchedule(
     weeklyHours,
     hasCycle,
     hiddenCancelledCount: data.goals.length - visibleGoals.length,
-    lateGoalCount: goals.filter((goal) => goal.delayDays > 0).length,
+    // Deadline risk is about open work; finished goals are history.
+    lateGoalCount: goals.filter((goal) => goal.phase !== 'done' && goal.delayDays > 0).length,
   }
 }
 

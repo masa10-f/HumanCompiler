@@ -178,7 +178,9 @@ export function TimelineGoalPanel({
                   ? '—'
                   : goal.delayDays > 0
                     ? `${goal.delayDays}日遅れ`
-                    : '間に合う見込み'
+                    : goal.phase === 'done'
+                      ? '期限内に完了'
+                      : '間に合う見込み'
               }
               tone={goal.delayDays > 0 ? 'late' : undefined}
             />

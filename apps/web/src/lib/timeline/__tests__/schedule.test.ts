@@ -240,6 +240,30 @@ describe('buildSchedule', () => {
     expect(schedule.lateGoalCount).toBe(1)
   })
 
+  it('counts only open goals as a deadline risk', () => {
+    const schedule = buildSchedule(
+      project([
+        goal('finished-late', {
+          status: 'completed',
+          due_date: '2026-10-01T00:00:00+09:00',
+          actual_start_date: '2026-10-01T00:00:00Z',
+          actual_end_date: '2026-10-10T00:00:00Z',
+        }),
+        goal('edited-later', {
+          status: 'completed',
+          due_date: '2026-10-01T00:00:00+09:00',
+          updated_at: '2026-11-05T00:00:00Z',
+        }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    const byId = new Map(schedule.goals.map((item) => [item.id, item]))
+    expect(byId.get('finished-late')!.delayDays).toBeGreaterThan(0)
+    expect(byId.get('edited-later')!.delayDays).toBe(0)
+    expect(schedule.lateGoalCount).toBe(0)
+  })
+
   it('treats completed tasks as fully done and excludes cancelled work', () => {
     const schedule = buildSchedule(
       project([

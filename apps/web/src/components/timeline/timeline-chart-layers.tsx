@@ -387,7 +387,7 @@ export function ChartLabels({ layout, palette, focus, interaction }: LayerProps)
         const summary = goalSummaryText(goal)
         const metaWidth = width - 48 - 14
         const rawDueText = goal.delayDays > 0
-          ? ` · ${goal.delayDays}日遅れ見込み`
+          ? ` · ${goal.delayDays}日遅れ${goal.phase === 'done' ? 'で完了' : '見込み'}`
           : goal.dueDate && goal.phase !== 'done'
             ? ` · 期限 ${formatJstDate(goal.dueDate)}`
             : ''
