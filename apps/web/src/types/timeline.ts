@@ -90,7 +90,7 @@ export interface ProjectCapacity {
   effort_percent: number
   /** プロジェクトに割り当てる週間作業時間（実効稼働時間 × エフォート比） */
   weekly_work_hours: number
-  /** トリアージ設定が保存済みか（未保存なら既定値） */
+  /** トリアージ設定の行があるか（設定画面を開くと既定値で作成されるため、保存済みとは限らない） */
   configured: boolean
 }
 

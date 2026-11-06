@@ -56,7 +56,8 @@ class ProjectCapacity(BaseModel):
     effort_percent: int
     # effective_capacity_hours * effort_percent / 100
     weekly_work_hours: float
-    # False when the user has not saved triage settings yet (defaults are used)
+    # True when a triage settings row exists. Opening the Settings page creates
+    # one with defaults, so this does not mean the user saved their settings.
     configured: bool
 
 
