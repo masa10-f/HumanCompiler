@@ -154,6 +154,38 @@ describe('buildSchedule', () => {
     expect(schedule.goals.map((item) => item.id)).toEqual(['active', 'short'])
   })
 
+  it('protects every in-progress goal, not only the first, before letting a goal jump ahead', () => {
+    // 20h/week: 1h = 0.35 days. NOW is 11/6 00:00Z; a due date's deadline is
+    // the end of that JST day (15:00Z), so day N JST ends at (N - 6) + 0.625 days.
+    const schedule = buildSchedule(
+      project([
+        goal('first', {
+          status: 'in_progress',
+          // 4h → ends at 1.4 days; deadline 11/12 = 6.625 days (plenty of slack)
+          due_date: '2026-11-12T00:00:00+09:00',
+          tasks: [task({ status: 'in_progress', estimate_hours: 5, actual_hours: 1 })],
+        }),
+        goal('second', {
+          status: 'in_progress',
+          // 17h → ends at 7.35 days after `first`; deadline 11/13 = 7.625 days
+          due_date: '2026-11-13T00:00:00+09:00',
+          tasks: [task({ status: 'in_progress', estimate_hours: 18, actual_hours: 1 })],
+        }),
+        goal('urgent', {
+          // 3h = 1.05 days; deadline 11/7 = 1.625 days: met only if it goes first
+          due_date: '2026-11-07T00:00:00+09:00',
+          tasks: [task({ estimate_hours: 3 })],
+        }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    // `urgent` going first keeps `first` on time but would push `second`
+    // (8.4 days) past its deadline, so in-progress work keeps its place.
+    expect(schedule.goals.map((item) => item.id)).toEqual(['first', 'second', 'urgent'])
+    expect(schedule.goals.find((item) => item.id === 'second')!.delayDays).toBe(0)
+  })
+
   it('keeps in-progress work first when the planned goal is late either way', () => {
     const schedule = buildSchedule(
       project([

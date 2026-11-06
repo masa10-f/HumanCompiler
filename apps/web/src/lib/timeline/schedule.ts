@@ -228,13 +228,22 @@ export function buildSchedule(
     }
     ready.sort(priority)
     let id = ready[0]!
-    // Work in progress goes first, unless that makes a not-yet-started goal
-    // miss a deadline it could still meet by going first, and letting it go
-    // first keeps the in-progress goal on time too (never trade one miss for
-    // another).
+    // Work in progress goes first, unless a not-yet-started goal would miss
+    // a deadline it can still meet by going first. It may only jump ahead if
+    // that keeps every ready in-progress goal that is on time on time (never
+    // trade one miss for another).
     if (drafts.get(id)!.phase === 'active') {
-      const activeDuration = durationMs(drafts.get(id)!.metrics.remaining)
-      const activeDeadline = effectiveDeadline.get(id) ?? Infinity
+      const activeQueue = ready.filter((candidate) => drafts.get(candidate)!.phase === 'active')
+      const firstActiveDuration = durationMs(drafts.get(id)!.metrics.remaining)
+      const keepsActiveOnTime = (shift: number) => {
+        let finish = cursor
+        for (const activeId of activeQueue) {
+          finish += durationMs(drafts.get(activeId)!.metrics.remaining)
+          const activeDeadline = effectiveDeadline.get(activeId) ?? Infinity
+          if (finish <= activeDeadline && finish + shift > activeDeadline) return false
+        }
+        return true
+      }
       const rescue = ready
         .filter((candidate) => drafts.get(candidate)!.phase === 'planned')
         .find((candidate) => {
@@ -243,8 +252,8 @@ export function buildSchedule(
           return (
             Number.isFinite(deadline) &&
             cursor + duration <= deadline &&
-            cursor + activeDuration + duration > deadline &&
-            cursor + duration + activeDuration <= activeDeadline
+            cursor + firstActiveDuration + duration > deadline &&
+            keepsActiveOnTime(duration)
           )
         })
       if (rescue) id = rescue
