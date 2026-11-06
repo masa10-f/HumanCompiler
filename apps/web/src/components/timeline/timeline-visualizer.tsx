@@ -231,24 +231,32 @@ export function TimelineVisualizer({
     scrollToToday('auto')
   }, [data?.project.id, layout, scaleMode, scrollToToday])
 
+  // Row to bring into view once the layout containing it has rendered.
+  const [scrollTargetId, setScrollTargetId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!scrollTargetId || !layout || !scrollRef.current) return
+    const row = layout.goalRows.get(scrollTargetId)
+    if (!row) return
+    setScrollTargetId(null)
+    const element = scrollRef.current
+    const top = row.y
+    const bottom = row.y + row.height + HEADER_HEIGHT
+    if (top < element.scrollTop || bottom > element.scrollTop + element.clientHeight) {
+      element.scrollTo({ top: Math.max(0, top - 2 * CHART.goalRowHeight), behavior: 'smooth' })
+    }
+  }, [layout, scrollTargetId])
+
   const selectGoal = useCallback(
     (goalId: string, options: { scroll?: boolean } = {}) => {
-      setSelectedId((current) => (current === goalId && !options.scroll ? null : goalId))
       const goal = schedule?.goals.find((item) => item.id === goalId)
+      // Navigating to a finished goal while they are hidden reveals them,
+      // otherwise the selection would be dropped as soon as it is made.
+      if (goal?.phase === 'done' && !showCompleted) setShowCompleted(true)
+      setSelectedId((current) => (current === goalId && !options.scroll ? null : goalId))
       if (goal) setAnnouncement(`${goal.title}を選択しました`)
-      if (options.scroll && layout && scrollRef.current) {
-        const row = layout.goalRows.get(goalId)
-        const element = scrollRef.current
-        if (row) {
-          const top = row.y
-          const bottom = row.y + row.height + HEADER_HEIGHT
-          if (top < element.scrollTop || bottom > element.scrollTop + element.clientHeight) {
-            element.scrollTo({ top: Math.max(0, top - 2 * CHART.goalRowHeight), behavior: 'smooth' })
-          }
-        }
-      }
+      if (options.scroll) setScrollTargetId(goalId)
     },
-    [layout, schedule],
+    [schedule, showCompleted],
   )
 
   const toggleExpand = useCallback((goalId: string) => {
@@ -392,7 +400,7 @@ export function TimelineVisualizer({
                 icon={Timer}
                 label="残り工数"
                 value={formatHours(totals.remainingHours)}
-                detail={`実績 ${formatHours(totals.doneHours)}`}
+                detail={`実績 ${formatHours(totals.actualHours)}`}
               />
               <Kpi
                 icon={CalendarClock}

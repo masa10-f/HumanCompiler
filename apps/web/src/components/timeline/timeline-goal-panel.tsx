@@ -156,7 +156,7 @@ export function TimelineGoalPanel({
             />
           </div>
           <dl className="mt-3 grid grid-cols-3 gap-3">
-            <Fact label="実績" value={formatHours(goal.doneHours)} />
+            <Fact label="実績" value={formatHours(goal.actualHours)} />
             <Fact label="残り" value={formatHours(goal.remainingHours)} />
             <Fact label="見積" value={formatHours(goal.estimateHours)} />
           </dl>
@@ -223,7 +223,7 @@ export function TimelineGoalPanel({
                         {task.title}
                       </p>
                       <p className="mt-0.5 text-[11px] text-slate-500">
-                        {formatHours(task.doneHours)} / {formatHours(task.estimateHours)}
+                        実績 {formatHours(task.actualHours)} / 見積 {formatHours(task.estimateHours)}
                         {task.finish && task.status !== 'cancelled' && (
                           <span className={task.isLate ? 'font-semibold text-red-600 dark:text-red-400' : ''}>
                             {' · '}

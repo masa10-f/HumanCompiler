@@ -269,6 +269,10 @@ export function buildSchedule(
       estimateHours: metrics.estimate,
       doneHours: metrics.done,
       remainingHours: metrics.remaining,
+      actualHours: goal.tasks.reduce(
+        (sum, task) => sum + Math.max(0, Number(task.actual_hours) || 0),
+        0,
+      ),
       progress: phase === 'done' ? 1 : ratio(metrics.done, metrics.remaining),
       actual,
       planned: plan,
@@ -309,8 +313,9 @@ export function buildSchedule(
       estimateHours: sum.estimateHours + goal.estimateHours,
       doneHours: sum.doneHours + goal.doneHours,
       remainingHours: sum.remainingHours + goal.remainingHours,
+      actualHours: sum.actualHours + goal.actualHours,
     }),
-    { estimateHours: 0, doneHours: 0, remainingHours: 0 },
+    { estimateHours: 0, doneHours: 0, remainingHours: 0, actualHours: 0 },
   )
 
   const extentStart = minDate(now, ...goals.map((goal) => goal.start)) ?? now
@@ -393,6 +398,7 @@ function scheduleTasks(
       estimateHours: metrics.estimate || Math.max(0, Number(task.estimate_hours) || 0),
       doneHours: metrics.done,
       remainingHours: isFinished ? 0 : metrics.remaining,
+      actualHours: Math.max(0, Number(task.actual_hours) || 0),
       progress,
       dueDate,
       actual,

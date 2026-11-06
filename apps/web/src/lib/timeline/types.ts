@@ -32,8 +32,11 @@ export interface ScheduledTask {
   title: string
   status: WorkStatus
   estimateHours: number
+  /** Estimate-equivalent hours completed (drives progress). */
   doneHours: number
   remainingHours: number
+  /** Hours actually logged, regardless of the estimate. */
+  actualHours: number
   /** 0-1 */
   progress: number
   dueDate: Date | null
@@ -53,8 +56,11 @@ export interface ScheduledGoal {
   status: WorkStatus
   phase: GoalPhase
   estimateHours: number
+  /** Estimate-equivalent hours completed (drives progress). */
   doneHours: number
   remainingHours: number
+  /** Hours actually logged, regardless of the estimate. */
+  actualHours: number
   /** 0-1 */
   progress: number
   /** Recorded work: first log → last log (done) or → now (active). */
@@ -103,6 +109,7 @@ export interface TimelineSchedule {
     estimateHours: number
     doneHours: number
     remainingHours: number
+    actualHours: number
     /** 0-1 */
     progress: number
   }

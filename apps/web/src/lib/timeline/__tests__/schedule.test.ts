@@ -206,6 +206,26 @@ describe('buildSchedule', () => {
     expect(mixed.remainingHours).toBe(6)
   })
 
+  it('reports logged hours separately from estimate-based progress', () => {
+    const schedule = buildSchedule(
+      project([
+        goal('g', {
+          tasks: [
+            task({ status: 'completed', estimate_hours: 10, actual_hours: 1 }),
+            task({ status: 'in_progress', estimate_hours: 10, actual_hours: 15 }),
+          ],
+        }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    const [scheduled] = schedule.goals
+    expect(scheduled!.doneHours).toBe(20)
+    expect(scheduled!.actualHours).toBe(16)
+    expect(scheduled!.tasks.map((item) => item.actualHours)).toEqual([1, 15])
+    expect(schedule.totals.actualHours).toBe(16)
+  })
+
   it('keeps a little work remaining for open tasks that overran their estimate', () => {
     const schedule = buildSchedule(
       project([goal('over', { tasks: [task({ status: 'in_progress', estimate_hours: 10, actual_hours: 15 })] })]),
