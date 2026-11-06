@@ -864,10 +864,20 @@ TWO_TASKS = [
 ]
 
 
-def test_accept_goal_with_tasks_creates_tasks_and_notes(session: Session):
+def test_accept_goal_with_tasks_creates_tasks_and_notes(session: Session, monkeypatch):
     row = seed_goal_proposal(session, due_date="2026-12-01", tasks=TWO_TASKS)
+    order: list[str] = []
+    real_build = proposal_service.task_service.build
+
+    def spy_build(session_: Session, data: Any, user_id: UUID) -> Any:
+        order.append(data.title)
+        return real_build(session_, data, user_id)
+
+    monkeypatch.setattr(proposal_service.task_service, "build", spy_build)
 
     result = accept(session, row)
+
+    assert order == ["First", "Second"]
 
     assert result.result_type == "goal"
     goal = session.exec(select(Goal)).one()
@@ -893,6 +903,38 @@ def test_goal_with_invalid_edited_task_creates_nothing(session: Session):
     for model in (Goal, Task, ContextNote):
         assert count(session, model) == 0
     assert reload(session, row).status == ProposalStatus.PENDING
+
+
+def test_goal_task_failure_after_goal_built_rolls_back_everything(
+    session: Session, monkeypatch
+):
+    row = seed_goal_proposal(session, tasks=TWO_TASKS)
+    calls: list[str] = []
+    real_note = proposal_service._create_task_note
+
+    def failing_note(*args: Any, **kwargs: Any) -> Any:
+        calls.append("note")
+        if calls.count("note") == 2:
+            raise RuntimeError("boom")
+        return real_note(*args, **kwargs)
+
+    real_build = proposal_service.task_service.build
+
+    def counting_build(*args: Any, **kwargs: Any) -> Any:
+        calls.append("task")
+        return real_build(*args, **kwargs)
+
+    monkeypatch.setattr(proposal_service, "_create_task_note", failing_note)
+    monkeypatch.setattr(proposal_service.task_service, "build", counting_build)
+
+    with pytest.raises(RuntimeError):
+        accept(session, row)
+
+    # goal and both tasks were flushed, the first note too, before the failure
+    assert calls == ["task", "note", "task", "note"]
+    for model in (Goal, Task, ContextNote):
+        assert count(session, model) == 0
+    assert reload(session, row).status == ProposalStatus.PENDING.value
 
 
 def test_goal_with_all_tasks_removed_creates_goal_only(session: Session):
