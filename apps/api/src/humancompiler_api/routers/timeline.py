@@ -57,7 +57,12 @@ def resolve_project_capacity(
 
     The weekly hours available to a project are the user's effective weekly
     capacity (working hours minus buffer) multiplied by the project's effort
-    ratio, the same budget capacity triage assigns to the project.
+    ratio, the same budget capacity triage assigns once allocations are saved.
+
+    Without saved settings, triage splits the capacity equally among the
+    buckets that have candidates at that moment. The timeline does not mirror
+    that split; it reports a 0% effort ratio so the page can ask the user to
+    set one.
     """
     capacity_settings = session.exec(
         select(TriageCapacitySettings).where(TriageCapacitySettings.user_id == user_id)
@@ -72,6 +77,8 @@ def resolve_project_capacity(
         meeting_buffer = Decimal(str(capacity_settings.meeting_buffer_hours))
         allocations = capacity_settings.project_allocations_json or {}
         raw_percent = allocations.get(str(project_id))
+        # Keys are saved without the "project:" prefix since normalisation was
+        # added; the prefixed lookup only covers rows saved before that.
         if raw_percent is None:
             raw_percent = allocations.get(f"project:{project_id}", 0)
         try:
