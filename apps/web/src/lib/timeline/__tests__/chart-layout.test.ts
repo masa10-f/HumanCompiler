@@ -36,7 +36,9 @@ const goal = (id: string, dependencies: string[] = [], status: TimelineGoal['sta
 })
 
 const data = (goals: TimelineGoal[]): ProjectTimelineData => ({
-  project: { id: 'p', title: 'P', description: null, weekly_work_hours: 20, created_at: '', updated_at: '' },
+  project: { id: 'p', title: 'P', description: null, weekly_work_hours: 20,
+    capacity: { weekly_capacity_hours: 40, meeting_buffer_hours: 5, effective_capacity_hours: 35, effort_percent: 60, weekly_work_hours: 20, configured: true },
+    created_at: '', updated_at: '' },
   timeline: { start_date: '', end_date: '', time_unit: 'day' },
   goals,
 })

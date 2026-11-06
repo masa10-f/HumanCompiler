@@ -2,9 +2,10 @@
 
 import pytest
 from datetime import datetime, timedelta, UTC
+from decimal import Decimal
 from uuid import uuid4, UUID
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from humancompiler_api.main import app
 from humancompiler_api.models import (
@@ -16,6 +17,7 @@ from humancompiler_api.models import (
     TaskStatus,
     GoalStatus,
     ProjectStatus,
+    TriageCapacitySettings,
     WorkType,
 )
 from humancompiler_api.auth import AuthUser, get_current_user
@@ -472,6 +474,69 @@ class TestTimelineRouter:
         idle = tasks_by_id[str(idle_task.id)]
         assert idle["first_logged_at"] is None
         assert idle["last_logged_at"] is None
+
+    def test_timeline_weekly_hours_from_triage_settings(
+        self, client: TestClient, test_session: Session
+    ):
+        """Weekly hours = (working hours - buffer) x the project's effort ratio"""
+        user = create_test_user(test_session)
+        project = create_test_project(test_session, user.id)
+        other_project = create_test_project(test_session, user.id, "Other")
+        test_session.add(
+            TriageCapacitySettings(
+                user_id=user.id,
+                weekly_capacity_hours=Decimal("40.00"),
+                meeting_buffer_hours=Decimal("5.00"),
+                project_allocations_json={
+                    str(project.id): 30,
+                    str(other_project.id): 50,
+                },
+                inbox_allocation_percent=20,
+            )
+        )
+        test_session.commit()
+
+        app.dependency_overrides[get_current_user] = lambda: AuthUser(
+            user_id=str(user.id), email=user.email
+        )
+        app.dependency_overrides[get_session] = lambda: test_session
+
+        response = client.get(f"/api/timeline/projects/{project.id}")
+
+        assert response.status_code == 200
+        project_data = response.json()["project"]
+        assert project_data["weekly_work_hours"] == 10.5
+        assert project_data["capacity"] == {
+            "weekly_capacity_hours": 40.0,
+            "meeting_buffer_hours": 5.0,
+            "effective_capacity_hours": 35.0,
+            "effort_percent": 30,
+            "weekly_work_hours": 10.5,
+            "configured": True,
+        }
+
+    def test_timeline_weekly_hours_without_triage_settings(
+        self, client: TestClient, test_session: Session
+    ):
+        """Without saved settings the project has no effort ratio yet"""
+        user = create_test_user(test_session)
+        project = create_test_project(test_session, user.id)
+
+        app.dependency_overrides[get_current_user] = lambda: AuthUser(
+            user_id=str(user.id), email=user.email
+        )
+        app.dependency_overrides[get_session] = lambda: test_session
+
+        response = client.get(f"/api/timeline/projects/{project.id}")
+
+        assert response.status_code == 200
+        capacity = response.json()["project"]["capacity"]
+        assert capacity["configured"] is False
+        assert capacity["effort_percent"] == 0
+        assert capacity["effective_capacity_hours"] == 35.0
+        assert capacity["weekly_work_hours"] == 0.0
+        # The GET must not create a settings row as a side effect
+        assert test_session.exec(select(TriageCapacitySettings)).first() is None
 
     def test_timeline_status_colors(self, client: TestClient, test_session: Session):
         """Test timeline status color assignment"""

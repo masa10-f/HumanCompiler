@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle, ListChecks, Save } from 'lucide-react';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -20,6 +20,7 @@ import type { WorkType } from '@/types/task';
 import { workTypeLabels } from '@/types/task';
 
 const workTypes: WorkType[] = ['focused_work', 'study', 'light_work'];
+const TRIAGE_SETTINGS_ANCHOR = 'triage-settings';
 
 export function TriageSettingsCard() {
   const { user, loading: authLoading } = useAuth();
@@ -101,6 +102,17 @@ export function TriageSettingsCard() {
     settingsLoading ||
     (Boolean(user) && projectsLoading);
 
+  // The timeline links here with #triage-settings; the settings page renders
+  // after its own data loads, so bring the card into view once it is filled.
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const scrolledToHashRef = useRef(false);
+  useEffect(() => {
+    if (loading || scrolledToHashRef.current) return;
+    if (window.location.hash !== `#${TRIAGE_SETTINGS_ANCHOR}`) return;
+    scrolledToHashRef.current = true;
+    cardRef.current?.scrollIntoView?.({ block: 'start' });
+  }, [loading]);
+
   const allocationTotal = useMemo(() => {
     // Without project metadata, preserve and validate the stored map as-is;
     // silently dropping unknown IDs could hide an invalid allocation total.
@@ -117,6 +129,9 @@ export function TriageSettingsCard() {
   }, [inboxAllocationPercent, projectAllocations, projects, projectsUnavailable]);
 
   const effectiveCapacity = Math.max(0, weeklyCapacityHours - meetingBufferHours);
+  // Weekly hours an effort ratio buys; the project timeline plans with this.
+  const allocatedHours = (percent: number) =>
+    `${(Math.round(effectiveCapacity * percent) / 100).toFixed(1)}h/週`;
 
   const updateProjectAllocation = (projectId: string, value: number) => {
     setProjectAllocations((current) => ({ ...current, [projectId]: value }));
@@ -140,11 +155,11 @@ export function TriageSettingsCard() {
     setSuccess('');
 
     if (allocationTotal !== 100) {
-      setError(`配分の合計を100%にしてください（現在: ${allocationTotal}%）`);
+      setError(`エフォート比の合計を100%にしてください（現在: ${allocationTotal}%）`);
       return;
     }
     if (meetingBufferHours >= weeklyCapacityHours) {
-      setError('バッファ時間は週あたり処理量より小さくしてください');
+      setError('バッファ時間は週の稼働時間より小さくしてください');
       return;
     }
 
@@ -186,14 +201,16 @@ export function TriageSettingsCard() {
   };
 
   return (
-    <Card>
+    <Card id={TRIAGE_SETTINGS_ANCHOR} ref={cardRef} className="scroll-mt-20">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ListChecks className="h-5 w-5" />
-          キャパシティトリアージ
+          キャパ配分（トリアージ）
         </CardTitle>
         <CardDescription>
-          週あたりの処理可能量とプロジェクト別配分を設定します
+          週の稼働時間とプロジェクト別のエフォート比を設定します。
+          実効稼働時間 × エフォート比が各プロジェクトの週間作業時間となり、
+          トリアージとタイムラインの完了見込みに使われます
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -217,7 +234,7 @@ export function TriageSettingsCard() {
           <>
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
-                <Label htmlFor="triage-weekly-capacity">週あたり処理量</Label>
+                <Label htmlFor="triage-weekly-capacity">週の稼働時間（h）</Label>
                 <Input
                   id="triage-weekly-capacity"
                   type="number"
@@ -228,7 +245,7 @@ export function TriageSettingsCard() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="triage-meeting-buffer">バッファ時間</Label>
+                <Label htmlFor="triage-meeting-buffer">バッファ時間（h）</Label>
                 <Input
                   id="triage-meeting-buffer"
                   type="number"
@@ -252,9 +269,9 @@ export function TriageSettingsCard() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <Badge variant="secondary">実効 {effectiveCapacity.toFixed(1)}h</Badge>
+              <Badge variant="secondary">実効稼働 {effectiveCapacity.toFixed(1)}h/週</Badge>
               <Badge variant={allocationTotal === 100 ? 'default' : 'destructive'}>
-                配分 {allocationTotal}%
+                エフォート比合計 {allocationTotal}%
               </Badge>
             </div>
 
@@ -283,7 +300,7 @@ export function TriageSettingsCard() {
 
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold">配分</h3>
+                <h3 className="text-sm font-semibold">エフォート比</h3>
                 {projectsError ? (
                   <Button
                     type="button"
@@ -306,13 +323,21 @@ export function TriageSettingsCard() {
                 </p>
               ) : (
                 <>
+                  <p className="text-xs text-muted-foreground">
+                    合計100%になるように配分してください。0%のプロジェクトはタイムラインで完了見込みを計算できません。
+                  </p>
                   {projects.map((project) => {
                     const allocation = projectAllocations[project.id] || 0;
                     return (
                       <div key={project.id} className="space-y-2">
                         <div className="flex items-center justify-between gap-3">
                           <Label className="truncate">{project.title}</Label>
-                          <span className="text-sm font-medium">{allocation}%</span>
+                          <span className="shrink-0 text-sm font-medium">
+                            {allocation}%
+                            <span className="ml-2 text-xs font-normal text-muted-foreground">
+                              {allocatedHours(allocation)}
+                            </span>
+                          </span>
                         </div>
                         <Slider
                           value={[allocation]}
@@ -327,7 +352,12 @@ export function TriageSettingsCard() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-3">
                       <Label>Inbox</Label>
-                      <span className="text-sm font-medium">{inboxAllocationPercent}%</span>
+                      <span className="shrink-0 text-sm font-medium">
+                        {inboxAllocationPercent}%
+                        <span className="ml-2 text-xs font-normal text-muted-foreground">
+                          {allocatedHours(inboxAllocationPercent)}
+                        </span>
+                      </span>
                     </div>
                     <Slider
                       value={[inboxAllocationPercent]}

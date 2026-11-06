@@ -140,7 +140,7 @@ describe('TriageSettingsCard', () => {
       screen.getByRole('button', { name: 'トリアージ設定を保存' }),
     )
     expect(
-      await screen.findByText('配分の合計を100%にしてください（現在: 110%）'),
+      await screen.findByText('エフォート比の合計を100%にしてください（現在: 110%）'),
     ).toBeInTheDocument()
     expect(mockUpdateSettings).not.toHaveBeenCalled()
   })

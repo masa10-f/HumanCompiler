@@ -7,10 +7,13 @@ import { AppHeader } from '@/components/layout/app-header'
 import { TimelineVisualizer } from '@/components/timeline/timeline-visualizer'
 import { TimelineErrorBoundary } from '@/components/timeline/timeline-error-boundary'
 import { useProjectTimeline } from '@/hooks/use-timeline'
+import {
+  DEFAULT_FALLBACK_WEEKLY_HOURS,
+  resolveWeeklyWorkHours,
+  TimelineCapacityBadge,
+} from '@/components/timeline/timeline-capacity-badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { ArrowLeft, Clock3 } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 
 export default function ProjectTimelinePage() {
   const { isAuthenticated, loading } = useAuth()
@@ -18,7 +21,9 @@ export default function ProjectTimelinePage() {
   const params = useParams()
   const projectId = params.projectId as string
 
-  const [weeklyWorkHours, setWeeklyWorkHours] = useState(20)
+  const [fallbackWeeklyHours, setFallbackWeeklyHours] = useState(
+    DEFAULT_FALLBACK_WEEKLY_HOURS,
+  )
 
   const {
     data: timelineData,
@@ -26,6 +31,9 @@ export default function ProjectTimelinePage() {
     error: timelineError,
     refetch,
   } = useProjectTimeline(projectId)
+
+  const capacity = timelineData?.project.capacity
+  const weeklyWorkHours = resolveWeeklyWorkHours(capacity, fallbackWeeklyHours)
 
   if (loading) {
     return (
@@ -67,35 +75,11 @@ export default function ProjectTimelinePage() {
             プロジェクト一覧
           </Button>
 
-          <div className="flex w-fit items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="grid h-8 w-8 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-300">
-              <Clock3 className="h-4 w-4" />
-            </div>
-            <div>
-              <Label
-                htmlFor="weekly-work-hours"
-                className="block text-[10px] font-bold uppercase tracking-wider text-slate-500"
-              >
-                週間キャパシティ
-              </Label>
-              <div className="mt-0.5 flex items-center gap-1.5">
-                <Input
-                  id="weekly-work-hours"
-                  type="number"
-                  min="1"
-                  max="168"
-                  value={weeklyWorkHours}
-                  onChange={(e) =>
-                    setWeeklyWorkHours(
-                      Math.min(168, Math.max(1, Number(e.target.value) || 1)),
-                    )
-                  }
-                  className="h-7 w-16 border-0 bg-transparent p-0 text-right text-sm font-semibold shadow-none focus-visible:ring-0"
-                />
-                <span className="text-xs text-slate-500">時間 / 週</span>
-              </div>
-            </div>
-          </div>
+          <TimelineCapacityBadge
+            capacity={capacity}
+            fallbackHours={fallbackWeeklyHours}
+            onFallbackHoursChange={setFallbackWeeklyHours}
+          />
         </div>
 
         <TimelineErrorBoundary>

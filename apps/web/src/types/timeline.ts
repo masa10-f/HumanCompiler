@@ -76,6 +76,25 @@ export interface TimelineGoal {
 }
 
 /**
+ * プロジェクトの週間キャパシティ
+ * @description トリアージ設定（キャパ配分）から算出した値
+ */
+export interface ProjectCapacity {
+  /** 週の稼働時間 */
+  weekly_capacity_hours: number
+  /** バッファ時間（会議など） */
+  meeting_buffer_hours: number
+  /** 実効稼働時間（稼働時間 - バッファ） */
+  effective_capacity_hours: number
+  /** プロジェクトのエフォート比（0-100%） */
+  effort_percent: number
+  /** プロジェクトに割り当てる週間作業時間（実効稼働時間 × エフォート比） */
+  weekly_work_hours: number
+  /** トリアージ設定が保存済みか（未保存なら既定値） */
+  configured: boolean
+}
+
+/**
  * プロジェクトタイムラインデータ
  * @description 単一プロジェクトのタイムライン表示用データ
  */
@@ -88,8 +107,10 @@ export interface ProjectTimelineData {
     title: string
     /** プロジェクト説明 */
     description: string | null
-    /** 週間作業時間（時間単位） */
+    /** 週間作業時間（時間単位）: トリアージ設定の実効稼働時間 × エフォート比 */
     weekly_work_hours: number
+    /** トリアージ設定（キャパ配分）から算出した週間キャパシティ */
+    capacity: ProjectCapacity
     /** 作成日時 */
     created_at: string
     /** 更新日時 */

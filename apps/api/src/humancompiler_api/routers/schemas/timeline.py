@@ -44,6 +44,22 @@ class GoalTimelineData(BaseModel):
     actual_end_date: str | None = None
 
 
+class ProjectCapacity(BaseModel):
+    """Weekly capacity a project gets from the capacity triage settings."""
+
+    # Weekly working hours and buffer (meetings etc.) from the triage settings
+    weekly_capacity_hours: float
+    meeting_buffer_hours: float
+    # weekly_capacity_hours - meeting_buffer_hours
+    effective_capacity_hours: float
+    # The project's effort ratio (0-100)
+    effort_percent: int
+    # effective_capacity_hours * effort_percent / 100
+    weekly_work_hours: float
+    # False when the user has not saved triage settings yet (defaults are used)
+    configured: bool
+
+
 class ProjectInfo(BaseModel):
     """Project information for timeline."""
 
@@ -51,7 +67,9 @@ class ProjectInfo(BaseModel):
     title: str
     description: str | None
     status: str
+    # Weekly hours planned for this project (see ProjectCapacity)
     weekly_work_hours: float
+    capacity: ProjectCapacity
     created_at: str
     updated_at: str
 
