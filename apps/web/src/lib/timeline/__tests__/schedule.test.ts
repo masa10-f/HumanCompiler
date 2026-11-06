@@ -84,6 +84,20 @@ describe('buildSchedule', () => {
     expect(schedule.projectedEnd?.getTime()).toBe(NOW.getTime() + 3 * HALF_WEEK)
   })
 
+  it('keeps a weekly capacity below half an hour', () => {
+    // 0.25 h/week → 10 h of work takes 40 weeks.
+    const schedule = buildSchedule(project([goal('a')]), { weeklyHours: 0.25, now: NOW })
+
+    expect(schedule.weeklyHours).toBe(0.25)
+    expect(schedule.projectedEnd?.getTime()).toBe(NOW.getTime() + 40 * 7 * DAY_MS)
+  })
+
+  it('falls back to half an hour a week without a positive capacity', () => {
+    const schedule = buildSchedule(project([goal('a')]), { weeklyHours: 0, now: NOW })
+
+    expect(schedule.weeklyHours).toBe(0.5)
+  })
+
   it('schedules predecessors before their dependents regardless of input order', () => {
     const schedule = buildSchedule(
       project([goal('child', { dependencies: ['parent'] }), goal('parent')]),

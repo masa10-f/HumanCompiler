@@ -101,12 +101,21 @@ interface GoalDraft {
   deps: string[]
 }
 
+/** Weekly hours used when no positive capacity is given. */
+const FALLBACK_WEEKLY_HOURS = 0.5
+
 export function buildSchedule(
   data: ProjectTimelineData,
   options: ScheduleOptions,
 ): TimelineSchedule {
   const now = options.now ?? new Date()
-  const weeklyHours = Math.max(0.5, Number(options.weeklyHours) || 0)
+  // Capacity from the settings can be well under an hour a week (a small
+  // effort ratio); keep any positive value and fall back only for none.
+  const requestedHours = Number(options.weeklyHours)
+  const weeklyHours =
+    Number.isFinite(requestedHours) && requestedHours > 0
+      ? requestedHours
+      : FALLBACK_WEEKLY_HOURS
   const msPerHour = (7 * DAY_MS) / weeklyHours
   const durationMs = (hours: number) => hours * msPerHour
 
