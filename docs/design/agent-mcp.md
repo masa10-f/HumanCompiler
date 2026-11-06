@@ -388,6 +388,7 @@ G3 の `agent_proposals` に、種類を3つ足す。
 | `list_logs` | `logs:read` | Task の作業ログを新しい順に返す。件数と合計の分も返す |
 | `create_log` | `logs:write` | Task に作業ログ（作業時間と作業内容）を記録する |
 | `list_my_changes` | 不要（認証は要る） | このトークンが最近行った変更と、出した提案の状態。自分のトークンの行だけなので、スコープは問わない。提案は `proposals:read` があるときだけ返し、無ければ空のリスト |
+| `get_timeline_image` | `projects:read`、`goals:read`、`tasks:read`、`logs:read` | Project のロードマップを PNG 画像で返す。後述の「ロードマップ画像」の節 |
 
 **消える操作を含むツール**
 - 結果が「書き込んだ」か「提案にした」かを、必ず返す。提案にしたときは、提案の ID と「ユーザーの承認待ち」を返す。
@@ -436,6 +437,44 @@ G3 の `agent_proposals` に、種類を3つ足す。
 - ログの作成は `agent_changes` に `entity_type = log`、`action = create` で残す。`after` には `task_id`、`actual_minutes`、`comment`。
 - ステータスが変わったときは、Task の `update` の行（`status` の前後）も別に残す。
 - `entity_type` の CHECK に `log` を足すマイグレーション `041_add_agent_log_changes.sql` を足す。追加だけで、2回実行しても安全。ロールバックは `log` の行を消してから、CHECK を 040 の4種類に戻す（作業ログ自体は残る）。
+
+---
+
+## ロードマップ画像（2026-11-06 追加）
+
+**何のためか**
+- タイムライン画面のロードマップ描画を大きく作り直した（#431）。エージェントにも同じ図を見せ、計画の確認や説明に使えるようにする。
+
+**方式（ユーザーが決めた、2026-11-06）**
+- 描画（容量ベースのスケジュール計算、レイアウト、SVG）は、すべて Web の TypeScript にある。それを Python に移植すると、2つの実装の見た目がずれていく。
+- そこで、描画は Vercel 上の Web が受け持つ。API は描画のためのデータを作るだけにする。
+
+```
+エージェント ──MCP──▶ API (Fly)                         Web (Vercel)
+                     get_timeline_image
+                     ├ トークン認証・スコープ・監査（guarded_call）
+                     ├ build_project_timeline（画面と同じデータ）
+                     └ POST /api/internal/timeline-image ──▶ buildSchedule → buildChartLayout
+                         Authorization: Bearer <共有シークレット>   → TimelineExportDocument（SVG）
+                     ◀──────────── PNG（base64）と数値の要約 ──── → resvg で PNG（Noto Sans JP）
+```
+
+- Web のルート `POST /api/internal/timeline-image` は、受け取ったデータを画像にするだけで、ユーザーのデータは読まない。共有シークレット `TIMELINE_RENDER_SECRET`（API と Web の両方に同じ値）は、他人にこのルートで描画させないためのもの。
+- API は `WEB_BASE_URL` とこのシークレットがそろったときだけ描画を呼ぶ。どちらか無ければ 503、描画が失敗したら 502 を返す。
+- 画像は、画面の「PNG で書き出す」と同じ文書（タイトル、要約、凡例つき、ライトのパレット）。Web の描画を変えると、Web のデプロイだけで MCP の画像も変わる。
+- App Router のルートは React Server Components の層で動き、`react-dom/server` を静的に import できない。画面の書き出しと同じく動的 import で読み込む。そのため `timeline-export.tsx` と `timeline-chart-layers.tsx` から `'use client'` を外した（どちらもフックを使わない）。
+- 日本語の文字は、`@expo-google-fonts/noto-sans-jp` の Regular と Bold の TTF を resvg に渡して描く。`next.config.js` の `outputFileTracingIncludes` で、この2つだけをルートに同梱する。
+
+**ツール**
+- `get_timeline_image(project_id, weekly_hours=20, scale="fit", width=1400, show_completed=true, show_dependencies=true, expand_tasks=false)`
+- 結果は、PNG の image content と、JSON の text（`project`、`width`、`height`、`summary`：進捗、残り時間、完了見込み、遅れているゴールの数など）。`structuredContent` にも同じ JSON を入れる。
+- スコープは `projects:read`、`goals:read`、`tasks:read`、`logs:read`。画像に Goal、Task、作業ログから描いた過去のバーが出るため。
+- 週の作業時間は、画面と同じく既定 20 時間。画面の入力は保存されないので、エージェントが指定する。
+- 画像の倍率は既定 2 倍で、キャンバスの上限（画面の書き出しと同じ）と一辺 8000px に収まるように下げる。
+
+**デプロイ**
+- `openssl rand -hex 32` などで値を作り、Vercel（Production）と Fly（`flyctl secrets set TIMELINE_RENDER_SECRET=...`）に同じ値を入れる。
+- Fly の `WEB_BASE_URL` が Web の本番 URL を指していること。プレビューの API も本番の Web で描画する。
 
 ---
 

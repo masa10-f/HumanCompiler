@@ -189,6 +189,8 @@ async def mcp_lifespan() -> AsyncIterator[None]:
 # --- Per-call guard -----------------------------------------------------------
 
 ToolFn = Callable[[Session, AgentPrincipal], dict[str, Any]]
+# Builds a successful call's result from ``fn``'s payload (default: JSON text).
+ResultFn = Callable[[dict[str, Any]], CallToolResult]
 
 
 @dataclass
@@ -382,6 +384,8 @@ async def guarded_call(
     scope: AgentScope | Sequence[AgentScope],
     fn: ToolFn,
     ctx: Context,
+    *,
+    to_result: ResultFn | None = None,
 ) -> CallToolResult:
     """Run one tool call with REST's auth, scope, rate limit, audit and errors.
 
@@ -389,7 +393,8 @@ async def guarded_call(
     ``HTTPException`` for a REST-style error; a ``pydantic.ValidationError``
     becomes 422, and anything else 500 ``Internal error``. Every scope in
     ``scope`` is required; an empty sequence means any valid token, which is
-    still rate-limited and audited.
+    still rate-limited and audited. ``to_result`` turns a successful payload
+    into the result, e.g. with image content; errors stay JSON text.
     """
     scopes = (scope,) if isinstance(scope, AgentScope) else tuple(scope)
     request = _http_request(ctx)
@@ -407,9 +412,15 @@ async def guarded_call(
         await _write_audit(tool, scopes, request, state, duration_ms)
     if state.error is not None:
         return _text_result(state.error, is_error=True)
+    if to_result is not None:
+        return to_result(state.payload)
     return _text_result(state.payload, is_error=False)
 
 
 # Registers the tools on ``mcp_server``. Imported last: the tools modules use
 # ``mcp_server`` and ``guarded_call`` from this one.
-from humancompiler_api import mcp_tools_read, mcp_tools_write  # noqa: E402,F401
+from humancompiler_api import (  # noqa: E402,F401
+    mcp_tools_read,
+    mcp_tools_timeline,
+    mcp_tools_write,
+)

@@ -60,6 +60,161 @@ def conditional_rate_limit(rate: str) -> Callable[[F], F]:
     return decorator
 
 
+def build_project_timeline(
+    session: Session,
+    project: Project,
+    *,
+    weekly_work_hours: float,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    time_unit: str = "day",
+) -> ProjectTimelineResponse:
+    """Timeline data of ``project``: its goals, tasks and recorded work spans.
+
+    The caller checks ownership. Also used by the MCP tool
+    ``get_timeline_image``, which posts this data to the web app's renderer.
+    """
+    # Set default date range if not provided
+    if not start_date:
+        start_date = project.created_at.replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+    if not end_date:
+        end_date = datetime.now().replace(
+            hour=23, minute=59, second=59, microsecond=999999
+        )
+
+    # Get all goals for the project with tasks, logs, and dependencies in a single query (fix N+1 problem)
+    goals_statement = (
+        select(Goal)
+        .options(
+            selectinload(Goal.tasks).selectinload(Task.logs),
+            selectinload(Goal.dependencies),
+            selectinload(Goal.dependent_goals),
+        )
+        .where(Goal.project_id == project.id)
+    )
+    goals = session.exec(goals_statement).all()
+
+    goals_data: list[GoalTimelineData] = []
+
+    for goal in goals:
+        # Use preloaded tasks from the relationship (N+1 problem fixed)
+        tasks = goal.tasks
+
+        # Get dependency goal IDs
+        dependency_ids = [str(dep.depends_on_goal_id) for dep in goal.dependencies]
+
+        tasks_data: list[TaskTimelineData] = []
+        # Timestamps of recorded work, used to place past work on the chart.
+        # Logs on cancelled tasks are included: that effort was really spent.
+        goal_log_times: list[datetime] = []
+        for task in tasks:
+            # Use preloaded logs from the relationship (N+1 problem fixed)
+            logs = task.logs
+
+            total_actual_minutes = sum(log.actual_minutes for log in logs)
+            # A log is recorded after its work, so the work began
+            # `actual_minutes` before the log's timestamp. Logs carry no
+            # separate work date, so work entered in bulk later is placed
+            # at the time it was entered.
+            work_spans = [
+                (
+                    log.created_at - timedelta(minutes=log.actual_minutes),
+                    log.created_at,
+                )
+                for log in logs
+                if log.created_at is not None
+            ]
+            first_logged_at = (
+                min(start for start, _ in work_spans) if work_spans else None
+            )
+            last_logged_at = max(end for _, end in work_spans) if work_spans else None
+            if first_logged_at is not None:
+                goal_log_times.append(first_logged_at)
+            if last_logged_at is not None:
+                goal_log_times.append(last_logged_at)
+            estimate_minutes = float(task.estimate_hours) * 60
+            progress_percentage = (
+                min((total_actual_minutes / estimate_minutes) * 100, 100)
+                if estimate_minutes > 0
+                else 0
+            )
+
+            # Determine task status color
+            status_color = _get_status_color(task.status, progress_percentage)
+
+            tasks_data.append(
+                TaskTimelineData(
+                    id=str(task.id),
+                    title=task.title,
+                    description=task.description,
+                    status=task.status,
+                    estimate_hours=float(task.estimate_hours),
+                    due_date=task.due_date.isoformat() if task.due_date else None,
+                    created_at=task.created_at.isoformat(),
+                    updated_at=task.updated_at.isoformat(),
+                    progress_percentage=round(progress_percentage, 1),
+                    status_color=status_color,
+                    actual_hours=round(total_actual_minutes / 60, 2),
+                    logs_count=len(logs),
+                    first_logged_at=first_logged_at.isoformat()
+                    if first_logged_at
+                    else None,
+                    last_logged_at=last_logged_at.isoformat()
+                    if last_logged_at
+                    else None,
+                )
+            )
+
+        # Sort tasks by created_at for timeline display
+        tasks_data.sort(key=lambda x: x.created_at)
+
+        goals_data.append(
+            GoalTimelineData(
+                id=str(goal.id),
+                title=goal.title,
+                description=goal.description,
+                status=goal.status,
+                estimate_hours=float(goal.estimate_hours),
+                start_date=None,
+                end_date=None,
+                due_date=goal.due_date.isoformat() if goal.due_date else None,
+                dependencies=dependency_ids,
+                created_at=goal.created_at.isoformat(),
+                updated_at=goal.updated_at.isoformat(),
+                tasks=tasks_data,
+                actual_start_date=min(goal_log_times).isoformat()
+                if goal_log_times
+                else None,
+                actual_end_date=max(goal_log_times).isoformat()
+                if goal_log_times
+                else None,
+            )
+        )
+
+    # Sort goals by created_at for timeline display
+    goals_data.sort(key=lambda x: x.created_at)
+
+    return ProjectTimelineResponse(
+        project=ProjectInfo(
+            id=str(project.id),
+            title=project.title,
+            description=project.description,
+            status=project.status,
+            weekly_work_hours=weekly_work_hours,
+            created_at=project.created_at.isoformat(),
+            updated_at=project.updated_at.isoformat(),
+        ),
+        timeline=TimelineInfo(
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+            time_unit=time_unit,
+        ),
+        goals=goals_data,
+    )
+
+
 @router.get("/projects/{project_id}", response_model=ProjectTimelineResponse)
 async def get_project_timeline(
     project_id: UUID,
@@ -123,146 +278,13 @@ async def get_project_timeline(
         raise HTTPException(status_code=500, detail=detail)
 
     try:
-        # Set default date range if not provided
-        if not start_date:
-            start_date = project.created_at.replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
-        if not end_date:
-            end_date = datetime.now().replace(
-                hour=23, minute=59, second=59, microsecond=999999
-            )
-
-        # Get all goals for the project with tasks, logs, and dependencies in a single query (fix N+1 problem)
-        goals_statement = (
-            select(Goal)
-            .options(
-                selectinload(Goal.tasks).selectinload(Task.logs),
-                selectinload(Goal.dependencies),
-                selectinload(Goal.dependent_goals),
-            )
-            .where(Goal.project_id == project_id)
-        )
-        goals = session.exec(goals_statement).all()
-
-        goals_data: list[GoalTimelineData] = []
-
-        for goal in goals:
-            # Use preloaded tasks from the relationship (N+1 problem fixed)
-            tasks = goal.tasks
-
-            # Get dependency goal IDs
-            dependency_ids = [str(dep.depends_on_goal_id) for dep in goal.dependencies]
-
-            tasks_data: list[TaskTimelineData] = []
-            # Timestamps of recorded work, used to place past work on the chart.
-            # Logs on cancelled tasks are included: that effort was really spent.
-            goal_log_times: list[datetime] = []
-            for task in tasks:
-                # Use preloaded logs from the relationship (N+1 problem fixed)
-                logs = task.logs
-
-                total_actual_minutes = sum(log.actual_minutes for log in logs)
-                # A log is recorded after its work, so the work began
-                # `actual_minutes` before the log's timestamp. Logs carry no
-                # separate work date, so work entered in bulk later is placed
-                # at the time it was entered.
-                work_spans = [
-                    (
-                        log.created_at - timedelta(minutes=log.actual_minutes),
-                        log.created_at,
-                    )
-                    for log in logs
-                    if log.created_at is not None
-                ]
-                first_logged_at = (
-                    min(start for start, _ in work_spans) if work_spans else None
-                )
-                last_logged_at = (
-                    max(end for _, end in work_spans) if work_spans else None
-                )
-                if first_logged_at is not None:
-                    goal_log_times.append(first_logged_at)
-                if last_logged_at is not None:
-                    goal_log_times.append(last_logged_at)
-                estimate_minutes = float(task.estimate_hours) * 60
-                progress_percentage = (
-                    min((total_actual_minutes / estimate_minutes) * 100, 100)
-                    if estimate_minutes > 0
-                    else 0
-                )
-
-                # Determine task status color
-                status_color = _get_status_color(task.status, progress_percentage)
-
-                tasks_data.append(
-                    TaskTimelineData(
-                        id=str(task.id),
-                        title=task.title,
-                        description=task.description,
-                        status=task.status,
-                        estimate_hours=float(task.estimate_hours),
-                        due_date=task.due_date.isoformat() if task.due_date else None,
-                        created_at=task.created_at.isoformat(),
-                        updated_at=task.updated_at.isoformat(),
-                        progress_percentage=round(progress_percentage, 1),
-                        status_color=status_color,
-                        actual_hours=round(total_actual_minutes / 60, 2),
-                        logs_count=len(logs),
-                        first_logged_at=first_logged_at.isoformat()
-                        if first_logged_at
-                        else None,
-                        last_logged_at=last_logged_at.isoformat()
-                        if last_logged_at
-                        else None,
-                    )
-                )
-
-            # Sort tasks by created_at for timeline display
-            tasks_data.sort(key=lambda x: x.created_at)
-
-            goals_data.append(
-                GoalTimelineData(
-                    id=str(goal.id),
-                    title=goal.title,
-                    description=goal.description,
-                    status=goal.status,
-                    estimate_hours=float(goal.estimate_hours),
-                    start_date=None,
-                    end_date=None,
-                    due_date=goal.due_date.isoformat() if goal.due_date else None,
-                    dependencies=dependency_ids,
-                    created_at=goal.created_at.isoformat(),
-                    updated_at=goal.updated_at.isoformat(),
-                    tasks=tasks_data,
-                    actual_start_date=min(goal_log_times).isoformat()
-                    if goal_log_times
-                    else None,
-                    actual_end_date=max(goal_log_times).isoformat()
-                    if goal_log_times
-                    else None,
-                )
-            )
-
-        # Sort goals by created_at for timeline display
-        goals_data.sort(key=lambda x: x.created_at)
-
-        return ProjectTimelineResponse(
-            project=ProjectInfo(
-                id=str(project.id),
-                title=project.title,
-                description=project.description,
-                status=project.status,
-                weekly_work_hours=weekly_work_hours,
-                created_at=project.created_at.isoformat(),
-                updated_at=project.updated_at.isoformat(),
-            ),
-            timeline=TimelineInfo(
-                start_date=start_date.isoformat(),
-                end_date=end_date.isoformat(),
-                time_unit=time_unit,
-            ),
-            goals=goals_data,
+        return build_project_timeline(
+            session,
+            project,
+            start_date=start_date,
+            end_date=end_date,
+            time_unit=time_unit,
+            weekly_work_hours=weekly_work_hours,
         )
 
     except Exception as e:

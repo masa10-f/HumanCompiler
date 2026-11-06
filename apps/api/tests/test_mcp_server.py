@@ -1484,3 +1484,135 @@ async def test_goal_note_append_read_and_replace(
         ("append", False),
         ("replace", True),
     ]
+
+
+# --- get_timeline_image ------------------------------------------------------
+
+TIMELINE_SCOPES = [*ALL_READ, AgentScope.LOGS_READ]
+FAKE_PNG = "iVBORw0KGgo="
+FAKE_SUMMARY = {"progress": 0.5, "projected_end": "2026-12-01T00:00:00.000Z"}
+
+
+@pytest.fixture
+def renderer(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    """Replace the web renderer; returns the requests it received."""
+    from humancompiler_api import mcp_tools_timeline
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_render(data: dict[str, Any], options: dict[str, Any]) -> dict[str, Any]:
+        calls.append({"data": data, "options": options})
+        return {
+            "mime_type": "image/png",
+            "data": FAKE_PNG,
+            "width": 2800,
+            "height": 960,
+            "summary": FAKE_SUMMARY,
+        }
+
+    monkeypatch.setattr(mcp_tools_timeline, "render_timeline_image", fake_render)
+    return calls
+
+
+async def test_get_timeline_image_returns_png_and_summary(
+    session: Session, mcp: httpx.AsyncClient, renderer: list[dict[str, Any]]
+):
+    project, goal, task = _tree(session)
+    seed_log(session, task)
+    token = issue_token(session, USER_A, TIMELINE_SCOPES)
+
+    result = await rpc(
+        mcp,
+        "tools/call",
+        {
+            "name": "get_timeline_image",
+            "arguments": {
+                "project_id": str(project.id),
+                "weekly_hours": 15,
+                "expand_tasks": True,
+            },
+        },
+        token,
+    )
+
+    assert not result.get("isError")
+    image, text = result["content"]
+    assert image == {"type": "image", "data": FAKE_PNG, "mimeType": "image/png"}
+    details = json.loads(text["text"])
+    assert details == result["structuredContent"]
+    assert details["project"] == {"id": str(project.id), "title": project.title}
+    assert details["summary"] == FAKE_SUMMARY
+    assert (details["width"], details["height"]) == (2800, 960)
+
+    (sent,) = renderer
+    assert sent["options"] == {
+        "weekly_hours": 15,
+        "scale": "fit",
+        "width": 1400,
+        "show_completed": True,
+        "show_dependencies": True,
+        "expand_tasks": True,
+    }
+    assert sent["data"]["project"]["weekly_work_hours"] == 15
+    (sent_goal,) = sent["data"]["goals"]
+    assert sent_goal["id"] == str(goal.id)
+    (sent_task,) = sent_goal["tasks"]
+    assert sent_task["id"] == str(task.id)
+    assert sent_task["logs_count"] == 1
+
+    (row,) = audit_rows(session)
+    assert row.route == "mcp:get_timeline_image"
+    assert row.status_code == 200
+    assert row.required_scope == "projects:read,goals:read,tasks:read,logs:read"
+
+
+async def test_get_timeline_image_needs_logs_read(
+    session: Session, mcp: httpx.AsyncClient, renderer: list[dict[str, Any]]
+):
+    project, _, _ = _tree(session)
+    token = issue_token(session, USER_A, ALL_READ)
+
+    is_error, body = await call(
+        mcp, "get_timeline_image", {"project_id": str(project.id)}, token
+    )
+
+    assert is_error
+    assert body == {"status": 403, "detail": "Missing required scope: logs:read"}
+    assert renderer == []
+
+
+async def test_get_timeline_image_hides_other_users_projects(
+    session: Session, mcp: httpx.AsyncClient, renderer: list[dict[str, Any]]
+):
+    project, _, _ = _tree(session, owner=USER_B)
+    token = issue_token(session, USER_A, TIMELINE_SCOPES)
+
+    for project_id in (project.id, uuid4()):
+        is_error, body = await call(
+            mcp, "get_timeline_image", {"project_id": str(project_id)}, token
+        )
+        assert is_error
+        assert body == {"status": 404, "detail": "Project not found"}
+    assert renderer == []
+
+
+async def test_get_timeline_image_without_renderer_config_is_503(
+    session: Session, mcp: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    from humancompiler_api.config import settings
+
+    monkeypatch.setattr(settings, "timeline_render_secret", None)
+    project, _, _ = _tree(session)
+    token = issue_token(session, USER_A, TIMELINE_SCOPES)
+
+    is_error, body = await call(
+        mcp, "get_timeline_image", {"project_id": str(project.id)}, token
+    )
+
+    assert is_error
+    assert body == {
+        "status": 503,
+        "detail": "Timeline image rendering is not configured",
+    }
+    (row,) = audit_rows(session)
+    assert row.status_code == 503

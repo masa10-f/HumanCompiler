@@ -110,6 +110,14 @@ class Settings(BaseSettings):
         default=None,
         description="Public URL of the web app, used for links in emails",
     )
+    timeline_render_secret: str | None = Field(
+        default=None,
+        description=(
+            "Shared secret for the web app's roadmap image renderer "
+            "(TIMELINE_RENDER_SECRET on both sides). With WEB_BASE_URL, it "
+            "enables the MCP tool get_timeline_image."
+        ),
+    )
 
     @field_validator("web_base_url")
     @classmethod

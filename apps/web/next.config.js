@@ -28,6 +28,15 @@ const nextConfig = {
   env: {
     CUSTOM_KEY: process.env.CUSTOM_KEY,
   },
+  // The roadmap image route rasterizes SVG with resvg's native binary and
+  // reads the Japanese font files at run time, so ship both with that route.
+  serverExternalPackages: ['@resvg/resvg-js'],
+  outputFileTracingIncludes: {
+    '/api/internal/timeline-image': [
+      './node_modules/@expo-google-fonts/noto-sans-jp/400Regular/*.ttf',
+      './node_modules/@expo-google-fonts/noto-sans-jp/700Bold/*.ttf',
+    ],
+  },
 }
 
 module.exports = process.env.ANALYZE === 'true' ? withBundleAnalyzer(nextConfig) : nextConfig

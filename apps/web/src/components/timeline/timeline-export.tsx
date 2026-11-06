@@ -4,7 +4,8 @@
 // This file is part of HumanCompiler.
 // For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-'use client'
+// No 'use client': the API's roadmap image route also renders this module on
+// the server (see lib/timeline/render-image.tsx). Keep it free of hooks.
 
 import React from 'react'
 import { HEADER_HEIGHT, type ChartLayout } from '@/lib/timeline/chart-layout'
