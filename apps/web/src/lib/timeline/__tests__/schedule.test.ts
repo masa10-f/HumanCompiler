@@ -352,6 +352,25 @@ describe('buildSchedule', () => {
     expect(schedule.totals.actualHours).toBe(16)
   })
 
+  it('plans no work for a goal whose tasks were all cancelled', () => {
+    const schedule = buildSchedule(
+      project([
+        goal('all-cancelled', {
+          estimate_hours: 12,
+          tasks: [task({ status: 'cancelled', estimate_hours: 12 })],
+        }),
+        goal('no-tasks', { estimate_hours: 6, tasks: [] }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    const byId = new Map(schedule.goals.map((item) => [item.id, item]))
+    expect(byId.get('all-cancelled')!.remainingHours).toBe(0)
+    expect(byId.get('all-cancelled')!.estimateHours).toBe(0)
+    // A goal without any tasks still uses its own estimate.
+    expect(byId.get('no-tasks')!.remainingHours).toBe(6)
+  })
+
   it('keeps a little work remaining for open tasks that overran their estimate', () => {
     const schedule = buildSchedule(
       project([goal('over', { tasks: [task({ status: 'in_progress', estimate_hours: 10, actual_hours: 15 })] })]),

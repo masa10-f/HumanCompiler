@@ -117,7 +117,9 @@ export function buildSchedule(
   visibleGoals.forEach((goal, index) => {
     const tasks = goal.tasks.filter((task) => task.status !== 'cancelled')
     let metrics: TaskMetrics
-    if (tasks.length > 0) {
+    // Fall back to the goal's own estimate only when it has no tasks at all;
+    // a goal whose tasks were all cancelled has no planned work left.
+    if (goal.tasks.length > 0) {
       metrics = tasks.map(taskMetrics).reduce(
         (sum, item) => ({
           estimate: sum.estimate + item.estimate,
