@@ -65,7 +65,13 @@ export async function fetchTimeline(
     const reason = error instanceof Error ? error.message : String(error)
     throw new CliError(`Could not reach ${apiUrl}: ${reason}`)
   }
-  if (response.ok) return (await response.json()) as ProjectTimelineData
+  if (response.ok) {
+    try {
+      return (await response.json()) as ProjectTimelineData
+    } catch {
+      throw new CliError(`${apiUrl} did not return JSON. Check the API URL.`)
+    }
+  }
 
   const detail = await detailOf(response)
   switch (response.status) {

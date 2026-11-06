@@ -10,6 +10,7 @@
  */
 
 import { PHASE_LABELS } from '@/components/timeline/timeline-chart-layers'
+import { visibleGoals } from '@/lib/timeline/chart-layout'
 import { formatJstDate } from '@/lib/timeline/geometry'
 import type { ProjectTimelineData, ScheduledGoal, TimelineSchedule } from '@/lib/timeline/types'
 import { formatHours } from '@/lib/timeline/utils'
@@ -36,8 +37,9 @@ function goalStart(goal: ScheduledGoal): Date {
   return goal.actual?.start ?? goal.planned?.start ?? goal.start
 }
 
+/** The goals the image shows, so the summary lists the same ones. */
 function shownGoals({ schedule, showCompleted }: SummaryInput): ScheduledGoal[] {
-  return showCompleted ? schedule.goals : schedule.goals.filter((goal) => goal.phase !== 'done')
+  return visibleGoals(schedule, showCompleted)
 }
 
 export function summaryJson(input: SummaryInput) {

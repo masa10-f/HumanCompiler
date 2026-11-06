@@ -13,6 +13,7 @@ import pytest
 from sqlmodel import Session, select
 
 from humancompiler_api import agent_audit
+from humancompiler_api.agent_auth import require_scopes
 from humancompiler_api.database import get_session
 from humancompiler_api.main import app
 from humancompiler_api.models import (
@@ -145,3 +146,8 @@ def test_without_token_is_401(session: Session):
     response = client.get(_path(project.id))
 
     assert response.status_code == 401
+
+
+def test_require_scopes_rejects_values_too_long_for_the_audit_log():
+    with pytest.raises(ValueError, match="too long for the audit log"):
+        require_scopes(*AgentScope)

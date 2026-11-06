@@ -139,6 +139,10 @@ def get_agent_principal(
     return principal
 
 
+# AgentAuditLog.required_scope is VARCHAR(50).
+AUDIT_REQUIRED_SCOPE_MAX_LENGTH = 50
+
+
 def require_scope(scope: AgentScope) -> Callable[..., AgentPrincipal]:
     """Build a dependency that authenticates and requires ``scope``.
 
@@ -157,6 +161,10 @@ def require_scopes(*scopes: AgentScope) -> Callable[..., AgentPrincipal]:
     if not scopes:
         raise ValueError("require_scopes needs at least one scope")
     required = ",".join(scope.value for scope in scopes)
+    # The audit log would silently drop the row of a longer value, so fail
+    # when the route is defined instead.
+    if len(required) > AUDIT_REQUIRED_SCOPE_MAX_LENGTH:
+        raise ValueError(f"Required scopes too long for the audit log: {required}")
 
     def dependency(
         request: Request,

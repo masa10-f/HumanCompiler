@@ -208,6 +208,10 @@ describe('fetching from the agent API', () => {
         res.writeHead(status, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify(body))
       }
+      if (req.url === '/api/agent/v1/projects/html/timeline') {
+        res.writeHead(200, { 'Content-Type': 'text/html' })
+        return res.end('<html>login</html>')
+      }
       if (req.headers.authorization !== 'Bearer good-token') {
         return reply(401, { detail: 'Invalid agent token' })
       }
@@ -243,6 +247,7 @@ describe('fetching from the agent API', () => {
     ['project-1', 'bad-token', /token was rejected \(Invalid agent token\)/],
     ['no-scope', 'good-token', /Missing required scope: logs:read\. The token needs/],
     ['missing', 'good-token', /Project missing was not found/],
+    ['html', 'good-token', /did not return JSON/],
   ]) {
     test(`reports ${message}`, async () => {
       const { code, stderr } = await run([project, '--no-image'], {

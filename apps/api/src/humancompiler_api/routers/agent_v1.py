@@ -257,7 +257,7 @@ async def get_project(
     "/projects/{project_id}/timeline",
     response_model=ProjectTimelineResponse,
 )
-async def get_project_timeline(
+def get_project_timeline(
     project_id: UUID,
     session: Annotated[Session, Depends(get_session)],
     principal: Annotated[
@@ -277,7 +277,8 @@ async def get_project_timeline(
     Goals with their tasks, dependencies and work-log spans, plus the weekly
     capacity from the triage settings. The roadmap CLI (``packages/roadmap``)
     schedules and draws it locally. Another user's project is reported as not
-    found.
+    found. A plain ``def``: loading every goal, task and log is synchronous DB
+    work, so it runs in the threadpool instead of blocking the event loop.
     """
     try:
         project = project_service.get_project(session, project_id, principal.user_id)
