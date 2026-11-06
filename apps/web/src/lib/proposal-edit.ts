@@ -28,6 +28,7 @@ export const EDITABLE_FIELDS: Record<EditableProposalKind, readonly string[]> = 
     'due_date',
     'work_type',
     'priority',
+    'note_markdown',
   ],
   quick_task: [
     'title',
@@ -85,14 +86,77 @@ export function initialFormValues(
 }
 
 function toPayloadValue(
-  kind: EditableProposalKind,
+  requiredFields: readonly string[],
   field: string,
   value: string
 ): string | number | null {
   if (value.trim() === '') {
-    return REQUIRED_FIELDS[kind].includes(field) ? '' : null;
+    return requiredFields.includes(field) ? '' : null;
   }
   return NUMERIC_FIELDS.has(field) ? Number(value) : value;
+}
+
+/** The fields of one task inside a goal proposal. */
+export const GOAL_TASK_FIELDS = [
+  'title',
+  'description',
+  'estimate_hours',
+  'due_date',
+  'work_type',
+  'priority',
+  'note_markdown',
+] as const;
+
+export const GOAL_TASK_REQUIRED_FIELDS: readonly string[] = ['title', 'estimate_hours'];
+
+export interface TaskItemState {
+  values: FormValues;
+  removed: boolean;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** One item state per task of a goal payload; none when it has no tasks array. */
+export function initialTaskItems(payload: Record<string, unknown>): TaskItemState[] {
+  if (!Array.isArray(payload.tasks)) return [];
+  return payload.tasks.filter(isRecord).map((task) => ({
+    values: Object.fromEntries(
+      GOAL_TASK_FIELDS.map((field) => [field, toInputValue(field, task[field])])
+    ),
+    removed: false,
+  }));
+}
+
+/**
+ * The goal's tasks to send: the kept items in order, each a copy of its
+ * original with only changed fields replaced. Null when nothing was removed or
+ * changed.
+ */
+export function buildEditedTasks(
+  originalTasks: Record<string, unknown>[],
+  initial: TaskItemState[],
+  current: TaskItemState[]
+): Record<string, unknown>[] | null {
+  const kept: Record<string, unknown>[] = [];
+  let changedAny = false;
+  current.forEach((item, index) => {
+    if (item.removed) {
+      changedAny = true;
+      return;
+    }
+    const task = { ...originalTasks[index] };
+    for (const field of GOAL_TASK_FIELDS) {
+      const now = item.values[field] ?? '';
+      if (now !== (initial[index]?.values[field] ?? '')) {
+        task[field] = toPayloadValue(GOAL_TASK_REQUIRED_FIELDS, field, now);
+        changedAny = true;
+      }
+    }
+    kept.push(task);
+  });
+  return changedAny ? kept : null;
 }
 
 /**
@@ -104,16 +168,26 @@ export function buildEditedPayload(
   kind: EditableProposalKind,
   original: Record<string, unknown>,
   initial: FormValues,
-  current: FormValues
+  current: FormValues,
+  tasks?: { initial: TaskItemState[]; current: TaskItemState[] }
 ): Record<string, unknown> | null {
   const changed = EDITABLE_FIELDS[kind].filter(
     (field) => (current[field] ?? '') !== (initial[field] ?? '')
   );
-  if (changed.length === 0) return null;
+  const originalTasks = Array.isArray(original.tasks)
+    ? original.tasks.filter(isRecord)
+    : [];
+  const editedTasks = tasks
+    ? buildEditedTasks(originalTasks, tasks.initial, tasks.current)
+    : null;
+  if (changed.length === 0 && editedTasks === null) return null;
 
   const payload = { ...original };
   for (const field of changed) {
-    payload[field] = toPayloadValue(kind, field, current[field] ?? '');
+    payload[field] = toPayloadValue(REQUIRED_FIELDS[kind], field, current[field] ?? '');
+  }
+  if (editedTasks !== null) {
+    payload.tasks = editedTasks.length > 0 ? editedTasks : null;
   }
   return payload;
 }

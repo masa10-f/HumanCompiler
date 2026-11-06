@@ -5,7 +5,7 @@
 // For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { ProposalEditForm } from '../proposal-edit-form';
 import { ProposalCard } from '../proposal-card';
@@ -315,6 +315,108 @@ describe('ProposalEditForm', () => {
       await waitFor(() => expect(mockAccept).toHaveBeenCalledTimes(1));
       expect(mockAccept).toHaveBeenCalledWith('prop-1', {});
     });
+  });
+});
+
+describe('ProposalEditForm notes and goal tasks', () => {
+  const taskA = {
+    title: 'A',
+    description: null,
+    estimate_hours: 1,
+    due_date: null,
+    work_type: null,
+    priority: null,
+    note_markdown: 'note A',
+  };
+  const taskB = { ...taskA, title: 'B', note_markdown: null };
+  const goalProposal = () =>
+    makeProposal({
+      kind: 'goal',
+      payload: {
+        project_id: 'p1',
+        title: 'Goal title',
+        description: null,
+        due_date: null,
+        tasks: [taskA, taskB],
+      },
+    });
+  const group = (n: number) => screen.getByRole('group', { name: `Task ${n}` });
+
+  beforeEach(() => {
+    mockAccept.mockReset();
+    mockGetProjects.mockResolvedValue([{ id: 'p1', title: 'Project One' }]);
+    mockGetGoals.mockResolvedValue([{ id: 'g1', title: 'Goal One' }]);
+    mockAccept.mockResolvedValue(makeProposal({ status: 'edited' }));
+  });
+
+  it('edits the note of a task proposal', async () => {
+    renderForm(makeProposal({ payload: { ...taskPayload, note_markdown: 'old note' } }));
+
+    expect(screen.getByLabelText('ノート（Markdown）')).toHaveValue('old note');
+    fireEvent.change(screen.getByLabelText('ノート（Markdown）'), {
+      target: { value: 'new note' },
+    });
+    fireEvent.click(submit());
+
+    await waitFor(() => expect(mockAccept).toHaveBeenCalledTimes(1));
+    expect(mockAccept).toHaveBeenCalledWith('prop-1', {
+      payload: { ...taskPayload, note_markdown: 'new note' },
+    });
+  });
+
+  it('sends a plain accept for a legacy task payload without note_markdown', async () => {
+    renderForm(makeProposal());
+    fireEvent.click(submit());
+
+    await waitFor(() => expect(mockAccept).toHaveBeenCalledTimes(1));
+    expect(mockAccept).toHaveBeenCalledWith('prop-1', {});
+  });
+
+  it('removes a task from a goal proposal and sends the rest', async () => {
+    renderForm(goalProposal());
+    fireEvent.click(screen.getAllByRole('button', { name: 'この Task を外す' })[0]);
+    expect(screen.getByText('外す: A')).toBeInTheDocument();
+    fireEvent.click(submit());
+
+    await waitFor(() => expect(mockAccept).toHaveBeenCalledTimes(1));
+    expect(mockAccept.mock.calls[0][1].payload.tasks).toEqual([taskB]);
+  });
+
+  it('restores a removed task', async () => {
+    renderForm(goalProposal());
+    fireEvent.click(screen.getAllByRole('button', { name: 'この Task を外す' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: '元に戻す' }));
+    fireEvent.click(submit());
+
+    await waitFor(() => expect(mockAccept).toHaveBeenCalledTimes(1));
+    expect(mockAccept).toHaveBeenCalledWith('prop-1', {});
+  });
+
+  it('removing every task sends tasks null', async () => {
+    renderForm(goalProposal());
+    fireEvent.click(screen.getAllByRole('button', { name: 'この Task を外す' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'この Task を外す' })[0]);
+    fireEvent.click(submit());
+
+    await waitFor(() => expect(mockAccept).toHaveBeenCalledTimes(1));
+    expect(mockAccept.mock.calls[0][1].payload.tasks).toBeNull();
+  });
+
+  it('disables submit while a kept task lacks a title', () => {
+    renderForm(goalProposal());
+    fireEvent.change(within(group(1)).getByLabelText('タイトル'), { target: { value: '' } });
+    expect(submit()).toBeDisabled();
+  });
+
+  it('a removed task with an empty title does not block submit', async () => {
+    renderForm(goalProposal());
+    fireEvent.change(within(group(1)).getByLabelText('タイトル'), { target: { value: '' } });
+    fireEvent.click(within(group(1)).getByRole('button', { name: 'この Task を外す' }));
+    expect(submit()).toBeEnabled();
+    fireEvent.click(submit());
+
+    await waitFor(() => expect(mockAccept).toHaveBeenCalledTimes(1));
+    expect(mockAccept.mock.calls[0][1].payload.tasks).toEqual([taskB]);
   });
 });
 
