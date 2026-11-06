@@ -325,7 +325,11 @@ export function buildSchedule(
         id: `${depId}->${goal.id}`,
         fromId: depId,
         toId: goal.id,
-        conflict: goal.start.getTime() < from.finish.getTime() - 60_000,
+        // Only the projected plan can violate a dependency (which happens
+        // with cycles); work already logged early is history, not a conflict.
+        conflict:
+          goal.planned !== null &&
+          goal.planned.start.getTime() < from.finish.getTime() - 60_000,
       })
     })
   })

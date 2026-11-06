@@ -316,6 +316,35 @@ describe('buildSchedule', () => {
     expect(schedule.goals[0]!.remainingHours).toBeCloseTo(1)
   })
 
+  it('does not flag links where the dependent already logged work early', () => {
+    const schedule = buildSchedule(
+      project([
+        goal('base', { status: 'in_progress', tasks: [task({ status: 'in_progress' })] }),
+        goal('early', {
+          dependencies: ['base'],
+          status: 'in_progress',
+          actual_start_date: '2026-10-20T00:00:00Z',
+          tasks: [task({ status: 'in_progress', actual_hours: 2 })],
+        }),
+        goal('done-a', {
+          status: 'completed',
+          actual_start_date: '2026-09-01T00:00:00Z',
+          actual_end_date: '2026-09-20T00:00:00Z',
+        }),
+        goal('done-b', {
+          status: 'completed',
+          dependencies: ['done-a'],
+          actual_start_date: '2026-09-10T00:00:00Z',
+          actual_end_date: '2026-09-25T00:00:00Z',
+        }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    expect(schedule.hasCycle).toBe(false)
+    expect(schedule.links.filter((link) => link.conflict)).toEqual([])
+  })
+
   it('still schedules every goal when dependencies form a cycle', () => {
     const schedule = buildSchedule(
       project([

@@ -163,7 +163,9 @@ async def get_project_timeline(
 
                 total_actual_minutes = sum(log.actual_minutes for log in logs)
                 # A log is recorded after its work, so the work began
-                # `actual_minutes` before the log's timestamp.
+                # `actual_minutes` before the log's timestamp. Logs carry no
+                # separate work date, so work entered in bulk later is placed
+                # at the time it was entered.
                 work_spans = [
                     (
                         log.created_at - timedelta(minutes=log.actual_minutes),

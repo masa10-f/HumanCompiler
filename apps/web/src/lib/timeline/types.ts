@@ -95,8 +95,8 @@ export interface ScheduledLink {
   fromId: string
   toId: string
   /**
-   * The successor starts before the predecessor finishes (started early,
-   * or part of a dependency cycle).
+   * The successor's projected work starts before the predecessor finishes,
+   * which only happens when dependencies form a cycle.
    */
   conflict: boolean
 }
