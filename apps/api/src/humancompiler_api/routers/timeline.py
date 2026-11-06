@@ -155,7 +155,8 @@ async def get_project_timeline(
             dependency_ids = [str(dep.depends_on_goal_id) for dep in goal.dependencies]
 
             tasks_data: list[TaskTimelineData] = []
-            # Timestamps of recorded work, used to place past work on the chart
+            # Timestamps of recorded work, used to place past work on the chart.
+            # Logs on cancelled tasks are included: that effort was really spent.
             goal_log_times: list[datetime] = []
             for task in tasks:
                 # Use preloaded logs from the relationship (N+1 problem fixed)
