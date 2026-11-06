@@ -145,18 +145,31 @@ def require_scope(scope: AgentScope) -> Callable[..., AgentPrincipal]:
     The required scope is recorded before authentication runs so audit logging
     sees it even when the request is rejected with 401.
     """
+    return require_scopes(scope)
+
+
+def require_scopes(*scopes: AgentScope) -> Callable[..., AgentPrincipal]:
+    """Build a dependency that authenticates and requires every one of ``scopes``.
+
+    The audit log records them comma-separated, as the MCP server does. A
+    missing scope is reported by the first one missing, in the given order.
+    """
+    if not scopes:
+        raise ValueError("require_scopes needs at least one scope")
+    required = ",".join(scope.value for scope in scopes)
 
     def dependency(
         request: Request,
         session: Annotated[Session, Depends(get_session)],
     ) -> AgentPrincipal:
-        request.state.required_scope = scope.value
+        request.state.required_scope = required
         principal = get_agent_principal(request, session)
-        if scope.value not in principal.scopes:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required scope: {scope.value}",
-            )
+        for scope in scopes:
+            if scope.value not in principal.scopes:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Missing required scope: {scope.value}",
+                )
         return principal
 
     return dependency

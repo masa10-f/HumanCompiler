@@ -21,6 +21,7 @@ from humancompiler_api.agent_auth import (
     AgentPrincipal,
     get_agent_principal,
     require_scope,
+    require_scopes,
 )
 from humancompiler_api.agent_pagination import (
     AgentPage,
@@ -66,6 +67,8 @@ from humancompiler_api.routers.context_export import (
     ContextExportResponse,
     get_export_options,
 )
+from humancompiler_api.routers.schemas.timeline import ProjectTimelineResponse
+from humancompiler_api.routers.timeline import build_project_timeline
 from humancompiler_api.routers.daily_plans import (
     DailyPlanDocumentV1,
     DailyPlanResponse,
@@ -248,6 +251,39 @@ async def get_project(
     except ResourceNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found") from None
     return ProjectResponse.model_validate(project)
+
+
+@router.get(
+    "/projects/{project_id}/timeline",
+    response_model=ProjectTimelineResponse,
+)
+async def get_project_timeline(
+    project_id: UUID,
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[
+        AgentPrincipal,
+        Depends(
+            require_scopes(
+                AgentScope.PROJECTS_READ,
+                AgentScope.GOALS_READ,
+                AgentScope.TASKS_READ,
+                AgentScope.LOGS_READ,
+            )
+        ),
+    ],
+) -> ProjectTimelineResponse:
+    """Return the data the web timeline draws the project's roadmap from.
+
+    Goals with their tasks, dependencies and work-log spans, plus the weekly
+    capacity from the triage settings. The roadmap CLI (``packages/roadmap``)
+    schedules and draws it locally. Another user's project is reported as not
+    found.
+    """
+    try:
+        project = project_service.get_project(session, project_id, principal.user_id)
+    except ResourceNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found") from None
+    return build_project_timeline(session, project)
 
 
 @router.get(
