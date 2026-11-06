@@ -1,7 +1,7 @@
 # 提案インボックス設計（G3）
 
 作成日: 2026-11-02
-状態: 承認済み（実装: G3 PR1〜PR3）
+状態: 承認済み（実装: G3 PR1〜PR3。Task のノートと Goal の下の Task は 2026-11-06 に追加）
 関連: [Agent Gateway 設計（G1 / G2）](agent-gateway.md)、ResearchDistillator `docs/roadmap.md`（Track G の G3）
 
 ## 概要
@@ -75,8 +75,8 @@
 
 | `kind` | payload | 承認したときの動作 |
 |---|---|---|
-| `goal` | `project_id`（必須）、`title`、`description?`、`due_date?` | `goal_service.create_goal` と同じ検証で Goal を作る |
-| `task` | `goal_id`（必須）、`title`、`description?`、`estimate_hours`（必須。`TaskCreate` に既定値がないため）、`due_date?`、`work_type?`、`priority?` | Task を作る |
+| `goal` | `project_id`（必須）、`title`、`description?`、`due_date?`、`tasks?`（1〜10 件。後述の「Task のノートと Goal の下の Task」） | `goal_service.create_goal` と同じ検証で Goal を作る。`tasks` があれば、その下に Task とそのノートも作る |
+| `task` | `goal_id`（必須）、`title`、`description?`、`estimate_hours`（必須。`TaskCreate` に既定値がないため）、`due_date?`、`work_type?`、`priority?`、`note_markdown?`（1〜20000 文字） | Task を作る。`note_markdown` があれば、その Task のノートも作る |
 | `quick_task` | `title`、`description?`、`estimate_hours?`（既定 0.5）、`due_date?`、`work_type?`、`priority?` | Quick Task を作る |
 | `note_append` | `target`（`{project_id}` / `{goal_id}` / `{task_id}` のちょうど1つ）、`content_markdown`（1〜20000 文字） | 対象のノートの末尾に追記する（後述） |
 | `contradiction` | `project_id?`、`claims`（2〜5 件の `{text, source_ref?}`）、`explanation`、`suggested_resolution?` | 何も作らない。「確認した」という記録になる。コメントを任意で付けられる |
@@ -329,6 +329,36 @@
 - Fly の secret: `RESEND_API_KEY`、`EMAIL_FROM`（検証したドメインのアドレス）、`EMAIL_NOTIFICATIONS_ENABLED=true`、`WEB_BASE_URL`。本番でジョブが動いていること（`NOTIFICATION_SCHEDULER_ENABLED` が false でないこと。preview では切ってある）。
 - 全体のフラグを true にすると、ユーザーごとの設定で期限通知をオンにしているユーザーには、既存の期限・超過のメールも届き始める。
 - ユーザー本人が設定画面で、メール通知と「デイリーダイジェスト」をオンにする。
+
+## Task のノートと Goal の下の Task（2026-11-06 に追加、#412）
+
+ResearchDistillator の R3（`docs/design/r3-proposals.md`）で、Distiller の提案を「エージェント用のプロンプトをノートに持つ Task」として送るために足す。マイグレーションは要らない（payload は JSONB、`kind` は変わらない）。
+
+### Task の提案のノート
+
+- `task` の payload に、任意の `note_markdown`（1〜20000 文字）を足す。
+- **承認したとき**: Task を作り、続けてその Task のノートを作る。同じトランザクションで行う。ノートの本文は `note_append` と同じ変換（生の HTML を無効にした Markdown → HTML）を通し、先頭に同じ見出し（`エージェントからの追記（YYYY-MM-DD、{agent_name}）`）を付ける。
+- `note_markdown` が無い、または空白だけなら、ノートは作らない。
+- **編集して承認**: ノートの本文も編集できる。空にすれば、ノートは作らない。
+
+### Goal の提案に Task を含める
+
+- `goal` の payload に、任意の `tasks`（最大 10 件）を足す。各要素は `title`（必須）、`description?`、`estimate_hours`（必須）、`due_date?`、`work_type?`、`priority?`、`note_markdown?`。規則は `task` の payload と同じ。`goal_id` は持たない（送れば `extra` として 422）。
+- 空の配列は、`tasks` が無いのと同じに扱う（正規化で `null` にする）。11 件以上は 422。
+- **承認したとき**: Goal、各 Task、各 Task のノートを 1 つのトランザクションで作る。どれかが失敗したら、何も作らない。
+- Task の期限は Goal の期限で埋めない。空のまま。
+- **編集して承認**: Task を 1 件ずつ外せる。各 Task の項目とノートを編集できる。Task を全部外せば、Goal だけを作る。外したり直したりすれば `edited` になる。
+- `result` は `{type: "goal", id}` のまま。Task は Goal の下にあるのでたどれる。
+- 既存の Goal にまとめて Task を足す種類は作らない。既存の Goal には `task` の提案を 1 件ずつ送る。
+
+### 大きさ
+
+- Agent API の本文の上限（64 KB）は変えない。10 件の Task がそれぞれ長いノートを持つと超えるので、送る側が大きさを抑える（R3 の Distiller はノートを 1 件 6000 文字までにする）。
+
+### Web の画面
+
+- `task` の提案と、`goal` の提案の各 Task で、ノートの本文を折りたたみ（`<details>`）で見せる。プレーンテキストで出し、Markdown として描画しない。
+- 編集フォーム: `task` にノートの欄を足す。`goal` では Task ごとに項目とノートの欄を並べ、「この Task を外す」と「元に戻す」のボタンを置く。
 
 ## PR の分け方
 

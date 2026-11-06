@@ -788,3 +788,190 @@ def test_accept_with_stale_stored_payload_is_409_and_stays_pending(
     )
     assert count(session, QuickTask) == 0
     assert reload(session, row).status == ProposalStatus.PENDING.value
+
+
+def task_note_payload(goal_id: UUID, **extra: Any) -> dict[str, Any]:
+    return {"goal_id": str(goal_id), "title": "T", "estimate_hours": 1, **extra}
+
+
+def seed_task_proposal(session: Session, **extra: Any) -> AgentProposal:
+    goal = seed_goal(session, seed_project(session, USER_A))
+    return make_proposal(
+        session, ProposalKind.TASK, task_note_payload(goal.id, **extra)
+    )
+
+
+def test_accept_task_with_note_creates_note(session: Session):
+    row = seed_task_proposal(session, note_markdown="## Do\n\nIt.")
+
+    result = accept(session, row)
+
+    assert result.result_type == "task"
+    assert result.status == ProposalStatus.ACCEPTED
+    notes = session.exec(select(ContextNote)).all()
+    assert len(notes) == 1
+    assert notes[0].task_id == result.result_id
+    assert notes[0].user_id == USER_A
+    assert notes[0].content == agent_append_heading(
+        AGENT, tokyo_today()
+    ) + markdown_to_note_html("## Do\n\nIt.")
+    assert notes[0].content_type == "html"
+
+
+def test_whitespace_only_note_creates_no_note(session: Session):
+    row = seed_task_proposal(session, note_markdown="  \n ")
+
+    accept(session, row)
+
+    assert count(session, Task) == 1
+    assert count(session, ContextNote) == 0
+
+
+def test_task_note_neutralises_raw_html_and_js_links(session: Session):
+    row = seed_task_proposal(
+        session, note_markdown="<script>x</script> [a](javascript:alert(1))"
+    )
+
+    accept(session, row)
+
+    content = session.exec(select(ContextNote)).one().content
+    assert "<script" not in content
+    assert "&lt;script&gt;" in content
+    assert 'href="javascript:' not in content  # literal text is escaped, no link
+
+
+def test_edit_clearing_task_note_creates_no_note_and_is_edited(session: Session):
+    row = seed_task_proposal(session, note_markdown="note")
+    edited = {**row.payload, "note_markdown": None}
+
+    result = accept(session, row, payload=edited)
+
+    assert result.status == ProposalStatus.EDITED
+    assert count(session, ContextNote) == 0
+
+
+def seed_goal_proposal(session: Session, **extra: Any) -> AgentProposal:
+    project = seed_project(session, USER_A)
+    return make_proposal(
+        session,
+        ProposalKind.GOAL,
+        {"project_id": str(project.id), "title": "G", **extra},
+    )
+
+
+TWO_TASKS = [
+    {"title": "First", "estimate_hours": 1, "note_markdown": "first note"},
+    {"title": "Second", "estimate_hours": 2},
+]
+
+
+def test_accept_goal_with_tasks_creates_tasks_and_notes(session: Session, monkeypatch):
+    row = seed_goal_proposal(session, due_date="2026-12-01", tasks=TWO_TASKS)
+    order: list[str] = []
+    real_build = proposal_service.task_service.build
+
+    def spy_build(session_: Session, data: Any, user_id: UUID) -> Any:
+        order.append(data.title)
+        return real_build(session_, data, user_id)
+
+    monkeypatch.setattr(proposal_service.task_service, "build", spy_build)
+
+    result = accept(session, row)
+
+    assert order == ["First", "Second"]
+
+    assert result.result_type == "goal"
+    goal = session.exec(select(Goal)).one()
+    assert result.result_id == goal.id
+    tasks = session.exec(select(Task).order_by(Task.created_at)).all()
+    assert sorted(t.title for t in tasks) == ["First", "Second"]
+    assert all(t.goal_id == goal.id and t.due_date is None for t in tasks)
+    notes = session.exec(select(ContextNote)).all()
+    assert len(notes) == 1
+    first = next(t for t in tasks if t.title == "First")
+    assert notes[0].task_id == first.id
+
+
+def test_goal_with_invalid_edited_task_creates_nothing(session: Session):
+    row = seed_goal_proposal(session, tasks=TWO_TASKS)
+    bad = [dict(TWO_TASKS[0]), {**TWO_TASKS[1], "estimate_hours": 0}]
+    edited = {**row.payload, "tasks": bad}
+
+    with pytest.raises(HTTPException) as caught:
+        accept(session, row, payload=edited)
+
+    assert caught.value.status_code == 422
+    for model in (Goal, Task, ContextNote):
+        assert count(session, model) == 0
+    assert reload(session, row).status == ProposalStatus.PENDING
+
+
+def test_goal_task_failure_after_goal_built_rolls_back_everything(
+    session: Session, monkeypatch
+):
+    row = seed_goal_proposal(session, tasks=TWO_TASKS)
+    calls: list[str] = []
+    real_note = proposal_service._create_task_note
+
+    def failing_note(*args: Any, **kwargs: Any) -> Any:
+        calls.append("note")
+        if calls.count("note") == 2:
+            raise RuntimeError("boom")
+        return real_note(*args, **kwargs)
+
+    real_build = proposal_service.task_service.build
+
+    def counting_build(*args: Any, **kwargs: Any) -> Any:
+        calls.append("task")
+        return real_build(*args, **kwargs)
+
+    monkeypatch.setattr(proposal_service, "_create_task_note", failing_note)
+    monkeypatch.setattr(proposal_service.task_service, "build", counting_build)
+
+    with pytest.raises(RuntimeError):
+        accept(session, row)
+
+    # goal and both tasks were flushed, the first note too, before the failure
+    assert calls == ["task", "note", "task", "note"]
+    for model in (Goal, Task, ContextNote):
+        assert count(session, model) == 0
+    assert reload(session, row).status == ProposalStatus.PENDING.value
+
+
+def test_goal_with_all_tasks_removed_creates_goal_only(session: Session):
+    row = seed_goal_proposal(session, tasks=TWO_TASKS)
+
+    result = accept(session, row, payload={**row.payload, "tasks": None})
+
+    assert result.status == ProposalStatus.EDITED
+    assert count(session, Goal) == 1
+    assert count(session, Task) == 0
+
+
+def test_goal_edit_removing_one_task_is_edited(session: Session):
+    row = seed_goal_proposal(session, tasks=TWO_TASKS)
+
+    result = accept(
+        session, row, payload={**row.payload, "tasks": row.payload["tasks"][1:]}
+    )
+
+    assert result.status == ProposalStatus.EDITED
+    assert session.exec(select(Task)).one().title == "Second"
+
+
+def test_legacy_payload_without_new_keys_accepts_unedited(session: Session):
+    goal = seed_goal(session, seed_project(session, USER_A))
+    task_row = make_proposal(session, ProposalKind.TASK, task_note_payload(goal.id))
+    task_row.payload = {
+        k: v for k, v in task_row.payload.items() if k != "note_markdown"
+    }
+    session.add(task_row)
+    session.commit()
+    goal_row = seed_goal_proposal(session)
+    goal_row.payload = {k: v for k, v in goal_row.payload.items() if k != "tasks"}
+    session.add(goal_row)
+    session.commit()
+
+    assert accept(session, task_row).status == ProposalStatus.ACCEPTED
+    assert accept(session, goal_row).status == ProposalStatus.ACCEPTED
+    assert count(session, ContextNote) == 0

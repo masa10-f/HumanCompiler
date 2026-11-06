@@ -272,3 +272,50 @@ def test_nul_deep_inside_a_nested_payload_is_rejected_as_nul():
 
     with pytest.raises(ValidationError, match="NUL"):
         ProposalCreateRequest.model_validate(body)
+
+
+def goal_payload(**extra: Any) -> dict[str, Any]:
+    return {"project_id": PROJECT_ID, "title": "Goal", **extra}
+
+
+def test_task_note_markdown_length_limits():
+    base = MINIMAL_PAYLOADS[ProposalKind.TASK]
+    normalize_payload(ProposalKind.TASK, {**base, "note_markdown": "x" * 20000})
+    for bad in ("x" * 20001, ""):
+        with pytest.raises(ValidationError):
+            normalize_payload(ProposalKind.TASK, {**base, "note_markdown": bad})
+
+
+def test_goal_tasks_accepts_up_to_ten():
+    item = {"title": "t", "estimate_hours": 1}
+    normalize_payload(ProposalKind.GOAL, goal_payload(tasks=[item] * 10))
+    with pytest.raises(ValidationError):
+        normalize_payload(ProposalKind.GOAL, goal_payload(tasks=[item] * 11))
+
+
+def test_goal_tasks_empty_list_normalises_to_none():
+    dumped = normalize_payload(ProposalKind.GOAL, goal_payload(tasks=[]))
+    assert dumped["tasks"] is None
+    assert dumped == normalize_payload(ProposalKind.GOAL, goal_payload())
+
+
+def test_goal_task_rejects_goal_id_and_requires_estimate():
+    with pytest.raises(ValidationError):
+        normalize_payload(
+            ProposalKind.GOAL,
+            goal_payload(
+                tasks=[{"title": "t", "estimate_hours": 1, "goal_id": GOAL_ID}]
+            ),
+        )
+    with pytest.raises(ValidationError):
+        normalize_payload(ProposalKind.GOAL, goal_payload(tasks=[{"title": "t"}]))
+
+
+def test_goal_task_due_date_is_normalised_like_task():
+    dumped = normalize_payload(
+        ProposalKind.GOAL,
+        goal_payload(
+            tasks=[{"title": "t", "estimate_hours": 1, "due_date": "2026-12-01"}]
+        ),
+    )
+    assert dumped["tasks"][0]["due_date"] == "2026-11-30T15:00:00Z"

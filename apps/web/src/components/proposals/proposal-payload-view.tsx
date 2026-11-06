@@ -64,6 +64,35 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
+/** Note text, or null when empty or whitespace-only (the backend creates no note). */
+function noteText(markdown: unknown): string | null {
+  const body = text(markdown);
+  return body === null || body.trim() === '' ? null : body;
+}
+
+/** Agent note as collapsed plain text; renders nothing when empty. */
+export function NoteDetails({ markdown }: { markdown: unknown }): ReactNode {
+  const body = noteText(markdown);
+  if (body === null) return null;
+  return (
+    <details>
+      <summary>ノート（{body.length} 文字）</summary>
+      <div className="mt-1 whitespace-pre-wrap break-words rounded border p-2 font-mono text-xs">
+        {body}
+      </div>
+    </details>
+  );
+}
+
+function noteRow(markdown: unknown): ReactNode {
+  return (
+    <Row
+      label="ノート"
+      value={noteText(markdown) === null ? null : <NoteDetails markdown={markdown} />}
+    />
+  );
+}
+
 function workFields(payload: UnknownRecord): ReactNode {
   return (
     <>
@@ -97,13 +126,37 @@ export function noteTarget(
 
 function renderBody(proposal: Proposal, payload: UnknownRecord): ReactNode {
   switch (proposal.kind) {
-    case 'goal':
-      return workFields(payload);
+    case 'goal': {
+      const tasks = asRecords(payload.tasks);
+      return (
+        <>
+          {workFields(payload)}
+          {tasks.length > 0 ? (
+            <Row
+              label="Task"
+              value={
+                <ol className="list-decimal space-y-2 pl-5">
+                  {tasks.map((item, index) => (
+                    <li key={index}>
+                      <dl className="space-y-1">
+                        {workFields(item)}
+                        {noteRow(item.note_markdown)}
+                      </dl>
+                    </li>
+                  ))}
+                </ol>
+              }
+            />
+          ) : null}
+        </>
+      );
+    }
     case 'task':
       return (
         <>
           <Row label="Goal" value={proposal.goal_title ?? DELETED} />
           {workFields(payload)}
+          {noteRow(payload.note_markdown)}
         </>
       );
     case 'quick_task':

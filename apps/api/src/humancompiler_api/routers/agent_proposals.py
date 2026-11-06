@@ -54,7 +54,9 @@ BODY_CAP_GUIDE = (
     "Non-ASCII text costs about 3 bytes per character in UTF-8, and 6 or more "
     "when the client escapes it as \\uXXXX, so send UTF-8 JSON without escaping. "
     "A long note_append may not fit even within the content_markdown limit; split "
-    "it into several proposals."
+    "it into several proposals. A goal whose tasks carry long notes can also "
+    "exceed the cap; shorten the notes or send some tasks as separate task "
+    "proposals."
 )
 
 ACCEPTED_EXPERIMENTS_GUIDE = (

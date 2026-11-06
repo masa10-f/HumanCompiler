@@ -48,11 +48,13 @@ from humancompiler_api.note_markdown import (
 from humancompiler_api.proposal_payloads import (
     EDITABLE_KINDS,
     DecisionRequestPayload,
+    GoalProposalPayload,
     NoteAppendPayload,
     NoteTarget,
     ProposalAcceptRequest,
     ProposalCreateRequest,
     ProposalRejectRequest,
+    TaskProposalPayload,
     normalize_payload,
     parse_payload,
 )
@@ -258,10 +260,14 @@ def _check_decision(
         )
 
 
-def _create_input(model: type[BaseModel], parsed: BaseModel) -> Any:
+def _create_input(
+    model: type[BaseModel], parsed: BaseModel, exclude: set[str] | None = None
+) -> Any:
     """Build a ``*Create`` from a payload; unset fields keep the model defaults."""
     try:
-        return model.model_validate(parsed.model_dump(exclude_none=True))
+        return model.model_validate(
+            parsed.model_dump(exclude_none=True, exclude=exclude)
+        )
     except ValidationError as error:
         raise _unprocessable(_validation_detail(error)) from error
 
@@ -336,6 +342,25 @@ def _append_to_note(
     return note
 
 
+def _create_task_note(
+    session: Session,
+    user_id: UUID,
+    agent_name: str,
+    task_id: UUID,
+    markdown: str | None,
+) -> ContextNote | None:
+    """Give a new task its note from the agent's Markdown, flushed not committed.
+
+    Writes nothing when there is no text."""
+    if markdown is None or markdown.strip() == "":
+        return None
+    note = create_note(session, user_id, NoteTarget(task_id=task_id))
+    append_agent_markdown(note, agent_name, markdown)
+    session.add(note)
+    session.flush()
+    return note
+
+
 def _materialise(
     session: Session,
     user_id: UUID,
@@ -347,10 +372,43 @@ def _materialise(
 
     Ownership of every referenced ID has been checked by ``resolve_project_id``."""
     if kind is ProposalKind.GOAL:
-        goal = goal_service.build(session, _create_input(GoalCreate, parsed), user_id)
+        goal = goal_service.build(
+            session, _create_input(GoalCreate, parsed, {"tasks"}), user_id
+        )
+        if isinstance(parsed, GoalProposalPayload):
+            for item in parsed.tasks or []:
+                try:
+                    task_input = TaskCreate.model_validate(
+                        {
+                            **item.model_dump(
+                                exclude_none=True, exclude={"note_markdown"}
+                            ),
+                            "goal_id": goal.id,
+                        }
+                    )
+                except ValidationError as error:
+                    raise _unprocessable(_validation_detail(error)) from error
+                child = task_service.build(session, task_input, user_id)
+                _create_task_note(
+                    session,
+                    user_id,
+                    row.agent_name,
+                    child.id,  # type: ignore[arg-type]
+                    item.note_markdown,
+                )
         return ProposalResultType.GOAL, goal.id  # type: ignore[return-value]
     if kind is ProposalKind.TASK:
-        task = task_service.build(session, _create_input(TaskCreate, parsed), user_id)
+        task = task_service.build(
+            session, _create_input(TaskCreate, parsed, {"note_markdown"}), user_id
+        )
+        if isinstance(parsed, TaskProposalPayload):
+            _create_task_note(
+                session,
+                user_id,
+                row.agent_name,
+                task.id,  # type: ignore[arg-type]
+                parsed.note_markdown,
+            )
         return ProposalResultType.TASK, task.id  # type: ignore[return-value]
     if kind is ProposalKind.QUICK_TASK:
         quick_task = quick_task_service.build(

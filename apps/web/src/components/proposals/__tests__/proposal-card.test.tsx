@@ -500,4 +500,83 @@ describe('ProposalCard', () => {
       expect(screen.queryByRole('button', { name: '却下' })).toBeNull();
     });
   });
+
+  describe('notes and goal tasks', () => {
+    it('renders a task note collapsed as plain text', () => {
+      const note = '## 手順\n<b>x</b>';
+      renderWithClient(
+        <ProposalCard
+          proposal={makeProposal({
+            kind: 'task',
+            payload: { goal_id: 'g1', title: 'T', note_markdown: note },
+          })}
+        />
+      );
+      expect(screen.getByText('ノート（14 文字）')).toBeInTheDocument();
+      const body = screen.getByText(
+        (_, el) => el?.tagName === 'DIV' && el.textContent === note
+      );
+      expect(body).toBeInTheDocument();
+      expect(body.closest('details')).not.toHaveAttribute('open');
+      expect(document.querySelector('b')).toBeNull();
+    });
+
+    it('renders no note row for a whitespace-only task note', () => {
+      renderWithClient(
+        <ProposalCard
+          proposal={makeProposal({
+            kind: 'task',
+            payload: { goal_id: 'g1', title: 'T', note_markdown: '  \n ' },
+          })}
+        />
+      );
+      expect(screen.queryByText(/ノート（/)).toBeNull();
+    });
+
+    it('renders no note row for an empty task note', () => {
+      renderWithClient(
+        <ProposalCard
+          proposal={makeProposal({
+            kind: 'task',
+            payload: { goal_id: 'g1', title: 'T', note_markdown: '' },
+          })}
+        />
+      );
+      expect(screen.queryByText('ノート')).toBeNull();
+      expect(screen.queryByText(/ノート（/)).toBeNull();
+    });
+
+    it('renders the tasks of a goal with their notes', () => {
+      renderWithClient(
+        <ProposalCard
+          proposal={makeProposal({
+            kind: 'goal',
+            payload: {
+              project_id: 'p1',
+              title: 'G',
+              tasks: [
+                { title: 'A', note_markdown: 'note a' },
+                { title: 'B', note_markdown: null },
+              ],
+            },
+          })}
+        />
+      );
+      expect(screen.getByText('A')).toBeInTheDocument();
+      expect(screen.getByText('B')).toBeInTheDocument();
+      expect(screen.getAllByText(/ノート（\d+ 文字）/)).toHaveLength(1);
+    });
+
+    it('renders a goal without tasks as before', () => {
+      renderWithClient(
+        <ProposalCard
+          proposal={makeProposal({
+            kind: 'goal',
+            payload: { project_id: 'p1', title: 'G', tasks: null },
+          })}
+        />
+      );
+      expect(screen.queryByText('Task')).toBeNull();
+    });
+  });
 });
