@@ -40,8 +40,11 @@ export function validateApiUrl(raw: string): string {
 
 async function detailOf(response: Response): Promise<string> {
   try {
-    const body = (await response.json()) as { detail?: unknown }
-    return typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)
+    const body = (await response.json()) as { detail?: unknown } | null
+    const detail = body?.detail
+    if (typeof detail === 'string') return detail
+    // An error page from a proxy may be JSON without a detail.
+    return detail === undefined ? response.statusText : JSON.stringify(detail)
   } catch {
     return response.statusText
   }

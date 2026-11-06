@@ -208,6 +208,10 @@ describe('fetching from the agent API', () => {
         res.writeHead(status, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify(body))
       }
+      if (req.url === '/api/agent/v1/projects/proxy-error/timeline') {
+        res.writeHead(502, 'Bad Gateway', { 'Content-Type': 'application/json' })
+        return res.end(JSON.stringify({ error: 'upstream down' }))
+      }
       if (req.url === '/api/agent/v1/projects/html/timeline') {
         res.writeHead(200, { 'Content-Type': 'text/html' })
         return res.end('<html>login</html>')
@@ -248,6 +252,7 @@ describe('fetching from the agent API', () => {
     ['no-scope', 'good-token', /Missing required scope: logs:read\. The token needs/],
     ['missing', 'good-token', /Project missing was not found/],
     ['html', 'good-token', /did not return JSON/],
+    ['proxy-error', 'good-token', /The API returned 502: Bad Gateway/],
   ]) {
     test(`reports ${message}`, async () => {
       const { code, stderr } = await run([project, '--no-image'], {
