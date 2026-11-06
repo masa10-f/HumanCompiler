@@ -47,6 +47,11 @@ export async function POST(request: Request) {
     return json({ detail: 'Unauthorized' }, 401)
   }
 
+  // Reject a declared oversize body before reading it; the byte check below
+  // still covers chunked requests, which carry no Content-Length.
+  if (Number(request.headers.get('content-length') ?? 0) > MAX_BODY_BYTES) {
+    return json({ detail: 'Request body too large' }, 413)
+  }
   const raw = await request.text()
   if (Buffer.byteLength(raw) > MAX_BODY_BYTES) {
     return json({ detail: 'Request body too large' }, 413)
