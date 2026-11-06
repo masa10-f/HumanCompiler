@@ -330,7 +330,9 @@ export function TimelineVisualizer({
     }
   }
 
-  if (isLoading && !data) {
+  // `now` is set after mount (avoids a hydration mismatch); show the
+  // skeleton until then instead of the scheduling error state.
+  if ((isLoading && !data) || (data && !now)) {
     return (
       <div className="space-y-5" aria-label="タイムラインを読み込み中">
         <div className="h-32 animate-pulse rounded-3xl bg-slate-200/70 dark:bg-slate-800" />

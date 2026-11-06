@@ -162,11 +162,22 @@ async def get_project_timeline(
                 logs = task.logs
 
                 total_actual_minutes = sum(log.actual_minutes for log in logs)
-                log_times = sorted(
-                    log.created_at for log in logs if log.created_at is not None
+                # A log is recorded after its work, so the work began
+                # `actual_minutes` before the log's timestamp.
+                work_spans = [
+                    (
+                        log.created_at - timedelta(minutes=log.actual_minutes),
+                        log.created_at,
+                    )
+                    for log in logs
+                    if log.created_at is not None
+                ]
+                first_logged_at = (
+                    min(start for start, _ in work_spans) if work_spans else None
                 )
-                first_logged_at = log_times[0] if log_times else None
-                last_logged_at = log_times[-1] if log_times else None
+                last_logged_at = (
+                    max(end for _, end in work_spans) if work_spans else None
+                )
                 if first_logged_at is not None:
                     goal_log_times.append(first_logged_at)
                 if last_logged_at is not None:

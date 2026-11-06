@@ -460,12 +460,14 @@ class TestTimelineRouter:
             parsed = datetime.fromisoformat(value)
             return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
-        assert parse(goal_data["actual_start_date"]) == early.created_at
+        # Work starts `actual_minutes` (60 by default) before a log is recorded
+        early_start = early.created_at - timedelta(minutes=early.actual_minutes)
+        assert parse(goal_data["actual_start_date"]) == early_start
         assert parse(goal_data["actual_end_date"]) == late.created_at
 
         tasks_by_id = {task["id"]: task for task in goal_data["tasks"]}
         first = tasks_by_id[str(first_task.id)]
-        assert parse(first["first_logged_at"]) == early.created_at
+        assert parse(first["first_logged_at"]) == early_start
         assert parse(first["last_logged_at"]) == middle.created_at
         idle = tasks_by_id[str(idle_task.id)]
         assert idle["first_logged_at"] is None
