@@ -73,7 +73,7 @@ The roadmap data goes straight from the API to the command, so it never passes t
 
 ## Requirements
 
-- Node.js 20 or later.
+- Node.js 20.16 or later.
 - The drawing uses [resvg](https://github.com/yisibl/resvg-js), which ships prebuilt binaries for common platforms.
 - Noto Sans JP (Regular and Bold) is included.
 

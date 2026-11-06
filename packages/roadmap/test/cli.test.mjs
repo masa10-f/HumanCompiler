@@ -173,6 +173,21 @@ describe('drawing from a file', () => {
   }
 })
 
+test('stops on Node versions without negative options', async () => {
+  // Pretend to be Node 20.15 before the CLI starts.
+  const child = await new Promise((resolve) => {
+    const proc = spawn(
+      process.execPath,
+      ['-e', `Object.defineProperty(process.versions, 'node', { value: '20.15.1' }); require(${JSON.stringify(CLI)})`, '--', '--input', FIXTURE, '--no-image'],
+    )
+    let stderr = ''
+    proc.stderr.on('data', (chunk) => (stderr += chunk))
+    proc.on('close', (code) => resolve({ code, stderr }))
+  })
+  assert.equal(child.code, 1)
+  assert.match(child.stderr, /Node\.js 20\.16 or later is required \(this is 20\.15\.1\)/)
+})
+
 describe('fetching from the agent API', () => {
   let server
   let baseUrl

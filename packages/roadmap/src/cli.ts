@@ -79,7 +79,16 @@ function pagePath(output: string, index: number, total: number): string {
   return `${output.slice(0, output.length - ext.length)}-${index + 1}${ext}`
 }
 
+/** `parseArgs` handles `--no-...` options (allowNegative) from Node 20.16. */
+export function checkNodeVersion(version = process.versions.node): void {
+  const [major = 0, minor = 0] = version.split('.').map(Number)
+  if (major < 20 || (major === 20 && minor < 16)) {
+    throw new CliError(`Node.js 20.16 or later is required (this is ${version})`)
+  }
+}
+
 export async function main(argv: string[]): Promise<void> {
+  checkNodeVersion()
   const { values, positionals } = parseArgs({
     args: argv,
     allowPositionals: true,
