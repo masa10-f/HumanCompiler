@@ -831,3 +831,25 @@ def test_chunked_upload_over_cap_returns_413(session: Session):
 
     assert response.status_code == 413
     assert count_proposals(session) == 0
+
+
+def test_post_goal_with_tasks_stores_normalised_tasks(session: Session):
+    project = seed_project(session, USER_A)
+    secret = issue_token(session, USER_A, WRITE)
+    body = {
+        "kind": "goal",
+        "title": "G",
+        "payload": {
+            "project_id": str(project.id),
+            "title": "G",
+            "tasks": [{"title": "T", "estimate_hours": 1, "note_markdown": "## n"}],
+        },
+        "idempotency_key": "goal-with-tasks",
+    }
+
+    response = client.post(URL, json=body, headers=bearer(secret))
+
+    assert response.status_code == 201
+    stored = session.exec(select(AgentProposal)).one()
+    assert stored.payload["tasks"][0]["note_markdown"] == "## n"
+    assert stored.payload["tasks"][0]["estimate_hours"] == 1.0

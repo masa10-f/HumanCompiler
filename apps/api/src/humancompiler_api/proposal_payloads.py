@@ -25,6 +25,7 @@ from pydantic import (
     Field,
     PlainSerializer,
     ValidationError,
+    field_validator,
     model_validator,
 )
 
@@ -73,21 +74,35 @@ class ProposalSource(BaseModel):
     label: str | None = Field(default=None, max_length=200)
 
 
-class GoalProposalPayload(_Payload):
-    project_id: UUID
-    title: str = Field(min_length=1, max_length=200)
-    description: str | None = Field(default=None, max_length=1000)
-    due_date: DueDate = None
-
-
-class TaskProposalPayload(_Payload):
-    goal_id: UUID
+class _TaskFields(_Payload):
     title: str = Field(min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=1000)
     estimate_hours: Annotated[Hours, Field(gt=0, max_digits=5, decimal_places=2)]
     due_date: DueDate = None
     work_type: WorkType | None = None
     priority: int | None = Field(default=None, ge=1, le=5)
+    note_markdown: str | None = Field(default=None, min_length=1, max_length=20000)
+
+
+class TaskProposalPayload(_TaskFields):
+    goal_id: UUID
+
+
+class GoalTaskItem(_TaskFields):
+    """A task proposed inside a goal; its goal is the one being created."""
+
+
+class GoalProposalPayload(_Payload):
+    project_id: UUID
+    title: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
+    due_date: DueDate = None
+    tasks: list[GoalTaskItem] | None = Field(default=None, max_length=10)
+
+    @field_validator("tasks", mode="before")
+    @classmethod
+    def empty_tasks_to_none(cls, value: Any) -> Any:
+        return None if value == [] else value
 
 
 class QuickTaskProposalPayload(_Payload):
