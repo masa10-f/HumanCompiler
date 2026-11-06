@@ -73,8 +73,12 @@ def render_timeline_image(
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, RENDERER_FAILED)
     try:
         result = response.json()
-        if not isinstance(result, dict) or not isinstance(result.get("data"), str):
-            raise ValueError("missing image data")
+        if (
+            not isinstance(result, dict)
+            or not isinstance(result.get("data"), str)
+            or result.get("mime_type") != "image/png"
+        ):
+            raise ValueError("missing PNG image data")
     except ValueError as exc:
         logger.error("Timeline image renderer sent an invalid body: %s", exc)
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, RENDERER_FAILED) from exc

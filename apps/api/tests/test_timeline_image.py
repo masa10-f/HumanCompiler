@@ -106,6 +106,8 @@ def test_allows_http_to_local_renderer(monkeypatch: pytest.MonkeyPatch, base_url
         httpx.Response(500, json={"detail": "Failed to render timeline image"}),
         httpx.Response(200, text="not json"),
         httpx.Response(200, json={"mime_type": "image/png"}),
+        httpx.Response(200, json={"data": "iVBOR", "width": 1, "height": 1}),
+        httpx.Response(200, json={**RESULT, "mime_type": "image/svg+xml"}),
         httpx.Response(200, json=["not", "an", "object"]),
     ],
 )
