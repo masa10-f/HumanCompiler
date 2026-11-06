@@ -1,0 +1,61 @@
+name: 🗺️ Roadmap CLI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/roadmap/**'
+      - 'apps/web/src/lib/timeline/**'
+      - 'apps/web/src/components/timeline/timeline-export.tsx'
+      - 'apps/web/src/components/timeline/timeline-chart-layers.tsx'
+      - 'apps/web/src/components/timeline/timeline-palette.ts'
+      - 'apps/web/src/types/timeline.ts'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/roadmap-cli.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/roadmap/**'
+      - 'apps/web/src/lib/timeline/**'
+      - 'apps/web/src/components/timeline/timeline-export.tsx'
+      - 'apps/web/src/components/timeline/timeline-chart-layers.tsx'
+      - 'apps/web/src/components/timeline/timeline-palette.ts'
+      - 'apps/web/src/types/timeline.ts'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/roadmap-cli.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: 🧪 Type-check and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v7
+
+      - name: 📦 Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.0.0
+
+      - name: 🟢 Set up Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: 📦 Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🔍 Type-check
+        run: pnpm --filter humancompiler-roadmap type-check
+
+      - name: 🧪 Build and test
+        run: pnpm --filter humancompiler-roadmap test

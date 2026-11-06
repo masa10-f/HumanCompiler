@@ -9,7 +9,8 @@
     "url": "https://github.com/masa10-f/HumanCompiler.git"
   },
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "packageManager": "pnpm@9.0.0",
   "engines": {
