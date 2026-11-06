@@ -470,6 +470,36 @@ describe('buildSchedule', () => {
     expect(schedule.links.filter((link) => link.conflict)).toEqual([])
   })
 
+  it('respects the deadlines of goals inside a dependency cycle', () => {
+    // 20h/week: 1h = 0.35 days; deadlines are end of day JST (15:00Z).
+    const schedule = buildSchedule(
+      project([
+        goal('in-cycle', {
+          status: 'in_progress',
+          dependencies: ['partner'],
+          // 4h → 1.4 days; deadline 11/7 = 1.625 days: on time only if it goes first
+          due_date: '2026-11-07T00:00:00+09:00',
+          tasks: [task({ status: 'in_progress', estimate_hours: 5, actual_hours: 1 })],
+        }),
+        goal('partner', { dependencies: ['in-cycle'] }),
+        goal('short', {
+          // Downstream of the cycle, so every goal is blocked and the cycle
+          // fallback has to choose among all of them.
+          dependencies: ['partner'],
+          // 1h → 0.35 days; deadline 11/6 = 0.625 days: met only if it goes first
+          due_date: '2026-11-06T00:00:00+09:00',
+          tasks: [task({ estimate_hours: 1 })],
+        }),
+      ]),
+      { weeklyHours: 20, now: NOW },
+    )
+
+    // Letting `short` go first would make the in-cycle goal late.
+    expect(schedule.hasCycle).toBe(true)
+    expect(schedule.goals[0]!.id).toBe('in-cycle')
+    expect(schedule.goals.find((item) => item.id === 'in-cycle')!.delayDays).toBe(0)
+  })
+
   it('still schedules every goal when dependencies form a cycle', () => {
     const schedule = buildSchedule(
       project([

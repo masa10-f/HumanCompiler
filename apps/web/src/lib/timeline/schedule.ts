@@ -191,12 +191,16 @@ export function buildSchedule(
 
   // A goal must finish early enough for its successors to meet their deadlines.
   const effectiveDeadline = new Map<string, number>()
+  // Goals in a dependency cycle never get an effective deadline from the
+  // topological pass, so fall back to their own deadline.
+  const deadlineFor = (id: string) =>
+    effectiveDeadline.get(id) ?? deadlineOf(drafts.get(id)!.dueDate)?.getTime() ?? Infinity
   for (const id of [...topoOrder].reverse()) {
     const draft = drafts.get(id)!
     let deadline = deadlineOf(draft.dueDate)?.getTime() ?? Infinity
     for (const next of successors.get(id) ?? []) {
       if (!openSet.has(next)) continue
-      const nextDeadline = effectiveDeadline.get(next) ?? Infinity
+      const nextDeadline = deadlineFor(next)
       const nextDuration = durationMs(drafts.get(next)!.metrics.remaining)
       deadline = Math.min(deadline, nextDeadline - nextDuration)
     }
@@ -207,8 +211,8 @@ export function buildSchedule(
     const da = drafts.get(a)!
     const db = drafts.get(b)!
     if (da.phase !== db.phase) return da.phase === 'active' ? -1 : 1
-    const ea = effectiveDeadline.get(a) ?? deadlineOf(da.dueDate)?.getTime() ?? Infinity
-    const eb = effectiveDeadline.get(b) ?? deadlineOf(db.dueDate)?.getTime() ?? Infinity
+    const ea = deadlineFor(a)
+    const eb = deadlineFor(b)
     if (ea !== eb) return ea < eb ? -1 : 1
     return da.index - db.index
   }
@@ -239,7 +243,7 @@ export function buildSchedule(
         let finish = cursor
         for (const activeId of activeQueue) {
           finish += durationMs(drafts.get(activeId)!.metrics.remaining)
-          const activeDeadline = effectiveDeadline.get(activeId) ?? Infinity
+          const activeDeadline = deadlineFor(activeId)
           if (finish <= activeDeadline && finish + shift > activeDeadline) return false
         }
         return true
@@ -247,7 +251,7 @@ export function buildSchedule(
       const rescue = ready
         .filter((candidate) => drafts.get(candidate)!.phase === 'planned')
         .find((candidate) => {
-          const deadline = effectiveDeadline.get(candidate) ?? Infinity
+          const deadline = deadlineFor(candidate)
           const duration = durationMs(drafts.get(candidate)!.metrics.remaining)
           return (
             Number.isFinite(deadline) &&
