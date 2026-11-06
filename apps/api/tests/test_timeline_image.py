@@ -70,6 +70,33 @@ def test_not_configured_is_503(
     assert calls == []
 
 
+@pytest.mark.parametrize(
+    "base_url", ["http://web.example.com", "http://192.168.0.10:3000", "ftp://x"]
+)
+def test_refuses_non_https_remote_url(monkeypatch: pytest.MonkeyPatch, base_url: str):
+    monkeypatch.setattr(settings, "web_base_url", base_url)
+    monkeypatch.setattr(settings, "timeline_render_secret", "s3cret")
+    calls = _fake_post(monkeypatch, httpx.Response(200, json=RESULT))
+
+    with pytest.raises(HTTPException) as exc_info:
+        timeline_image.render_timeline_image(DATA, OPTIONS)
+
+    assert exc_info.value.status_code == 503
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "base_url", ["http://localhost:3000", "http://127.0.0.1:3000", "http://[::1]:3000"]
+)
+def test_allows_http_to_local_renderer(monkeypatch: pytest.MonkeyPatch, base_url: str):
+    monkeypatch.setattr(settings, "web_base_url", base_url)
+    monkeypatch.setattr(settings, "timeline_render_secret", "s3cret")
+    calls = _fake_post(monkeypatch, httpx.Response(200, json=RESULT))
+
+    assert timeline_image.render_timeline_image(DATA, OPTIONS) == RESULT
+    assert calls[0]["url"] == f"{base_url}/api/internal/timeline-image"
+
+
 @pytest.mark.usefixtures("configured")
 @pytest.mark.parametrize(
     "response",

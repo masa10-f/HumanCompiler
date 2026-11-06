@@ -15,6 +15,7 @@ returns a PNG. The route reads no user data; the shared secret
 
 import logging
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 from fastapi import HTTPException, status
@@ -27,6 +28,8 @@ RENDER_PATH = "/api/internal/timeline-image"
 RENDER_TIMEOUT_SECONDS = 30.0
 
 NOT_CONFIGURED = "Timeline image rendering is not configured"
+# Plain http is allowed only to a renderer on this machine (local development).
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 RENDERER_FAILED = "Timeline image renderer failed"
 
 
@@ -42,6 +45,11 @@ def render_timeline_image(
     base_url = settings.web_base_url
     secret = settings.timeline_render_secret
     if not base_url or not secret:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, NOT_CONFIGURED)
+    parts = urlsplit(base_url)
+    if parts.scheme != "https" and parts.hostname not in LOCAL_HOSTS:
+        # The secret and the user's timeline data must not travel unencrypted.
+        logger.error("Refusing to render over a non-HTTPS WEB_BASE_URL")
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, NOT_CONFIGURED)
 
     try:
