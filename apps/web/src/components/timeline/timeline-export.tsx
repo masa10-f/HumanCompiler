@@ -137,8 +137,21 @@ export function downloadSvg(markup: string, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+// Browsers cap both canvas side length and total area (iOS Safari ≈ 16.7M px).
+const MAX_CANVAS_SIDE = 16_000
+const MAX_CANVAS_AREA = 16_000_000
+
+/** Pixel ratio for the PNG export: 2x when it fits within canvas limits. */
+export function exportScale(width: number, height: number): number {
+  return Math.min(
+    2,
+    MAX_CANVAS_SIDE / Math.max(width, height),
+    Math.sqrt(MAX_CANVAS_AREA / (width * height)),
+  )
+}
+
 export async function downloadPng(markup: string, width: number, height: number, filename: string) {
-  const scale = Math.min(2, 16000 / Math.max(width, height))
+  const scale = exportScale(width, height)
   const svgUrl = URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml;charset=utf-8' }))
   try {
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {
