@@ -71,9 +71,9 @@ export const GUIDE_BODY = `## HumanCompiler
 The user's tasks are managed in HumanCompiler, connected as the \`${SERVER_NAME}\` MCP server. Its agent token is in the \`${TOKEN_ENV}\` environment variable: never print it, pass it as an argument or write it to a file.
 
 - Find the id of a project or goal with the MCP tool \`find\`.
-- Roadmap and schedule: run \`npx humancompiler roadmap <project-id> --goals-per-page 20\`. Read the printed summary first (projected dates, delays, what each goal waits on). Open the images (\`roadmap-1.png\`, ...) only when the picture itself helps, for example to show the user.
-- Background before working on a project or goal, or for a report: run \`npx humancompiler context <project|goal> <id> -o <file>.md\` to get its notes, tasks and work history as one Markdown file, then read the parts you need. Keep the file out of commits.
-- If a command fails, run \`npx humancompiler doctor\` and follow its hints.`
+- Roadmap and schedule: run \`npx humancompiler@0 roadmap <project-id> --goals-per-page 20\`. Read the printed summary first (projected dates, delays, what each goal waits on). Open the images (\`roadmap-1.png\`, ...) only when the picture itself helps, for example to show the user.
+- Background before working on a project or goal, or for a report: run \`npx humancompiler@0 context <project|goal> <id> -o <file>.md\` to get its notes, tasks and work history as one Markdown file, then read the parts you need. Keep the file out of commits.
+- If a command fails, run \`npx humancompiler@0 doctor\` and follow its hints.`
 
 // --- Planning ----------------------------------------------------------------
 

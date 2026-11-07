@@ -6,7 +6,8 @@
 # merging a PR that raises "version" is the release step.
 #
 # The trusted publisher on npmjs.com must name this file (cli-publish.yml).
-# The first version is published by hand; see packages/cli/README.md.
+# The first version is published by hand, before the PR that adds this
+# package is merged; see packages/cli/README.md.
 
 name: 📦 Publish CLI
 
@@ -38,19 +39,21 @@ jobs:
 
     steps:
       - name: 📥 Checkout repository
-        uses: actions/checkout@v7
+        # Pinned to commits: this job can get an npm publish credential, so a
+        # moved tag must not change what runs here.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: 📦 Set up pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           version: 9.0.0
 
       # Trusted publishing needs Node 22.14+ and npm 11.5.1+. No dependency
       # cache: npm advises against caching in release builds.
       - name: 🟢 Set up Node.js 24
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'

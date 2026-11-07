@@ -267,8 +267,8 @@ describe('AgentTokenUsageGuide', () => {
     const heading = screen.getByText(/MCP（Claude Code・Codex から使う）/)
     const section = within(heading.closest('section') as HTMLElement)
     section.getByText(/コマンドラインツール（npx humancompiler）/)
-    const example = section.getByText(/npx humancompiler roadmap <project-id> --goals-per-page 20/)
-    expect(example).toHaveTextContent('npx humancompiler context project <project-id> -o context.md')
+    const example = section.getByText(/npx humancompiler@0 roadmap <project-id> --goals-per-page 20/)
+    expect(example).toHaveTextContent('npx humancompiler@0 context project <project-id> -o context.md')
     // The CLI reads the token from the environment, never from the command.
     expect(example).not.toHaveTextContent('AGENT_TOKEN')
     for (const command of ['roadmap', 'context', 'setup claude-code / setup codex', 'doctor']) {

@@ -114,8 +114,8 @@ bearer_token_env_var = "HUMANCOMPILER_TOKEN"`;
 
 // The npm package `humancompiler` (packages/cli). It reads the same
 // HUMANCOMPILER_TOKEN, so the token never appears in these commands.
-const CLI_EXAMPLE = `npx humancompiler roadmap <project-id> --goals-per-page 20
-npx humancompiler context project <project-id> -o context.md`;
+const CLI_EXAMPLE = `npx humancompiler@0 roadmap <project-id> --goals-per-page 20
+npx humancompiler@0 context project <project-id> -o context.md`;
 
 const CLI_COMMANDS = [
   {

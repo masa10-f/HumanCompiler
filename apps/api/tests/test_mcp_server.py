@@ -161,8 +161,8 @@ async def test_initialize_and_list_tools_without_token(
     assert init["serverInfo"]["name"] == "HumanCompiler"
     assert "find" in init["instructions"]
     # Points agents at the local CLI for roadmaps and context exports.
-    assert "npx humancompiler roadmap <project-id>" in init["instructions"]
-    assert "npx humancompiler context <project|goal> <id>" in init["instructions"]
+    assert "npx humancompiler@0 roadmap <project-id>" in init["instructions"]
+    assert "npx humancompiler@0 context <project|goal> <id>" in init["instructions"]
     names = {tool["name"] for tool in tools["tools"]}
     assert READ_TOOLS <= names
     for tool in tools["tools"]:

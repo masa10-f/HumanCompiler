@@ -172,8 +172,10 @@ It also shows whether `setup` has been run for this directory and for Codex. It 
 `npx humancompiler setup` writes this guidance for the agent. In short:
 
 1. Find the project's id with the HumanCompiler MCP tool `find`.
-2. Run `npx humancompiler roadmap <project-id> --goals-per-page 20` and read the printed summary first. Open the images only when the picture itself helps.
-3. For background, run `npx humancompiler context <project|goal> <id> -o <file>.md` and read the parts you need.
+2. Run `npx humancompiler@0 roadmap <project-id> --goals-per-page 20` and read the printed summary first. Open the images only when the picture itself helps.
+3. For background, run `npx humancompiler@0 context <project|goal> <id> -o <file>.md` and read the parts you need.
+
+The guidance pins the major version (`@0`), so a future breaking release does not silently change what agents run.
 
 The roadmap data and the context document go straight from the API to the command, so they never pass through the agent's context. Only what the agent chooses to read does.
 
@@ -213,15 +215,17 @@ The workflow needs Node 22.14+ and npm 11.5.1+ (npm 11.0 to 11.5.0 cannot publis
 
 ### First release (once)
 
-npm configures a trusted publisher in the settings of an existing package, so the first version is published by hand:
+npm configures a trusted publisher in the settings of an existing package, so the first version is published by hand.
 
-1. After the PR that adds this package is merged, publish from an up-to-date `main`:
+1. **Before** merging the PR that adds this package, publish it from that PR's branch, once CI is green and the reviews are done:
 
    ```bash
    cd packages/cli
    npm login
    npm publish --access public   # prepublishOnly type-checks, builds and tests first
    ```
+
+   Merging deploys the MCP instructions and the settings-page guide, which tell agents to run `npx humancompiler@0 …` with `HUMANCOMPILER_TOKEN` set. Publishing first means nobody else can claim the `humancompiler` name in between and run code in those agent shells.
 
 2. On npmjs.com, open **humancompiler → Settings → Trusted publishing** and add a GitHub Actions publisher:
    - Organization or user: `masa10-f`

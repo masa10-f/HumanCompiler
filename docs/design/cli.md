@@ -58,6 +58,7 @@ humancompiler（利用者の手元、packages/cli）
 ```
 
 - **データはエージェントのコンテキストを通らない。** CLI が API から直接取得するため。エージェントは要約や、ファイルの必要な部分だけを読む。
+- **案内ではメジャー版を固定する。** MCP の `INSTRUCTIONS`、設定画面の案内、`setup` が書く案内は `npx humancompiler@0 …` と書く。破壊的な新しいメジャー版が出ても、エージェントの実行するものが黙って変わらないようにするため。
 - **MCP の役割は今までどおり。** プロジェクトを探す（`find`）、ゴールやタスクを読む、更新する、といった軽い操作に使う。
 
 ### ソースの構成
@@ -271,6 +272,7 @@ npx humancompiler doctor [roadmap|context ...] [--api-url <url>]
   - 未公開のときの `npm view` は、パッケージが無い場合もバージョンが無い場合も E404 で終わる。E404 以外の失敗（通信など）は、公開に進まずに失敗にする。
 - **依存のインストール：** `pnpm install --frozen-lockfile --ignore-scripts`。公開のトークンを作れるジョブで、依存のインストールスクリプトを動かさないため。esbuild と resvg は出来合いのバイナリを使うので、スクリプトが無くてもビルドとテストは通る（手元で確かめた）。
 - **公開前の確認：** 型チェック、ビルドとテスト、`npm pack --dry-run` で中身の一覧を出す。
+- **アクションの固定：** 公開のジョブだけは、`actions/checkout`、`pnpm/action-setup`、`actions/setup-node` をコミットの SHA で固定する（版はコメントに書く）。公開の資格を得られるジョブなので、タグが動かされても中身が変わらないようにするため。ほかのワークフローはメジャーのタグのまま。
 - **公開：** `npm publish --provenance --access public --ignore-scripts`。
   - 確認は前の手順で済ませたので、`prepublishOnly`（手で公開するときの同じ確認）は `--ignore-scripts` で飛ばす。
   - Trusted Publishing では provenance が自動で付く。`--provenance` は、意図を明示するために付けた。
@@ -288,11 +290,13 @@ https://docs.npmjs.com/trusted-publishers で確かめた（2026-11-07。この�
 - **キャッシュを使わない。** npm の文書が、公開のビルドではキャッシュを使わないよう勧めている（`package-manager-cache: false`）。
 - **`workflow_dispatch`：** 同じファイルの中なので、ワークフローのファイル名の照合は変わらない（文書の注意は、`workflow_call` で別のファイルから呼ぶ場合）。
 
-### 初回の公開（手動）
+### 初回の公開（手動、マージの前）
 
 Trusted Publisher は、npm の**既存のパッケージ**の設定画面で登録する。そのため、最初の版は手で公開する。
 
-1. マージ後、最新の main で、ユーザーが `packages/cli` で `npm publish --access public` を実行する（`prepublishOnly` が型チェック、ビルド、テストを先に走らせる）。
+**マージの前に公開する（2026-11-07 にユーザーと決めた）。** マージすると、MCP の `INSTRUCTIONS` と設定画面の案内が本番に出て、エージェントは `HUMANCOMPILER_TOKEN` のある環境で `npx humancompiler@0 …` を実行する。npm で名前が未公開のままだと、先に `humancompiler` を取った人のコードがそこで動く。PR は公開されているので、名前は既に知られている。Claude のレビューの指摘で分かった。
+
+1. CI が通り、レビューが済んだら、マージの前に、この PR のブランチで、ユーザーが `packages/cli` で `npm publish --access public` を実行する（`prepublishOnly` が型チェック、ビルド、テストを先に走らせる）。
 2. npmjs.com の **humancompiler → Settings → Trusted publishing** で、GitHub Actions を登録する。
    - Organization or user：`masa10-f`、Repository：`HumanCompiler`、Workflow filename：`cli-publish.yml`、Environment：空欄。
    - **Allowed actions で `npm publish` に印を付ける。** 2026-09-03 より後に作った設定は、既定で `npm stage publish`（承認が要る公開）しか許さない。
