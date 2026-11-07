@@ -137,7 +137,7 @@ bearer_token_env_var = "HUMANCOMPILER_TOKEN"
 
 Claude Code expands `${HUMANCOMPILER_TOKEN}` each time it loads `.mcp.json`, so the file is safe to commit. Claude Code asks you to approve a project server the first time.
 
-The guide tells the agent how to find ids with the MCP tool `find`, when to run `roadmap` and `context`, and to run `doctor` when something fails. It sits between `<!-- humancompiler:begin ... -->` and `<!-- humancompiler:end -->` markers.
+The guide tells the agent how to find ids with the MCP tool `find`, when to run `roadmap` and `context`, and to run `doctor` when something fails. It sits between `<!-- humancompiler:begin ... -->` and `<!-- humancompiler:end -->` markers. The begin marker carries a hash of the guide it wrote, so a later version refreshes a guide nobody edited without asking, and asks before replacing one you changed.
 
 - Existing files are merged: other servers, settings, comments and text stay as they are.
 - Running setup again changes nothing.

@@ -8,6 +8,7 @@
 // directory and a temporary HOME, never the real ~/.codex.
 
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, test } from 'node:test'
@@ -123,7 +124,7 @@ describe('setup claude-code', () => {
 
     const refused = await setup(['claude-code'])
     assert.equal(refused.code, 1)
-    assert.match(refused.stderr, /the HumanCompiler guide in .*CLAUDE\.md differs/)
+    assert.match(refused.stderr, /the HumanCompiler guide in .*CLAUDE\.md was edited, or differs/)
 
     const forced = await setup(['claude-code', '--force'])
     assert.equal(forced.code, 0)
@@ -132,6 +133,36 @@ describe('setup claude-code', () => {
     assert.match(guide, /<!-- humancompiler:end -->\n\nBottom\n$/)
     assert.doesNotMatch(guide, /\(old\)/)
     assert.equal(guide.match(BEGIN).length, 1)
+  })
+
+  test('refreshes an unedited guide from an older version without --force', async () => {
+    const { dir, setup, read } = project()
+    const oldBody = '## HumanCompiler\n\nAn older guide.'
+    const oldHash = createHash('sha256').update(oldBody).digest('hex').slice(0, 16)
+    writeFileSync(
+      path.join(dir, 'CLAUDE.md'),
+      `# Top\n\n<!-- humancompiler:begin sha256=${oldHash} (added by setup) -->\n${oldBody}\n<!-- humancompiler:end -->\n`,
+    )
+
+    const { code, stdout, stderr } = await setup(['claude-code'])
+
+    assert.equal(code, 0, stderr)
+    assert.match(stdout, /CLAUDE\.md: updated the HumanCompiler guide/)
+    const guide = read('CLAUDE.md')
+    assert.match(guide, /^# Top\n\n<!-- humancompiler:begin sha256=[0-9a-f]{16} /)
+    assert.doesNotMatch(guide, /An older guide/)
+    assert.match(guide, /npx humancompiler@0 roadmap/)
+  })
+
+  test('asks before replacing a guide without a hash in its marker', async () => {
+    const { dir, setup } = project()
+    writeFileSync(
+      path.join(dir, 'CLAUDE.md'),
+      '<!-- humancompiler:begin (old) -->\n## HumanCompiler\n<!-- humancompiler:end -->\n',
+    )
+    const { code, stderr } = await setup(['claude-code'])
+    assert.equal(code, 1)
+    assert.match(stderr, /was edited, or differs from this version's/)
   })
 
   test('stops on a .mcp.json that is not JSON', async () => {

@@ -20,6 +20,7 @@
  * file is written, so a refusal leaves all files as they were.
  */
 
+import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -61,11 +62,6 @@ Options:
 type Client = 'claude-code' | 'codex'
 const CLIENTS: readonly Client[] = ['claude-code', 'codex']
 
-export const GUIDE_BEGIN =
-  '<!-- humancompiler:begin (added by `npx humancompiler setup`; edits inside these markers may be replaced) -->'
-export const GUIDE_END = '<!-- humancompiler:end -->'
-const GUIDE_BEGIN_PREFIX = '<!-- humancompiler:begin'
-
 export const GUIDE_BODY = `## HumanCompiler
 
 The user's tasks are managed in HumanCompiler, connected as the \`${SERVER_NAME}\` MCP server. Its agent token is in the \`${TOKEN_ENV}\` environment variable: never print it, pass it as an argument or write it to a file.
@@ -74,6 +70,19 @@ The user's tasks are managed in HumanCompiler, connected as the \`${SERVER_NAME}
 - Roadmap and schedule: run \`npx humancompiler@0 roadmap <project-id> --goals-per-page 20\`. Read the printed summary first (projected dates, delays, what each goal waits on). Open the images (\`roadmap-1.png\`, ...) only when the picture itself helps, for example to show the user.
 - Background before working on a project or goal, or for a report: run \`npx humancompiler@0 context <project|goal> <id> -o <file>.md\` to get its notes, tasks and work history as one Markdown file, then read the parts you need. Keep the file out of commits.
 - If a command fails, run \`npx humancompiler@0 doctor\` and follow its hints.`
+
+/**
+ * Short hash of a guide body. The begin marker carries the hash of the body
+ * setup wrote, so a later version can tell a block nobody edited (refresh it
+ * without asking) from one the user changed (ask first).
+ */
+export function guideHash(body: string): string {
+  return createHash('sha256').update(body).digest('hex').slice(0, 16)
+}
+
+export const GUIDE_BEGIN = `<!-- humancompiler:begin sha256=${guideHash(GUIDE_BODY)} (added by \`npx humancompiler setup\`; edits inside these markers may be replaced) -->`
+export const GUIDE_END = '<!-- humancompiler:end -->'
+const GUIDE_BEGIN_PREFIX = '<!-- humancompiler:begin'
 
 // --- Planning ----------------------------------------------------------------
 
@@ -379,12 +388,22 @@ export function planGuide(file: string): Change {
   const current = text.slice(begin, end).replaceAll('\r\n', '\n')
   if (current === section) return { file, label, outcome: 'unchanged' }
   const eol = text.includes('\r\n') ? '\r\n' : '\n'
+  const content = text.slice(0, begin) + section.replaceAll('\n', eol) + text.slice(end)
+
+  // A block whose body still matches the hash in its marker was written by an
+  // earlier version and never edited: refresh it without asking.
+  const beginLine = current.slice(0, current.indexOf('\n') + 1 || current.length)
+  const writtenHash = /^<!-- humancompiler:begin sha256=([0-9a-f]{16})\b/.exec(beginLine)?.[1]
+  const body = current.slice(beginLine.length, current.length - GUIDE_END.length).replace(/\n$/, '')
+  if (writtenHash !== undefined && guideHash(body) === writtenHash) {
+    return { file, label, outcome: 'updated', content }
+  }
   return {
     file,
     label,
     outcome: 'updated',
-    content: text.slice(0, begin) + section.replaceAll('\n', eol) + text.slice(end),
-    conflict: `the HumanCompiler guide in ${file} differs from this version's`,
+    content,
+    conflict: `the HumanCompiler guide in ${file} was edited, or differs from this version's`,
   }
 }
 
