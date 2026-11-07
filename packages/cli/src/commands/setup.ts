@@ -120,6 +120,19 @@ function sameJson(a: unknown, b: unknown): boolean {
   return a === b
 }
 
+/**
+ * Names (never values) of the fields that differ, for messages: an existing
+ * entry may hold a literal token, which must not reach a terminal or an
+ * agent's transcript.
+ */
+function differingKeys(current: unknown, wanted: Record<string, unknown>): string {
+  if (!isPlainObject(current)) return 'value (not an object)'
+  const keys = [...new Set([...Object.keys(current), ...Object.keys(wanted)])].filter(
+    (key) => !sameJson(current[key], wanted[key]),
+  )
+  return keys.length > 0 ? keys.join(', ') : 'value'
+}
+
 export function claudeServerEntry(mcpUrl: string) {
   return {
     type: 'http',
@@ -163,7 +176,7 @@ export function planMcpJson(file: string, mcpUrl: string): Change {
     label,
     outcome: 'updated',
     content,
-    conflict: `mcpServers.${SERVER_NAME} is already set to ${JSON.stringify(current)}`,
+    conflict: `mcpServers.${SERVER_NAME} is already set, with a different ${differingKeys(current, entry)}`,
   }
 }
 
@@ -178,6 +191,11 @@ const TOML_MCP_SERVERS_HEADER = /^\s*\[\s*mcp_servers\s*\]\s*(?:#.*)?$/
 // [mcp_servers.humancompiler.env] are fine and left alone.
 const TOML_DOTTED = new RegExp(String.raw`^\s*mcp_servers\s*\.\s*["']?${SERVER_NAME}["']?\s*[.=]`)
 const TOML_BARE_KEY = new RegExp(String.raw`^\s*["']?${SERVER_NAME}["']?\s*[.=]`)
+
+/** The key a `key = value` line sets, for messages that must not show values. */
+function tomlKey(line: string): string {
+  return /^\s*([^=]+?)\s*=/.exec(line)?.[1] ?? 'a setting'
+}
 
 function tomlString(value: string): string {
   return JSON.stringify(value)
@@ -232,7 +250,7 @@ export function planCodexToml(file: string, mcpUrl: string): Change {
     if (TOML_ANY_HEADER.test(line)) inMcpServers = TOML_MCP_SERVERS_HEADER.test(line)
     if (TOML_DOTTED.test(line) || (inMcpServers && TOML_BARE_KEY.test(line))) {
       throw new CliError(
-        `${file} defines the ${SERVER_NAME} server in a form setup does not edit (${line.trim()}). ` +
+        `${file} defines the ${SERVER_NAME} server in a form setup does not edit (${tomlKey(line)} = ...). ` +
           `Set it by hand:\n\n${block.join('\n')}`,
       )
     }
@@ -267,34 +285,47 @@ export function planCodexToml(file: string, mcpUrl: string): Change {
   if (urlValue === mcpUrl && envValue === TOKEN_ENV && clashing.length === 0) {
     return { file, label, outcome: 'unchanged' }
   }
-  // Dropping a value that spans lines (a multi-line array or string) line by
-  // line would break the file.
-  const multiLine = clashing.find((line) => {
-    const brackets = (line.match(/\[/g) ?? []).length - (line.match(/\]/g) ?? []).length
-    return brackets !== 0 || line.includes('"""') || line.includes("'''")
+
+  // Every setting this replaces: url, bearer_token_env_var and the clashing keys.
+  const removed = table.filter(
+    (line) =>
+      tomlStringValue(line, 'url') !== undefined ||
+      tomlStringValue(line, 'bearer_token_env_var') !== undefined ||
+      clashing.includes(line),
+  )
+  // Removing a value that spans lines (a multi-line array, inline table or
+  // string) one line at a time would break the file.
+  const multiLine = removed.find((line) => {
+    const count = (pattern: RegExp) => (line.match(pattern) ?? []).length
+    return (
+      count(/\[/g) !== count(/\]/g) ||
+      count(/\{/g) !== count(/\}/g) ||
+      count(/"""/g) % 2 === 1 ||
+      count(/'''/g) % 2 === 1
+    )
   })
   if (multiLine !== undefined) {
     throw new CliError(
-      `${file}: [mcp_servers.${SERVER_NAME}] has a setting that spans lines (${multiLine.trim()}). ` +
+      `${file}: ${tomlKey(multiLine)} in [mcp_servers.${SERVER_NAME}] spans lines. ` +
         `Replace the table by hand with:\n\n${block.join('\n')}`,
     )
   }
 
   // Keep the table's other settings (timeouts, enabled, ...) and its comments.
-  const kept = table.filter(
-    (line) =>
-      tomlStringValue(line, 'url') === undefined &&
-      tomlStringValue(line, 'bearer_token_env_var') === undefined &&
-      !clashing.includes(line),
-  )
-  while (kept.length > 0 && kept[0]!.trim() === '') kept.shift()
+  const kept = table.filter((line) => !removed.includes(line))
+  // Drop blank lines left between the header and the next kept setting, but
+  // not the file's final newline when the table ends the file.
+  while (kept[0]?.trim() === '' && kept.slice(1).some((line) => line.trim() !== '')) {
+    kept.shift()
+  }
   const next = [...lines.slice(0, start), ...block, ...kept, ...lines.slice(end)]
   return {
     file,
     label,
     outcome: 'updated',
     content: next.join(eol),
-    conflict: `${label} is already set:\n${lines.slice(start, end).join('\n').trimEnd()}`,
+    // Key names only: a bearer_token line holds a literal token.
+    conflict: `${label} is already set, with ${removed.map(tomlKey).join(', ')}`,
   }
 }
 

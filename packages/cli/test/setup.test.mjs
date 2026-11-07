@@ -97,7 +97,11 @@ describe('setup claude-code', () => {
     const refused = await setup(['claude-code'])
 
     assert.equal(refused.code, 1)
-    assert.match(refused.stderr, /Nothing was changed, because setup would replace:\n- mcpServers\.humancompiler is already set/)
+    assert.match(
+      refused.stderr,
+      /Nothing was changed, because setup would replace:\n- mcpServers\.humancompiler is already set, with a different url, headers\n/,
+    )
+    assert.ok(!refused.stderr.includes(SECRET), 'never prints the old token')
     assert.match(refused.stderr, /--force/)
     assert.equal(read('.mcp.json'), before)
     assert.equal(existsSync(path.join(dir, 'CLAUDE.md')), false, 'writes nothing when refusing')
@@ -252,7 +256,8 @@ describe('setup codex', () => {
 
     const refused = await setup(['codex', '--no-guide'])
     assert.equal(refused.code, 1)
-    assert.match(refused.stderr, /\[mcp_servers\.humancompiler\] is already set/)
+    assert.match(refused.stderr, /\[mcp_servers\.humancompiler\] is already set, with url, bearer_token\n/)
+    assert.ok(!refused.stderr.includes(SECRET), 'never prints the old token')
     assert.equal(readFileSync(codexConfig, 'utf8'), existing)
 
     const forced = await setup(['codex', '--no-guide', '--force'])
@@ -280,12 +285,13 @@ describe('setup codex', () => {
     mkdirSync(path.dirname(codexConfig), { recursive: true })
     for (const existing of [
       '[mcp_servers]\nhumancompiler = { url = "x" }\n',
-      'mcp_servers.humancompiler.url = "x"\n',
+      `mcp_servers.humancompiler.bearer_token = "${SECRET}"\n`,
     ]) {
       writeFileSync(codexConfig, existing)
       const { code, stderr } = await setup(['codex', '--no-guide', '--force'])
       assert.equal(code, 1)
       assert.match(stderr, /in a form setup does not edit/)
+      assert.ok(!stderr.includes(SECRET))
       assert.equal(readFileSync(codexConfig, 'utf8'), existing)
     }
   })
@@ -293,12 +299,28 @@ describe('setup codex', () => {
   test('stops rather than half-remove a setting that spans lines', async () => {
     const { setup, codexConfig } = project()
     mkdirSync(path.dirname(codexConfig), { recursive: true })
-    const existing = '[mcp_servers.humancompiler]\ncommand = "npx"\nargs = [\n  "old-server",\n]\n'
-    writeFileSync(codexConfig, existing)
+    for (const [existing, key] of [
+      ['[mcp_servers.humancompiler]\ncommand = "npx"\nargs = [\n  "old-server",\n]\n', 'args'],
+      ['[mcp_servers.humancompiler]\nurl = """\nhttps://old.example.com/mcp"""\n', 'url'],
+      [`[mcp_servers.humancompiler]\nbearer_token = \'\'\'\n${SECRET}\'\'\'\n`, 'bearer_token'],
+      ['[mcp_servers.humancompiler]\nhttp_headers = {\n}\n', 'http_headers'],
+    ]) {
+      writeFileSync(codexConfig, existing)
+      const { code, stderr } = await setup(['codex', '--no-guide', '--force'])
+      assert.equal(code, 1, existing)
+      assert.match(stderr, new RegExp(`: ${key} in \\[mcp_servers\\.humancompiler\\] spans lines\\.`))
+      assert.ok(!stderr.includes(SECRET))
+      assert.equal(readFileSync(codexConfig, 'utf8'), existing)
+    }
+  })
+
+  test('replaces single-line triple-quoted values', async () => {
+    const { setup, codexConfig } = project()
+    mkdirSync(path.dirname(codexConfig), { recursive: true })
+    writeFileSync(codexConfig, '[mcp_servers.humancompiler]\nurl = """https://old.example.com/mcp"""\n')
     const { code, stderr } = await setup(['codex', '--no-guide', '--force'])
-    assert.equal(code, 1)
-    assert.match(stderr, /has a setting that spans lines \(args = \[\)/)
-    assert.equal(readFileSync(codexConfig, 'utf8'), existing)
+    assert.equal(code, 0, stderr)
+    assert.equal(readFileSync(codexConfig, 'utf8'), `${CODEX_BLOCK}\n`)
   })
 
   test('adds the guide to an AGENTS.md shared with Claude Code setup only once', async () => {
