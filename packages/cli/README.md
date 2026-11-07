@@ -225,6 +225,8 @@ npm configures a trusted publisher in the settings of an existing package, so th
    npm publish --access public   # prepublishOnly type-checks, builds and tests first
    ```
 
+   Run it from a checkout where `pnpm install` has been done: `prepublishOnly` runs `pnpm run type-check` and `pnpm run test`.
+
    Merging deploys the MCP instructions and the settings-page guide, which tell agents to run `npx humancompiler@0 …` with `HUMANCOMPILER_TOKEN` set. Publishing first means nobody else can claim the `humancompiler` name in between and run code in those agent shells.
 
 2. On npmjs.com, open **humancompiler → Settings → Trusted publishing** and add a GitHub Actions publisher:

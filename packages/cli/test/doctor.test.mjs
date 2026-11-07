@@ -32,6 +32,9 @@ describe('doctor', () => {
       }
       if (req.url === '/api/agent/v1/me') {
         const token = req.headers.authorization?.replace(/^Bearer /, '')
+        if (token === 'dated-limit-token') {
+          return { status: 429, headers: { 'Retry-After': 'Sat, 07 Nov 2026 05:00:00 GMT' }, body: { detail: 'Too many requests' } }
+        }
         if (token === 'limited-token') {
           return { status: 429, headers: { 'Retry-After': '42' }, body: { detail: 'Too many requests' } }
         }
@@ -102,6 +105,11 @@ describe('doctor', () => {
     const { code, stdout } = await doctor([], 'limited-token')
     assert.equal(code, 1)
     assert.match(stdout, /Fix: Wait 42 seconds and run doctor again\./)
+  })
+
+  test('says "a minute" when Retry-After is a date', async () => {
+    const { stdout } = await doctor([], 'dated-limit-token')
+    assert.match(stdout, /Fix: Wait a minute and run doctor again\./)
   })
 
   test('reports a missing token without calling /me', async () => {

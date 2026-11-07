@@ -165,7 +165,8 @@ async function checkToken(report: Report, apiUrl: string, token: string): Promis
         'The API is rate limiting this machine',
         (() => {
           const seconds = response.headers.get('retry-after')
-          return `Wait ${seconds ? `${seconds} seconds` : 'a minute'} and run doctor again.`
+          // Retry-After may also be an HTTP date; use it only as seconds.
+          return `Wait ${seconds && /^\d+$/.test(seconds) ? `${seconds} seconds` : 'a minute'} and run doctor again.`
         })(),
       )
       break
