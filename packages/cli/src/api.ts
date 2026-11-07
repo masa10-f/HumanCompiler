@@ -178,9 +178,6 @@ export interface AgentMe {
   user_id: string
 }
 
-export function fetchMe(apiUrl: string, token: string): Promise<AgentMe> {
-  return agentGet(apiUrl, token, '/me', { subject: 'The token', scopes: [] })
-}
 
 export type ContextKind = 'project' | 'goal'
 

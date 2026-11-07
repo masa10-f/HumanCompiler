@@ -203,6 +203,9 @@ const TOML_MCP_SERVERS_HEADER = /^\s*\[\s*mcp_servers\s*\]\s*(?:#.*)?$/
 // subtables are not (TOML_HEADER_SUBTABLE).
 const TOML_DOTTED = new RegExp(String.raw`^\s*mcp_servers\s*\.\s*["']?${SERVER_NAME}["']?\s*[.=]`)
 const TOML_BARE_KEY = new RegExp(String.raw`^\s*["']?${SERVER_NAME}["']?\s*[.=]`)
+// `mcp_servers = { ... }` at the top level: appending a table would define
+// mcp_servers twice and make the whole file invalid.
+const TOML_ROOT_MCP_SERVERS = /^\s*["']?mcp_servers["']?\s*=/
 // Header subtables that send other headers (possibly a literal token) along
 // with the bearer token. setup cannot tell what they hold, so it stops.
 const TOML_HEADER_SUBTABLE = new RegExp(
@@ -264,8 +267,18 @@ export function planCodexToml(file: string, mcpUrl: string): Change {
   const lines = text.split(/\r?\n/)
   const eol = text.includes('\r\n') ? '\r\n' : '\n'
   let inMcpServers = false
+  let beforeFirstHeader = true
   for (const line of lines) {
-    if (TOML_ANY_HEADER.test(line)) inMcpServers = TOML_MCP_SERVERS_HEADER.test(line)
+    if (TOML_ANY_HEADER.test(line)) {
+      inMcpServers = TOML_MCP_SERVERS_HEADER.test(line)
+      beforeFirstHeader = false
+    }
+    if (beforeFirstHeader && TOML_ROOT_MCP_SERVERS.test(line)) {
+      throw new CliError(
+        `${file} sets mcp_servers as an inline table (mcp_servers = ...), which setup does not edit. ` +
+          `Add the server by hand:\n\n${block.join('\n')}`,
+      )
+    }
     const subtable = TOML_HEADER_SUBTABLE.exec(line)
     if (subtable) {
       throw new CliError(

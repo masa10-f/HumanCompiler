@@ -317,11 +317,12 @@ describe('setup codex', () => {
     for (const existing of [
       '[mcp_servers]\nhumancompiler = { url = "x" }\n',
       `mcp_servers.humancompiler.bearer_token = "${SECRET}"\n`,
+      `model = "gpt-5"\nmcp_servers = { humancompiler = { url = "x", bearer_token = "${SECRET}" } }\n`,
     ]) {
       writeFileSync(codexConfig, existing)
       const { code, stderr } = await setup(['codex', '--no-guide', '--force'])
       assert.equal(code, 1)
-      assert.match(stderr, /in a form setup does not edit/)
+      assert.match(stderr, /in a form setup does not edit|inline table \(mcp_servers = \.\.\.\), which setup does not edit/)
       assert.ok(!stderr.includes(SECRET))
       assert.equal(readFileSync(codexConfig, 'utf8'), existing)
     }
