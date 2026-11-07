@@ -93,7 +93,9 @@ function readText(file: string): string | undefined {
   try {
     return readFileSync(file, 'utf8')
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    // ENOTDIR: a parent is a file, so this file cannot exist either.
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR') return undefined
     throw new CliError(`Could not read ${file}: ${(error as Error).message}`)
   }
 }
@@ -211,7 +213,8 @@ function codexBlock(mcpUrl: string): string[] {
 
 /** Value of a `key = "string"` (or 'literal') line, if the line sets that key. */
 function tomlStringValue(line: string, key: string): string | null | undefined {
-  const match = new RegExp(String.raw`^\s*${key}\s*=\s*(.*?)\s*$`).exec(line)
+  // Keys may be bare or quoted ("url" = ...); both name the same key.
+  const match = new RegExp(String.raw`^\s*(?:${key}|"${key}"|'${key}')\s*=\s*(.*?)\s*$`).exec(line)
   if (!match) return undefined
   const raw = match[1]!.replace(/\s+#.*$/, '')
   const basic = /^"((?:[^"\\]|\\.)*)"$/.exec(raw)
@@ -280,7 +283,7 @@ export function planCodexToml(file: string, mcpUrl: string): Change {
     .find((v) => v !== undefined)
   // Keys that would send another token or start a local server instead.
   const clashing = settings.filter((line) =>
-    /^\s*(bearer_token|command|args|http_headers|env_http_headers)\s*=/.test(line),
+    /^\s*(["']?)(bearer_token|command|args|http_headers|env_http_headers)\1\s*=/.test(line),
   )
   if (urlValue === mcpUrl && envValue === TOKEN_ENV && clashing.length === 0) {
     return { file, label, outcome: 'unchanged' }
@@ -446,10 +449,17 @@ export async function setup(argv: string[]): Promise<void> {
     if (!(await confirm('Replace it?'))) throw new CliError('Nothing was changed.')
   }
 
+  const written: string[] = []
   for (const change of changes) {
     if (change.content === undefined) continue
-    mkdirSync(path.dirname(change.file), { recursive: true })
-    writeFileSync(change.file, change.content)
+    try {
+      mkdirSync(path.dirname(change.file), { recursive: true })
+      writeFileSync(change.file, change.content)
+    } catch (error) {
+      const done = written.length > 0 ? ` Already written: ${written.join(', ')}.` : ''
+      throw new CliError(`Could not write ${change.file}: ${(error as Error).message}.${done}`)
+    }
+    written.push(change.file)
   }
   for (const change of changes) {
     process.stdout.write(`${change.file}: ${OUTCOME_TEXT[change.outcome]} ${change.label}\n`)

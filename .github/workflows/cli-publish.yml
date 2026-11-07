@@ -80,18 +80,22 @@ jobs:
           version="$(node -p 'require("./package.json").version')"
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          # stdout holds only the version; npm's warnings and errors go to
+          # stderr, which is read separately so a warning cannot hide a match.
+          err_file="$(mktemp)"
           set +e
-          out="$(npm view "$name@$version" version 2>&1)"
+          out="$(npm view "$name@$version" version 2>"$err_file")"
           status=$?
           set -e
+          err="$(cat "$err_file")"
           if [ "$status" -eq 0 ] && [ "$out" = "$version" ]; then
             published=true
-          elif [ "$status" -eq 0 ] || printf '%s' "$out" | grep -q 'E404'; then
+          elif [ "$status" -eq 0 ] || printf '%s' "$err" | grep -q 'E404'; then
             # E404: neither the package nor this version is on npm. (Older npm
             # exits 0 with no output for a missing version.)
             published=false
           else
-            echo "::error::npm view failed: $out"
+            echo "::error::npm view failed: $err"
             exit 1
           fi
           echo "published=$published" >> "$GITHUB_OUTPUT"

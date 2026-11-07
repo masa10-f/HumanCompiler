@@ -323,6 +323,32 @@ describe('setup codex', () => {
     assert.equal(readFileSync(codexConfig, 'utf8'), `${CODEX_BLOCK}\n`)
   })
 
+  test('treats quoted keys like bare ones', async () => {
+    const { setup, codexConfig } = project()
+    mkdirSync(path.dirname(codexConfig), { recursive: true })
+    const same = `[mcp_servers.humancompiler]\n"url" = "${MCP_URL}"\n'bearer_token_env_var' = "HUMANCOMPILER_TOKEN"\n`
+    writeFileSync(codexConfig, same)
+    const unchanged = await setup(['codex', '--no-guide'])
+    assert.equal(unchanged.code, 0)
+    assert.equal(readFileSync(codexConfig, 'utf8'), same)
+
+    writeFileSync(codexConfig, `[mcp_servers.humancompiler]\n"url" = "https://old.example.com/mcp"\n"bearer_token" = "${SECRET}"\n`)
+    const forced = await setup(['codex', '--no-guide', '--force'])
+    assert.equal(forced.code, 0, forced.stderr)
+    // One url line, no duplicate key, the old token gone.
+    assert.equal(readFileSync(codexConfig, 'utf8'), `${CODEX_BLOCK}\n`)
+  })
+
+  test('says which files were written when a later write fails', async () => {
+    const { dir, setup } = project()
+    // A file where the guide's directory should be makes the guide's write fail
+    // (even as root), after .mcp.json is written.
+    writeFileSync(path.join(dir, 'docs'), 'not a directory')
+    const { code, stderr } = await setup(['claude-code', '--guide-file', 'docs/CLAUDE.md'])
+    assert.equal(code, 1)
+    assert.match(stderr, /Could not write .*docs\/CLAUDE\.md: .*Already written: .*\.mcp\.json\./)
+  })
+
   test('adds the guide to an AGENTS.md shared with Claude Code setup only once', async () => {
     const { setup, read } = project()
     await setup(['codex'])
