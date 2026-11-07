@@ -5,7 +5,7 @@
 // For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
 /**
- * humancompiler-roadmap: draws a HumanCompiler project's roadmap on this
+ * `humancompiler roadmap`: draws a HumanCompiler project's roadmap on this
  * machine and prints its schedule.
  *
  * The data comes straight from the agent API with the agent token, so it
@@ -17,28 +17,34 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import type { ProjectTimelineData, TimeScale } from '@/lib/timeline/types'
-import { CliError, DEFAULT_API_URL, fetchTimeline, validateApiUrl } from './api'
-import { drawPages, MAX_WIDTH, MIN_WIDTH, planRoadmap, rasterize } from './render'
-import { type ImageFile, summaryJson, summaryMarkdown } from './summary'
+import {
+  API_URL_ENV,
+  COMMAND_SCOPES,
+  CliError,
+  DEFAULT_API_URL,
+  TOKEN_ENV,
+  fetchTimeline,
+  requireToken,
+  resolveApiUrl,
+} from '../api'
+import { numberOption, usageError } from '../args'
+import { drawPages, MAX_WIDTH, MIN_WIDTH, planRoadmap, rasterize } from '../render'
+import { type ImageFile, summaryJson, summaryMarkdown } from '../summary'
 
-// Injected from package.json by scripts/build.mjs.
-declare const __VERSION__: string
-const VERSION = __VERSION__
-
-const HELP = `Usage: humancompiler-roadmap <project-id> [options]
-       humancompiler-roadmap --input <timeline.json> [options]
+export const ROADMAP_HELP = `Usage: humancompiler roadmap <project-id> [options]
+       humancompiler roadmap --input <timeline.json> [options]
 
 Draws the roadmap of a HumanCompiler project as the timeline page's export
 does, saves it as PNG or SVG, and prints the schedule as Markdown.
 
 Data:
   <project-id>             Fetch the project from the agent API. Needs the
-                           HUMANCOMPILER_TOKEN environment variable (an agent
-                           token with projects:read, goals:read, tasks:read
-                           and logs:read).
+                           ${TOKEN_ENV} environment variable (an agent
+                           token with ${COMMAND_SCOPES.roadmap.slice(0, 3).join(', ')}
+                           and ${COMMAND_SCOPES.roadmap[3]}).
   --input <file>           Read the timeline JSON from a file instead
                            (the body of GET /api/agent/v1/projects/{id}/timeline).
-  --api-url <url>          API base URL (default: $HUMANCOMPILER_API_URL or
+  --api-url <url>          API base URL (default: $${API_URL_ENV} or
                            ${DEFAULT_API_URL}).
 
 Output:
@@ -61,26 +67,9 @@ Plan and view:
   --pixel-ratio <r>        PNG pixels per point, 1-2 (default 2).
 
   -h, --help               Show this help.
-  -v, --version            Show the version.
 `
 
 const ZOOMS: readonly TimeScale[] = ['fit', 'day', 'week', 'month']
-
-function numberOption(
-  name: string,
-  raw: string | undefined,
-  min: number,
-  max: number,
-  { integer = false } = {},
-) {
-  if (raw === undefined) return undefined
-  const value = Number(raw)
-  if (!Number.isFinite(value) || value < min || value > max || (integer && !Number.isInteger(value))) {
-    const kind = integer ? 'a whole number' : 'a number'
-    throw new CliError(`--${name} must be ${kind} from ${min} to ${max}`)
-  }
-  return value
-}
 
 function pagePath(output: string, index: number, total: number): string {
   if (total === 1) return output
@@ -88,16 +77,7 @@ function pagePath(output: string, index: number, total: number): string {
   return `${output.slice(0, output.length - ext.length)}-${index + 1}${ext}`
 }
 
-/** `parseArgs` handles `--no-...` options (allowNegative) from Node 20.16. */
-export function checkNodeVersion(version = process.versions.node): void {
-  const [major = 0, minor = 0] = version.split('.').map(Number)
-  if (major < 20 || (major === 20 && minor < 16)) {
-    throw new CliError(`Node.js 20.16 or later is required (this is ${version})`)
-  }
-}
-
-export async function main(argv: string[]): Promise<void> {
-  checkNodeVersion()
+export async function roadmap(argv: string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args: argv,
     allowPositionals: true,
@@ -118,15 +98,10 @@ export async function main(argv: string[]): Promise<void> {
       dependencies: { type: 'boolean', default: true },
       'pixel-ratio': { type: 'string', default: '2' },
       help: { type: 'boolean', short: 'h', default: false },
-      version: { type: 'boolean', short: 'v', default: false },
     },
   })
   if (values.help) {
-    process.stdout.write(HELP)
-    return
-  }
-  if (values.version) {
-    process.stdout.write(`${VERSION}\n`)
+    process.stdout.write(ROADMAP_HELP)
     return
   }
 
@@ -140,8 +115,10 @@ export async function main(argv: string[]): Promise<void> {
   const now = values.now === undefined ? undefined : new Date(values.now)
   if (now && Number.isNaN(now.getTime())) throw new CliError('--now must be an ISO date-time')
   const weeklyHours = numberOption('weekly-hours', values['weekly-hours'], 0.01, 168)
-  const width = numberOption('width', values.width, MIN_WIDTH, MAX_WIDTH)!
-  const goalsPerPage = numberOption('goals-per-page', values['goals-per-page'], 0, 1000, { integer: true })!
+  const width = numberOption('width', values.width, MIN_WIDTH, MAX_WIDTH, { integer: true })!
+  const goalsPerPage = numberOption('goals-per-page', values['goals-per-page'], 0, 1000, {
+    integer: true,
+  })!
   const pixelRatio = numberOption('pixel-ratio', values['pixel-ratio'], 1, 2)!
 
   let data: ProjectTimelineData
@@ -153,14 +130,9 @@ export async function main(argv: string[]): Promise<void> {
       throw new CliError(`Could not read ${values.input}: ${(error as Error).message}`)
     }
   } else {
-    if (positionals.length !== 1) throw new CliError(`Give one project id.\n\n${HELP}`, 2)
-    const token = process.env.HUMANCOMPILER_TOKEN?.trim()
-    if (!token) {
-      throw new CliError('Set HUMANCOMPILER_TOKEN to an agent token (see Settings > Agent tokens).')
-    }
-    const apiUrl = validateApiUrl(
-      values['api-url'] ?? process.env.HUMANCOMPILER_API_URL ?? DEFAULT_API_URL,
-    )
+    if (positionals.length !== 1) throw usageError('Give one project id.', ROADMAP_HELP)
+    const token = requireToken()
+    const apiUrl = resolveApiUrl(values['api-url'])
     data = await fetchTimeline(apiUrl, token, positionals[0]!)
   }
   if (!data?.project || !Array.isArray(data.goals)) {
@@ -206,18 +178,3 @@ export async function main(argv: string[]): Promise<void> {
     )
   }
 }
-
-main(process.argv.slice(2)).catch((error: unknown) => {
-  if (error instanceof CliError) {
-    process.stderr.write(`humancompiler-roadmap: ${error.message}\n`)
-    process.exitCode = error.exitCode
-    return
-  }
-  if (error instanceof TypeError && 'code' in error && String(error.code).startsWith('ERR_PARSE_ARGS')) {
-    process.stderr.write(`humancompiler-roadmap: ${error.message}\nRun with --help for usage.\n`)
-    process.exitCode = 2
-    return
-  }
-  process.stderr.write(`humancompiler-roadmap: unexpected error\n${(error as Error)?.stack ?? error}\n`)
-  process.exitCode = 1
-})

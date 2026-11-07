@@ -407,6 +407,7 @@ G3 の `agent_proposals` に、種類を3つ足す。
   - その後に、手早く試すための代替として `claude mcp add --transport http humancompiler https://humancompiler-api-masa.fly.dev/mcp --header "Authorization: Bearer ${HUMANCOMPILER_TOKEN}"` を載せる。ダブルクォートの中の `${...}` は、シェルが先に展開するため、トークンの値が `~/.claude.json` に保存される。ガイドでは見出しにその旨を書く。
 - **Codex：** `~/.codex/config.toml` の `[mcp_servers.humancompiler]` に、`url` と、トークンを読む環境変数（`bearer_token_env_var`）を書く形。
 - **トークンの扱い：** トークンはファイルや環境変数に置く。設定ファイルやチャットに直接書かない、と注意書きを出す。
+- **CLI（2026-11-07 追加）：** 同じ節に、`npx humancompiler` の `roadmap`、`context`、`setup`、`doctor` の案内を足した。MCP の `INSTRUCTIONS` にも `roadmap` と `context` の使いどころを書いた。`setup` は、ここに書いた `.mcp.json` と `config.toml` の形を、そのままファイルに書き込む。詳しくは [CLI 設計](cli.md)。
 
 コマンドと設定の書き方は、両方のクライアントの最新の文書で確かめた（Claude Code：https://code.claude.com/docs/en/mcp 、Codex：https://developers.openai.com/codex/mcp ）。Codex の `url` と `bearer_token_env_var` は、文書どおりのキー名。
 

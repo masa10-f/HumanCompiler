@@ -1,23 +1,27 @@
 {
-  "name": "humancompiler-roadmap",
+  "name": "humancompiler",
   "version": "0.1.0",
-  "description": "Draw a HumanCompiler project roadmap (PNG/SVG) and its schedule summary on your machine",
+  "description": "HumanCompiler on the command line: draw project roadmaps, export context, and connect coding agents (Claude Code, Codex) to HumanCompiler",
   "license": "AGPL-3.0-or-later",
   "author": "Masato Fukushima <masa1063fuk@gmail.com>",
+  "homepage": "https://github.com/masa10-f/HumanCompiler/tree/main/packages/cli#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/masa10-f/HumanCompiler.git",
-    "directory": "packages/roadmap"
+    "directory": "packages/cli"
   },
   "keywords": [
     "humancompiler",
     "roadmap",
     "gantt",
     "cli",
-    "agent"
+    "agent",
+    "mcp",
+    "claude-code",
+    "codex"
   ],
   "bin": {
-    "humancompiler-roadmap": "dist/cli.js"
+    "humancompiler": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -31,7 +35,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "type-check": "tsc --noEmit",
-    "test": "node scripts/build.mjs && node --test test/cli.test.mjs",
+    "test": "node scripts/build.mjs && node --test test/*.test.mjs",
     "prepublishOnly": "pnpm run type-check && pnpm run test"
   },
   "dependencies": {

@@ -112,6 +112,34 @@ const buildCodexExample = (mcpUrl: string) => `[mcp_servers.humancompiler]
 url = "${mcpUrl}"
 bearer_token_env_var = "HUMANCOMPILER_TOKEN"`;
 
+// The npm package `humancompiler` (packages/cli). It reads the same
+// HUMANCOMPILER_TOKEN, so the token never appears in these commands.
+const CLI_EXAMPLE = `npx humancompiler roadmap <project-id> --goals-per-page 20
+npx humancompiler context project <project-id> -o context.md`;
+
+const CLI_COMMANDS = [
+  {
+    command: "roadmap",
+    description:
+      "プロジェクトのロードマップを手元で画像にし、スケジュール（完了見込み、遅れ）を表示します。projects:read、goals:read、tasks:read、logs:read が必要です",
+  },
+  {
+    command: "context",
+    description:
+      "プロジェクトやゴールのノート、タスク、作業履歴を、1つのMarkdownで書き出します。context:read が必要です",
+  },
+  {
+    command: "setup claude-code / setup codex",
+    description:
+      "上のMCPの設定と、エージェント向けの使い方の案内（CLAUDE.md / AGENTS.md）を書き込みます",
+  },
+  {
+    command: "doctor",
+    description:
+      "tokenが有効か、各コマンドに必要なスコープがあるかを確かめ、直し方を表示します",
+  },
+];
+
 export function AgentTokenUsageGuide() {
   const [isOpen, setIsOpen] = useState(false);
   const [apiBaseUrl, setApiBaseUrl] = useState("");
@@ -387,6 +415,37 @@ export function AgentTokenUsageGuide() {
               <pre className="overflow-x-auto rounded bg-muted p-2 text-xs">
                 <code>{buildCodexExample(mcpUrl)}</code>
               </pre>
+            </div>
+
+            <div className="space-y-1">
+              <div className="font-medium">
+                コマンドラインツール（npx humancompiler）
+              </div>
+              <p className="text-muted-foreground">
+                同じ環境変数 HUMANCOMPILER_TOKEN
+                のtokenで動くCLIです。エージェントは、MCP の find
+                でプロジェクトのIDを調べてから実行します。データはCLIが直接取得するので、エージェントは表示された要約や、ファイルの必要な部分だけを読みます。
+              </p>
+              <pre className="overflow-x-auto rounded bg-muted p-2 text-xs">
+                <code>{CLI_EXAMPLE}</code>
+              </pre>
+              <ul className="space-y-1">
+                {CLI_COMMANDS.map((item) => (
+                  <li
+                    key={item.command}
+                    className="flex flex-col gap-1 sm:flex-row sm:gap-2"
+                  >
+                    <span className="shrink-0 sm:w-36">
+                      <code className="rounded bg-muted px-1 text-xs">
+                        {item.command}
+                      </code>
+                    </span>
+                    <span className="text-muted-foreground">
+                      {item.description}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
 
             <p className="text-muted-foreground">
