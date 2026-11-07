@@ -67,12 +67,12 @@ from humancompiler_api.routers.context_export import (
     ContextExportResponse,
     get_export_options,
 )
-from humancompiler_api.routers.schemas.timeline import ProjectTimelineResponse
-from humancompiler_api.routers.timeline import build_project_timeline
 from humancompiler_api.routers.daily_plans import (
     DailyPlanDocumentV1,
     DailyPlanResponse,
 )
+from humancompiler_api.routers.schemas.timeline import ProjectTimelineResponse
+from humancompiler_api.routers.timeline import build_project_timeline
 from humancompiler_api.services import (
     goal_service,
     log_service,
@@ -275,7 +275,7 @@ def get_project_timeline(
     """Return the data the web timeline draws the project's roadmap from.
 
     Goals with their tasks, dependencies and work-log spans, plus the weekly
-    capacity from the triage settings. The roadmap CLI (``packages/roadmap``)
+    capacity from the triage settings. The roadmap CLI (``packages/cli``)
     schedules and draws it locally. Another user's project is reported as not
     found. A plain ``def``: loading every goal, task and log is synchronous DB
     work, so it runs in the threadpool instead of blocking the event loop.

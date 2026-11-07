@@ -258,6 +258,25 @@ describe('AgentTokenUsageGuide', () => {
     ).toBeInTheDocument()
   })
 
+  it('shows the humancompiler CLI commands in the MCP section', () => {
+    mockGetApiEndpoint.mockReturnValue('https://api.example.com')
+
+    render(<AgentTokenUsageGuide />)
+    fireEvent.click(screen.getByRole('button', { name: /使用方法/ }))
+
+    const heading = screen.getByText(/MCP（Claude Code・Codex から使う）/)
+    const section = within(heading.closest('section') as HTMLElement)
+    section.getByText(/コマンドラインツール（npx humancompiler）/)
+    const example = section.getByText(/npx humancompiler@0 roadmap <project-id> --goals-per-page 20/)
+    expect(example).toHaveTextContent('npx humancompiler@0 context project <project-id> -o context.md')
+    // The CLI reads the token from the environment, never from the command.
+    expect(example).not.toHaveTextContent('AGENT_TOKEN')
+    for (const command of ['roadmap', 'context', 'setup claude-code / setup codex', 'doctor']) {
+      expect(section.getByText(command)).toBeInTheDocument()
+    }
+    expect(section.getByText(/context:read が必要です/)).toBeInTheDocument()
+  })
+
   it('builds the MCP URL on the same base as the other examples', () => {
     mockGetApiEndpoint.mockReturnValue('')
     mockGetFallbackApiEndpoint.mockReturnValue('https://api.example.com')
