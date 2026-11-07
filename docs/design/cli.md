@@ -206,6 +206,7 @@ npx humancompiler setup codex
   - あれば、表の中の `url` と `bearer_token_env_var` を比べる。どちらも同じで、別のトークンを送る設定（`bearer_token`、`http_headers` など）やローカルのサーバーを起動する設定（`command`、`args`）が無ければ、そのままにする。
   - 違えば、`--force` のときに、表の頭にこの2行を書き、`url`、`bearer_token_env_var` と、上の食い違う設定を消す。ほかの設定（`tool_timeout_sec` など）と、下位の表（`[mcp_servers.humancompiler.tools.find]` など）は残す。
   - 消す設定（`url`、`bearer_token_env_var` と食い違う設定）のどれかが複数行にわたる（配列、インラインテーブル、`"""` の文字列など）ときは、行単位で消すとファイルが壊れるので、手で直すよう示して止まる。
+  - `[mcp_servers.humancompiler.http_headers]` と `env_http_headers` の下位の表は、トークンと一緒に別のヘッダー（トークンの値のこともある）を送るので、`--force` があっても止まり、消してから実行し直すよう示す。表の中のドット付きのキー（`http_headers.Authorization = ...`）は、食い違う設定として扱う。
   - ドット付きのキー（`mcp_servers.humancompiler.url = ...`）や、`[mcp_servers]` の下のインラインテーブル（`humancompiler = {...}`）は編集しない。手で直すよう、書くべき内容を示して止まる。
 - **案内（`CLAUDE.md` / `AGENTS.md`）：** `<!-- humancompiler:begin ... -->` と `<!-- humancompiler:end -->` で囲む。
   - 目印が無ければ末尾に足す。あれば、その間だけを比べる。2回実行しても重複しない。

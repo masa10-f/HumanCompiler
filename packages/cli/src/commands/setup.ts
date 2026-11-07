@@ -190,9 +190,15 @@ const TOML_MCP_SERVERS_HEADER = /^\s*\[\s*mcp_servers\s*\]\s*(?:#.*)?$/
 // Other ways TOML could define the same server, which this tool does not edit:
 // dotted keys (`mcp_servers.humancompiler.url = ...`) and, under
 // [mcp_servers], `humancompiler = { ... }`. Subtables such as
-// [mcp_servers.humancompiler.env] are fine and left alone.
+// [mcp_servers.humancompiler.env] or .tools.* are left alone; the header
+// subtables are not (TOML_HEADER_SUBTABLE).
 const TOML_DOTTED = new RegExp(String.raw`^\s*mcp_servers\s*\.\s*["']?${SERVER_NAME}["']?\s*[.=]`)
 const TOML_BARE_KEY = new RegExp(String.raw`^\s*["']?${SERVER_NAME}["']?\s*[.=]`)
+// Header subtables that send other headers (possibly a literal token) along
+// with the bearer token. setup cannot tell what they hold, so it stops.
+const TOML_HEADER_SUBTABLE = new RegExp(
+  String.raw`^\s*\[\s*mcp_servers\s*\.\s*["']?${SERVER_NAME}["']?\s*\.\s*["']?(http_headers|env_http_headers)["']?\s*\]`,
+)
 
 /** The key a `key = value` line sets, for messages that must not show values. */
 function tomlKey(line: string): string {
@@ -251,6 +257,13 @@ export function planCodexToml(file: string, mcpUrl: string): Change {
   let inMcpServers = false
   for (const line of lines) {
     if (TOML_ANY_HEADER.test(line)) inMcpServers = TOML_MCP_SERVERS_HEADER.test(line)
+    const subtable = TOML_HEADER_SUBTABLE.exec(line)
+    if (subtable) {
+      throw new CliError(
+        `${file} has [mcp_servers.${SERVER_NAME}.${subtable[1]}], which sends other headers with the token. ` +
+          `Remove it, then run setup again, or set the server by hand:\n\n${block.join('\n')}`,
+      )
+    }
     if (TOML_DOTTED.test(line) || (inMcpServers && TOML_BARE_KEY.test(line))) {
       throw new CliError(
         `${file} defines the ${SERVER_NAME} server in a form setup does not edit (${tomlKey(line)} = ...). ` +
@@ -283,7 +296,8 @@ export function planCodexToml(file: string, mcpUrl: string): Change {
     .find((v) => v !== undefined)
   // Keys that would send another token or start a local server instead.
   const clashing = settings.filter((line) =>
-    /^\s*(["']?)(bearer_token|command|args|http_headers|env_http_headers)\1\s*=/.test(line),
+    // Also dotted keys such as http_headers.Authorization = "...".
+    /^\s*(["']?)(bearer_token|command|args|http_headers|env_http_headers)\1\s*[.=]/.test(line),
   )
   if (urlValue === mcpUrl && envValue === TOKEN_ENV && clashing.length === 0) {
     return { file, label, outcome: 'unchanged' }

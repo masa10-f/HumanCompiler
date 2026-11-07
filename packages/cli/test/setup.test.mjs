@@ -349,6 +349,28 @@ describe('setup codex', () => {
     assert.match(stderr, /Could not write .*docs\/CLAUDE\.md: .*Already written: .*\.mcp\.json\./)
   })
 
+  test('stops on header subtables, and drops dotted header keys with --force', async () => {
+    const { setup, codexConfig } = project()
+    mkdirSync(path.dirname(codexConfig), { recursive: true })
+    for (const subtable of ['http_headers', 'env_http_headers']) {
+      const existing = `${CODEX_BLOCK}\n\n[mcp_servers.humancompiler.${subtable}]\nAuthorization = "Bearer ${SECRET}"\n`
+      writeFileSync(codexConfig, existing)
+      const { code, stderr } = await setup(['codex', '--no-guide', '--force'])
+      assert.equal(code, 1)
+      assert.match(stderr, new RegExp(`has \\[mcp_servers\\.humancompiler\\.${subtable}\\], which sends other headers`))
+      assert.ok(!stderr.includes(SECRET))
+      assert.equal(readFileSync(codexConfig, 'utf8'), existing)
+    }
+
+    writeFileSync(codexConfig, `${CODEX_BLOCK}\nhttp_headers.Authorization = "Bearer ${SECRET}"\n`)
+    const refused = await setup(['codex', '--no-guide'])
+    assert.equal(refused.code, 1, 'not reported as unchanged')
+    assert.match(refused.stderr, /already set, with url, bearer_token_env_var, http_headers\.Authorization\n/)
+    const forced = await setup(['codex', '--no-guide', '--force'])
+    assert.equal(forced.code, 0, forced.stderr)
+    assert.equal(readFileSync(codexConfig, 'utf8'), `${CODEX_BLOCK}\n`)
+  })
+
   test('adds the guide to an AGENTS.md shared with Claude Code setup only once', async () => {
     const { setup, read } = project()
     await setup(['codex'])
