@@ -7,7 +7,7 @@
 // Tests for `humancompiler context`, against a local mock of the agent API.
 
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { after, before, describe, test } from 'node:test'
 import { run, startMockApi, tempDir } from './helpers.mjs'
@@ -123,6 +123,15 @@ describe('context', () => {
       assert.equal(api.requests.length, count)
     })
   }
+
+  test('reports a file it cannot write without a stack trace', async () => {
+    const dir = tempDir()
+    writeFileSync(path.join(dir, 'file'), 'not a directory')
+    const { code, stderr } = await run(['context', 'project', PROJECT_ID, '-o', path.join(dir, 'file', 'out.md')], env)
+    assert.equal(code, 1)
+    assert.match(stderr, /^humancompiler context: Could not write .*out\.md: /)
+    assert.doesNotMatch(stderr, /unexpected error|\n\s+at /)
+  })
 
   test('needs HUMANCOMPILER_TOKEN', async () => {
     const { code, stderr } = await run(['context', 'project', PROJECT_ID], { HUMANCOMPILER_API_URL: api.url })

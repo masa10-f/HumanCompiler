@@ -6,6 +6,8 @@
 
 /** Small helpers shared by the subcommands' option parsing. */
 
+import { mkdirSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
 import { CliError } from './api'
 
 export function numberOption(
@@ -50,4 +52,14 @@ export function checkNodeVersion(version = process.versions.node): void {
 /** A usage error: exit code 2 and the subcommand's help. */
 export function usageError(message: string, help: string): CliError {
   return new CliError(`${message}\n\n${help}`, 2)
+}
+
+/** Writes an output file, creating its directory; failures become a CliError. */
+export function writeOutput(file: string, data: string | Uint8Array): void {
+  try {
+    mkdirSync(path.dirname(path.resolve(file)), { recursive: true })
+    writeFileSync(file, data)
+  } catch (error) {
+    throw new CliError(`Could not write ${file}: ${(error as Error).message}`)
+  }
 }

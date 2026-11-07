@@ -182,7 +182,7 @@ export function planMcpJson(file: string, mcpUrl: string): Change {
   }
 }
 
-const TOML_HEADER = new RegExp(
+export const TOML_HEADER = new RegExp(
   String.raw`^\s*\[\s*mcp_servers\s*\.\s*(?:${SERVER_NAME}|"${SERVER_NAME}"|'${SERVER_NAME}')\s*\]\s*(?:#.*)?$`,
 )
 const TOML_ANY_HEADER = /^\s*\[/

@@ -13,7 +13,7 @@
  * summary (projected dates, delays) and opens the image only when needed.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import type { ProjectTimelineData, TimeScale } from '@/lib/timeline/types'
@@ -27,7 +27,7 @@ import {
   requireToken,
   resolveApiUrl,
 } from '../api'
-import { numberOption, usageError } from '../args'
+import { numberOption, usageError, writeOutput } from '../args'
 import { drawPages, MAX_WIDTH, MIN_WIDTH, planRoadmap, rasterize } from '../render'
 import { type ImageFile, summaryJson, summaryMarkdown } from '../summary'
 
@@ -153,16 +153,14 @@ export async function roadmap(argv: string[]): Promise<void> {
       goalsPerPage,
       pixelRatio,
     })
-    const dir = path.dirname(path.resolve(output))
-    mkdirSync(dir, { recursive: true })
     for (const [index, page] of pages.entries()) {
       const file = pagePath(output, index, pages.length)
       if (format === '.svg') {
-        writeFileSync(file, page.svg)
+        writeOutput(file, page.svg)
         images.push({ path: file, width: page.width, height: page.height, goalIds: page.goalIds })
       } else {
         const png = rasterize(page, pixelRatio)
-        writeFileSync(file, png.data)
+        writeOutput(file, png.data)
         images.push({ path: file, width: png.width, height: png.height, goalIds: page.goalIds })
       }
     }

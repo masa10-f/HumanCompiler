@@ -28,7 +28,7 @@ import {
   validateApiUrl,
 } from '../api'
 import { SUPPORTED_NODE, nodeVersionOk, usageError } from '../args'
-import { SERVER_NAME, codexConfigPath } from './setup'
+import { SERVER_NAME, TOML_HEADER, codexConfigPath } from './setup'
 
 export const DOCTOR_HELP = `Usage: humancompiler doctor [roadmap|context ...] [options]
 
@@ -85,7 +85,8 @@ function setupStatus(report: Report): void {
   const codex = codexConfigPath()
   try {
     const text = readFileSync(codex, 'utf8')
-    const configured = new RegExp(String.raw`^\s*\[\s*mcp_servers\s*\.\s*["']?${SERVER_NAME}["']?\s*\]`, 'm').test(text)
+    // The same header test setup uses, so the two never disagree.
+    const configured = text.split(/\r?\n/).some((line) => TOML_HEADER.test(line))
     info(
       report,
       configured

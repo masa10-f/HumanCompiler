@@ -130,6 +130,15 @@ describe('drawing from a file', () => {
     assert.doesNotMatch(stdout, /画像:/)
   })
 
+  test('reports an image it cannot write without a stack trace', async () => {
+    const dir = tempDir()
+    writeFileSync(path.join(dir, 'file'), 'not a directory')
+    const { code, stderr } = await run(['--input', FIXTURE, '--now', NOW, '-o', path.join(dir, 'file', 'map.png')])
+    assert.equal(code, 1)
+    assert.match(stderr, /^humancompiler roadmap: Could not write .*map\.png: /)
+    assert.doesNotMatch(stderr, /unexpected error/)
+  })
+
   test('--hide-completed leaves finished goals out', async () => {
     const { stdout } = await run(['--input', FIXTURE, '--now', NOW, '--no-image', '--json', '--hide-completed'])
 

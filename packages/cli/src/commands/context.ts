@@ -12,8 +12,6 @@
  * agent's context; the agent then reads only the parts it needs.
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs'
-import path from 'node:path'
 import { parseArgs } from 'node:util'
 import {
   API_URL_ENV,
@@ -26,7 +24,7 @@ import {
   requireToken,
   resolveApiUrl,
 } from '../api'
-import { numberOption, usageError } from '../args'
+import { numberOption, usageError, writeOutput } from '../args'
 
 export const CONTEXT_HELP = `Usage: humancompiler context <project|goal> <id> [options]
 
@@ -98,8 +96,7 @@ export async function context(argv: string[]): Promise<void> {
     process.stdout.write(markdown)
     return
   }
-  mkdirSync(path.dirname(path.resolve(values.output)), { recursive: true })
-  writeFileSync(values.output, markdown)
+  writeOutput(values.output, markdown)
   const lines = markdown.split('\n').length - 1
   process.stdout.write(
     `Wrote the ${kind} context to ${values.output} (${lines} ${lines === 1 ? 'line' : 'lines'}, ${Buffer.byteLength(markdown)} bytes).\n`,
