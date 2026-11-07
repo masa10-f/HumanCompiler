@@ -18,6 +18,7 @@ import { parseArgs } from 'node:util'
 import {
   API_URL_ENV,
   COMMAND_SCOPES,
+  CliError,
   type ContextKind,
   DEFAULT_API_URL,
   TOKEN_ENV,
@@ -89,6 +90,9 @@ export async function context(argv: string[]): Promise<void> {
     periodDays,
   })
 
+  if (typeof result?.markdown !== 'string') {
+    throw new CliError(`${apiUrl} did not answer with a context export. Check the API URL.`)
+  }
   const markdown = result.markdown.endsWith('\n') ? result.markdown : `${result.markdown}\n`
   if (values.output === undefined) {
     process.stdout.write(markdown)

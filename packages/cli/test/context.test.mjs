@@ -38,6 +38,9 @@ describe('context', () => {
           body: { filename: 'goal.md', markdown: '# Goal', generated_at: '2026-11-06T12:00:00+00:00' },
         }
       }
+      if (url.pathname === '/api/agent/v1/context-export/projects/wrong-shape') {
+        return { status: 200, body: { detail: 'ok' } }
+      }
       if (url.pathname === '/api/agent/v1/context-export/projects/no-scope') {
         return { status: 403, body: { detail: 'Missing required scope: context:read' } }
       }
@@ -97,6 +100,7 @@ describe('context', () => {
     [['project', 'missing'], 'good-token', /Project missing was not found \(Project not found\)/],
     [['goal', 'not-a-uuid'], 'good-token', /The API rejected the request \(goal_id: Input should be a valid UUID\)/],
     [['project', PROJECT_ID], 'bad-token', /token was rejected \(Invalid agent token\)/],
+    [['project', 'wrong-shape'], 'good-token', /did not answer with a context export\. Check the API URL\./],
   ]) {
     test(`reports ${message}`, async () => {
       const { code, stderr } = await run(['context', ...args], { ...env, HUMANCOMPILER_TOKEN: token })

@@ -269,6 +269,7 @@ npx humancompiler doctor [roadmap|context ...] [--api-url <url>]
 - **きっかけ：** main への push で `packages/cli/package.json` が変わったとき。`workflow_dispatch` で手でも動かせる。ただし main 以外から手で動かしても公開しない（ジョブの `if`）。
 - **公開するかの判定：** `npm view humancompiler@<version>` で、そのバージョンが公開済みなら何もしない。
   - 未公開のときの `npm view` は、パッケージが無い場合もバージョンが無い場合も E404 で終わる。E404 以外の失敗（通信など）は、公開に進まずに失敗にする。
+- **依存のインストール：** `pnpm install --frozen-lockfile --ignore-scripts`。公開のトークンを作れるジョブで、依存のインストールスクリプトを動かさないため。esbuild と resvg は出来合いのバイナリを使うので、スクリプトが無くてもビルドとテストは通る（手元で確かめた）。
 - **公開前の確認：** 型チェック、ビルドとテスト、`npm pack --dry-run` で中身の一覧を出す。
 - **公開：** `npm publish --provenance --access public --ignore-scripts`。
   - 確認は前の手順で済ませたので、`prepublishOnly`（手で公開するときの同じ確認）は `--ignore-scripts` で飛ばす。

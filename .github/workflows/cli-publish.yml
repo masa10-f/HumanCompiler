@@ -105,9 +105,11 @@ jobs:
             echo "$name@$version is not on npm yet; publishing."
           fi
 
+      # No lifecycle scripts in the job that can mint a publish token: the
+      # build needs none (esbuild and resvg ship prebuilt binaries).
       - name: 📦 Install dependencies
         if: steps.check.outputs.published == 'false'
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: 🔍 Type-check
         if: steps.check.outputs.published == 'false'
