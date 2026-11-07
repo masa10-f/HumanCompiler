@@ -30,17 +30,20 @@ export function numberOption(
   return value
 }
 
-/** `parseArgs` handles `--no-...` options (allowNegative) from Node 20.16. */
-export const MIN_NODE = '20.16'
+/**
+ * `parseArgs` handles `--no-...` options (allowNegative) from Node 22.4.0,
+ * backported to 20.16.0. Node 21.x and 22.0-22.3 do not have it.
+ */
+export const SUPPORTED_NODE = '20.16+ or 22.4+'
 
 export function nodeVersionOk(version = process.versions.node): boolean {
   const [major = 0, minor = 0] = version.split('.').map(Number)
-  return major > 20 || (major === 20 && minor >= 16)
+  return (major === 20 && minor >= 16) || (major === 22 && minor >= 4) || major >= 23
 }
 
 export function checkNodeVersion(version = process.versions.node): void {
   if (!nodeVersionOk(version)) {
-    throw new CliError(`Node.js ${MIN_NODE} or later is required (this is ${version})`)
+    throw new CliError(`Node.js ${SUPPORTED_NODE} is required (this is ${version})`)
   }
 }
 

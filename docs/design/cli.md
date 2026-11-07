@@ -233,7 +233,7 @@ npx humancompiler doctor [roadmap|context ...] [--api-url <url>]
 
 | 確かめること | 方法 | 失敗したときの直し方の例 |
 |---|---|---|
-| Node のバージョン | 20.16 以上か | Node.js 20.16 以上（できれば 22 LTS 以降）を入れる |
+| Node のバージョン | 20.16 以上の 20.x か、22.4 以上か | 今の Node.js LTS（22 以降）を入れる |
 | トークン | `HUMANCOMPILER_TOKEN` があるか | 設定画面でトークンを作り、環境変数に入れる。コマンドラインに書かない |
 | API に届くか | `GET /health`（トークンを付けない） | 通信、`--api-url`、`HUMANCOMPILER_API_URL` を確かめる。503 なら時間をおく |
 | トークンが有効か | `GET /api/agent/v1/me` | 401：作り直す（全体をコピーしたか確かめる）。429：待つ秒数を示す |
@@ -258,7 +258,7 @@ npx humancompiler doctor [roadmap|context ...] [--api-url <url>]
   - `'use client'` の警告は `logOverride` で抑える。
   - `package.json` の `version` を `__VERSION__` として埋め込む（`--version`）。
   - フォントとライセンス文をパッケージにコピーする。どちらも git の管理外。
-- **Node：** `engines` は `>=20.16.0`。`parseArgs` の `allowNegative`（`--no-image` など）が 20.16 からのため。起動時にも確かめる。
+- **Node：** `engines` は `^20.16.0 || >=22.4.0`。`parseArgs` の `allowNegative`（`--no-image` など）は 22.4.0 で入り、20.16.0 に移植された。21.x と 22.0〜22.3 には無いので、メジャー番号だけでなく、この範囲で確かめる。起動時にも確かめる（`doctor` は止まらずに結果として示す）。
 
 ---
 

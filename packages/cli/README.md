@@ -160,7 +160,7 @@ npx humancompiler doctor roadmap    # check only the scopes roadmap needs
 
 Checks, and prints how to fix each problem:
 
-- Node.js is 20.16 or later.
+- Node.js is 20.16+ or 22.4+ (21.x and 22.0 to 22.3 lack an option parser feature the commands use).
 - `HUMANCOMPILER_TOKEN` is set.
 - The API answers (`GET /health`, without the token).
 - The token is valid, and has the scopes each command needs (`GET /api/agent/v1/me`).
@@ -185,7 +185,7 @@ The roadmap data and the context document go straight from the API to the comman
 
 ## Requirements
 
-- Node.js 20.16 or later.
+- Node.js 20.16+ or 22.4+. Node 21.x and 22.0 to 22.3 are not supported: their `util.parseArgs` has no `--no-...` options.
 - The drawing uses [resvg](https://github.com/yisibl/resvg-js), which ships prebuilt binaries for common platforms. Only `roadmap` loads it.
 - Noto Sans JP (Regular and Bold) is included.
 

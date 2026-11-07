@@ -27,7 +27,7 @@ import {
   request,
   validateApiUrl,
 } from '../api'
-import { MIN_NODE, nodeVersionOk, usageError } from '../args'
+import { SUPPORTED_NODE, nodeVersionOk, usageError } from '../args'
 import { SERVER_NAME, codexConfigPath } from './setup'
 
 export const DOCTOR_HELP = `Usage: humancompiler doctor [roadmap|context ...] [options]
@@ -200,8 +200,14 @@ export async function doctor(argv: string[]): Promise<void> {
 
   const report: Report = { failed: false, out: [] }
   const node = process.versions.node
-  if (nodeVersionOk(node)) pass(report, `Node.js ${node} (${MIN_NODE} or later)`)
-  else fail(report, `Node.js ${node} is too old`, `Install Node.js ${MIN_NODE} or later (22 LTS or newer is best).`)
+  if (nodeVersionOk(node)) pass(report, `Node.js ${node} (needs ${SUPPORTED_NODE})`)
+  else {
+    fail(
+      report,
+      `Node.js ${node} is not supported (needs ${SUPPORTED_NODE})`,
+      'Install a current Node.js LTS (22 or later).',
+    )
+  }
 
   const token = readToken()
   if (token) pass(report, `${TOKEN_ENV} is set`)

@@ -30,7 +30,7 @@
     "README.md"
   ],
   "engines": {
-    "node": ">=20.16.0"
+    "node": "^20.16.0 || >=22.4.0"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
