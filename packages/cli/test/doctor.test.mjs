@@ -59,7 +59,7 @@ describe('doctor', () => {
     const { code, stdout } = await doctor([], 'full-token')
 
     assert.equal(code, 0, stdout)
-    assert.match(stdout, /\[ok\] {3}Node\.js \S+ \(needs 20\.16\+ or 22\.4\+\)/)
+    assert.match(stdout, /\[ok\] {3}Node\.js \S+ \(needs 22\.4 or later\)/)
     assert.match(stdout, /\[ok\] {3}HUMANCOMPILER_TOKEN is set/)
     assert.match(stdout, /\[ok\] {3}The API at http:\/\/127\.0\.0\.1:\d+ answers/)
     assert.match(stdout, /\[ok\] {3}The token "laptop" \(hc_agent_ab\.\.\.\) is valid/)
@@ -150,7 +150,7 @@ describe('doctor', () => {
 
   for (const [version, ok] of [
     ['20.15.1', false],
-    ['20.16.0', true],
+    ['20.16.0', false],
     ['21.7.3', false],
     ['22.3.0', false],
     ['22.4.0', true],
@@ -166,7 +166,7 @@ describe('doctor', () => {
       else {
         assert.match(
           stdout,
-          new RegExp(`\\[fail\\] Node\\.js ${version.replaceAll('.', '\\.')} is not supported \\(needs 20\\.16\\+ or 22\\.4\\+\\)\\n {7}Fix: Install a current Node\\.js LTS`),
+          new RegExp(`\\[fail\\] Node\\.js ${version.replaceAll('.', '\\.')} is not supported \\(needs 22\\.4 or later\\)\\n {7}Fix: Install a current Node\\.js LTS`),
         )
       }
     })
@@ -187,6 +187,25 @@ describe('doctor', () => {
     assert.match(stdout, /\[info\] Claude Code: .*\.mcp\.json has the humancompiler server/)
     assert.match(stdout, /\[info\] Codex: .*config\.toml has \[mcp_servers\.humancompiler\]/)
   })
+
+  for (const [content, message] of [
+    ['null', /\.mcp\.json is not a JSON object; fix it/],
+    ['{ "mcpServers": ', /\.mcp\.json is not a JSON object; fix it/],
+    ['{ "mcpServers": { "other": {} } }', /\.mcp\.json has no humancompiler server/],
+    ['{ "mcpServers": { "humancompiler": null } }', /\.mcp\.json has no humancompiler server/],
+  ]) {
+    test(`describes a .mcp.json holding ${content}`, async () => {
+      const cwd = tempDir()
+      writeFileSync(path.join(cwd, '.mcp.json'), content)
+      const { stdout } = await run(
+        ['doctor'],
+        { HUMANCOMPILER_TOKEN: 'full-token', HUMANCOMPILER_API_URL: api.url },
+        { cwd },
+      )
+      assert.match(stdout, message)
+      assert.doesNotMatch(stdout, /no \.mcp\.json here/)
+    })
+  }
 })
 
 function writeNodeShim(version) {

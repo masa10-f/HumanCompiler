@@ -1,6 +1,6 @@
 {
   "name": "humancompiler",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "HumanCompiler on the command line: draw project roadmaps, export context, and connect coding agents (Claude Code, Codex) to HumanCompiler",
   "license": "AGPL-3.0-or-later",
   "author": "Masato Fukushima <masa1063fuk@gmail.com>",
@@ -30,7 +30,7 @@
     "README.md"
   ],
   "engines": {
-    "node": "^20.16.0 || >=22.4.0"
+    "node": ">=22.4.0"
   },
   "scripts": {
     "build": "node scripts/build.mjs",

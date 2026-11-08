@@ -160,7 +160,7 @@ npx humancompiler doctor roadmap    # check only the scopes roadmap needs
 
 Checks, and prints how to fix each problem:
 
-- Node.js is 20.16+ or 22.4+ (21.x and 22.0 to 22.3 lack an option parser feature the commands use).
+- Node.js is 22.4 or later.
 - `HUMANCOMPILER_TOKEN` is set.
 - The API answers (`GET /health`, without the token).
 - The token is valid, and has the scopes each command needs (`GET /api/agent/v1/me`).
@@ -187,7 +187,7 @@ The roadmap data and the context document go straight from the API to the comman
 
 ## Requirements
 
-- Node.js 20.16+ or 22.4+. Node 21.x and 22.0 to 22.3 are not supported: their `util.parseArgs` has no `--no-...` options.
+- Node.js 22.4 or later. Earlier 22.x releases lack the `util.parseArgs` feature the `--no-...` options need, and Node 20 is past its end of life.
 - The drawing uses [resvg](https://github.com/yisibl/resvg-js), which ships prebuilt binaries for common platforms. Only `roadmap` loads it.
 - Noto Sans JP (Regular and Bold) is included.
 
@@ -228,6 +228,8 @@ npm configures a trusted publisher in the settings of an existing package, so th
    Run it from a checkout where `pnpm install` has been done: `prepublishOnly` runs `pnpm run type-check` and `pnpm run test`.
 
    Merging deploys the MCP instructions and the settings-page guide, which tell agents to run `npx humancompiler@0 …` with `HUMANCOMPILER_TOKEN` set. Publishing first means nobody else can claim the `humancompiler` name in between and run code in those agent shells.
+
+   npm may stage the first publish instead of making it live: it then publishes a placeholder version `0.0.0-stage` and holds the real version for approval. Approve it under **Staged Packages** on npmjs.com, or with `npm stage list humancompiler` and `npm stage approve <id>`. Check that `npm view humancompiler version` shows the real version before merging.
 
 2. On npmjs.com, open **humancompiler → Settings → Trusted publishing** and add a GitHub Actions publisher:
    - Organization or user: `masa10-f`

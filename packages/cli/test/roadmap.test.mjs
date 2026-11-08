@@ -178,7 +178,7 @@ test('stops on Node versions without negative options', async () => {
     proc.on('close', (code) => resolve({ code, stderr }))
   })
   assert.equal(child.code, 1)
-  assert.match(child.stderr, /Node\.js 20\.16\+ or 22\.4\+ is required \(this is 20\.15\.1\)/)
+  assert.match(child.stderr, /Node\.js 22\.4 or later is required \(this is 20\.15\.1\)/)
 })
 
 describe('fetching from the agent API', () => {
