@@ -57,6 +57,7 @@ HumanCompiler の情報を安全に取得し、将来的に更新を反映でき
 | `work_sessions:read` | WorkSession の取得 |
 | `notes:read` | ContextNote の取得 |
 | `daily_plans:read` | DailyPlanDocument の取得 |
+| `weekly_notes:read` | 週次ノート（WeeklyNote）の取得 |
 | `context:read` | context export（Markdown）の取得。内部でノート・タスク・作業履歴・日次ノートを読むため、実質的に広い読み取り権限であることを UI で明示する |
 | `quick_tasks:write` | `POST /api/hooks/quick-tasks`（既存 hook の互換） |
 
@@ -354,6 +355,7 @@ context_notes は `user_id` を直接持つが、Read API の役割はユーザ�
 | GET | `/work-sessions` | `work_sessions:read` | `task_id` |
 | GET | `/context-notes` | `notes:read` | `project_id`、`goal_id`、`task_id` |
 | GET | `/daily-plans` | `daily_plans:read` | `date_from`、`date_to` |
+| GET | `/weekly-notes` | `weekly_notes:read` | `date_from`（その日を含む週から）、`date_to`（その日までに始まる週） |
 | GET | `/context-export/projects/{project_id}` | `context:read` | 既存の `ContextExportOptions` と同じ |
 | GET | `/context-export/goals/{goal_id}` | `context:read` | 同上 |
 

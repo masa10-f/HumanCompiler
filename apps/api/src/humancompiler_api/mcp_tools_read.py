@@ -6,14 +6,15 @@
 
 """Read tools of the MCP server.
 
-``find``, ``get_goal``, ``get_task``, ``list_logs`` and ``get_context``.
+``find``, ``get_goal``, ``get_task``, ``list_logs``, ``get_context``,
+``get_weekly_note`` and ``list_weekly_notes``.
 
 They reuse the agent read API's owned-row queries and the context export, so
 ownership and output match REST. Another user's ID is reported exactly like a
 missing one.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -23,6 +24,7 @@ from mcp_types import CallToolResult, ToolAnnotations
 from pydantic import Field
 from sqlmodel import Session, col, func, select
 
+from humancompiler_api import weekly_notes
 from humancompiler_api.agent_auth import AgentPrincipal
 from humancompiler_api.ai.context_export import (
     build_goal_context_export,
@@ -39,6 +41,7 @@ from humancompiler_api.models import (
     Project,
     Task,
     TaskResponse,
+    WeeklyNote,
 )
 from humancompiler_api.note_markdown_out import note_html_to_markdown
 from humancompiler_api.routers.agent_v1 import (
@@ -341,3 +344,97 @@ async def get_context(
         return ContextExportResponse.from_result(result).model_dump(mode="json")
 
     return await guarded_call("get_context", AgentScope.CONTEXT_READ, run, ctx)
+
+
+# --- get_weekly_note / list_weekly_notes ------------------------------------------
+
+
+def _weekly_note_payload(note: WeeklyNote) -> dict[str, Any]:
+    return {
+        "id": str(note.id),
+        "updated_at": _utc_iso(note.updated_at),
+        "content_markdown": weekly_notes.content_markdown(note),
+    }
+
+
+@mcp_server.tool(
+    name="get_weekly_note",
+    description=(
+        "Get the user's weekly note for the week that contains date, as "
+        "Markdown. A week runs Monday to Sunday (ISO 8601); omit date for this "
+        "week in Asia/Tokyo. Returns week_start (the Monday), week_end and note "
+        "{id, updated_at, content_markdown}; note is null when the week has no "
+        f"note or it is empty. {_USER_DATA}"
+    ),
+    annotations=_READ_ONLY,
+)
+async def get_weekly_note(
+    ctx: Context,
+    date: Annotated[
+        date | None,
+        Field(description="Any day of the week (YYYY-MM-DD). Omit for this week."),
+    ] = None,
+) -> CallToolResult:
+    week_start = (
+        weekly_notes.week_start_of(date)
+        if date is not None
+        else weekly_notes.current_week_start()
+    )
+
+    def run(session: Session, principal: AgentPrincipal) -> dict[str, Any]:
+        note = weekly_notes.get_note(session, principal.user_id, week_start)
+        return {
+            **weekly_notes.week_payload(week_start),
+            "note": _weekly_note_payload(note) if note and note.content else None,
+        }
+
+    return await guarded_call("get_weekly_note", AgentScope.WEEKLY_NOTES_READ, run, ctx)
+
+
+@mcp_server.tool(
+    name="list_weekly_notes",
+    description=(
+        "List the user's non-empty weekly notes as Markdown, newest week first: "
+        "{week_start, week_end, id, updated_at, content_markdown}, up to limit, "
+        "and has_more. date_from and date_to are any days (YYYY-MM-DD); a week "
+        "is included when it overlaps the range. For older weeks, call again "
+        "with date_to set to the day before the oldest week_start you got. Use "
+        "it to review how the past weeks went, e.g. before planning a week. "
+        f"{_USER_DATA}"
+    ),
+    annotations=_READ_ONLY,
+)
+async def list_weekly_notes(
+    ctx: Context,
+    date_from: Annotated[
+        date | None, Field(description="Only weeks that end on or after this day.")
+    ] = None,
+    date_to: Annotated[
+        date | None, Field(description="Only weeks that start on or before this day.")
+    ] = None,
+    limit: Annotated[int, Field(ge=1, le=12, description="Most weeks.")] = 4,
+) -> CallToolResult:
+    def run(session: Session, principal: AgentPrincipal) -> dict[str, Any]:
+        rows, has_more = weekly_notes.list_notes(
+            session,
+            principal.user_id,
+            date_from=(
+                weekly_notes.week_start_of(date_from) if date_from is not None else None
+            ),
+            date_to=date_to,
+            limit=limit,
+        )
+        return {
+            "items": [
+                {
+                    **weekly_notes.week_payload(row.week_start),
+                    **_weekly_note_payload(row),
+                }
+                for row in rows
+            ],
+            "has_more": has_more,
+        }
+
+    return await guarded_call(
+        "list_weekly_notes", AgentScope.WEEKLY_NOTES_READ, run, ctx
+    )

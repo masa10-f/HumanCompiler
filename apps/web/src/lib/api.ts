@@ -105,6 +105,11 @@ import type {
   WeeklyRhythm,
   WeeklyRhythmBlockInput,
 } from "@/types/weekly-rhythm";
+import type {
+  WeeklyNote,
+  WeeklyNoteListQuery,
+  WeeklyNoteListResponse,
+} from "@/types/weekly-note";
 import type { TaskStatus } from "@/types/task";
 import type {
   GoalTaskDraftApplyRequest,
@@ -861,6 +866,30 @@ class ApiClient {
     return this.request<WeeklyRhythm>("/api/weekly-rhythm", {
       method: "PUT",
       body: JSON.stringify({ blocks }),
+    });
+  }
+
+  async listWeeklyNotes(
+    query: WeeklyNoteListQuery = {},
+  ): Promise<WeeklyNoteListResponse> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== "") params.set(key, String(value));
+    }
+    return this.request<WeeklyNoteListResponse>(`/api/weekly-notes?${params}`);
+  }
+
+  async getWeeklyNote(weekStart: string): Promise<WeeklyNote> {
+    return this.request<WeeklyNote>(`/api/weekly-notes/${weekStart}`);
+  }
+
+  async updateWeeklyNote(
+    weekStart: string,
+    data: ContextNoteUpdate,
+  ): Promise<WeeklyNote> {
+    return this.request<WeeklyNote>(`/api/weekly-notes/${weekStart}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
     });
   }
 
@@ -1846,6 +1875,16 @@ export const weeklyRhythmApi = {
   replace: (blocks: WeeklyRhythmBlockInput[]) =>
     apiClient.replaceWeeklyRhythm(blocks),
   applyToTriage: () => apiClient.applyWeeklyRhythmToTriage(),
+};
+
+/**
+ * Weekly notes: one free-form note per week, addressed by its Monday.
+ */
+export const weeklyNotesApi = {
+  list: (query?: WeeklyNoteListQuery) => apiClient.listWeeklyNotes(query),
+  get: (weekStart: string) => apiClient.getWeeklyNote(weekStart),
+  update: (weekStart: string, data: ContextNoteUpdate) =>
+    apiClient.updateWeeklyNote(weekStart, data),
 };
 
 export const dailyPlansApi = {

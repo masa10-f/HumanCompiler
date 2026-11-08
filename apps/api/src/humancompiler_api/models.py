@@ -614,6 +614,29 @@ class DailyPlanDocument(SQLModel, table=True):  # type: ignore[call-arg]
     user: User = Relationship(back_populates="daily_plan_documents")
 
 
+class WeeklyNote(SQLModel, table=True):  # type: ignore[call-arg]
+    """One user's free-form note for one week (ISO 8601, Monday start).
+
+    ``week_start`` is the Monday of the week. ``content`` is the HTML the web
+    editor saves; an empty note is stored as ``""``.
+    """
+
+    __tablename__ = "weekly_notes"
+    __table_args__ = (
+        UniqueConstraint("user_id", "week_start", name="uq_weekly_notes_user_week"),
+    )
+
+    id: UUID = SQLField(default_factory=uuid4, primary_key=True)
+    user_id: UUID = SQLField(foreign_key="users.id", ondelete="CASCADE")
+    week_start: Date
+    content: str = SQLField(
+        default="", sa_column=Column(Text, nullable=False, server_default="")
+    )
+    content_type: str = SQLField(default="html", max_length=20)
+    created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
+
+
 class LogBase(SQLModel):
     """Base log model"""
 
@@ -828,6 +851,7 @@ class AgentScope(StrEnum):
     WORK_SESSIONS_READ = "work_sessions:read"
     NOTES_READ = "notes:read"
     DAILY_PLANS_READ = "daily_plans:read"
+    WEEKLY_NOTES_READ = "weekly_notes:read"
     CONTEXT_READ = "context:read"
     PROPOSALS_READ = "proposals:read"
     QUICK_TASKS_WRITE = "quick_tasks:write"
@@ -849,6 +873,7 @@ AGENT_SCOPE_DESCRIPTIONS: dict[AgentScope, str] = {
     AgentScope.WORK_SESSIONS_READ: "WorkSession の取得",
     AgentScope.NOTES_READ: "ContextNote の取得",
     AgentScope.DAILY_PLANS_READ: "DailyPlanDocument の取得",
+    AgentScope.WEEKLY_NOTES_READ: "週次ノート（WeeklyNote）の取得",
     AgentScope.CONTEXT_READ: (
         "context export（Markdown）の取得。ノート、タスク、作業履歴、日次ノートを"
         "まとめて読むため、実質的に広い読み取り権限になる"
