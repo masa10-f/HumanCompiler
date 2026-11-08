@@ -1682,6 +1682,8 @@ def test_notebook_preserves_supported_link_and_formatting_marks(href):
                             "target": "_blank",
                             "rel": "noopener noreferrer nofollow",
                             "class": None,
+                            # Tiptap v3 always serializes the Link mark's title.
+                            "title": None,
                         },
                     },
                 ],
@@ -1689,6 +1691,65 @@ def test_notebook_preserves_supported_link_and_formatting_marks(href):
         ],
     }
     assert TextBlock(id="link", content=content).content == content
+
+
+def _link_content(attrs):
+    return {
+        "type": "paragraph",
+        "content": [
+            {
+                "type": "text",
+                "text": "link",
+                "marks": [{"type": "link", "attrs": attrs}],
+            }
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    "attrs",
+    [
+        {"href": "https://example.com"},
+        {"href": "https://example.com", "title": None},
+        {"href": "https://example.com", "title": "Example"},
+    ],
+)
+def test_notebook_accepts_link_title_attribute(attrs):
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    content = _link_content(attrs)
+    assert TextBlock(id="link", content=content).content == content
+
+
+@pytest.mark.parametrize("title", [1, ["x"], "x" * 1001])
+def test_notebook_rejects_invalid_link_title(title):
+    from pydantic import ValidationError
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    with pytest.raises(ValidationError):
+        TextBlock(
+            id="link",
+            content=_link_content({"href": "https://example.com", "title": title}),
+        )
+
+
+@pytest.mark.parametrize("href", ["ftp://example.com/file", "sms:+81123456"])
+def test_notebook_rejects_link_schemes_outside_allowlist(href):
+    from pydantic import ValidationError
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    with pytest.raises(ValidationError) as error:
+        TextBlock(id="link", content=_link_content({"href": href}))
+    assert error.value.errors()[0]["type"] == "note_unsafe_link"
+
+
+def test_notebook_reports_malformed_link_url():
+    from pydantic import ValidationError
+    from humancompiler_api.routers.daily_plans import TextBlock
+
+    with pytest.raises(ValidationError) as error:
+        TextBlock(id="link", content=_link_content({"href": "http://[broken"}))
+    assert error.value.errors()[0]["type"] == "note_invalid_link"
 
 
 @pytest.mark.parametrize(
