@@ -3,6 +3,7 @@
 
 import {
   dailyPlanToNote,
+  isSaveableNoteLink,
   noteToDailyPlan,
   sameSchedulingBlocks,
   schedulingBlocks,
@@ -102,4 +103,31 @@ it("keeps line memos in note data but excludes them from schedule conditions", (
   const schedule = schedulingBlocks(plan)[0]!;
   expect(sameSchedulingBlocks([schedule], [{ ...schedule, note: "午後は実装" } as typeof schedule])).toBe(true);
   expect(noteToDailyPlan(dailyPlanToNote({ schema_version: 1, blocks: [withMemo] })).blocks[0]).toEqual(withMemo);
+});
+
+describe("isSaveableNoteLink", () => {
+  it.each([
+    "https://example.com/path?q=1",
+    "http://example.com",
+    "HTTPS://EXAMPLE.COM",
+    "mailto:a@example.com",
+    "tel:+81123456",
+    "example.com",
+    "/notes",
+    "#section",
+  ])("accepts %s, which the API stores", (href) => {
+    expect(isSaveableNoteLink(href)).toBe(true);
+  });
+
+  it.each([
+    "ftp://example.com/file",
+    "sms:+81123456",
+    "xmpp:user@example.com",
+    "localhost:3000",
+    "javascript:alert(1)",
+    "java\nscript:alert(1)",
+    "http://[broken",
+  ])("rejects %s, which the API refuses to save", (href) => {
+    expect(isSaveableNoteLink(href)).toBe(false);
+  });
 });

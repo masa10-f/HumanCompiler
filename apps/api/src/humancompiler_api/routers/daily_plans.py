@@ -145,6 +145,10 @@ class AvailabilityWindow(BaseModel):
 
 # Free-form memo written under a schedule line; indexed for notebook search.
 LINE_NOTE_MAX_LENGTH = 10000
+# Link schemes a rich note may store ("" is a relative link). The web editor
+# only creates links with these schemes (lib/daily-plan-note.ts).
+SAFE_LINK_SCHEMES = frozenset({"", "http", "https", "mailto", "tel"})
+LINK_TITLE_MAX_LENGTH = 1000
 
 
 class TimedLineBlock(BaseModel):
@@ -341,24 +345,26 @@ class TextBlock(BaseModel):
                     if mark_attrs:
                         raise ValueError("unsupported rich note mark attributes")
                     continue
-                if set(mark_attrs) - {"href", "target", "rel", "class"}:
+                # Tiptap v3's Link mark always serializes ``title`` (null unless set).
+                if set(mark_attrs) - {"href", "target", "rel", "class", "title"}:
                     raise ValueError("unsupported link attributes")
+                title = mark_attrs.get("title")
+                if title is not None and (
+                    not isinstance(title, str) or len(title) > LINK_TITLE_MAX_LENGTH
+                ):
+                    raise ValueError("link title must be short text")
                 href = mark_attrs.get("href")
                 if not isinstance(href, str):
                     raise ValueError("link href must be text")
                 # Browsers ignore whitespace/control characters in URL schemes.
                 normalized_href = re.sub(r"[\s\x00-\x1f\x7f-\x9f]", "", href)
                 try:
-                    safe = urlsplit(normalized_href).scheme.lower() in (
-                        "",
-                        "http",
-                        "https",
-                        "mailto",
-                        "tel",
-                    )
+                    scheme = urlsplit(normalized_href).scheme.lower()
                 except ValueError:
-                    safe = False
-                if not safe:
+                    raise PydanticCustomError(
+                        "note_invalid_link", "link URL is malformed"
+                    ) from None
+                if scheme not in SAFE_LINK_SCHEMES:
                     raise PydanticCustomError(
                         "note_unsafe_link", "unsupported link protocol"
                     )

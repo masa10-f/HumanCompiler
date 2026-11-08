@@ -39,7 +39,11 @@ import {
   normalizeDailyPlanClock,
 } from "@/lib/daily-plan-command";
 import { extractDailyPlanMention } from "@/lib/daily-plan-editor";
-import { dailyPlanToNote, noteToDailyPlan } from "@/lib/daily-plan-note";
+import {
+  dailyPlanToNote,
+  isSaveableNoteLink,
+  noteToDailyPlan,
+} from "@/lib/daily-plan-note";
 import type {
   DailyPlanBlock,
   DailyPlanDocumentV1,
@@ -210,7 +214,12 @@ export function DailyPlanNoteEditor({
       NoteDocument,
       TaskList,
       TaskItem.configure({ nested: true }),
-      Link.configure({ openOnClick: false }),
+      Link.configure({
+        openOnClick: false,
+        // Typed, pasted and autolinked URLs the API would reject stay plain text.
+        isAllowedUri: (url, { defaultValidate }) =>
+          defaultValidate(url) && isSaveableNoteLink(url),
+      }),
       ScheduleNode,
       NoteIdentity,
       // Only top-level nodes are decorated, and only paragraphs show the guide:

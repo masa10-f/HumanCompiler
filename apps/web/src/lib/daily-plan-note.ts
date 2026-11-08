@@ -5,6 +5,26 @@ import { createDailyPlanId } from "@/lib/daily-plan-id";
 import type { JSONContent } from "@tiptap/react";
 import type { DailyPlanBlock, DailyPlanDocumentV1 } from "@/types/daily-plan";
 
+// Must match SAFE_LINK_SCHEMES in the API (routers/daily_plans.py): a saved
+// note with any other link is rejected, so the editor never creates one.
+const SAVEABLE_LINK_SCHEMES = new Set(["http", "https", "mailto", "tel"]);
+
+/** Whether the daily plan API accepts a link with this href. */
+export function isSaveableNoteLink(href: string): boolean {
+  // Browsers (and the API) ignore whitespace/control characters in URLs.
+  // eslint-disable-next-line no-control-regex
+  const normalized = href.replace(/[\s\x00-\x1f\x7f-\x9f]/g, "");
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(normalized)?.[1];
+  if (scheme !== undefined && !SAVEABLE_LINK_SCHEMES.has(scheme.toLowerCase()))
+    return false;
+  try {
+    new URL(normalized, "https://relative.invalid");
+  } catch {
+    return false;
+  }
+  return true;
+}
+
 export function noteText(node: JSONContent): string {
   if (node.type === "hardBreak") return "\n";
   return (
