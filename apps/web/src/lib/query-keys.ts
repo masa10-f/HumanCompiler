@@ -76,9 +76,10 @@ export const queryKeys = {
     current: () => [...queryKeys.weeklyRhythm.all, 'current'] as const,
   },
 
-  // Weekly notes (one note per week, by its Monday)
+  // Weekly notes (one note per week)
   weeklyNotes: {
     all: ['weeklyNotes'] as const,
+    preferences: () => [...queryKeys.weeklyNotes.all, 'preferences'] as const,
     lists: () => [...queryKeys.weeklyNotes.all, 'list'] as const,
     list: (limit: number) => [...queryKeys.weeklyNotes.lists(), { limit }] as const,
     dailyNotes: (weekStart: string) =>

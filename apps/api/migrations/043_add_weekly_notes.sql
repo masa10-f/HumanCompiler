@@ -1,9 +1,12 @@
 -- Migration: Add weekly notes
 -- Date: 2026-11-08
--- Description: Creates weekly_notes, one free-form note per user and week.
--- A week starts on Monday (ISO 8601, the same week as weekly_rhythm_blocks'
--- weekday 0) and week_start holds that Monday. content is the HTML the web
--- editor saves (content_type 'html'); an empty note is stored as ''.
+-- Description: Creates weekly_notes, one free-form note per user and week,
+-- and adds user_settings.week_start_day ('sunday' by default, or 'monday').
+-- A note's week is seven days from week_start. The API creates notes on the
+-- first day of a week under the user's setting; a note keeps its days when the
+-- setting changes later, so week_start is not tied to one weekday here.
+-- content is the HTML the web editor saves (content_type 'html'); an empty
+-- note is stored as ''.
 -- Deleting a user deletes their weekly notes.
 -- Additive only: the API deployed before this migration does not know the
 -- table and keeps working. Apply it before deploying the API that serves
@@ -18,6 +21,9 @@ BEGIN
     IF to_regclass(''public.users'') IS NULL THEN
         RAISE EXCEPTION ''Required table public.users is missing. Apply earlier migrations before 043_add_weekly_notes.sql.'';
     END IF;
+    IF to_regclass(''public.user_settings'') IS NULL THEN
+        RAISE EXCEPTION ''Required table public.user_settings is missing. Apply earlier migrations before 043_add_weekly_notes.sql.'';
+    END IF;
 END
 ';
 
@@ -30,13 +36,18 @@ CREATE TABLE IF NOT EXISTS public.weekly_notes (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT uq_weekly_notes_user_week UNIQUE (user_id, week_start),
-    CONSTRAINT ck_weekly_notes_week_start_monday CHECK (
-        EXTRACT(ISODOW FROM week_start) = 1
-    ),
     CONSTRAINT ck_weekly_notes_content_type CHECK (
         content_type IN ('html', 'markdown')
     )
 );
+
+-- ADD COLUMN IF NOT EXISTS skips the whole clause, CHECK included, when the
+-- column is already there, so this is safe to apply twice.
+ALTER TABLE public.user_settings
+    ADD COLUMN IF NOT EXISTS week_start_day VARCHAR(10) NOT NULL DEFAULT 'sunday'
+    CONSTRAINT ck_user_settings_week_start_day CHECK (
+        week_start_day IN ('sunday', 'monday')
+    );
 
 -- Agent incremental reads page by (updated_at, id).
 CREATE INDEX IF NOT EXISTS idx_weekly_notes_user_updated
@@ -56,6 +67,7 @@ REVOKE ALL ON public.weekly_notes FROM anon;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.weekly_notes TO authenticated;
 
-COMMENT ON TABLE public.weekly_notes IS 'One free-form note per user and ISO week (Monday start)';
-COMMENT ON COLUMN public.weekly_notes.week_start IS 'Monday of the week (ISO 8601)';
+COMMENT ON TABLE public.weekly_notes IS 'One free-form note per user and week';
+COMMENT ON COLUMN public.weekly_notes.week_start IS 'First day of the note''s seven days (a Sunday or a Monday)';
+COMMENT ON COLUMN public.user_settings.week_start_day IS 'First day of a new weekly note''s week: sunday or monday';
 COMMENT ON COLUMN public.weekly_notes.content IS 'Editor HTML; empty string for an empty note';

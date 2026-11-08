@@ -20,13 +20,15 @@ jest.mock('@/lib/api', () => ({
   },
 }))
 
-const WEEK = '2026-11-02'
+// Any day of the week loads it; saves go to the week start the server returns.
+const DAY = '2026-11-04'
+const WEEK = '2026-11-01'
 
 function makeNote(content: string, updatedAt: string | null): WeeklyNote {
   return {
     id: updatedAt ? 'note-1' : null,
     week_start: WEEK,
-    week_end: '2026-11-08',
+    week_end: '2026-11-07',
     content,
     content_type: 'html',
     created_at: updatedAt,
@@ -50,9 +52,9 @@ describe('useWeeklyNote', () => {
     mockUpdate
       .mockResolvedValueOnce(makeNote('<p>a</p>', '2026-11-03T09:00:00+00:00'))
       .mockResolvedValueOnce(makeNote('<p>ab</p>', '2026-11-03T09:00:01+00:00'))
-    const { result } = renderHook(() => useWeeklyNote(WEEK))
+    const { result } = renderHook(() => useWeeklyNote(DAY))
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(mockGet).toHaveBeenCalledWith(WEEK)
+    expect(mockGet).toHaveBeenCalledWith(DAY)
 
     act(() => result.current.updateNote({ content: '<p>a</p>' }))
     await act(async () => {
@@ -80,7 +82,7 @@ describe('useWeeklyNote', () => {
   it('saves an edit still waiting for its debounce when unmounted', async () => {
     mockGet.mockResolvedValue(makeNote('<p>old</p>', '2026-11-03T09:00:00+00:00'))
     mockUpdate.mockResolvedValue(makeNote('<p>new</p>', '2026-11-03T09:00:01+00:00'))
-    const { result, unmount } = renderHook(() => useWeeklyNote(WEEK))
+    const { result, unmount } = renderHook(() => useWeeklyNote(DAY))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     act(() => result.current.updateNote({ content: '<p>new</p>' }))
@@ -100,7 +102,7 @@ describe('useWeeklyNote', () => {
   it('reports a conflict on 409 and pauses saves', async () => {
     mockGet.mockResolvedValue(makeNote('<p>old</p>', '2026-11-03T09:00:00+00:00'))
     mockUpdate.mockRejectedValue(new ApiError(409, 'Changed since you read it'))
-    const { result } = renderHook(() => useWeeklyNote(WEEK))
+    const { result } = renderHook(() => useWeeklyNote(DAY))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     act(() => result.current.updateNote({ content: '<p>mine</p>' }))

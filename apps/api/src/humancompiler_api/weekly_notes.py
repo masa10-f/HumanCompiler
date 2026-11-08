@@ -3,9 +3,14 @@
 
 """Weekly notes: one free-form note per user and week.
 
-A week is an ISO 8601 week: it starts on Monday, as ``date.weekday() == 0``
-and the weekly rhythm's weekday 0. "This week" is decided in Asia/Tokyo, as the
-daily notes decide "today".
+A week is seven days from its first day, ``week_start``. Each user chooses
+whether weeks start on Sunday (the default, as the web app shows weeks) or
+Monday (``user_settings.week_start_day``). "Today" is decided in Asia/Tokyo, as
+the daily notes decide it.
+
+A note keeps the week it was written for. After the user changes the setting,
+older notes keep their own seven days, and only weeks without a note follow
+the new setting. ``resolve_week`` finds the note for a day in that order.
 
 The web router, the agent REST API and the MCP tools all read notes through
 this module, so ownership and the empty-note rule are the same everywhere.
@@ -15,15 +20,20 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime, timedelta
-from typing import Any
-from uuid import UUID
+from typing import Any, Literal
+from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
 from sqlmodel import Session, col, select
 
-from humancompiler_api.models import WeeklyNote
+from humancompiler_api.models import UserSettings, WeeklyNote
 from humancompiler_api.note_markdown_out import note_html_to_markdown
+
+WeekStartDay = Literal["sunday", "monday"]
+WEEK_START_DAYS: tuple[WeekStartDay, ...] = ("sunday", "monday")
+DEFAULT_WEEK_START_DAY: WeekStartDay = "sunday"
+WEEK_START_LABELS: dict[WeekStartDay, str] = {"sunday": "日曜日", "monday": "月曜日"}
 
 JST = ZoneInfo("Asia/Tokyo")
 PREVIEW_LENGTH = 180
@@ -40,20 +50,78 @@ _TAG = re.compile(r"<[^>]*>")
 _WHITESPACE = re.compile(r"\s+")
 
 
-def week_start_of(value: date) -> date:
-    """The Monday of the ISO week that contains ``value``."""
-    return value - timedelta(days=value.weekday())
+def week_start_of(value: date, start_day: WeekStartDay) -> date:
+    """The first day of the week that contains ``value``."""
+    # date.weekday() is 0 for Monday ... 6 for Sunday.
+    offset = value.weekday() if start_day == "monday" else (value.weekday() + 1) % 7
+    return value - timedelta(days=offset)
 
 
 def week_end_of(week_start: date) -> date:
-    """The Sunday of the week that starts on ``week_start``."""
+    """The last day of the week that starts on ``week_start``."""
     return week_start + timedelta(days=6)
 
 
-def current_week_start(now: datetime | None = None) -> date:
-    """The Monday of this week in Asia/Tokyo."""
+def today(now: datetime | None = None) -> date:
+    """Today in Asia/Tokyo."""
     moment = now if now is not None else datetime.now(JST)
-    return week_start_of(moment.astimezone(JST).date())
+    return moment.astimezone(JST).date()
+
+
+def get_week_start_day(session: Session, user_id: UUID) -> WeekStartDay:
+    value = session.exec(
+        select(UserSettings.week_start_day).where(UserSettings.user_id == user_id)
+    ).first()
+    if value == "monday":
+        return "monday"
+    return DEFAULT_WEEK_START_DAY
+
+
+def set_week_start_day(
+    session: Session, user_id: UUID, start_day: WeekStartDay
+) -> None:
+    """Store the setting, creating the settings row if the user has none."""
+    settings = session.exec(
+        select(UserSettings).where(UserSettings.user_id == user_id)
+    ).one_or_none()
+    if settings is None:
+        # The id is set here, not by the column's server default, which only
+        # PostgreSQL has.
+        settings = UserSettings(id=uuid4(), user_id=user_id)
+    settings.week_start_day = start_day
+    session.add(settings)
+    session.commit()
+
+
+def resolve_week(
+    session: Session, user_id: UUID, day: date
+) -> tuple[date, WeeklyNote | None]:
+    """The week that ``day`` belongs to for this user, and its note.
+
+    In order: the note that starts on ``day``; the note of the week that
+    contains ``day`` under the current setting; an older note whose seven days
+    contain ``day`` (written before the setting changed). Without any, the week
+    under the current setting, with no note.
+    """
+    exact = get_note(session, user_id, day)
+    if exact is not None:
+        return day, exact
+    start = week_start_of(day, get_week_start_day(session, user_id))
+    note = get_note(session, user_id, start)
+    if note is not None:
+        return start, note
+    older = session.exec(
+        select(WeeklyNote)
+        .where(
+            WeeklyNote.user_id == user_id,
+            WeeklyNote.week_start >= day - timedelta(days=6),
+            WeeklyNote.week_start <= day,
+        )
+        .order_by(col(WeeklyNote.week_start).desc())
+    ).first()
+    if older is not None:
+        return older.week_start, older
+    return start, None
 
 
 def normalize_content(content: str, content_type: str) -> str:
@@ -119,14 +187,16 @@ def list_notes(
 ) -> tuple[list[WeeklyNote], bool]:
     """Non-empty notes, newest week first, and whether more remain.
 
-    ``date_from`` and ``date_to`` bound ``week_start`` inclusively; ``before``
-    keeps weeks that start before it (the cursor of the next page).
+    A week is kept when its seven days overlap ``date_from``..``date_to``;
+    ``before`` keeps weeks that start before it (the cursor of the next page).
     """
     statement = select(WeeklyNote).where(
         WeeklyNote.user_id == user_id, WeeklyNote.content != ""
     )
     if date_from is not None:
-        statement = statement.where(WeeklyNote.week_start >= date_from)
+        statement = statement.where(
+            WeeklyNote.week_start >= date_from - timedelta(days=6)
+        )
     if date_to is not None:
         statement = statement.where(WeeklyNote.week_start <= date_to)
     if before is not None:

@@ -14,7 +14,7 @@ from humancompiler_api import weekly_notes
 from humancompiler_api.auth import get_current_user_id
 from humancompiler_api.database import get_session
 from humancompiler_api.main import app
-from humancompiler_api.models import AgentScope, WeeklyNote
+from humancompiler_api.models import AgentScope, UserSettings, WeeklyNote
 from tests.agent_api_helpers import (
     bearer,
     client,
@@ -27,7 +27,7 @@ from tests.agent_api_helpers import (
 USER_A = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 USER_B = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
 
-MONDAY = date(2026, 11, 2)
+SUNDAY = date(2026, 11, 1)
 BASE = "/api/weekly-notes"
 
 
@@ -52,20 +52,34 @@ def stored(session: Session, user_id: UUID = USER_A) -> list[WeeklyNote]:
 # --- week helpers -----------------------------------------------------------------
 
 
-def test_week_start_is_the_monday_of_the_iso_week():
-    assert weekly_notes.week_start_of(date(2026, 11, 2)) == MONDAY
-    assert weekly_notes.week_start_of(date(2026, 11, 8)) == MONDAY  # Sunday
-    assert weekly_notes.week_start_of(date(2026, 11, 9)) == date(2026, 11, 9)
-    assert weekly_notes.week_end_of(MONDAY) == date(2026, 11, 8)
+def set_week_start(day: str) -> None:
+    response = client.put(f"{BASE}/preferences", json={"week_start_day": day})
+    assert response.status_code == 200, response.text
 
 
-def test_current_week_is_decided_in_tokyo():
-    # Sunday 23:30 UTC is already Monday in Tokyo.
-    late_sunday_utc = datetime(2026, 11, 8, 23, 30, tzinfo=UTC)
-    assert weekly_notes.current_week_start(late_sunday_utc) == date(2026, 11, 9)
-    assert weekly_notes.current_week_start(
-        late_sunday_utc - timedelta(hours=15)
-    ) == date(2026, 11, 2)
+@pytest.mark.parametrize(
+    ("day", "sunday_start", "monday_start"),
+    [
+        (date(2026, 11, 1), date(2026, 11, 1), date(2026, 10, 26)),  # Sunday
+        (date(2026, 11, 2), date(2026, 11, 1), date(2026, 11, 2)),  # Monday
+        (date(2026, 11, 7), date(2026, 11, 1), date(2026, 11, 2)),  # Saturday
+        (date(2027, 1, 1), date(2026, 12, 27), date(2026, 12, 28)),
+    ],
+)
+def test_week_start_of_follows_the_start_day(day, sunday_start, monday_start):
+    assert weekly_notes.week_start_of(day, "sunday") == sunday_start
+    assert weekly_notes.week_start_of(day, "monday") == monday_start
+    assert weekly_notes.week_end_of(sunday_start) == sunday_start + timedelta(days=6)
+
+
+def test_today_is_decided_in_tokyo():
+    # Saturday 15:30 UTC is already Sunday in Tokyo.
+    assert weekly_notes.today(datetime(2026, 11, 7, 15, 30, tzinfo=UTC)) == date(
+        2026, 11, 8
+    )
+    assert weekly_notes.today(datetime(2026, 11, 7, 14, 30, tzinfo=UTC)) == date(
+        2026, 11, 7
+    )
 
 
 @pytest.mark.parametrize(
@@ -92,13 +106,13 @@ def test_normalize_content_empties_notes_without_anything_to_show(
 
 
 def test_get_week_without_note_is_empty_and_creates_nothing(session: Session):
-    response = client.get(f"{BASE}/{MONDAY}")
+    response = client.get(f"{BASE}/{SUNDAY}")
 
     assert response.status_code == 200
     assert response.json() == {
         "id": None,
-        "week_start": "2026-11-02",
-        "week_end": "2026-11-08",
+        "week_start": "2026-11-01",
+        "week_end": "2026-11-07",
         "content": "",
         "content_type": "html",
         "created_at": None,
@@ -107,16 +121,92 @@ def test_get_week_without_note_is_empty_and_creates_nothing(session: Session):
     assert stored(session) == []
 
 
-@pytest.mark.parametrize("day", ["2026-11-03", "2026-11-08"])
-def test_week_must_be_addressed_by_its_monday(day):
-    assert client.get(f"{BASE}/{day}").status_code == 400
+@pytest.mark.parametrize("day", ["2026-11-01", "2026-11-04", "2026-11-07"])
+def test_any_day_reads_its_week(day):
+    body = client.get(f"{BASE}/{day}").json()
+
+    assert (body["week_start"], body["week_end"]) == ("2026-11-01", "2026-11-07")
+
+
+@pytest.mark.parametrize("day", ["2026-11-02", "2026-11-07"])
+def test_a_new_note_must_start_on_the_first_day_of_a_week(session: Session, day):
     response = client.put(f"{BASE}/{day}", json={"content": "<p>x</p>"})
+
+    assert response.status_code == 400
+    assert "日曜日" in response.json()["detail"]
+    assert stored(session) == []
+
+
+# --- week start preference --------------------------------------------------------
+
+
+def test_week_starts_on_sunday_by_default(session: Session):
+    assert client.get(f"{BASE}/preferences").json() == {"week_start_day": "sunday"}
+
+
+def test_monday_start_is_stored_per_user(session: Session):
+    set_week_start("monday")
+
+    assert client.get(f"{BASE}/preferences").json() == {"week_start_day": "monday"}
+    settings = session.exec(
+        select(UserSettings).where(UserSettings.user_id == USER_A)
+    ).one()
+    assert settings.week_start_day == "monday"
+    body = client.get(f"{BASE}/2026-11-04").json()
+    assert (body["week_start"], body["week_end"]) == ("2026-11-02", "2026-11-08")
+    assert (
+        client.put(f"{BASE}/2026-11-02", json={"content": "<p>x</p>"}).status_code
+        == 200
+    )
+    response = client.put(f"{BASE}/2026-11-08", json={"content": "<p>x</p>"})
     assert response.status_code == 400
     assert "月曜日" in response.json()["detail"]
 
+    # Another user keeps the default.
+    app.dependency_overrides[get_current_user_id] = lambda: str(USER_B)
+    assert client.get(f"{BASE}/preferences").json() == {"week_start_day": "sunday"}
+    assert client.get(f"{BASE}/2026-11-04").json()["week_start"] == "2026-11-01"
+
+
+@pytest.mark.parametrize("body", [{"week_start_day": "saturday"}, {}])
+def test_invalid_preference_is_422(body):
+    assert client.put(f"{BASE}/preferences", json=body).status_code == 422
+
+
+def test_notes_keep_their_days_after_the_setting_changes(session: Session):
+    old = seed_weekly_note(session, USER_A, SUNDAY, "<p>日曜始まりの週</p>")
+    set_week_start("monday")
+
+    # A day of the old note's week still opens it, with its own seven days.
+    for day in ("2026-11-01", "2026-11-04", "2026-11-07"):
+        body = client.get(f"{BASE}/{day}").json()
+        assert body["id"] == str(old.id), day
+        assert (body["week_start"], body["week_end"]) == ("2026-11-01", "2026-11-07")
+    # It can still be edited on its own first day.
+    assert (
+        client.put(f"{BASE}/2026-11-01", json={"content": "<p>追記</p>"}).status_code
+        == 200
+    )
+
+    # Weeks without a note follow the new setting.
+    body = client.get(f"{BASE}/2026-11-10").json()
+    assert (body["id"], body["week_start"]) == (None, "2026-11-09")
+    body = client.get(f"{BASE}/2026-10-27").json()
+    assert (body["id"], body["week_start"]) == (None, "2026-10-26")
+
+
+def test_a_note_under_the_current_setting_wins_over_an_older_one(session: Session):
+    sunday_note = seed_weekly_note(session, USER_A, SUNDAY, "<p>old</p>")
+    set_week_start("monday")
+    monday_note = seed_weekly_note(session, USER_A, date(2026, 11, 2), "<p>new</p>")
+
+    assert client.get(f"{BASE}/2026-11-04").json()["id"] == str(monday_note.id)
+    # The note that starts on the day asked for comes first.
+    assert client.get(f"{BASE}/2026-11-01").json()["id"] == str(sunday_note.id)
+
 
 def test_first_save_creates_the_note_and_get_reads_it(session: Session):
-    response = client.put(f"{BASE}/{MONDAY}", json={"content": "<p>今週の目標</p>"})
+    response = client.put(f"{BASE}/{SUNDAY}", json={"content": "<p>今週の目標</p>"})
 
     assert response.status_code == 200
     body = response.json()
@@ -124,17 +214,17 @@ def test_first_save_creates_the_note_and_get_reads_it(session: Session):
     assert body["content"] == "<p>今週の目標</p>"
     assert body["updated_at"].endswith("+00:00")
 
-    again = client.get(f"{BASE}/{MONDAY}").json()
+    again = client.get(f"{BASE}/{SUNDAY}").json()
     assert again["id"] == body["id"]
     assert again["content"] == "<p>今週の目標</p>"
-    assert [note.week_start for note in stored(session)] == [MONDAY]
+    assert [note.week_start for note in stored(session)] == [SUNDAY]
 
 
 def test_save_with_current_updated_at_replaces_content(session: Session):
-    first = client.put(f"{BASE}/{MONDAY}", json={"content": "<p>a</p>"}).json()
+    first = client.put(f"{BASE}/{SUNDAY}", json={"content": "<p>a</p>"}).json()
 
     response = client.put(
-        f"{BASE}/{MONDAY}",
+        f"{BASE}/{SUNDAY}",
         json={"content": "<p>b</p>", "expected_updated_at": first["updated_at"]},
     )
 
@@ -148,13 +238,13 @@ def test_stale_save_is_409_and_writes_nothing(session: Session):
     note = seed_weekly_note(
         session,
         USER_A,
-        MONDAY,
+        SUNDAY,
         "<p>agent</p>",
         updated_at=datetime(2026, 11, 3, 9, 0, tzinfo=UTC),
     )
 
     response = client.put(
-        f"{BASE}/{MONDAY}",
+        f"{BASE}/{SUNDAY}",
         json={
             "content": "<p>mine</p>",
             "expected_updated_at": "2026-11-03T08:00:00+00:00",
@@ -170,7 +260,7 @@ def test_stale_save_is_409_and_writes_nothing(session: Session):
 
 def test_save_expecting_a_note_that_is_missing_is_409(session: Session):
     response = client.put(
-        f"{BASE}/{MONDAY}",
+        f"{BASE}/{SUNDAY}",
         json={"content": "<p>x</p>", "expected_updated_at": "2026-11-03T08:00:00Z"},
     )
 
@@ -180,18 +270,18 @@ def test_save_expecting_a_note_that_is_missing_is_409(session: Session):
 
 
 def test_save_without_expected_updated_at_overwrites(session: Session):
-    seed_weekly_note(session, USER_A, MONDAY, "<p>old</p>")
+    seed_weekly_note(session, USER_A, SUNDAY, "<p>old</p>")
 
-    response = client.put(f"{BASE}/{MONDAY}", json={"content": "<p>new</p>"})
+    response = client.put(f"{BASE}/{SUNDAY}", json={"content": "<p>new</p>"})
 
     assert response.status_code == 200
     assert stored(session)[0].content == "<p>new</p>"
 
 
 def test_empty_editor_document_is_stored_as_empty(session: Session):
-    client.put(f"{BASE}/{MONDAY}", json={"content": "<p>x</p>"})
+    client.put(f"{BASE}/{SUNDAY}", json={"content": "<p>x</p>"})
 
-    response = client.put(f"{BASE}/{MONDAY}", json={"content": "<p></p>"})
+    response = client.put(f"{BASE}/{SUNDAY}", json={"content": "<p></p>"})
 
     assert response.status_code == 200
     assert response.json()["content"] == ""
@@ -202,21 +292,21 @@ def test_empty_editor_document_is_stored_as_empty(session: Session):
     "body",
     [
         {"content": "<p>x</p>", "content_type": "tiptap_json"},
-        {"content": "<p>x</p>", "week_start": "2026-11-02"},
+        {"content": "<p>x</p>", "week_start": "2026-11-01"},
         {"content": "x" * 1_000_001},
     ],
 )
 def test_invalid_bodies_are_422(body):
-    assert client.put(f"{BASE}/{MONDAY}", json=body).status_code == 422
+    assert client.put(f"{BASE}/{SUNDAY}", json=body).status_code == 422
 
 
 def test_other_users_notes_are_invisible(session: Session):
-    seed_weekly_note(session, USER_B, MONDAY, "<p>secret</p>")
+    seed_weekly_note(session, USER_B, SUNDAY, "<p>secret</p>")
 
-    assert client.get(f"{BASE}/{MONDAY}").json()["content"] == ""
+    assert client.get(f"{BASE}/{SUNDAY}").json()["content"] == ""
     assert client.get(BASE).json()["items"] == []
 
-    client.put(f"{BASE}/{MONDAY}", json={"content": "<p>mine</p>"})
+    client.put(f"{BASE}/{SUNDAY}", json={"content": "<p>mine</p>"})
     assert stored(session, USER_B)[0].content == "<p>secret</p>"
 
 
@@ -225,30 +315,30 @@ def test_list_is_newest_week_first_with_text_previews_and_pages(session: Session
         seed_weekly_note(
             session,
             USER_A,
-            MONDAY - timedelta(weeks=weeks_ago),
+            SUNDAY - timedelta(weeks=weeks_ago),
             f"<h2>Week {weeks_ago}</h2><p>振り返り<strong>メモ</strong></p>",
         )
-    seed_weekly_note(session, USER_A, MONDAY - timedelta(weeks=3), "")
+    seed_weekly_note(session, USER_A, SUNDAY - timedelta(weeks=3), "")
 
     first = client.get(BASE, params={"limit": 2}).json()
 
     assert [item["week_start"] for item in first["items"]] == [
-        "2026-11-02",
-        "2026-10-26",
+        "2026-11-01",
+        "2026-10-25",
     ]
-    assert first["items"][0]["week_end"] == "2026-11-08"
+    assert first["items"][0]["week_end"] == "2026-11-07"
     assert first["items"][0]["preview"] == "Week 0 振り返り メモ"
-    assert first["next_cursor"] == "2026-10-26"
+    assert first["next_cursor"] == "2026-10-25"
 
     second = client.get(
         BASE, params={"limit": 2, "before": first["next_cursor"]}
     ).json()
-    assert [item["week_start"] for item in second["items"]] == ["2026-10-19"]
+    assert [item["week_start"] for item in second["items"]] == ["2026-10-18"]
     assert second["next_cursor"] is None
 
 
 def test_long_preview_is_cut(session: Session):
-    seed_weekly_note(session, USER_A, MONDAY, f"<p>{'あ' * 300}</p>")
+    seed_weekly_note(session, USER_A, SUNDAY, f"<p>{'あ' * 300}</p>")
 
     preview = client.get(BASE).json()["items"][0]["preview"]
 
@@ -272,18 +362,18 @@ def test_agent_list_returns_own_notes_with_week_range(session: Session):
     old = seed_weekly_note(
         session,
         USER_A,
-        MONDAY - timedelta(weeks=2),
+        SUNDAY - timedelta(weeks=2),
         "<p>old</p>",
         updated_at=datetime(2026, 10, 20, tzinfo=UTC),
     )
     current = seed_weekly_note(
         session,
         USER_A,
-        MONDAY,
+        SUNDAY,
         "",
         updated_at=datetime(2026, 11, 3, tzinfo=UTC),
     )
-    seed_weekly_note(session, USER_B, MONDAY, "<p>other</p>")
+    seed_weekly_note(session, USER_B, SUNDAY, "<p>other</p>")
 
     everything = client.get("/api/agent/v1/weekly-notes", headers=bearer(secret))
 
@@ -293,8 +383,8 @@ def test_agent_list_returns_own_notes_with_week_range(session: Session):
     assert [item["id"] for item in items] == [str(old.id), str(current.id)]
     assert items[1] == {
         "id": str(current.id),
-        "week_start": "2026-11-02",
-        "week_end": "2026-11-08",
+        "week_start": "2026-11-01",
+        "week_end": "2026-11-07",
         "content": "",
         "content_type": "html",
         "created_at": "2026-11-03T00:00:00+00:00",

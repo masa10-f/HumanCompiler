@@ -109,6 +109,7 @@ import type {
   WeeklyNote,
   WeeklyNoteListQuery,
   WeeklyNoteListResponse,
+  WeeklyNotePreferences,
 } from "@/types/weekly-note";
 import type { TaskStatus } from "@/types/task";
 import type {
@@ -879,8 +880,22 @@ class ApiClient {
     return this.request<WeeklyNoteListResponse>(`/api/weekly-notes?${params}`);
   }
 
-  async getWeeklyNote(weekStart: string): Promise<WeeklyNote> {
-    return this.request<WeeklyNote>(`/api/weekly-notes/${weekStart}`);
+  async getWeeklyNotePreferences(): Promise<WeeklyNotePreferences> {
+    return this.request<WeeklyNotePreferences>("/api/weekly-notes/preferences");
+  }
+
+  async updateWeeklyNotePreferences(
+    preferences: WeeklyNotePreferences,
+  ): Promise<WeeklyNotePreferences> {
+    return this.request<WeeklyNotePreferences>("/api/weekly-notes/preferences", {
+      method: "PUT",
+      body: JSON.stringify(preferences),
+    });
+  }
+
+  /** The note of the week that contains `day` (any day of the week). */
+  async getWeeklyNote(day: string): Promise<WeeklyNote> {
+    return this.request<WeeklyNote>(`/api/weekly-notes/${day}`);
   }
 
   async updateWeeklyNote(
@@ -1878,11 +1893,15 @@ export const weeklyRhythmApi = {
 };
 
 /**
- * Weekly notes: one free-form note per week, addressed by its Monday.
+ * Weekly notes: one free-form note per week. Read by any day of the week;
+ * saved to the week's first day.
  */
 export const weeklyNotesApi = {
   list: (query?: WeeklyNoteListQuery) => apiClient.listWeeklyNotes(query),
-  get: (weekStart: string) => apiClient.getWeeklyNote(weekStart),
+  get: (day: string) => apiClient.getWeeklyNote(day),
+  getPreferences: () => apiClient.getWeeklyNotePreferences(),
+  updatePreferences: (preferences: WeeklyNotePreferences) =>
+    apiClient.updateWeeklyNotePreferences(preferences),
   update: (weekStart: string, data: ContextNoteUpdate) =>
     apiClient.updateWeeklyNote(weekStart, data),
 };

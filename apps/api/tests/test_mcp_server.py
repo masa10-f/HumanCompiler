@@ -1507,17 +1507,17 @@ async def test_get_weekly_note_returns_markdown_for_the_week_of_a_date(
     note = seed_weekly_note(
         session,
         USER_A,
-        date(2026, 11, 2),
+        date(2026, 11, 1),
         "<h2>目標</h2><ul><li><p>論文の章を書く</p></li></ul>",
     )
-    seed_weekly_note(session, USER_B, date(2026, 10, 26), "<p>secret</p>")
+    seed_weekly_note(session, USER_B, date(2026, 10, 25), "<p>secret</p>")
     secret = issue_token(session, USER_A, [AgentScope.WEEKLY_NOTES_READ])
 
     is_error, body = await call(mcp, "get_weekly_note", {"date": "2026-11-05"}, secret)
 
     assert not is_error
-    assert body["week_start"] == "2026-11-02"
-    assert body["week_end"] == "2026-11-08"
+    assert body["week_start"] == "2026-11-01"
+    assert body["week_end"] == "2026-11-07"
     assert body["note"]["id"] == str(note.id)
     assert body["note"]["content_markdown"] == "## 目標\n\n- 論文の章を書く"
     assert body["note"]["updated_at"].endswith("+00:00")
@@ -1525,24 +1525,24 @@ async def test_get_weekly_note_returns_markdown_for_the_week_of_a_date(
     # Another user's week and a week without a note look the same.
     is_error, body = await call(mcp, "get_weekly_note", {"date": "2026-10-28"}, secret)
     assert not is_error
-    assert body == {"week_start": "2026-10-26", "week_end": "2026-11-01", "note": None}
+    assert body == {"week_start": "2026-10-25", "week_end": "2026-10-31", "note": None}
 
 
 async def test_get_weekly_note_defaults_to_this_week(
     session: Session, mcp: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.setattr(weekly_notes, "current_week_start", lambda: date(2026, 11, 2))
-    seed_weekly_note(session, USER_A, date(2026, 11, 2), "<p>今週</p>")
-    seed_weekly_note(session, USER_A, date(2026, 11, 9), "")
+    monkeypatch.setattr(weekly_notes, "today", lambda: date(2026, 11, 4))
+    seed_weekly_note(session, USER_A, date(2026, 11, 1), "<p>今週</p>")
+    seed_weekly_note(session, USER_A, date(2026, 11, 8), "")
     secret = issue_token(session, USER_A, [AgentScope.WEEKLY_NOTES_READ])
 
     is_error, body = await call(mcp, "get_weekly_note", {}, secret)
     assert not is_error
-    assert body["week_start"] == "2026-11-02"
+    assert body["week_start"] == "2026-11-01"
     assert body["note"]["content_markdown"] == "今週"
 
     # An empty note reads as no note.
-    is_error, body = await call(mcp, "get_weekly_note", {"date": "2026-11-09"}, secret)
+    is_error, body = await call(mcp, "get_weekly_note", {"date": "2026-11-10"}, secret)
     assert not is_error
     assert body["note"] is None
 
@@ -1550,45 +1550,62 @@ async def test_get_weekly_note_defaults_to_this_week(
 async def test_list_weekly_notes_newest_first_in_range(
     session: Session, mcp: httpx.AsyncClient
 ):
-    monday = date(2026, 11, 2)
+    sunday = date(2026, 11, 1)
     for weeks_ago in range(4):
         seed_weekly_note(
-            session, USER_A, monday - timedelta(weeks=weeks_ago), f"<p>w{weeks_ago}</p>"
+            session, USER_A, sunday - timedelta(weeks=weeks_ago), f"<p>w{weeks_ago}</p>"
         )
-    seed_weekly_note(session, USER_A, monday - timedelta(weeks=4), "")
-    seed_weekly_note(session, USER_B, monday, "<p>secret</p>")
+    seed_weekly_note(session, USER_A, sunday - timedelta(weeks=4), "")
+    seed_weekly_note(session, USER_B, sunday, "<p>secret</p>")
     secret = issue_token(session, USER_A, [AgentScope.WEEKLY_NOTES_READ])
 
     is_error, body = await call(mcp, "list_weekly_notes", {"limit": 2}, secret)
 
     assert not is_error
     assert [item["week_start"] for item in body["items"]] == [
-        "2026-11-02",
-        "2026-10-26",
+        "2026-11-01",
+        "2026-10-25",
     ]
-    assert body["items"][0]["week_end"] == "2026-11-08"
+    assert body["items"][0]["week_end"] == "2026-11-07"
     assert body["items"][0]["content_markdown"] == "w0"
     assert body["has_more"] is True
 
     # date_to pages back to older weeks; date_from mid-week includes its week
-    # (10-14 is in the week of 10-12). The empty 10-05 note is never listed.
+    # (10-14 is in the week of 10-11). The empty 10-04 note is never listed.
     is_error, body = await call(
         mcp,
         "list_weekly_notes",
-        {"date_from": "2026-10-14", "date_to": "2026-10-25"},
+        {"date_from": "2026-10-14", "date_to": "2026-10-24"},
         secret,
     )
     assert not is_error
     assert [item["week_start"] for item in body["items"]] == [
-        "2026-10-19",
-        "2026-10-12",
+        "2026-10-18",
+        "2026-10-11",
     ]
     is_error, body = await call(
-        mcp, "list_weekly_notes", {"date_to": "2026-10-11"}, secret
+        mcp, "list_weekly_notes", {"date_to": "2026-10-10"}, secret
     )
     assert not is_error
     assert body == {"items": [], "has_more": False}
-    assert body["has_more"] is False
+
+
+async def test_get_weekly_note_follows_the_users_week_start(
+    session: Session, mcp: httpx.AsyncClient
+):
+    # Written while weeks started on Sunday; the user then chose Monday.
+    old = seed_weekly_note(session, USER_A, date(2026, 11, 1), "<p>日曜始まり</p>")
+    weekly_notes.set_week_start_day(session, USER_A, "monday")
+    secret = issue_token(session, USER_A, [AgentScope.WEEKLY_NOTES_READ])
+
+    is_error, body = await call(mcp, "get_weekly_note", {"date": "2026-11-04"}, secret)
+    assert not is_error
+    assert (body["week_start"], body["week_end"]) == ("2026-11-01", "2026-11-07")
+    assert body["note"]["id"] == str(old.id)
+
+    is_error, body = await call(mcp, "get_weekly_note", {"date": "2026-11-12"}, secret)
+    assert not is_error
+    assert body == {"week_start": "2026-11-09", "week_end": "2026-11-15", "note": None}
 
 
 async def test_weekly_note_tools_need_weekly_notes_read(

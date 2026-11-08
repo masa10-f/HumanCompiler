@@ -4,8 +4,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useId, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { dailyPlansApi, weeklyNotesApi } from "@/lib/api";
@@ -13,66 +13,124 @@ import { getJSTDateString } from "@/lib/date-utils";
 import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import {
+  WEEK_START_DAY_LABELS,
   addDays,
   formatShortDate,
   formatWeekRange,
-  isoWeek,
+  relativeWeekLabel,
   weekDates,
   weekEndOf,
-  weekStartOf,
   weekdayLabel,
+  type WeekStartDay,
 } from "@/lib/weekly-note";
 import { useWeeklyNote } from "@/hooks/use-weekly-note";
+import type { UseNoteDocumentReturn } from "@/hooks/use-note-document";
+import type { WeeklyNote } from "@/types/weekly-note";
 import { ContextNotePanel } from "./context-note-panel";
 import { NoteConflictAlert } from "./note-conflict-alert";
 
 const RECENT_LIMIT = 8;
 
 interface WeeklyNoteWorkspaceProps {
-  /** The Monday of the week shown. */
-  weekStart: string;
-  onWeekChange: (weekStart: string) => void;
+  /** Any day of the week shown; the server decides which week it belongs to. */
+  day: string;
+  onDayChange: (day: string) => void;
 }
 
 /** One week's note, the week's daily notes, and recent weekly notes. */
-export function WeeklyNoteWorkspace({
-  weekStart,
-  onWeekChange,
-}: WeeklyNoteWorkspaceProps) {
-  const thisWeek = weekStartOf(getJSTDateString());
-  const { year, week } = isoWeek(weekStart);
+export function WeeklyNoteWorkspace({ day, onDayChange }: WeeklyNoteWorkspaceProps) {
+  // Changing the week start re-reads the week, so it follows the new setting.
+  const [settingsVersion, setSettingsVersion] = useState(0);
+
+  return (
+    <div className="space-y-4">
+      <WeekStartSetting onChanged={() => setSettingsVersion((value) => value + 1)} />
+      {/* A key per week gives each week fresh editor state; a pending edit is
+          saved to its own week on unmount. */}
+      <WeekView key={`${day}:${settingsVersion}`} day={day} onDayChange={onDayChange} />
+    </div>
+  );
+}
+
+function WeekStartSetting({ onChanged }: { onChanged: () => void }) {
+  const id = useId();
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: queryKeys.weeklyNotes.preferences(),
+    queryFn: () => weeklyNotesApi.getPreferences(),
+  });
+  const mutation = useMutation({
+    mutationFn: (weekStartDay: WeekStartDay) =>
+      weeklyNotesApi.updatePreferences({ week_start_day: weekStartDay }),
+    onSuccess: (preferences) => {
+      queryClient.setQueryData(queryKeys.weeklyNotes.preferences(), preferences);
+      onChanged();
+    },
+  });
+
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-2 text-sm">
+      <label htmlFor={id} className="text-muted-foreground">
+        週の始まり
+      </label>
+      <select
+        id={id}
+        className="h-8 rounded-md border bg-background px-2"
+        value={data?.week_start_day ?? ""}
+        disabled={!data || mutation.isPending}
+        onChange={(event) => mutation.mutate(event.target.value as WeekStartDay)}
+      >
+        {!data ? <option value="">…</option> : null}
+        {(Object.keys(WEEK_START_DAY_LABELS) as WeekStartDay[]).map((value) => (
+          <option key={value} value={value}>
+            {WEEK_START_DAY_LABELS[value]}
+          </option>
+        ))}
+      </select>
+      <span className="w-full text-right text-xs text-muted-foreground">
+        {mutation.isError
+          ? "週の始まりを保存できませんでした"
+          : "変更は、まだノートのない週から反映されます（書いたノートの期間は変わりません）"}
+      </span>
+    </div>
+  );
+}
+
+function WeekView({ day, onDayChange }: WeeklyNoteWorkspaceProps) {
+  const today = getJSTDateString();
+  const editor = useWeeklyNote(day);
+  // The week the server resolved `day` to; unknown until the note loads.
+  const weekStart = editor.note?.week_start ?? null;
+  const isThisWeek = weekStart !== null && relativeWeekLabel(weekStart, today) === "今週";
+  const base = weekStart ?? day;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm text-muted-foreground">
-            {year}年 第{week}週{weekStart === thisWeek ? "（今週）" : ""}
-          </p>
-          <h2 className="text-xl font-semibold">{formatWeekRange(weekStart)}</h2>
+        <div className="min-h-12">
+          {weekStart ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                {relativeWeekLabel(weekStart, today)}
+              </p>
+              <h2 className="text-xl font-semibold">{formatWeekRange(weekStart)}</h2>
+            </>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onWeekChange(addDays(weekStart, -7))}
-          >
+          <Button variant="outline" size="sm" onClick={() => onDayChange(addDays(base, -7))}>
             <ChevronLeft className="mr-1 h-4 w-4" />
             前の週
           </Button>
           <Button
             variant="outline"
             size="sm"
-            disabled={weekStart === thisWeek}
-            onClick={() => onWeekChange(thisWeek)}
+            disabled={isThisWeek}
+            onClick={() => onDayChange(today)}
           >
             今週
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onWeekChange(addDays(weekStart, 7))}
-          >
+          <Button variant="outline" size="sm" onClick={() => onDayChange(addDays(base, 7))}>
             次の週
             <ChevronRight className="ml-1 h-4 w-4" />
           </Button>
@@ -81,22 +139,21 @@ export function WeeklyNoteWorkspace({
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <section aria-label="週次ノート">
-          {/* A key per week gives each week fresh editor state. */}
-          <WeeklyNoteEditor key={weekStart} weekStart={weekStart} />
+          <WeeklyNoteEditor editor={editor} />
         </section>
         <aside className="space-y-6">
-          <WeekDailyNotes weekStart={weekStart} />
-          <RecentWeeklyNotes weekStart={weekStart} onWeekChange={onWeekChange} />
+          {weekStart ? <WeekDailyNotes weekStart={weekStart} /> : null}
+          <RecentWeeklyNotes weekStart={weekStart} onDayChange={onDayChange} />
         </aside>
       </div>
     </div>
   );
 }
 
-function WeeklyNoteEditor({ weekStart }: { weekStart: string }) {
+function WeeklyNoteEditor({ editor }: { editor: UseNoteDocumentReturn<WeeklyNote> }) {
   const queryClient = useQueryClient();
   const { note, loading, error, saving, conflict, updateNote, reloadLatest, overwrite } =
-    useWeeklyNote(weekStart);
+    editor;
   // A new key remounts the panel after a reload, so it starts over in view mode
   // and the editor's undo history cannot bring back the dropped local text.
   const [panelKey, setPanelKey] = useState(0);
@@ -209,10 +266,10 @@ function WeekDailyNotes({ weekStart }: { weekStart: string }) {
 
 function RecentWeeklyNotes({
   weekStart,
-  onWeekChange,
+  onDayChange,
 }: {
-  weekStart: string;
-  onWeekChange: (weekStart: string) => void;
+  weekStart: string | null;
+  onDayChange: (day: string) => void;
 }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: queryKeys.weeklyNotes.list(RECENT_LIMIT),
@@ -234,7 +291,7 @@ function RecentWeeklyNotes({
             <li key={item.week_start}>
               <button
                 type="button"
-                onClick={() => onWeekChange(item.week_start)}
+                onClick={() => onDayChange(item.week_start)}
                 aria-current={item.week_start === weekStart ? "true" : undefined}
                 className={cn(
                   "w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted/50",

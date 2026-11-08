@@ -3,9 +3,10 @@
 
 """Weekly note endpoints for the web app.
 
-One note per week, addressed by the week's Monday (``YYYY-MM-DD``). Reading a
-week that has no note returns an empty note without creating a row; the first
-save creates it.
+One note per week. A week is seven days from its first day, which each user
+sets to Sunday or Monday (``/weekly-notes/preferences``). Reading any day
+returns the note of its week (``weekly_notes.resolve_week``), or an empty note
+without creating a row; saving to the week's first day creates it.
 
 Saves carry the ``updated_at`` the editor last read as ``expected_updated_at``,
 as context notes do. A note changed since gives 409
@@ -37,7 +38,6 @@ router = APIRouter(prefix="/weekly-notes", tags=["weekly-notes"])
 
 # The editor's HTML; generous, but bounded so one request cannot store megabytes.
 MAX_CONTENT_LENGTH = 1_000_000
-WEEK_START_DETAIL = "週の開始日（月曜日）を YYYY-MM-DD で指定してください"
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -80,16 +80,16 @@ class WeeklyNoteSummary(BaseModel):
         return _as_utc(value).isoformat()
 
 
+class WeeklyNotePreferences(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    week_start_day: weekly_notes.WeekStartDay
+
+
 class WeeklyNoteListResponse(BaseModel):
     items: list[WeeklyNoteSummary]
     # Pass as ``before`` to read the next (older) page.
     next_cursor: date | None = None
-
-
-def _week_start(value: date) -> date:
-    if value.weekday() != 0:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, WEEK_START_DETAIL)
-    return value
 
 
 def _response(week_start: date, note: WeeklyNote | None) -> WeeklyNoteResponse:
@@ -144,14 +144,37 @@ async def list_weekly_notes(
     )
 
 
-@router.get("/{week_start}", response_model=WeeklyNoteResponse)
+# Declared before ``/{day}`` so "preferences" is not read as a date.
+@router.get("/preferences", response_model=WeeklyNotePreferences)
+async def get_weekly_note_preferences(
+    user_id: UUID = Depends(get_current_user_id),
+    session: Session = Depends(get_session),
+) -> WeeklyNotePreferences:
+    return WeeklyNotePreferences(
+        week_start_day=weekly_notes.get_week_start_day(session, UUID(str(user_id)))
+    )
+
+
+@router.put("/preferences", response_model=WeeklyNotePreferences)
+async def update_weekly_note_preferences(
+    request: WeeklyNotePreferences,
+    user_id: UUID = Depends(get_current_user_id),
+    session: Session = Depends(get_session),
+) -> WeeklyNotePreferences:
+    """Change the first day of new weeks. Existing notes keep their days."""
+    weekly_notes.set_week_start_day(session, UUID(str(user_id)), request.week_start_day)
+    return request
+
+
+@router.get("/{day}", response_model=WeeklyNoteResponse)
 async def get_weekly_note(
-    week_start: date,
+    day: date,
     user_id: UUID = Depends(get_current_user_id),
     session: Session = Depends(get_session),
 ) -> WeeklyNoteResponse:
-    start = _week_start(week_start)
-    return _response(start, weekly_notes.get_note(session, UUID(str(user_id)), start))
+    """The note of the week that contains ``day`` (any day of the week)."""
+    start, note = weekly_notes.resolve_week(session, UUID(str(user_id)), day)
+    return _response(start, note)
 
 
 @router.put(
@@ -165,7 +188,7 @@ async def update_weekly_note(
     user_id: UUID = Depends(get_current_user_id),
     session: Session = Depends(get_session),
 ) -> WeeklyNoteResponse:
-    start = _week_start(week_start)
+    start = week_start
     owner_id = UUID(str(user_id))
     content = weekly_notes.normalize_content(request.content, request.content_type)
     try:
@@ -176,6 +199,14 @@ async def update_weekly_note(
             # The editor read a saved note that is gone (its user was reset).
             if request.expected_updated_at is not None:
                 raise _conflict(None)
+            # A new note starts on the first day of a week under the setting.
+            start_day = weekly_notes.get_week_start_day(session, owner_id)
+            if weekly_notes.week_start_of(start, start_day) != start:
+                label = weekly_notes.WEEK_START_LABELS[start_day]
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"週の開始日（{label}）を YYYY-MM-DD で指定してください",
+                )
             note = WeeklyNote(user_id=owner_id, week_start=start)
         elif request.expected_updated_at is not None:
             check_expected_updated_at(note.updated_at, request.expected_updated_at)

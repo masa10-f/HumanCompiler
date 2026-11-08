@@ -361,10 +361,11 @@ def _weekly_note_payload(note: WeeklyNote) -> dict[str, Any]:
     name="get_weekly_note",
     description=(
         "Get the user's weekly note for the week that contains date, as "
-        "Markdown. A week runs Monday to Sunday (ISO 8601); omit date for this "
-        "week in Asia/Tokyo. Returns week_start (the Monday), week_end and note "
-        "{id, updated_at, content_markdown}; note is null when the week has no "
-        f"note or it is empty. {_USER_DATA}"
+        "Markdown; omit date for this week in Asia/Tokyo. A week is seven days "
+        "from week_start; the user chooses whether weeks start on Sunday or "
+        "Monday, and a note keeps the days it was written for. Returns "
+        "week_start, week_end and note {id, updated_at, content_markdown}; note "
+        f"is null when the week has no note or it is empty. {_USER_DATA}"
     ),
     annotations=_READ_ONLY,
 )
@@ -375,14 +376,10 @@ async def get_weekly_note(
         Field(description="Any day of the week (YYYY-MM-DD). Omit for this week."),
     ] = None,
 ) -> CallToolResult:
-    week_start = (
-        weekly_notes.week_start_of(date)
-        if date is not None
-        else weekly_notes.current_week_start()
-    )
+    day = date if date is not None else weekly_notes.today()
 
     def run(session: Session, principal: AgentPrincipal) -> dict[str, Any]:
-        note = weekly_notes.get_note(session, principal.user_id, week_start)
+        week_start, note = weekly_notes.resolve_week(session, principal.user_id, day)
         return {
             **weekly_notes.week_payload(week_start),
             "note": _weekly_note_payload(note) if note and note.content else None,
@@ -418,9 +415,7 @@ async def list_weekly_notes(
         rows, has_more = weekly_notes.list_notes(
             session,
             principal.user_id,
-            date_from=(
-                weekly_notes.week_start_of(date_from) if date_from is not None else None
-            ),
+            date_from=date_from,
             date_to=date_to,
             limit=limit,
         )

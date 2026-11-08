@@ -20,7 +20,7 @@ pytestmark = pytest.mark.skipif(
 MIGRATION = "043_add_weekly_notes.sql"
 ROLLBACK = "043_add_weekly_notes_rollback.sql"
 USER_ID = str(uuid4())
-MONDAY = "2026-11-02"
+SUNDAY = "2026-11-01"
 
 
 @pytest.fixture
@@ -33,6 +33,10 @@ def db() -> Iterator[tuple]:
             create_supabase_objects(cursor)
             cursor.execute(f'CREATE SCHEMA "{schema}"')
             cursor.execute(f'CREATE TABLE "{schema}".users (id UUID PRIMARY KEY)')
+            cursor.execute(
+                f'CREATE TABLE "{schema}".user_settings (id UUID PRIMARY KEY, '
+                f'user_id UUID UNIQUE REFERENCES "{schema}".users(id))'
+            )
             cursor.execute(f'INSERT INTO "{schema}".users (id) VALUES (%s)', (USER_ID,))
             run_migration(cursor, schema, MIGRATION)
             yield cursor, schema
@@ -45,7 +49,7 @@ def insert_note(cursor, schema: str, **overrides) -> str:
     values = {
         "id": str(uuid4()),
         "user_id": USER_ID,
-        "week_start": MONDAY,
+        "week_start": SUNDAY,
         "content": "<p>Week</p>",
     }
     values.update(overrides)
@@ -73,7 +77,7 @@ def test_defaults(db):
     cursor.execute(
         f'INSERT INTO "{schema}".weekly_notes (user_id, week_start) '
         "VALUES (%s, %s) RETURNING id",
-        (USER_ID, MONDAY),
+        (USER_ID, SUNDAY),
     )
     (note_id,) = cursor.fetchone()
 
@@ -88,8 +92,6 @@ def test_defaults(db):
 @pytest.mark.parametrize(
     ("overrides", "error"),
     [
-        ({"week_start": "2026-11-03"}, errors.CheckViolation),
-        ({"week_start": "2026-11-08"}, errors.CheckViolation),
         ({"content_type": "tiptap_json"}, errors.CheckViolation),
         ({"content": None}, errors.NotNullViolation),
     ],
@@ -113,7 +115,7 @@ def test_one_note_per_user_and_week(db):
         insert_note(cursor, schema)
 
     cursor.execute("ROLLBACK TO SAVEPOINT before_insert")
-    insert_note(cursor, schema, week_start="2026-11-09")
+    insert_note(cursor, schema, week_start="2026-11-08")
 
 
 def test_deleting_a_user_deletes_their_notes(db):
@@ -144,3 +146,44 @@ def test_rollback_drops_the_table(db):
 
     cursor.execute("SELECT to_regclass(%s)", (f'"{schema}".weekly_notes',))
     assert cursor.fetchone() == (None,)
+
+
+def test_week_start_day_defaults_to_sunday_and_is_checked(db):
+    cursor, schema = db
+    cursor.execute(
+        f'INSERT INTO "{schema}".user_settings (id, user_id) VALUES (%s, %s) '
+        "RETURNING week_start_day",
+        (str(uuid4()), USER_ID),
+    )
+    assert cursor.fetchone() == ("sunday",)
+    cursor.execute(
+        f'UPDATE "{schema}".user_settings SET week_start_day = %s', ("monday",)
+    )
+    cursor.execute("SAVEPOINT before_update")
+
+    with pytest.raises(errors.CheckViolation):
+        cursor.execute(
+            f'UPDATE "{schema}".user_settings SET week_start_day = %s', ("friday",)
+        )
+
+    cursor.execute("ROLLBACK TO SAVEPOINT before_update")
+
+
+def test_notes_may_start_on_any_weekday(db):
+    cursor, schema = db
+
+    insert_note(cursor, schema, week_start="2026-11-02")
+
+
+def test_rollback_drops_the_week_start_column(db):
+    cursor, schema = db
+
+    run_migration(cursor, schema, ROLLBACK)
+
+    cursor.execute(
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_schema = %s AND table_name = 'user_settings' "
+        "AND column_name = 'week_start_day'",
+        (schema,),
+    )
+    assert cursor.fetchone() == (0,)

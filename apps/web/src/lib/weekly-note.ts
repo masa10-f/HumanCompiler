@@ -4,13 +4,15 @@
 /**
  * Week arithmetic on `YYYY-MM-DD` strings for weekly notes.
  *
- * A week runs Monday to Sunday (ISO 8601), as the API's weekly notes and the
- * weekly rhythm's weekday 0 = Monday. All math is done on UTC calendar dates,
- * so the browser's time zone never shifts a day.
+ * A week is seven days from its first day. Each user chooses Sunday or Monday
+ * as the first day of new weeks; a saved note keeps the days it was written
+ * for, so a note's range always comes from its own `week_start`. All math is
+ * done on UTC calendar dates, so the browser's time zone never shifts a day.
  */
 
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-const WEEKDAY_LABELS = ['月', '火', '水', '木', '金', '土', '日'] as const;
+// Indexed by Date.getUTCDay(): 0 = Sunday.
+const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'] as const;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function parse(value: string): Date | null {
@@ -46,57 +48,67 @@ export function isValidDateString(value: string): boolean {
   return parse(value) !== null;
 }
 
-/** 0 = Monday ... 6 = Sunday, as the API's `date.weekday()`. */
-export function weekdayIndex(value: string): number {
-  return (parseOrThrow(value).getUTCDay() + 6) % 7;
-}
+export type WeekStartDay = 'sunday' | 'monday';
+
+export const WEEK_START_DAY_LABELS: Record<WeekStartDay, string> = {
+  sunday: '日曜日',
+  monday: '月曜日',
+};
 
 export function addDays(value: string, days: number): string {
   return format(new Date(parseOrThrow(value).getTime() + days * DAY_MS));
 }
 
-/** The Monday of the week that contains `value`. */
-export function weekStartOf(value: string): string {
-  return addDays(value, -weekdayIndex(value));
+function daysBetween(from: string, to: string): number {
+  return Math.round((parseOrThrow(to).getTime() - parseOrThrow(from).getTime()) / DAY_MS);
 }
 
-/** The Sunday of the week that starts on `weekStart`. */
+/** The first day of the week that contains `value`. */
+export function weekStartOf(value: string, startDay: WeekStartDay): string {
+  const day = parseOrThrow(value).getUTCDay();
+  const offset = startDay === 'monday' ? (day + 6) % 7 : day;
+  return addDays(value, -offset);
+}
+
+/** The last day of the week that starts on `weekStart`. */
 export function weekEndOf(weekStart: string): string {
   return addDays(weekStart, 6);
 }
 
-/** The seven dates of the week, Monday first. */
+/** The seven dates of the week, from its first day. */
 export function weekDates(weekStart: string): string[] {
   return Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
 }
 
 export function weekdayLabel(value: string): string {
-  return WEEKDAY_LABELS[weekdayIndex(value)] ?? '';
+  return WEEKDAY_LABELS[parseOrThrow(value).getUTCDay()] ?? '';
 }
 
-/** ISO 8601 week number and its year (the year of the week's Thursday). */
-export function isoWeek(weekStart: string): { year: number; week: number } {
-  const thursday = parseOrThrow(addDays(weekStartOf(weekStart), 3));
-  const year = thursday.getUTCFullYear();
-  const firstDay = Date.UTC(year, 0, 1);
-  const week = Math.floor((thursday.getTime() - firstDay) / DAY_MS / 7) + 1;
-  return { year, week };
+function formatDay(date: Date, withYear: boolean, withMonth: boolean): string {
+  const year = withYear ? `${date.getUTCFullYear()}年` : '';
+  const month = withMonth ? `${date.getUTCMonth() + 1}月` : '';
+  const weekday = WEEKDAY_LABELS[date.getUTCDay()];
+  return `${year}${month}${date.getUTCDate()}日（${weekday}）`;
 }
 
-/** For example `2026年11月2日（月）〜8日（日）` or across months and years. */
+/** For example `2026年11月1日（日）〜7日（土）`, or across months and years. */
 export function formatWeekRange(weekStart: string): string {
   const start = parseOrThrow(weekStart);
   const end = parseOrThrow(weekEndOf(weekStart));
-  const startText = `${start.getUTCFullYear()}年${start.getUTCMonth() + 1}月${start.getUTCDate()}日（月）`;
-  let endText: string;
-  if (end.getUTCFullYear() !== start.getUTCFullYear()) {
-    endText = `${end.getUTCFullYear()}年${end.getUTCMonth() + 1}月${end.getUTCDate()}日（日）`;
-  } else if (end.getUTCMonth() !== start.getUTCMonth()) {
-    endText = `${end.getUTCMonth() + 1}月${end.getUTCDate()}日（日）`;
-  } else {
-    endText = `${end.getUTCDate()}日（日）`;
-  }
-  return `${startText}〜${endText}`;
+  const newYear = end.getUTCFullYear() !== start.getUTCFullYear();
+  const newMonth = newYear || end.getUTCMonth() !== start.getUTCMonth();
+  return `${formatDay(start, true, true)}〜${formatDay(end, newYear, newMonth)}`;
+}
+
+/** 今週, 先週, 来週, or N週前 / N週後 for the week starting on `weekStart`. */
+export function relativeWeekLabel(weekStart: string, today: string): string {
+  const fromToday = daysBetween(today, weekStart);
+  if (fromToday <= 0 && fromToday > -7) return '今週';
+  const weeks =
+    fromToday > 0 ? Math.ceil(fromToday / 7) : -Math.ceil(-(fromToday + 6) / 7);
+  if (weeks === 1) return '来週';
+  if (weeks === -1) return '先週';
+  return weeks > 0 ? `${weeks}週後` : `${-weeks}週前`;
 }
 
 /** `M/D` for a date in a list. */

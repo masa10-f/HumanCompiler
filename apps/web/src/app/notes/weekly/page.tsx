@@ -10,21 +10,21 @@ import { AppHeader } from "@/components/layout/app-header";
 import { NotesTabs } from "@/components/notes/notes-tabs";
 import { WeeklyNoteWorkspace } from "@/components/notes/weekly-note-workspace";
 import { getJSTDateString } from "@/lib/date-utils";
-import { isValidDateString, weekStartOf } from "@/lib/weekly-note";
+import { isValidDateString } from "@/lib/weekly-note";
 
-/** `?week=` may be any day of the week; it opens that week. */
-function initialWeekStart(): string {
+/** `?week=` may be any day of the week; it opens the week of that day. */
+function initialDay(): string {
   const week =
     typeof window === "undefined"
       ? null
       : new URLSearchParams(window.location.search).get("week");
-  return weekStartOf(week && isValidDateString(week) ? week : getJSTDateString());
+  return week && isValidDateString(week) ? week : getJSTDateString();
 }
 
 export default function WeeklyNotesPage() {
   const { loading, isAuthenticated } = useAuth();
   const router = useRouter();
-  const [weekStart, setWeekStart] = useState(initialWeekStart);
+  const [day, setDay] = useState(initialDay);
 
   useEffect(() => {
     if (!loading && !isAuthenticated) router.replace("/login");
@@ -32,9 +32,9 @@ export default function WeeklyNotesPage() {
 
   useEffect(() => {
     const url = new URL(window.location.href);
-    url.searchParams.set("week", weekStart);
+    url.searchParams.set("week", day);
     window.history.replaceState(window.history.state, "", url);
-  }, [weekStart]);
+  }, [day]);
 
   if (loading || !isAuthenticated)
     return (
@@ -52,10 +52,10 @@ export default function WeeklyNotesPage() {
       <main className="mx-auto max-w-5xl px-4 py-8">
         <h1 className="text-2xl font-bold">ノート一覧</h1>
         <p className="mb-4 mt-2 text-sm text-muted-foreground">
-          1週間（月曜〜日曜）ごとに、目標や振り返りを1つのノートにまとめられます。
+          1週間ごとに、目標や振り返りを1つのノートにまとめられます。週の始まり（日曜・月曜）は選べます。
         </p>
         <NotesTabs current="weekly" />
-        <WeeklyNoteWorkspace weekStart={weekStart} onWeekChange={setWeekStart} />
+        <WeeklyNoteWorkspace day={day} onDayChange={setDay} />
       </main>
     </div>
   );

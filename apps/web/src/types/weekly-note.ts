@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
 
+import type { WeekStartDay } from '@/lib/weekly-note';
+
 /**
- * A week's free-form note. A week runs Monday to Sunday (ISO 8601) and is
- * addressed by its Monday. `id` and the timestamps are null until the first
- * save.
+ * A week's free-form note: seven days from `week_start`. `id` and the
+ * timestamps are null until the first save.
  */
 export interface WeeklyNote {
   id: string | null;
@@ -24,7 +25,7 @@ export interface WeeklyNoteSummary {
 }
 
 export interface WeeklyNoteListQuery {
-  /** Only weeks that start before this Monday (the previous page's cursor). */
+  /** Only weeks that start before this date (the previous page's cursor). */
   before?: string;
   limit?: number;
 }
@@ -32,4 +33,9 @@ export interface WeeklyNoteListQuery {
 export interface WeeklyNoteListResponse {
   items: WeeklyNoteSummary[];
   next_cursor: string | null;
+}
+
+/** The first day of the user's new weeks. */
+export interface WeeklyNotePreferences {
+  week_start_day: WeekStartDay;
 }

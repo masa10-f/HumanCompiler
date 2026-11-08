@@ -6,7 +6,7 @@
 
 """Read-only agent API (``/api/agent/v1``), authenticated by agent token."""
 
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -114,7 +114,7 @@ class AgentDailyPlanResponse(DailyPlanResponse):
 
 
 class AgentWeeklyNoteResponse(BaseModel):
-    """A weekly note. ``week_start`` is the week's Monday; ``content`` is HTML."""
+    """A weekly note. The week is seven days from ``week_start``; ``content`` is HTML."""
 
     id: UUID
     week_start: date
@@ -586,8 +586,9 @@ async def list_daily_plans(
     "/weekly-notes",
     response_model=AgentPage[AgentWeeklyNoteResponse],
     description=(
-        "List the user's weekly notes ordered by (updated_at, id). A week starts "
-        "on Monday (ISO 8601) and week_start is that Monday. Empty notes are "
+        "List the user's weekly notes ordered by (updated_at, id). A note's week "
+        "is seven days from week_start (a Sunday or a Monday, as the user had "
+        "chosen when the note was created). Empty notes are "
         f"included, so a cleared note shows up in a diff. {INCREMENTAL_SYNC_GUIDE}"
     ),
 )
@@ -602,7 +603,7 @@ async def list_weekly_notes(
         Query(
             description=(
                 "Only the weeks that end on or after this date (YYYY-MM-DD): "
-                "the week containing it is included."
+                "a week containing it is included."
             )
         ),
     ] = None,
@@ -614,7 +615,7 @@ async def list_weekly_notes(
     statement = select(WeeklyNote).where(WeeklyNote.user_id == principal.user_id)
     if date_from is not None:
         statement = statement.where(
-            WeeklyNote.week_start >= weekly_notes.week_start_of(date_from)
+            WeeklyNote.week_start >= date_from - timedelta(days=6)
         )
     if date_to is not None:
         statement = statement.where(WeeklyNote.week_start <= date_to)
