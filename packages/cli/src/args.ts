@@ -33,14 +33,15 @@ export function numberOption(
 }
 
 /**
- * `parseArgs` handles `--no-...` options (allowNegative) from Node 22.4.0,
- * backported to 20.16.0. Node 21.x and 22.0-22.3 do not have it.
+ * `parseArgs` handles `--no-...` options (allowNegative) from Node 22.4.0.
+ * Node 20 also got it in 20.16.0, but Node 20 reached end of life in April
+ * 2026 and gets no security fixes, so it is not supported.
  */
-export const SUPPORTED_NODE = '20.16+ or 22.4+'
+export const SUPPORTED_NODE = '22.4 or later'
 
 export function nodeVersionOk(version = process.versions.node): boolean {
   const [major = 0, minor = 0] = version.split('.').map(Number)
-  return (major === 20 && minor >= 16) || (major === 22 && minor >= 4) || major >= 23
+  return (major === 22 && minor >= 4) || major >= 23
 }
 
 export function checkNodeVersion(version = process.versions.node): void {

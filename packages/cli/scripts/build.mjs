@@ -25,7 +25,7 @@ await build({
   outfile: path.join(root, 'dist/cli.js'),
   bundle: true,
   platform: 'node',
-  target: 'node20',
+  target: 'node22',
   format: 'cjs',
   // Applies this tsconfig (paths, jsx) to the web app's files too.
   tsconfig: path.join(root, 'tsconfig.json'),

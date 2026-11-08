@@ -178,7 +178,6 @@ export interface AgentMe {
   user_id: string
 }
 
-
 export type ContextKind = 'project' | 'goal'
 
 export interface ContextExportQuery {

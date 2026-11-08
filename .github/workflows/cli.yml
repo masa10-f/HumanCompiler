@@ -12,6 +12,7 @@ on:
       - 'apps/web/src/types/timeline.ts'
       - 'pnpm-lock.yaml'
       - '.github/workflows/cli.yml'
+      - '.github/workflows/cli-publish.yml'
   pull_request:
     branches: [main]
     paths:
@@ -23,6 +24,7 @@ on:
       - 'apps/web/src/types/timeline.ts'
       - 'pnpm-lock.yaml'
       - '.github/workflows/cli.yml'
+      - '.github/workflows/cli-publish.yml'
 
 permissions:
   contents: read

@@ -70,17 +70,33 @@ function info(report: Report, text: string): void {
   report.out.push(`[info] ${text}`)
 }
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 /** Whether `setup` has been run here, for information only. */
 function setupStatus(report: Report): void {
   const mcpJson = path.resolve('.mcp.json')
+  let text: string | undefined
   try {
-    const config = JSON.parse(readFileSync(mcpJson, 'utf8')) as {
-      mcpServers?: Record<string, unknown>
-    }
-    if (config.mcpServers?.[SERVER_NAME]) info(report, `Claude Code: ${mcpJson} has the ${SERVER_NAME} server`)
-    else info(report, `Claude Code: ${mcpJson} has no ${SERVER_NAME} server (humancompiler setup claude-code)`)
+    text = readFileSync(mcpJson, 'utf8')
   } catch {
     info(report, 'Claude Code: no .mcp.json here (humancompiler setup claude-code)')
+  }
+  if (text !== undefined) {
+    let config: unknown
+    try {
+      config = JSON.parse(text)
+    } catch {
+      config = undefined
+    }
+    if (!isObject(config)) {
+      info(report, `Claude Code: ${mcpJson} is not a JSON object; fix it, then run humancompiler setup claude-code`)
+    } else if (isObject(config.mcpServers) && SERVER_NAME in config.mcpServers) {
+      info(report, `Claude Code: ${mcpJson} has the ${SERVER_NAME} server`)
+    } else {
+      info(report, `Claude Code: ${mcpJson} has no ${SERVER_NAME} server (humancompiler setup claude-code)`)
+    }
   }
   const codex = codexConfigPath()
   try {
