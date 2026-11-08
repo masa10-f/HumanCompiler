@@ -33,9 +33,9 @@ EXPECTED_UPDATED_AT_DESCRIPTION = (
 )
 
 NOTE_REPLACE_LOSES = (
-    "A replace keeps headings, lists, checklists (- [ ] / - [x]), bold, italic, "
-    "code and links, but loses what Markdown cannot carry here: tables, text "
-    "colour and highlight, images and attachments."
+    "A replace keeps headings, lists, checklists (- [ ] / - [x]), pipe tables, "
+    "bold, italic, code and links, but loses what Markdown cannot carry here: "
+    "text colour and highlight, images and attachments."
 )
 
 

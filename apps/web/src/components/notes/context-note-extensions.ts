@@ -6,6 +6,7 @@ import Link from '@tiptap/extension-link';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import { TableKit } from '@tiptap/extension-table';
 import { common, createLowlight } from 'lowlight';
 
 const lowlight = createLowlight(common);
@@ -38,6 +39,15 @@ export function createContextNoteExtensions(placeholder?: string) {
     }),
     CodeBlockLowlight.configure({
       lowlight,
+    }),
+    // Agents write GitHub-style pipe tables, which the API renders as <table>.
+    // Without a table node the editor would drop the markup and keep the text.
+    TableKit.configure({
+      table: {
+        resizable: false,
+        // Wraps the table in div.tableWrapper so a wide table scrolls sideways.
+        renderWrapper: true,
+      },
     }),
   ];
 }

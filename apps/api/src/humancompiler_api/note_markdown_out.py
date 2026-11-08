@@ -9,7 +9,8 @@ Convert note HTML (what the TipTap editor saves) into Markdown for agents.
 
 This is the reverse of ``note_markdown.markdown_to_note_html``. TipTap task lists
 become ``- [ ]`` / ``- [x]`` items, which ``markdown_to_note_html`` turns back
-into the same checklist. Both markups are accepted:
+into the same checklist, and tables become GitHub-style pipe tables. Both
+checklist markups are accepted:
 
 * the minimal markup the Markdown converter writes:
   ``<li data-type="taskItem" data-checked="true"><p>..</p></li>``
@@ -53,6 +54,11 @@ def _is_checked(item: Tag) -> bool:
     return isinstance(checkbox, Tag) and checkbox.has_attr("checked")
 
 
+def _escape_cell(text: str) -> str:
+    """Escape pipes so a cell's text does not split it into more cells."""
+    return text.replace("|", "\\|")
+
+
 class _NoteMarkdownConverter(MarkdownConverter):
     def convert_li(self, el: Tag, text: str, parent_tags: set[str]) -> str:
         # markdownify's stubs omit the convert_* hooks.
@@ -74,6 +80,14 @@ class _NoteMarkdownConverter(MarkdownConverter):
                 return text.strip(" \t\r\n") + "\n"
         converted: str = super().convert_p(el, text, parent_tags)  # type: ignore[misc]
         return converted
+
+    def convert_td(self, el: Tag, text: str, parent_tags: set[str]) -> str:
+        cell: str = super().convert_td(el, _escape_cell(text), parent_tags)  # type: ignore[misc]
+        return cell
+
+    def convert_th(self, el: Tag, text: str, parent_tags: set[str]) -> str:
+        cell: str = super().convert_th(el, _escape_cell(text), parent_tags)  # type: ignore[misc]
+        return cell
 
     def convert_pre(self, el: Tag, text: str, parent_tags: set[str]) -> str:
         if not text:

@@ -54,6 +54,7 @@
     "@tiptap/extension-code-block-lowlight": "^3.32.0",
     "@tiptap/extension-link": "^3.32.0",
     "@tiptap/extension-placeholder": "^3.32.0",
+    "@tiptap/extension-table": "^3.32.0",
     "@tiptap/extension-task-item": "^3.32.0",
     "@tiptap/extension-task-list": "^3.32.0",
     "@tiptap/pm": "^3.32.0",

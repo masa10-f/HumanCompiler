@@ -276,8 +276,27 @@
     @apply my-6 border-gray-200 dark:border-gray-700;
   }
 
+  /* The table extension wraps each table so a wide one scrolls sideways. */
+  .context-note-content .tableWrapper {
+    @apply my-4 max-w-full overflow-x-auto;
+  }
+
   .context-note-content table {
     @apply my-4 w-full border-collapse overflow-hidden rounded-md text-sm;
+  }
+
+  .context-note-content .tableWrapper > table {
+    @apply my-0;
+  }
+
+  .context-note-content th > p,
+  .context-note-content td > p {
+    @apply my-0;
+  }
+
+  /* Cells selected by dragging across them in the editor. */
+  .context-note-content .selectedCell {
+    @apply bg-blue-50 dark:bg-blue-950;
   }
 
   .context-note-content th,
