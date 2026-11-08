@@ -1,0 +1,142 @@
+# Publishes packages/cli to npm as `humancompiler` with npm trusted
+# publishing (OIDC): no npm token is stored in the repository.
+#
+# Runs when a push to main changes packages/cli/package.json, or by hand.
+# It publishes only when the version in package.json is not on npm yet, so
+# merging a PR that raises "version" is the release step.
+#
+# The trusted publisher on npmjs.com must name this file (cli-publish.yml).
+# The first version is published by hand, before the PR that adds this
+# package is merged; see packages/cli/README.md.
+
+name: 📦 Publish CLI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/cli/package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never cancel a publish half way; a second run waits and then sees the
+# version is already on npm.
+concurrency:
+  group: cli-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: 📦 Publish humancompiler to npm
+    # A manual run from another branch must not publish.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Lets npm exchange the GitHub OIDC token for a publish token.
+
+    steps:
+      - name: 📥 Checkout repository
+        # Pinned to commits: this job can get an npm publish credential, so a
+        # moved tag must not change what runs here.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 📦 Set up pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          version: 9.0.0
+
+      # Trusted publishing needs Node 22.14+ and npm 11.5.1+. No dependency
+      # cache: npm advises against caching in release builds.
+      - name: 🟢 Set up Node.js 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      # npm 11.0-11.5.0 cannot publish with OIDC, so compare the full version,
+      # not just the major.
+      - name: 🔧 Ensure npm 11.5.1 or later
+        run: |
+          current="$(npm --version)"
+          if node -e '
+            const [a, b, c] = process.argv[1].split(".").map(Number)
+            process.exit(a > 11 || (a === 11 && (b > 5 || (b === 5 && c >= 1))) ? 0 : 1)
+          ' "$current"; then
+            echo "npm $current supports trusted publishing"
+          else
+            echo "npm $current is too old for trusted publishing; installing npm 11"
+            npm install -g npm@^11.5.1
+            npm --version
+          fi
+
+      - name: 🔎 Check whether this version is on npm
+        id: check
+        working-directory: packages/cli
+        run: |
+          name="$(node -p 'require("./package.json").name')"
+          version="$(node -p 'require("./package.json").version')"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # stdout holds only the version; npm's warnings and errors go to
+          # stderr, which is read separately so a warning cannot hide a match.
+          err_file="$(mktemp)"
+          set +e
+          out="$(npm view "$name@$version" version 2>"$err_file")"
+          status=$?
+          set -e
+          err="$(cat "$err_file")"
+          if [ "$status" -eq 0 ] && [ "$out" = "$version" ]; then
+            published=true
+          elif [ "$status" -eq 0 ] || printf '%s' "$err" | grep -q 'E404'; then
+            # E404: neither the package nor this version is on npm. (Older npm
+            # exits 0 with no output for a missing version.)
+            published=false
+          else
+            echo "::error::npm view failed: $err"
+            exit 1
+          fi
+          echo "published=$published" >> "$GITHUB_OUTPUT"
+          if [ "$published" = true ]; then
+            echo "$name@$version is already on npm; nothing to publish." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "$name@$version is not on npm yet; publishing."
+          fi
+
+      # No lifecycle scripts in the job that can mint a publish token: the
+      # build needs none (esbuild and resvg ship prebuilt binaries).
+      - name: 📦 Install dependencies
+        if: steps.check.outputs.published == 'false'
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: 🔍 Type-check
+        if: steps.check.outputs.published == 'false'
+        run: pnpm --filter humancompiler type-check
+
+      - name: 🧪 Build and test
+        if: steps.check.outputs.published == 'false'
+        run: pnpm --filter humancompiler test
+
+      - name: 📋 Show the package contents
+        if: steps.check.outputs.published == 'false'
+        working-directory: packages/cli
+        run: npm pack --dry-run
+
+      # The steps above already type-checked, built and tested, so the
+      # prepublishOnly script (the same checks, for a manual publish) is
+      # skipped. Provenance is automatic with trusted publishing; the flag
+      # makes the intent explicit.
+      - name: 🚀 Publish
+        if: steps.check.outputs.published == 'false'
+        working-directory: packages/cli
+        run: npm publish --provenance --access public --ignore-scripts
+
+      - name: 📝 Summary
+        if: steps.check.outputs.published == 'false'
+        run: |
+          echo "Published [${{ steps.check.outputs.name }}@${{ steps.check.outputs.version }}](https://www.npmjs.com/package/${{ steps.check.outputs.name }}/v/${{ steps.check.outputs.version }}) with provenance." >> "$GITHUB_STEP_SUMMARY"

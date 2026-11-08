@@ -1,28 +1,28 @@
-name: 🗺️ Roadmap CLI
+name: 🧰 CLI
 
 on:
   push:
     branches: [main]
     paths:
-      - 'packages/roadmap/**'
+      - 'packages/cli/**'
       - 'apps/web/src/lib/timeline/**'
       - 'apps/web/src/components/timeline/timeline-export.tsx'
       - 'apps/web/src/components/timeline/timeline-chart-layers.tsx'
       - 'apps/web/src/components/timeline/timeline-palette.ts'
       - 'apps/web/src/types/timeline.ts'
       - 'pnpm-lock.yaml'
-      - '.github/workflows/roadmap-cli.yml'
+      - '.github/workflows/cli.yml'
   pull_request:
     branches: [main]
     paths:
-      - 'packages/roadmap/**'
+      - 'packages/cli/**'
       - 'apps/web/src/lib/timeline/**'
       - 'apps/web/src/components/timeline/timeline-export.tsx'
       - 'apps/web/src/components/timeline/timeline-chart-layers.tsx'
       - 'apps/web/src/components/timeline/timeline-palette.ts'
       - 'apps/web/src/types/timeline.ts'
       - 'pnpm-lock.yaml'
-      - '.github/workflows/roadmap-cli.yml'
+      - '.github/workflows/cli.yml'
 
 permissions:
   contents: read
@@ -55,7 +55,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: 🔍 Type-check
-        run: pnpm --filter humancompiler-roadmap type-check
+        run: pnpm --filter humancompiler type-check
 
       - name: 🧪 Build and test
-        run: pnpm --filter humancompiler-roadmap test
+        run: pnpm --filter humancompiler test

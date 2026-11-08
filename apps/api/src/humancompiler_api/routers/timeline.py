@@ -129,7 +129,7 @@ def build_project_timeline(
 
     The caller checks that the project belongs to the user. Also serves the
     agent API's ``GET /api/agent/v1/projects/{id}/timeline``, which the
-    roadmap CLI (``packages/roadmap``) draws from.
+    roadmap CLI (``packages/cli``) draws from.
     """
     # Set default date range if not provided
     if not start_date:

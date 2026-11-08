@@ -4,38 +4,19 @@
 // This file is part of HumanCompiler.
 // For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-// Runs the built CLI (dist/cli.js) as a user or agent would. `pnpm test`
-// builds it first.
+// Tests for `humancompiler roadmap`.
 
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:http'
-import { tmpdir } from 'node:os'
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { after, before, describe, test } from 'node:test'
-import { fileURLToPath } from 'node:url'
+import { CLI, FIXTURE, run as runCli, startMockApi, tempDir } from './helpers.mjs'
 
-const here = path.dirname(fileURLToPath(import.meta.url))
-const CLI = path.join(here, '..', 'dist', 'cli.js')
-const FIXTURE = path.join(here, 'fixtures', 'timeline.json')
 const NOW = '2026-11-06T12:00:00Z'
 const timeline = JSON.parse(readFileSync(FIXTURE, 'utf8'))
 
-function run(args, env = {}) {
-  return new Promise((resolve) => {
-    const child = spawn(process.execPath, [CLI, ...args], {
-      env: { ...process.env, HUMANCOMPILER_TOKEN: '', HUMANCOMPILER_API_URL: '', ...env },
-    })
-    let stdout = ''
-    let stderr = ''
-    child.stdout.on('data', (chunk) => (stdout += chunk))
-    child.stderr.on('data', (chunk) => (stderr += chunk))
-    child.on('close', (code) => resolve({ code, stdout, stderr }))
-  })
-}
-
-const tempDir = () => mkdtempSync(path.join(tmpdir(), 'roadmap-'))
+const run = (args, env) => runCli(['roadmap', ...args], env)
 
 function pngSize(file) {
   const png = readFileSync(file)
@@ -149,6 +130,15 @@ describe('drawing from a file', () => {
     assert.doesNotMatch(stdout, /画像:/)
   })
 
+  test('reports an image it cannot write without a stack trace', async () => {
+    const dir = tempDir()
+    writeFileSync(path.join(dir, 'file'), 'not a directory')
+    const { code, stderr } = await run(['--input', FIXTURE, '--now', NOW, '-o', path.join(dir, 'file', 'map.png')])
+    assert.equal(code, 1)
+    assert.match(stderr, /^humancompiler roadmap: Could not write .*map\.png: /)
+    assert.doesNotMatch(stderr, /unexpected error/)
+  })
+
   test('--hide-completed leaves finished goals out', async () => {
     const { stdout } = await run(['--input', FIXTURE, '--now', NOW, '--no-image', '--json', '--hide-completed'])
 
@@ -160,7 +150,8 @@ describe('drawing from a file', () => {
 
   for (const [args, message] of [
     [['--zoom', 'year'], /--zoom must be/],
-    [['--width', '10'], /--width must be a number from 640/],
+    [['--width', '10'], /--width must be a whole number from 640/],
+    [['--width', '1400.5'], /--width must be a whole number from 640 to 4000/],
     [['-o', 'roadmap.jpg'], /--output must end in .png or .svg/],
     [['--now', 'yesterday'], /--now must be an ISO date-time/],
     [['--bogus'], /Unknown option/],
@@ -174,62 +165,47 @@ describe('drawing from a file', () => {
   }
 })
 
-test('--version prints the package version, not the surrounding project\'s', async () => {
-  const { version } = JSON.parse(readFileSync(path.join(here, '..', 'package.json'), 'utf8'))
-  const { code, stdout } = await run(['--version'], { npm_package_version: '9.9.9' })
-  assert.equal(code, 0)
-  assert.equal(stdout.trim(), version)
-})
-
 test('stops on Node versions without negative options', async () => {
-  // Pretend to be Node 20.15 before the CLI starts.
+  // Pretend to be Node 20.15 before the CLI starts. With -e, argv[1] is the
+  // first argument, so a placeholder stands in for the script path.
   const child = await new Promise((resolve) => {
     const proc = spawn(
       process.execPath,
-      ['-e', `Object.defineProperty(process.versions, 'node', { value: '20.15.1' }); require(${JSON.stringify(CLI)})`, '--', '--input', FIXTURE, '--no-image'],
+      ['-e', `Object.defineProperty(process.versions, 'node', { value: '20.15.1' }); require(${JSON.stringify(CLI)})`, '--', 'cli.js', 'roadmap', '--input', FIXTURE, '--no-image'],
     )
     let stderr = ''
     proc.stderr.on('data', (chunk) => (stderr += chunk))
     proc.on('close', (code) => resolve({ code, stderr }))
   })
   assert.equal(child.code, 1)
-  assert.match(child.stderr, /Node\.js 20\.16 or later is required \(this is 20\.15\.1\)/)
+  assert.match(child.stderr, /Node\.js 20\.16\+ or 22\.4\+ is required \(this is 20\.15\.1\)/)
 })
 
 describe('fetching from the agent API', () => {
-  let server
+  let api
   let baseUrl
-  const requests = []
 
   before(async () => {
-    server = createServer((req, res) => {
-      requests.push({ url: req.url, authorization: req.headers.authorization })
-      const reply = (status, body) => {
-        res.writeHead(status, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify(body))
-      }
+    api = await startMockApi((req) => {
       if (req.url === '/api/agent/v1/projects/proxy-error/timeline') {
-        res.writeHead(502, 'Bad Gateway', { 'Content-Type': 'application/json' })
-        return res.end(JSON.stringify({ error: 'upstream down' }))
+        return { status: 502, statusText: 'Bad Gateway', body: { error: 'upstream down' } }
       }
       if (req.url === '/api/agent/v1/projects/html/timeline') {
-        res.writeHead(200, { 'Content-Type': 'text/html' })
-        return res.end('<html>login</html>')
+        return { status: 200, headers: { 'Content-Type': 'text/html' }, body: '<html>login</html>' }
       }
       if (req.headers.authorization !== 'Bearer good-token') {
-        return reply(401, { detail: 'Invalid agent token' })
+        return { status: 401, body: { detail: 'Invalid agent token' } }
       }
-      if (req.url === '/api/agent/v1/projects/project-1/timeline') return reply(200, timeline)
+      if (req.url === '/api/agent/v1/projects/project-1/timeline') return { status: 200, body: timeline }
       if (req.url === '/api/agent/v1/projects/no-scope/timeline') {
-        return reply(403, { detail: 'Missing required scope: logs:read' })
+        return { status: 403, body: { detail: 'Missing required scope: logs:read' } }
       }
-      return reply(404, { detail: 'Project not found' })
+      return { status: 404, body: { detail: 'Project not found' } }
     })
-    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
-    baseUrl = `http://127.0.0.1:${server.address().port}`
+    baseUrl = api.url
   })
 
-  after(() => server.close())
+  after(() => api.close())
 
   test('fetches the project with the token and draws it', async () => {
     const out = path.join(tempDir(), 'roadmap.png')
@@ -241,7 +217,7 @@ describe('fetching from the agent API', () => {
     assert.equal(code, 0, stderr)
     assert.match(stdout, /HumanCompiler v2 開発 ロードマップ/)
     assert.ok(existsSync(out))
-    assert.deepEqual(requests.at(-1), {
+    assert.deepEqual(api.requests.at(-1), {
       url: '/api/agent/v1/projects/project-1/timeline',
       authorization: 'Bearer good-token',
     })
@@ -271,13 +247,13 @@ describe('fetching from the agent API', () => {
   })
 
   test('refuses to send the token over plain http to another host', async () => {
-    const count = requests.length
+    const count = api.requests.length
     const { code, stderr } = await run(['project-1'], {
       HUMANCOMPILER_TOKEN: 'good-token',
       HUMANCOMPILER_API_URL: 'http://api.example.com',
     })
     assert.equal(code, 1)
     assert.match(stderr, /Refusing to send the agent token/)
-    assert.equal(requests.length, count)
+    assert.equal(api.requests.length, count)
   })
 })
