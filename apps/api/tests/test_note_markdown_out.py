@@ -151,3 +151,26 @@ def test_plain_list_item_with_two_paragraphs_keeps_them_apart() -> None:
     html = "<ul><li><p>one</p><p>more</p></li></ul>"
 
     assert note_html_to_markdown(html) == "- one\n\n  more"
+
+
+def test_table_round_trips() -> None:
+    markdown = "| タスク | 割当 |\n| --- | --- |\n| A \\| B | 6h |\n| `x` | 4h |"
+    html = markdown_to_note_html(markdown)
+
+    assert note_html_to_markdown(html) == markdown
+    assert markdown_to_note_html(note_html_to_markdown(html)) == html
+
+
+def test_editor_table_markup_becomes_pipe_table() -> None:
+    # The markup the TipTap table extension saves: a scroll wrapper, header
+    # cells in the first body row and every cell's text in a paragraph.
+    html = (
+        '<div class="tableWrapper"><table style="min-width: 50px;"><colgroup>'
+        '<col style="min-width: 25px;"><col style="min-width: 25px;"></colgroup>'
+        "<tbody><tr><th><p>タスク</p></th><th><p>割当</p></th></tr>"
+        "<tr><td><p>a | b</p></td><td><p>6h</p></td></tr></tbody></table></div>"
+    )
+
+    assert note_html_to_markdown(html) == (
+        "| タスク | 割当 |\n| --- | --- |\n| a \\| b | 6h |"
+    )

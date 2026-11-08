@@ -130,3 +130,20 @@ def test_task_item_escapes_raw_html():
     assert "<script" not in html
     assert "<img" not in html
     assert "&lt;script&gt;x&lt;/script&gt;" in html
+
+
+def test_pipe_table_becomes_table_markup():
+    html = markdown_to_note_html(
+        "| タスク | 割当 |\n|---|---|\n| AGSでPT信号を取得する | 6h |\n| 論文を読む | 1.2h |\n"
+    )
+    assert html == (
+        "<table>\n<thead>\n<tr>\n<th>タスク</th>\n<th>割当</th>\n</tr>\n</thead>\n"
+        "<tbody>\n<tr>\n<td>AGSでPT信号を取得する</td>\n<td>6h</td>\n</tr>\n"
+        "<tr>\n<td>論文を読む</td>\n<td>1.2h</td>\n</tr>\n</tbody>\n</table>\n"
+    )
+
+
+def test_table_cells_escape_raw_html():
+    html = markdown_to_note_html("| a |\n|---|\n| <script>x</script> |\n")
+    assert "<script" not in html
+    assert "<td>&lt;script&gt;x&lt;/script&gt;</td>" in html

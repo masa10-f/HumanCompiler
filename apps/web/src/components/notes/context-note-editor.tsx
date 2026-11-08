@@ -22,6 +22,12 @@ import {
   Redo,
   Minus,
   Loader2,
+  Table,
+  BetweenHorizontalEnd,
+  BetweenVerticalEnd,
+  Rows3,
+  Columns3,
+  Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -270,6 +276,64 @@ export function ContextNoteEditor({
           >
             <Minus className="h-4 w-4" />
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+            }
+            disabled={editor.isActive('table')}
+            title="Insert Table"
+          >
+            <Table className="h-4 w-4" />
+          </Button>
+
+          {/* Table editing, shown while the cursor is in a table */}
+          {editor.isActive('table') && (
+            <>
+              <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => editor.chain().focus().addRowAfter().run()}
+                title="Add Row Below"
+              >
+                <BetweenHorizontalEnd className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => editor.chain().focus().addColumnAfter().run()}
+                title="Add Column Right"
+              >
+                <BetweenVerticalEnd className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => editor.chain().focus().deleteRow().run()}
+                title="Delete Row"
+              >
+                <Rows3 className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => editor.chain().focus().deleteColumn().run()}
+                title="Delete Column"
+              >
+                <Columns3 className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => editor.chain().focus().deleteTable().run()}
+                title="Delete Table"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
+          )}
 
           <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
 

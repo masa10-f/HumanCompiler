@@ -16,6 +16,10 @@ checklist in the markup TipTap's TaskList and TaskItem parse:
 ``<ul data-type="taskList"><li data-type="taskItem" data-checked="true"><p>..``.
 If any item has no marker, the whole list stays a plain list with the markers
 as text, so a list is never half checklist. Ordered lists are never checklists.
+
+GitHub-style pipe tables become ``<table>`` markup, which TipTap's table
+extension loads. Without it a table would be one paragraph of pipes, because
+the editor folds the line breaks inside a paragraph into spaces.
 """
 
 import html
@@ -122,6 +126,7 @@ def _build_parser() -> MarkdownIt:
     # Link validation is left at its default: javascript:, vbscript:, file: and
     # non-image data: URLs are rejected.
     md = MarkdownIt("commonmark", {"html": False})
+    md.enable("table")
     md.disable("image")
     md.add_render_rule("heading_open", _clamp_heading)
     md.add_render_rule("heading_close", _clamp_heading)
