@@ -1,5 +1,5 @@
 import re
-from datetime import UTC, date as Date, datetime
+from datetime import UTC, date as Date, datetime, time as Time
 from decimal import Decimal
 from enum import Enum, StrEnum
 from typing import Any, ClassVar, Literal
@@ -2744,6 +2744,35 @@ class TriageCapacitySettings(SQLModel, table=True):  # type: ignore[call-arg]
     last_auto_triage_at: datetime | None = SQLField(default=None)
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+
+
+class WeeklyRhythmBlock(SQLModel, table=True):  # type: ignore[call-arg]
+    """One block of a user's weekday template for daily notes.
+
+    A template is the set of rows of one user; it is replaced as a whole. The
+    daily note inserts a weekday's rows as /schedule lines, fixed events and
+    breaks.
+    """
+
+    __tablename__ = "weekly_rhythm_blocks"
+
+    id: UUID = SQLField(default_factory=uuid4, primary_key=True)
+    user_id: UUID = SQLField(foreign_key="users.id", index=True, ondelete="CASCADE")
+    # 0 = Monday ... 6 = Sunday, as datetime.date.weekday() returns.
+    weekday: int = SQLField(ge=0, le=6)
+    start_time: Time
+    end_time: Time
+    # schedule: a /schedule line; event: a fixed event; break: a break.
+    kind: str = SQLField(default="schedule", max_length=20)
+    title: str | None = SQLField(default=None, max_length=200)
+    project_id: UUID | None = SQLField(
+        default=None, foreign_key="projects.id", ondelete="SET NULL"
+    )
+    work_type: str = SQLField(default="light_work", max_length=20)
+    # Kept out of future in-week rebalancing (experiments, sleep-adjacent slots).
+    locked: bool = SQLField(default=False)
+    created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
 
 
 class TaskTriageRun(SQLModel, table=True):  # type: ignore[call-arg]
