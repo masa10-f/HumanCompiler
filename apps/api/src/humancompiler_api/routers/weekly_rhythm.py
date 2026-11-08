@@ -29,6 +29,7 @@ from humancompiler_api.models import (
     ProjectStatus,
     TriageCapacitySettingsResponse,
     TriageCapacitySettingsUpdate,
+    User,
     WeeklyRhythmBlock,
 )
 from humancompiler_api.triage import triage_service
@@ -78,12 +79,13 @@ class WeeklyRhythmBlockInput(BaseModel):
         _parse_clock(value)
         return value
 
-    @field_validator("title")
+    # Before validation, so max_length applies to the trimmed title like the editor.
+    @field_validator("title", mode="before")
     @classmethod
-    def strip_title(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        return value.strip() or None
+    def strip_title(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
 
     @model_validator(mode="after")
     def validate_block(self) -> WeeklyRhythmBlockInput:
@@ -404,6 +406,10 @@ async def replace_weekly_rhythm(
             ),
         )
 
+    # Serialize replacements per user. Under READ COMMITTED a concurrent
+    # DELETE does not see rows another request inserted, so two PUTs could
+    # both survive and merge into one template. SQLite ignores FOR UPDATE.
+    session.exec(select(User.id).where(User.id == owner_id).with_for_update()).first()
     now = datetime.now(UTC)
     session.exec(  # type: ignore[call-overload]
         delete(WeeklyRhythmBlock).where(col(WeeklyRhythmBlock.user_id) == owner_id)

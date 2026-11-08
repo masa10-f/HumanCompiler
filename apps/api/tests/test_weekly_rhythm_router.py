@@ -220,6 +220,27 @@ def test_rejects_invalid_blocks(owner, block, message):
     assert message in response.text
 
 
+def test_title_length_is_checked_after_trimming(owner):
+    title = "実" * 200
+    blocks = [
+        {"weekday": 0, "start": "09:00", "end": "10:00", "title": f"  {title}  "},
+        {"weekday": 0, "start": "10:00", "end": "11:00", "title": "   "},
+    ]
+
+    response = client.put("/api/weekly-rhythm", json={"blocks": blocks})
+
+    assert response.status_code == 200, response.text
+    assert [b["title"] for b in response.json()["blocks"]] == [title, None]
+
+
+def test_rejects_titles_over_200_characters(owner):
+    block = {"weekday": 0, "start": "09:00", "end": "10:00", "title": "a" * 201}
+
+    response = client.put("/api/weekly-rhythm", json={"blocks": [block]})
+
+    assert response.status_code == 422
+
+
 def test_rejects_project_on_fixed_event(owner):
     block = {
         "weekday": 0,
