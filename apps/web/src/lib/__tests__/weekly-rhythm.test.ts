@@ -105,6 +105,22 @@ describe("weekly rhythm helpers", () => {
     expect(hasTimedBlocks(next)).toBe(true);
   });
 
+  it("keeps textless rich blocks such as a horizontal rule", () => {
+    const document = {
+      schema_version: 1 as const,
+      blocks: [
+        { id: "memo", type: "text" as const, text: "メモ" },
+        { id: "rule", type: "text" as const, text: "", content: { type: "horizontalRule" } },
+        { id: "empty", type: "text" as const, text: "", content: { type: "paragraph" } },
+      ],
+    };
+    const [line] = rhythmToPlanBlocks([block({})], []);
+
+    const next = insertRhythmBlocks(document, [line!]);
+
+    expect(next.blocks.map((item) => item.id)).toEqual(["memo", "rule", line!.id]);
+  });
+
   it("formats hours without trailing zeros", () => {
     expect(formatRhythmHours(630)).toBe("10.5h");
     expect(formatRhythmHours(480)).toBe("8h");

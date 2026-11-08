@@ -5,7 +5,7 @@
  * @jest-environment jsdom
  */
 
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { WeeklyRhythmEditor } from "../weekly-rhythm-editor";
@@ -139,6 +139,27 @@ describe("WeeklyRhythmEditor", () => {
       ]),
     );
     expect(await screen.findByText("週のリズムを保存しました")).toBeInTheDocument();
+  });
+
+  it("keeps edits made while a save is in flight", async () => {
+    let finishSave: (value: WeeklyRhythm) => void = () => {};
+    jest.mocked(weeklyRhythmApi.replace).mockImplementation(
+      () => new Promise((resolve) => { finishSave = resolve; }),
+    );
+    renderEditor();
+    await screen.findByLabelText("月曜 09:00-16:00 の名前");
+    fireEvent.change(screen.getByLabelText("月曜 09:00-16:00 の名前"), { target: { value: "実験A" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(weeklyRhythmApi.replace).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByLabelText("月曜 09:00-16:00 の名前"), { target: { value: "実験B" } });
+    await act(async () => {
+      finishSave({ ...savedRhythm, blocks: [{ ...savedRhythm.blocks[0]!, title: "実験A" }] });
+    });
+
+    expect(screen.getByLabelText("月曜 09:00-16:00 の名前")).toHaveValue("実験B");
+    expect(screen.getByText("保存しました。保存中に加えた変更はまだ保存されていません")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
   });
 
   it("blocks saving overlapping lines and fixed events without a name", async () => {

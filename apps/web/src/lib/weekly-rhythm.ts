@@ -97,8 +97,16 @@ export function hasTimedBlocks(document: DailyPlanDocumentV1): boolean {
   );
 }
 
+/**
+ * Only a genuinely empty paragraph is a blank line. Rich blocks such as a
+ * horizontal rule also have no text, but they are content and must be kept.
+ */
 function isEmptyText(block: DailyPlanBlock): boolean {
-  return block.type === "text" && !block.text.trim();
+  if (block.type !== "text" || block.text.trim()) return false;
+  return (
+    !block.content ||
+    (block.content.type === "paragraph" && !block.content.content?.length)
+  );
 }
 
 /** Appends template lines after the note's memo, dropping trailing blank lines. */

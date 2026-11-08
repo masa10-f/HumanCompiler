@@ -4,7 +4,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -149,7 +149,10 @@ export function WeeklyRhythmEditor() {
   const inputs = useMemo(() => drafts.map(toInput), [drafts]);
   const validationError = rhythmValidationError(inputs);
 
+  // Counts edits so a save response never overwrites edits made while it ran.
+  const editVersion = useRef(0);
   const edit = (updater: (current: DraftBlock[]) => DraftBlock[]) => {
+    editVersion.current += 1;
     setDrafts(updater);
     setDirty(true);
     setError("");
@@ -198,12 +201,18 @@ export function WeeklyRhythmEditor() {
     setSaving(true);
     setError("");
     setSuccess("");
+    const savedVersion = editVersion.current;
     try {
       const saved = await weeklyRhythmApi.replace(inputs);
       queryClient.setQueryData(queryKeys.weeklyRhythm.current(), saved);
-      setDrafts(toDrafts(saved));
-      setDirty(false);
-      setSuccess("週のリズムを保存しました");
+      if (editVersion.current === savedVersion) {
+        setDrafts(toDrafts(saved));
+        setDirty(false);
+        setSuccess("週のリズムを保存しました");
+      } else {
+        // Keep the newer edits on screen and still unsaved.
+        setSuccess("保存しました。保存中に加えた変更はまだ保存されていません");
+      }
     } catch (err) {
       setError(`保存に失敗しました: ${errorText(err)}`);
     } finally {
