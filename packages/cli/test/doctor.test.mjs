@@ -192,6 +192,7 @@ describe('doctor', () => {
     ['null', /\.mcp\.json is not a JSON object; fix it/],
     ['{ "mcpServers": ', /\.mcp\.json is not a JSON object; fix it/],
     ['{ "mcpServers": { "other": {} } }', /\.mcp\.json has no humancompiler server/],
+    ['{ "mcpServers": { "humancompiler": null } }', /\.mcp\.json has no humancompiler server/],
   ]) {
     test(`describes a .mcp.json holding ${content}`, async () => {
       const cwd = tempDir()

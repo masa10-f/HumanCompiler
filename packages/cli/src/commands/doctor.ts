@@ -28,7 +28,7 @@ import {
   validateApiUrl,
 } from '../api'
 import { SUPPORTED_NODE, nodeVersionOk, usageError } from '../args'
-import { SERVER_NAME, TOML_HEADER, codexConfigPath } from './setup'
+import { SERVER_NAME, TOML_HEADER, codexConfigPath, isPlainObject } from './setup'
 
 export const DOCTOR_HELP = `Usage: humancompiler doctor [roadmap|context ...] [options]
 
@@ -70,10 +70,6 @@ function info(report: Report, text: string): void {
   report.out.push(`[info] ${text}`)
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 /** Whether `setup` has been run here, for information only. */
 function setupStatus(report: Report): void {
   const mcpJson = path.resolve('.mcp.json')
@@ -90,9 +86,9 @@ function setupStatus(report: Report): void {
     } catch {
       config = undefined
     }
-    if (!isObject(config)) {
+    if (!isPlainObject(config)) {
       info(report, `Claude Code: ${mcpJson} is not a JSON object; fix it, then run humancompiler setup claude-code`)
-    } else if (isObject(config.mcpServers) && SERVER_NAME in config.mcpServers) {
+    } else if (isPlainObject(config.mcpServers) && isPlainObject(config.mcpServers[SERVER_NAME])) {
       info(report, `Claude Code: ${mcpJson} has the ${SERVER_NAME} server`)
     } else {
       info(report, `Claude Code: ${mcpJson} has no ${SERVER_NAME} server (humancompiler setup claude-code)`)
