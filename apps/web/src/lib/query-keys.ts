@@ -70,6 +70,12 @@ export const queryKeys = {
     daily: (date: string) => [...queryKeys.schedule.all, 'daily', date] as const,
   },
 
+  // Weekly rhythm (weekday template for daily notes)
+  weeklyRhythm: {
+    all: ['weeklyRhythm'] as const,
+    current: () => [...queryKeys.weeklyRhythm.all, 'current'] as const,
+  },
+
   // User settings keys
   userSettings: {
     all: ['userSettings'] as const,

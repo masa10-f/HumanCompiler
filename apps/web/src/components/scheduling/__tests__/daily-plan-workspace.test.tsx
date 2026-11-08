@@ -9,7 +9,7 @@ import { act, fireEvent, render as renderUI, screen, waitFor, within } from "@te
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DailyPlanWorkspace } from "../daily-plan-workspace";
-import { goalsApi, dailyPlansApi, quickTasksApi, tasksApi } from "@/lib/api";
+import { goalsApi, dailyPlansApi, quickTasksApi, tasksApi, weeklyRhythmApi } from "@/lib/api";
 import { ApiError } from "@/lib/errors";
 import { clearSchedulerSolverConfig, saveSchedulerSolverConfig } from "@/lib/scheduler-config";
 import type { DailyPlanResponse } from "@/types/daily-plan";
@@ -77,7 +77,14 @@ jest.mock("@/lib/api", () => ({
   goalsApi: { getByProject: jest.fn() },
   quickTasksApi: { getAll: jest.fn(), create: jest.fn() },
   tasksApi: { getWorkspace: jest.fn(), create: jest.fn() },
+  weeklyRhythmApi: { get: jest.fn() },
 }));
+
+const emptyRhythm = {
+  blocks: [],
+  summary: { days: [], projects: [], total_schedule_minutes: 0, triage_allocation: null },
+  updated_at: null,
+};
 
 const blankResponse = {
   date: "2030-01-02",
@@ -114,6 +121,57 @@ describe("DailyPlanWorkspace", () => {
       limit: 100,
     });
     jest.mocked(quickTasksApi.getAll).mockResolvedValue([]);
+    jest.mocked(weeklyRhythmApi.get).mockResolvedValue(emptyRhythm);
+  });
+
+  it("inserts the weekday's rhythm into a note without time-bound lines", async () => {
+    mockProjects = [{ id: "phd", title: "PhD" }];
+    jest.mocked(dailyPlansApi.get).mockResolvedValue({ ...blankResponse,
+      document: { schema_version: 1, blocks: [{ id: "memo", type: "text", text: "今週の目標" }] } });
+    jest.mocked(weeklyRhythmApi.get).mockResolvedValue({ ...emptyRhythm, blocks: [
+      // 2030-01-02 is a Wednesday (2); Monday's line must not be offered.
+      { id: "mon", weekday: 0, start: "07:00", end: "08:00", kind: "schedule", title: null, project_id: "phd", work_type: "study", locked: false },
+      { id: "lunch", weekday: 2, start: "12:00", end: "13:00", kind: "break", title: "昼食", project_id: null, work_type: "light_work", locked: false },
+      { id: "exp", weekday: 2, start: "09:00", end: "16:00", kind: "schedule", title: "実験", project_id: "phd", work_type: "focused_work", locked: true },
+    ] });
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
+
+    expect(await screen.findByText(/週のリズム（水曜）の予定\s*2件をノートに入れられます/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "編集" })).toHaveAttribute("href", "/scheduling/rhythm");
+    fireEvent.click(screen.getByRole("button", { name: "ノートに挿入" }));
+
+    expect(screen.queryByRole("button", { name: "ノートに挿入" })).not.toBeInTheDocument();
+    await waitFor(() => expect(dailyPlansApi.update).toHaveBeenCalled(), { timeout: 2500 });
+    const saved = jest.mocked(dailyPlansApi.update).mock.calls.at(-1)![2];
+    expect(saved.blocks).toEqual([
+      expect.objectContaining({ id: "memo", type: "text" }),
+      expect.objectContaining({ type: "schedule_directive", mode: "filter", title: "実験（PhD）",
+        work_type: "focused_work", filter: { work_types: [], project_ids: ["phd"], goal_ids: [] },
+        allowed_windows: [{ start: "09:00", end: "16:00" }] }),
+      expect.objectContaining({ type: "timed_line", kind: "break", title: "昼食", start: "12:00", end: "13:00" }),
+    ]);
+  });
+
+  it("does not offer the rhythm once the note has a time-bound line", async () => {
+    jest.mocked(dailyPlansApi.get).mockResolvedValue({ ...blankResponse, revision: 1,
+      document: { schema_version: 1, blocks: [{ id: "fixed", type: "timed_line", title: "会議", start: "09:00", end: "10:00" }] } });
+    jest.mocked(weeklyRhythmApi.get).mockResolvedValue({ ...emptyRhythm, blocks: [
+      { id: "exp", weekday: 2, start: "09:00", end: "16:00", kind: "schedule", title: null, project_id: null, work_type: "focused_work", locked: false },
+    ] });
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
+
+    await waitFor(() => expect(weeklyRhythmApi.get).toHaveBeenCalled());
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: "ノートに挿入" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the note usable when the rhythm cannot be loaded", async () => {
+    jest.mocked(weeklyRhythmApi.get).mockRejectedValue(new Error("offline"));
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
+
+    await waitFor(() => expect(weeklyRhythmApi.get).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: "ノートに挿入" })).not.toBeInTheDocument();
+    expect(mockToast).not.toHaveBeenCalled();
   });
 
   it("saves and unchecks a fixed event without completing its task or invalidating the schedule", async () => {

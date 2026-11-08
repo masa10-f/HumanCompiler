@@ -101,6 +101,10 @@ import type {
   TriageRun,
   TriageRunCreateRequest,
 } from "@/types/triage";
+import type {
+  WeeklyRhythm,
+  WeeklyRhythmBlockInput,
+} from "@/types/weekly-rhythm";
 import type { TaskStatus } from "@/types/task";
 import type {
   GoalTaskDraftApplyRequest,
@@ -843,6 +847,28 @@ class ApiClient {
       method: "PUT",
       body: JSON.stringify(settings),
     });
+  }
+
+  // === Weekly rhythm (weekday template for daily notes) ===
+
+  async getWeeklyRhythm(): Promise<WeeklyRhythm> {
+    return this.request<WeeklyRhythm>("/api/weekly-rhythm");
+  }
+
+  async replaceWeeklyRhythm(
+    blocks: WeeklyRhythmBlockInput[],
+  ): Promise<WeeklyRhythm> {
+    return this.request<WeeklyRhythm>("/api/weekly-rhythm", {
+      method: "PUT",
+      body: JSON.stringify({ blocks }),
+    });
+  }
+
+  async applyWeeklyRhythmToTriage(): Promise<TriageCapacitySettings> {
+    return this.request<TriageCapacitySettings>(
+      "/api/weekly-rhythm/apply-to-triage",
+      { method: "POST" },
+    );
   }
 
   async createTriageRun(request?: TriageRunCreateRequest): Promise<TriageRun> {
@@ -1810,6 +1836,16 @@ export const schedulingApi = {
     apiClient.listDailySchedules(skip, limit),
   test: () => apiClient.testScheduler(),
   getTuningConfig: () => apiClient.getSchedulerTuningConfig(),
+};
+
+/**
+ * Weekly rhythm: the weekday template daily notes start from.
+ */
+export const weeklyRhythmApi = {
+  get: () => apiClient.getWeeklyRhythm(),
+  replace: (blocks: WeeklyRhythmBlockInput[]) =>
+    apiClient.replaceWeeklyRhythm(blocks),
+  applyToTriage: () => apiClient.applyWeeklyRhythmToTriage(),
 };
 
 export const dailyPlansApi = {

@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   BarChart3,
   CalendarDays,
+  CalendarRange,
   ChevronRight,
   History,
   SlidersHorizontal,
@@ -48,6 +49,14 @@ const SUB_PAGE_GROUPS: Array<{ id: string; title: string; pages: SubPage[] }> = 
     id: 'settings',
     title: '設定',
     pages: [
+      {
+        title: '週のリズム',
+        path: '/scheduling/rhythm',
+        icon: CalendarRange,
+        description:
+          '曜日ごとに、日次ノートへ入れる予定枠（プロジェクト・作業タイプ）・固定予定・休憩を決めます。週の合計時間をトリアージの配分に反映することもできます。',
+        note: '予定がまだない日次ノートで、その曜日の枠を挿入できます。',
+      },
       {
         title: 'スケジュール調整',
         path: '/scheduling/tuning',

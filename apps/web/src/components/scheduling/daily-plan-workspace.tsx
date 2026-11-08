@@ -19,12 +19,14 @@ import {
   useRef,
   useState,
 } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { queryKeys } from "@/lib/query-keys";
 import { Textarea } from "@/components/ui/textarea";
 import {
   AlertCircle,
   AlertTriangle,
+  CalendarRange,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -71,7 +73,20 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useScheduleGoals } from "@/hooks/use-schedule-goals";
 import { useProjectOptions } from "@/hooks/use-project-query";
-import { dailyPlansApi, quickTasksApi, tasksApi } from "@/lib/api";
+import {
+  dailyPlansApi,
+  quickTasksApi,
+  tasksApi,
+  weeklyRhythmApi,
+} from "@/lib/api";
+import {
+  WEEKDAY_LABELS,
+  hasTimedBlocks,
+  insertRhythmBlocks,
+  rhythmBlocksForWeekday,
+  rhythmToPlanBlocks,
+  weekdayOfDate,
+} from "@/lib/weekly-rhythm";
 import { ApiError } from "@/lib/errors";
 import { updateDailyPlanTimeRange } from "@/lib/daily-plan-command";
 import { loadSchedulerSolverConfig } from "@/lib/scheduler-config";
@@ -169,6 +184,13 @@ export const DailyPlanWorkspace = forwardRef<
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { data: projects = [] } = useProjectOptions();
+  // The weekday template; a failure only hides the insert offer.
+  const { data: weeklyRhythm } = useQuery({
+    queryKey: queryKeys.weeklyRhythm.current(),
+    queryFn: () => weeklyRhythmApi.get(),
+    staleTime: 60_000,
+    retry: false,
+  });
   const [document, setDocument] = useState<DailyPlanDocumentV1>(EMPTY_DOCUMENT);
   const [revision, setRevision] = useState(0);
   const revisionRef = useRef(0);
@@ -873,6 +895,21 @@ export const DailyPlanWorkspace = forwardRef<
   };
 
   const noteUnavailable = loading || loadError;
+  const noteWeekday = weekdayOfDate(selectedDate);
+  const rhythmBlocks = rhythmBlocksForWeekday(
+    weeklyRhythm?.blocks ?? [],
+    noteWeekday,
+  );
+  // Offered only before the note has any time-bound line, so it never
+  // duplicates lines the user already placed or edited.
+  const rhythmAvailable =
+    !noteUnavailable && rhythmBlocks.length > 0 && !hasTimedBlocks(document);
+  const insertWeeklyRhythm = () =>
+    updateDocument((current) =>
+      hasTimedBlocks(current)
+        ? current
+        : insertRhythmBlocks(current, rhythmToPlanBlocks(rhythmBlocks, projects)),
+    );
   const adjacentDate = (offset: number) => {
     const date = new Date(`${selectedDate}T00:00:00Z`);
     date.setUTCDate(date.getUTCDate() + offset);
@@ -1194,6 +1231,27 @@ export const DailyPlanWorkspace = forwardRef<
                           </ul>
                         </AlertDescription>
                       </Alert>
+                    )}
+                    {rhythmAvailable && (
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50/60 px-3 py-2 text-sm dark:border-blue-900 dark:bg-blue-950/20">
+                        <span className="flex items-center gap-2">
+                          <CalendarRange className="h-4 w-4 text-blue-600" aria-hidden />
+                          週のリズム（{WEEKDAY_LABELS[noteWeekday]}）の予定
+                          {rhythmBlocks.length}件をノートに入れられます
+                        </span>
+                        <span className="flex gap-2">
+                          <Button size="sm" variant="ghost" asChild>
+                            <Link href="/scheduling/rhythm">編集</Link>
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={insertWeeklyRhythm}
+                            disabled={generating || conflict}
+                          >
+                            ノートに挿入
+                          </Button>
+                        </span>
+                      </div>
                     )}
                     <DailyPlanNoteEditor
                       key={selectedDate}
