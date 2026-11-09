@@ -299,6 +299,7 @@ def test_scopes_returns_presets_from_the_spec(session: Session):
         "work_sessions:read",
         "notes:read",
         "daily_plans:read",
+        "weekly_notes:read",
         "context:read",
         "proposals:read",
     ]

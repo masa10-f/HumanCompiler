@@ -16,6 +16,9 @@ interface ContextNotePanelProps {
   updatedAt?: string | Date | null;
   variant?: 'full' | 'compact';
   className?: string;
+  /** Heading and hint shown while the note is empty. */
+  emptyTitle?: string;
+  emptyDescription?: string;
 }
 
 function hasRenderableContent(content: string) {
@@ -42,6 +45,8 @@ export function ContextNotePanel({
   updatedAt,
   variant = 'full',
   className,
+  emptyTitle = 'No notes yet',
+  emptyDescription = 'Add context when it becomes useful.',
 }: ContextNotePanelProps) {
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const isCompact = variant === 'compact';
@@ -95,10 +100,10 @@ export function ContextNotePanel({
       >
         <FileText className="mx-auto mb-3 h-6 w-6 text-gray-400" />
         <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
-          No notes yet
+          {emptyTitle}
         </p>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Add context when it becomes useful.
+          {emptyDescription}
         </p>
         <Button
           type="button"

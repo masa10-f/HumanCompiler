@@ -6,14 +6,16 @@
 
 """Read tools of the MCP server.
 
-``find``, ``get_goal``, ``get_task``, ``list_logs`` and ``get_context``.
+``find``, ``get_goal``, ``get_task``, ``list_logs``, ``get_context``,
+``get_weekly_note``, ``list_weekly_notes``, ``get_daily_note`` and
+``list_daily_notes``.
 
 They reuse the agent read API's owned-row queries and the context export, so
 ownership and output match REST. Another user's ID is reported exactly like a
 missing one.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -23,6 +25,11 @@ from mcp_types import CallToolResult, ToolAnnotations
 from pydantic import Field
 from sqlmodel import Session, col, func, select
 
+from humancompiler_api import weekly_notes
+from humancompiler_api.daily_note_markdown import (
+    daily_note_markdown,
+    schedule_payload,
+)
 from humancompiler_api.agent_auth import AgentPrincipal
 from humancompiler_api.ai.context_export import (
     build_goal_context_export,
@@ -32,6 +39,7 @@ from humancompiler_api.mcp_server import guarded_call, mcp_server
 from humancompiler_api.models import (
     AgentScope,
     ContextNote,
+    DailyPlanDocument,
     Goal,
     GoalResponse,
     Log,
@@ -39,17 +47,20 @@ from humancompiler_api.models import (
     Project,
     Task,
     TaskResponse,
+    WeeklyNote,
 )
 from humancompiler_api.note_markdown_out import note_html_to_markdown
 from humancompiler_api.routers.agent_v1 import (
     _owned_goals,
     _owned_note_filter,
     _owned_tasks,
+    _schedules_by_date,
 )
 from humancompiler_api.routers.context_export import (
     ContextExportResponse,
     get_export_options,
 )
+from humancompiler_api.routers.daily_plans import DailyPlanDocumentV1
 from humancompiler_api.services import (
     goal_service,
     log_service,
@@ -341,3 +352,236 @@ async def get_context(
         return ContextExportResponse.from_result(result).model_dump(mode="json")
 
     return await guarded_call("get_context", AgentScope.CONTEXT_READ, run, ctx)
+
+
+# --- get_weekly_note / list_weekly_notes ------------------------------------------
+
+
+def _weekly_note_payload(note: WeeklyNote) -> dict[str, Any]:
+    return {
+        "id": str(note.id),
+        "updated_at": _utc_iso(note.updated_at),
+        "content_markdown": weekly_notes.content_markdown(note),
+    }
+
+
+@mcp_server.tool(
+    name="get_weekly_note",
+    description=(
+        "Get the user's weekly note for the week that contains date, as "
+        "Markdown; omit date for this week in Asia/Tokyo. A week is seven days "
+        "from week_start; the user chooses the weekday weeks start on, and a "
+        "note keeps the days it was written for. Returns "
+        "week_start, week_end and note {id, updated_at, content_markdown}; note "
+        "is null when the week has no note or it is empty. With daily_plans:read "
+        "it also returns daily_notes, the week's daily notes as {date, title}; "
+        "read one with get_daily_note. Without that scope daily_notes is null. "
+        f"{_USER_DATA}"
+    ),
+    annotations=_READ_ONLY,
+)
+async def get_weekly_note(
+    ctx: Context,
+    date: Annotated[
+        date | None,
+        Field(description="Any day of the week (YYYY-MM-DD). Omit for this week."),
+    ] = None,
+) -> CallToolResult:
+    day = date if date is not None else weekly_notes.today()
+
+    def run(session: Session, principal: AgentPrincipal) -> dict[str, Any]:
+        week_start, note = weekly_notes.resolve_week(session, principal.user_id, day)
+        daily = None
+        if AgentScope.DAILY_PLANS_READ.value in principal.scopes:
+            rows = _daily_rows(
+                session,
+                principal.user_id,
+                week_start,
+                weekly_notes.week_end_of(week_start),
+                limit=7,
+            )[0]
+            daily = [
+                {"date": row.date.isoformat(), "title": _daily_title(row)}
+                for row in reversed(rows)
+            ]
+        return {
+            **weekly_notes.week_payload(week_start),
+            "note": _weekly_note_payload(note) if note and note.content else None,
+            "daily_notes": daily,
+        }
+
+    return await guarded_call("get_weekly_note", AgentScope.WEEKLY_NOTES_READ, run, ctx)
+
+
+@mcp_server.tool(
+    name="list_weekly_notes",
+    description=(
+        "List the user's non-empty weekly notes as Markdown, newest week first: "
+        "{week_start, week_end, id, updated_at, content_markdown}, up to limit, "
+        "and has_more. date_from and date_to are any days (YYYY-MM-DD); a week "
+        "is included when it overlaps the range. For older weeks, call again "
+        "with date_to set to the day before the oldest week_start you got. Use "
+        "it to review how the past weeks went, e.g. before planning a week. "
+        f"{_USER_DATA}"
+    ),
+    annotations=_READ_ONLY,
+)
+async def list_weekly_notes(
+    ctx: Context,
+    date_from: Annotated[
+        date | None, Field(description="Only weeks that end on or after this day.")
+    ] = None,
+    date_to: Annotated[
+        date | None, Field(description="Only weeks that start on or before this day.")
+    ] = None,
+    limit: Annotated[int, Field(ge=1, le=12, description="Most weeks.")] = 4,
+) -> CallToolResult:
+    def run(session: Session, principal: AgentPrincipal) -> dict[str, Any]:
+        rows, has_more = weekly_notes.list_notes(
+            session,
+            principal.user_id,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
+        )
+        return {
+            "items": [
+                {
+                    **weekly_notes.week_payload(row.week_start),
+                    **_weekly_note_payload(row),
+                }
+                for row in rows
+            ],
+            "has_more": has_more,
+        }
+
+    return await guarded_call(
+        "list_weekly_notes", AgentScope.WEEKLY_NOTES_READ, run, ctx
+    )
+
+
+# --- get_daily_note / list_daily_notes --------------------------------------------
+
+
+def _daily_rows(
+    session: Session,
+    user_id: UUID,
+    date_from: date | None,
+    date_to: date | None,
+    *,
+    limit: int,
+) -> tuple[list[DailyPlanDocument], bool]:
+    """Daily notes with visible text, newest day first, and whether more remain."""
+    statement = select(DailyPlanDocument).where(
+        DailyPlanDocument.user_id == user_id, DailyPlanDocument.search_text != ""
+    )
+    if date_from is not None:
+        statement = statement.where(DailyPlanDocument.date >= date_from)
+    if date_to is not None:
+        statement = statement.where(DailyPlanDocument.date <= date_to)
+    rows = list(
+        session.exec(
+            statement.order_by(col(DailyPlanDocument.date).desc()).limit(limit + 1)
+        ).all()
+    )
+    return rows[:limit], len(rows) > limit
+
+
+def _daily_title(row: DailyPlanDocument) -> str:
+    """The first visible line, as the web note list shows it."""
+    return next(
+        (line.strip() for line in row.search_text.splitlines() if line.strip()), ""
+    )[:80]
+
+
+def _daily_note_payload(row: DailyPlanDocument) -> dict[str, Any]:
+    document = DailyPlanDocumentV1.model_validate(row.document_json)
+    return {
+        "id": str(row.id),
+        "revision": row.revision,
+        "updated_at": _utc_iso(row.updated_at),
+        "content_markdown": daily_note_markdown(document),
+    }
+
+
+@mcp_server.tool(
+    name="get_daily_note",
+    description=(
+        "Get the user's daily note for date as Markdown; omit date for today in "
+        "Asia/Tokyo. The note mixes free text with fixed events and breaks "
+        "('- 09:00〜10:00 title'), /schedule lines and checklist items; a line "
+        "about a task ends with (task_id: ...) or (quick_task_id: ...). Returns "
+        "{date, note: {id, revision, updated_at, content_markdown} or null, "
+        "schedule}: schedule is the generated schedule as [{start_time, "
+        "duration_minutes, title, task_id or quick_task_id}], or null if none "
+        f"was generated. {_USER_DATA}"
+    ),
+    annotations=_READ_ONLY,
+)
+async def get_daily_note(
+    ctx: Context,
+    date: Annotated[
+        date | None, Field(description="The day (YYYY-MM-DD). Omit for today.")
+    ] = None,
+) -> CallToolResult:
+    day = date if date is not None else weekly_notes.today()
+
+    def run(session: Session, principal: AgentPrincipal) -> dict[str, Any]:
+        row = session.exec(
+            select(DailyPlanDocument).where(
+                DailyPlanDocument.user_id == principal.user_id,
+                DailyPlanDocument.date == day,
+            )
+        ).first()
+        payload = _daily_note_payload(row) if row is not None else None
+        if payload is not None and not payload["content_markdown"]:
+            payload = None
+        plan = _schedules_by_date(session, principal.user_id, [day]).get(day)
+        return {
+            "date": day.isoformat(),
+            "note": payload,
+            "schedule": schedule_payload(plan),
+        }
+
+    return await guarded_call("get_daily_note", AgentScope.DAILY_PLANS_READ, run, ctx)
+
+
+@mcp_server.tool(
+    name="list_daily_notes",
+    description=(
+        "List the user's daily notes that have text, newest day first, as "
+        "Markdown: {date, id, revision, updated_at, title, content_markdown}, up "
+        "to limit, and has_more. date_from and date_to (YYYY-MM-DD) bound the "
+        "days inclusively. For older days, call again with date_to set to the "
+        "day before the oldest date you got. Generated schedules are not "
+        f"included; read them with get_daily_note. {_USER_DATA}"
+    ),
+    annotations=_READ_ONLY,
+)
+async def list_daily_notes(
+    ctx: Context,
+    date_from: Annotated[
+        date | None, Field(description="Only days on or after this day.")
+    ] = None,
+    date_to: Annotated[
+        date | None, Field(description="Only days on or before this day.")
+    ] = None,
+    limit: Annotated[int, Field(ge=1, le=31, description="Most days.")] = 7,
+) -> CallToolResult:
+    def run(session: Session, principal: AgentPrincipal) -> dict[str, Any]:
+        rows, has_more = _daily_rows(
+            session, principal.user_id, date_from, date_to, limit=limit
+        )
+        return {
+            "items": [
+                {
+                    "date": row.date.isoformat(),
+                    "title": _daily_title(row),
+                    **_daily_note_payload(row),
+                }
+                for row in rows
+            ],
+            "has_more": has_more,
+        }
+
+    return await guarded_call("list_daily_notes", AgentScope.DAILY_PLANS_READ, run, ctx)

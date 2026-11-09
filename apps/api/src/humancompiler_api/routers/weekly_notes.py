@@ -1,0 +1,210 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
+
+"""Weekly note endpoints for the web app.
+
+One note per week. A week is seven days from its first day, which each user
+chooses in the settings page (``/api/user/settings/week-start``). Reading any day
+returns the note of its week (``weekly_notes.resolve_week``), or an empty note
+without creating a row; saving to the week's first day creates it.
+
+Saves carry the ``updated_at`` the editor last read as ``expected_updated_at``,
+as context notes do. A note changed since gives 409
+``{message, current_updated_at}`` and writes nothing. A week read without a
+note has no ``updated_at``, so its first save sends ``expect_new`` instead: a
+note created meanwhile (another tab) gives the same 409. Leaving both out
+overwrites (the editor's "overwrite" button).
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, date, datetime
+from typing import Annotated, Literal
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import Session
+
+from humancompiler_api import weekly_notes
+from humancompiler_api.agent_write_service import (
+    STALE_MESSAGE,
+    check_expected_updated_at,
+)
+from humancompiler_api.auth import get_current_user_id
+from humancompiler_api.database import get_session
+from humancompiler_api.models import WeeklyNote
+
+router = APIRouter(prefix="/weekly-notes", tags=["weekly-notes"])
+
+# The editor's HTML; generous, but bounded so one request cannot store megabytes.
+MAX_CONTENT_LENGTH = 1_000_000
+
+
+def _as_utc(value: datetime) -> datetime:
+    """SQLite returns naive datetimes; they are UTC."""
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
+
+
+class WeeklyNoteResponse(BaseModel):
+    """A week's note. ``id`` and the timestamps are null until the first save."""
+
+    id: UUID | None = None
+    week_start: date
+    week_end: date
+    content: str = ""
+    content_type: str = "html"
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetimes(self, value: datetime | None) -> str | None:
+        return _as_utc(value).isoformat() if value is not None else None
+
+
+class WeeklyNoteUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content: str = Field(max_length=MAX_CONTENT_LENGTH)
+    content_type: Literal["html", "markdown"] = "html"
+    expected_updated_at: datetime | None = None
+    # The editor read the week without a note: 409 if one exists by now.
+    expect_new: bool = False
+
+    @model_validator(mode="after")
+    def one_expectation(self) -> WeeklyNoteUpdate:
+        if self.expect_new and self.expected_updated_at is not None:
+            raise ValueError("send either expected_updated_at or expect_new")
+        return self
+
+
+class WeeklyNoteSummary(BaseModel):
+    week_start: date
+    week_end: date
+    updated_at: datetime
+    preview: str
+
+    @field_serializer("updated_at")
+    def serialize_updated_at(self, value: datetime) -> str:
+        return _as_utc(value).isoformat()
+
+
+class WeeklyNoteListResponse(BaseModel):
+    items: list[WeeklyNoteSummary]
+    # Pass as ``before`` to read the next (older) page.
+    next_cursor: date | None = None
+
+
+def _response(week_start: date, note: WeeklyNote | None) -> WeeklyNoteResponse:
+    week_end = weekly_notes.week_end_of(week_start)
+    if note is None:
+        return WeeklyNoteResponse(week_start=week_start, week_end=week_end)
+    return WeeklyNoteResponse(
+        id=note.id,
+        week_start=week_start,
+        week_end=week_end,
+        content=note.content,
+        content_type=note.content_type,
+        created_at=note.created_at,
+        updated_at=note.updated_at,
+    )
+
+
+def _conflict(current: WeeklyNote | None) -> HTTPException:
+    current_updated_at = (
+        _as_utc(current.updated_at).isoformat() if current is not None else None
+    )
+    return HTTPException(
+        status.HTTP_409_CONFLICT,
+        detail={"message": STALE_MESSAGE, "current_updated_at": current_updated_at},
+    )
+
+
+@router.get("", response_model=WeeklyNoteListResponse)
+async def list_weekly_notes(
+    before: Annotated[
+        date | None, Query(description="Only weeks that start before this date.")
+    ] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    user_id: UUID = Depends(get_current_user_id),
+    session: Session = Depends(get_session),
+) -> WeeklyNoteListResponse:
+    """Non-empty weekly notes, newest week first."""
+    rows, has_more = weekly_notes.list_notes(
+        session, UUID(str(user_id)), before=before, limit=limit
+    )
+    items = [
+        WeeklyNoteSummary(
+            week_start=row.week_start,
+            week_end=weekly_notes.week_end_of(row.week_start),
+            updated_at=row.updated_at,
+            preview=weekly_notes.preview(row),
+        )
+        for row in rows
+    ]
+    return WeeklyNoteListResponse(
+        items=items, next_cursor=items[-1].week_start if has_more else None
+    )
+
+
+@router.get("/{day}", response_model=WeeklyNoteResponse)
+async def get_weekly_note(
+    day: date,
+    user_id: UUID = Depends(get_current_user_id),
+    session: Session = Depends(get_session),
+) -> WeeklyNoteResponse:
+    """The note of the week that contains ``day`` (any day of the week)."""
+    start, note = weekly_notes.resolve_week(session, UUID(str(user_id)), day)
+    return _response(start, note)
+
+
+@router.put(
+    "/{week_start}",
+    response_model=WeeklyNoteResponse,
+    responses={409: {"description": "The note changed since expected_updated_at"}},
+)
+async def update_weekly_note(
+    week_start: date,
+    request: WeeklyNoteUpdate,
+    user_id: UUID = Depends(get_current_user_id),
+    session: Session = Depends(get_session),
+) -> WeeklyNoteResponse:
+    owner_id = UUID(str(user_id))
+    content = weekly_notes.normalize_content(request.content, request.content_type)
+    try:
+        # The row lock (a no-op on SQLite) keeps another save from landing
+        # between the revision check and this write.
+        note = weekly_notes.get_note(session, owner_id, week_start, for_update=True)
+        if note is None:
+            # The editor read a saved note that is gone (its user was reset).
+            if request.expected_updated_at is not None:
+                raise _conflict(None)
+            # A new note starts on the first day of a week under the setting.
+            start_day = weekly_notes.get_week_start_day(session, owner_id)
+            if weekly_notes.week_start_of(week_start, start_day) != week_start:
+                label = weekly_notes.WEEK_START_LABELS[start_day]
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"週の開始日（{label}）を YYYY-MM-DD で指定してください",
+                )
+            note = WeeklyNote(user_id=owner_id, week_start=week_start)
+        elif request.expect_new:
+            # Another tab or device saved this week first; do not overwrite it.
+            raise _conflict(note)
+        elif request.expected_updated_at is not None:
+            check_expected_updated_at(note.updated_at, request.expected_updated_at)
+        note.content = content
+        note.content_type = request.content_type
+        note.updated_at = datetime.now(UTC)
+        session.add(note)
+        session.commit()
+    except IntegrityError as exc:
+        # Another request created this week's note first.
+        session.rollback()
+        raise _conflict(weekly_notes.get_note(session, owner_id, week_start)) from exc
+    except Exception:
+        session.rollback()
+        raise
+    session.refresh(note)
+    return _response(week_start, note)

@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch"
 import { AppHeader } from "@/components/layout/app-header"
 import { TriageSettingsCard } from "@/components/triage/triage-settings-card"
 import { AgentTokensCard } from "@/components/settings/agent-tokens-card"
+import { WeekStartCard } from "@/components/settings/week-start-card"
 import { ConfirmationModal } from "@/components/ui/confirmation-modal"
 import { supabase } from "@/lib/supabase"
 import { log } from "@/lib/logger"
@@ -641,6 +642,10 @@ export default function SettingsPage() {
 
       <div className="mt-6">
         <TriageSettingsCard />
+      </div>
+
+      <div className="mt-6">
+        <WeekStartCard />
       </div>
 
       <Card className="mt-6">

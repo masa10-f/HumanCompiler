@@ -29,6 +29,7 @@ from humancompiler_api.models import (
     Task,
     TaskStatus,
     User,
+    WeeklyNote,
     WorkSession,
 )
 from humancompiler_api.routers.daily_plans import DailyPlanDocumentV1
@@ -263,3 +264,25 @@ def seed_schedule(
     session.commit()
     session.refresh(schedule)
     return schedule
+
+
+def seed_weekly_note(
+    session: Session,
+    user_id: UUID,
+    week_start: date,
+    content: str = "<p>Week</p>",
+    updated_at: datetime | None = None,
+) -> WeeklyNote:
+    stamp = updated_at or datetime.now(UTC)
+    note = WeeklyNote(
+        user_id=user_id,
+        week_start=week_start,
+        content=content,
+        content_type="html",
+        created_at=stamp,
+        updated_at=stamp,
+    )
+    session.add(note)
+    session.commit()
+    session.refresh(note)
+    return note

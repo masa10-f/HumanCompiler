@@ -64,6 +64,7 @@ from humancompiler_api.routers import (
     users,
     user_settings,
     websocket,
+    weekly_notes,
     weekly_rhythm,
     work_sessions,
 )
@@ -371,6 +372,7 @@ app.include_router(context_export.router, prefix="/api")
 app.include_router(triage.router, prefix="/api")
 # Weekday template for daily notes
 app.include_router(weekly_rhythm.router, prefix="/api")
+app.include_router(weekly_notes.router, prefix="/api")
 
 
 # MCP server (Streamable HTTP). A route, not a mount: a mount at /mcp would

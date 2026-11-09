@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { AppHeader } from "@/components/layout/app-header";
 import { DailyPlanHistory } from "@/components/scheduling/daily-plan-history";
+import { NotesTabs } from "@/components/notes/notes-tabs";
 
 export default function NotesPage() {
   const { loading, isAuthenticated } = useAuth();
@@ -31,9 +32,10 @@ export default function NotesPage() {
       <AppHeader currentPage="daily-notes" />
       <main className="mx-auto max-w-4xl px-4 py-8">
         <h1 className="text-2xl font-bold">ノート一覧</h1>
-        <p className="mb-6 mt-2 text-sm text-muted-foreground">
+        <p className="mb-4 mt-2 text-sm text-muted-foreground">
           メモや予定、進捗の記録を日付ごとに振り返れます。ノートを選ぶと編集画面が開きます。
         </p>
+        <NotesTabs current="daily" />
         <DailyPlanHistory
           layout="collection"
           selectedDate=""
