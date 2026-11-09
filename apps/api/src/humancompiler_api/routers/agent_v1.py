@@ -587,8 +587,8 @@ async def list_daily_plans(
     response_model=AgentPage[AgentWeeklyNoteResponse],
     description=(
         "List the user's weekly notes ordered by (updated_at, id). A note's week "
-        "is seven days from week_start (a Sunday or a Monday, as the user had "
-        "chosen when the note was created). Empty notes are "
+        "is seven days from week_start (the weekday the user had chosen when "
+        "the note was created). Empty notes are "
         f"included, so a cleared note shows up in a diff. {INCREMENTAL_SYNC_GUIDE}"
     ),
 )

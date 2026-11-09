@@ -362,8 +362,8 @@ def _weekly_note_payload(note: WeeklyNote) -> dict[str, Any]:
     description=(
         "Get the user's weekly note for the week that contains date, as "
         "Markdown; omit date for this week in Asia/Tokyo. A week is seven days "
-        "from week_start; the user chooses whether weeks start on Sunday or "
-        "Monday, and a note keeps the days it was written for. Returns "
+        "from week_start; the user chooses the weekday weeks start on, and a "
+        "note keeps the days it was written for. Returns "
         "week_start, week_end and note {id, updated_at, content_markdown}; note "
         f"is null when the week has no note or it is empty. {_USER_DATA}"
     ),

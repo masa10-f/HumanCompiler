@@ -4,11 +4,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { dailyPlansApi, weeklyNotesApi } from "@/lib/api";
+import { dailyPlansApi, weekStartApi, weeklyNotesApi } from "@/lib/api";
 import { getJSTDateString } from "@/lib/date-utils";
 import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
@@ -21,7 +21,6 @@ import {
   weekDates,
   weekEndOf,
   weekdayLabel,
-  type WeekStartDay,
 } from "@/lib/weekly-note";
 import { useWeeklyNote } from "@/hooks/use-weekly-note";
 import type { UseNoteDocumentReturn } from "@/hooks/use-note-document";
@@ -39,60 +38,32 @@ interface WeeklyNoteWorkspaceProps {
 
 /** One week's note, the week's daily notes, and recent weekly notes. */
 export function WeeklyNoteWorkspace({ day, onDayChange }: WeeklyNoteWorkspaceProps) {
-  // Changing the week start re-reads the week, so it follows the new setting.
-  const [settingsVersion, setSettingsVersion] = useState(0);
-
   return (
     <div className="space-y-4">
-      <WeekStartSetting onChanged={() => setSettingsVersion((value) => value + 1)} />
+      <WeekStartSummary />
       {/* A key per week gives each week fresh editor state; a pending edit is
           saved to its own week on unmount. */}
-      <WeekView key={`${day}:${settingsVersion}`} day={day} onDayChange={onDayChange} />
+      <WeekView key={day} day={day} onDayChange={onDayChange} />
     </div>
   );
 }
 
-function WeekStartSetting({ onChanged }: { onChanged: () => void }) {
-  const id = useId();
-  const queryClient = useQueryClient();
+/** The user's week start, changed on the settings page. */
+function WeekStartSummary() {
   const { data } = useQuery({
-    queryKey: queryKeys.weeklyNotes.preferences(),
-    queryFn: () => weeklyNotesApi.getPreferences(),
+    queryKey: queryKeys.userSettings.weekStart(),
+    queryFn: () => weekStartApi.get(),
   });
-  const mutation = useMutation({
-    mutationFn: (weekStartDay: WeekStartDay) =>
-      weeklyNotesApi.updatePreferences({ week_start_day: weekStartDay }),
-    onSuccess: (preferences) => {
-      queryClient.setQueryData(queryKeys.weeklyNotes.preferences(), preferences);
-      onChanged();
-    },
-  });
+  if (!data) return null;
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2 text-sm">
-      <label htmlFor={id} className="text-muted-foreground">
-        週の始まり
-      </label>
-      <select
-        id={id}
-        className="h-8 rounded-md border bg-background px-2"
-        value={data?.week_start_day ?? ""}
-        disabled={!data || mutation.isPending}
-        onChange={(event) => mutation.mutate(event.target.value as WeekStartDay)}
-      >
-        {!data ? <option value="">…</option> : null}
-        {(Object.keys(WEEK_START_DAY_LABELS) as WeekStartDay[]).map((value) => (
-          <option key={value} value={value}>
-            {WEEK_START_DAY_LABELS[value]}
-          </option>
-        ))}
-      </select>
-      <span className="w-full text-right text-xs text-muted-foreground">
-        {mutation.isError
-          ? "週の始まりを保存できませんでした"
-          : "変更は、まだノートのない週から反映されます（書いたノートの期間は変わりません）"}
-      </span>
-    </div>
+    <p className="text-right text-sm text-muted-foreground">
+      週の始まり: {WEEK_START_DAY_LABELS[data.week_start_day]}（
+      <Link href="/settings" className="underline hover:text-foreground">
+        設定で変更
+      </Link>
+      ）
+    </p>
   );
 }
 

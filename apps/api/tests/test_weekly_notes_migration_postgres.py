@@ -156,14 +156,23 @@ def test_week_start_day_defaults_to_sunday_and_is_checked(db):
         (str(uuid4()), USER_ID),
     )
     assert cursor.fetchone() == ("sunday",)
-    cursor.execute(
-        f'UPDATE "{schema}".user_settings SET week_start_day = %s', ("monday",)
-    )
+    for day in (
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+    ):
+        cursor.execute(
+            f'UPDATE "{schema}".user_settings SET week_start_day = %s', (day,)
+        )
     cursor.execute("SAVEPOINT before_update")
 
     with pytest.raises(errors.CheckViolation):
         cursor.execute(
-            f'UPDATE "{schema}".user_settings SET week_start_day = %s', ("friday",)
+            f'UPDATE "{schema}".user_settings SET week_start_day = %s', ("funday",)
         )
 
     cursor.execute("ROLLBACK TO SAVEPOINT before_update")

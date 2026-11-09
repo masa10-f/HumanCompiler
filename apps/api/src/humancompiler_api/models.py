@@ -617,9 +617,9 @@ class DailyPlanDocument(SQLModel, table=True):  # type: ignore[call-arg]
 class WeeklyNote(SQLModel, table=True):  # type: ignore[call-arg]
     """One user's free-form note for one week: seven days from ``week_start``.
 
-    ``week_start`` is a Sunday or a Monday, as the user's
-    ``week_start_day`` was when the note was created. ``content`` is the HTML the web
-    editor saves; an empty note is stored as ``""``.
+    ``week_start`` is on the weekday the user's ``week_start_day`` was when
+    the note was created. ``content`` is the HTML the web editor saves; an empty
+    note is stored as ``""``.
     """
 
     __tablename__ = "weekly_notes"
@@ -817,7 +817,7 @@ class UserSettingsBase(SQLModel):
         default=9,
         description="Hour of day (0-23) to send daily digest (in user's timezone)",
     )
-    # First day of a weekly note's week: "sunday" or "monday".
+    # Weekday new weekly notes' weeks start on: "sunday" ... "saturday".
     week_start_day: str = SQLField(default="sunday", max_length=10)
 
 

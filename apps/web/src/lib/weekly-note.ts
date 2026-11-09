@@ -4,8 +4,8 @@
 /**
  * Week arithmetic on `YYYY-MM-DD` strings for weekly notes.
  *
- * A week is seven days from its first day. Each user chooses Sunday or Monday
- * as the first day of new weeks; a saved note keeps the days it was written
+ * A week is seven days from its first day. Each user chooses the weekday new
+ * weeks start on (settings page); a saved note keeps the days it was written
  * for, so a note's range always comes from its own `week_start`. All math is
  * done on UTC calendar dates, so the browser's time zone never shifts a day.
  */
@@ -48,11 +48,27 @@ export function isValidDateString(value: string): boolean {
   return parse(value) !== null;
 }
 
-export type WeekStartDay = 'sunday' | 'monday';
+/** In Date.getUTCDay() order: 0 = Sunday. */
+export const WEEK_START_DAYS = [
+  'sunday',
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+] as const;
+
+export type WeekStartDay = (typeof WEEK_START_DAYS)[number];
 
 export const WEEK_START_DAY_LABELS: Record<WeekStartDay, string> = {
   sunday: '日曜日',
   monday: '月曜日',
+  tuesday: '火曜日',
+  wednesday: '水曜日',
+  thursday: '木曜日',
+  friday: '金曜日',
+  saturday: '土曜日',
 };
 
 export function addDays(value: string, days: number): string {
@@ -66,7 +82,7 @@ function daysBetween(from: string, to: string): number {
 /** The first day of the week that contains `value`. */
 export function weekStartOf(value: string, startDay: WeekStartDay): string {
   const day = parseOrThrow(value).getUTCDay();
-  const offset = startDay === 'monday' ? (day + 6) % 7 : day;
+  const offset = (day - WEEK_START_DAYS.indexOf(startDay) + 7) % 7;
   return addDays(value, -offset);
 }
 

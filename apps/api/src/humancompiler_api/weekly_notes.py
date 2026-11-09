@@ -3,9 +3,9 @@
 
 """Weekly notes: one free-form note per user and week.
 
-A week is seven days from its first day, ``week_start``. Each user chooses
-whether weeks start on Sunday (the default, as the web app shows weeks) or
-Monday (``user_settings.week_start_day``). "Today" is decided in Asia/Tokyo, as
+A week is seven days from its first day, ``week_start``. Each user chooses the
+weekday new weeks start on in the settings page (``user_settings.week_start_day``;
+Sunday by default, as the web app shows weeks). "Today" is decided in Asia/Tokyo, as
 the daily notes decide it.
 
 A note keeps the week it was written for. After the user changes the setting,
@@ -30,10 +30,30 @@ from sqlmodel import Session, col, select
 from humancompiler_api.models import UserSettings, WeeklyNote
 from humancompiler_api.note_markdown_out import note_html_to_markdown
 
-WeekStartDay = Literal["sunday", "monday"]
-WEEK_START_DAYS: tuple[WeekStartDay, ...] = ("sunday", "monday")
+WeekStartDay = Literal[
+    "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"
+]
+# In date.weekday() order: 0 = Monday ... 6 = Sunday.
+_BY_WEEKDAY: tuple[WeekStartDay, ...] = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
+_BY_NAME: dict[str, WeekStartDay] = {name: name for name in _BY_WEEKDAY}
 DEFAULT_WEEK_START_DAY: WeekStartDay = "sunday"
-WEEK_START_LABELS: dict[WeekStartDay, str] = {"sunday": "日曜日", "monday": "月曜日"}
+WEEK_START_LABELS: dict[WeekStartDay, str] = {
+    "sunday": "日曜日",
+    "monday": "月曜日",
+    "tuesday": "火曜日",
+    "wednesday": "水曜日",
+    "thursday": "木曜日",
+    "friday": "金曜日",
+    "saturday": "土曜日",
+}
 
 JST = ZoneInfo("Asia/Tokyo")
 PREVIEW_LENGTH = 180
@@ -52,8 +72,7 @@ _WHITESPACE = re.compile(r"\s+")
 
 def week_start_of(value: date, start_day: WeekStartDay) -> date:
     """The first day of the week that contains ``value``."""
-    # date.weekday() is 0 for Monday ... 6 for Sunday.
-    offset = value.weekday() if start_day == "monday" else (value.weekday() + 1) % 7
+    offset = (value.weekday() - _BY_WEEKDAY.index(start_day)) % 7
     return value - timedelta(days=offset)
 
 
@@ -72,9 +91,7 @@ def get_week_start_day(session: Session, user_id: UUID) -> WeekStartDay:
     value = session.exec(
         select(UserSettings.week_start_day).where(UserSettings.user_id == user_id)
     ).first()
-    if value == "monday":
-        return "monday"
-    return DEFAULT_WEEK_START_DAY
+    return _BY_NAME.get(value or "", DEFAULT_WEEK_START_DAY)
 
 
 def set_week_start_day(

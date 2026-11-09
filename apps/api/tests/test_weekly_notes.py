@@ -29,6 +29,7 @@ USER_B = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
 
 SUNDAY = date(2026, 11, 1)
 BASE = "/api/weekly-notes"
+WEEK_START = "/api/user/settings/week-start"
 
 
 @pytest.fixture(autouse=True)
@@ -53,7 +54,7 @@ def stored(session: Session, user_id: UUID = USER_A) -> list[WeeklyNote]:
 
 
 def set_week_start(day: str) -> None:
-    response = client.put(f"{BASE}/preferences", json={"week_start_day": day})
+    response = client.put(WEEK_START, json={"week_start_day": day})
     assert response.status_code == 200, response.text
 
 
@@ -70,6 +71,25 @@ def test_week_start_of_follows_the_start_day(day, sunday_start, monday_start):
     assert weekly_notes.week_start_of(day, "sunday") == sunday_start
     assert weekly_notes.week_start_of(day, "monday") == monday_start
     assert weekly_notes.week_end_of(sunday_start) == sunday_start + timedelta(days=6)
+
+
+@pytest.mark.parametrize(
+    ("start_day", "expected"),
+    [
+        ("sunday", date(2026, 11, 1)),
+        ("monday", date(2026, 11, 2)),
+        ("tuesday", date(2026, 11, 3)),
+        ("wednesday", date(2026, 11, 4)),
+        ("thursday", date(2026, 10, 29)),
+        ("friday", date(2026, 10, 30)),
+        ("saturday", date(2026, 10, 31)),
+    ],
+)
+def test_any_weekday_can_start_the_week(start_day, expected):
+    # Wednesday 2026-11-04 is in the week that starts on the last such weekday.
+    start = weekly_notes.week_start_of(date(2026, 11, 4), start_day)
+    assert start == expected
+    assert start <= date(2026, 11, 4) <= weekly_notes.week_end_of(start)
 
 
 def test_today_is_decided_in_tokyo():
@@ -141,13 +161,13 @@ def test_a_new_note_must_start_on_the_first_day_of_a_week(session: Session, day)
 
 
 def test_week_starts_on_sunday_by_default(session: Session):
-    assert client.get(f"{BASE}/preferences").json() == {"week_start_day": "sunday"}
+    assert client.get(WEEK_START).json() == {"week_start_day": "sunday"}
 
 
 def test_monday_start_is_stored_per_user(session: Session):
     set_week_start("monday")
 
-    assert client.get(f"{BASE}/preferences").json() == {"week_start_day": "monday"}
+    assert client.get(WEEK_START).json() == {"week_start_day": "monday"}
     settings = session.exec(
         select(UserSettings).where(UserSettings.user_id == USER_A)
     ).one()
@@ -164,13 +184,31 @@ def test_monday_start_is_stored_per_user(session: Session):
 
     # Another user keeps the default.
     app.dependency_overrides[get_current_user_id] = lambda: str(USER_B)
-    assert client.get(f"{BASE}/preferences").json() == {"week_start_day": "sunday"}
+    assert client.get(WEEK_START).json() == {"week_start_day": "sunday"}
     assert client.get(f"{BASE}/2026-11-04").json()["week_start"] == "2026-11-01"
 
 
-@pytest.mark.parametrize("body", [{"week_start_day": "saturday"}, {}])
-def test_invalid_preference_is_422(body):
-    assert client.put(f"{BASE}/preferences", json=body).status_code == 422
+def test_a_mid_week_start_day_works_end_to_end(session: Session):
+    set_week_start("wednesday")
+
+    body = client.get(f"{BASE}/2026-11-09").json()  # Monday
+    assert (body["week_start"], body["week_end"]) == ("2026-11-04", "2026-11-10")
+    assert (
+        client.put(f"{BASE}/2026-11-04", json={"content": "<p>x</p>"}).status_code
+        == 200
+    )
+    response = client.put(f"{BASE}/2026-11-11", json={"content": "<p>x</p>"})
+    assert response.status_code == 200  # 2026-11-11 is the next Wednesday
+    response = client.put(f"{BASE}/2026-11-12", json={"content": "<p>x</p>"})
+    assert response.status_code == 400
+    assert "水曜日" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "body", [{"week_start_day": "funday"}, {"week_start_day": 3}, {}]
+)
+def test_invalid_week_start_is_422(body):
+    assert client.put(WEEK_START, json=body).status_code == 422
 
 
 def test_notes_keep_their_days_after_the_setting_changes(session: Session):

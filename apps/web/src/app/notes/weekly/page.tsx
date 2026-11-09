@@ -52,7 +52,7 @@ export default function WeeklyNotesPage() {
       <main className="mx-auto max-w-5xl px-4 py-8">
         <h1 className="text-2xl font-bold">ノート一覧</h1>
         <p className="mb-4 mt-2 text-sm text-muted-foreground">
-          1週間ごとに、目標や振り返りを1つのノートにまとめられます。週の始まり（日曜・月曜）は選べます。
+          1週間ごとに、目標や振り返りを1つのノートにまとめられます。週の始まりの曜日は設定で選べます。
         </p>
         <NotesTabs current="weekly" />
         <WeeklyNoteWorkspace day={day} onDayChange={setDay} />

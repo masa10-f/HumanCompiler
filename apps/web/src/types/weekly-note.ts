@@ -35,7 +35,7 @@ export interface WeeklyNoteListResponse {
   next_cursor: string | null;
 }
 
-/** The first day of the user's new weeks. */
-export interface WeeklyNotePreferences {
+/** The weekday the user's new weeks start on (`/api/user/settings/week-start`). */
+export interface WeekStartSettings {
   week_start_day: WeekStartDay;
 }

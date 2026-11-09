@@ -75,8 +75,8 @@ INSTRUCTIONS = """\
 HumanCompiler is the user's task manager. Projects contain goals, goals contain \
 tasks, and each project, goal and task can have one context note. Tasks also \
 have work logs: time records of the minutes worked and what was done. The user \
-also keeps one weekly note per week (seven days from a Sunday or a Monday, as \
-the user chooses) for plans and reflections; read it with `get_weekly_note` or \
+also keeps one weekly note per week (seven days from the weekday the user \
+chooses) for plans and reflections; read it with `get_weekly_note` or \
 `list_weekly_notes`.
 
 Working rules:

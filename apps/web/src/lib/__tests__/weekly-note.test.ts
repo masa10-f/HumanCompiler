@@ -25,6 +25,18 @@ describe("weekly note week helpers", () => {
     expect(weekStartOf(day, "monday")).toBe(monday);
   });
 
+  it.each([
+    ["sunday", "2026-11-01"],
+    ["monday", "2026-11-02"],
+    ["tuesday", "2026-11-03"],
+    ["wednesday", "2026-11-04"],
+    ["thursday", "2026-10-29"],
+    ["friday", "2026-10-30"],
+    ["saturday", "2026-10-31"],
+  ] as const)("starts the week of 2026-11-04 on %s", (startDay, expected) => {
+    expect(weekStartOf("2026-11-04", startDay)).toBe(expected);
+  });
+
   it("lists the seven days from the first day", () => {
     expect(weekEndOf("2026-11-01")).toBe("2026-11-07");
     expect(weekDates("2026-12-27")).toEqual([

@@ -4,7 +4,7 @@
 """Weekly note endpoints for the web app.
 
 One note per week. A week is seven days from its first day, which each user
-sets to Sunday or Monday (``/weekly-notes/preferences``). Reading any day
+chooses in the settings page (``/api/user/settings/week-start``). Reading any day
 returns the note of its week (``weekly_notes.resolve_week``), or an empty note
 without creating a row; saving to the week's first day creates it.
 
@@ -80,12 +80,6 @@ class WeeklyNoteSummary(BaseModel):
         return _as_utc(value).isoformat()
 
 
-class WeeklyNotePreferences(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    week_start_day: weekly_notes.WeekStartDay
-
-
 class WeeklyNoteListResponse(BaseModel):
     items: list[WeeklyNoteSummary]
     # Pass as ``before`` to read the next (older) page.
@@ -142,28 +136,6 @@ async def list_weekly_notes(
     return WeeklyNoteListResponse(
         items=items, next_cursor=items[-1].week_start if has_more else None
     )
-
-
-# Declared before ``/{day}`` so "preferences" is not read as a date.
-@router.get("/preferences", response_model=WeeklyNotePreferences)
-async def get_weekly_note_preferences(
-    user_id: UUID = Depends(get_current_user_id),
-    session: Session = Depends(get_session),
-) -> WeeklyNotePreferences:
-    return WeeklyNotePreferences(
-        week_start_day=weekly_notes.get_week_start_day(session, UUID(str(user_id)))
-    )
-
-
-@router.put("/preferences", response_model=WeeklyNotePreferences)
-async def update_weekly_note_preferences(
-    request: WeeklyNotePreferences,
-    user_id: UUID = Depends(get_current_user_id),
-    session: Session = Depends(get_session),
-) -> WeeklyNotePreferences:
-    """Change the first day of new weeks. Existing notes keep their days."""
-    weekly_notes.set_week_start_day(session, UUID(str(user_id)), request.week_start_day)
-    return request
 
 
 @router.get("/{day}", response_model=WeeklyNoteResponse)

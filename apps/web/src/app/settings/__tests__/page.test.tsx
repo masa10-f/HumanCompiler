@@ -35,6 +35,9 @@ jest.mock('@/components/triage/triage-settings-card', () => ({
   TriageSettingsCard: () => <section>Triage Settings</section>,
 }))
 
+jest.mock('@/components/settings/week-start-card', () => ({
+  WeekStartCard: () => <div data-testid="week-start-card" />,
+}))
 jest.mock('@/components/settings/agent-tokens-card', () => ({
   AgentTokensCard: () => <section>Agent Tokens Card</section>,
 }))

@@ -4,18 +4,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { WeeklyNoteWorkspace } from "../weekly-note-workspace";
-import { dailyPlansApi, weeklyNotesApi } from "@/lib/api";
+import { dailyPlansApi, weekStartApi, weeklyNotesApi } from "@/lib/api";
 import { weekStartOf, type WeekStartDay } from "@/lib/weekly-note";
 
 jest.mock("@/lib/api", () => ({
   dailyPlansApi: { list: jest.fn() },
-  weeklyNotesApi: {
-    list: jest.fn(),
-    get: jest.fn(),
-    update: jest.fn(),
-    getPreferences: jest.fn(),
-    updatePreferences: jest.fn(),
-  },
+  weeklyNotesApi: { list: jest.fn(), get: jest.fn(), update: jest.fn() },
+  weekStartApi: { get: jest.fn(), update: jest.fn() },
 }));
 jest.mock("@/lib/date-utils", () => ({
   getJSTDateString: jest.fn(() => "2026-11-04"),
@@ -33,12 +28,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   startDay = "sunday";
   jest
-    .mocked(weeklyNotesApi.getPreferences)
+    .mocked(weekStartApi.get)
     .mockImplementation(async () => ({ week_start_day: startDay }));
-  jest.mocked(weeklyNotesApi.updatePreferences).mockImplementation(async (prefs) => {
-    startDay = prefs.week_start_day;
-    return prefs;
-  });
   // A stand-in for the server: the week of the day under the current setting.
   jest.mocked(weeklyNotesApi.get).mockImplementation(async (day) => {
     const weekStart = weekStartOf(day, startDay);
@@ -140,23 +131,16 @@ it("moves between weeks from the resolved week", async () => {
   expect(within(current).getByText("先々週の振り返り")).toBeInTheDocument();
 });
 
-it("saves the week start and re-reads the week under it", async () => {
-  renderWorkspace("2026-11-10");
+it("shows the week start with a link to the settings page", async () => {
+  startDay = "wednesday";
+  renderWorkspace("2026-11-09");
+
   expect(
-    await screen.findByRole("heading", { name: "2026年11月8日（日）〜14日（土）" }),
+    await screen.findByRole("heading", { name: "2026年11月4日（水）〜10日（火）" }),
   ).toBeInTheDocument();
-  const select = screen.getByLabelText("週の始まり");
-  await waitFor(() => expect(select).toHaveValue("sunday"));
-
-  fireEvent.change(select, { target: { value: "monday" } });
-
-  await waitFor(() =>
-    expect(weeklyNotesApi.updatePreferences).toHaveBeenCalledWith({
-      week_start_day: "monday",
-    }),
+  expect(await screen.findByText(/週の始まり: 水曜日/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "設定で変更" })).toHaveAttribute(
+    "href",
+    "/settings",
   );
-  expect(
-    await screen.findByRole("heading", { name: "2026年11月9日（月）〜15日（日）" }),
-  ).toBeInTheDocument();
-  expect(select).toHaveValue("monday");
 });
