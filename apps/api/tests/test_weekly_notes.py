@@ -5,7 +5,7 @@
 
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from sqlmodel import Session, select
@@ -202,6 +202,55 @@ def test_a_mid_week_start_day_works_end_to_end(session: Session):
     response = client.put(f"{BASE}/2026-11-12", json={"content": "<p>x</p>"})
     assert response.status_code == 400
     assert "水曜日" in response.json()["detail"]
+
+
+def test_saving_the_week_start_updates_updated_at(session: Session):
+    set_week_start("monday")
+    first = session.exec(
+        select(UserSettings).where(UserSettings.user_id == USER_A)
+    ).one()
+    first_stamp = first.updated_at
+
+    set_week_start("friday")
+
+    session.expire_all()
+    again = session.exec(
+        select(UserSettings).where(UserSettings.user_id == USER_A)
+    ).one()
+    assert again.week_start_day == "friday"
+    assert again.updated_at is not None and first_stamp is not None
+    assert again.updated_at > first_stamp
+
+
+def test_a_first_save_that_loses_the_insert_race_updates_the_winners_row(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+):
+    # Another request created the row after this one looked and found none.
+    session.add(UserSettings(id=uuid4(), user_id=USER_A, week_start_day="sunday"))
+    session.commit()
+    real_exec = session.exec
+    calls = {"n": 0}
+
+    class Missing:
+        def one_or_none(self):
+            return None
+
+    def exec_missing_once(statement, *args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return Missing()
+        return real_exec(statement, *args, **kwargs)
+
+    monkeypatch.setattr(session, "exec", exec_missing_once)
+
+    weekly_notes.set_week_start_day(session, USER_A, "thursday")
+
+    monkeypatch.setattr(session, "exec", real_exec)
+    session.expire_all()
+    rows = session.exec(
+        select(UserSettings).where(UserSettings.user_id == USER_A)
+    ).all()
+    assert [row.week_start_day for row in rows] == ["thursday"]
 
 
 @pytest.mark.parametrize(

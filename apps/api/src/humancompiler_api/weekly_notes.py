@@ -19,12 +19,13 @@ this module, so ownership and the empty-note rule are the same everywhere.
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, select
 
 from humancompiler_api.models import UserSettings, WeeklyNote
@@ -97,17 +98,32 @@ def get_week_start_day(session: Session, user_id: UUID) -> WeekStartDay:
 def set_week_start_day(
     session: Session, user_id: UUID, start_day: WeekStartDay
 ) -> None:
-    """Store the setting, creating the settings row if the user has none."""
-    settings = session.exec(
-        select(UserSettings).where(UserSettings.user_id == user_id)
-    ).one_or_none()
-    if settings is None:
-        # The id is set here, not by the column's server default, which only
-        # PostgreSQL has.
-        settings = UserSettings(id=uuid4(), user_id=user_id)
-    settings.week_start_day = start_day
-    session.add(settings)
-    session.commit()
+    """Store the setting, creating the settings row if the user has none.
+
+    Two first saves at once (two tabs) both find no row; the one that loses
+    the unique ``user_id`` race retries and updates the row the other made.
+    """
+    for attempt in range(2):
+        # The row lock (a no-op on SQLite) serializes saves to an existing row.
+        settings = session.exec(
+            select(UserSettings)
+            .where(UserSettings.user_id == user_id)
+            .with_for_update()
+        ).one_or_none()
+        if settings is None:
+            # The id is set here, not by the column's server default, which
+            # only PostgreSQL has.
+            settings = UserSettings(id=uuid4(), user_id=user_id)
+        settings.week_start_day = start_day
+        settings.updated_at = datetime.now(UTC)
+        session.add(settings)
+        try:
+            session.commit()
+            return
+        except IntegrityError:
+            session.rollback()
+            if attempt:
+                raise
 
 
 def resolve_week(
