@@ -2,7 +2,9 @@
 // SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
 
 import { useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { weeklyNotesApi } from '@/lib/api';
+import { queryKeys } from '@/lib/query-keys';
 import { useNoteDocument, type UseNoteDocumentReturn } from './use-note-document';
 import type { WeeklyNote } from '@/types/weekly-note';
 
@@ -11,11 +13,13 @@ import type { WeeklyNote } from '@/types/weekly-note';
  * save it, with the same debounced saves and conflict handling as context
  * notes. The server decides the week (the user's week start, or the days of an
  * older note), and saves go to that week's first day. Remount the component
- * (React `key`) when `day` changes.
+ * (React `key`) when `day` changes. Each successful save refreshes the weekly
+ * note lists, also for a save flushed after the component unmounted.
  */
 export function useWeeklyNote(day: string): UseNoteDocumentReturn<WeeklyNote> {
   // The week_start the server resolved `day` to; saves cannot run before load.
   const weekStartRef = useRef<string | null>(null);
+  const queryClient = useQueryClient();
   return useNoteDocument<WeeklyNote>({
     noteKey: day,
     hookName: 'useWeeklyNote',
@@ -25,10 +29,12 @@ export function useWeeklyNote(day: string): UseNoteDocumentReturn<WeeklyNote> {
       weekStartRef.current = note.week_start;
       return note;
     },
-    save: (body) => {
+    save: async (body) => {
       const weekStart = weekStartRef.current;
-      if (!weekStart) return Promise.reject(new Error('Weekly note is not loaded'));
-      return weeklyNotesApi.update(weekStart, body);
+      if (!weekStart) throw new Error('Weekly note is not loaded');
+      const saved = await weeklyNotesApi.update(weekStart, body);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.weeklyNotes.lists() });
+      return saved;
     },
   });
 }

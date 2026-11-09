@@ -4,10 +4,13 @@
 /**
  * @jest-environment jsdom
  */
+import { createElement, type ReactNode } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useWeeklyNote } from '../use-weekly-note'
 import { ApiError } from '@/lib/errors'
 import type { WeeklyNote } from '@/types/weekly-note'
+import { queryKeys } from '@/lib/query-keys'
 
 const mockGet = jest.fn()
 const mockUpdate = jest.fn()
@@ -24,6 +27,12 @@ jest.mock('@/lib/api', () => ({
 const DAY = '2026-11-04'
 const WEEK = '2026-11-01'
 
+let queryClient: QueryClient
+
+function wrapper({ children }: { children: ReactNode }) {
+  return createElement(QueryClientProvider, { client: queryClient }, children)
+}
+
 function makeNote(content: string, updatedAt: string | null): WeeklyNote {
   return {
     id: updatedAt ? 'note-1' : null,
@@ -39,6 +48,7 @@ function makeNote(content: string, updatedAt: string | null): WeeklyNote {
 describe('useWeeklyNote', () => {
   beforeEach(() => {
     jest.useFakeTimers()
+    queryClient = new QueryClient()
     mockGet.mockReset()
     mockUpdate.mockReset()
   })
@@ -52,7 +62,7 @@ describe('useWeeklyNote', () => {
     mockUpdate
       .mockResolvedValueOnce(makeNote('<p>a</p>', '2026-11-03T09:00:00+00:00'))
       .mockResolvedValueOnce(makeNote('<p>ab</p>', '2026-11-03T09:00:01+00:00'))
-    const { result } = renderHook(() => useWeeklyNote(DAY))
+    const { result } = renderHook(() => useWeeklyNote(DAY), { wrapper })
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(mockGet).toHaveBeenCalledWith(DAY)
 
@@ -82,7 +92,7 @@ describe('useWeeklyNote', () => {
   it('saves an edit still waiting for its debounce when unmounted', async () => {
     mockGet.mockResolvedValue(makeNote('<p>old</p>', '2026-11-03T09:00:00+00:00'))
     mockUpdate.mockResolvedValue(makeNote('<p>new</p>', '2026-11-03T09:00:01+00:00'))
-    const { result, unmount } = renderHook(() => useWeeklyNote(DAY))
+    const { result, unmount } = renderHook(() => useWeeklyNote(DAY), { wrapper })
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     act(() => result.current.updateNote({ content: '<p>new</p>' }))
@@ -99,10 +109,26 @@ describe('useWeeklyNote', () => {
     expect(mockUpdate).toHaveBeenCalledTimes(1)
   })
 
+  it('refreshes the weekly note lists after a save, even one flushed on unmount', async () => {
+    mockGet.mockResolvedValue(makeNote('', null))
+    mockUpdate.mockResolvedValue(makeNote('<p>new</p>', '2026-11-03T09:00:01+00:00'))
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries')
+    const { result, unmount } = renderHook(() => useWeeklyNote(DAY), { wrapper })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(invalidate).not.toHaveBeenCalled()
+
+    act(() => result.current.updateNote({ content: '<p>new</p>' }))
+    unmount()
+
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.weeklyNotes.lists() })
+    )
+  })
+
   it('reports a conflict on 409 and pauses saves', async () => {
     mockGet.mockResolvedValue(makeNote('<p>old</p>', '2026-11-03T09:00:00+00:00'))
     mockUpdate.mockRejectedValue(new ApiError(409, 'Changed since you read it'))
-    const { result } = renderHook(() => useWeeklyNote(DAY))
+    const { result } = renderHook(() => useWeeklyNote(DAY), { wrapper })
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     act(() => result.current.updateNote({ content: '<p>mine</p>' }))

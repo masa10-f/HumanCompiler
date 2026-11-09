@@ -4,8 +4,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { dailyPlansApi, weeklyNotesApi } from "@/lib/api";
@@ -121,20 +121,12 @@ function WeekView({ day, onDayChange }: WeeklyNoteWorkspaceProps) {
 }
 
 function WeeklyNoteEditor({ editor }: { editor: UseNoteDocumentReturn<WeeklyNote> }) {
-  const queryClient = useQueryClient();
   const { note, loading, error, saving, conflict, updateNote, reloadLatest, overwrite } =
     editor;
   // A new key remounts the panel after a reload, so it starts over in view mode
   // and the editor's undo history cannot bring back the dropped local text.
   const [panelKey, setPanelKey] = useState(0);
   const updatedAt = note?.updated_at ?? null;
-
-  // Keep the recent list's previews in step with saves.
-  useEffect(() => {
-    if (updatedAt) {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.weeklyNotes.lists() });
-    }
-  }, [updatedAt, queryClient]);
 
   if (loading) {
     return (
