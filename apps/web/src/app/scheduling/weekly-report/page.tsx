@@ -6,7 +6,7 @@
 
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
   BarChart3,
@@ -35,9 +35,11 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/hooks/use-auth";
 import { useProjectOptions } from "@/hooks/use-project-query";
+import { useWeekStartSettings } from "@/hooks/use-week-start";
 import { toast } from "@/hooks/use-toast";
 import { reportsApi } from "@/lib/api";
 import { getJSTDateString, isValidJSTDateInput } from "@/lib/date-utils";
+import { WEEK_START_DAY_LABELS, weekStartOf } from "@/lib/weekly-note";
 import { getSelectableProjects } from "@/lib/project-filters";
 import type {
   WeeklyReportNoteReference,
@@ -71,7 +73,19 @@ export default function WeeklyReportPage() {
     [projects],
   );
 
+  const { data: weekStartSettings } = useWeekStartSettings({
+    enabled: Boolean(user),
+  });
+  // This week's first day under the settings page's 週の始まり, as weekly
+  // notes count weeks; today until the setting loads (or if it cannot).
+  const thisWeekStart = weekStartSettings
+    ? weekStartOf(getJSTDateString(), weekStartSettings.week_start_day)
+    : null;
   const [weekStartDate, setWeekStartDate] = useState(getJSTDateString);
+  const dateEdited = useRef(false);
+  useEffect(() => {
+    if (thisWeekStart && !dateEdited.current) setWeekStartDate(thisWeekStart);
+  }, [thisWeekStart]);
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [includeNotes, setIncludeNotes] = useState(true);
   const [weeklyReport, setWeeklyReport] =
@@ -176,6 +190,9 @@ export default function WeeklyReportPage() {
             <CardTitle>報告条件</CardTitle>
             <CardDescription>
               開始日から7日間の作業ログを集計します。
+              {weekStartSettings
+                ? `開始日の初期値は、設定の「週の始まり」（${WEEK_START_DAY_LABELS[weekStartSettings.week_start_day]}）での今週です。`
+                : null}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -187,17 +204,23 @@ export default function WeeklyReportPage() {
                     id="report-week-start"
                     type="date"
                     value={weekStartDate}
-                    onChange={(e) => setWeekStartDate(e.target.value)}
+                    onChange={(e) => {
+                      dateEdited.current = true;
+                      setWeekStartDate(e.target.value);
+                    }}
                     className="flex-1"
                   />
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setWeekStartDate(getJSTDateString())}
+                    onClick={() => {
+                      dateEdited.current = true;
+                      setWeekStartDate(thisWeekStart ?? getJSTDateString());
+                    }}
                     className="whitespace-nowrap"
                   >
-                    今日
+                    今週
                   </Button>
                 </div>
                 {weekStartDate && !isWeekStartValid && (

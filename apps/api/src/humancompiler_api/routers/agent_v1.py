@@ -11,7 +11,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import field_serializer
+from pydantic import BaseModel, field_serializer
 from sqlalchemy import ColumnElement, and_, or_
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, select
@@ -35,6 +35,7 @@ from humancompiler_api.ai.context_export import (
     build_project_context_export,
 )
 from humancompiler_api.common.error_handlers import ResourceNotFoundError
+from humancompiler_api import weekly_notes
 from humancompiler_api.database import get_session
 from humancompiler_api.models import (
     AgentMeResponse,
@@ -59,6 +60,7 @@ from humancompiler_api.models import (
     TaskDependency,
     TaskResponse,
     TaskStatus,
+    WeeklyNote,
     WorkSession,
     WorkSessionResponse,
 )
@@ -105,6 +107,25 @@ class AgentDailyPlanResponse(DailyPlanResponse):
 
     @field_serializer("updated_at")
     def serialize_updated_at(self, value: datetime) -> str:
+        """Ensure datetime is serialized with UTC timezone info"""
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
+
+class AgentWeeklyNoteResponse(BaseModel):
+    """A weekly note. The week is seven days from ``week_start``; ``content`` is HTML."""
+
+    id: UUID
+    week_start: date
+    week_end: date
+    content: str
+    content_type: str
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetimes(self, value: datetime) -> str:
         """Ensure datetime is serialized with UTC timezone info"""
         if value.tzinfo is None:
             value = value.replace(tzinfo=UTC)
@@ -553,6 +574,61 @@ async def list_daily_plans(
                 revision=row.revision,
                 document=DailyPlanDocumentV1.model_validate(row.document_json),
                 schedule=schedules.get(row.date),
+                updated_at=row.updated_at,
+            )
+            for row in rows
+        ],
+        next_cursor=next_cursor,
+    )
+
+
+@router.get(
+    "/weekly-notes",
+    response_model=AgentPage[AgentWeeklyNoteResponse],
+    description=(
+        "List the user's weekly notes ordered by (updated_at, id). A note's week "
+        "is seven days from week_start (the weekday the user had chosen when "
+        "the note was created). Empty notes are "
+        f"included, so a cleared note shows up in a diff. {INCREMENTAL_SYNC_GUIDE}"
+    ),
+)
+async def list_weekly_notes(
+    session: Annotated[Session, Depends(get_session)],
+    principal: Annotated[
+        AgentPrincipal, Depends(require_scope(AgentScope.WEEKLY_NOTES_READ))
+    ],
+    params: Annotated[PageParams, Depends(page_params(10, 52))],
+    date_from: Annotated[
+        date | None,
+        Query(
+            description=(
+                "Only the weeks that end on or after this date (YYYY-MM-DD): "
+                "a week containing it is included."
+            )
+        ),
+    ] = None,
+    date_to: Annotated[
+        date | None,
+        Query(description="Only weeks that start on or before this date."),
+    ] = None,
+) -> AgentPage[AgentWeeklyNoteResponse]:
+    statement = select(WeeklyNote).where(WeeklyNote.user_id == principal.user_id)
+    if date_from is not None:
+        statement = statement.where(
+            WeeklyNote.week_start >= weekly_notes.shift_days(date_from, -6)
+        )
+    if date_to is not None:
+        statement = statement.where(WeeklyNote.week_start <= date_to)
+    rows, next_cursor = paginate(session, statement, WeeklyNote, params)
+    return AgentPage[AgentWeeklyNoteResponse](
+        items=[
+            AgentWeeklyNoteResponse(
+                id=row.id,
+                week_start=row.week_start,
+                week_end=weekly_notes.week_end_of(row.week_start),
+                content=row.content,
+                content_type=row.content_type,
+                created_at=row.created_at,
                 updated_at=row.updated_at,
             )
             for row in rows

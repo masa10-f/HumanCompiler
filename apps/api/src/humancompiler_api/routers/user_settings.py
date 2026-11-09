@@ -4,6 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
+from pydantic import BaseModel, ConfigDict
 from sqlmodel import Session, select
 
 from humancompiler_api.openai_models import (
@@ -11,6 +12,7 @@ from humancompiler_api.openai_models import (
     LIGHTWEIGHT_OPENAI_MODEL,
 )
 
+from humancompiler_api import weekly_notes
 from humancompiler_api.auth import get_current_user_id
 from humancompiler_api.crypto import get_crypto_service
 from humancompiler_api.database import get_session
@@ -24,6 +26,14 @@ from humancompiler_api.models import (
 )
 
 router = APIRouter(prefix="/api/user", tags=["user-settings"])
+
+
+class WeekStartSettings(BaseModel):
+    """The weekday a week starts on, for weekly notes."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    week_start_day: weekly_notes.WeekStartDay
 
 
 AVAILABLE_MODELS = {
@@ -351,3 +361,27 @@ async def update_email_notification_settings(
         email_daily_digest_enabled=settings.email_daily_digest_enabled,
         email_daily_digest_hour=settings.email_daily_digest_hour,
     )
+
+
+@router.get("/settings/week-start", response_model=WeekStartSettings)
+async def get_week_start_settings(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    session: Annotated[Session, Depends(get_session)],
+) -> WeekStartSettings:
+    """The weekday the user's weeks start on (Sunday when never set)."""
+    return WeekStartSettings(
+        week_start_day=weekly_notes.get_week_start_day(session, UUID(str(user_id)))
+    )
+
+
+@router.put("/settings/week-start", response_model=WeekStartSettings)
+async def update_week_start_settings(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    settings_data: WeekStartSettings,
+    session: Annotated[Session, Depends(get_session)],
+) -> WeekStartSettings:
+    """Change the first day of new weeks. Existing weekly notes keep their days."""
+    weekly_notes.set_week_start_day(
+        session, UUID(str(user_id)), settings_data.week_start_day
+    )
+    return settings_data
