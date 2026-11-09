@@ -160,26 +160,25 @@ async def update_weekly_note(
     user_id: UUID = Depends(get_current_user_id),
     session: Session = Depends(get_session),
 ) -> WeeklyNoteResponse:
-    start = week_start
     owner_id = UUID(str(user_id))
     content = weekly_notes.normalize_content(request.content, request.content_type)
     try:
         # The row lock (a no-op on SQLite) keeps another save from landing
         # between the revision check and this write.
-        note = weekly_notes.get_note(session, owner_id, start, for_update=True)
+        note = weekly_notes.get_note(session, owner_id, week_start, for_update=True)
         if note is None:
             # The editor read a saved note that is gone (its user was reset).
             if request.expected_updated_at is not None:
                 raise _conflict(None)
             # A new note starts on the first day of a week under the setting.
             start_day = weekly_notes.get_week_start_day(session, owner_id)
-            if weekly_notes.week_start_of(start, start_day) != start:
+            if weekly_notes.week_start_of(week_start, start_day) != week_start:
                 label = weekly_notes.WEEK_START_LABELS[start_day]
                 raise HTTPException(
                     status.HTTP_400_BAD_REQUEST,
                     f"週の開始日（{label}）を YYYY-MM-DD で指定してください",
                 )
-            note = WeeklyNote(user_id=owner_id, week_start=start)
+            note = WeeklyNote(user_id=owner_id, week_start=week_start)
         elif request.expected_updated_at is not None:
             check_expected_updated_at(note.updated_at, request.expected_updated_at)
         note.content = content
@@ -190,9 +189,9 @@ async def update_weekly_note(
     except IntegrityError as exc:
         # Another request created this week's note first.
         session.rollback()
-        raise _conflict(weekly_notes.get_note(session, owner_id, start)) from exc
+        raise _conflict(weekly_notes.get_note(session, owner_id, week_start)) from exc
     except Exception:
         session.rollback()
         raise
     session.refresh(note)
-    return _response(start, note)
+    return _response(week_start, note)

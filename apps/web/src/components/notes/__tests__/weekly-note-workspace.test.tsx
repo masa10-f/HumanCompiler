@@ -128,7 +128,7 @@ it("moves between weeks from the resolved week", async () => {
   expect(screen.getByTestId("panel")).toHaveTextContent("この週のノートはまだありません");
 
   fireEvent.click(screen.getByRole("button", { name: /前の週/ }));
-  expect(onDayChange).toHaveBeenLastCalledWith("2026-10-11");
+  expect(onDayChange).toHaveBeenLastCalledWith("2026-10-17");
   fireEvent.click(screen.getByRole("button", { name: /次の週/ }));
   expect(onDayChange).toHaveBeenLastCalledWith("2026-10-25");
   fireEvent.click(screen.getByRole("button", { name: "今週" }));
@@ -153,4 +153,33 @@ it("shows the week start with a link to the settings page", async () => {
     "href",
     "/settings",
   );
+});
+
+it("steps back into an older note's week after the week start changed", async () => {
+  // Weeks now start on Monday, but 11/1–11/7 was written as a Sunday week.
+  startDay = "monday";
+  jest.mocked(weeklyNotesApi.get).mockImplementation(async (day) => {
+    // The server opens the older note for the day it starts on.
+    const older = day === "2026-11-01";
+    const weekStart = older ? "2026-11-01" : weekStartOf(day, startDay);
+    return {
+      id: older ? "old-note" : null,
+      week_start: weekStart,
+      week_end: "",
+      content: older ? "<p>日曜始まりの週</p>" : "",
+      content_type: "html",
+      created_at: null,
+      updated_at: older ? "2026-11-03T00:00:00+00:00" : null,
+    };
+  });
+  // The Monday week 11/2–11/8, reached with 次の週 from the older note.
+  const onDayChange = renderWorkspace("2026-11-08");
+  expect(
+    await screen.findByRole("heading", { name: "2026年11月2日（月）〜8日（日）" }),
+  ).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: /前の週/ }));
+
+  // 11/1 opens the older note; seven days back (10/26) would have skipped it.
+  expect(onDayChange).toHaveBeenLastCalledWith("2026-11-01");
 });

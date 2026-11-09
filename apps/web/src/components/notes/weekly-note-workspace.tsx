@@ -87,7 +87,10 @@ function WeekView({ day, onDayChange }: WeeklyNoteWorkspaceProps) {
           ) : null}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => onDayChange(addDays(base, -7))}>
+          {/* The day before this week (not seven days back): after the week start
+              changes, the previous week may be an older note with other days,
+              and the server finds the note that contains that day. */}
+          <Button variant="outline" size="sm" onClick={() => onDayChange(addDays(base, -1))}>
             <ChevronLeft className="mr-1 h-4 w-4" />
             前の週
           </Button>
