@@ -386,7 +386,9 @@ G3 の `agent_proposals` に、種類を3つ足す。
 | `append_note` | `notes:write` | Project / Goal / Task のノートに追記する |
 | `replace_note` | `notes:write` | ノートを書き換える。`expected_updated_at` が必須 |
 | `list_logs` | `logs:read` | Task の作業ログを新しい順に返す。件数と合計の分も返す |
-| `get_weekly_note` | `weekly_notes:read` | 指定した日を含む週の週次ノートを Markdown で返す。週の始まりの曜日はユーザーの設定に従い、書いたノートは書いたときの7日間のまま。日を省くと今週（日本時間）。ノートが無いか空なら `note` は `null` |
+| `get_weekly_note` | `weekly_notes:read` | 指定した日を含む週の週次ノートを Markdown で返す。週の始まりの曜日はユーザーの設定に従い、書いたノートは書いたときの7日間のまま。日を省くと今週（日本時間）。ノートが無いか空なら `note` は `null`。`daily_plans:read` もあれば、その週の日次ノートの `{date, title}` の一覧（`daily_notes`）も返す。無ければ `null` |
+| `get_daily_note` | `daily_plans:read` | 1日の日次ノートを Markdown で返す。日を省くと今日（日本時間）。予定・休憩は `- 09:00〜10:00 title`、`/schedule` 行、チェックリストも含み、タスクを指す行には `(task_id: ...)` が付く。生成済みのスケジュール（開始時刻・分・タスク）も返す |
+| `list_daily_notes` | `daily_plans:read` | 本文のある日次ノートを新しい日から Markdown で返す。`date_from`・`date_to` で日を絞る。`has_more` で続きの有無を返す。スケジュールは含めない |
 | `list_weekly_notes` | `weekly_notes:read` | 空でない週次ノートを新しい週から Markdown で返す。`date_from`・`date_to` は任意の日で、範囲に重なる週を返す。`has_more` で続きの有無を返す |
 | `create_log` | `logs:write` | Task に作業ログ（作業時間と作業内容）を記録する |
 | `list_my_changes` | 不要（認証は要る） | このトークンが最近行った変更と、出した提案の状態。自分のトークンの行だけなので、スコープは問わない。提案は `proposals:read` があるときだけ返し、無ければ空のリスト |

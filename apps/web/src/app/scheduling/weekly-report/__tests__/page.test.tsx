@@ -4,15 +4,22 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import WeeklyReportPage from '../page';
 import { getJSTDateString } from '@/lib/date-utils';
+import { weekStartOf, type WeekStartDay } from '@/lib/weekly-note';
 
 const mockAuth = { user: { id: 'user-1' } as { id: string } | null, loading: false };
 const mockGenerateWeeklyReport = jest.fn();
 const mockToast = jest.fn();
+const mockWeekStart: { data: { week_start_day: WeekStartDay } | undefined } = {
+  data: { week_start_day: 'wednesday' },
+};
 
 jest.mock('@/hooks/use-auth', () => ({ useAuth: () => mockAuth }));
 jest.mock('@/components/layout/app-header', () => ({ AppHeader: () => null }));
 jest.mock('@/hooks/use-toast', () => ({
   toast: (...args: unknown[]) => mockToast(...args),
+}));
+jest.mock('@/hooks/use-week-start', () => ({
+  useWeekStartSettings: () => mockWeekStart,
 }));
 jest.mock('@/hooks/use-project-query', () => ({
   useProjectOptions: () => ({
@@ -68,8 +75,12 @@ const report = {
   generated_at: '2030-01-14T00:00:00Z',
 };
 
+// This week's first day under the mocked Wednesday start.
+const thisWeek = () => weekStartOf(getJSTDateString(), 'wednesday');
+
 describe('weekly report page', () => {
   beforeEach(() => {
+    mockWeekStart.data = { week_start_day: 'wednesday' };
     mockAuth.user = { id: 'user-1' };
     mockAuth.loading = false;
     mockGenerateWeeklyReport.mockReset();
@@ -80,7 +91,7 @@ describe('weekly report page', () => {
     mockGenerateWeeklyReport.mockResolvedValue(report);
     render(<WeeklyReportPage />);
 
-    expect(screen.getByLabelText('報告対象週開始日')).toHaveValue(getJSTDateString());
+    expect(screen.getByLabelText('報告対象週開始日')).toHaveValue(thisWeek());
     expect(screen.queryByText('Finished project')).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('報告対象週開始日'), {
@@ -135,10 +146,29 @@ describe('weekly report page', () => {
     fireEvent.click(screen.getByRole('button', { name: '週間作業報告を生成' }));
 
     await waitFor(() =>
-      expect(mockGenerateWeeklyReport).toHaveBeenCalledWith(getJSTDateString(), undefined, false),
+      expect(mockGenerateWeeklyReport).toHaveBeenCalledWith(thisWeek(), undefined, false),
     );
     expect(await screen.findByText(/Finished the draft/)).toBeInTheDocument();
     expect(screen.queryByText(/参照したノート/)).not.toBeInTheDocument();
+  });
+
+  it('starts on this week under the week start setting, and 今週 returns to it', () => {
+    render(<WeeklyReportPage />);
+    const input = screen.getByLabelText('報告対象週開始日');
+    expect(input).toHaveValue(thisWeek());
+    expect(screen.getByText(/設定の「週の始まり」（水曜日）での今週/)).toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: '2030-01-07' } });
+    expect(input).toHaveValue('2030-01-07');
+    fireEvent.click(screen.getByRole('button', { name: '今週' }));
+    expect(input).toHaveValue(thisWeek());
+  });
+
+  it('starts on today while the week start setting is unavailable', () => {
+    mockWeekStart.data = undefined;
+    render(<WeeklyReportPage />);
+
+    expect(screen.getByLabelText('報告対象週開始日')).toHaveValue(getJSTDateString());
   });
 
   it('disables generation while the date is invalid', () => {
@@ -166,7 +196,7 @@ describe('weekly report page', () => {
         }),
       ),
     );
-    expect(mockGenerateWeeklyReport).toHaveBeenCalledWith(getJSTDateString(), undefined, true);
+    expect(mockGenerateWeeklyReport).toHaveBeenCalledWith(thisWeek(), undefined, true);
   });
 
   it('waits for authentication before rendering the form', () => {

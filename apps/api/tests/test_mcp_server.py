@@ -52,6 +52,7 @@ from tests.agent_api_helpers import (
     seed_project,
     seed_task,
     seed_user,
+    seed_schedule,
     seed_weekly_note,
     use_session,
 )
@@ -66,6 +67,8 @@ MCP_HEADERS = {
     "MCP-Protocol-Version": PROTOCOL_VERSION,
 }
 READ_TOOLS = {
+    "get_daily_note",
+    "list_daily_notes",
     "find",
     "get_goal",
     "get_task",
@@ -1525,7 +1528,12 @@ async def test_get_weekly_note_returns_markdown_for_the_week_of_a_date(
     # Another user's week and a week without a note look the same.
     is_error, body = await call(mcp, "get_weekly_note", {"date": "2026-10-28"}, secret)
     assert not is_error
-    assert body == {"week_start": "2026-10-25", "week_end": "2026-10-31", "note": None}
+    assert body == {
+        "week_start": "2026-10-25",
+        "week_end": "2026-10-31",
+        "note": None,
+        "daily_notes": None,
+    }
 
 
 async def test_get_weekly_note_defaults_to_this_week(
@@ -1605,7 +1613,12 @@ async def test_get_weekly_note_follows_the_users_week_start(
 
     is_error, body = await call(mcp, "get_weekly_note", {"date": "2026-11-12"}, secret)
     assert not is_error
-    assert body == {"week_start": "2026-11-09", "week_end": "2026-11-15", "note": None}
+    assert body == {
+        "week_start": "2026-11-09",
+        "week_end": "2026-11-15",
+        "note": None,
+        "daily_notes": None,
+    }
 
 
 async def test_weekly_note_tools_need_weekly_notes_read(
@@ -1622,3 +1635,171 @@ async def test_weekly_note_tools_need_weekly_notes_read(
         }
     routes = {row.route for row in audit_rows(session)}
     assert {"mcp:get_weekly_note", "mcp:list_weekly_notes"} <= routes
+
+
+# --- daily notes ----------------------------------------------------------------
+
+
+def seed_daily_note(session: Session, user_id: UUID, day: date, blocks: list[dict]):
+    from humancompiler_api.models import DailyPlanDocument
+    from humancompiler_api.routers.daily_plans import (
+        DailyPlanDocumentV1,
+        _document_search_text,
+    )
+
+    document = DailyPlanDocumentV1.model_validate({"blocks": blocks})
+    row = DailyPlanDocument(
+        id=uuid4(),
+        user_id=user_id,
+        date=day,
+        document_json=document.model_dump(mode="json"),
+        search_text=_document_search_text(document),
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def text_block(text: str) -> dict:
+    return {"id": str(uuid4()), "type": "text", "text": text}
+
+
+async def test_get_daily_note_returns_markdown_and_schedule(
+    session: Session, mcp: httpx.AsyncClient
+):
+    row = seed_daily_note(
+        session,
+        USER_A,
+        date(2026, 11, 4),
+        [
+            text_block("論文を進める日"),
+            {
+                "id": "e1",
+                "type": "timed_line",
+                "start": "09:00",
+                "end": "10:00",
+                "title": "定例",
+            },
+        ],
+    )
+    seed_schedule(
+        session,
+        USER_A,
+        date(2026, 11, 4),
+        {
+            "assignments": [
+                {
+                    "task_id": "t-1",
+                    "task_title": "第3章",
+                    "start_time": "10:00",
+                    "duration_hours": 2,
+                }
+            ]
+        },
+    )
+    seed_daily_note(session, USER_B, date(2026, 11, 5), [text_block("secret")])
+    secret = issue_token(session, USER_A, [AgentScope.DAILY_PLANS_READ])
+
+    is_error, body = await call(mcp, "get_daily_note", {"date": "2026-11-04"}, secret)
+
+    assert not is_error
+    assert body["date"] == "2026-11-04"
+    assert body["note"]["id"] == str(row.id)
+    assert body["note"]["content_markdown"] == ("論文を進める日\n\n- 09:00〜10:00 定例")
+    assert body["schedule"] == [
+        {
+            "start_time": "10:00",
+            "duration_minutes": 120,
+            "title": "第3章",
+            "task_id": "t-1",
+        }
+    ]
+
+    # Another user's day and an empty day look the same.
+    is_error, body = await call(mcp, "get_daily_note", {"date": "2026-11-05"}, secret)
+    assert not is_error
+    assert body == {"date": "2026-11-05", "note": None, "schedule": None}
+
+
+async def test_get_daily_note_defaults_to_today(
+    session: Session, mcp: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(weekly_notes, "today", lambda: date(2026, 11, 9))
+    seed_daily_note(session, USER_A, date(2026, 11, 9), [text_block("今日")])
+    secret = issue_token(session, USER_A, [AgentScope.DAILY_PLANS_READ])
+
+    is_error, body = await call(mcp, "get_daily_note", {}, secret)
+
+    assert not is_error
+    assert body["date"] == "2026-11-09"
+    assert body["note"]["content_markdown"] == "今日"
+
+
+async def test_list_daily_notes_newest_first_in_range(
+    session: Session, mcp: httpx.AsyncClient
+):
+    for offset in range(5):
+        day = date(2026, 11, 1) + timedelta(days=offset)
+        seed_daily_note(session, USER_A, day, [text_block(f"day {day.day}")])
+    seed_daily_note(session, USER_A, date(2026, 11, 6), [])  # empty: never listed
+    seed_daily_note(session, USER_B, date(2026, 11, 3), [text_block("secret")])
+    secret = issue_token(session, USER_A, [AgentScope.DAILY_PLANS_READ])
+
+    is_error, body = await call(mcp, "list_daily_notes", {"limit": 2}, secret)
+
+    assert not is_error
+    assert [item["date"] for item in body["items"]] == ["2026-11-05", "2026-11-04"]
+    assert body["items"][0]["title"] == "day 5"
+    assert body["items"][0]["content_markdown"] == "day 5"
+    assert body["has_more"] is True
+
+    is_error, body = await call(
+        mcp,
+        "list_daily_notes",
+        {"date_from": "2026-11-02", "date_to": "2026-11-03"},
+        secret,
+    )
+    assert not is_error
+    assert [item["date"] for item in body["items"]] == ["2026-11-03", "2026-11-02"]
+    assert body["has_more"] is False
+
+
+async def test_weekly_note_lists_its_daily_notes_with_daily_scope(
+    session: Session, mcp: httpx.AsyncClient
+):
+    seed_weekly_note(session, USER_A, date(2026, 11, 1), "<p>週</p>")
+    seed_daily_note(session, USER_A, date(2026, 11, 2), [text_block("月曜の予定")])
+    seed_daily_note(session, USER_A, date(2026, 11, 6), [text_block("金曜の予定")])
+    seed_daily_note(session, USER_A, date(2026, 11, 8), [text_block("翌週")])
+    both = issue_token(
+        session, USER_A, [AgentScope.WEEKLY_NOTES_READ, AgentScope.DAILY_PLANS_READ]
+    )
+    weekly_only = issue_token(session, USER_A, [AgentScope.WEEKLY_NOTES_READ])
+
+    is_error, body = await call(mcp, "get_weekly_note", {"date": "2026-11-04"}, both)
+    assert not is_error
+    assert body["daily_notes"] == [
+        {"date": "2026-11-02", "title": "月曜の予定"},
+        {"date": "2026-11-06", "title": "金曜の予定"},
+    ]
+
+    is_error, body = await call(
+        mcp, "get_weekly_note", {"date": "2026-11-04"}, weekly_only
+    )
+    assert not is_error
+    assert body["daily_notes"] is None
+
+
+async def test_daily_note_tools_need_daily_plans_read(
+    session: Session, mcp: httpx.AsyncClient
+):
+    secret = issue_token(session, USER_A, [AgentScope.WEEKLY_NOTES_READ])
+
+    for tool in ("get_daily_note", "list_daily_notes"):
+        is_error, body = await call(mcp, tool, {}, secret)
+        assert is_error
+        assert body == {
+            "status": 403,
+            "detail": "Missing required scope: daily_plans:read",
+        }

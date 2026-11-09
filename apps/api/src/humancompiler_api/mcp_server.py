@@ -77,7 +77,8 @@ tasks, and each project, goal and task can have one context note. Tasks also \
 have work logs: time records of the minutes worked and what was done. The user \
 also keeps one weekly note per week (seven days from the weekday the user \
 chooses) for plans and reflections; read it with `get_weekly_note` or \
-`list_weekly_notes`.
+`list_weekly_notes`. Daily notes hold each day's plan, events and memos; read \
+them with `get_daily_note` or `list_daily_notes`.
 
 Working rules:
 1. Before writing, check the target with `find` or a `get_*` tool.

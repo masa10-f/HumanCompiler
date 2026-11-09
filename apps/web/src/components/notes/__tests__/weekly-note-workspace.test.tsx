@@ -108,6 +108,16 @@ it("shows the week the server resolved, its daily notes and recent weekly notes"
     "href",
     "/scheduling/daily?date=2026-11-07",
   );
+  // The seven days come before the note, so they show first on phones too.
+  const days = within(screen.getByRole("region", { name: "この週の日次ノート" }));
+  expect(days.getAllByRole("link")).toHaveLength(7);
+  expect(days.getByRole("link", { name: /11\/4（水）/ })).toHaveAttribute(
+    "aria-current",
+    "date",
+  );
+  const strip = screen.getByRole("region", { name: "この週の日次ノート" });
+  const note = screen.getByRole("region", { name: "週次ノート" });
+  expect(strip.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(await screen.findByText("先々週の振り返り")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "今週" })).toBeDisabled();
 });

@@ -2462,7 +2462,11 @@ class WeeklyReportRequest(BaseModel):
     """Request model for weekly work report generation"""
 
     week_start_date: str = Field(
-        ..., description="Start date of the week (YYYY-MM-DD format, should be Monday)"
+        ...,
+        description=(
+            "First day of the report (YYYY-MM-DD). Any day; the report covers "
+            "seven days from it."
+        ),
     )
     project_ids: list[str] | None = Field(
         default=None, description="Optional list of project IDs to filter the report"

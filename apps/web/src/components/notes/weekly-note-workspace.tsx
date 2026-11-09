@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { dailyPlansApi, weekStartApi, weeklyNotesApi } from "@/lib/api";
+import { dailyPlansApi, weeklyNotesApi } from "@/lib/api";
 import { getJSTDateString } from "@/lib/date-utils";
 import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,7 @@ import {
   weekdayLabel,
 } from "@/lib/weekly-note";
 import { useWeeklyNote } from "@/hooks/use-weekly-note";
+import { useWeekStartSettings } from "@/hooks/use-week-start";
 import type { UseNoteDocumentReturn } from "@/hooks/use-note-document";
 import type { WeeklyNote } from "@/types/weekly-note";
 import { ContextNotePanel } from "./context-note-panel";
@@ -50,10 +51,7 @@ export function WeeklyNoteWorkspace({ day, onDayChange }: WeeklyNoteWorkspacePro
 
 /** The user's week start, changed on the settings page. */
 function WeekStartSummary() {
-  const { data } = useQuery({
-    queryKey: queryKeys.userSettings.weekStart(),
-    queryFn: () => weekStartApi.get(),
-  });
+  const { data } = useWeekStartSettings();
   if (!data) return null;
 
   return (
@@ -108,12 +106,13 @@ function WeekView({ day, onDayChange }: WeeklyNoteWorkspaceProps) {
         </div>
       </div>
 
+      {weekStart ? <WeekDailyNotes weekStart={weekStart} /> : null}
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <section aria-label="週次ノート">
           <WeeklyNoteEditor editor={editor} />
         </section>
         <aside className="space-y-6">
-          {weekStart ? <WeekDailyNotes weekStart={weekStart} /> : null}
           <RecentWeeklyNotes weekStart={weekStart} onDayChange={onDayChange} />
         </aside>
       </div>
@@ -197,24 +196,28 @@ function WeekDailyNotes({ weekStart }: { weekStart: string }) {
   const byDate = new Map((data?.items ?? []).map((item) => [item.date, item]));
 
   return (
-    <div>
+    <section aria-label="この週の日次ノート">
       <h3 className="mb-2 text-sm font-semibold">この週の日次ノート</h3>
       {isError ? (
         <p className="text-sm text-muted-foreground">日次ノートを読み込めませんでした</p>
       ) : (
-        <ul className="divide-y rounded-md border bg-white dark:bg-gray-950">
+        // A row of the seven days on wide screens, a list on phones; each day
+        // opens that day's daily note.
+        <ul className="grid gap-2 sm:grid-cols-7">
           {weekDates(weekStart).map((date) => {
             const item = byDate.get(date);
+            const isToday = date === today;
             return (
-              <li key={date}>
+              <li key={date} className="min-w-0">
                 <Link
                   href={`/scheduling/daily?date=${date}`}
+                  aria-current={isToday ? "date" : undefined}
                   className={cn(
-                    "flex gap-3 px-3 py-2 text-sm hover:bg-muted/50",
-                    date === today && "bg-primary/5",
+                    "flex h-full gap-3 rounded-md border bg-white px-3 py-2 text-sm hover:bg-muted/50 sm:flex-col sm:gap-1 dark:bg-gray-950",
+                    isToday && "border-primary bg-primary/5",
                   )}
                 >
-                  <span className="w-14 shrink-0 tabular-nums text-muted-foreground">
+                  <span className="w-14 shrink-0 tabular-nums text-muted-foreground sm:w-auto">
                     {formatShortDate(date)}（{weekdayLabel(date)}）
                   </span>
                   <span
@@ -231,7 +234,7 @@ function WeekDailyNotes({ weekStart }: { weekStart: string }) {
           })}
         </ul>
       )}
-    </div>
+    </section>
   );
 }
 
