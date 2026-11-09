@@ -10,7 +10,9 @@ without creating a row; saving to the week's first day creates it.
 
 Saves carry the ``updated_at`` the editor last read as ``expected_updated_at``,
 as context notes do. A note changed since gives 409
-``{message, current_updated_at}`` and writes nothing; leaving it out
+``{message, current_updated_at}`` and writes nothing. A week read without a
+note has no ``updated_at``, so its first save sends ``expect_new`` instead: a
+note created meanwhile (another tab) gives the same 409. Leaving both out
 overwrites (the editor's "overwrite" button).
 """
 
@@ -21,7 +23,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
@@ -67,6 +69,14 @@ class WeeklyNoteUpdate(BaseModel):
     content: str = Field(max_length=MAX_CONTENT_LENGTH)
     content_type: Literal["html", "markdown"] = "html"
     expected_updated_at: datetime | None = None
+    # The editor read the week without a note: 409 if one exists by now.
+    expect_new: bool = False
+
+    @model_validator(mode="after")
+    def one_expectation(self) -> WeeklyNoteUpdate:
+        if self.expect_new and self.expected_updated_at is not None:
+            raise ValueError("send either expected_updated_at or expect_new")
+        return self
 
 
 class WeeklyNoteSummary(BaseModel):
@@ -179,6 +189,9 @@ async def update_weekly_note(
                     f"週の開始日（{label}）を YYYY-MM-DD で指定してください",
                 )
             note = WeeklyNote(user_id=owner_id, week_start=week_start)
+        elif request.expect_new:
+            # Another tab or device saved this week first; do not overwrite it.
+            raise _conflict(note)
         elif request.expected_updated_at is not None:
             check_expected_updated_at(note.updated_at, request.expected_updated_at)
         note.content = content

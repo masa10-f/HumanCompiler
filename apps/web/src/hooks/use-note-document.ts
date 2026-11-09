@@ -54,8 +54,18 @@ export interface UseNoteDocumentConfig<T extends EditableNote> {
   /** Extra fields for log and error context. */
   logContext?: Record<string, unknown>;
   load: () => Promise<T>;
-  save: (body: ContextNoteUpdate) => Promise<T>;
+  /**
+   * Send one save. `locked` is false only for the overwrite after a conflict;
+   * a locked save of a never-saved note has no `expected_updated_at`.
+   */
+  save: (body: ContextNoteUpdate, options: SaveOptions) => Promise<T>;
 }
+
+export interface SaveOptions {
+  locked: boolean;
+}
+
+type SaveFn<T> = (body: ContextNoteUpdate, options: SaveOptions) => Promise<T>;
 
 /**
  * Loading, debounced saving and conflict handling for one rich-text note.
@@ -96,7 +106,7 @@ export function useNoteDocument<T extends EditableNote>({
   // The edit the debounce timer will save, with the save function to use.
   const pendingRef = useRef<{
     data: ContextNoteUpdate;
-    save: (body: ContextNoteUpdate) => Promise<T>;
+    save: SaveFn<T>;
   } | null>(null);
   const latestContentRef = useRef<string | null>(null);
   // The updated_at of the version this tab last read or wrote.
@@ -152,7 +162,7 @@ export function useNoteDocument<T extends EditableNote>({
     (
       data: ContextNoteUpdate,
       locked: boolean,
-      saveFn: (body: ContextNoteUpdate) => Promise<T> = saveRef.current
+      saveFn: SaveFn<T> = saveRef.current
     ): Promise<boolean> => {
       const run = async (): Promise<boolean> => {
         if (locked && conflictRef.current) {
@@ -173,7 +183,7 @@ export function useNoteDocument<T extends EditableNote>({
           setError(null);
           log.component(hookName, 'saving', { ...logContextRef.current, locked });
 
-          const updated = await saveFn(body);
+          const updated = await saveFn(body, { locked });
 
           baseUpdatedAtRef.current = updated.updated_at;
 
@@ -212,7 +222,7 @@ export function useNoteDocument<T extends EditableNote>({
   const saveLocked = useCallback(
     async (
       data: ContextNoteUpdate,
-      saveFn?: (body: ContextNoteUpdate) => Promise<T>
+      saveFn?: SaveFn<T>
     ) => {
       const normalizedData = normalizeNoteUpdate(data);
       if (normalizedData.content !== undefined) {

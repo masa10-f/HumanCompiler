@@ -374,6 +374,49 @@ def test_save_expecting_a_note_that_is_missing_is_409(session: Session):
     assert stored(session) == []
 
 
+def test_first_save_expecting_a_new_note_creates_it(session: Session):
+    response = client.put(
+        f"{BASE}/{SUNDAY}", json={"content": "<p>a</p>", "expect_new": True}
+    )
+
+    assert response.status_code == 200
+    assert [note.content for note in stored(session)] == ["<p>a</p>"]
+
+
+def test_first_save_does_not_overwrite_a_note_another_tab_created(session: Session):
+    # Tabs A and B opened the empty week; B saved first.
+    other_tab = seed_weekly_note(
+        session,
+        USER_A,
+        SUNDAY,
+        "<p>B</p>",
+        updated_at=datetime(2026, 11, 3, 9, 0, tzinfo=UTC),
+    )
+
+    response = client.put(
+        f"{BASE}/{SUNDAY}", json={"content": "<p>A</p>", "expect_new": True}
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["current_updated_at"] == (
+        "2026-11-03T09:00:00+00:00"
+    )
+    assert stored(session)[0].content == other_tab.content
+
+
+def test_expect_new_and_expected_updated_at_together_are_422():
+    response = client.put(
+        f"{BASE}/{SUNDAY}",
+        json={
+            "content": "<p>x</p>",
+            "expect_new": True,
+            "expected_updated_at": "2026-11-03T09:00:00Z",
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_save_without_expected_updated_at_overwrites(session: Session):
     seed_weekly_note(session, USER_A, SUNDAY, "<p>old</p>")
 

@@ -71,9 +71,11 @@ describe('useWeeklyNote', () => {
       jest.advanceTimersByTime(500)
     })
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1))
+    // No updated_at to lock on yet: the first save expects no note to exist.
     expect(mockUpdate).toHaveBeenLastCalledWith(WEEK, {
       content: '<p>a</p>',
       content_type: 'html',
+      expect_new: true,
     })
 
     act(() => result.current.updateNote({ content: '<p>ab</p>' }))
@@ -123,6 +125,36 @@ describe('useWeeklyNote', () => {
     await waitFor(() =>
       expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.weeklyNotes.lists() })
     )
+  })
+
+  it('a first save that finds another tab\'s note conflicts, and overwrite sends no expectation', async () => {
+    mockGet.mockResolvedValue(makeNote('', null))
+    mockUpdate
+      .mockRejectedValueOnce(new ApiError(409, 'Changed since you read it'))
+      .mockResolvedValueOnce(makeNote('<p>mine</p>', '2026-11-03T09:00:02+00:00'))
+    const { result } = renderHook(() => useWeeklyNote(DAY), { wrapper })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    act(() => result.current.updateNote({ content: '<p>mine</p>' }))
+    await act(async () => {
+      jest.advanceTimersByTime(500)
+    })
+    await waitFor(() => expect(result.current.conflict).toBe(true))
+    expect(mockUpdate).toHaveBeenLastCalledWith(WEEK, {
+      content: '<p>mine</p>',
+      content_type: 'html',
+      expect_new: true,
+    })
+
+    await act(async () => {
+      await result.current.overwrite()
+    })
+
+    expect(mockUpdate).toHaveBeenLastCalledWith(WEEK, {
+      content: '<p>mine</p>',
+      content_type: 'html',
+    })
+    expect(result.current.conflict).toBe(false)
   })
 
   it('reports a conflict on 409 and pauses saves', async () => {

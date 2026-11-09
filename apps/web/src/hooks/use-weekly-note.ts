@@ -29,10 +29,14 @@ export function useWeeklyNote(day: string): UseNoteDocumentReturn<WeeklyNote> {
       weekStartRef.current = note.week_start;
       return note;
     },
-    save: async (body) => {
+    save: async (body, { locked }) => {
       const weekStart = weekStartRef.current;
       if (!weekStart) throw new Error('Weekly note is not loaded');
-      const saved = await weeklyNotesApi.update(weekStart, body);
+      // A week read without a note has no updated_at to lock on: say so, so a
+      // note another tab created meanwhile gives a conflict, not an overwrite.
+      const request =
+        locked && !body.expected_updated_at ? { ...body, expect_new: true } : body;
+      const saved = await weeklyNotesApi.update(weekStart, request);
       void queryClient.invalidateQueries({ queryKey: queryKeys.weeklyNotes.lists() });
       return saved;
     },

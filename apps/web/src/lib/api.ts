@@ -109,6 +109,7 @@ import type {
   WeeklyNote,
   WeeklyNoteListQuery,
   WeeklyNoteListResponse,
+  WeeklyNoteUpdate,
   WeekStartSettings,
 } from "@/types/weekly-note";
 import type { TaskStatus } from "@/types/task";
@@ -900,7 +901,7 @@ class ApiClient {
 
   async updateWeeklyNote(
     weekStart: string,
-    data: ContextNoteUpdate,
+    data: WeeklyNoteUpdate,
   ): Promise<WeeklyNote> {
     return this.request<WeeklyNote>(`/api/weekly-notes/${weekStart}`, {
       method: "PUT",
@@ -1899,7 +1900,7 @@ export const weeklyRhythmApi = {
 export const weeklyNotesApi = {
   list: (query?: WeeklyNoteListQuery) => apiClient.listWeeklyNotes(query),
   get: (day: string) => apiClient.getWeeklyNote(day),
-  update: (weekStart: string, data: ContextNoteUpdate) =>
+  update: (weekStart: string, data: WeeklyNoteUpdate) =>
     apiClient.updateWeeklyNote(weekStart, data),
 };
 

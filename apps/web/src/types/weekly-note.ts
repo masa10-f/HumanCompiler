@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
 
 import type { WeekStartDay } from '@/lib/weekly-note';
+import type { ContextNoteUpdate } from '@/types/context-note';
 
 /**
  * A week's free-form note: seven days from `week_start`. `id` and the
@@ -39,3 +40,10 @@ export interface WeeklyNoteListResponse {
 export interface WeekStartSettings {
   week_start_day: WeekStartDay;
 }
+
+/**
+ * A save. `expect_new` says the editor read the week without a note: the
+ * server answers 409 if one was created meanwhile (another tab), instead of
+ * overwriting it.
+ */
+export type WeeklyNoteUpdate = ContextNoteUpdate & { expect_new?: boolean };
