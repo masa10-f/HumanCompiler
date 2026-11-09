@@ -71,15 +71,27 @@ _TAG = re.compile(r"<[^>]*>")
 _WHITESPACE = re.compile(r"\s+")
 
 
+def shift_days(value: date, days: int) -> date:
+    """``value`` moved by ``days``, held at ``date.min`` / ``date.max``.
+
+    Plain date arithmetic raises ``OverflowError`` past year 1 or 9999, which
+    would turn a request for such a day into a 500.
+    """
+    try:
+        return value + timedelta(days=days)
+    except OverflowError:
+        return date.min if days < 0 else date.max
+
+
 def week_start_of(value: date, start_day: WeekStartDay) -> date:
     """The first day of the week that contains ``value``."""
     offset = (value.weekday() - _BY_WEEKDAY.index(start_day)) % 7
-    return value - timedelta(days=offset)
+    return shift_days(value, -offset)
 
 
 def week_end_of(week_start: date) -> date:
     """The last day of the week that starts on ``week_start``."""
-    return week_start + timedelta(days=6)
+    return shift_days(week_start, 6)
 
 
 def today(now: datetime | None = None) -> date:
@@ -147,7 +159,7 @@ def resolve_week(
         select(WeeklyNote)
         .where(
             WeeklyNote.user_id == user_id,
-            WeeklyNote.week_start >= day - timedelta(days=6),
+            WeeklyNote.week_start >= shift_days(day, -6),
             WeeklyNote.week_start <= day,
         )
         .order_by(col(WeeklyNote.week_start).desc())
@@ -227,9 +239,7 @@ def list_notes(
         WeeklyNote.user_id == user_id, WeeklyNote.content != ""
     )
     if date_from is not None:
-        statement = statement.where(
-            WeeklyNote.week_start >= date_from - timedelta(days=6)
-        )
+        statement = statement.where(WeeklyNote.week_start >= shift_days(date_from, -6))
     if date_to is not None:
         statement = statement.where(WeeklyNote.week_start <= date_to)
     if before is not None:

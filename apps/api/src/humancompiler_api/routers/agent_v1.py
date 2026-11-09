@@ -6,7 +6,7 @@
 
 """Read-only agent API (``/api/agent/v1``), authenticated by agent token."""
 
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -615,7 +615,7 @@ async def list_weekly_notes(
     statement = select(WeeklyNote).where(WeeklyNote.user_id == principal.user_id)
     if date_from is not None:
         statement = statement.where(
-            WeeklyNote.week_start >= date_from - timedelta(days=6)
+            WeeklyNote.week_start >= weekly_notes.shift_days(date_from, -6)
         )
     if date_to is not None:
         statement = statement.where(WeeklyNote.week_start <= date_to)

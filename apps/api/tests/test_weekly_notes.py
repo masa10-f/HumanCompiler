@@ -92,6 +92,24 @@ def test_any_weekday_can_start_the_week(start_day, expected):
     assert start <= date(2026, 11, 4) <= weekly_notes.week_end_of(start)
 
 
+def test_date_shifts_stop_at_the_ends_of_the_calendar():
+    assert weekly_notes.shift_days(date.min, -6) == date.min
+    assert weekly_notes.shift_days(date.max, 6) == date.max
+    assert weekly_notes.shift_days(date(2026, 11, 1), 6) == date(2026, 11, 7)
+
+
+@pytest.mark.parametrize("day", ["0001-01-01", "0001-01-03", "9999-12-31"])
+def test_days_at_the_ends_of_the_calendar_are_not_errors(session: Session, day):
+    assert client.get(f"{BASE}/{day}").status_code == 200
+    secret = issue_token(session, USER_A, [AgentScope.WEEKLY_NOTES_READ])
+    response = client.get(
+        "/api/agent/v1/weekly-notes",
+        params={"date_from": day},
+        headers=bearer(secret),
+    )
+    assert response.status_code == 200
+
+
 def test_today_is_decided_in_tokyo():
     # Saturday 15:30 UTC is already Sunday in Tokyo.
     assert weekly_notes.today(datetime(2026, 11, 7, 15, 30, tzinfo=UTC)) == date(
