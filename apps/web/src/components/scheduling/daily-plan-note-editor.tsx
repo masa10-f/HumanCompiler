@@ -188,7 +188,7 @@ export function DailyPlanNoteEditor({
     if (suggestionsOpen) onSuggestionsOpen?.();
   }, [suggestionsOpen, onSuggestionsOpen]);
   const dismissed = useRef<string | null>(null);
-  const emitted = useRef<string>();
+  const emitted = useRef<string | undefined>(undefined);
   const initialized = useRef(false);
   const changeRef = useRef(onChange);
   changeRef.current = onChange;
