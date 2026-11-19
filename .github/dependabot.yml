@@ -8,6 +8,11 @@ updates:
     groups:
       npm-minor-patch:
         update-types: ["minor", "patch"]
+    ignore:
+      # Keep @types/node on the Node runtime's major version (24.x, see
+      # .nvmrc and "engines"). Raise both by hand when the runtime moves.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   # Backend (uv.lock)
   - package-ecosystem: "uv"
