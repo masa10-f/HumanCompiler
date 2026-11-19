@@ -13,6 +13,10 @@ updates:
       # .nvmrc and "engines"). Raise both by hand when the runtime moves.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+      # TypeScript 7 ships no compiler API, so typescript-eslint cannot
+      # load it yet. Stay on 6.x until typescript-eslint supports TS 7.1+.
+      - dependency-name: "typescript"
+        versions: [">=7"]
 
   # Backend (uv.lock)
   - package-ecosystem: "uv"
