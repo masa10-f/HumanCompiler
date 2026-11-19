@@ -45,6 +45,6 @@
     "@expo-google-fonts/noto-sans-jp": "0.4.4",
     "@types/node": "^24.19.2",
     "esbuild": "^0.28.2",
-    "typescript": "^7.0.2"
+    "typescript": "^6.0.3"
   }
 }
