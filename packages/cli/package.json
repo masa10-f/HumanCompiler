@@ -43,7 +43,7 @@
   },
   "devDependencies": {
     "@expo-google-fonts/noto-sans-jp": "0.4.4",
-    "@types/node": "^20.14.0",
+    "@types/node": "^26.6.6",
     "esbuild": "^0.28.2",
     "typescript": "^5.3.0"
   }
