@@ -1517,7 +1517,11 @@ class TaskCreate(TaskBase):
 
 
 class TaskUpdate(BaseModel):
-    """Task update request"""
+    """Task update request.
+
+    A task's text is its note, so there is nothing to send here. Text in the
+    former ``description`` or ``memo`` is rejected, not dropped: a web bundle
+    loaded before the change would otherwise lose what the user typed."""
 
     title: str | None = Field(None, min_length=1, max_length=200)
     estimate_hours: Decimal | None = Field(None, gt=0, max_digits=5, decimal_places=2)
@@ -1526,6 +1530,18 @@ class TaskUpdate(BaseModel):
     work_type: WorkType | None = None
     priority: int | None = Field(None, ge=1, le=5)
     goal_id: UUID | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_former_text_fields(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            for name in ("description", "memo"):
+                value = data.get(name)
+                if isinstance(value, str) and value.strip():
+                    raise ValueError(
+                        f"{name} is no longer a task field: edit the task's note"
+                    )
+        return data
 
     @field_validator("due_date", mode="before")
     @classmethod

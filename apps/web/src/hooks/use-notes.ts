@@ -56,8 +56,14 @@ export function useNote({ entityType, entityId }: UseNoteConfig): UseNoteReturn 
     save: async (body) => {
       const saved = await saveNote(entityType, entityId, body);
       if (entityType === 'task') {
-        // Task lists show the opening of the note (note_excerpt).
-        void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
+        // Task lists show the opening of the note (note_excerpt). The editor
+        // autosaves while the user types, so the task queries are only marked
+        // stale: they refetch when a list next mounts or the window regains
+        // focus, not after every save.
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.tasks.all,
+          refetchType: 'none',
+        });
       }
       return saved;
     },

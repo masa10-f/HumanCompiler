@@ -303,7 +303,7 @@ describe('useNote and task lists', () => {
     mockUpdateTaskNote.mockResolvedValue(makeNote('<p>new</p>', FIRST_SAVE_AT))
   })
 
-  it('refreshes task queries after a task note is saved, for the note excerpt', async () => {
+  it('marks task queries stale after a task note is saved, without refetching', async () => {
     const { result } = await renderLoaded('task')
 
     await act(async () => {
@@ -311,7 +311,10 @@ describe('useNote and task lists', () => {
     })
 
     expect(mockUpdateTaskNote).toHaveBeenCalledTimes(1)
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['tasks'] })
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['tasks'],
+      refetchType: 'none',
+    })
   })
 
   it('leaves task queries alone when a project note is saved', async () => {

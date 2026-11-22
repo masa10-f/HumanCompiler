@@ -56,3 +56,14 @@ def test_task_update_validation_matches_task_database_constraints():
     for invalid_input in invalid_inputs:
         with pytest.raises(ValidationError):
             TaskUpdate(**invalid_input)
+
+
+@pytest.mark.parametrize("field", ["description", "memo"])
+def test_task_update_rejects_text_in_the_former_fields(field: str):
+    """A web bundle from before the change must not lose typed text silently."""
+    with pytest.raises(ValidationError, match="edit the task's note"):
+        TaskUpdate(**{field: "Typed in an old tab"})
+
+    # Empty values carry no text, so an old edit form still saves.
+    for empty in (None, "", "  \n "):
+        assert TaskUpdate(title="Renamed", **{field: empty}).title == "Renamed"
