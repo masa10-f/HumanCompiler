@@ -141,6 +141,8 @@ export function useNoteDocument<T extends EditableNote>({
 
       log.component(hookName, 'fetch_success', { noteId: data.id });
       baseUpdatedAtRef.current = data.updated_at;
+      // The loaded version replaces the local content, so nothing is unsaved.
+      saveFailedRef.current = false;
       setNote(data);
       return true;
     } catch (err) {
