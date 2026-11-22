@@ -82,6 +82,8 @@ export function DailyNotesCard() {
             setTransitionError("");
             const target = transitionTarget.current;
             transitionTarget.current = null;
+            // A retry clicked during a successful attempt is done with it.
+            retryRequested.current = false;
             target?.action();
             return;
           } catch (error) {
