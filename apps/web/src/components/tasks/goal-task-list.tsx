@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 
 import { LogFormDialog } from '@/components/logs/log-form-dialog'
+import { CopyTaskNoteButton } from '@/components/tasks/copy-task-note-button'
 import { TaskDeleteDialog } from '@/components/tasks/task-delete-dialog'
 import { TaskEditDialog } from '@/components/tasks/task-edit-dialog'
 import { TaskPanel } from '@/components/tasks/task-panel'
@@ -116,13 +117,16 @@ function TaskTitleLink({
 function TaskNoteExcerpt({ task, className }: { task: Task; className?: string }) {
   if (!task.note_excerpt) return null
   return (
-    <p className={cn('text-sm text-muted-foreground', className)}>
-      <FileText
-        aria-label="ノートあり"
-        className="mr-1 inline h-3.5 w-3.5 align-[-2px]"
-      />
-      {task.note_excerpt}
-    </p>
+    <div className="mt-1 flex items-start gap-1">
+      <p className={cn('min-w-0 flex-1 text-sm text-muted-foreground', className)}>
+        <FileText
+          aria-label="ノートあり"
+          className="mr-1 inline h-3.5 w-3.5 align-[-2px]"
+        />
+        {task.note_excerpt}
+      </p>
+      <CopyTaskNoteButton taskId={task.id} variant="icon" />
+    </div>
   )
 }
 
@@ -344,7 +348,7 @@ function TaskDesktopRows({
             className="font-medium"
             onOpen={onOpen}
           />
-          <TaskNoteExcerpt task={task} className="mt-1 line-clamp-1" />
+          <TaskNoteExcerpt task={task} className="line-clamp-1" />
           <div className="mt-2 flex flex-wrap gap-1">
             <Badge className={workTypeColors[task.work_type ?? 'light_work']}>
               {workTypeLabels[task.work_type ?? 'light_work']}
@@ -397,7 +401,7 @@ function TaskMobileCard({
               className="mt-2 block font-semibold"
               onOpen={onOpen}
             />
-            <TaskNoteExcerpt task={task} className="mt-1 line-clamp-2" />
+            <TaskNoteExcerpt task={task} className="line-clamp-2" />
           </div>
           <div className="shrink-0">
             <TaskStatusSelect task={task} />

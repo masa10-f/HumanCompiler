@@ -8,6 +8,7 @@ from datetime import datetime, UTC
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, and_, select
 
@@ -24,11 +25,19 @@ from humancompiler_api.models import (
     Goal,
     Task,
 )
+from humancompiler_api.note_markdown_out import note_html_to_markdown
 from humancompiler_api.proposal_payloads import NoteTarget
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/notes", tags=["notes"])
+
+
+class TaskNoteMarkdownResponse(BaseModel):
+    """A task's title and its note as Markdown, to paste into an AI chat."""
+
+    title: str
+    markdown: str
 
 
 def get_session() -> Generator[Session, None, None]:
@@ -333,3 +342,34 @@ async def update_task_note(
 
     logger.info(f"Updated task note for task {task_id}")
     return ContextNoteResponse.model_validate(note)
+
+
+@router.get(
+    "/tasks/{task_id}/markdown",
+    response_model=TaskNoteMarkdownResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Task not found"},
+        403: {"model": ErrorResponse, "description": "Not authorized"},
+    },
+)
+async def get_task_note_markdown(
+    task_id: UUID,
+    session: Session = Depends(get_session),
+    current_user: AuthUser = Depends(get_current_user),
+) -> TaskNoteMarkdownResponse:
+    """The task's note as Markdown, the way agents read it.
+
+    A task's note often holds the prompt for an AI assistant; this is the text
+    the web copies to the clipboard. A task without a note gives an empty
+    string, and reading does not create the note."""
+    task = verify_task_ownership(session, task_id, current_user.user_id)
+    note = session.exec(
+        select(ContextNote).where(ContextNote.task_id == task_id)
+    ).first()
+    content = note.content if note is not None else ""
+    markdown = (
+        note_html_to_markdown(content)
+        if note is not None and note.content_type == "html"
+        else content.strip()
+    )
+    return TaskNoteMarkdownResponse(title=task.title, markdown=markdown)

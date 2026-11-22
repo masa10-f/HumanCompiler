@@ -29,6 +29,12 @@ jest.mock('@/components/tasks/task-delete-dialog', () => ({
   TaskDeleteDialog: ({ children }: { children: React.ReactNode }) => children,
 }))
 
+jest.mock('@/components/tasks/copy-task-note-button', () => ({
+  CopyTaskNoteButton: ({ taskId }: { taskId: string }) => (
+    <button type="button">copy:{taskId}</button>
+  ),
+}))
+
 jest.mock('@/components/tasks/task-panel', () => ({
   TaskPanel: ({ taskId }: { taskId: string | null }) =>
     taskId ? <div data-testid="task-panel">{taskId}</div> : null,
@@ -153,6 +159,9 @@ describe('GoalTaskList', () => {
     // Once in the desktop table and once in the mobile card.
     expect(screen.getAllByText('APIの設計方針を決める')).toHaveLength(2)
     expect(screen.getAllByLabelText('ノートあり')).toHaveLength(2)
+    // The note can be copied from the row; a task without one has nothing to copy.
+    expect(screen.getAllByRole('button', { name: 'copy:with-note' })).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: 'copy:without-note' })).not.toBeInTheDocument()
   })
 
   it('filters tasks by decision state and opens the task panel from the dependency summary', () => {

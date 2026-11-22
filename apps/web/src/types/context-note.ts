@@ -32,3 +32,10 @@ export interface ContextNoteUpdate {
 }
 
 export type NoteEntityType = 'project' | 'goal' | 'task';
+
+/** A task's title and its note as Markdown, as the clipboard copy uses them. */
+export interface TaskNoteMarkdown {
+  title: string;
+  /** '' for a task without a note. */
+  markdown: string;
+}

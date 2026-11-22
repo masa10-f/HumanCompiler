@@ -26,6 +26,7 @@ import { GoalTaskAssistantDialog } from '@/components/ai/goal-task-assistant-dia
 import { LogFormDialog } from '@/components/logs/log-form-dialog'
 import { ContextNotePanel } from '@/components/notes/context-note-panel'
 import { NoteConflictAlert } from '@/components/notes/note-conflict-alert'
+import { CopyTaskNoteButton } from '@/components/tasks/copy-task-note-button'
 import { TaskEditDialog } from '@/components/tasks/task-edit-dialog'
 import { TaskStatusSelect } from '@/components/tasks/task-status-select'
 import { TaskWorkHistory } from '@/components/tasks/task-work-history'
@@ -53,9 +54,17 @@ interface TaskDetailProps {
   onSelectTask?: (taskId: string) => void
 }
 
-function SectionTitle({ icon: Icon, children }: { icon: typeof Clock; children: React.ReactNode }) {
+function SectionTitle({
+  icon: Icon,
+  children,
+  className = 'mb-2',
+}: {
+  icon: typeof Clock
+  children: React.ReactNode
+  className?: string
+}) {
   return (
-    <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
+    <h3 className={cn('flex items-center gap-2 text-sm font-semibold', className)}>
       <Icon className="h-4 w-4" />
       {children}
     </h3>
@@ -110,18 +119,30 @@ function DependencyItem({
 
 /** The task's note: its body, edited in place. */
 function TaskNote({ taskId, variant }: { taskId: string; variant: 'panel' | 'page' }) {
-  const { note, loading, saving, conflict, updateNote, reloadLatest, overwrite } =
+  const { note, loading, saving, conflict, updateNote, reloadLatest, overwrite, flush } =
     useTaskNote(taskId)
 
+  const heading = (
+    <div className="mb-2 flex items-center justify-between gap-2">
+      <SectionTitle icon={FileText} className="">
+        ノート
+      </SectionTitle>
+      {!loading && <CopyTaskNoteButton taskId={taskId} beforeCopy={flush} />}
+    </div>
+  )
   if (loading) {
     return (
-      <div className="flex h-24 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
+      <>
+        {heading}
+        <div className="flex h-24 items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      </>
     )
   }
   return (
     <>
+      {heading}
       <NoteConflictAlert
         sticky={variant === 'page'}
         conflict={conflict}
@@ -280,7 +301,6 @@ export function TaskDetail({
       )}
 
       <section aria-label="ノート">
-        <SectionTitle icon={FileText}>ノート</SectionTitle>
         {/* Keyed by task so that another task never shows this one's pending edit. */}
         <TaskNote key={task.id} taskId={task.id} variant={variant} />
       </section>

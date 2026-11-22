@@ -41,6 +41,7 @@ function related(id: string, status: TaskDependencyContextTask['status']) {
 let currentTask: Task | undefined = task
 let context: TaskDependencyContext = { prerequisites: [], dependents: [] }
 const mockUpdateNote = jest.fn()
+const mockFlush = jest.fn()
 
 jest.mock('@/hooks/use-tasks-query', () => ({
   useTask: () => ({ data: currentTask, isLoading: false, refetch: jest.fn() }),
@@ -61,7 +62,21 @@ jest.mock('@/hooks/use-notes', () => ({
     updateNote: mockUpdateNote,
     reloadLatest: jest.fn(),
     overwrite: jest.fn(),
+    flush: mockFlush,
   }),
+}))
+jest.mock('@/components/tasks/copy-task-note-button', () => ({
+  CopyTaskNoteButton: ({
+    taskId,
+    beforeCopy,
+  }: {
+    taskId: string
+    beforeCopy?: () => Promise<void>
+  }) => (
+    <button type="button" onClick={() => beforeCopy?.()}>
+      copy:{taskId}
+    </button>
+  ),
 }))
 // The real panel is the rich-text editor; here it shows the note and one edit.
 jest.mock('@/components/notes/context-note-panel', () => ({
@@ -134,6 +149,14 @@ describe('TaskDetail', () => {
       content: '<p>Edited</p>',
       content_type: 'html',
     })
+  })
+
+  it('offers the note copy, which first saves what is in the editor', () => {
+    render(<TaskDetail taskId={task.id} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'copy:task-1' }))
+
+    expect(mockFlush).toHaveBeenCalledTimes(1)
   })
 
   it('uses the compact note in the panel and the full one on the page', () => {
