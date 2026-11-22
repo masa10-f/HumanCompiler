@@ -196,12 +196,20 @@ export function TaskDetail({
   const projectId = goalQuery.data?.project_id
   const isOpen = task.status === 'pending' || task.status === 'in_progress'
   const prerequisitesDone =
-    Boolean(context) && context!.prerequisites.every((item) => item.status === 'completed')
+    context?.prerequisites.every((item) => item.status === 'completed') ?? false
   const canStart = isOpen && prerequisitesDone
   const hasCancelledPrerequisite = context?.prerequisites.some(
     (item) => item.status === 'cancelled',
   )
   const isPage = variant === 'page'
+  // Without the dependencies it is unknown whether the task may start, so the
+  // Runner button stays off; say why, in place of "no dependencies".
+  const dependencyError = (
+    <div className="flex items-center gap-2 rounded-lg border border-destructive/40 p-3 text-sm text-destructive">
+      <AlertTriangle className="h-4 w-4 shrink-0" />
+      依存関係を読み込めませんでした。
+    </div>
+  )
 
   return (
     <div className={cn('space-y-6', !isPage && 'p-5')}>
@@ -211,6 +219,9 @@ export function TaskDetail({
           {canStart && <Badge variant="info">Ready</Badge>}
           {isOpen && context && !prerequisitesDone && (
             <Badge variant="warning">ブロック中</Badge>
+          )}
+          {isOpen && Boolean(contextQuery.error) && (
+            <Badge variant="destructive">依存関係を確認できません</Badge>
           )}
         </div>
         {isPage ? (
@@ -314,6 +325,8 @@ export function TaskDetail({
         <SectionTitle icon={ArrowLeft}>先に必要なタスク</SectionTitle>
         {contextQuery.isLoading ? (
           <div className="text-sm text-muted-foreground">読み込み中...</div>
+        ) : contextQuery.error ? (
+          dependencyError
         ) : context?.prerequisites.length ? (
           <div className="space-y-2">
             {context.prerequisites.map((item) => (
@@ -334,7 +347,9 @@ export function TaskDetail({
 
       <section aria-label="このタスクを待っているタスク">
         <SectionTitle icon={ArrowRight}>このタスクを待っているタスク</SectionTitle>
-        {context?.dependents.length ? (
+        {contextQuery.error ? (
+          dependencyError
+        ) : context?.dependents.length ? (
           <div className="space-y-2">
             {context.dependents.map((item) => (
               <DependencyItem

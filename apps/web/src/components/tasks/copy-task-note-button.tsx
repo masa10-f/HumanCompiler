@@ -27,6 +27,8 @@ interface CopyTaskNoteButtonProps {
   className?: string
 }
 
+class EmptyNoteError extends Error {}
+
 /** The text put on the clipboard: the task's title as a heading, then its note. */
 export function taskNoteClipboardText(title: string, markdown: string): string {
   return `# ${title}\n\n${markdown}\n`
@@ -47,23 +49,44 @@ export function CopyTaskNoteButton({
 
   const copy = async () => {
     setCopying(true)
-    try {
+    // Started in the click itself: Safari allows a clipboard write only while
+    // the click is still "active", which it no longer is after a request. The
+    // write is handed the text as a promise, so the note can be saved and
+    // read while the browser already holds the permission.
+    const text = (async () => {
       await beforeCopy?.()
       const { title, markdown } = await notesApi.getTaskNoteMarkdown(taskId)
-      if (!markdown.trim()) {
-        toast({ title: 'コピーするノートがありません', description: 'ノートはまだ空です。' })
-        return
-      }
-      if (!navigator.clipboard?.writeText) {
+      if (!markdown.trim()) throw new EmptyNoteError()
+      return taskNoteClipboardText(title, markdown)
+    })()
+    try {
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        const blob = text.then((value) => new Blob([value], { type: 'text/plain' }))
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })])
+        // Some browsers resolve the write without waiting for the text.
+        await text
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(await text)
+      } else {
+        await text
         throw new Error('Clipboard API is not available')
       }
-      await navigator.clipboard.writeText(taskNoteClipboardText(title, markdown))
       toast({
         title: 'ノートをコピーしました',
         description: 'Markdownです。AIとのチャットに貼り付けて使えます。',
       })
     } catch (error) {
-      log.error('Failed to copy task note', error, {
+      // The write fails with the browser's own error when the text promise
+      // rejects, so ask the promise what happened.
+      const cause = await text.then(
+        () => error,
+        (textError: unknown) => textError,
+      )
+      if (cause instanceof EmptyNoteError) {
+        toast({ title: 'コピーするノートがありません', description: 'ノートはまだ空です。' })
+        return
+      }
+      log.error('Failed to copy task note', cause, {
         component: 'CopyTaskNoteButton',
         taskId,
       })

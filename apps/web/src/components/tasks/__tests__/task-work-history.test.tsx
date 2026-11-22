@@ -11,7 +11,7 @@ import type { Log } from '@/types/log'
 import type { WorkSession } from '@/types/work-session'
 
 let logs: { data?: Log[]; isLoading: boolean; error: Error | null }
-let sessions: { data?: WorkSession[]; isLoading: boolean }
+let sessions: { data?: WorkSession[]; isLoading: boolean; error?: Error | null }
 const mockUseLogsByTask = jest.fn()
 const mockUseWorkSessionsByTask = jest.fn()
 
@@ -105,6 +105,15 @@ describe('TaskWorkHistory', () => {
 
     expect(screen.getByText('ログの読み込みに失敗しました: offline')).toBeInTheDocument()
     expect(screen.getByText('Kept focus')).toBeInTheDocument()
+  })
+
+  it('shows a failed session load, not an empty history', () => {
+    sessions = { data: undefined, isLoading: false, error: new Error('offline') }
+
+    render(<TaskWorkHistory taskId="task-1" />)
+
+    expect(screen.getByText('セッションの読み込みに失敗しました: offline')).toBeInTheDocument()
+    expect(screen.queryByText('セッション履歴はまだありません')).not.toBeInTheDocument()
   })
 
   it('shows each session with its minutes and reflection', () => {

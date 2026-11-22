@@ -138,6 +138,10 @@ export function TaskWorkHistory({ taskId }: { taskId: string }) {
         </h4>
         {sessionsQuery.isLoading ? (
           <p className="text-sm text-muted-foreground">セッションを読み込み中...</p>
+        ) : sessionsQuery.error ? (
+          <p className="text-sm text-destructive">
+            セッションの読み込みに失敗しました: {(sessionsQuery.error as Error).message}
+          </p>
         ) : sessions.length === 0 ? (
           <p className="text-sm text-muted-foreground">セッション履歴はまだありません</p>
         ) : (

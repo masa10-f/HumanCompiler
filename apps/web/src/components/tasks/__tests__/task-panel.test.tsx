@@ -4,7 +4,7 @@
 // This file is part of HumanCompiler.
 // For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
 
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 
 import { TaskPanel } from '../task-panel'
 import type { Task } from '@/types/task'
@@ -61,56 +61,45 @@ describe('TaskPanel', () => {
   it('stays closed without a task', () => {
     renderPanel(null)
 
-    expect(screen.queryByLabelText('タスク詳細')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('shows the task detail as a panel and links to the task page', () => {
+  it('shows the task detail as a modal panel and links to the task page', () => {
     renderPanel(task.id)
 
-    expect(screen.getByTestId('task-detail')).toHaveTextContent('task-1:panel')
-    expect(screen.getByRole('link', { name: 'ページで開く' })).toHaveAttribute(
+    const panel = screen.getByRole('dialog', { name: 'タスク詳細' })
+    expect(within(panel).getByTestId('task-detail')).toHaveTextContent('task-1:panel')
+    expect(within(panel).getByRole('link', { name: 'ページで開く' })).toHaveAttribute(
       'href',
       '/projects/project-1/goals/goal-1/tasks/task-1',
     )
+    // Focus moves into the panel, off the row that opened it.
+    expect(panel).toContainElement(document.activeElement as HTMLElement)
   })
 
-  it('closes from the close button, the backdrop and the Escape key', () => {
+  it('closes from the close button and the Escape key', () => {
     const onClose = renderPanel(task.id)
 
     fireEvent.click(screen.getByRole('button', { name: '閉じる' }))
-    fireEvent.click(screen.getByRole('button', { name: '詳細パネルを閉じる' }))
     fireEvent.keyDown(document, { key: 'Escape' })
 
-    expect(onClose).toHaveBeenCalledTimes(3)
-  })
-
-  it('leaves Escape to a dialog opened from the panel', () => {
-    const onClose = renderPanel(task.id)
-    const dialog = document.createElement('div')
-    dialog.setAttribute('role', 'dialog')
-    document.body.appendChild(dialog)
-
-    fireEvent.keyDown(document, { key: 'Escape' })
-    dialog.remove()
-
-    expect(onClose).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalledTimes(2)
   })
 
   it('leaves Escape to a field the user is typing in', () => {
     const onClose = renderPanel(task.id)
+    const panel = screen.getByRole('dialog', { name: 'タスク詳細' })
     const input = document.createElement('input')
     const editor = document.createElement('div')
     editor.setAttribute('contenteditable', 'true')
     const paragraph = document.createElement('p')
     editor.appendChild(paragraph)
-    document.body.append(input, editor)
+    panel.append(input, editor)
 
     // Escape cancels an IME conversion or an editor menu here.
     fireEvent.keyDown(input, { key: 'Escape' })
     fireEvent.keyDown(paragraph, { key: 'Escape' })
     fireEvent.keyDown(document, { key: 'Escape', isComposing: true })
-    input.remove()
-    editor.remove()
 
     expect(onClose).not.toHaveBeenCalled()
   })
@@ -127,8 +116,8 @@ describe('TaskPanel', () => {
       </div>,
     )
 
-    const panel = screen.getByLabelText('タスク詳細')
+    const panel = screen.getByRole('dialog', { name: 'タスク詳細' })
     expect(container).not.toContainElement(panel)
-    expect(panel.parentElement?.parentElement).toBe(document.body)
+    expect(document.body).toContainElement(panel)
   })
 })

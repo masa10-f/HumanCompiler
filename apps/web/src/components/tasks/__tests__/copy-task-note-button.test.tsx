@@ -21,6 +21,16 @@ jest.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: mockToast }),
 }))
 
+/** jsdom's Blob has no text(). */
+function readBlob(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsText(blob)
+  })
+}
+
 function setClipboard(value: unknown) {
   Object.defineProperty(navigator, 'clipboard', { value, configurable: true })
 }
@@ -101,6 +111,75 @@ describe('CopyTaskNoteButton', () => {
       ),
     )
     expect(button).toBeEnabled()
+  })
+
+  it('starts the clipboard write inside the click, before the note is read', async () => {
+    // Safari only allows the write while the click is active, so the write is
+    // given a promise for the text instead of waiting for it.
+    const order: string[] = []
+    let written: Promise<Blob> | undefined
+    const write = jest.fn(async (items: Array<{ data: Record<string, Promise<Blob>> }>) => {
+      order.push('write started')
+      written = items[0]!.data['text/plain']
+      await written
+    })
+    class FakeClipboardItem {
+      constructor(public data: Record<string, Promise<Blob>>) {}
+    }
+    Object.defineProperty(window, 'ClipboardItem', { value: FakeClipboardItem, configurable: true })
+    setClipboard({ write, writeText: mockWriteText })
+    mockGetTaskNoteMarkdown.mockImplementation(async () => {
+      order.push('note read')
+      return { title: 'T', markdown: 'body' }
+    })
+
+    try {
+      render(<CopyTaskNoteButton taskId="task-1" />)
+      fireEvent.click(screen.getByRole('button', { name: 'Markdownでコピー' }))
+
+      // Synchronously after the click: the write has begun, the read has not finished.
+      expect(order[0]).toBe('write started')
+      await waitFor(() =>
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({ title: 'ノートをコピーしました' }),
+        ),
+      )
+      expect(await readBlob(await written!)).toBe('# T\n\nbody\n')
+      expect(mockWriteText).not.toHaveBeenCalled()
+    } finally {
+      // @ts-expect-error jsdom has no ClipboardItem of its own
+      delete window.ClipboardItem
+    }
+  })
+
+  it('says the note is empty when the clipboard write was handed an empty note', async () => {
+    const write = jest.fn(async (items: Array<{ data: Record<string, Promise<Blob>> }>) => {
+      // The browser rejects the write with its own error when the text fails.
+      await items[0]!.data['text/plain']!.catch(() => {
+        throw new DOMException('rejected', 'NotAllowedError')
+      })
+    })
+    class FakeClipboardItem {
+      constructor(public data: Record<string, Promise<Blob>>) {}
+    }
+    Object.defineProperty(window, 'ClipboardItem', { value: FakeClipboardItem, configurable: true })
+    setClipboard({ write })
+    mockGetTaskNoteMarkdown.mockResolvedValue({ title: 'T', markdown: '' })
+
+    try {
+      render(<CopyTaskNoteButton taskId="task-1" />)
+      fireEvent.click(screen.getByRole('button', { name: 'Markdownでコピー' }))
+
+      await waitFor(() =>
+        expect(mockToast).toHaveBeenCalledWith(
+          expect.objectContaining({ title: 'コピーするノートがありません' }),
+        ),
+      )
+      expect(mockToast).toHaveBeenCalledTimes(1)
+    } finally {
+      // @ts-expect-error jsdom has no ClipboardItem of its own
+      delete window.ClipboardItem
+    }
   })
 
   it('is a small labelled icon beside a list row', async () => {

@@ -39,13 +39,14 @@ function related(id: string, status: TaskDependencyContextTask['status']) {
 }
 
 let currentTask: Task | undefined = task
-let context: TaskDependencyContext = { prerequisites: [], dependents: [] }
+let context: TaskDependencyContext | undefined = { prerequisites: [], dependents: [] }
+let contextError: Error | null = null
 const mockUpdateNote = jest.fn()
 const mockFlush = jest.fn()
 
 jest.mock('@/hooks/use-tasks-query', () => ({
   useTask: () => ({ data: currentTask, isLoading: false, refetch: jest.fn() }),
-  useTaskDependencyContext: () => ({ data: context, isLoading: false }),
+  useTaskDependencyContext: () => ({ data: context, isLoading: false, error: contextError }),
 }))
 jest.mock('@/hooks/use-goals-query', () => ({
   useGoal: () => ({ data: { id: 'goal-1', project_id: 'project-1' } }),
@@ -120,6 +121,7 @@ describe('TaskDetail', () => {
     jest.clearAllMocks()
     currentTask = task
     context = { prerequisites: [], dependents: [] }
+    contextError = null
   })
 
   it('shows the task with its note, work records and actions in one place', () => {
@@ -193,6 +195,19 @@ describe('TaskDetail', () => {
     render(<TaskDetail taskId={task.id} />)
 
     expect(screen.getByText(/キャンセルされた前提タスクがあります/)).toBeInTheDocument()
+  })
+
+  it('says why the task cannot start when its dependencies fail to load', () => {
+    context = undefined
+    contextError = new Error('offline')
+
+    render(<TaskDetail taskId={task.id} />)
+
+    expect(screen.getByRole('button', { name: 'Runnerで開始' })).toBeDisabled()
+    expect(screen.getByText('依存関係を確認できません')).toBeInTheDocument()
+    expect(screen.getAllByText('依存関係を読み込めませんでした。')).toHaveLength(2)
+    expect(screen.queryByText('前提タスクはありません')).not.toBeInTheDocument()
+    expect(screen.queryByText('後続タスクはありません')).not.toBeInTheDocument()
   })
 
   it('switches the panel to a related task when it is chosen', () => {
