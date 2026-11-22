@@ -347,7 +347,9 @@ export function TaskDetail({
 
       <section aria-label="このタスクを待っているタスク">
         <SectionTitle icon={ArrowRight}>このタスクを待っているタスク</SectionTitle>
-        {contextQuery.error ? (
+        {contextQuery.isLoading ? (
+          <div className="text-sm text-muted-foreground">読み込み中...</div>
+        ) : contextQuery.error ? (
           dependencyError
         ) : context?.dependents.length ? (
           <div className="space-y-2">

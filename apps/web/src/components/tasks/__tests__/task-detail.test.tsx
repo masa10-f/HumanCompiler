@@ -41,12 +41,17 @@ function related(id: string, status: TaskDependencyContextTask['status']) {
 let currentTask: Task | undefined = task
 let context: TaskDependencyContext | undefined = { prerequisites: [], dependents: [] }
 let contextError: Error | null = null
+let contextLoading = false
 const mockUpdateNote = jest.fn()
 const mockFlush = jest.fn()
 
 jest.mock('@/hooks/use-tasks-query', () => ({
   useTask: () => ({ data: currentTask, isLoading: false, refetch: jest.fn() }),
-  useTaskDependencyContext: () => ({ data: context, isLoading: false, error: contextError }),
+  useTaskDependencyContext: () => ({
+    data: context,
+    isLoading: contextLoading,
+    error: contextError,
+  }),
 }))
 jest.mock('@/hooks/use-goals-query', () => ({
   useGoal: () => ({ data: { id: 'goal-1', project_id: 'project-1' } }),
@@ -122,6 +127,7 @@ describe('TaskDetail', () => {
     currentTask = task
     context = { prerequisites: [], dependents: [] }
     contextError = null
+    contextLoading = false
   })
 
   it('shows the task with its note, work records and actions in one place', () => {
@@ -195,6 +201,17 @@ describe('TaskDetail', () => {
     render(<TaskDetail taskId={task.id} />)
 
     expect(screen.getByText(/キャンセルされた前提タスクがあります/)).toBeInTheDocument()
+  })
+
+  it('shows the dependencies as loading, not as none, until they arrive', () => {
+    context = undefined
+    contextLoading = true
+
+    render(<TaskDetail taskId={task.id} />)
+
+    expect(screen.getAllByText('読み込み中...')).toHaveLength(2)
+    expect(screen.queryByText('前提タスクはありません')).not.toBeInTheDocument()
+    expect(screen.queryByText('後続タスクはありません')).not.toBeInTheDocument()
   })
 
   it('says why the task cannot start when its dependencies fail to load', () => {
