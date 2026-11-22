@@ -15,7 +15,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from humancompiler_api.main import app
-from humancompiler_api.safe_migration import DataBackupManager, SafeMigrationError
+from humancompiler_api.safe_migration import (
+    DataBackupManager,
+    SafeMigrationError,
+    notes_with_former_task_text,
+)
 
 
 @pytest.fixture
@@ -349,3 +353,54 @@ class TestSecurityAspects:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestNotesInBackups:
+    """A task's note is its body, so backups carry notes."""
+
+    def test_former_task_text_goes_on_top_of_the_task_note(self):
+        backup = {
+            "projects": [{"id": "p1", "owner_id": "u1"}],
+            "goals": [{"id": "g1", "project_id": "p1"}],
+            "tasks": [
+                {"id": "t1", "goal_id": "g1", "description": "Why <now>", "memo": "m"},
+                {"id": "t2", "goal_id": "g1", "description": "Has a note"},
+                {"id": "t3", "goal_id": "g1", "description": " ", "memo": None},
+                {"id": "t4", "goal_id": "g1"},
+            ],
+            "context_notes": [
+                {"id": "n2", "user_id": "u1", "task_id": "t2", "content": "<p>x</p>"},
+                {
+                    "id": "n9",
+                    "user_id": "u1",
+                    "project_id": "p1",
+                    "content": "<p>p</p>",
+                },
+            ],
+        }
+
+        notes = notes_with_former_task_text(backup)
+
+        assert notes == [
+            {
+                "id": "n2",
+                "user_id": "u1",
+                "task_id": "t2",
+                "content": "<p>Has a note</p><p>x</p>",
+                "content_type": "html",
+            },
+            {"id": "n9", "user_id": "u1", "project_id": "p1", "content": "<p>p</p>"},
+            {
+                "user_id": "u1",
+                "task_id": "t1",
+                "content": "<p>Why &lt;now&gt;</p><p><strong>メモ</strong></p><p>m</p>",
+                "content_type": "html",
+            },
+        ]
+        # The backup itself is left as it was read.
+        assert backup["context_notes"][0]["content"] == "<p>x</p>"
+
+    def test_backup_without_notes_or_task_text_has_no_notes(self):
+        backup = {"tasks": [{"id": "t1", "goal_id": "g1"}]}
+
+        assert notes_with_former_task_text(backup) == []

@@ -81,7 +81,7 @@ _UNCONFIRMED = (
 )
 _UPDATE_GUIDE = (
     "Only the arguments you pass change: leave an argument out to keep the "
-    "stored value, or pass null to clear description, memo or due_date. null "
+    "stored value, or pass null to clear description or due_date. null "
     "for any other field is a 422 error. expected_updated_at must be the "
     "updated_at you last read; if the item changed since, nothing is written "
     "and the error is 409 with detail.current_updated_at, so read it again and "
@@ -199,7 +199,9 @@ async def update_goal(
 @mcp_server.tool(
     name="create_task",
     description=(
-        "Create a task in one of the user's goals. Returns {task}. depends_on "
+        "Create a task in one of the user's goals. Returns {task}. A task's "
+        "note is its body: description is plain text that opens the new "
+        "task's note, and append_note adds Markdown to it later. depends_on "
         f"lists up to {DEPENDS_ON_MAX} of the user's tasks that must be "
         "finished first; if any is missing or another user's, the error is 404 "
         f"and nothing is created. {_NOT_FOUND} Not a destructive change."
@@ -211,7 +213,14 @@ async def create_task(
     title: Title,
     estimate_hours: Annotated[Hours, Field(description="Hours, e.g. 1.5.")],
     ctx: Context,
-    description: Description | MISSING = MISSING,
+    description: Annotated[
+        str | None,
+        Field(
+            max_length=1000,
+            description=_field_description(AgentTaskCreate, "description"),
+        ),
+    ]
+    | MISSING = MISSING,
     due_date: DueDateArg | MISSING = MISSING,
     priority: Annotated[
         int,
@@ -255,13 +264,11 @@ async def create_task(
     name="update_task",
     description=(
         f"Update one of the user's tasks. {_UPDATE_GUIDE} Destructive changes "
-        "(status cancelled, changing or clearing a non-empty description or "
-        "memo, and goal_id, which moves the task to another goal) "
-        f"{_UNCONFIRMED}. memo_append adds text after the memo on a new line "
-        "and is not destructive; it cannot be passed with memo, and the result "
-        "must fit in 2000 characters. To finish a task, pass status completed "
-        "with a memo_append summary. Returns {applied: true, task}. "
-        f"{_NOT_FOUND}"
+        "(status cancelled, and goal_id, which moves the task to another goal) "
+        f"{_UNCONFIRMED}. A task has no description or memo: its note is its "
+        "body, written with append_note and replace_note. To finish a task, "
+        "pass status completed and add a summary with append_note. Returns "
+        f"{{applied: true, task}}. {_NOT_FOUND}"
     ),
     annotations=_MAY_DESTROY,
 )
@@ -272,17 +279,6 @@ async def update_task(
     title: Annotated[
         str | None,
         Field(min_length=1, max_length=200, description="Cannot be null."),
-    ]
-    | MISSING = MISSING,
-    description: Description | MISSING = MISSING,
-    memo: Annotated[str | None, Field(max_length=2000)] | MISSING = MISSING,
-    memo_append: Annotated[
-        str | None,
-        Field(
-            min_length=1,
-            max_length=2000,
-            description=_field_description(AgentTaskUpdate, "memo_append"),
-        ),
     ]
     | MISSING = MISSING,
     estimate_hours: Annotated[Hours | None, Field(description="Cannot be null.")]
@@ -308,9 +304,6 @@ async def update_task(
             expected_updated_at=expected_updated_at,
             **_sent(
                 title=title,
-                description=description,
-                memo=memo,
-                memo_append=memo_append,
                 estimate_hours=estimate_hours,
                 due_date=due_date,
                 status=status,

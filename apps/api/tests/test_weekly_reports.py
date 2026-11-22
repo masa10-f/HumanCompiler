@@ -588,7 +588,6 @@ def report_workspace(session: Session):
         title="プロンプト改修",
         estimate_hours=Decimal("3.00"),
         status=TaskStatus.IN_PROGRESS,
-        memo="出力形式を三点セットにする",
     )
     pending_task = Task(
         id=uuid4(),
@@ -737,7 +736,6 @@ class TestWeeklyReportBackground:
             "note": "# ゴールメモ\n- 月末までにリリース",
         }
         assert background.task_details[str(worked_task.id)] == {
-            "memo": "出力形式を三点セットにする",
             "note": "## 方針\n週報の&下書きを自動化する\n- [x] API設計\n- [ ] UI実装",
         }
         # In-progress work first; completed tasks and closed goals are excluded

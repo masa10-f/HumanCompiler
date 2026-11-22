@@ -394,7 +394,7 @@ def test_expected_updated_at_accepts_naive_and_other_offsets(session: Session):
 
 def test_noop_update(session: Session):
     _, goal, task = _tree(session)
-    _set(session, task, description="Keep", due_date=datetime(2026, 12, 1, tzinfo=UTC))
+    _set(session, task, due_date=datetime(2026, 12, 1, tzinfo=UTC))
     _set(session, task, updated_at=STAMP)
     token = issue_token(session, USER_A, WRITE)
 
@@ -402,7 +402,6 @@ def test_noop_update(session: Session):
         f"/tasks/{task.id}",
         token,
         title="Task",
-        description="Keep",
         estimate_hours=1,
         status="pending",
         due_date="2026-12-01T09:00:00+09:00",
@@ -425,21 +424,12 @@ def _destructive_cases(
     """(path, body, entity, stored values) for each destructive change."""
     _, goal, task = _tree(session)
     other_goal = seed_goal(session, goal.project, updated_at=STAMP)
-    _set(session, task, description="Old description", memo="Old memo")
-    _set(session, task, updated_at=STAMP)
     _set(session, goal, description="Goal description")
     _set(session, goal, updated_at=STAMP)
-    task_values = {
-        "status": TaskStatus.PENDING,
-        "description": "Old description",
-        "memo": "Old memo",
-        "goal_id": goal.id,
-    }
+    task_values = {"status": TaskStatus.PENDING, "goal_id": goal.id}
     goal_values = {"status": GoalStatus.PENDING, "description": "Goal description"}
     return [
         (f"/tasks/{task.id}", {"status": "cancelled"}, task, task_values),
-        (f"/tasks/{task.id}", {"description": "New"}, task, task_values),
-        (f"/tasks/{task.id}", {"memo": "New memo"}, task, task_values),
         (f"/tasks/{task.id}", {"goal_id": str(other_goal.id)}, task, task_values),
         (f"/goals/{goal.id}", {"status": "cancelled"}, goal, goal_values),
         (f"/goals/{goal.id}", {"description": None}, goal, goal_values),
@@ -488,22 +478,20 @@ def test_destructive_with_unconfirmed(session: Session):
     changes = sorted(_changes(session), key=lambda row: row.created_at)
     assert len(changes) == len(cases)
     assert all(row.destructive for row in changes)
-    move = changes[3]
-    new_goal_id = UUID(cases[3][1]["goal_id"])
+    move = changes[1]
+    new_goal_id = UUID(cases[1][1]["goal_id"])
     assert move.before == {"goal_id": str(old_goal_id)}
     assert move.after == {"goal_id": str(new_goal_id)}
     assert move.goal_id == new_goal_id
-    cleared = changes[5]
+    cleared = changes[3]
     assert cleared.before == {"description": "Goal description"}
     assert cleared.after == {"description": None}
 
     session.expire_all()
     task = session.get(Task, cases[0][2].id)
-    goal = session.get(Goal, cases[4][2].id)
+    goal = session.get(Goal, cases[2][2].id)
     assert task is not None and goal is not None
     assert task.status == TaskStatus.CANCELLED
-    assert task.description == "New"
-    assert task.memo == "New memo"
     assert task.goal_id == new_goal_id
     assert goal.status == GoalStatus.CANCELLED
     assert goal.description is None
@@ -511,43 +499,34 @@ def test_destructive_with_unconfirmed(session: Session):
 
 @pytest.mark.parametrize("stored", [None, "", "  \n "])
 def test_filling_an_empty_field_is_ordinary(session: Session, stored: str | None):
-    """Writing into an empty description or memo erases nothing."""
-    _, goal, task = _tree(session)
-    _set(session, task, description=stored, memo=stored)
-    _set(session, task, updated_at=STAMP)
+    """Writing into an empty description erases nothing."""
+    _, goal, _ = _tree(session)
     _set(session, goal, description=stored)
     _set(session, goal, updated_at=STAMP)
     token = issue_token(session, USER_A, WRITE)
 
-    response = _patch(f"/tasks/{task.id}", token, description="New", memo="Memo")
-    assert response.status_code == 200, response.text
     response = _patch(f"/goals/{goal.id}", token, description="Why")
     assert response.status_code == 200, response.text
 
     session.expire_all()
-    current_task = session.get(Task, task.id)
     current_goal = session.get(Goal, goal.id)
-    assert current_task is not None and current_goal is not None
-    assert (current_task.description, current_task.memo) == ("New", "Memo")
+    assert current_goal is not None
     assert current_goal.description == "Why"
-    changes = sorted(_changes(session), key=lambda row: row.entity_type)
-    assert [row.entity_type for row in changes] == ["goal", "task"]
-    assert all(row.destructive is False for row in changes)
+    changes = _changes(session)
+    assert [row.entity_type for row in changes] == ["goal"]
+    assert changes[0].destructive is False
     assert changes[0].before == {"description": stored}
-    assert changes[1].after == {"description": "New", "memo": "Memo"}
 
 
 def test_filling_an_empty_field_with_a_destructive_change_is_403(session: Session):
-    _, _, task = _tree(session)
+    _, goal, _ = _tree(session)
     token = issue_token(session, USER_A, WRITE)
-    _set(session, task, memo="Old memo")
-    _set(session, task, updated_at=STAMP)
 
-    response = _patch(f"/tasks/{task.id}", token, description="New", memo="Other")
+    response = _patch(f"/goals/{goal.id}", token, description="New", status="cancelled")
     assert response.status_code == 403
     assert response.json()["detail"] == NEEDS_UNCONFIRMED
     session.expire_all()
-    assert session.get(Task, task.id).description is None  # type: ignore[union-attr]
+    assert session.get(Goal, goal.id).description is None  # type: ignore[union-attr]
     assert _changes(session) == []
 
 
@@ -564,46 +543,70 @@ def test_move_to_foreign_goal_is_404(session: Session):
     assert _changes(session) == []
 
 
-def test_memo_append_is_ordinary(session: Session):
+@pytest.mark.parametrize("field", ["description", "memo", "memo_append"])
+def test_former_task_text_fields_are_rejected(session: Session, field: str):
+    """A task's note is its body; the fields that used to hold text are gone."""
     _, _, task = _tree(session)
+    token = issue_token(session, USER_A, UNCONFIRMED)
+
+    response = _patch(f"/tasks/{task.id}", token, title="Renamed", **{field: "Text"})
+    assert response.status_code == 422
+    assert "a task's note is its body" in response.text
+
+    session.expire_all()
+    stored = session.get(Task, task.id)
+    assert stored is not None
+    assert stored.title == "Task"
+    assert _utc(stored.updated_at) == STAMP
+    assert _count(session, ContextNote) == 0
+    assert _changes(session) == []
+
+
+def test_create_task_description_opens_the_note(session: Session):
+    project, goal, _ = _tree(session)
     token = issue_token(session, USER_A, WRITE)
 
-    response = _patch(f"/tasks/{task.id}", token, memo_append="First")
-    assert response.status_code == 200, response.text
-    assert response.json()["memo"] == "First"
-    stamp = response.json()["updated_at"]
-    response = _patch(
-        f"/tasks/{task.id}", token, memo_append="Second", expected_updated_at=stamp
+    response = client.post(
+        f"{BASE}/tasks",
+        json={
+            "goal_id": str(goal.id),
+            "title": "Write the report",
+            "estimate_hours": 2,
+            "description": "Summarise <Q3>\n\nKeep it to one page",
+        },
+        headers=bearer(token),
     )
-    assert response.status_code == 200, response.text
-    assert response.json()["memo"] == "First\nSecond"
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert "description" not in body and "memo" not in body
+    assert body["note_excerpt"] == "Summarise <Q3> Keep it to one page"
 
-    changes = sorted(_changes(session), key=lambda row: row.created_at)
-    assert len(changes) == 2
-    assert changes[0].action == "update"
-    assert changes[0].destructive is False
-    assert changes[0].before == {"memo_length": 0}
-    assert changes[0].after == {"memo_append": "First"}
-    assert changes[1].before == {"memo_length": 5}
-    assert changes[1].after == {"memo_append": "Second"}
+    note = session.exec(
+        select(ContextNote).where(ContextNote.task_id == UUID(body["id"]))
+    ).one()
+    assert note.user_id == USER_A
+    assert note.content_type == "html"
+    assert note.content == "<p>Summarise &lt;Q3&gt;</p><p>Keep it to one page</p>"
+    assert note.content_text == "Summarise <Q3>\nKeep it to one page"
 
-    stamp = response.json()["updated_at"]
-    response = _patch(
-        f"/tasks/{task.id}",
-        token,
-        memo="x",
-        memo_append="y",
-        expected_updated_at=stamp,
+    change = _changes(session)[0]
+    assert change.entity_type == "task"
+    assert change.after["description"] == "Summarise <Q3>\n\nKeep it to one page"
+    assert change.project_id == project.id
+
+
+def test_create_task_without_description_has_no_note(session: Session):
+    _, goal, _ = _tree(session)
+    token = issue_token(session, USER_A, WRITE)
+
+    response = client.post(
+        f"{BASE}/tasks",
+        json={"goal_id": str(goal.id), "title": "T", "estimate_hours": 1},
+        headers=bearer(token),
     )
-    assert response.status_code == 422
-
-    response = _patch(
-        f"/tasks/{task.id}", token, memo_append="z" * 2000, expected_updated_at=stamp
-    )
-    assert response.status_code == 422
-    session.expire_all()
-    assert session.get(Task, task.id).memo == "First\nSecond"  # type: ignore[union-attr]
-    assert len(_changes(session)) == 2
+    assert response.status_code == 201, response.text
+    assert response.json()["note_excerpt"] is None
+    assert _count(session, ContextNote) == 0
 
 
 def test_goal_invalid_status_transition_is_422(session: Session):
@@ -636,25 +639,13 @@ def test_other_users_task_is_404(session: Session):
 
 def test_clear_optional_task_fields(session: Session):
     _, _, task = _tree(session)
-    _set(
-        session,
-        task,
-        description="Old",
-        memo="Old memo",
-        due_date=datetime(2026, 12, 1, tzinfo=UTC),
-        updated_at=STAMP,
-    )
-    token = issue_token(session, USER_A, UNCONFIRMED)
-    response = _patch(
-        f"/tasks/{task.id}", token, description=None, memo=None, due_date=None
-    )
+    _set(session, task, due_date=datetime(2026, 12, 1, tzinfo=UTC), updated_at=STAMP)
+    token = issue_token(session, USER_A, WRITE)
+    response = _patch(f"/tasks/{task.id}", token, due_date=None)
     assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["description"] is None
-    assert body["memo"] is None
-    assert body["due_date"] is None
+    assert response.json()["due_date"] is None
     change = _changes(session)[0]
-    assert change.after == {"description": None, "memo": None, "due_date": None}
+    assert change.after == {"due_date": None}
 
 
 @pytest.mark.parametrize("field", ["priority", "work_type"])
@@ -701,28 +692,6 @@ def test_move_to_goal_in_another_project(session: Session):
     assert change.goal_id == new_goal.id
     assert change.project_id == other_project.id
     assert change.project_id != project.id
-
-
-def test_memo_append_with_destructive_field_without_unconfirmed_is_403(
-    session: Session,
-):
-    _, _, task = _tree(session)
-    _set(session, task, memo="Kept", updated_at=STAMP)
-    token = issue_token(session, USER_A, WRITE)
-
-    response = _patch(
-        f"/tasks/{task.id}", token, memo_append="More", status="cancelled"
-    )
-    assert response.status_code == 403
-    assert response.json()["detail"] == NEEDS_UNCONFIRMED
-
-    session.expire_all()
-    stored = session.get(Task, task.id)
-    assert stored is not None
-    assert stored.memo == "Kept"
-    assert stored.status == TaskStatus.PENDING
-    assert _utc(stored.updated_at) == STAMP
-    assert _changes(session) == []
 
 
 def test_change_row_agent_name_and_token(session: Session):

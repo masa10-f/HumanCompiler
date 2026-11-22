@@ -265,7 +265,7 @@ class TriageService:
                     task_id=task_id,
                     quick_task_id=None,
                     title=task.title,
-                    description=task.description,
+                    description=task.note_excerpt,
                     project_id=UUID(str(project.id)),
                     project_title=project.title,
                     goal_id=UUID(str(goal.id)),
@@ -1136,7 +1136,7 @@ class TriageService:
         return {
             "id": str(task.id),
             "title": task.title,
-            "description": task.description,
+            "description": task.note_excerpt,
             "estimate_hours": float(task.estimate_hours),
             "remaining_hours": float(remaining_hours),
             "capacity_load_hours": float(capacity_load.hours),

@@ -41,16 +41,13 @@ async def test_create_task_logs_only_task_id_and_user_id(monkeypatch, caplog):
     task_data = TaskCreate(
         goal_id=goal_id,
         title="Sensitive task title",
-        description="Sensitive task description",
-        memo="Sensitive task memo",
+        note="Sensitive task note",
         estimate_hours=Decimal("1.5"),
     )
     created_task = Task(
         id=task_id,
         goal_id=goal_id,
         title=task_data.title,
-        description=task_data.description,
-        memo=task_data.memo,
         estimate_hours=task_data.estimate_hours,
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
         updated_at=datetime(2026, 1, 1, tzinfo=UTC),
@@ -74,6 +71,7 @@ async def test_create_task_logs_only_task_id_and_user_id(monkeypatch, caplog):
     assert str(task_id) in caplog.text
     assert str(user_id) in caplog.text
     assert "Sensitive task title" not in caplog.text
+    assert "Sensitive task note" not in caplog.text
     assert "Sensitive task description" not in caplog.text
     assert "Sensitive task memo" not in caplog.text
 

@@ -50,14 +50,14 @@ router = APIRouter(prefix="/api/agent/v1", tags=["agent"])
 NOTE_MAX_BODY_BYTES = 512 * 1024
 
 UPDATE_GUIDE = (
-    "Only the fields you send change; send null to clear description, memo or "
+    "Only the fields you send change; send null to clear description or "
     "due_date. Any other field sent as null is rejected with 422. "
     "expected_updated_at must be the updated_at you last read: if the item "
     "changed since, nothing is written and the answer is 409 with "
     "detail.current_updated_at; read it again and retry. A request whose values "
     "all equal the stored ones changes nothing and keeps updated_at. "
     "A request with any destructive change (cancelling, changing or clearing "
-    "a non-empty description or memo, moving a task to another goal) needs the "
+    "a goal's non-empty description, moving a task to another goal) needs the "
     "writes:unconfirmed scope; without it the whole request is refused with 403 "
     "and nothing is written. Send the destructive change as a proposal instead."
 )
@@ -131,7 +131,8 @@ async def update_goal(
         "Create a task in one of the user's goals. Another user's goal and a "
         "missing one both give 404. depends_on lists up to 20 of the user's "
         "tasks that must be finished first; if any is missing or another "
-        "user's, the answer is 404 and nothing is created."
+        "user's, the answer is 404 and nothing is created. A task's note is "
+        "its body: description is plain text that opens the new task's note."
     ),
 )
 async def create_task(
@@ -150,9 +151,9 @@ async def create_task(
     response_model=TaskResponse,
     summary="Update a task",
     description=(
-        f"{UPDATE_GUIDE} memo_append adds text after the memo on a new line and "
-        "is not destructive; it cannot be sent with memo, and the result must fit "
-        "in 2000 characters."
+        f"{UPDATE_GUIDE} A task has no description or memo: its note is its "
+        "body, written through the note endpoints. Sending description, memo "
+        "or memo_append is rejected with 422."
     ),
 )
 async def update_task(

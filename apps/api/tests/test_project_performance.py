@@ -80,7 +80,6 @@ def create_test_project_with_nested_data(
                 id=uuid4(),
                 goal_id=goal.id,
                 title=f"Task {task_idx + 1} for Goal {goal_idx + 1}",
-                description=f"Test task {task_idx + 1}",
                 estimate_hours=2.0,
                 status=TaskStatus.PENDING,
             )

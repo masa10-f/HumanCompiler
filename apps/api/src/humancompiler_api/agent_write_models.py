@@ -13,7 +13,7 @@ mean different things; ``model_fields_set`` tells them apart.
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, ClassVar, Literal
+from typing import Annotated, Any, ClassVar, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -30,6 +30,17 @@ NoteTargetKind = Literal["projects", "goals", "tasks"]
 EXPECTED_UPDATED_AT_DESCRIPTION = (
     "The updated_at you last read. If the stored value differs, nothing is "
     "written and the answer is 409 with the current updated_at."
+)
+
+TASK_DESCRIPTION_DESCRIPTION = (
+    "Plain text that opens the new task's note, one paragraph per line. A "
+    "task's note is its body: tasks have no description field, and the task "
+    "answers with note_excerpt, the opening of its note."
+)
+FORMER_TASK_TEXT_FIELDS = frozenset({"description", "memo", "memo_append"})
+FORMER_TASK_TEXT_FIELDS_DETAIL = (
+    "description, memo and memo_append are no longer task fields: a task's "
+    "note is its body. Append to or replace the task's note instead."
 )
 
 NOTE_REPLACE_LOSES = (
@@ -86,7 +97,11 @@ class AgentTaskCreate(_AgentWrite):
     goal_id: UUID
     title: str = Field(min_length=1, max_length=200)
     estimate_hours: Hours
-    description: str | None = Field(default=None, max_length=1000)
+    description: str | None = Field(
+        default=None,
+        max_length=1000,
+        description=TASK_DESCRIPTION_DESCRIPTION,
+    )
     due_date: DueDate = None
     priority: Priority = Field(
         default=3, description="1 (highest) to 5 (lowest). Cannot be null."
@@ -125,22 +140,10 @@ class AgentTaskUpdate(_AgentUpdate):
             "priority",
             "work_type",
             "goal_id",
-            "memo_append",
         }
     )
 
     title: str | None = Field(default=None, min_length=1, max_length=200)
-    description: str | None = Field(default=None, max_length=1000)
-    memo: str | None = Field(default=None, max_length=2000)
-    memo_append: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=2000,
-        description=(
-            "Text added to the end of memo, after a newline. Not a destructive "
-            "change. Cannot be sent with memo."
-        ),
-    )
     estimate_hours: Hours | None = None
     due_date: DueDate = None
     status: TaskStatus | None = None
@@ -152,11 +155,12 @@ class AgentTaskUpdate(_AgentUpdate):
         default=None, description="Move the task to another goal (destructive)."
     )
 
-    @model_validator(mode="after")
-    def reject_memo_with_memo_append(self) -> "AgentTaskUpdate":
-        if {"memo", "memo_append"} <= self.model_fields_set:
-            raise ValueError("Send memo or memo_append, not both")
-        return self
+    @model_validator(mode="before")
+    @classmethod
+    def reject_former_text_fields(cls, data: Any) -> Any:
+        if isinstance(data, dict) and FORMER_TASK_TEXT_FIELDS & data.keys():
+            raise ValueError(FORMER_TASK_TEXT_FIELDS_DETAIL)
+        return data
 
 
 class AgentNoteAppend(_AgentWrite):

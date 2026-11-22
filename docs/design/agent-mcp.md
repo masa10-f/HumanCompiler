@@ -111,6 +111,13 @@ G1〜G3 と同じ前提に従う。
 | | Task を別の Goal に**移す** | **提案** | 直接 |
 | | Task の依存関係を**外す** | **提案** | 直接 |
 
+**Task の description と memo の廃止（2026-11-22 に変更）。**
+- Task は description と memo を持たない。Task の本文はノートである。上の表と以下の説明のうち、Task の description・memo にあたる部分は、ノートへの追記と書き換えに読み替える。Goal の description は変わらない。
+- Task の作成時の `description` は引き続き受け付ける。プレーンテキストとして、新しい Task のノートの先頭に入る（1 行が 1 段落）。
+- Task の更新では `description`・`memo`・`memo_append` を受け付けない（REST は 422。MCP の `update_task` には引数が無い）。追記は `append_note`、書き換えは `replace_note` を使う。
+- Task の応答から `description` と `memo` が無くなり、ノートの冒頭を 1 行にした `note_excerpt` が入る（ノートに文字が無ければ null）。
+- 既存の description と memo は、マイグレーション 044 がノートの先頭に写す。
+
 **線を引いた理由。**
 - 「消える操作」は、ユーザーが書いた文章を消すか、タスクを一覧から外す操作で、間違えると気づきにくい。
 - title や数値・日付の変更は、変更の記録から元の値に戻せる。間違えても一覧で目に入る。

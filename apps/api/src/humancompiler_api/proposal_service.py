@@ -349,12 +349,14 @@ def _create_task_note(
     task_id: UUID,
     markdown: str | None,
 ) -> ContextNote | None:
-    """Give a new task its note from the agent's Markdown, flushed not committed.
+    """Add the agent's Markdown to a new task's note, flushed not committed.
 
-    Writes nothing when there is no text."""
+    The note already exists when the task was proposed with a description,
+    which opens it. Writes nothing when there is no text."""
     if markdown is None or markdown.strip() == "":
         return None
-    note = create_note(session, user_id, NoteTarget(task_id=task_id))
+    target = NoteTarget(task_id=task_id)
+    note = lock_note(session, target) or create_note(session, user_id, target)
     append_agent_markdown(note, agent_name, markdown)
     session.add(note)
     session.flush()

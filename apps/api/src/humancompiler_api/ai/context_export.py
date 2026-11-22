@@ -551,10 +551,6 @@ class _ContextExportBuilder:
             facts.append(f"期限: {_jst_date(task.due_date)}")
 
         blocks = [f"### タスク: {_one_line(task.title)}", _bullets(facts)]
-        if task.description and task.description.strip():
-            blocks.append(demote_headings(task.description.strip(), 3))
-        if task.memo and task.memo.strip():
-            blocks.extend(["#### メモ", demote_headings(task.memo.strip(), 4)])
         if note:
             blocks.extend(["#### ノート", demote_headings(note, 4)])
         if work_sessions:

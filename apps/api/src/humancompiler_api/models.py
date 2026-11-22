@@ -15,13 +15,18 @@ from pydantic import (
 )
 from sqlalchemy import ARRAY, JSON, Text, UniqueConstraint, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy import DateTime, func, select
+from sqlalchemy import DateTime, event, func, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import column_property
 from sqlmodel import Column, Relationship, SQLModel
 from sqlmodel import Field as SQLField
 
 
+from humancompiler_api.note_text import (
+    NOTE_TEXT_HEAD_LENGTH,
+    note_excerpt,
+    note_plain_text,
+)
 from humancompiler_api.openai_models import DEFAULT_OPENAI_MODEL
 
 GOAL_DUE_DATE_DESCRIPTION = (
@@ -29,6 +34,8 @@ GOAL_DUE_DATE_DESCRIPTION = (
     "00:00 JST; datetime values must include a timezone offset."
 )
 GOAL_DUE_DATE_ONLY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# Plain text a task can be created with; it becomes the task's note.
+TASK_NOTE_TEXT_MAX_LENGTH = 20000
 
 
 def prepare_due_date(value: Any) -> Any:
@@ -368,15 +375,13 @@ class Goal(GoalBase, table=True):  # type: ignore[call-arg]
 
 
 class TaskBase(SQLModel):
-    """Base task model"""
+    """Base task model.
+
+    A task has no description or memo of its own: its note (``ContextNote``) is
+    its body. The ``tasks.description`` and ``tasks.memo`` columns are kept,
+    unused, until the migration after 044 drops them."""
 
     title: str = SQLField(min_length=1, max_length=200)
-    description: str | None = SQLField(default=None, max_length=1000)
-    memo: str | None = SQLField(
-        default=None,
-        max_length=2000,
-        description="Task memo for notes and additional information",
-    )
     estimate_hours: Decimal = SQLField(gt=0, max_digits=5, decimal_places=2)
     due_date: datetime | None = SQLField(default=None)
     status: TaskStatus = SQLField(
@@ -409,6 +414,15 @@ class Task(TaskBase, table=True):  # type: ignore[call-arg]
     goal_id: UUID = SQLField(foreign_key="goals.id", ondelete="CASCADE")
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
+    # Opening of the note's visible text, mapped below once ContextNote is
+    # defined. Read when the task is loaded, so reload the task after its note
+    # changes in the same session.
+    note_text_head: ClassVar[str | None]
+
+    @property
+    def note_excerpt(self) -> str | None:
+        """The opening of the task's note as one line; None without note text."""
+        return note_excerpt(self.note_text_head)
 
     # Relationships
     goal: Goal = Relationship(back_populates="tasks")
@@ -1472,9 +1486,22 @@ class GoalResponse(GoalBase):
 
 
 class TaskCreate(TaskBase):
-    """Task creation request"""
+    """Task creation request.
+
+    ``note`` is plain text that becomes the new task's note, one paragraph per
+    line. ``description`` is the former field of the same purpose: it is still
+    accepted and goes to the top of the note."""
 
     goal_id: UUID
+    note: str | None = Field(default=None, max_length=TASK_NOTE_TEXT_MAX_LENGTH)
+    description: str | None = Field(default=None, max_length=1000)
+
+    def note_text(self) -> str | None:
+        """The text for the new task's note, or None when there is none."""
+        parts = [
+            part.strip() for part in (self.description, self.note) if part is not None
+        ]
+        return "\n".join(part for part in parts if part) or None
 
     @field_validator("due_date", mode="before")
     @classmethod
@@ -1491,8 +1518,6 @@ class TaskUpdate(BaseModel):
     """Task update request"""
 
     title: str | None = Field(None, min_length=1, max_length=200)
-    description: str | None = Field(None, max_length=1000)
-    memo: str | None = Field(None, max_length=2000)
     estimate_hours: Decimal | None = Field(None, gt=0, max_digits=5, decimal_places=2)
     due_date: datetime | None = None
     status: TaskStatus | None = None
@@ -1518,6 +1543,8 @@ class TaskResponse(TaskBase):
     goal_id: UUID
     created_at: datetime
     updated_at: datetime
+    # The opening of the task's note as one line; None without note text.
+    note_excerpt: str | None = None
     dependencies: list["TaskDependencyResponse"] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
@@ -2960,11 +2987,32 @@ class ContextNote(ContextNoteBase, table=True):  # type: ignore[call-arg]
         default=None, foreign_key="tasks.id", ondelete="CASCADE"
     )
 
+    # The visible text of ``content``, for search and list excerpts. Set from
+    # ``content`` on every insert and update (see ``_set_note_content_text``).
+    content_text: str = SQLField(
+        default="", sa_column=Column(Text, nullable=False, server_default="")
+    )
+
     # Timestamps
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
     # Note: attachments relationship removed - note_attachments table not yet implemented
+
+
+@event.listens_for(ContextNote, "before_insert")
+@event.listens_for(ContextNote, "before_update")
+def _set_note_content_text(_mapper: Any, _connection: Any, note: ContextNote) -> None:
+    note.content_text = note_plain_text(note.content, note.content_type)
+
+
+Task.note_text_head = column_property(  # type: ignore[assignment]
+    select(func.substr(ContextNote.content_text, 1, NOTE_TEXT_HEAD_LENGTH))
+    .where(ContextNote.task_id == Task.id)  # type: ignore[arg-type]
+    .correlate_except(ContextNote)
+    .limit(1)
+    .scalar_subquery()
+)
 
 
 class NoteAttachmentBase(SQLModel):
