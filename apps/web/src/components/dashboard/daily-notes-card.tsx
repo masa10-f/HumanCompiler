@@ -29,7 +29,10 @@ import {
 import { dailyPlansApi } from "@/lib/api";
 import { getJSTDateString } from "@/lib/date-utils";
 import { queryKeys } from "@/lib/query-keys";
-import { WeeklyNoteSection } from "./weekly-note-section";
+import {
+  WeeklyNoteSection,
+  type WeeklyNoteSectionHandle,
+} from "./weekly-note-section";
 
 const NOTE_LIMIT = 3;
 
@@ -42,6 +45,7 @@ export function DailyNotesCard() {
   const [today, setToday] = useState(getJSTDateString);
   const router = useRouter();
   const workspace = useRef<DailyPlanWorkspaceHandle>(null);
+  const weeklyNote = useRef<WeeklyNoteSectionHandle>(null);
   const transitionPending = useRef(false);
   const [transitionError, setTransitionError] = useState("");
   const transitionTarget = useRef<NoteTransition | null>(null);
@@ -64,6 +68,9 @@ export function DailyNotesCard() {
       if (transitionPending.current) return;
       transitionPending.current = true;
       try {
+        // Both notes save before leaving: the weekly notes page reads the
+        // same week, and a failed save keeps its text on the dashboard.
+        await weeklyNote.current?.beforeLeave();
         await workspace.current?.beforeLeave({ retryPausedSave });
         setTransitionError("");
         const target = transitionTarget.current;
@@ -145,7 +152,27 @@ export function DailyNotesCard() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <WeeklyNoteSection key={today} day={today} onOpen={openNote} />
+        {transitionError && (
+          <div role="alert" className="text-sm text-destructive">
+            {transitionError} 現在のノートを表示しています。
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                if (transitionTarget.current)
+                  void transition(transitionTarget.current, true);
+              }}
+            >
+              移動を再試行
+            </Button>
+          </div>
+        )}
+        <WeeklyNoteSection
+          ref={weeklyNote}
+          key={today}
+          day={today}
+          onOpen={openNote}
+        />
         <section aria-label="今日のノート" className="space-y-2">
           <h3 className="text-sm font-semibold">
             今日のノート{" "}
@@ -156,21 +183,6 @@ export function DailyNotesCard() {
               {today}
             </time>
           </h3>
-          {transitionError && (
-            <div role="alert" className="text-sm text-destructive">
-              {transitionError} 現在のノートを表示しています。
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  if (transitionTarget.current)
-                    void transition(transitionTarget.current, true);
-                }}
-              >
-                移動を再試行
-              </Button>
-            </div>
-          )}
           <DailyPlanWorkspace ref={workspace} selectedDate={today} embedded />
         </section>
         <h3 className="text-sm font-semibold">ほかの日のノート</h3>

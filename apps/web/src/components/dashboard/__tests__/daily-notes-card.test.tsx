@@ -38,10 +38,19 @@ jest.mock("@/components/notes/context-note-panel", () => ({
   ContextNotePanel: ({
     content,
     emptyTitle,
+    onUpdate,
   }: {
     content: string;
     emptyTitle: string;
-  }) => <div data-testid="weekly-panel">{content || emptyTitle}</div>,
+    onUpdate: (content: string) => void;
+  }) => (
+    <div data-testid="weekly-panel">
+      {content || emptyTitle}
+      <button type="button" onClick={() => onUpdate("<p>週の編集</p>")}>
+        週次ノートを編集
+      </button>
+    </div>
+  ),
 }));
 beforeAll(() => {
   Range.prototype.getBoundingClientRect = () => ({ top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => {} });
@@ -146,6 +155,71 @@ it("offers to start this week's note when none is saved yet", async () => {
   expect(
     await within(weekly).findByText("この週のノートはまだありません"),
   ).toBeInTheDocument();
+});
+
+it("saves a weekly edit before opening the weekly notes page", async () => {
+  let resolveSave!: (value: Awaited<ReturnType<typeof weeklyNotesApi.update>>) => void;
+  jest
+    .mocked(weeklyNotesApi.update)
+    .mockImplementation(() => new Promise((resolve) => { resolveSave = resolve; }));
+  renderCard();
+  const weekly = screen.getByRole("region", { name: "今週のノート" });
+  fireEvent.click(
+    await within(weekly).findByRole("button", { name: "週次ノートを編集" }),
+  );
+  fireEvent.click(within(weekly).getByRole("link", { name: "週次ノートを開く" }));
+  await waitFor(() =>
+    expect(weeklyNotesApi.update).toHaveBeenCalledWith(
+      "2029-12-31",
+      expect.objectContaining({ content: "<p>週の編集</p>" }),
+    ),
+  );
+  expect(mockPush).not.toHaveBeenCalled();
+  await act(async () => {
+    resolveSave({
+      id: "week-1",
+      week_start: "2029-12-31",
+      week_end: "2030-01-06",
+      content: "<p>週の編集</p>",
+      content_type: "html",
+      created_at: "2030-01-03T00:00:00Z",
+      updated_at: "2030-01-03T00:00:00Z",
+    });
+  });
+  await waitFor(() =>
+    expect(mockPush).toHaveBeenCalledWith("/notes/weekly?week=2029-12-31"),
+  );
+});
+
+it("stays on the dashboard when the weekly save fails and retries it", async () => {
+  jest
+    .mocked(weeklyNotesApi.update)
+    .mockRejectedValueOnce(new Error("offline"))
+    .mockRejectedValueOnce(new Error("offline"))
+    .mockResolvedValue({
+      id: "week-1",
+      week_start: "2029-12-31",
+      week_end: "2030-01-06",
+      content: "<p>週の編集</p>",
+      content_type: "html",
+      created_at: "2030-01-03T00:00:00Z",
+      updated_at: "2030-01-03T00:00:00Z",
+    });
+  renderCard();
+  const weekly = screen.getByRole("region", { name: "今週のノート" });
+  fireEvent.click(
+    await within(weekly).findByRole("button", { name: "週次ノートを編集" }),
+  );
+  fireEvent.click(screen.getByRole("link", { name: "ノート一覧・検索" }));
+  // The pending save and one immediate retry both fail.
+  expect(
+    await screen.findByText(/ノートを保存できませんでした。 現在のノートを表示しています。/),
+  ).toBeInTheDocument();
+  expect(weeklyNotesApi.update).toHaveBeenCalledTimes(2);
+  expect(mockPush).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "移動を再試行" }));
+  await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/notes"));
+  expect(weeklyNotesApi.update).toHaveBeenCalledTimes(3);
 });
 
 it("keeps the entry links usable before a first note exists", async () => {

@@ -44,6 +44,12 @@ export interface UseNoteDocumentReturn<T extends EditableNote> {
   reloadLatest: () => Promise<void>;
   /** Save the latest local content over the other change and clear `conflict`. */
   overwrite: () => Promise<void>;
+  /**
+   * Save a debounced edit now, retry a failed save, and wait for every queued
+   * save. Rejects while local content is unsaved (a conflict or a failed save),
+   * so a caller can keep the editor open instead of leaving.
+   */
+  flush: () => Promise<void>;
 }
 
 export interface UseNoteDocumentConfig<T extends EditableNote> {
@@ -115,6 +121,8 @@ export function useNoteDocument<T extends EditableNote>({
   const saveChainRef = useRef<Promise<unknown>>(Promise.resolve());
   const savesInFlightRef = useRef(0);
   const conflictRef = useRef(false);
+  // Whether the latest save sent failed (a conflict is tracked separately).
+  const saveFailedRef = useRef(false);
 
   const markConflict = useCallback((value: boolean) => {
     conflictRef.current = value;
@@ -186,6 +194,7 @@ export function useNoteDocument<T extends EditableNote>({
           const updated = await saveFn(body, { locked });
 
           baseUpdatedAtRef.current = updated.updated_at;
+          saveFailedRef.current = false;
 
           // Only update state if this is the latest content
           if (latestContentRef.current === null || latestContentRef.current === body.content) {
@@ -202,6 +211,7 @@ export function useNoteDocument<T extends EditableNote>({
             return false;
           }
           handleHookError(err, hookName, 'update note', logContextRef.current);
+          saveFailedRef.current = true;
           setError('Failed to save note. Please try again.');
           return false;
         } finally {
@@ -314,6 +324,21 @@ export function useNoteDocument<T extends EditableNote>({
     }
   }, [clearDebounce, enqueueSave, markConflict]);
 
+  const flush = useCallback(async () => {
+    flushPending();
+    await saveChainRef.current;
+    const content = latestContentRef.current;
+    if (saveFailedRef.current && !conflictRef.current && content !== null) {
+      await enqueueSave(normalizeNoteUpdate({ content }), true);
+    }
+    if (conflictRef.current) {
+      throw new Error('ノートが別の場所で更新されたため保存していません。');
+    }
+    if (saveFailedRef.current) {
+      throw new Error('ノートを保存できませんでした。');
+    }
+  }, [flushPending, enqueueSave]);
+
   useEffect(() => {
     markConflict(false);
     fetchNote();
@@ -335,5 +360,6 @@ export function useNoteDocument<T extends EditableNote>({
     refetch: fetchNote,
     reloadLatest,
     overwrite,
+    flush,
   };
 }

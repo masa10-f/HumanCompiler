@@ -4,7 +4,7 @@
 "use client";
 
 import Link from "next/link";
-import type { MouseEvent } from "react";
+import { forwardRef, useImperativeHandle, type MouseEvent } from "react";
 import { WeeklyNoteEditor } from "@/components/notes/weekly-note-workspace";
 import { useWeeklyNote } from "@/hooks/use-weekly-note";
 import { formatWeekRange } from "@/lib/weekly-note";
@@ -16,12 +16,26 @@ interface WeeklyNoteSectionProps {
   onOpen?: (event: MouseEvent<HTMLAnchorElement>) => void;
 }
 
+export interface WeeklyNoteSectionHandle {
+  /**
+   * Save pending edits and wait for them; rejects while the note has unsaved
+   * content, so the caller can stay on the dashboard instead of leaving.
+   */
+  beforeLeave: () => Promise<void>;
+}
+
 /**
  * This week's weekly note, editable in place. Remount it (React `key`) when
- * `day` changes; a pending edit is saved to its own week on unmount.
+ * `day` changes. Call `beforeLeave` before navigating or remounting, so the
+ * next screen reads the saved note and a failed save keeps the editor open.
  */
-export function WeeklyNoteSection({ day, onOpen }: WeeklyNoteSectionProps) {
+export const WeeklyNoteSection = forwardRef<
+  WeeklyNoteSectionHandle,
+  WeeklyNoteSectionProps
+>(function WeeklyNoteSection({ day, onOpen }, ref) {
   const editor = useWeeklyNote(day);
+  const { flush } = editor;
+  useImperativeHandle(ref, () => ({ beforeLeave: flush }), [flush]);
   const weekStart = editor.note?.week_start ?? null;
 
   return (
@@ -49,4 +63,4 @@ export function WeeklyNoteSection({ day, onOpen }: WeeklyNoteSectionProps) {
       <WeeklyNoteEditor editor={editor} />
     </section>
   );
-}
+});
