@@ -29,6 +29,7 @@ import {
 import { dailyPlansApi } from "@/lib/api";
 import { getJSTDateString } from "@/lib/date-utils";
 import { queryKeys } from "@/lib/query-keys";
+import { WeeklyNoteSection } from "./weekly-note-section";
 
 const NOTE_LIMIT = 3;
 
@@ -126,7 +127,7 @@ export function DailyNotesCard() {
             ノート
           </CardTitle>
           <CardDescription>
-            日付ごとのメモ・予定・進捗を記録できます
+            週ごとの目標・振り返りと、日付ごとのメモ・予定・進捗を記録できます
           </CardDescription>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -144,6 +145,7 @@ export function DailyNotesCard() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        <WeeklyNoteSection key={today} day={today} onOpen={openNote} />
         <section aria-label="今日のノート" className="space-y-2">
           <h3 className="text-sm font-semibold">
             今日のノート{" "}

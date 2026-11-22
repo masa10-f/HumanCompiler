@@ -123,7 +123,8 @@ function WeekView({ day, onDayChange }: WeeklyNoteWorkspaceProps) {
   );
 }
 
-function WeeklyNoteEditor({ editor }: { editor: UseNoteDocumentReturn<WeeklyNote> }) {
+/** The editor of one loaded weekly note; also embedded on the dashboard. */
+export function WeeklyNoteEditor({ editor }: { editor: UseNoteDocumentReturn<WeeklyNote> }) {
   const { note, loading, error, saving, conflict, updateNote, reloadLatest, overwrite } =
     editor;
   // A new key remounts the panel after a reload, so it starts over in view mode
