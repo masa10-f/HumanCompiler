@@ -1110,6 +1110,18 @@ def test_task_update_after_a_note_write_needs_the_new_updated_at(session: Sessio
     assert fresh.json()["note_excerpt"] == "Done: drafted the intro"
 
 
+def test_finishing_a_task_then_appending_a_summary_needs_one_read(session: Session):
+    """The order the update_task guide gives: update first, note after."""
+    _, _, task = _tree(session)
+    token = issue_token(session, USER_A, [*WRITE, AgentScope.NOTES_WRITE])
+
+    finished = _patch(f"/tasks/{task.id}", token, status="completed")
+    assert finished.status_code == 200, finished.text
+
+    response = _append(token, "tasks", task.id, "Done: drafted the intro")
+    assert response.status_code == 200, response.text
+
+
 def test_goal_note_write_leaves_its_tasks_updated_at(session: Session):
     _, goal, task = _tree(session)
     token = issue_token(session, USER_A, [*WRITE, AgentScope.NOTES_WRITE])

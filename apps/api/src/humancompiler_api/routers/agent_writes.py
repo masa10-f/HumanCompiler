@@ -156,7 +156,9 @@ async def create_task(
     description=(
         f"{UPDATE_GUIDE} A task has no description or memo: its note is its "
         "body, written through the note endpoints. Sending description, memo "
-        "or memo_append is rejected with 422."
+        "or memo_append is rejected with 422. To finish a task and leave a "
+        "summary, update the task first and append to its note after: a note "
+        "write advances the task's updated_at."
     ),
 )
 async def update_task(

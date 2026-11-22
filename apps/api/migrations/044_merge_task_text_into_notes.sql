@@ -124,6 +124,10 @@ WHERE note_merged_at IS NULL
 
 -- 3. Visible text of every note that has none yet, without touching
 -- updated_at (the trigger exists on schemas that applied 035).
+-- Only the entities the web editor writes are decoded (&nbsp; &lt; &gt;
+-- &quot; &#39; &amp;). The API decodes every entity, so a note holding another
+-- one (&hellip;, a numeric reference) keeps it as written in content_text
+-- until the note is next saved; that is accepted for a one-time backfill.
 DO '
 BEGIN
     IF EXISTS (

@@ -267,7 +267,9 @@ async def create_task(
         "(status cancelled, and goal_id, which moves the task to another goal) "
         f"{_UNCONFIRMED}. A task has no description or memo: its note is its "
         "body, written with append_note and replace_note. To finish a task, "
-        "pass status completed and add a summary with append_note. Returns "
+        "pass status completed here first and then add a summary with "
+        "append_note: a note write advances the task's updated_at, so in the "
+        "other order this call answers 409 until you read the task again. Returns "
         f"{{applied: true, task}}. {_NOT_FOUND}"
     ),
     annotations=_MAY_DESTROY,
