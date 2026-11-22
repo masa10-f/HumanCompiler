@@ -16,9 +16,9 @@ jest.mock("@/lib/date-utils", () => ({
   getJSTDateString: jest.fn(() => "2026-11-04"),
 }));
 // The rich-text editor is covered by its own tests.
-jest.mock("../context-note-panel", () => ({
-  ContextNotePanel: ({ content, emptyTitle }: { content: string; emptyTitle: string }) => (
-    <div data-testid="panel">{content || emptyTitle}</div>
+jest.mock("../context-note-editor", () => ({
+  ContextNoteEditor: ({ content }: { content: string }) => (
+    <div data-testid="editor">{content}</div>
   ),
 }));
 
@@ -92,7 +92,10 @@ it("shows the week the server resolved, its daily notes and recent weekly notes"
     await screen.findByRole("heading", { name: "2026年11月1日（日）〜7日（土）" }),
   ).toBeInTheDocument();
   expect(screen.getByText("今週", { selector: "p" })).toBeInTheDocument();
-  expect(screen.getByTestId("panel")).toHaveTextContent("今週の目標");
+  // Always editable, like the daily note: no Edit/Done toggle.
+  expect(screen.getByTestId("editor")).toHaveTextContent("今週の目標");
+  expect(screen.queryByRole("button", { name: /^(Edit|Done)$/ })).not.toBeInTheDocument();
+  expect(screen.getByText(/^最終更新: /)).toBeInTheDocument();
   expect(weeklyNotesApi.get).toHaveBeenCalledWith("2026-11-04");
   await waitFor(() =>
     expect(dailyPlansApi.list).toHaveBeenCalledWith({
@@ -125,7 +128,8 @@ it("shows the week the server resolved, its daily notes and recent weekly notes"
 it("moves between weeks from the resolved week", async () => {
   const onDayChange = renderWorkspace("2026-10-20");
   expect(await screen.findByText("2週前")).toBeInTheDocument();
-  expect(screen.getByTestId("panel")).toHaveTextContent("この週のノートはまだありません");
+  expect(screen.getByTestId("editor")).toBeEmptyDOMElement();
+  expect(screen.getByText(/書いた内容は自動で保存されます/)).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: /前の週/ }));
   expect(onDayChange).toHaveBeenLastCalledWith("2026-10-17");

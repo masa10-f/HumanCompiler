@@ -29,6 +29,10 @@ import {
 import { dailyPlansApi } from "@/lib/api";
 import { getJSTDateString } from "@/lib/date-utils";
 import { queryKeys } from "@/lib/query-keys";
+import {
+  WeeklyNoteSection,
+  type WeeklyNoteSectionHandle,
+} from "./weekly-note-section";
 
 const NOTE_LIMIT = 3;
 
@@ -41,9 +45,12 @@ export function DailyNotesCard() {
   const [today, setToday] = useState(getJSTDateString);
   const router = useRouter();
   const workspace = useRef<DailyPlanWorkspaceHandle>(null);
+  const weeklyNote = useRef<WeeklyNoteSectionHandle>(null);
   const transitionPending = useRef(false);
   const [transitionError, setTransitionError] = useState("");
   const transitionTarget = useRef<NoteTransition | null>(null);
+  // An explicit retry clicked while another attempt was still saving.
+  const retryRequested = useRef(false);
   useEffect(
     () => () => {
       transitionTarget.current = null;
@@ -60,20 +67,36 @@ export function DailyNotesCard() {
       )
         return;
       transitionTarget.current = next;
+      if (retryPausedSave) retryRequested.current = true;
       if (transitionPending.current) return;
       transitionPending.current = true;
       try {
-        await workspace.current?.beforeLeave({ retryPausedSave });
-        setTransitionError("");
-        const target = transitionTarget.current;
-        transitionTarget.current = null;
-        target?.action();
-      } catch (error) {
-        setTransitionError(
-          error instanceof Error
-            ? error.message
-            : "ノートを保存できませんでした。",
-        );
+        for (;;) {
+          const retry = retryRequested.current;
+          retryRequested.current = false;
+          try {
+            // Both notes save before leaving: the weekly notes page reads the
+            // same week, and a failed save keeps its text on the dashboard.
+            await weeklyNote.current?.beforeLeave();
+            await workspace.current?.beforeLeave({ retryPausedSave: retry });
+            setTransitionError("");
+            const target = transitionTarget.current;
+            transitionTarget.current = null;
+            // A retry clicked during a successful attempt is done with it.
+            retryRequested.current = false;
+            target?.action();
+            return;
+          } catch (error) {
+            // A retry clicked during this attempt runs now instead of being lost.
+            if (retryRequested.current) continue;
+            setTransitionError(
+              error instanceof Error
+                ? error.message
+                : "ノートを保存できませんでした。",
+            );
+            return;
+          }
+        }
       } finally {
         transitionPending.current = false;
       }
@@ -126,7 +149,7 @@ export function DailyNotesCard() {
             ノート
           </CardTitle>
           <CardDescription>
-            日付ごとのメモ・予定・進捗を記録できます
+            週ごとの目標・振り返りと、日付ごとのメモ・予定・進捗を記録できます
           </CardDescription>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -144,6 +167,27 @@ export function DailyNotesCard() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {transitionError && (
+          <div role="alert" className="text-sm text-destructive">
+            {transitionError} 現在のノートを表示しています。
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                if (transitionTarget.current)
+                  void transition(transitionTarget.current, true);
+              }}
+            >
+              移動を再試行
+            </Button>
+          </div>
+        )}
+        <WeeklyNoteSection
+          ref={weeklyNote}
+          key={today}
+          day={today}
+          onOpen={openNote}
+        />
         <section aria-label="今日のノート" className="space-y-2">
           <h3 className="text-sm font-semibold">
             今日のノート{" "}
@@ -154,21 +198,6 @@ export function DailyNotesCard() {
               {today}
             </time>
           </h3>
-          {transitionError && (
-            <div role="alert" className="text-sm text-destructive">
-              {transitionError} 現在のノートを表示しています。
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  if (transitionTarget.current)
-                    void transition(transitionTarget.current, true);
-                }}
-              >
-                移動を再試行
-              </Button>
-            </div>
-          )}
           <DailyPlanWorkspace ref={workspace} selectedDate={today} embedded />
         </section>
         <h3 className="text-sm font-semibold">ほかの日のノート</h3>

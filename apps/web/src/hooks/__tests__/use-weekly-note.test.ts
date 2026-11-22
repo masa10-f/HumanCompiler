@@ -175,4 +175,72 @@ describe('useWeeklyNote', () => {
     })
     expect(mockUpdate).toHaveBeenCalledTimes(1)
   })
+
+  describe('flush', () => {
+    beforeEach(() => {
+      jest.useRealTimers()
+    })
+
+    it('saves a debounced edit now and resolves once it is stored', async () => {
+      mockGet.mockResolvedValue(makeNote('', null))
+      mockUpdate.mockResolvedValue(makeNote('<p>a</p>', '2026-11-03T09:00:00+00:00'))
+      const { result } = renderHook(() => useWeeklyNote(DAY), { wrapper })
+      await waitFor(() => expect(result.current.loading).toBe(false))
+
+      act(() => result.current.updateNote({ content: '<p>a</p>' }))
+      await act(async () => {
+        await result.current.flush()
+      })
+      expect(mockUpdate).toHaveBeenCalledTimes(1)
+      expect(mockUpdate).toHaveBeenCalledWith(
+        WEEK,
+        expect.objectContaining({ content: '<p>a</p>' })
+      )
+    })
+
+    it('retries a failed save once and rejects while the edit stays unsaved', async () => {
+      mockGet.mockResolvedValue(makeNote('', null))
+      mockUpdate.mockRejectedValue(new Error('offline'))
+      const { result } = renderHook(() => useWeeklyNote(DAY), { wrapper })
+      await waitFor(() => expect(result.current.loading).toBe(false))
+
+      act(() => result.current.updateNote({ content: '<p>a</p>' }))
+      await act(async () => {
+        await expect(result.current.flush()).rejects.toThrow('ノートを保存できませんでした。')
+      })
+      expect(mockUpdate).toHaveBeenCalledTimes(2)
+
+      mockUpdate.mockResolvedValue(makeNote('<p>a</p>', '2026-11-03T09:00:00+00:00'))
+      await act(async () => {
+        await result.current.flush()
+      })
+      expect(mockUpdate).toHaveBeenCalledTimes(3)
+    })
+
+    it('rejects during a conflict and resolves after reloading the latest note', async () => {
+      mockGet.mockResolvedValue(makeNote('<p>old</p>', '2026-11-03T09:00:00+00:00'))
+      // A failed save, then a conflict on its retry.
+      mockUpdate
+        .mockRejectedValueOnce(new Error('offline'))
+        .mockRejectedValueOnce(new ApiError(409, 'Changed since you read it'))
+      const { result } = renderHook(() => useWeeklyNote(DAY), { wrapper })
+      await waitFor(() => expect(result.current.loading).toBe(false))
+
+      act(() => result.current.updateNote({ content: '<p>mine</p>' }))
+      await act(async () => {
+        await expect(result.current.flush()).rejects.toThrow()
+      })
+      expect(result.current.conflict).toBe(true)
+
+      mockGet.mockResolvedValue(makeNote('<p>theirs</p>', '2026-11-03T10:00:00+00:00'))
+      await act(async () => {
+        await result.current.reloadLatest()
+      })
+      expect(result.current.conflict).toBe(false)
+      await act(async () => {
+        await result.current.flush()
+      })
+      expect(mockUpdate).toHaveBeenCalledTimes(2)
+    })
+  })
 })

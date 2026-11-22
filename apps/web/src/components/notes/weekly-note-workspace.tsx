@@ -26,7 +26,8 @@ import { useWeeklyNote } from "@/hooks/use-weekly-note";
 import { useWeekStartSettings } from "@/hooks/use-week-start";
 import type { UseNoteDocumentReturn } from "@/hooks/use-note-document";
 import type { WeeklyNote } from "@/types/weekly-note";
-import { ContextNotePanel } from "./context-note-panel";
+import { format } from "date-fns";
+import { ContextNoteEditor } from "./context-note-editor";
 import { NoteConflictAlert } from "./note-conflict-alert";
 
 const RECENT_LIMIT = 8;
@@ -123,13 +124,24 @@ function WeekView({ day, onDayChange }: WeeklyNoteWorkspaceProps) {
   );
 }
 
-function WeeklyNoteEditor({ editor }: { editor: UseNoteDocumentReturn<WeeklyNote> }) {
+/**
+ * The editor of one loaded weekly note; also embedded on the dashboard. Like
+ * the daily note it is always editable, and every edit is autosaved.
+ */
+export function WeeklyNoteEditor({
+  editor,
+  variant = "full",
+}: {
+  editor: UseNoteDocumentReturn<WeeklyNote>;
+  /** "compact" gives the editor a lower minimum height (the dashboard). */
+  variant?: "full" | "compact";
+}) {
   const { note, loading, error, saving, conflict, updateNote, reloadLatest, overwrite } =
     editor;
-  // A new key remounts the panel after a reload, so it starts over in view mode
-  // and the editor's undo history cannot bring back the dropped local text.
-  const [panelKey, setPanelKey] = useState(0);
-  const updatedAt = note?.updated_at ?? null;
+  // A new key remounts the editor after a reload, so its undo history cannot
+  // bring back the dropped local text.
+  const [editorKey, setEditorKey] = useState(0);
+  const updatedAt = note?.updated_at ? new Date(note.updated_at) : null;
 
   if (loading) {
     return (
@@ -157,7 +169,7 @@ function WeeklyNoteEditor({ editor }: { editor: UseNoteDocumentReturn<WeeklyNote
         saving={saving}
         onReload={async () => {
           await reloadLatest();
-          setPanelKey((key) => key + 1);
+          setEditorKey((key) => key + 1);
         }}
         onOverwrite={overwrite}
       />
@@ -166,16 +178,19 @@ function WeeklyNoteEditor({ editor }: { editor: UseNoteDocumentReturn<WeeklyNote
           {error}
         </p>
       ) : null}
-      <ContextNotePanel
-        key={panelKey}
+      <ContextNoteEditor
+        key={editorKey}
         content={note?.content ?? ""}
         onUpdate={(content) => updateNote({ content, content_type: "html" })}
         saving={saving}
         placeholder="今週の目標、うまくいったこと、来週に持ち越すことなど"
-        updatedAt={updatedAt}
-        emptyTitle="この週のノートはまだありません"
-        emptyDescription="週の目標や振り返りを書いておくと、エージェントも MCP から読めます。"
+        variant={variant}
       />
+      <p className="mt-2 text-sm text-muted-foreground">
+        {updatedAt && !Number.isNaN(updatedAt.getTime())
+          ? `最終更新: ${format(updatedAt, "yyyy-MM-dd HH:mm")}`
+          : "書いた内容は自動で保存されます。週の目標や振り返りを書いておくと、エージェントも MCP から読めます。"}
+      </p>
     </div>
   );
 }
