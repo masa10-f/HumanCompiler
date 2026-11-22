@@ -190,8 +190,10 @@ export function useDeleteLog() {
           queryKey: logKeys.byTask(cachedLog.task_id)
         })
       } else {
-        // Fallback: invalidate all log lists
-        queryClient.invalidateQueries({ queryKey: logKeys.lists() })
+        // The task is only known when the log was fetched on its own, which
+        // lists never do. Refresh every task's logs, so a task's work history
+        // (which reads logKeys.byTask) drops the deleted entry.
+        queryClient.invalidateQueries({ queryKey: [...logKeys.all, 'task'] })
       }
 
       // Invalidate progress data as it depends on logs

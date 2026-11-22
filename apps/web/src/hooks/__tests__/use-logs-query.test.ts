@@ -404,6 +404,26 @@ describe('useDeleteLog', () => {
       queryKey: logKeys.batches(),
     })
   })
+
+  it('refetches a task\'s logs after a delete when the log was never fetched on its own', async () => {
+    mockDelete.mockResolvedValue(undefined)
+    const kept = createMockLog({ id: 'kept', task_id: 'task-1' })
+    const deleted = createMockLog({ id: 'deleted', task_id: 'task-1' })
+    mockGetByTask.mockResolvedValueOnce([kept, deleted]).mockResolvedValue([kept])
+
+    // The work history of a task reads its logs with useLogsByTask.
+    const { result } = renderHookWithClient(() => ({
+      logs: useLogsByTask('task-1'),
+      remove: useDeleteLog(),
+    }))
+    await waitFor(() => expect(result.current.logs.data).toHaveLength(2))
+
+    await act(async () => {
+      await result.current.remove.mutateAsync('deleted')
+    })
+
+    await waitFor(() => expect(result.current.logs.data).toEqual([kept]))
+  })
 })
 
 describe('useTaskActualMinutes', () => {
