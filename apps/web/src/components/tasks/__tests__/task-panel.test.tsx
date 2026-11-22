@@ -74,12 +74,61 @@ describe('TaskPanel', () => {
     )
   })
 
-  it('closes from the close button and from the backdrop', () => {
+  it('closes from the close button, the backdrop and the Escape key', () => {
     const onClose = renderPanel(task.id)
 
     fireEvent.click(screen.getByRole('button', { name: '閉じる' }))
     fireEvent.click(screen.getByRole('button', { name: '詳細パネルを閉じる' }))
+    fireEvent.keyDown(document, { key: 'Escape' })
 
-    expect(onClose).toHaveBeenCalledTimes(2)
+    expect(onClose).toHaveBeenCalledTimes(3)
+  })
+
+  it('leaves Escape to a dialog opened from the panel', () => {
+    const onClose = renderPanel(task.id)
+    const dialog = document.createElement('div')
+    dialog.setAttribute('role', 'dialog')
+    document.body.appendChild(dialog)
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    dialog.remove()
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('leaves Escape to a field the user is typing in', () => {
+    const onClose = renderPanel(task.id)
+    const input = document.createElement('input')
+    const editor = document.createElement('div')
+    editor.setAttribute('contenteditable', 'true')
+    const paragraph = document.createElement('p')
+    editor.appendChild(paragraph)
+    document.body.append(input, editor)
+
+    // Escape cancels an IME conversion or an editor menu here.
+    fireEvent.keyDown(input, { key: 'Escape' })
+    fireEvent.keyDown(paragraph, { key: 'Escape' })
+    fireEvent.keyDown(document, { key: 'Escape', isComposing: true })
+    input.remove()
+    editor.remove()
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('is mounted under the body, whatever container renders it', () => {
+    const { container } = render(
+      <div className="space-y-6">
+        <TaskPanel
+          taskId={task.id}
+          availableTasks={[task]}
+          onClose={jest.fn()}
+          onSelectTask={jest.fn()}
+        />
+      </div>,
+    )
+
+    const panel = screen.getByLabelText('タスク詳細')
+    expect(container).not.toContainElement(panel)
+    expect(panel.parentElement?.parentElement).toBe(document.body)
   })
 })

@@ -6,6 +6,8 @@
 
 'use client'
 
+import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { ExternalLink, Loader2, X } from 'lucide-react'
@@ -47,6 +49,28 @@ interface TaskPanelProps {
 export function TaskPanel({ taskId, availableTasks, onClose, onSelectTask }: TaskPanelProps) {
   const taskQuery = useTask(taskId ?? '')
   const goalQuery = useGoal(taskQuery.data?.goal_id ?? '')
+
+  useEffect(() => {
+    if (!taskId) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return
+      // While typing, Escape belongs to the field: it cancels an IME
+      // conversion or an editor menu, and must not close the note being edited.
+      const target = event.target
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || target.closest('input, textarea, select, [contenteditable="true"]'))
+      ) {
+        return
+      }
+      // Dialogs opened from the panel (edit, time record) handle their own Escape.
+      if (document.querySelector('[role="dialog"]')) return
+      onClose()
+    }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [taskId, onClose])
+
   if (!taskId) return null
 
   const task = taskQuery.data
@@ -56,7 +80,9 @@ export function TaskPanel({ taskId, availableTasks, onClose, onSelectTask }: Tas
   const projectId = workspaceTask?.project_id ?? goalQuery.data?.project_id
   const pageHref = task && projectId ? taskPagePath(projectId, task.goal_id, task.id) : null
 
-  return (
+  // Rendered under <body>: where the panel is mounted must not move it (a
+  // parent's spacing utilities add margins to fixed children too).
+  return createPortal(
     <div className="fixed inset-0 z-50" role="presentation">
       <button
         aria-label="詳細パネルを閉じる"
@@ -92,6 +118,7 @@ export function TaskPanel({ taskId, availableTasks, onClose, onSelectTask }: Tas
           onSelectTask={onSelectTask}
         />
       </aside>
-    </div>
+    </div>,
+    document.body,
   )
 }
