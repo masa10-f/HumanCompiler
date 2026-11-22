@@ -34,7 +34,11 @@ from humancompiler_api.models import (
     TaskTriageItem,
 )
 
-from humancompiler_api.note_text import former_task_text_html
+from humancompiler_api.note_text import (
+    former_task_text_html,
+    note_plain_text,
+    plain_text_to_note_html,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +48,9 @@ def notes_with_former_task_text(backup_data: dict[str, Any]) -> list[dict[str, A
 
     A backup made before tasks lost those two fields carries them in its task
     rows and has no notes. Restoring it must not drop that text, so it goes to
-    the top of the task's note, the way migration 044 copies it; a task without
-    a note gets one owned by its project's owner. Notes of newer backups pass
+    the top of the task's note, the way migration 044 copies it (a Markdown
+    note becomes HTML paragraphs of the same text); a task without a note gets
+    one owned by its project's owner. Notes of newer backups pass
     through unchanged. The IDs are the backup's own."""
     notes = [dict(note) for note in backup_data.get("context_notes", [])]
     note_by_task = {
@@ -74,8 +79,15 @@ def notes_with_former_task_text(backup_data: dict[str, Any]) -> list[dict[str, A
             note = {"user_id": owner_id, "task_id": task["id"], "content": ""}
             note_by_task[task_id] = note
             notes.append(note)
-        note["content"] = block + (note.get("content") or "")
+        existing = note.get("content") or ""
+        if note.get("content_type") != "html":
+            # A Markdown note's text is kept as it reads, not parsed as tags.
+            existing = plain_text_to_note_html(existing)
+        note["content"] = block + existing
         note["content_type"] = "html"
+        # With the text already current, restoring the note leaves its task's
+        # updated_at as the backup has it.
+        note["content_text"] = note_plain_text(note["content"], "html")
     return notes
 
 
@@ -253,7 +265,10 @@ class DataBackupManager:
                     task = Task(**task_data)
                     session.add(task)
 
-                # Restore notes, with the text older backups kept on tasks
+                # Restore notes, with the text older backups kept on tasks.
+                # Notes have no ORM relationship to what they are on, so the
+                # rows they reference must be inserted first.
+                session.flush()
                 for note_data in notes_with_former_task_text(backup_data):
                     session.add(ContextNote(**note_data))
 
@@ -523,7 +538,10 @@ class DataBackupManager:
                         task = Task(**task_data)
                         session.add(task)
 
-                # Import notes with new IDs and updated references
+                # Import notes with new IDs and updated references. Notes have
+                # no ORM relationship to what they are on, so the projects,
+                # goals and tasks they reference must be inserted first.
+                session.flush()
                 id_maps = {
                     "project_id": project_id_map,
                     "goal_id": goal_id_map,

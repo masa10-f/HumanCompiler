@@ -16,6 +16,7 @@ from humancompiler_api.note_text import (
     former_task_text_html,
     note_plain_text,
 )
+from humancompiler_api.safe_migration import notes_with_former_task_text
 from tests.postgres_migration_helpers import run_migration
 
 pytestmark = pytest.mark.skipif(
@@ -186,6 +187,35 @@ def test_text_goes_above_an_existing_note(db):
         "html",
         "メモ\nRemember",
     )
+
+
+def test_markdown_note_keeps_its_text_as_paragraphs(db):
+    cursor, schema = db
+    task_id = add_task(cursor, schema, description="Why")
+    existing = "  <TODO> write & check\r\n\r\n next  "
+    add_note(cursor, schema, existing, "markdown", task_id=task_id)
+
+    run_migration(cursor, schema, MIGRATION)
+
+    # Restoring an old backup treats a Markdown note the same way.
+    (restored,) = notes_with_former_task_text(
+        {
+            "tasks": [{"id": task_id, "goal_id": GOAL_ID, "description": "Why"}],
+            "context_notes": [
+                {"task_id": task_id, "content": existing, "content_type": "markdown"}
+            ],
+        }
+    )
+    assert restored["content"] == (
+        "<p>Why</p><p>&lt;TODO&gt; write &amp; check</p><p>next</p>"
+    )
+    assert task_note(cursor, schema, task_id) == (
+        USER_ID,
+        restored["content"],
+        "html",
+        "Why\n<TODO> write & check\nnext",
+    )
+    assert restored["content_text"] == "Why\n<TODO> write & check\nnext"
 
 
 @pytest.mark.parametrize(

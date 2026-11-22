@@ -11,8 +11,10 @@
 -- 2. For each task with a description or memo that was not merged before, the
 --    text is put at the top of its note, escaped, one paragraph per line: the
 --    description first, then the memo under a bold "メモ" line, then what the
---    note already held. A task without a note gets one, owned by the
---    project's owner. tasks.note_merged_at records the merge, so applying the
+--    note already held. The note becomes HTML: a note that was Markdown (the
+--    column default; the web editor saves HTML) keeps its text as escaped
+--    paragraphs, so text such as <TODO> is not read as a tag afterwards.
+--    A task without a note gets one, owned by the project's owner. tasks.note_merged_at records the merge, so applying the
 --    migration again copies nothing twice.
 -- 3. content_text is filled for every note that has content and no text yet.
 --    The updated_at trigger is off for this step, so notes whose content did
@@ -65,8 +67,8 @@ WHERE t.note_merged_at IS NULL
       SELECT 1 FROM public.context_notes AS n WHERE n.task_id = t.id
   );
 
--- 2b. Description, then memo, then the existing note. content_text is
--- cleared so that step 3 rebuilds it.
+-- 2b. Description, then memo, then the existing note (a Markdown note as
+-- escaped paragraphs). content_text is cleared so that step 3 rebuilds it.
 WITH merged AS (
     SELECT
         t.id AS task_id,
@@ -97,7 +99,18 @@ WITH merged AS (
       AND (COALESCE(t.description, '') ~ '\S' OR COALESCE(t.memo, '') ~ '\S')
 )
 UPDATE public.context_notes AS n
-SET content = merged.block || n.content,
+SET content = merged.block || CASE
+        WHEN n.content_type = 'html' THEN n.content
+        WHEN n.content ~ '\S' THEN
+            '<p>' || regexp_replace(
+                regexp_replace(
+                    replace(replace(replace(n.content, '&', '&amp;'), '<', '&lt;'), '>', '&gt;'),
+                    '^\s+|\s+$', '', 'g'
+                ),
+                '\s*\n\s*', '</p><p>', 'g'
+            ) || '</p>'
+        ELSE ''
+    END,
     content_type = 'html',
     content_text = ''
 FROM merged

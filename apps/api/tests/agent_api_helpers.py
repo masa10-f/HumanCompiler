@@ -213,6 +213,7 @@ def seed_note(
     updated_at: datetime | None = None,
 ) -> ContextNote:
     stamp = updated_at or datetime.now(UTC)
+    task_stamp = task.updated_at if task else None
     note = ContextNote(
         id=uuid4(),
         user_id=user_id,
@@ -226,6 +227,13 @@ def seed_note(
     session.add(note)
     session.commit()
     session.refresh(note)
+    if task is not None:
+        # Note text advances its task's updated_at; keep the seeded value.
+        session.refresh(task)
+        task.updated_at = task_stamp
+        session.add(task)
+        session.commit()
+        session.refresh(task)
     return note
 
 

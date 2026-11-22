@@ -18,6 +18,7 @@ from humancompiler_api.models import (
     ContextNote,
     ContextNoteUpdate,
     QuickTaskCreate,
+    Task,
     TaskCreate,
     TaskResponse,
     TaskUpdate,
@@ -99,7 +100,7 @@ def test_editing_the_note_changes_the_excerpt(session: Session, test_user_id: st
 
     update_note(
         session,
-        test_user_id,
+        str(test_user_id),
         NoteTarget(task_id=task_id),
         ContextNoteUpdate(
             content="<h2>New plan</h2><p>Ship <em>early</em></p>", content_type="html"
@@ -143,7 +144,7 @@ def test_workspace_search_matches_note_text_not_markup(
     service, task_id = _create(session, test_user_id, note="placeholder")
     update_note(
         session,
-        test_user_id,
+        str(test_user_id),
         NoteTarget(task_id=task_id),
         ContextNoteUpdate(
             content="<p>Call the <strong>vendor</strong> about R&amp;D</p>",
@@ -182,3 +183,80 @@ def test_converting_a_quick_task_moves_its_description_to_the_note(
     assert note is not None
     assert note.content == "<p>Ask about lead time</p>"
     assert task.note_excerpt == "Ask about lead time"
+
+
+def _stored_updated_at(session: Session, task_id: UUID):
+    session.expire_all()
+    task = session.get(Task, task_id)
+    assert task is not None
+    return task.updated_at
+
+
+def test_note_text_change_advances_the_task_updated_at(
+    session: Session, test_user_id: str
+):
+    """The task's response changes with its note, so incremental sync must see it."""
+    _, task_id = _create(session, test_user_id, note="Old opening")
+    before = _stored_updated_at(session, task_id)
+
+    update_note(
+        session,
+        str(test_user_id),
+        NoteTarget(task_id=task_id),
+        ContextNoteUpdate(content="<p>New opening</p>", content_type="html"),
+    )
+
+    assert _stored_updated_at(session, task_id) > before
+
+
+def test_note_save_without_a_text_change_keeps_the_task_updated_at(
+    session: Session, test_user_id: str
+):
+    _, task_id = _create(session, test_user_id, note="Same text")
+    before = _stored_updated_at(session, task_id)
+
+    update_note(
+        session,
+        str(test_user_id),
+        NoteTarget(task_id=task_id),
+        ContextNoteUpdate(
+            content="<p><strong>Same</strong> text</p>", content_type="html"
+        ),
+    )
+
+    assert _stored_updated_at(session, task_id) == before
+
+
+def test_first_note_text_advances_the_task_updated_at(
+    session: Session, test_user_id: str
+):
+    _, task_id = _create(session, test_user_id)
+    before = _stored_updated_at(session, task_id)
+
+    update_note(
+        session,
+        str(test_user_id),
+        NoteTarget(task_id=task_id),
+        ContextNoteUpdate(content="<p>First words</p>", content_type="html"),
+    )
+
+    assert _stored_updated_at(session, task_id) > before
+
+
+def test_project_note_change_leaves_tasks_alone(session: Session, test_user_id: str):
+    data = create_test_data(session, test_user_id)
+    task = TaskService().create_task(
+        session,
+        TaskCreate(goal_id=data["goal"].id, title="T", estimate_hours=Decimal("1")),
+        test_user_id,
+    )
+    before = _stored_updated_at(session, task.id)
+
+    update_note(
+        session,
+        str(test_user_id),
+        NoteTarget(project_id=data["project"].id),
+        ContextNoteUpdate(content="<p>Project plan</p>", content_type="html"),
+    )
+
+    assert _stored_updated_at(session, task.id) == before

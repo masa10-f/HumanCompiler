@@ -16,6 +16,7 @@ from pydantic import (
 from sqlalchemy import ARRAY, JSON, Text, UniqueConstraint, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy import DateTime, event, func, select
+from sqlalchemy import update as sqlalchemy_update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import column_property
 from sqlmodel import Column, Relationship, SQLModel
@@ -415,8 +416,9 @@ class Task(TaskBase, table=True):  # type: ignore[call-arg]
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     # Opening of the note's visible text, mapped below once ContextNote is
-    # defined. Read when the task is loaded, so reload the task after its note
-    # changes in the same session.
+    # defined. Read when the task is loaded, and a note write also advances
+    # updated_at in the database, so reload the task after its note changes in
+    # the same session.
     note_text_head: ClassVar[str | None]
 
     @property
@@ -3002,8 +3004,20 @@ class ContextNote(ContextNoteBase, table=True):  # type: ignore[call-arg]
 
 @event.listens_for(ContextNote, "before_insert")
 @event.listens_for(ContextNote, "before_update")
-def _set_note_content_text(_mapper: Any, _connection: Any, note: ContextNote) -> None:
-    note.content_text = note_plain_text(note.content, note.content_type)
+def _set_note_content_text(_mapper: Any, connection: Any, note: ContextNote) -> None:
+    """Keep content_text current, and the task's updated_at with it.
+
+    A task answers with the opening of its note (note_excerpt), so a change to
+    the note's text changes the task's response: advancing the task's
+    updated_at lets incremental sync by updated_at pick it up."""
+    content_text = note_plain_text(note.content, note.content_type)
+    if note.task_id is not None and content_text != note.content_text:
+        connection.execute(
+            sqlalchemy_update(Task)
+            .where(Task.id == note.task_id)  # type: ignore[arg-type]
+            .values(updated_at=datetime.now(UTC))
+        )
+    note.content_text = content_text
 
 
 Task.note_text_head = column_property(  # type: ignore[assignment]

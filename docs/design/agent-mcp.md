@@ -116,6 +116,7 @@ G1〜G3 と同じ前提に従う。
 - Task の作成時の `description` は引き続き受け付ける。プレーンテキストとして、新しい Task のノートの先頭に入る（1 行が 1 段落）。
 - Task の更新では `description`・`memo`・`memo_append` を受け付けない（REST は 422。MCP の `update_task` には引数が無い）。追記は `append_note`、書き換えは `replace_note` を使う。
 - Task の応答から `description` と `memo` が無くなり、ノートの冒頭を 1 行にした `note_excerpt` が入る（ノートに文字が無ければ null）。
+- Task のノートの文字が変わると、その Task の `updated_at` も進む。`note_excerpt` が変わるので、`updated_since` による Task の差分取得で拾えるようにするためである。
 - 既存の description と memo は、マイグレーション 044 がノートの先頭に写す。
 
 **線を引いた理由。**
