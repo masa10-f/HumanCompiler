@@ -29,8 +29,8 @@ jest.mock('@/components/tasks/task-delete-dialog', () => ({
   TaskDeleteDialog: ({ children }: { children: React.ReactNode }) => children,
 }))
 
-jest.mock('@/components/tasks/task-logs-memo-panel', () => ({
-  TaskLogsMemoPanel: () => null,
+jest.mock('@/components/tasks/task-work-history-panel', () => ({
+  TaskWorkHistoryPanel: () => null,
 }))
 
 jest.mock('@/components/tasks/task-dependency-panel', () => ({
@@ -56,7 +56,6 @@ function task(overrides: Partial<Task>): Task {
   return {
     id: 'ready-task',
     title: 'Ready task',
-    description: null,
     estimate_hours: 1,
     due_date: null,
     status: 'pending',
@@ -126,6 +125,27 @@ describe('GoalTaskList', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'ブロック中 2' }))
     expectTaskOrder(['Blocked high', 'Blocked low'])
+  })
+
+  it('shows the opening of the note under the title, only for tasks with note text', () => {
+    render(
+      <GoalTaskList
+        tasks={[
+          task({ id: 'with-note', title: 'With note', note_excerpt: 'APIの設計方針を決める' }),
+          task({ id: 'without-note', title: 'Without note', note_excerpt: null }),
+        ]}
+        projectId="project"
+        goalId="goal"
+        logsByTask={{}}
+        logsLoading={false}
+        logsError={null}
+        actualMinutesByTask={{}}
+      />,
+    )
+
+    // Once in the desktop table and once in the mobile card.
+    expect(screen.getAllByText('APIの設計方針を決める')).toHaveLength(2)
+    expect(screen.getAllByLabelText('ノートあり')).toHaveLength(2)
   })
 
   it('filters tasks by decision state and opens dependency details', () => {

@@ -15,6 +15,7 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -54,7 +55,7 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
     resolver: zodResolver(taskCreateFormSchema),
     defaultValues: {
       title: '',
-      description: '',
+      note: '',
       estimate_hours: 1,
       due_date: '',
       work_type: 'light_work',
@@ -66,7 +67,7 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
     try {
       const taskData = {
         title: data.title,
-        description: data.description || undefined,
+        note: data.note?.trim() ? data.note : undefined,
         estimate_hours: data.estimate_hours,
         due_date: data.due_date ? toJSTStartOfDayISOString(data.due_date) : undefined,
         work_type: data.work_type || 'light_work',
@@ -74,7 +75,8 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
         goal_id: goalId,
       };
 
-      log.component('TaskFormDialog', 'submitTask', taskData, { goalId });
+      // The note is the user's own text: keep it out of the logs.
+      log.component('TaskFormDialog', 'submitTask', { ...taskData, note: undefined }, { goalId });
       await createTaskMutation.mutateAsync(taskData);
       log.component('TaskFormDialog', 'taskCreated', { taskTitle: data.title }, { goalId });
 
@@ -128,17 +130,20 @@ export function TaskFormDialog({ goalId, children }: TaskFormDialogProps) {
             />
             <FormField
               control={form.control}
-              name="description"
+              name="note"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>説明</FormLabel>
+                  <FormLabel>ノート</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="タスクの説明を入力（任意）"
-                      rows={3}
+                      placeholder="作業に必要なメモや、AIに渡す依頼文など（任意）"
+                      rows={4}
                       {...field}
                     />
                   </FormControl>
+                  <FormDescription>
+                    タスクのノートの最初の内容になります。作成後はタスクのノートで自由に編集できます。
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

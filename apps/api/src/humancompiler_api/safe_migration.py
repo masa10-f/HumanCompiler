@@ -18,6 +18,7 @@ from sqlalchemy import inspect
 
 from humancompiler_api.database import db
 from humancompiler_api.models import (
+    ContextNote,
     User,
     Project,
     Goal,
@@ -33,7 +34,61 @@ from humancompiler_api.models import (
     TaskTriageItem,
 )
 
+from humancompiler_api.note_text import (
+    former_task_text_html,
+    note_plain_text,
+    plain_text_to_note_html,
+)
+
 logger = logging.getLogger(__name__)
+
+
+def notes_with_former_task_text(backup_data: dict[str, Any]) -> list[dict[str, Any]]:
+    """The backup's notes, with each task's former description and memo on top.
+
+    A backup made before tasks lost those two fields carries them in its task
+    rows and has no notes. Restoring it must not drop that text, so it goes to
+    the top of the task's note, the way migration 044 copies it (a Markdown
+    note becomes HTML paragraphs of the same text); a task without a note gets
+    one owned by its project's owner. Notes of newer backups pass
+    through unchanged. The IDs are the backup's own."""
+    notes = [dict(note) for note in backup_data.get("context_notes", [])]
+    note_by_task = {
+        str(note["task_id"]): note for note in notes if note.get("task_id") is not None
+    }
+    project_by_goal = {
+        str(goal["id"]): str(goal["project_id"])
+        for goal in backup_data.get("goals", [])
+    }
+    owner_by_project = {
+        str(project["id"]): project["owner_id"]
+        for project in backup_data.get("projects", [])
+    }
+    for task in backup_data.get("tasks", []):
+        block = former_task_text_html(task.get("description"), task.get("memo"))
+        if not block:
+            continue
+        task_id = str(task["id"])
+        note = note_by_task.get(task_id)
+        if note is None:
+            owner_id = owner_by_project.get(
+                project_by_goal.get(str(task["goal_id"]), "")
+            )
+            if owner_id is None:
+                continue
+            note = {"user_id": owner_id, "task_id": task["id"], "content": ""}
+            note_by_task[task_id] = note
+            notes.append(note)
+        existing = note.get("content") or ""
+        if note.get("content_type") != "html":
+            # A Markdown note's text is kept as it reads, not parsed as tags.
+            existing = plain_text_to_note_html(existing)
+        note["content"] = block + existing
+        note["content_type"] = "html"
+        # With the text already current, restoring the note leaves its task's
+        # updated_at as the backup has it.
+        note["content_text"] = note_plain_text(note["content"], "html")
+    return notes
 
 
 class SafeMigrationError(Exception):
@@ -77,6 +132,10 @@ class DataBackupManager:
                 # Backup tasks
                 tasks = session.exec(select(Task)).all()
                 backup_data["tasks"] = [task.model_dump() for task in tasks]
+
+                # Backup notes: a task's note is its body
+                notes = session.exec(select(ContextNote)).all()
+                backup_data["context_notes"] = [note.model_dump() for note in notes]
 
                 # Backup quick tasks
                 quick_tasks = session.exec(select(QuickTask)).all()
@@ -133,6 +192,7 @@ class DataBackupManager:
                         "projects": len(backup_data["projects"]),
                         "goals": len(backup_data["goals"]),
                         "tasks": len(backup_data["tasks"]),
+                        "context_notes": len(backup_data["context_notes"]),
                         "quick_tasks": len(backup_data["quick_tasks"]),
                         "schedules": len(backup_data["schedules"]),
                         "logs": len(backup_data["logs"]),
@@ -205,6 +265,13 @@ class DataBackupManager:
                     task = Task(**task_data)
                     session.add(task)
 
+                # Restore notes, with the text older backups kept on tasks.
+                # Notes have no ORM relationship to what they are on, so the
+                # rows they reference must be inserted first.
+                session.flush()
+                for note_data in notes_with_former_task_text(backup_data):
+                    session.add(ContextNote(**note_data))
+
                 session.commit()
 
             metadata = backup_data.get("metadata", {})
@@ -265,6 +332,12 @@ class DataBackupManager:
 
                 # Get task IDs for related data
                 task_ids = [t.id for t in tasks]
+
+                # Backup the user's notes: a task's note is its body
+                notes = session.exec(
+                    select(ContextNote).where(ContextNote.user_id == user_id)
+                ).all()
+                backup_data["context_notes"] = [note.model_dump() for note in notes]
 
                 # Backup user's quick tasks
                 quick_tasks = session.exec(
@@ -362,6 +435,7 @@ class DataBackupManager:
                         "projects": len(backup_data["projects"]),
                         "goals": len(backup_data["goals"]),
                         "tasks": len(backup_data["tasks"]),
+                        "context_notes": len(backup_data["context_notes"]),
                         "quick_tasks": len(backup_data["quick_tasks"]),
                         "schedules": len(backup_data["schedules"]),
                         "logs": len(backup_data["logs"]),
@@ -410,6 +484,9 @@ class DataBackupManager:
                 raise SafeMigrationError(
                     "This backup file is not a user-specific backup"
                 )
+
+            # Read before the loops below replace the backup's IDs in place.
+            notes = notes_with_former_task_text(backup_data)
 
             engine = db.get_engine()
 
@@ -460,6 +537,25 @@ class DataBackupManager:
                     if task_data["goal_id"]:  # Only add if goal exists
                         task = Task(**task_data)
                         session.add(task)
+
+                # Import notes with new IDs and updated references. Notes have
+                # no ORM relationship to what they are on, so the projects,
+                # goals and tasks they reference must be inserted first.
+                session.flush()
+                id_maps = {
+                    "project_id": project_id_map,
+                    "goal_id": goal_id_map,
+                    "task_id": task_id_map,
+                }
+                for note_data in notes:
+                    for column, id_map in id_maps.items():
+                        if note_data.get(column) is not None:
+                            note_data[column] = id_map.get(str(note_data[column]))
+                    if not any(note_data.get(column) for column in id_maps):
+                        continue  # its project, goal or task was not imported
+                    note_data["id"] = str(uuid.uuid4())
+                    note_data["user_id"] = target_user_id
+                    session.add(ContextNote(**note_data))
 
                 # Import quick tasks with new IDs and updated user reference
                 for quick_task_data in backup_data.get("quick_tasks", []):

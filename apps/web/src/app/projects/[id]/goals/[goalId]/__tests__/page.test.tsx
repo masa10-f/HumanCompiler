@@ -49,7 +49,7 @@ jest.mock('@/components/context-export/context-export-dialog', () => ({ ContextE
 jest.mock('@/components/tasks/task-form-dialog', () => ({ TaskFormDialog: () => null }))
 jest.mock('@/components/tasks/task-edit-dialog', () => ({ TaskEditDialog: () => null }))
 jest.mock('@/components/tasks/task-delete-dialog', () => ({ TaskDeleteDialog: () => null }))
-jest.mock('@/components/tasks/task-logs-memo-panel', () => ({ TaskLogsMemoPanel: () => null }))
+jest.mock('@/components/tasks/task-work-history-panel', () => ({ TaskWorkHistoryPanel: () => null }))
 jest.mock('@/components/tasks/task-dependency-panel', () => ({ TaskDependencyPanel: () => null }))
 jest.mock('@/components/logs/log-form-dialog', () => ({ LogFormDialog: () => null }))
 

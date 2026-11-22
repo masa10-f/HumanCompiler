@@ -111,6 +111,14 @@ G1〜G3 と同じ前提に従う。
 | | Task を別の Goal に**移す** | **提案** | 直接 |
 | | Task の依存関係を**外す** | **提案** | 直接 |
 
+**Task の description と memo の廃止（2026-11-22 に変更）。**
+- Task は description と memo を持たない。Task の本文はノートである。上の表と以下の説明のうち、Task の description・memo にあたる部分は、ノートへの追記と書き換えに読み替える。Goal の description は変わらない。
+- Task の作成時の `description` は引き続き受け付ける。プレーンテキストとして、新しい Task のノートの先頭に入る（1 行が 1 段落）。
+- Task の更新では `description`・`memo`・`memo_append` を受け付けない（REST は 422。MCP の `update_task` には引数が無い）。追記は `append_note`、書き換えは `replace_note` を使う。
+- Task の応答から `description` と `memo` が無くなり、ノートの冒頭を 1 行にした `note_excerpt` が入る（ノートに文字が無ければ null）。
+- Task のノートの文字が変わると、その Task の `updated_at` も進む。`note_excerpt` が変わるので、`updated_since` による Task の差分取得で拾えるようにするためである。そのため、Task のノートを書いたあとにその Task を更新するときは、Task を読み直して新しい `updated_at` を `expected_updated_at` に使う（古い値のままだと 409 になる）。ノートの追記と書き換えのツール説明にも同じことを書いてある。Task を完了にして要約を残すときは、先に `update_task` で完了にし、そのあとで `append_note` する（この順なら Task を読み直さなくてよい）。
+- 既存の description と memo は、マイグレーション 044 がノートの先頭に写す。
+
 **線を引いた理由。**
 - 「消える操作」は、ユーザーが書いた文章を消すか、タスクを一覧から外す操作で、間違えると気づきにくい。
 - title や数値・日付の変更は、変更の記録から元の値に戻せる。間違えても一覧で目に入る。

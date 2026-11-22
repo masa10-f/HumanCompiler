@@ -18,8 +18,6 @@ jest.mock('@/hooks/use-toast', () => ({
 const task = {
   id: 'task-next',
   title: 'Next task',
-  description: null,
-  memo: null,
   estimate_hours: 1,
   due_date: null,
   status: 'pending' as const,

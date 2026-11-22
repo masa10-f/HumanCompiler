@@ -20,7 +20,6 @@ def _create_goal(session: Session, project_id, title: str) -> Goal:
         id=uuid4(),
         project_id=project_id,
         title=title,
-        description=f"{title} description",
         estimate_hours=10.0,
     )
     session.add(goal)
@@ -34,7 +33,6 @@ def _create_task(session: Session, goal_id, title: str) -> Task:
         id=uuid4(),
         goal_id=goal_id,
         title=title,
-        description=f"{title} description",
         estimate_hours=2.0,
     )
     session.add(task)

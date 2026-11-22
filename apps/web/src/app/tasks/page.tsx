@@ -140,6 +140,11 @@ function TaskRow({
               {task.title}
             </span>
           </button>
+          {task.note_excerpt && (
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {task.note_excerpt}
+            </p>
+          )}
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>
               {task.project_title} › {task.goal_title}

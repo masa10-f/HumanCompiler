@@ -71,8 +71,6 @@ DESTRUCTIVE_DETAIL = "This change needs the writes:unconfirmed scope"
 SELF_DEPENDENCY_DETAIL = "Task cannot depend on itself"
 CYCLE_DETAIL = "Creating this dependency would create a circular dependency"
 STALE_MESSAGE = "Changed since you read it; read it again and retry"
-MEMO_MAX_LENGTH = 2000
-MEMO_APPEND_SEPARATOR = "\n"
 _TAG = re.compile(r"<[^>]*>")
 # Elements that are content without any text; a note holding one is not blank.
 _CONTENT_ELEMENT = re.compile(
@@ -376,6 +374,7 @@ def create_task(
             TaskCreate(
                 goal_id=data.goal_id,
                 title=data.title,
+                # Becomes the opening of the task's note.
                 description=data.description,
                 estimate_hours=data.estimate_hours,
                 due_date=data.due_date,
@@ -388,10 +387,14 @@ def create_task(
         if task.id is None:
             raise RuntimeError("build() did not assign an id")
         after = {
-            name: getattr(task, name) for name in data.model_fields_set - {"depends_on"}
+            name: getattr(task, name)
+            for name in data.model_fields_set - {"depends_on", "description"}
         }
-        if "depends_on" in data.model_fields_set:
-            after["depends_on"] = data.depends_on
+        # Not task fields: the dependencies are rows of their own and the
+        # description is in the task's note.
+        for name in ("depends_on", "description"):
+            if name in data.model_fields_set:
+                after[name] = getattr(data, name)
         record_change(
             session,
             principal,
@@ -430,7 +433,6 @@ def _is_destructive_task_change(changes: dict[str, tuple[Any, Any]]) -> bool:
     return bool(
         changes.get("status", (None, None))[1] == TaskStatus.CANCELLED
         or "goal_id" in changes
-        or _overwrites_text(changes, {"description", "memo"})
     )
 
 
@@ -439,9 +441,8 @@ def update_task(
 ) -> Task:
     """Change the sent fields of one of the user's tasks.
 
-    Cancelling, changing a non-empty description or memo, and moving the task
-    to another goal are destructive. ``memo_append`` adds to the memo and is
-    not."""
+    Cancelling and moving the task to another goal are destructive. The task's
+    text is its note, which ``append_note`` and ``replace_note`` write."""
     user_id = principal.user_id
     try:
         task = _owned_task(session, user_id, task_id)
@@ -449,11 +450,7 @@ def update_task(
         check_expected_updated_at(_stored_updated_at(task), data.expected_updated_at)
 
         changes = _diff(
-            task,
-            {
-                name: getattr(data, name)
-                for name in data.sent_fields() - {"memo_append"}
-            },
+            task, {name: getattr(data, name) for name in data.sent_fields()}
         )
 
         if "goal_id" in changes:
@@ -461,21 +458,7 @@ def update_task(
         else:
             goal = _owned_goal(session, user_id, task.goal_id)
 
-        appended = data.memo_append
-        stored_memo = task.memo or ""
-        new_memo: str | None = None
-        if appended is not None:
-            new_memo = (
-                stored_memo + MEMO_APPEND_SEPARATOR + appended
-                if stored_memo
-                else appended
-            )
-            if len(new_memo) > MEMO_MAX_LENGTH:
-                raise _unprocessable(
-                    f"memo would exceed {MEMO_MAX_LENGTH} characters after the append"
-                )
-
-        if not changes and new_memo is None:
+        if not changes:
             session.commit()
             return task
 
@@ -486,10 +469,6 @@ def update_task(
         before = {name: old for name, (old, _) in changes.items()}
         after = {name: new for name, (_, new) in changes.items()}
         _apply(task, changes)
-        if new_memo is not None:
-            before["memo_length"] = len(stored_memo)
-            after["memo_append"] = appended
-            task.memo = new_memo
         task.updated_at = datetime.now(UTC)
         session.add(task)
         session.flush()

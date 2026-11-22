@@ -37,11 +37,6 @@ export function SessionDisplay({
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
             {task.title}
           </h2>
-          {task.description && (
-            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-              {task.description}
-            </p>
-          )}
         </div>
 
         {/* Goal and Project */}

@@ -1,8 +1,8 @@
 import * as z from 'zod';
 
 export const TASK_TITLE_MAX_LENGTH = 200;
-export const TASK_DESCRIPTION_MAX_LENGTH = 1000;
-export const TASK_MEMO_MAX_LENGTH = 2000;
+// Plain text a task can be created with; it becomes the task's note.
+export const TASK_NOTE_MAX_LENGTH = 20000;
 export const TASK_ESTIMATE_HOURS_MIN = 0.01;
 export const TASK_ESTIMATE_HOURS_MAX = 999.99;
 
@@ -17,9 +17,6 @@ export const taskBaseFormSchema = z.object({
   title: z.string()
     .min(1, '必須項目です')
     .max(TASK_TITLE_MAX_LENGTH, '200文字以内で入力してください'),
-  description: z.string()
-    .max(TASK_DESCRIPTION_MAX_LENGTH, '1000文字以内で入力してください')
-    .optional(),
   estimate_hours: taskEstimateHoursSchema,
   due_date: z.string().optional(),
   work_type: z.enum(['light_work', 'study', 'focused_work']).optional(),
@@ -30,14 +27,15 @@ export const taskBaseFormSchema = z.object({
     .optional(),
 });
 
-export const taskCreateFormSchema = taskBaseFormSchema;
+export const taskCreateFormSchema = taskBaseFormSchema.extend({
+  note: z.string()
+    .max(TASK_NOTE_MAX_LENGTH, '20000文字以内で入力してください')
+    .optional(),
+});
 
 export const taskEditFormSchema = taskBaseFormSchema.extend({
   status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']),
 });
-
-export const taskMemoSchema = z.string()
-  .max(TASK_MEMO_MAX_LENGTH, '2000文字以内で入力してください');
 
 export type TaskCreateFormData = z.infer<typeof taskCreateFormSchema>;
 export type TaskEditFormData = z.infer<typeof taskEditFormSchema>;

@@ -3,7 +3,6 @@ import type { TaskStatus, TaskUpdate, WorkType } from '@/types/task';
 
 interface TaskEditPayloadInput {
   title: string;
-  description?: string;
   estimate_hours: number;
   due_date?: string;
   status: TaskStatus;
@@ -19,7 +18,6 @@ function toDueDatePayload(dueDate?: string): string | null | undefined {
 export function buildTaskEditUpdatePayload(data: TaskEditPayloadInput): TaskUpdate {
   return {
     title: data.title,
-    description: data.description === '' ? null : data.description,
     estimate_hours: data.estimate_hours,
     due_date: toDueDatePayload(data.due_date),
     status: data.status,

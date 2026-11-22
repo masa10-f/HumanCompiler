@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from sqlmodel import Session, select
 
 from humancompiler_api.openai_models import DEFAULT_OPENAI_MODEL
+from humancompiler_api.services import add_task_note_text
 
 from humancompiler_api.crypto import get_crypto_service
 from humancompiler_api.models import (
@@ -739,9 +740,9 @@ class GoalTaskDraftService:
                             f"タスク「{draft_task.title}」は紐づくゴールがないためスキップしました。"
                         )
                         continue
-                    task = self._create_task_from_draft(draft_task, task_goal_id)
-                    session.add(task)
-                    session.flush()
+                    task = self._create_task_from_draft(
+                        session, user_id, draft_task, task_goal_id
+                    )
                     created_tasks.append(task)
                     task_id_by_client_id[draft_task.client_id] = task.id
 
@@ -767,9 +768,9 @@ class GoalTaskDraftService:
                         f"タスク「{draft_task.title}」は紐づくゴールがないためスキップしました。"
                     )
                     continue
-                task = self._create_task_from_draft(draft_task, db_goal_id)
-                session.add(task)
-                session.flush()
+                task = self._create_task_from_draft(
+                    session, user_id, draft_task, db_goal_id
+                )
                 created_tasks.append(task)
                 task_id_by_client_id[draft_task.client_id] = task.id
 
@@ -1205,7 +1206,8 @@ class GoalTaskDraftService:
             "id": str(task.id),
             "goal_id": str(task.goal_id),
             "title": task.title,
-            "description": task.description,
+            # Tasks have no description: this is the opening of the note.
+            "description": task.note_excerpt,
             "estimate_hours": float(task.estimate_hours),
             "due_date": task.due_date.isoformat() if task.due_date else None,
             "status": task.status,
@@ -1213,12 +1215,27 @@ class GoalTaskDraftService:
             "priority": task.priority,
         }
 
-    def _create_task_from_draft(self, draft_task: DraftTask, goal_id: UUID) -> Task:
+    def _create_task_from_draft(
+        self,
+        session: Session,
+        user_id: str | UUID,
+        draft_task: DraftTask,
+        goal_id: UUID,
+    ) -> Task:
+        """Add the drafted task, with its description as the task's note."""
+        task = self._build_task_from_draft(draft_task, goal_id)
+        session.add(task)
+        session.flush()
+        description = self._clean_optional_text(draft_task.description, 1000)
+        if description:
+            add_task_note_text(session, user_id, task, description)
+        return task
+
+    def _build_task_from_draft(self, draft_task: DraftTask, goal_id: UUID) -> Task:
         return Task(
             id=uuid4(),
             goal_id=goal_id,
             title=self._clean_text(draft_task.title, 200) or "Untitled task",
-            description=self._clean_optional_text(draft_task.description, 1000),
             estimate_hours=self._decimal_hours(draft_task.estimate_hours),
             due_date=self._parse_due_date(draft_task.due_date),
             work_type=draft_task.work_type,

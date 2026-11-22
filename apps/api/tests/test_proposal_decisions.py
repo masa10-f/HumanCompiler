@@ -850,6 +850,40 @@ def test_edit_clearing_task_note_creates_no_note_and_is_edited(session: Session)
     assert count(session, ContextNote) == 0
 
 
+def test_accept_task_with_description_and_note_opens_with_the_description(
+    session: Session,
+):
+    row = seed_task_proposal(
+        session, description="Why <now>", note_markdown="## Do\n\nIt."
+    )
+
+    result = accept(session, row)
+
+    notes = session.exec(select(ContextNote)).all()
+    assert len(notes) == 1
+    assert notes[0].task_id == result.result_id
+    assert notes[0].content == (
+        "<p>Why &lt;now&gt;</p>"
+        + agent_append_heading(AGENT, tokyo_today())
+        + markdown_to_note_html("## Do\n\nIt.")
+    )
+    task = session.get(Task, result.result_id)
+    assert task is not None
+    session.refresh(task)
+    assert task.note_excerpt == "Why <now> Do It."
+
+
+def test_accept_task_with_only_a_description_creates_its_note(session: Session):
+    row = seed_task_proposal(session, description="Why now")
+
+    result = accept(session, row)
+
+    notes = session.exec(select(ContextNote)).all()
+    assert [(note.task_id, note.content) for note in notes] == [
+        (result.result_id, "<p>Why now</p>")
+    ]
+
+
 def seed_goal_proposal(session: Session, **extra: Any) -> AgentProposal:
     project = seed_project(session, USER_A)
     return make_proposal(

@@ -160,7 +160,6 @@ def workspace(test_session: Session) -> Workspace:
         work_type=WorkType.FOCUSED_WORK,
         priority=2,
         estimate_hours=Decimal("3"),
-        memo="APIキーは別管理",
     )
     pending_task = _task(goal, "ドキュメント整備", TaskStatus.PENDING, priority=1)
     completed_task = _task(goal, "要件定義", TaskStatus.COMPLETED)
@@ -347,10 +346,9 @@ def test_project_export_bundles_notes_tasks_and_work_history(
     assert "- タスク: 完了 1 / 全 4件" in markdown
     assert "### ゴールノート\n\n#### ゴールメモ\n週2回レビュー" in markdown
 
-    # Task details, memo, and note.
+    # Task details and note.
     assert "- ステータス: 進行中 ／ 種別: 集中作業 ／ 優先度: 高" in markdown
     assert "- 見積: 3h ／ 実績(累計): 1.25h" in markdown
-    assert "#### メモ\n\nAPIキーは別管理" in markdown
     assert "#### ノート\n\n設計方針: 小さく始める" in markdown
 
     # Work sessions, oldest first, with paused time excluded.
@@ -437,7 +435,7 @@ def test_period_limits_work_history_but_not_notes(
     assert "#### デイリープランの記録（3件）" in markdown
     assert "古い予定" not in markdown
     assert "#### 背景" in markdown
-    assert "APIキーは別管理" in markdown
+    assert "設計方針: 小さく始める" in markdown
 
 
 def test_work_sessions_and_daily_plans_can_be_turned_off(

@@ -4,27 +4,22 @@ import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { ChevronDown, ChevronRight, Clock, MessageSquare, Edit, Save, X, Trash2, Timer, Pencil } from 'lucide-react';
-import { useUpdateTask } from '@/hooks/use-tasks-query';
+import { ChevronDown, ChevronRight, Clock, Edit, Trash2, Timer, Pencil } from 'lucide-react';
 import { useWorkSessionsByTask } from '@/hooks/use-work-sessions';
 import { SessionKptEditDialog } from '@/components/runner/session-kpt-edit-dialog';
 import { SESSION_DECISION_LABELS } from '@/types/work-session';
 import type { WorkSession } from '@/types/work-session';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { useToast } from '@/hooks/use-toast';
 import type { Task } from '@/types/task';
-import { log } from '@/lib/logger';
 import { formatJSTDateTime } from '@/lib/date-utils';
 import { LogEditDialog } from '@/components/logs/log-edit-dialog';
 import { LogDeleteDialog } from '@/components/logs/log-delete-dialog';
 import type { Log } from '@/types/log';
-import { TASK_MEMO_MAX_LENGTH, taskMemoSchema } from '@/lib/validations/task';
 
-interface TaskLogsMemoPanelProps {
+interface TaskWorkHistoryPanelProps {
   task: Task;
   logs: Log[];
   logsLoading?: boolean;
@@ -47,25 +42,18 @@ function calculateSessionWorkMinutes(session: WorkSession): number {
   return 0;
 }
 
-export function TaskLogsMemoPanel({
+/** A task's work sessions and time logs, folded under its row in a goal's list. */
+export function TaskWorkHistoryPanel({
   task,
   logs,
   logsLoading = false,
   logsError = null,
-}: TaskLogsMemoPanelProps) {
+}: TaskWorkHistoryPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [isMemoEditing, setIsMemoEditing] = useState(false);
-  const [memoText, setMemoText] = useState(task.memo || '');
   const [editSession, setEditSession] = useState<WorkSession | null>(null);
 
   const { data: sessions = [], isLoading: sessionsLoading } = useWorkSessionsByTask(task.id, 0, 20, isOpen);
   const hasSessionSummary = isOpen || sessions.length > 0;
-  const updateTaskMutation = useUpdateTask();
-  const { toast } = useToast();
-  const memoLength = memoText.length;
-  const memoValidation = taskMemoSchema.safeParse(memoText);
-  const memoCounterId = `task-${task.id}-memo-counter`;
-
   // Performance optimization: memoize total log time calculation
   const totalLogTime = useMemo(() =>
     logs.reduce((sum, logEntry) => sum + (logEntry.actual_minutes || 0), 0),
@@ -78,46 +66,6 @@ export function TaskLogsMemoPanel({
     [sessions]
   );
 
-  const handleSaveMemo = async () => {
-    if (!memoValidation.success) {
-      toast({
-        variant: "destructive",
-        title: "メモを保存できません",
-        description: memoValidation.error.issues[0]?.message ?? "入力内容を確認してください。",
-      });
-      return;
-    }
-
-    try {
-      await updateTaskMutation.mutateAsync({
-        id: task.id,
-        data: { memo: memoText }
-      });
-      setIsMemoEditing(false);
-      // Success notification
-      toast({
-        title: "メモを保存しました",
-        description: "タスクメモが正常に更新されました。",
-      });
-    } catch (error) {
-      log.error('Failed to update task memo', error, {
-        component: 'TaskLogsMemoPanel',
-        taskId: task.id
-      });
-      // Error notification
-      toast({
-        variant: "destructive",
-        title: "メモの保存に失敗しました",
-        description: "ネットワーク接続を確認して再試行してください。",
-      });
-    }
-  };
-
-  const handleCancelMemo = () => {
-    setMemoText(task.memo || '');
-    setIsMemoEditing(false);
-  };
-
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <CollapsibleTrigger asChild>
@@ -125,16 +73,16 @@ export function TaskLogsMemoPanel({
           variant="ghost"
           size="sm"
           className="flex items-center gap-2 w-full justify-start p-2 h-auto text-left hover:bg-gray-50"
-          aria-label={`${task.title}の作業ログとメモを${isOpen ? '閉じる' : '開く'}`}
+          aria-label={`${task.title}の作業履歴を${isOpen ? '閉じる' : '開く'}`}
           aria-expanded={isOpen}
-          aria-describedby={`task-${task.id}-logs-memo-summary`}
+          aria-describedby={`task-${task.id}-work-history-summary`}
         >
           {isOpen ? (
             <ChevronDown className="h-4 w-4" />
           ) : (
             <ChevronRight className="h-4 w-4" />
           )}
-          <div className="flex items-center gap-4" id={`task-${task.id}-logs-memo-summary`}>
+          <div className="flex items-center gap-4" id={`task-${task.id}-work-history-summary`}>
             <div className="flex items-center gap-1">
               <Clock className="h-4 w-4 text-blue-600" />
               <span className="text-sm font-medium">
@@ -147,89 +95,12 @@ export function TaskLogsMemoPanel({
                 セッション{hasSessionSummary ? ` (${sessions.length}件, ${(totalSessionTime / 60).toFixed(1)}h)` : ''}
               </span>
             </div>
-            <div className="flex items-center gap-1">
-              <MessageSquare className="h-4 w-4 text-green-600" />
-              <span className="text-sm font-medium">
-                メモ {task.memo ? '(あり)' : '(なし)'}
-              </span>
-            </div>
           </div>
         </Button>
       </CollapsibleTrigger>
 
       <CollapsibleContent>
         <div className="space-y-4 pb-4 pt-2 sm:pl-6">
-          {/* Memo Section */}
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4" />
-                  タスクメモ
-                </CardTitle>
-                {!isMemoEditing && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsMemoEditing(true)}
-                  >
-                    <Edit className="h-4 w-4 mr-1" />
-                    編集
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {isMemoEditing ? (
-                <div className="space-y-3">
-                  <Textarea
-                    value={memoText}
-                    onChange={(e) => setMemoText(e.target.value)}
-                    placeholder="タスクに関するメモを入力してください..."
-                    className="min-h-[80px]"
-                    maxLength={TASK_MEMO_MAX_LENGTH}
-                    aria-describedby={memoCounterId}
-                  />
-                  <div
-                    id={memoCounterId}
-                    className={`text-xs text-right ${memoValidation.success ? 'text-gray-500' : 'text-red-600'}`}
-                  >
-                    {memoLength}/{TASK_MEMO_MAX_LENGTH}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={handleSaveMemo}
-                      disabled={updateTaskMutation.isPending || !memoValidation.success}
-                    >
-                      <Save className="h-4 w-4 mr-1" />
-                      保存
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleCancelMemo}
-                      disabled={updateTaskMutation.isPending}
-                    >
-                      <X className="h-4 w-4 mr-1" />
-                      キャンセル
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-sm text-gray-600">
-                  {task.memo ? (
-                    <div className="whitespace-pre-wrap">{task.memo}</div>
-                  ) : (
-                    <div className="text-gray-400">メモはまだ設定されていません</div>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Separator />
-
           {/* Work Sessions Section */}
           <Card>
             <CardHeader className="pb-3">

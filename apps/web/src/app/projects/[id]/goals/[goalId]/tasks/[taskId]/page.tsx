@@ -160,14 +160,9 @@ export default function TaskDetailPage() {
         {/* Task Header */}
         <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm mb-6">
           <div className="flex flex-col gap-4 mb-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-                {task.title}
-              </h1>
-              {task.description && (
-                <p className="text-gray-600 dark:text-gray-400">{task.description}</p>
-              )}
-            </div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              {task.title}
+            </h1>
             <div className="flex flex-col items-start gap-2 sm:items-end">
               <div className={`flex items-center gap-2 ${statusInfo.color}`}>
                 <StatusIcon className="h-5 w-5" />
@@ -179,7 +174,7 @@ export default function TaskDetailPage() {
                 taskId={taskId}
                 mode="split_task"
                 title="AIでタスク分割"
-                defaultMessage="このタスクのノートと説明をもとに、実行しやすい小さなタスクへ分割してください。"
+                defaultMessage="このタスクのノートをもとに、実行しやすい小さなタスクへ分割してください。"
                 onApplied={() => refetchTask()}
               >
                 <Button variant="outline" size="sm">

@@ -717,13 +717,18 @@ async def test_write_tools_listed_with_scopes(session: Session, mcp: httpx.Async
     assert "schema" in init["instructions"]
     assert NOTE_REPLACE_LOSES in tools["replace_note"]["description"]
     update_task = tools["update_task"]
-    for words in ("writes:unconfirmed", "cancel", "goal_id", "memo_append", "null"):
+    for words in ("writes:unconfirmed", "cancel", "goal_id", "append_note", "null"):
         assert words in update_task["description"], words
     schema = update_task["inputSchema"]
     assert set(schema["required"]) == {"task_id", "expected_updated_at"}
-    assert {"title", "memo", "memo_append", "due_date", "priority"} <= set(
-        schema["properties"]
+    assert not {"description", "memo", "memo_append"} & set(schema["properties"])
+    assert (
+        "note"
+        in tools["create_task"]["inputSchema"]["properties"]["description"][
+            "description"
+        ]
     )
+    assert {"title", "due_date", "priority"} <= set(schema["properties"])
     assert "null" in tools["update_goal"]["description"]
     assert (
         tools["list_my_changes"]["inputSchema"]["properties"]["limit"]["maximum"] == 100
@@ -779,7 +784,6 @@ async def test_create_and_update_task_via_mcp(session: Session, mcp: httpx.Async
             "task_id": task_id,
             "expected_updated_at": created["task"]["updated_at"],
             "status": "completed",
-            "memo_append": "Done: drafted the intro",
         },
         secret,
     )
@@ -787,7 +791,6 @@ async def test_create_and_update_task_via_mcp(session: Session, mcp: httpx.Async
     assert set(updated) == {"applied", "task"}
     assert updated["applied"] is True
     assert updated["task"]["status"] == "completed"
-    assert updated["task"]["memo"] == "Done: drafted the intro"
     assert updated["task"]["title"] == "Write the intro"
     rest = client.get(f"/api/agent/v1/tasks/{task_id}", headers=bearer(secret))
     assert updated["task"] == rest.json()
@@ -801,10 +804,7 @@ async def test_create_and_update_task_via_mcp(session: Session, mcp: httpx.Async
     assert {row.agent_token_id for row in changes} == {_token_id(session, "mcp")}
     assert changes[0].after["title"] == "Write the intro"
     assert "description" not in changes[0].after  # only the sent fields
-    assert changes[1].after == {
-        "status": "completed",
-        "memo_append": "Done: drafted the intro",
-    }
+    assert changes[1].after == {"status": "completed"}
     mcp_rows = [row for row in audit_rows(session) if row.method == "MCP"]
     assert sorted((row.route, row.status_code) for row in mcp_rows) == [
         ("mcp:create_task", 200),
@@ -875,24 +875,10 @@ async def test_update_task_explicit_null_and_unset(
     session.expire_all()
     assert session.get(Task, task.id).priority == 2  # type: ignore[union-attr]
 
-    # memo with memo_append is the model's 422, audited like REST.
-    is_error, body = await call(
-        mcp,
-        "update_task",
-        {
-            "task_id": str(task.id),
-            "expected_updated_at": stamp.isoformat(),  # type: ignore[union-attr]
-            "memo": "a",
-            "memo_append": "b",
-        },
-        secret,
-    )
-    assert is_error
-    assert body["status"] == 422
-    assert "memo or memo_append" in json.dumps(body["detail"])
     assert len(_agent_changes(session)) == 2
     statuses = [row.status_code for row in audit_rows(session)]
-    assert sorted(statuses) == [200, 200, 422, 422]
+    # The model's 422 is audited like REST.
+    assert sorted(statuses) == [200, 200, 422]
 
 
 async def test_stale_update_is_409_error_with_dict_detail(

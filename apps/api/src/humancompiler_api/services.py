@@ -6,6 +6,7 @@ from collections import deque
 from collections.abc import Sequence
 from datetime import datetime, timedelta, UTC
 from decimal import Decimal, ROUND_HALF_UP
+from typing import Any
 import hashlib
 import secrets
 from uuid import UUID
@@ -25,6 +26,7 @@ from humancompiler_api.common.error_handlers import (
 from humancompiler_api.models import (
     AgentScope,
     AgentToken,
+    ContextNote,
     Goal,
     GoalCreate,
     GoalUpdate,
@@ -63,6 +65,7 @@ from humancompiler_api.models import (
     TaskStatus,
     TaskWorkspaceSortBy,
 )
+from humancompiler_api.note_text import plain_text_to_note_html
 
 
 def _dependency_path_exists(
@@ -92,6 +95,34 @@ def _dependency_path_exists(
                 queue.append(next_id)
 
     return False
+
+
+def _task_text_matches(pattern: str) -> Any:
+    """Tasks whose title or note text matches an ILIKE pattern."""
+    note_matches = (
+        select(ContextNote.id)
+        .where(
+            ContextNote.task_id == Task.id,
+            col(ContextNote.content_text).ilike(pattern),
+        )
+        .exists()
+    )
+    return col(Task.title).ilike(pattern) | note_matches
+
+
+def add_task_note_text(
+    session: Session, user_id: str | UUID, task: Task, text: str
+) -> None:
+    """Give a new task its note from plain text, flushed but not committed."""
+    session.add(
+        ContextNote(
+            user_id=validate_uuid(user_id, "user_id"),
+            task_id=task.id,
+            content=plain_text_to_note_html(text),
+            content_type="html",
+        )
+    )
+    session.flush()
 
 
 def _touch(session: Session, entity: Goal | Task | None) -> None:
@@ -581,13 +612,24 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         return Task(
             goal_id=data.goal_id,
             title=data.title,
-            description=data.description,
             estimate_hours=data.estimate_hours,
             due_date=data.due_date,
             status=data.status,
             priority=data.priority,
             work_type=data.work_type,
         )
+
+    def build(
+        self, session: Session, data: TaskCreate, user_id: str | UUID, **kwargs
+    ) -> Task:
+        """Create the task and, when it comes with text, its note; no commit."""
+        task = super().build(session, data, user_id, **kwargs)
+        text = data.note_text()
+        if text is not None:
+            add_task_note_text(session, user_id, task, text)
+            # note_text_head was read as NULL when the task was flushed.
+            session.refresh(task)
+        return task
 
     def _get_user_filter(self, user_id: str | UUID):
         """Get filter for task ownership through goal and project using JOIN"""
@@ -707,11 +749,7 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             conditions.append(col(Task.due_date) >= due_after)
         if search and search.strip():
             pattern = f"%{search.strip()}%"
-            conditions.append(
-                Task.title.ilike(pattern)
-                | Task.description.ilike(pattern)
-                | Task.memo.ilike(pattern)
-            )
+            conditions.append(_task_text_matches(pattern))
         if blocked is not None:
             prerequisite = aliased(Task)
             blocking_dependency = (
@@ -900,11 +938,7 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
             conditions.append(Goal.id == goal_id)
         if search and search.strip():
             pattern = f"%{search.strip()}%"
-            conditions.append(
-                Task.title.ilike(pattern)
-                | Task.description.ilike(pattern)
-                | Task.memo.ilike(pattern)
-            )
+            conditions.append(_task_text_matches(pattern))
 
         prerequisite = aliased(Task)
         has_blocker = (
@@ -2221,7 +2255,7 @@ class QuickTaskService(BaseService[QuickTask, QuickTaskCreate, QuickTaskUpdate])
         # Create a new regular task with the quick task's data
         task_data = TaskCreate(
             title=quick_task.title,
-            description=quick_task.description,
+            note=quick_task.description,
             estimate_hours=quick_task.estimate_hours,
             due_date=quick_task.due_date,
             work_type=quick_task.work_type,

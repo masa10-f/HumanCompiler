@@ -205,7 +205,7 @@ def build_project_timeline(
                 TaskTimelineData(
                     id=str(task.id),
                     title=task.title,
-                    description=task.description,
+                    description=task.note_excerpt,
                     status=task.status,
                     estimate_hours=float(task.estimate_hours),
                     due_date=task.due_date.isoformat() if task.due_date else None,
