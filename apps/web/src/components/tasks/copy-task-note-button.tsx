@@ -29,6 +29,9 @@ interface CopyTaskNoteButtonProps {
 
 class EmptyNoteError extends Error {}
 
+/** The edit in the editor could not be saved, so there is nothing safe to copy. */
+class NoteNotSavedError extends Error {}
+
 /** The text put on the clipboard: the task's title as a heading, then its note. */
 export function taskNoteClipboardText(title: string, markdown: string): string {
   return `# ${title}\n\n${markdown}\n`
@@ -54,7 +57,11 @@ export function CopyTaskNoteButton({
     // write is handed the text as a promise, so the note can be saved and
     // read while the browser already holds the permission.
     const text = (async () => {
-      await beforeCopy?.()
+      try {
+        await beforeCopy?.()
+      } catch (error) {
+        throw new NoteNotSavedError(error instanceof Error ? error.message : '')
+      }
       const { title, markdown } = await notesApi.getTaskNoteMarkdown(taskId)
       if (!markdown.trim()) throw new EmptyNoteError()
       return taskNoteClipboardText(title, markdown)
@@ -84,6 +91,16 @@ export function CopyTaskNoteButton({
       )
       if (cause instanceof EmptyNoteError) {
         toast({ title: 'コピーするノートがありません', description: 'ノートはまだ空です。' })
+        return
+      }
+      if (cause instanceof NoteNotSavedError) {
+        // Trying again does not help here: say what stopped the save (the
+        // note changed elsewhere, or the save failed).
+        toast({
+          title: 'ノートをコピーしませんでした',
+          description: cause.message || 'ノートを保存できませんでした。',
+          variant: 'destructive',
+        })
         return
       }
       log.error('Failed to copy task note', cause, {

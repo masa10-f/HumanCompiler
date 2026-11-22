@@ -77,6 +77,26 @@ describe('CopyTaskNoteButton', () => {
     expect(order).toEqual(['save', 'read'])
   })
 
+  it('copies nothing when the edit in the editor cannot be saved, and says why', async () => {
+    const beforeCopy = jest.fn().mockRejectedValue(
+      new Error('ノートが別の場所で更新されたため保存していません。'),
+    )
+
+    render(<CopyTaskNoteButton taskId="task-1" beforeCopy={beforeCopy} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Markdownでコピー' }))
+
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith({
+        title: 'ノートをコピーしませんでした',
+        description: 'ノートが別の場所で更新されたため保存していません。',
+        variant: 'destructive',
+      }),
+    )
+    // The stale note on the server is neither read nor copied.
+    expect(mockGetTaskNoteMarkdown).not.toHaveBeenCalled()
+    expect(mockWriteText).not.toHaveBeenCalled()
+  })
+
   it('copies nothing for an empty note and says so', async () => {
     mockGetTaskNoteMarkdown.mockResolvedValue({ title: 'T', markdown: ' \n' })
 
