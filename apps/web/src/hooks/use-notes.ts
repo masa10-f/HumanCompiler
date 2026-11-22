@@ -1,4 +1,6 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { notesApi } from '@/lib/api';
+import { queryKeys } from '@/lib/query-keys';
 import { useNoteDocument, type UseNoteDocumentReturn } from './use-note-document';
 import type { ContextNote, ContextNoteUpdate, NoteEntityType } from '@/types/context-note';
 
@@ -45,12 +47,20 @@ function saveNote(
  * handling of `useNoteDocument`.
  */
 export function useNote({ entityType, entityId }: UseNoteConfig): UseNoteReturn {
+  const queryClient = useQueryClient();
   return useNoteDocument<ContextNote>({
     noteKey: entityId ? `${entityType}:${entityId}` : '',
     hookName: `useNote:${entityType}`,
     logContext: { entityType, entityId },
     load: () => loadNote(entityType, entityId),
-    save: (body) => saveNote(entityType, entityId, body),
+    save: async (body) => {
+      const saved = await saveNote(entityType, entityId, body);
+      if (entityType === 'task') {
+        // Task lists show the opening of the note (note_excerpt).
+        void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
+      }
+      return saved;
+    },
   });
 }
 

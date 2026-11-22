@@ -826,7 +826,7 @@ function TaskDraftTable({
 
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <div className="space-y-1">
-                  <div className="text-xs font-medium text-muted-foreground">説明</div>
+                  <div className="text-xs font-medium text-muted-foreground">ノート</div>
                   <Textarea
                     value={task.description || ''}
                     className="min-h-[112px] max-h-[260px] resize-y overflow-y-auto"

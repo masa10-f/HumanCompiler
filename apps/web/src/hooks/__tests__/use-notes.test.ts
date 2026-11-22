@@ -7,6 +7,8 @@
 /**
  * @jest-environment jsdom
  */
+import { createElement, type ReactNode } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useNote } from '../use-notes'
 import { ApiError } from '@/lib/errors'
@@ -14,6 +16,8 @@ import type { ContextNote, ContextNoteUpdate } from '@/types/context-note'
 
 const mockGetProjectNote = jest.fn()
 const mockUpdateProjectNote = jest.fn()
+const mockGetTaskNote = jest.fn()
+const mockUpdateTaskNote = jest.fn()
 
 jest.mock('@/lib/api', () => ({
   notesApi: {
@@ -21,8 +25,8 @@ jest.mock('@/lib/api', () => ({
     updateProjectNote: (...args: unknown[]) => mockUpdateProjectNote(...args),
     getGoalNote: jest.fn(),
     updateGoalNote: jest.fn(),
-    getTaskNote: jest.fn(),
-    updateTaskNote: jest.fn(),
+    getTaskNote: (...args: unknown[]) => mockGetTaskNote(...args),
+    updateTaskNote: (...args: unknown[]) => mockUpdateTaskNote(...args),
   },
 }))
 
@@ -70,8 +74,18 @@ function sentBodies(): ContextNoteUpdate[] {
   return mockUpdateProjectNote.mock.calls.map((call) => call[1] as ContextNoteUpdate)
 }
 
-async function renderLoaded() {
-  const hook = renderHook(() => useNote({ entityType: 'project', entityId: 'project-1' }))
+const queryClient = new QueryClient()
+const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries')
+
+function wrapper({ children }: { children: ReactNode }) {
+  return createElement(QueryClientProvider, { client: queryClient }, children)
+}
+
+async function renderLoaded(entityType: 'project' | 'task' = 'project') {
+  const hook = renderHook(
+    () => useNote({ entityType, entityId: `${entityType}-1` }),
+    { wrapper },
+  )
   await waitFor(() => expect(hook.result.current.loading).toBe(false))
   return hook
 }
@@ -277,5 +291,37 @@ describe('useNote optimistic lock', () => {
     expect(result.current.conflict).toBe(false)
     expect(result.current.note?.content).toBe('<p>typed during overwrite</p>')
     expect(result.current.note?.updated_at).toBe(AGENT_AT)
+  })
+})
+
+describe('useNote and task lists', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    mockGetProjectNote.mockResolvedValue(makeNote('<p>old</p>', FETCHED_AT))
+    mockGetTaskNote.mockResolvedValue(makeNote('<p>old</p>', FETCHED_AT))
+    mockUpdateProjectNote.mockResolvedValue(makeNote('<p>new</p>', FIRST_SAVE_AT))
+    mockUpdateTaskNote.mockResolvedValue(makeNote('<p>new</p>', FIRST_SAVE_AT))
+  })
+
+  it('refreshes task queries after a task note is saved, for the note excerpt', async () => {
+    const { result } = await renderLoaded('task')
+
+    await act(async () => {
+      await result.current.updateNoteImmediate({ content: '<p>new</p>', content_type: 'html' })
+    })
+
+    expect(mockUpdateTaskNote).toHaveBeenCalledTimes(1)
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['tasks'] })
+  })
+
+  it('leaves task queries alone when a project note is saved', async () => {
+    const { result } = await renderLoaded('project')
+
+    await act(async () => {
+      await result.current.updateNoteImmediate({ content: '<p>new</p>', content_type: 'html' })
+    })
+
+    expect(mockUpdateProjectNote).toHaveBeenCalledTimes(1)
+    expect(invalidateQueries).not.toHaveBeenCalled()
   })
 })

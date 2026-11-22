@@ -21,7 +21,6 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -61,7 +60,6 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
     resolver: zodResolver(taskEditFormSchema),
     defaultValues: {
       title: task.title,
-      description: task.description || '',
       estimate_hours: task.estimate_hours,
       due_date: toJSTDateInputValue(task.due_date),
       status: task.status,
@@ -74,7 +72,6 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
   useEffect(() => {
     form.reset({
       title: task.title,
-      description: task.description || '',
       estimate_hours: task.estimate_hours,
       due_date: toJSTDateInputValue(task.due_date),
       status: task.status,
@@ -138,23 +135,6 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
                   <FormControl>
                     <Input
                       placeholder="タスク名を入力"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>説明</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="タスクの説明を入力（任意）"
-                      rows={3}
                       {...field}
                     />
                   </FormControl>

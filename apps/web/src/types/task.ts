@@ -59,10 +59,11 @@ export interface Task {
   id: string;
   /** タスクタイトル */
   title: string;
-  /** タスク説明 */
-  description: string | null;
-  /** メモ（作業中のメモなど） */
-  memo?: string | null;
+  /**
+   * ノート冒頭の抜粋（1行）。ノートに文字がなければ null。
+   * タスクの本文はノートで、説明欄やメモ欄は持たない。
+   */
+  note_excerpt?: string | null;
   /** 見積もり時間（時間単位） */
   estimate_hours: number;
   /** 期限日 (ISO 8601形式) */
@@ -90,8 +91,8 @@ export interface Task {
 export interface TaskCreate {
   /** タスクタイトル */
   title: string;
-  /** タスク説明 */
-  description?: string;
+  /** ノートの最初の内容（プレーンテキスト。1行が1段落になる） */
+  note?: string;
   /** 見積もり時間（時間単位） */
   estimate_hours: number;
   /** 期限日 (ISO 8601形式) */
@@ -111,10 +112,6 @@ export interface TaskCreate {
 export interface TaskUpdate {
   /** タスクタイトル */
   title?: string;
-  /** タスク説明 */
-  description?: string | null;
-  /** メモ */
-  memo?: string | null;
   /** 見積もり時間（時間単位） */
   estimate_hours?: number;
   /** 期限日 (ISO 8601形式) */
@@ -266,8 +263,8 @@ export interface TaskResponse {
   id: string;
   /** タスクタイトル */
   title: string;
-  /** タスク説明 */
-  description: string | null;
+  /** ノート冒頭の抜粋（1行）。ノートに文字がなければ null */
+  note_excerpt?: string | null;
   /** 見積もり時間（時間単位） */
   estimate_hours: number;
   /** 期限日 */
@@ -300,8 +297,8 @@ export interface TasksApiResponse {
 export interface TaskFormData {
   /** タスクタイトル */
   title: string;
-  /** タスク説明 */
-  description: string;
+  /** ノートの最初の内容 */
+  note: string;
   /** 見積もり時間（時間単位） */
   estimate_hours: number;
   /** 期限日 */

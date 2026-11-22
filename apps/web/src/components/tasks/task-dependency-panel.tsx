@@ -160,9 +160,9 @@ export function TaskDependencyPanel({
                   )}
               </div>
               <h2 className="mt-3 text-xl font-semibold">{task.title}</h2>
-              {task.description && (
-                <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
-                  {task.description}
+              {task.note_excerpt && (
+                <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">
+                  {task.note_excerpt}
                 </p>
               )}
               <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">

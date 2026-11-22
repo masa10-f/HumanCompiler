@@ -13,6 +13,7 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
+  FileText,
   GitBranch,
   ListFilter,
 } from 'lucide-react'
@@ -21,7 +22,7 @@ import { LogFormDialog } from '@/components/logs/log-form-dialog'
 import { TaskDeleteDialog } from '@/components/tasks/task-delete-dialog'
 import { TaskDependencyPanel } from '@/components/tasks/task-dependency-panel'
 import { TaskEditDialog } from '@/components/tasks/task-edit-dialog'
-import { TaskLogsMemoPanel } from '@/components/tasks/task-logs-memo-panel'
+import { TaskWorkHistoryPanel } from '@/components/tasks/task-work-history-panel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -32,6 +33,7 @@ import { useUpdateTask } from '@/hooks/use-tasks-query'
 import { log } from '@/lib/logger'
 import { getStatusUpdateError } from '@/lib/status-error-handler'
 import { getTaskDecisionSummary, type TaskDecisionState } from '@/lib/tasks/task-decision'
+import { cn } from '@/lib/utils'
 import type { Log } from '@/types/log'
 import {
   taskPriorityColors,
@@ -88,6 +90,20 @@ function TaskDecisionBadge({ task }: { task: Task }) {
       {summary.state === 'blocked' && <AlertTriangle className="mr-1 h-3.5 w-3.5" />}
       {stateLabels[summary.state]}
     </Badge>
+  )
+}
+
+/** The opening of the task's note, which is the task's body. */
+function TaskNoteExcerpt({ task, className }: { task: Task; className?: string }) {
+  if (!task.note_excerpt) return null
+  return (
+    <p className={cn('text-sm text-muted-foreground', className)}>
+      <FileText
+        aria-label="ノートあり"
+        className="mr-1 inline h-3.5 w-3.5 align-[-2px]"
+      />
+      {task.note_excerpt}
+    </p>
   )
 }
 
@@ -373,11 +389,7 @@ function TaskDesktopRows({
           >
             {task.title}
           </Link>
-          {task.description && (
-            <div className="mt-1 line-clamp-1 text-sm text-muted-foreground">
-              {task.description}
-            </div>
-          )}
+          <TaskNoteExcerpt task={task} className="mt-1 line-clamp-1" />
           <div className="mt-2 flex flex-wrap gap-1">
             <Badge className={workTypeColors[task.work_type ?? 'light_work']}>
               {workTypeLabels[task.work_type ?? 'light_work']}
@@ -409,7 +421,7 @@ function TaskDesktopRows({
       </TableRow>
       <TableRow>
         <TableCell colSpan={7} className="p-0">
-          <TaskLogsMemoPanel
+          <TaskWorkHistoryPanel
             task={task}
             logs={logs}
             logsLoading={logsLoading}
@@ -444,11 +456,7 @@ function TaskMobileCard({
             >
               {task.title}
             </Link>
-            {task.description && (
-              <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                {task.description}
-              </p>
-            )}
+            <TaskNoteExcerpt task={task} className="mt-1 line-clamp-2" />
           </div>
           <div className="shrink-0">
             <TaskStatusSelect task={task} />
@@ -474,7 +482,7 @@ function TaskMobileCard({
 
         <DependencyButton task={task} onClick={onOpenDependencies} />
         <TaskActions task={task} tasks={tasks} />
-        <TaskLogsMemoPanel
+        <TaskWorkHistoryPanel
           task={task}
           logs={logs}
           logsLoading={logsLoading}

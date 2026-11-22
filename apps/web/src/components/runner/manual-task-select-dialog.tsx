@@ -188,9 +188,9 @@ export function ManualTaskSelectDialog({
               ) : (
                 <div className="rounded-lg border border-primary/40 bg-primary/5 p-4">
                   <p className="font-medium">{initialTask.title}</p>
-                  {initialTask.description && (
+                  {initialTask.note_excerpt && (
                     <p className="mt-1 text-sm text-muted-foreground line-clamp-3">
-                      {initialTask.description}
+                      {initialTask.note_excerpt}
                     </p>
                   )}
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -302,9 +302,9 @@ export function ManualTaskSelectDialog({
                       >
                         {task.title}
                       </label>
-                      {task.description && (
+                      {task.note_excerpt && (
                         <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                          {task.description}
+                          {task.note_excerpt}
                         </p>
                       )}
                       <div className="flex items-center gap-2 mt-2 flex-wrap">

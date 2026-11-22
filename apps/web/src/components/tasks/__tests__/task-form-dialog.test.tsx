@@ -50,3 +50,46 @@ describe('TaskFormDialog deadline payload', () => {
     });
   });
 });
+
+describe('TaskFormDialog note', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockCreateTask.mockResolvedValue({});
+  });
+
+  const openDialog = () => {
+    render(
+      <TaskFormDialog goalId="goal-1">
+        <button type="button">タスクを追加</button>
+      </TaskFormDialog>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'タスクを追加' }));
+    fireEvent.change(screen.getByLabelText('タスク名 *'), {
+      target: { value: 'ノート付きタスク' },
+    });
+  };
+
+  it('sends the typed text as the first content of the note', async () => {
+    openDialog();
+    fireEvent.change(screen.getByLabelText('ノート'), {
+      target: { value: '背景\n依頼文' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '作成' }));
+
+    await waitFor(() => {
+      expect(mockCreateTask).toHaveBeenCalledWith(
+        expect.objectContaining({ note: '背景\n依頼文' }),
+      );
+    });
+    expect(mockCreateTask.mock.calls[0][0]).not.toHaveProperty('description');
+  });
+
+  it('sends no note when the field is left blank', async () => {
+    openDialog();
+    fireEvent.change(screen.getByLabelText('ノート'), { target: { value: '  \n ' } });
+    fireEvent.click(screen.getByRole('button', { name: '作成' }));
+
+    await waitFor(() => expect(mockCreateTask).toHaveBeenCalled());
+    expect(mockCreateTask.mock.calls[0][0].note).toBeUndefined();
+  });
+});

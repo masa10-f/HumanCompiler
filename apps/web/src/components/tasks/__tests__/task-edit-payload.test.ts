@@ -1,10 +1,9 @@
 import { buildTaskEditUpdatePayload } from '../task-edit-payload';
 
 describe('buildTaskEditUpdatePayload', () => {
-  it('keeps cleared optional fields in JSON by sending explicit nulls', () => {
+  it('keeps a cleared deadline in JSON by sending an explicit null', () => {
     const payload = buildTaskEditUpdatePayload({
       title: 'Updated task',
-      description: '',
       estimate_hours: 2,
       due_date: '',
       status: 'pending',
@@ -12,18 +11,13 @@ describe('buildTaskEditUpdatePayload', () => {
       priority: 2,
     });
 
-    expect(payload.description).toBeNull();
     expect(payload.due_date).toBeNull();
-    expect(JSON.parse(JSON.stringify(payload))).toMatchObject({
-      description: null,
-      due_date: null,
-    });
+    expect(JSON.parse(JSON.stringify(payload))).toMatchObject({ due_date: null });
   });
 
-  it('preserves non-empty optional fields and sends deadlines as JST start of day', () => {
+  it('sends deadlines as JST start of day', () => {
     const payload = buildTaskEditUpdatePayload({
       title: 'Updated task',
-      description: 'Keep this',
       estimate_hours: 2,
       due_date: '2026-01-15',
       status: 'in_progress',
@@ -31,7 +25,18 @@ describe('buildTaskEditUpdatePayload', () => {
       priority: 1,
     });
 
-    expect(payload.description).toBe('Keep this');
     expect(payload.due_date).toBe('2026-01-15T00:00:00+09:00');
+  });
+
+  it('never sends task text: the note is edited on its own', () => {
+    const payload = buildTaskEditUpdatePayload({
+      title: 'Updated task',
+      estimate_hours: 2,
+      status: 'pending',
+    });
+
+    expect(payload).not.toHaveProperty('description');
+    expect(payload).not.toHaveProperty('memo');
+    expect(payload).not.toHaveProperty('note');
   });
 });

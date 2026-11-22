@@ -1,16 +1,14 @@
 import {
-  TASK_DESCRIPTION_MAX_LENGTH,
   TASK_ESTIMATE_HOURS_MAX,
-  TASK_MEMO_MAX_LENGTH,
+  TASK_NOTE_MAX_LENGTH,
   TASK_TITLE_MAX_LENGTH,
   taskCreateFormSchema,
   taskEditFormSchema,
-  taskMemoSchema,
 } from '../validations/task';
 
 const validTaskForm = {
   title: 'Valid task',
-  description: 'Valid description',
+  note: 'Valid note',
   estimate_hours: 1.25,
   due_date: '',
   work_type: 'light_work' as const,
@@ -22,7 +20,7 @@ describe('task validation schemas', () => {
     expect(taskCreateFormSchema.safeParse({
       ...validTaskForm,
       title: 'a'.repeat(TASK_TITLE_MAX_LENGTH),
-      description: 'b'.repeat(TASK_DESCRIPTION_MAX_LENGTH),
+      note: 'b'.repeat(TASK_NOTE_MAX_LENGTH),
       estimate_hours: TASK_ESTIMATE_HOURS_MAX,
     }).success).toBe(true);
 
@@ -33,7 +31,7 @@ describe('task validation schemas', () => {
 
     expect(taskCreateFormSchema.safeParse({
       ...validTaskForm,
-      description: 'b'.repeat(TASK_DESCRIPTION_MAX_LENGTH + 1),
+      note: 'b'.repeat(TASK_NOTE_MAX_LENGTH + 1),
     }).success).toBe(false);
   });
 
@@ -60,8 +58,9 @@ describe('task validation schemas', () => {
     }).success).toBe(false);
   });
 
-  it('validates task memo length', () => {
-    expect(taskMemoSchema.safeParse('a'.repeat(TASK_MEMO_MAX_LENGTH)).success).toBe(true);
-    expect(taskMemoSchema.safeParse('a'.repeat(TASK_MEMO_MAX_LENGTH + 1)).success).toBe(false);
+  it('keeps the note out of the edit form: it is edited in the note editor', () => {
+    const parsed = taskEditFormSchema.safeParse({ ...validTaskForm, status: 'pending' });
+
+    expect(parsed.success && 'note' in parsed.data).toBe(false);
   });
 });
