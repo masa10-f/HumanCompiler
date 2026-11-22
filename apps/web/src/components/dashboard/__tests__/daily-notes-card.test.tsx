@@ -34,18 +34,16 @@ jest.mock("@/lib/api", () => ({
   weeklyNotesApi: { get: jest.fn(), update: jest.fn() },
 }));
 // The weekly note's rich-text editor is covered by its own tests.
-jest.mock("@/components/notes/context-note-panel", () => ({
-  ContextNotePanel: ({
+jest.mock("@/components/notes/context-note-editor", () => ({
+  ContextNoteEditor: ({
     content,
-    emptyTitle,
     onUpdate,
   }: {
     content: string;
-    emptyTitle: string;
     onUpdate: (content: string) => void;
   }) => (
-    <div data-testid="weekly-panel">
-      {content || emptyTitle}
+    <div data-testid="weekly-editor">
+      {content}
       <button type="button" onClick={() => onUpdate("<p>週の編集</p>")}>
         週次ノートを編集
       </button>
@@ -149,12 +147,12 @@ it("shows this week's note before today's note", async () => {
   ).toHaveAttribute("href", "/notes/weekly?week=2029-12-31");
 });
 
-it("offers to start this week's note when none is saved yet", async () => {
+it("shows this week's note as an editor right away, with no Edit button", async () => {
   renderCard();
   const weekly = screen.getByRole("region", { name: "今週のノート" });
-  expect(
-    await within(weekly).findByText("この週のノートはまだありません"),
-  ).toBeInTheDocument();
+  expect(await within(weekly).findByTestId("weekly-editor")).toBeInTheDocument();
+  expect(within(weekly).getByText(/書いた内容は自動で保存されます/)).toBeInTheDocument();
+  expect(within(weekly).queryByRole("button", { name: /^Edit$/ })).not.toBeInTheDocument();
 });
 
 it("saves a weekly edit before opening the weekly notes page", async () => {

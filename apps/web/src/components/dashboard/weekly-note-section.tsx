@@ -72,7 +72,7 @@ export const WeeklyNoteSection = forwardRef<
           週次ノートを開く
         </Link>
       </div>
-      <WeeklyNoteEditor editor={editor} />
+      <WeeklyNoteEditor editor={editor} variant="compact" />
     </section>
   );
 });
