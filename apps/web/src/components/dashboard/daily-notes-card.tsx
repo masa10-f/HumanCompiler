@@ -49,6 +49,8 @@ export function DailyNotesCard() {
   const transitionPending = useRef(false);
   const [transitionError, setTransitionError] = useState("");
   const transitionTarget = useRef<NoteTransition | null>(null);
+  // An explicit retry clicked while another attempt was still saving.
+  const retryRequested = useRef(false);
   useEffect(
     () => () => {
       transitionTarget.current = null;
@@ -65,23 +67,34 @@ export function DailyNotesCard() {
       )
         return;
       transitionTarget.current = next;
+      if (retryPausedSave) retryRequested.current = true;
       if (transitionPending.current) return;
       transitionPending.current = true;
       try {
-        // Both notes save before leaving: the weekly notes page reads the
-        // same week, and a failed save keeps its text on the dashboard.
-        await weeklyNote.current?.beforeLeave();
-        await workspace.current?.beforeLeave({ retryPausedSave });
-        setTransitionError("");
-        const target = transitionTarget.current;
-        transitionTarget.current = null;
-        target?.action();
-      } catch (error) {
-        setTransitionError(
-          error instanceof Error
-            ? error.message
-            : "ノートを保存できませんでした。",
-        );
+        for (;;) {
+          const retry = retryRequested.current;
+          retryRequested.current = false;
+          try {
+            // Both notes save before leaving: the weekly notes page reads the
+            // same week, and a failed save keeps its text on the dashboard.
+            await weeklyNote.current?.beforeLeave();
+            await workspace.current?.beforeLeave({ retryPausedSave: retry });
+            setTransitionError("");
+            const target = transitionTarget.current;
+            transitionTarget.current = null;
+            target?.action();
+            return;
+          } catch (error) {
+            // A retry clicked during this attempt runs now instead of being lost.
+            if (retryRequested.current) continue;
+            setTransitionError(
+              error instanceof Error
+                ? error.message
+                : "ノートを保存できませんでした。",
+            );
+            return;
+          }
+        }
       } finally {
         transitionPending.current = false;
       }

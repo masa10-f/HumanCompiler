@@ -35,7 +35,19 @@ export const WeeklyNoteSection = forwardRef<
 >(function WeeklyNoteSection({ day, onOpen }, ref) {
   const editor = useWeeklyNote(day);
   const { flush } = editor;
-  useImperativeHandle(ref, () => ({ beforeLeave: flush }), [flush]);
+  useImperativeHandle(
+    ref,
+    () => ({
+      beforeLeave: () =>
+        // Say which of the card's two notes needs attention.
+        flush().catch((error: unknown) => {
+          throw new Error(
+            `週次ノート: ${error instanceof Error ? error.message : "保存できませんでした。"}`,
+          );
+        }),
+    }),
+    [flush],
+  );
   const weekStart = editor.note?.week_start ?? null;
 
   return (

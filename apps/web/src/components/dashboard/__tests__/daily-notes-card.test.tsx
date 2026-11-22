@@ -213,7 +213,7 @@ it("stays on the dashboard when the weekly save fails and retries it", async () 
   fireEvent.click(screen.getByRole("link", { name: "ノート一覧・検索" }));
   // The pending save and one immediate retry both fail.
   expect(
-    await screen.findByText(/ノートを保存できませんでした。 現在のノートを表示しています。/),
+    await screen.findByText(/週次ノート: ノートを保存できませんでした。 現在のノートを表示しています。/),
   ).toBeInTheDocument();
   expect(weeklyNotesApi.update).toHaveBeenCalledTimes(2);
   expect(mockPush).not.toHaveBeenCalled();
