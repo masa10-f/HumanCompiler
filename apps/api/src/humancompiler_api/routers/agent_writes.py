@@ -67,7 +67,10 @@ NOTE_GUIDE = (
     "kind is projects, goals or tasks, and target_id is that item's id. "
     "Another user's item and a missing one both give 404. The request body is "
     "capped at 512 KB (raw bytes, before parsing): a larger body gets 413, "
-    "decided before authentication. Raw HTML in the Markdown is shown as text."
+    "decided before authentication. Raw HTML in the Markdown is shown as text. "
+    "A change to a task's note text also advances that task's updated_at (the "
+    "task carries the opening of its note as note_excerpt): read the task "
+    "again before updating it, or the update answers 409."
 )
 
 

@@ -371,7 +371,9 @@ async def remove_dependency(
 _NOTE_TARGET = (
     "kind is project, goal or task, and id is that item's id. Another user's "
     "item and a missing one both give a 404 error. Raw HTML in the Markdown is "
-    "shown as text."
+    "shown as text. A change to a task's note text also advances that task's "
+    "updated_at (the task carries the opening of its note as note_excerpt): "
+    "read the task again before update_task, or it answers 409."
 )
 
 

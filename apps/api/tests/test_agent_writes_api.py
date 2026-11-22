@@ -1090,6 +1090,36 @@ def test_note_writes_need_notes_write(session: Session):
     assert _changes(session) == []
 
 
+def test_task_update_after_a_note_write_needs_the_new_updated_at(session: Session):
+    """A task carries its note's opening, so writing the note changes the task."""
+    _, _, task = _tree(session)
+    token = issue_token(session, USER_A, [*WRITE, AgentScope.NOTES_WRITE])
+
+    response = _append(token, "tasks", task.id, "Done: drafted the intro")
+    assert response.status_code == 200, response.text
+
+    stale = _patch(f"/tasks/{task.id}", token, title="Renamed")
+    assert stale.status_code == 409
+    current = stale.json()["detail"]["current_updated_at"]
+    assert datetime.fromisoformat(current) > STAMP
+
+    fresh = _patch(
+        f"/tasks/{task.id}", token, title="Renamed", expected_updated_at=current
+    )
+    assert fresh.status_code == 200, fresh.text
+    assert fresh.json()["note_excerpt"] == "Done: drafted the intro"
+
+
+def test_goal_note_write_leaves_its_tasks_updated_at(session: Session):
+    _, goal, task = _tree(session)
+    token = issue_token(session, USER_A, [*WRITE, AgentScope.NOTES_WRITE])
+
+    response = _append(token, "goals", goal.id, "Weekly review")
+    assert response.status_code == 200, response.text
+
+    assert _patch(f"/tasks/{task.id}", token, title="Renamed").status_code == 200
+
+
 @pytest.mark.parametrize("kind", NOTE_KINDS)
 def test_append_note_creates_and_appends(session: Session, kind: str):
     project, goal, task = _tree(session)
