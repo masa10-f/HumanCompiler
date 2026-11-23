@@ -6,7 +6,7 @@
 
 import { render, screen, within } from '@testing-library/react'
 
-import { TaskWorkHistory, buildWorkRecords } from '../task-work-history'
+import { TaskWorkHistory, buildWorkRecords, kptSummary } from '../task-work-history'
 import type { Log } from '@/types/log'
 import type { WorkSession } from '@/types/work-session'
 
@@ -16,6 +16,7 @@ const mockUseLogsByTask = jest.fn()
 const mockUseWorkSessionsByTask = jest.fn()
 
 jest.mock('@/hooks/use-logs-query', () => ({
+  TASK_LOGS_LIMIT: 50,
   useLogsByTask: (taskId: string) => {
     mockUseLogsByTask(taskId)
     return logs
@@ -107,6 +108,21 @@ describe('buildWorkRecords', () => {
   })
 })
 
+describe('kptSummary', () => {
+  it('is the comment a checkout writes from the reflection', () => {
+    expect(kptSummary(session({ kpt_keep: 'Kept focus', kpt_try: 'Start at 9' }))).toBe(
+      'K: Kept focus | T: Start at 9',
+    )
+    expect(kptSummary(session({}))).toBeNull()
+  })
+
+  it('cuts each part at 100 characters, as the API does', () => {
+    const long = 'あ'.repeat(120)
+
+    expect(kptSummary(session({ kpt_problem: long }))).toBe(`P: ${'あ'.repeat(100)}`)
+  })
+})
+
 describe('TaskWorkHistory', () => {
   beforeEach(() => {
     jest.clearAllMocks()
@@ -180,6 +196,21 @@ describe('TaskWorkHistory', () => {
     expect(screen.getByText('ここから再開')).toBeInTheDocument()
   })
 
+  it('shows a comment the user wrote on a Runner record beside the reflection', () => {
+    logs = {
+      data: [log({ comment: '午後は会議で中断', work_session_id: 'session-1' })],
+      isLoading: false,
+      error: null,
+    }
+    sessions = { data: [session({ kpt_keep: 'Kept focus' })], isLoading: false }
+
+    render(<TaskWorkHistory taskId="task-1" />)
+
+    const item = within(screen.getByRole('listitem'))
+    expect(item.getByText('Kept focus')).toBeInTheDocument()
+    expect(item.getByText('午後は会議で中断')).toBeInTheDocument()
+  })
+
   it('shows a running session as in progress, with nothing to edit yet', () => {
     sessions = {
       data: [session({ id: 'running', ended_at: null, actual_minutes: null })],
@@ -205,6 +236,23 @@ describe('TaskWorkHistory', () => {
     expect(item.queryByRole('button', { name: '記録を削除' })).not.toBeInTheDocument()
   })
 
+  it('does not call a time record deleted when not every log is loaded', () => {
+    // A full page of newer logs: the session's own log may be beyond it.
+    logs = {
+      data: Array.from({ length: 50 }, (_, index) =>
+        log({ id: `log-${index}`, created_at: '2026-11-21T00:00:00Z' }),
+      ),
+      isLoading: false,
+      error: null,
+    }
+    sessions = { data: [session({ kpt_keep: 'Kept focus' })], isLoading: false }
+
+    render(<TaskWorkHistory taskId="task-1" />)
+
+    expect(screen.getByText('Kept focus')).toBeInTheDocument()
+    expect(screen.queryByText(/時間記録は削除されています/)).not.toBeInTheDocument()
+  })
+
   it('shows a failed load of either source without hiding the other', () => {
     logs = { data: undefined, isLoading: false, error: new Error('offline') }
     sessions = { data: [session({ kpt_keep: 'Kept focus' })], isLoading: false }
@@ -212,6 +260,8 @@ describe('TaskWorkHistory', () => {
     const { unmount } = render(<TaskWorkHistory taskId="task-1" />)
     expect(screen.getByText('時間記録の読み込みに失敗しました: offline')).toBeInTheDocument()
     expect(screen.getByText('Kept focus')).toBeInTheDocument()
+    // The logs did not load, so the session's log is unknown, not deleted.
+    expect(screen.queryByText(/時間記録は削除されています/)).not.toBeInTheDocument()
     unmount()
 
     logs = { data: [log({ comment: 'Drafted' })], isLoading: false, error: null }

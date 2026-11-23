@@ -81,6 +81,8 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
       queryClient.invalidateQueries({ queryKey: queryKeys.logs.batches() });
       queryClient.invalidateQueries({ queryKey: queryKeys.progress.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
+      // A remaining estimate changes the task's estimate and so its goal's total.
+      queryClient.invalidateQueries({ queryKey: queryKeys.goals.all });
       toast({
         title: "作業時間を登録しました",
         description: `${taskTitle}の実作業時間を記録しました。`,

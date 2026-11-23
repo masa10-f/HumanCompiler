@@ -102,6 +102,8 @@ describe('LogFormDialog', () => {
     );
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['logs', 'batch'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['tasks'] });
+    // The goal shows the sum of its tasks' estimates.
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['goals'] });
   });
 
   it('does not record a negative remaining time', async () => {

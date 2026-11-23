@@ -20,6 +20,9 @@ const chunkTaskIds = (taskIds: string[], chunkSize: number) => {
   return chunks
 }
 
+/** How many of a task's latest logs `useLogsByTask` loads by default. */
+export const TASK_LOGS_LIMIT = 50
+
 /**
  * Fetches logs for a specific task with pagination.
  *
@@ -28,7 +31,7 @@ const chunkTaskIds = (taskIds: string[], chunkSize: number) => {
  * @param limit - Maximum records to return (default: 50)
  * @returns UseQueryResult with log array
  */
-export function useLogsByTask(taskId: string, skip = 0, limit = 50) {
+export function useLogsByTask(taskId: string, skip = 0, limit = TASK_LOGS_LIMIT) {
   return useQuery({
     queryKey: logKeys.byTask(taskId),
     queryFn: () => logsApi.getByTask(taskId, skip, limit),

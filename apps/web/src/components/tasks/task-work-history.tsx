@@ -14,7 +14,7 @@ import { LogEditDialog } from '@/components/logs/log-edit-dialog'
 import { SessionKptEditDialog } from '@/components/runner/session-kpt-edit-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { useLogsByTask } from '@/hooks/use-logs-query'
+import { TASK_LOGS_LIMIT, useLogsByTask } from '@/hooks/use-logs-query'
 import { useWorkSessionsByTask } from '@/hooks/use-work-sessions'
 import { formatJSTDateTime } from '@/lib/date-utils'
 import type { Log } from '@/types/log'
@@ -68,6 +68,29 @@ export function buildWorkRecords(logs: Log[], sessions: WorkSession[]): WorkReco
   return records.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
 }
 
+/**
+ * The comment a checkout writes on its log from the session's reflection: the
+ * same text as `kpt_summary` in the API's services. A log comment equal to it
+ * says nothing the reflection does not.
+ */
+export function kptSummary(session: WorkSession): string | null {
+  const head = (text: string) => Array.from(text).slice(0, 100).join('')
+  const parts: string[] = []
+  if (session.kpt_keep) parts.push(`K: ${head(session.kpt_keep)}`)
+  if (session.kpt_problem) parts.push(`P: ${head(session.kpt_problem)}`)
+  if (session.kpt_try) parts.push(`T: ${head(session.kpt_try)}`)
+  if (parts.length === 0) return null
+  return Array.from(parts.join(' | ')).slice(0, 500).join('')
+}
+
+/** The log's comment, unless it only repeats the session's reflection. */
+function ownComment(log?: Log, session?: WorkSession): string | null {
+  const comment = log?.comment?.trim()
+  if (!comment) return null
+  if (session && comment === kptSummary(session)?.trim()) return null
+  return comment
+}
+
 function hours(minutes: number): string {
   return `${(minutes / 60).toFixed(1)}h`
 }
@@ -92,15 +115,19 @@ function KptLine({ label, text }: { label: keyof typeof KPT_STYLES; text?: strin
 
 function WorkRecordItem({
   record,
+  logsComplete,
   onEditKpt,
 }: {
   record: WorkRecord
+  /** Every log of the task is loaded, so a session without one has lost it. */
+  logsComplete: boolean
   onEditKpt: (session: WorkSession) => void
 }) {
   const { log, session } = record
   const running = Boolean(session) && !session!.ended_at
   const minutes = log ? log.actual_minutes : session ? sessionWorkMinutes(session) : 0
   const hasKpt = Boolean(session && (session.kpt_keep || session.kpt_problem || session.kpt_try))
+  const comment = ownComment(log, session)
 
   return (
     <li className="space-y-2 rounded-md bg-muted/50 p-3">
@@ -162,17 +189,15 @@ function WorkRecordItem({
         </div>
       </div>
 
-      {hasKpt ? (
-        // The reflection is the session's; the log's comment is a copy of it.
+      {hasKpt && (
         <div className="space-y-1.5">
           <KptLine label="K" text={session!.kpt_keep} />
           <KptLine label="P" text={session!.kpt_problem} />
           <KptLine label="T" text={session!.kpt_try} />
         </div>
-      ) : log?.comment ? (
-        <p className="whitespace-pre-wrap break-words text-sm">{log.comment}</p>
-      ) : null}
-      {session?.ended_at && !log && (
+      )}
+      {comment && <p className="whitespace-pre-wrap break-words text-sm">{comment}</p>}
+      {session?.ended_at && !log && logsComplete && (
         <p className="text-xs text-muted-foreground">
           このセッションの時間記録は削除されています（合計には含まれません）。
         </p>
@@ -199,6 +224,10 @@ export function TaskWorkHistory({ taskId }: { taskId: string }) {
     [logs],
   )
   const loading = logsQuery.isLoading || sessionsQuery.isLoading
+  // Only the latest logs are loaded: a full page, or a failed load, may hide
+  // the log of a session shown here.
+  const logsComplete =
+    !logsQuery.error && logsQuery.data !== undefined && logs.length < TASK_LOGS_LIMIT
 
   return (
     <div className="space-y-3">
@@ -225,7 +254,12 @@ export function TaskWorkHistory({ taskId }: { taskId: string }) {
       ) : (
         <ul className="space-y-2">
           {records.map((record) => (
-            <WorkRecordItem key={record.key} record={record} onEditKpt={setEditSession} />
+            <WorkRecordItem
+              key={record.key}
+              record={record}
+              logsComplete={logsComplete}
+              onEditKpt={setEditSession}
+            />
           ))}
         </ul>
       )}
