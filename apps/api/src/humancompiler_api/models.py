@@ -37,6 +37,8 @@ GOAL_DUE_DATE_DESCRIPTION = (
 GOAL_DUE_DATE_ONLY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # Plain text a task can be created with; it becomes the task's note.
 TASK_NOTE_TEXT_MAX_LENGTH = 20000
+# The largest value tasks.estimate_hours (NUMERIC(5,2)) holds.
+MAX_ESTIMATE_HOURS = Decimal("999.99")
 
 
 def prepare_due_date(value: Any) -> Any:
@@ -668,6 +670,14 @@ class Log(LogBase, table=True):  # type: ignore[call-arg]
 
     id: UUID | None = SQLField(default=None, primary_key=True)
     task_id: UUID = SQLField(foreign_key="tasks.id", ondelete="CASCADE")
+    # The Runner session this time was measured in; NULL for a time entered by
+    # hand, in the daily note or by an agent. A session has at most one log.
+    work_session_id: UUID | None = SQLField(
+        default=None,
+        foreign_key="work_sessions.id",
+        ondelete="SET NULL",
+        unique=True,
+    )
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
@@ -1778,9 +1788,17 @@ class ScheduleResponse(ScheduleBase):
 
 
 class LogCreate(LogBase):
-    """Log creation request"""
+    """Log creation request.
+
+    A time record can also say where the task stands, as a Runner checkout
+    does: ``remaining_estimate_hours`` moves the task's estimate so that this
+    much is left after the recorded time, and ``complete_task`` finishes it."""
 
     task_id: UUID
+    remaining_estimate_hours: Decimal | None = Field(
+        default=None, ge=0, le=MAX_ESTIMATE_HOURS
+    )
+    complete_task: bool = False
 
 
 class LogUpdate(BaseModel):
@@ -1795,6 +1813,8 @@ class LogResponse(LogBase):
 
     id: UUID
     task_id: UUID
+    # The Runner session this time was measured in, if any.
+    work_session_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -1831,7 +1851,7 @@ class WorkSessionCheckoutRequest(BaseModel):
     kpt_keep: str | None = Field(None, max_length=500)
     kpt_problem: str | None = Field(None, max_length=500)
     kpt_try: str | None = Field(None, max_length=500)
-    remaining_estimate_hours: Decimal | None = Field(None, ge=0)
+    remaining_estimate_hours: Decimal | None = Field(None, ge=0, le=MAX_ESTIMATE_HOURS)
     next_task_id: UUID | None = None
 
 
@@ -1843,7 +1863,7 @@ class WorkSessionSwitchRequest(BaseModel):
     interruption_note: str | None = Field(None, max_length=2000)
     planned_checkout_at: datetime
     planned_outcome: str | None = Field(None, max_length=500)
-    remaining_estimate_hours: Decimal | None = Field(None, ge=0)
+    remaining_estimate_hours: Decimal | None = Field(None, ge=0, le=MAX_ESTIMATE_HOURS)
 
     @model_validator(mode="after")
     def require_interruption_note(self):

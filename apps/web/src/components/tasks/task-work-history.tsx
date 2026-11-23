@@ -7,20 +7,34 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { format } from 'date-fns'
-import { ja } from 'date-fns/locale'
-import { Edit, Pencil, Trash2 } from 'lucide-react'
+import { Edit, Pencil, Timer, Trash2 } from 'lucide-react'
 
 import { LogDeleteDialog } from '@/components/logs/log-delete-dialog'
 import { LogEditDialog } from '@/components/logs/log-edit-dialog'
 import { SessionKptEditDialog } from '@/components/runner/session-kpt-edit-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { useLogsByTask } from '@/hooks/use-logs-query'
+import { TASK_LOGS_LIMIT, useLogsByTask } from '@/hooks/use-logs-query'
 import { useWorkSessionsByTask } from '@/hooks/use-work-sessions'
 import { formatJSTDateTime } from '@/lib/date-utils'
+import type { Log } from '@/types/log'
 import { SESSION_DECISION_LABELS } from '@/types/work-session'
 import type { WorkSession } from '@/types/work-session'
+
+/**
+ * One piece of work on a task. A Runner checkout writes a time log and a
+ * session for the same work, linked by the log's `work_session_id`: they are
+ * one record here, the log's time with the session's reflection.
+ */
+export interface WorkRecord {
+  key: string
+  /** When the work was recorded (a running session: when it started). */
+  at: string
+  /** The time log; absent for a running session and a session no log is linked to. */
+  log?: Log
+  /** The Runner session; absent for a time entered by hand. */
+  session?: WorkSession
+}
 
 /** Minutes worked in a session, without its paused time. */
 function sessionWorkMinutes(session: WorkSession): number {
@@ -32,6 +46,49 @@ function sessionWorkMinutes(session: WorkSession): number {
     return Math.floor((endMs - startMs) / (1000 * 60)) - Math.floor(pausedSeconds / 60)
   }
   return 0
+}
+
+/** Logs and sessions as one list of work records, newest first. */
+export function buildWorkRecords(logs: Log[], sessions: WorkSession[]): WorkRecord[] {
+  const sessionById = new Map(sessions.map((session) => [session.id, session]))
+  const linked = new Set<string>()
+  const records: WorkRecord[] = logs.map((log) => {
+    const session = log.work_session_id ? sessionById.get(log.work_session_id) : undefined
+    if (session) linked.add(session.id)
+    return { key: `log:${log.id}`, at: log.created_at, log, session }
+  })
+  for (const session of sessions) {
+    if (linked.has(session.id)) continue
+    records.push({
+      key: `session:${session.id}`,
+      at: session.ended_at ?? session.started_at,
+      session,
+    })
+  }
+  return records.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+}
+
+/**
+ * The comment a checkout writes on its log from the session's reflection: the
+ * same text as `kpt_summary` in the API's services. A log comment equal to it
+ * says nothing the reflection does not.
+ */
+export function kptSummary(session: WorkSession): string | null {
+  const head = (text: string) => Array.from(text).slice(0, 100).join('')
+  const parts: string[] = []
+  if (session.kpt_keep) parts.push(`K: ${head(session.kpt_keep)}`)
+  if (session.kpt_problem) parts.push(`P: ${head(session.kpt_problem)}`)
+  if (session.kpt_try) parts.push(`T: ${head(session.kpt_try)}`)
+  if (parts.length === 0) return null
+  return Array.from(parts.join(' | ')).slice(0, 500).join('')
+}
+
+/** The log's comment, unless it only repeats the session's reflection. */
+function ownComment(log?: Log, session?: WorkSession): string | null {
+  const comment = log?.comment?.trim()
+  if (!comment) return null
+  if (session && comment === kptSummary(session)?.trim()) return null
+  return comment
 }
 
 function hours(minutes: number): string {
@@ -56,9 +113,103 @@ function KptLine({ label, text }: { label: keyof typeof KPT_STYLES; text?: strin
   )
 }
 
+function WorkRecordItem({
+  record,
+  logsComplete,
+  onEditKpt,
+}: {
+  record: WorkRecord
+  /** Every log of the task is loaded, so a session without one here has none. */
+  logsComplete: boolean
+  onEditKpt: (session: WorkSession) => void
+}) {
+  const { log, session } = record
+  const running = Boolean(session) && !session!.ended_at
+  const minutes = log ? log.actual_minutes : session ? sessionWorkMinutes(session) : 0
+  const hasKpt = Boolean(session && (session.kpt_keep || session.kpt_problem || session.kpt_try))
+  const comment = ownComment(log, session)
+
+  return (
+    <li className="space-y-2 rounded-md bg-muted/50 p-3">
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {running ? (
+            <Badge variant="info" className="text-xs">
+              作業中
+            </Badge>
+          ) : (
+            <Badge variant="secondary" className="text-xs">
+              {hours(minutes)}
+            </Badge>
+          )}
+          <span className="text-xs text-muted-foreground">{formatJSTDateTime(record.at)}</span>
+          {session && (
+            <Badge variant="outline" className="text-xs">
+              <Timer className="mr-1 h-3 w-3" />
+              Runner
+            </Badge>
+          )}
+          {session?.decision && (
+            <Badge variant="outline" className="text-xs">
+              {SESSION_DECISION_LABELS[session.decision]}
+            </Badge>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {session?.ended_at && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onEditKpt(session)}
+              className="h-8 w-8 p-0"
+            >
+              <Pencil className="h-4 w-4" />
+              <span className="sr-only">振り返りを編集</span>
+            </Button>
+          )}
+          {log && (
+            <>
+              <LogEditDialog
+                log={log}
+                trigger={
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Edit className="h-4 w-4" />
+                    <span className="sr-only">時間とコメントを編集</span>
+                  </Button>
+                }
+              />
+              <LogDeleteDialog log={log}>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:text-destructive">
+                  <Trash2 className="h-4 w-4" />
+                  <span className="sr-only">記録を削除</span>
+                </Button>
+              </LogDeleteDialog>
+            </>
+          )}
+        </div>
+      </div>
+
+      {hasKpt && (
+        <div className="space-y-1.5">
+          <KptLine label="K" text={session!.kpt_keep} />
+          <KptLine label="P" text={session!.kpt_problem} />
+          <KptLine label="T" text={session!.kpt_try} />
+        </div>
+      )}
+      {comment && <p className="whitespace-pre-wrap break-words text-sm">{comment}</p>}
+      {session?.ended_at && !log && logsComplete && (
+        <p className="text-xs text-muted-foreground">
+          このセッションに紐付く時間記録がありません（合計には含まれません）。
+        </p>
+      )}
+    </li>
+  )
+}
+
 /**
- * A task's time logs and Runner sessions. It loads them itself, so it can be
- * put wherever a task is shown.
+ * A task's work records as one timeline: time entered by hand and Runner
+ * sessions together, each piece of work once. It loads them itself, so it can
+ * be put wherever a task is shown.
  */
 export function TaskWorkHistory({ taskId }: { taskId: string }) {
   const [editSession, setEditSession] = useState<WorkSession | null>(null)
@@ -66,136 +217,52 @@ export function TaskWorkHistory({ taskId }: { taskId: string }) {
   const sessionsQuery = useWorkSessionsByTask(taskId)
   const logs = useMemo(() => logsQuery.data ?? [], [logsQuery.data])
   const sessions = useMemo(() => sessionsQuery.data ?? [], [sessionsQuery.data])
-  const totalLogMinutes = useMemo(
+  const records = useMemo(() => buildWorkRecords(logs, sessions), [logs, sessions])
+  // Time is counted from the logs only: they are what estimates and reports use.
+  const totalMinutes = useMemo(
     () => logs.reduce((sum, entry) => sum + (entry.actual_minutes || 0), 0),
     [logs],
   )
+  const loading = logsQuery.isLoading || sessionsQuery.isLoading
+  // Only the latest logs are loaded: a full page, or a failed load, may hide
+  // the log of a session shown here.
+  const logsComplete =
+    !logsQuery.error && logsQuery.data !== undefined && logs.length < TASK_LOGS_LIMIT
 
   return (
-    <div className="space-y-5">
-      <section aria-label="作業ログ">
-        <h4 className="mb-2 text-xs font-medium text-muted-foreground">
-          作業ログ（{logs.length}件、{hours(totalLogMinutes)}）
-        </h4>
-        {logsQuery.isLoading ? (
-          <p className="text-sm text-muted-foreground">ログを読み込み中...</p>
-        ) : logsQuery.error ? (
-          <p className="text-sm text-destructive">
-            ログの読み込みに失敗しました: {(logsQuery.error as Error).message}
-          </p>
-        ) : logs.length === 0 ? (
-          <p className="text-sm text-muted-foreground">作業ログはまだありません</p>
-        ) : (
-          <ul className="space-y-2">
-            {logs.map((entry) => (
-              <li
-                key={entry.id}
-                className="flex min-w-0 items-start justify-between gap-2 rounded-md bg-muted/50 p-3"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="mb-1 flex items-center gap-2">
-                    <Badge variant="secondary" className="text-xs">
-                      {hours(entry.actual_minutes)}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {formatJSTDateTime(entry.created_at)}
-                    </span>
-                  </div>
-                  {entry.comment && (
-                    <p className="whitespace-pre-wrap break-words text-sm">{entry.comment}</p>
-                  )}
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <LogEditDialog
-                    log={entry}
-                    trigger={
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <Edit className="h-4 w-4" />
-                        <span className="sr-only">ログを編集</span>
-                      </Button>
-                    }
-                  />
-                  <LogDeleteDialog log={entry}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0 hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      <span className="sr-only">ログを削除</span>
-                    </Button>
-                  </LogDeleteDialog>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section aria-label="Runnerのセッション">
-        <h4 className="mb-2 text-xs font-medium text-muted-foreground">
-          Runnerのセッション（{sessions.length}件）
-        </h4>
-        {sessionsQuery.isLoading ? (
-          <p className="text-sm text-muted-foreground">セッションを読み込み中...</p>
-        ) : sessionsQuery.error ? (
-          <p className="text-sm text-destructive">
-            セッションの読み込みに失敗しました: {(sessionsQuery.error as Error).message}
-          </p>
-        ) : sessions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">セッション履歴はまだありません</p>
-        ) : (
-          <ul className="space-y-2">
-            {sessions.map((session) => {
-              const hasKpt = session.kpt_keep || session.kpt_problem || session.kpt_try
-              return (
-                <li key={session.id} className="space-y-2 rounded-md bg-muted/50 p-3">
-                  <div className="flex min-w-0 items-start justify-between gap-2">
-                    <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                      <span>
-                        {format(new Date(session.started_at), 'MM/dd (E) HH:mm', { locale: ja })}
-                      </span>
-                      <Badge variant="secondary" className="text-xs">
-                        {sessionWorkMinutes(session)}分
-                      </Badge>
-                      {session.decision && (
-                        <Badge variant="outline" className="text-xs">
-                          {SESSION_DECISION_LABELS[session.decision]}
-                        </Badge>
-                      )}
-                      {!session.ended_at && (
-                        <Badge variant="info" className="text-xs">
-                          作業中
-                        </Badge>
-                      )}
-                    </div>
-                    {session.ended_at && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setEditSession(session)}
-                        className="h-8 w-8 shrink-0 p-0"
-                      >
-                        <Pencil className="h-4 w-4" />
-                        <span className="sr-only">KPT編集</span>
-                      </Button>
-                    )}
-                  </div>
-                  {hasKpt ? (
-                    <div className="space-y-1.5">
-                      <KptLine label="K" text={session.kpt_keep} />
-                      <KptLine label="P" text={session.kpt_problem} />
-                      <KptLine label="T" text={session.kpt_try} />
-                    </div>
-                  ) : (
-                    <p className="text-xs italic text-muted-foreground">KPT未記入</p>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </section>
+    <div className="space-y-3">
+      <p className="text-xs font-medium text-muted-foreground">
+        {logs.length}件の記録、合計 {hours(totalMinutes)}
+      </p>
+      {logsQuery.error && (
+        <p className="text-sm text-destructive">
+          時間記録の読み込みに失敗しました: {(logsQuery.error as Error).message}
+        </p>
+      )}
+      {sessionsQuery.error && (
+        <p className="text-sm text-destructive">
+          セッションの読み込みに失敗しました: {(sessionsQuery.error as Error).message}
+        </p>
+      )}
+      {loading ? (
+        <p className="text-sm text-muted-foreground">作業記録を読み込み中...</p>
+      ) : records.length === 0 ? (
+        !logsQuery.error &&
+        !sessionsQuery.error && (
+          <p className="text-sm text-muted-foreground">作業記録はまだありません</p>
+        )
+      ) : (
+        <ul className="space-y-2">
+          {records.map((record) => (
+            <WorkRecordItem
+              key={record.key}
+              record={record}
+              logsComplete={logsComplete}
+              onEditKpt={setEditSession}
+            />
+          ))}
+        </ul>
+      )}
 
       <SessionKptEditDialog
         session={editSession}

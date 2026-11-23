@@ -185,6 +185,9 @@ export function useUpdateWorkSession() {
         queryKey: queryKeys.workSessions.all,
         predicate: (query) => query.queryKey[1] === 'task' && query.queryKey[2] === result.task_id,
       });
+      // The session's time log carries the reflection as its comment, and the
+      // server keeps it in step.
+      queryClient.invalidateQueries({ queryKey: queryKeys.logs.byTask(result.task_id) });
     },
   });
 }
