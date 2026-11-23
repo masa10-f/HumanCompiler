@@ -39,7 +39,7 @@ const NAVIGATION_ITEMS = [
   { id: 'scheduling', label: 'スケジューリング', path: '/scheduling', icon: Calendar },
   { id: 'triage', label: 'トリアージ', path: '/triage', icon: ListChecks },
   { id: 'daily-notes', label: 'ノート', path: '/notes', icon: NotebookPen },
-  { id: 'work-session-history', label: 'セッション履歴', path: '/work-session-history', icon: Timer },
+  { id: 'work-session-history', label: '作業履歴', path: '/work-session-history', icon: Timer },
   { id: 'timeline', label: 'タイムライン', path: '/timeline', icon: TrendingUp },
   { id: 'settings', label: '設定', path: '/settings', icon: Settings },
 ] as const

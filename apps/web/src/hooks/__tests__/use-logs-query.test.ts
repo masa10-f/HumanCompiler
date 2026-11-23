@@ -44,6 +44,9 @@ jest.mock('@/lib/query-keys', () => ({
     tasks: {
       all: ['tasks'],
     },
+    workSessions: {
+      records: () => ['workSessions', 'history', 'records'],
+    },
   },
 }))
 
@@ -250,6 +253,10 @@ describe('useCreateLog', () => {
     })
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['progress'] })
+    // The work history lists every log with its session.
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['workSessions', 'history', 'records'],
+    })
   })
 
   it('should invalidate task queries so status changes are reflected', async () => {
@@ -335,6 +342,10 @@ describe('useUpdateLog', () => {
     })
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['progress'] })
+    // The work history lists every log with its session.
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['workSessions', 'history', 'records'],
+    })
   })
 })
 
@@ -362,6 +373,10 @@ describe('useDeleteLog', () => {
     })
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['progress'] })
+    // The work history lists every log with its session.
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['workSessions', 'history', 'records'],
+    })
   })
 
   it('should invalidate task logs if task_id known', async () => {

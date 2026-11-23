@@ -57,6 +57,7 @@ import type {
   WorkSessionSwitchRequest,
   WorkSessionSwitchResponse,
   WorkSessionResumeContext,
+  WorkRecordEntry,
 } from "@/types/work-session";
 import type {
   RescheduleSuggestion,
@@ -1373,6 +1374,22 @@ class ApiClient {
   }
 
   /**
+   * Get the user's work across tasks, newest first: every time log with the
+   * Runner session it came from, and every session without a time log.
+   *
+   * @param skip - Pagination offset (default: 0)
+   * @param limit - Maximum results (default: 50, at most 100)
+   */
+  async getWorkRecords(
+    skip: number = 0,
+    limit: number = 50,
+  ): Promise<WorkRecordEntry[]> {
+    return this.request<WorkRecordEntry[]>(
+      `/api/work-sessions/records?skip=${skip}&limit=${limit}`,
+    );
+  }
+
+  /**
    * Get sessions for a specific task.
    *
    * @param taskId - The task ID
@@ -2014,6 +2031,8 @@ export const workSessionsApi = {
   getCurrent: () => apiClient.getCurrentWorkSession(),
   getHistory: (skip?: number, limit?: number) =>
     apiClient.getWorkSessionHistory(skip, limit),
+  getRecords: (skip?: number, limit?: number) =>
+    apiClient.getWorkRecords(skip, limit),
   getByTask: (taskId: string, skip?: number, limit?: number) =>
     apiClient.getWorkSessionsByTask(taskId, skip, limit),
   update: (sessionId: string, data: WorkSessionUpdateRequest) =>

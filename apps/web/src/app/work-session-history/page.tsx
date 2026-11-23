@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -15,55 +15,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
-import {
-  Clock,
-  Calendar,
-  Search,
-  ChevronDown,
-  ChevronUp,
-  Pencil,
-  Play,
-  Timer,
-} from 'lucide-react';
+import { Search, Play, Timer } from 'lucide-react';
 import { AppHeader } from '@/components/layout/app-header';
 import { SessionKptEditDialog } from '@/components/runner/session-kpt-edit-dialog';
-import { toast } from '@/hooks/use-toast';
-import { useWorkSessionHistory } from '@/hooks/use-work-sessions';
-import { format } from 'date-fns';
-import { ja } from 'date-fns/locale';
-import type { WorkSession, SessionDecision } from '@/types/work-session';
-import {
-  SESSION_DECISION_LABELS,
-  CHECKOUT_TYPE_LABELS,
-} from '@/types/work-session';
+import { WorkRecordItem } from '@/components/work-records/work-record-item';
+import { useWorkRecords } from '@/hooks/use-work-sessions';
+import { toJSTDateInputValue } from '@/lib/date-utils';
+import { taskPagePath } from '@/lib/tasks/task-paths';
+import type { WorkRecordEntry, WorkSession } from '@/types/work-session';
 
-/**
- * Calculate actual work minutes from session timestamps.
- * Prioritizes actual_minutes if available, otherwise calculates from timestamps.
- */
-function calculateWorkMinutes(session: WorkSession): number {
-  if (session.actual_minutes != null) {
-    return session.actual_minutes;
-  }
-  if (session.ended_at && session.started_at) {
-    const startMs = new Date(session.started_at).getTime();
-    const endMs = new Date(session.ended_at).getTime();
-    const pausedSeconds = session.total_paused_seconds || 0;
-    return Math.floor((endMs - startMs) / (1000 * 60)) - Math.floor(pausedSeconds / 60);
-  }
-  // Active session - calculate from start to now
-  if (session.started_at && !session.ended_at) {
-    const startMs = new Date(session.started_at).getTime();
-    const pausedSeconds = session.total_paused_seconds || 0;
-    return Math.floor((Date.now() - startMs) / (1000 * 60)) - Math.floor(pausedSeconds / 60);
-  }
-  return 0;
-}
+/** How many of the newest records the page loads (the API's maximum). */
+const RECORDS_LIMIT = 100;
+
+type SourceFilter = 'all' | 'runner' | 'manual';
 
 /**
  * Format minutes to human-readable string
@@ -80,35 +44,24 @@ function formatDuration(minutes: number): string {
   return `${hours}時間${remainingMinutes}分`;
 }
 
-/**
- * Get badge variant for decision type
- */
-function getDecisionBadgeVariant(decision: SessionDecision | null): 'default' | 'secondary' | 'destructive' | 'outline' {
-  switch (decision) {
-    case 'complete':
-      return 'default';
-    case 'continue':
-      return 'secondary';
-    case 'break':
-      return 'outline';
-    case 'switch':
-      return 'destructive';
-    default:
-      return 'outline';
-  }
+function recordKey(entry: WorkRecordEntry): string {
+  return entry.log ? `log:${entry.log.id}` : `session:${entry.session?.id}`;
 }
 
+/**
+ * The user's work across tasks as one list: Runner sessions and times entered
+ * by hand, each piece of work once.
+ */
 export default function WorkSessionHistoryPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [decisionFilter, setDecisionFilter] = useState<string>('all');
-  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
   const [editSession, setEditSession] = useState<WorkSession | null>(null);
 
-  // Fetch with a higher limit to get more history
-  const { data: sessions, isLoading, error } = useWorkSessionHistory(0, 100);
+  const { data: records, isLoading, error } = useWorkRecords(0, RECORDS_LIMIT);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -116,73 +69,47 @@ export default function WorkSessionHistoryPage() {
     }
   }, [user, authLoading, router]);
 
-  useEffect(() => {
-    if (error) {
-      toast({
-        title: 'データ取得エラー',
-        description: '作業セッション履歴の取得に失敗しました',
-        variant: 'destructive',
-      });
-    }
-  }, [error]);
+  const filteredRecords = useMemo(() => {
+    if (!records) return [];
 
-  // Filter sessions based on criteria
-  const filteredSessions = useMemo(() => {
-    if (!sessions) return [];
+    return records.filter((entry) => {
+      // The day the work was recorded, as the date inputs mean it (JST).
+      const day = toJSTDateInputValue(entry.at);
+      if (startDate && day < startDate) return false;
+      if (endDate && day > endDate) return false;
 
-    return sessions.filter((session) => {
-      // Date range filter
-      if (startDate) {
-        const sessionDate = new Date(session.started_at).toISOString().split('T')[0] ?? '';
-        if (sessionDate < startDate) return false;
-      }
-      if (endDate) {
-        const sessionDate = new Date(session.started_at).toISOString().split('T')[0] ?? '';
-        if (sessionDate > endDate) return false;
-      }
+      if (sourceFilter === 'runner' && !entry.session) return false;
+      if (sourceFilter === 'manual' && entry.session) return false;
 
-      // Decision filter
-      if (decisionFilter !== 'all' && session.decision !== decisionFilter) {
+      // A time entered by hand has no decision, so it matches none.
+      if (decisionFilter !== 'all' && entry.session?.decision !== decisionFilter) {
         return false;
       }
 
       return true;
     });
-  }, [sessions, startDate, endDate, decisionFilter]);
+  }, [records, startDate, endDate, sourceFilter, decisionFilter]);
 
-  // Calculate statistics
   const stats = useMemo(() => {
-    const totalSessions = filteredSessions.length;
-    const totalMinutes = filteredSessions.reduce(
-      (sum, session) => sum + calculateWorkMinutes(session),
+    // Time is counted from the logs only, as estimates and reports count it:
+    // a session without a time record adds nothing.
+    const totalMinutes = filteredRecords.reduce(
+      (sum, entry) => sum + (entry.log?.actual_minutes ?? 0),
       0
     );
-    const completedSessions = filteredSessions.filter(
-      (session) => session.decision === 'complete'
-    ).length;
+    const runnerRecords = filteredRecords.filter((entry) => entry.session).length;
 
     return {
-      totalSessions,
+      totalRecords: filteredRecords.length,
       totalMinutes,
-      completedSessions,
+      runnerRecords,
     };
-  }, [filteredSessions]);
-
-  const toggleSessionExpand = (sessionId: string) => {
-    setExpandedSessions((prev) => {
-      const next = new Set(prev);
-      if (next.has(sessionId)) {
-        next.delete(sessionId);
-      } else {
-        next.add(sessionId);
-      }
-      return next;
-    });
-  };
+  }, [filteredRecords]);
 
   const resetFilters = () => {
     setStartDate('');
     setEndDate('');
+    setSourceFilter('all');
     setDecisionFilter('all');
   };
 
@@ -194,6 +121,8 @@ export default function WorkSessionHistoryPage() {
     );
   }
 
+  const hasRecords = Boolean(records && records.length > 0);
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <AppHeader currentPage="work-session-history" />
@@ -204,11 +133,11 @@ export default function WorkSessionHistoryPage() {
           <div className="mb-4">
             <h1 className="text-3xl font-bold flex items-center gap-2">
               <Timer className="h-8 w-8 text-blue-600" />
-              作業セッション履歴
+              作業履歴
             </h1>
           </div>
           <p className="text-gray-600 dark:text-gray-400">
-            Runner/Focusモードで記録された作業セッションの履歴を確認できます。
+            Runnerのセッションと手入力の時間記録を、新しい順にまとめて確認できます。
           </p>
         </div>
 
@@ -218,9 +147,9 @@ export default function WorkSessionHistoryPage() {
             <CardContent className="pt-6">
               <div className="text-center">
                 <div className="text-3xl font-bold text-blue-600">
-                  {stats.totalSessions}
+                  {stats.totalRecords}
                 </div>
-                <div className="text-sm text-gray-500">セッション数</div>
+                <div className="text-sm text-gray-500">記録数</div>
               </div>
             </CardContent>
           </Card>
@@ -238,9 +167,9 @@ export default function WorkSessionHistoryPage() {
             <CardContent className="pt-6">
               <div className="text-center">
                 <div className="text-3xl font-bold text-purple-600">
-                  {stats.completedSessions}
+                  {stats.runnerRecords}
                 </div>
-                <div className="text-sm text-gray-500">完了セッション</div>
+                <div className="text-sm text-gray-500">Runnerの記録</div>
               </div>
             </CardContent>
           </Card>
@@ -255,7 +184,7 @@ export default function WorkSessionHistoryPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <div>
                 <Label htmlFor="start-date">開始日</Label>
                 <Input
@@ -277,12 +206,28 @@ export default function WorkSessionHistoryPage() {
                 />
               </div>
               <div>
+                <Label htmlFor="source-filter">記録の種類</Label>
+                <Select
+                  value={sourceFilter}
+                  onValueChange={(value) => setSourceFilter(value as SourceFilter)}
+                >
+                  <SelectTrigger id="source-filter" className="mt-1">
+                    <SelectValue placeholder="すべて" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">すべて</SelectItem>
+                    <SelectItem value="runner">Runner</SelectItem>
+                    <SelectItem value="manual">手入力</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
                 <Label htmlFor="decision-filter">決定タイプ</Label>
                 <Select
                   value={decisionFilter}
                   onValueChange={setDecisionFilter}
                 >
-                  <SelectTrigger className="mt-1">
+                  <SelectTrigger id="decision-filter" className="mt-1">
                     <SelectValue placeholder="すべて" />
                   </SelectTrigger>
                   <SelectContent>
@@ -303,25 +248,31 @@ export default function WorkSessionHistoryPage() {
           </CardContent>
         </Card>
 
-        {/* Session List */}
+        {/* Record list */}
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-lg">読み込み中...</div>
           </div>
-        ) : filteredSessions.length === 0 ? (
+        ) : error ? (
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-sm text-destructive">
+                作業履歴の読み込みに失敗しました: {(error as Error).message}
+              </p>
+            </CardContent>
+          </Card>
+        ) : filteredRecords.length === 0 ? (
           <Card>
             <CardContent className="pt-6">
               <div className="text-center py-8">
                 <Timer className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                  {sessions && sessions.length > 0
-                    ? '該当する作業セッションがありません'
-                    : '作業セッション履歴がありません'}
+                  {hasRecords ? '該当する作業記録がありません' : '作業記録がありません'}
                 </h3>
                 <p className="text-gray-600 dark:text-gray-400 mb-4">
-                  {sessions && sessions.length > 0
+                  {hasRecords
                     ? 'フィルター条件を変更してください。'
-                    : 'Runnerモードで作業を開始すると、ここに履歴が表示されます。'}
+                    : 'Runnerで作業するか、タスクで時間を記録すると、ここに表示されます。'}
                 </p>
                 <Button onClick={() => router.push('/runner')}>
                   <Play className="h-4 w-4 mr-2" />
@@ -331,160 +282,40 @@ export default function WorkSessionHistoryPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-4">
-            {filteredSessions.map((session) => {
-              const isExpanded = expandedSessions.has(session.id);
-              const hasKpt = session.kpt_keep || session.kpt_problem || session.kpt_try;
-              const workMinutes = calculateWorkMinutes(session);
-
-              return (
-                <Card
-                  key={session.id}
-                  className="hover:shadow-md transition-shadow"
-                >
-                  <CardHeader className="pb-2">
-                    <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:justify-between">
-                      <div className="min-w-0 flex-1">
-                        <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
-                          {session.task?.title || 'タスク名不明'}
-                          {!session.ended_at && (
-                            <Badge variant="secondary" className="text-xs">
-                              作業中
-                            </Badge>
-                          )}
-                        </CardTitle>
-                        <CardDescription className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-4 w-4" />
-                            {format(new Date(session.started_at), 'yyyy/MM/dd (E)', {
-                              locale: ja,
-                            })}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-4 w-4" />
-                            {format(new Date(session.started_at), 'HH:mm', {
-                              locale: ja,
-                            })}
-                            {session.ended_at && (
-                              <>
-                                {' → '}
-                                {format(new Date(session.ended_at), 'HH:mm', {
-                                  locale: ja,
-                                })}
-                              </>
-                            )}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Timer className="h-4 w-4" />
-                            {formatDuration(workMinutes)}
-                          </span>
-                        </CardDescription>
-                      </div>
-                      <div className="flex shrink-0 flex-wrap items-center gap-2">
-                        {session.checkout_type && (
-                          <Badge variant="outline">
-                            {CHECKOUT_TYPE_LABELS[session.checkout_type]}
-                          </Badge>
-                        )}
-                        {session.decision && (
-                          <Badge variant={getDecisionBadgeVariant(session.decision)}>
-                            {SESSION_DECISION_LABELS[session.decision]}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-2">
-                    {/* KPT Section */}
-                    {hasKpt ? (
-                      <Collapsible
-                        open={isExpanded}
-                        onOpenChange={() => toggleSessionExpand(session.id)}
-                      >
-                        <div className="flex items-center justify-between">
-                          <CollapsibleTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="flex items-center gap-1 text-muted-foreground"
-                            >
-                              {isExpanded ? (
-                                <ChevronUp className="h-4 w-4" />
-                              ) : (
-                                <ChevronDown className="h-4 w-4" />
-                              )}
-                              KPTを{isExpanded ? '閉じる' : '表示'}
-                            </Button>
-                          </CollapsibleTrigger>
-                          {session.ended_at && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setEditSession(session)}
-                            >
-                              <Pencil className="h-4 w-4 mr-1" />
-                              編集
-                            </Button>
-                          )}
-                        </div>
-                        <CollapsibleContent className="mt-2 space-y-2">
-                          {session.kpt_keep && (
-                            <div className="flex items-start gap-2">
-                              <Badge
-                                variant="outline"
-                                className="text-green-600 border-green-600 shrink-0"
-                              >
-                                K
-                              </Badge>
-                              <p className="text-sm">{session.kpt_keep}</p>
-                            </div>
-                          )}
-                          {session.kpt_problem && (
-                            <div className="flex items-start gap-2">
-                              <Badge
-                                variant="outline"
-                                className="text-red-600 border-red-600 shrink-0"
-                              >
-                                P
-                              </Badge>
-                              <p className="text-sm">{session.kpt_problem}</p>
-                            </div>
-                          )}
-                          {session.kpt_try && (
-                            <div className="flex items-start gap-2">
-                              <Badge
-                                variant="outline"
-                                className="text-blue-600 border-blue-600 shrink-0"
-                              >
-                                T
-                              </Badge>
-                              <p className="text-sm">{session.kpt_try}</p>
-                            </div>
-                          )}
-                        </CollapsibleContent>
-                      </Collapsible>
-                    ) : (
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm text-muted-foreground italic">
-                          KPT未記入
-                        </p>
-                        {session.ended_at && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setEditSession(session)}
-                          >
-                            <Pencil className="h-4 w-4 mr-1" />
-                            KPTを追加
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+          <>
+            <ul className="space-y-3">
+              {filteredRecords.map((entry) => (
+                <WorkRecordItem
+                  key={recordKey(entry)}
+                  record={{
+                    key: recordKey(entry),
+                    at: entry.at,
+                    log: entry.log ?? undefined,
+                    session: entry.session ?? undefined,
+                  }}
+                  // The API pairs each session with its log, so a session
+                  // listed without one has none.
+                  logsComplete
+                  detailed
+                  onEditKpt={setEditSession}
+                  className="rounded-lg border bg-card p-4 shadow-sm"
+                  heading={
+                    <Link
+                      href={taskPagePath(entry.project_id, entry.goal_id, entry.task_id)}
+                      className="block break-words font-semibold hover:underline"
+                    >
+                      {entry.task_title}
+                    </Link>
+                  }
+                />
+              ))}
+            </ul>
+            {records && records.length >= RECORDS_LIMIT && (
+              <p className="mt-4 text-center text-sm text-muted-foreground">
+                最新{RECORDS_LIMIT}件の記録を表示しています。
+              </p>
+            )}
+          </>
         )}
       </div>
 
