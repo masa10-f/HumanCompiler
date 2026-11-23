@@ -18,7 +18,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Textarea } from "@/components/ui/textarea";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -114,16 +114,17 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
                 <FormItem>
                   <FormLabel>実作業時間（時間）</FormLabel>
                   <FormControl>
-                    <Input
-                      type="number"
+                    <NumberInput
                       step="0.1"
                       min="0.1"
                       max="24"
-                      {...field}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        field.onChange(value === "" ? undefined : parseFloat(value) || undefined);
-                      }}
+                      allowEmpty
+                      name={field.name}
+                      ref={field.ref}
+                      onBlur={field.onBlur}
+                      disabled={field.disabled}
+                      value={field.value}
+                      onValueChange={field.onChange}
                       placeholder="例: 2.5（2時間30分）"
                     />
                   </FormControl>

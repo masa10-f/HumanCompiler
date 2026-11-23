@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
@@ -114,14 +115,17 @@ export function TaskSwitchDialog({
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="switch-duration">次の作業時間（分）</Label>
-              <Input
+              <NumberInput
                 id="switch-duration"
-                type="number"
+                integer
+                clampOnBlur
                 min={5}
                 max={480}
                 step={5}
                 value={duration}
-                onChange={(event) => setDuration(Number(event.target.value))}
+                onValueChange={(value) => {
+                  if (value !== undefined) setDuration(value);
+                }}
               />
             </div>
             <div className="space-y-2">

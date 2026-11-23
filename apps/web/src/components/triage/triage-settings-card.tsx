@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
@@ -235,35 +236,42 @@ export function TriageSettingsCard() {
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="triage-weekly-capacity">週の稼働時間（h）</Label>
-                <Input
+                <NumberInput
                   id="triage-weekly-capacity"
-                  type="number"
                   min={1}
                   step={0.5}
+                  clampOnBlur
                   value={weeklyCapacityHours}
-                  onChange={(event) => setWeeklyCapacityHours(Number(event.target.value))}
+                  onValueChange={(value) => {
+                    if (value !== undefined) setWeeklyCapacityHours(value);
+                  }}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="triage-meeting-buffer">バッファ時間（h）</Label>
-                <Input
+                <NumberInput
                   id="triage-meeting-buffer"
-                  type="number"
                   min={0}
                   step={0.5}
+                  clampOnBlur
                   value={meetingBufferHours}
-                  onChange={(event) => setMeetingBufferHours(Number(event.target.value))}
+                  onValueChange={(value) => {
+                    if (value !== undefined) setMeetingBufferHours(value);
+                  }}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="triage-cadence">生成間隔（日）</Label>
-                <Input
+                <NumberInput
                   id="triage-cadence"
-                  type="number"
+                  integer
                   min={1}
                   max={365}
+                  clampOnBlur
                   value={cadenceDays}
-                  onChange={(event) => setCadenceDays(Number(event.target.value))}
+                  onValueChange={(value) => {
+                    if (value !== undefined) setCadenceDays(value);
+                  }}
                 />
               </div>
             </div>

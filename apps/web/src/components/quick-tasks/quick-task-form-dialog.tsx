@@ -22,6 +22,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,7 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
-import { roundToDecimals, parseFloatSafe } from '@/lib/number-utils';
+import { roundToDecimals } from '@/lib/number-utils';
 import { toJSTDateInputValue, toJSTStartOfDayISOString } from '@/lib/date-utils';
 import { quickTasksApi } from '@/lib/api';
 import type { QuickTask, QuickTaskCreate, QuickTaskUpdate } from '@/types/quick-task';
@@ -40,7 +41,7 @@ import type { QuickTask, QuickTaskCreate, QuickTaskUpdate } from '@/types/quick-
 const quickTaskFormSchema = z.object({
   title: z.string().min(1, '必須項目です').max(200, '200文字以内で入力してください'),
   description: z.string().max(1000, '1000文字以内で入力してください').optional(),
-  estimate_hours: z.number()
+  estimate_hours: z.number({ error: '必須項目です' })
     .min(0.01, '0.01時間以上で入力してください')
     .max(999.99, '999.99時間以内で入力してください')
     .refine((val) => Number((val * 100).toFixed()) / 100 === val, {
@@ -241,17 +242,20 @@ export function QuickTaskFormDialog({
                 <FormItem>
                   <FormLabel>見積時間 (時間) *</FormLabel>
                   <FormControl>
-                    <Input
-                      type="number"
+                    <NumberInput
                       step="0.01"
                       min="0.01"
                       max="999.99"
                       placeholder="0.50"
-                      {...field}
-                      onChange={(e) => {
-                        const value = parseFloatSafe(e.target.value, 0);
-                        field.onChange(roundToDecimals(value, 2));
-                      }}
+                      allowEmpty
+                      name={field.name}
+                      ref={field.ref}
+                      onBlur={field.onBlur}
+                      disabled={field.disabled}
+                      value={field.value}
+                      onValueChange={(value) =>
+                        field.onChange(value === undefined ? undefined : roundToDecimals(value, 2))
+                      }
                     />
                   </FormControl>
                   <FormMessage />
