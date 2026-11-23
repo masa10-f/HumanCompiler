@@ -37,6 +37,8 @@ GOAL_DUE_DATE_DESCRIPTION = (
 GOAL_DUE_DATE_ONLY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # Plain text a task can be created with; it becomes the task's note.
 TASK_NOTE_TEXT_MAX_LENGTH = 20000
+# The largest value tasks.estimate_hours (NUMERIC(5,2)) holds.
+MAX_ESTIMATE_HOURS = Decimal("999.99")
 
 
 def prepare_due_date(value: Any) -> Any:
@@ -1793,7 +1795,9 @@ class LogCreate(LogBase):
     much is left after the recorded time, and ``complete_task`` finishes it."""
 
     task_id: UUID
-    remaining_estimate_hours: Decimal | None = Field(default=None, ge=0)
+    remaining_estimate_hours: Decimal | None = Field(
+        default=None, ge=0, le=MAX_ESTIMATE_HOURS
+    )
     complete_task: bool = False
 
 
@@ -1847,7 +1851,7 @@ class WorkSessionCheckoutRequest(BaseModel):
     kpt_keep: str | None = Field(None, max_length=500)
     kpt_problem: str | None = Field(None, max_length=500)
     kpt_try: str | None = Field(None, max_length=500)
-    remaining_estimate_hours: Decimal | None = Field(None, ge=0)
+    remaining_estimate_hours: Decimal | None = Field(None, ge=0, le=MAX_ESTIMATE_HOURS)
     next_task_id: UUID | None = None
 
 
@@ -1859,7 +1863,7 @@ class WorkSessionSwitchRequest(BaseModel):
     interruption_note: str | None = Field(None, max_length=2000)
     planned_checkout_at: datetime
     planned_outcome: str | None = Field(None, max_length=500)
-    remaining_estimate_hours: Decimal | None = Field(None, ge=0)
+    remaining_estimate_hours: Decimal | None = Field(None, ge=0, le=MAX_ESTIMATE_HOURS)
 
     @model_validator(mode="after")
     def require_interruption_note(self):

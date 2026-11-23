@@ -30,7 +30,7 @@ export interface WorkRecord {
   key: string
   /** When the work was recorded (a running session: when it started). */
   at: string
-  /** The time log; absent for a running session and a session whose log was deleted. */
+  /** The time log; absent for a running session and a session no log is linked to. */
   log?: Log
   /** The Runner session; absent for a time entered by hand. */
   session?: WorkSession
@@ -119,7 +119,7 @@ function WorkRecordItem({
   onEditKpt,
 }: {
   record: WorkRecord
-  /** Every log of the task is loaded, so a session without one has lost it. */
+  /** Every log of the task is loaded, so a session without one here has none. */
   logsComplete: boolean
   onEditKpt: (session: WorkSession) => void
 }) {
@@ -199,7 +199,7 @@ function WorkRecordItem({
       {comment && <p className="whitespace-pre-wrap break-words text-sm">{comment}</p>}
       {session?.ended_at && !log && logsComplete && (
         <p className="text-xs text-muted-foreground">
-          このセッションの時間記録は削除されています（合計には含まれません）。
+          このセッションに紐付く時間記録がありません（合計には含まれません）。
         </p>
       )}
     </li>

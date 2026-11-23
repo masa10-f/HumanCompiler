@@ -25,6 +25,7 @@ from humancompiler_api.common.error_handlers import (
     validate_uuid,
 )
 from humancompiler_api.models import (
+    MAX_ESTIMATE_HOURS,
     AgentScope,
     AgentToken,
     ContextNote,
@@ -145,13 +146,12 @@ def set_remaining_estimate(
     ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     # Task.estimate_hours is constrained to NUMERIC(5,2) and must be > 0.
-    max_estimate_hours = Decimal("999.99")
-    if new_estimate_hours > max_estimate_hours:
+    if new_estimate_hours > MAX_ESTIMATE_HOURS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 f"Updated estimate_hours ({new_estimate_hours}h) exceeds "
-                f"maximum ({max_estimate_hours}h)"
+                f"maximum ({MAX_ESTIMATE_HOURS}h)"
             ),
         )
     if new_estimate_hours <= 0:
@@ -1611,6 +1611,10 @@ class WorkSessionService(
                 checkout_data.kpt_problem,
                 checkout_data.kpt_try,
             ),
+            # The log moves the task's estimate with it, so the end of the
+            # session, the log and the estimate are one transaction: an
+            # estimate out of range leaves the session running.
+            remaining_estimate_hours=checkout_data.remaining_estimate_hours,
         )
 
         session.add(current_session)
@@ -1620,21 +1624,6 @@ class WorkSessionService(
             user_id_validated,
             work_session_id=current_session.id,
         )
-
-        # If remaining estimate is provided, update task.estimate_hours so that
-        # (estimate_hours - actual_hours) ~= remaining_estimate_hours.
-        if checkout_data.remaining_estimate_hours is not None:
-            task = self.task_service.get_task(
-                session, current_session.task_id, user_id_validated
-            )
-            if not task:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Task not found",
-                )
-            set_remaining_estimate(
-                session, task, checkout_data.remaining_estimate_hours, ended_at
-            )
 
         session.commit()
         session.refresh(current_session)

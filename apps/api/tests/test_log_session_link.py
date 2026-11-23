@@ -227,3 +227,50 @@ def test_an_estimate_out_of_range_records_nothing(session: Session, test_user_id
 def test_remaining_estimate_cannot_be_negative():
     with pytest.raises(ValidationError):
         LogCreate(task_id=UUID(int=1), actual_minutes=30, remaining_estimate_hours=-1)
+
+
+@pytest.mark.parametrize("too_much", ["1000", "1e30"])
+def test_remaining_estimate_cannot_exceed_what_an_estimate_holds(too_much: str):
+    # 1e30 would otherwise fail inside the rounding, as a server error.
+    with pytest.raises(ValidationError):
+        LogCreate(
+            task_id=UUID(int=1),
+            actual_minutes=30,
+            remaining_estimate_hours=Decimal(too_much),
+        )
+    with pytest.raises(ValidationError):
+        WorkSessionCheckoutRequest(
+            decision="switch", remaining_estimate_hours=Decimal(too_much)
+        )
+
+
+def test_checkout_sets_what_remains(session: Session, test_user_id: str):
+    task = make_task(session, test_user_id, estimate=10.0)
+    start(session, test_user_id, task.id)
+
+    _, log = checkout(session, test_user_id, remaining_estimate_hours=Decimal("2"))
+
+    # The checkout logs at least a minute; the estimate is that plus the rest.
+    logged = Decimal(log.actual_minutes) / Decimal(60)
+    expected = (logged + Decimal("2")).quantize(Decimal("0.01"))
+    assert stored_task(session, task.id).estimate_hours == expected
+
+
+def test_a_checkout_whose_estimate_is_out_of_range_leaves_the_session_running(
+    session: Session, test_user_id: str
+):
+    task = make_task(session, test_user_id, estimate=10.0)
+    start(session, test_user_id, task.id)
+
+    # The logged minute on top of 999.99 hours no longer fits the column.
+    with pytest.raises(HTTPException) as caught:
+        checkout(session, test_user_id, remaining_estimate_hours=Decimal("999.99"))
+
+    assert caught.value.status_code == 400
+    session.rollback()
+    session.expire_all()
+    assert session.exec(select(func.count()).select_from(Log)).one() == 0
+    running = WorkSessionService().get_current_session(session, test_user_id)
+    assert running is not None
+    assert running.ended_at is None
+    assert stored_task(session, task.id).estimate_hours == Decimal("10.00")

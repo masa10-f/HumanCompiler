@@ -225,18 +225,18 @@ describe('TaskWorkHistory', () => {
     expect(screen.getByText('0件の記録、合計 0.0h')).toBeInTheDocument()
   })
 
-  it('says when a session has lost its time record', () => {
+  it('says when a session has no time record linked to it', () => {
     sessions = { data: [session({ kpt_keep: 'Kept focus' })], isLoading: false }
 
     render(<TaskWorkHistory taskId="task-1" />)
 
     const item = within(screen.getByRole('listitem'))
     expect(item.getByText('Kept focus')).toBeInTheDocument()
-    expect(item.getByText(/時間記録は削除されています/)).toBeInTheDocument()
+    expect(item.getByText(/紐付く時間記録がありません/)).toBeInTheDocument()
     expect(item.queryByRole('button', { name: '記録を削除' })).not.toBeInTheDocument()
   })
 
-  it('does not call a time record deleted when not every log is loaded', () => {
+  it('does not say a session has no time record when not every log is loaded', () => {
     // A full page of newer logs: the session's own log may be beyond it.
     logs = {
       data: Array.from({ length: 50 }, (_, index) =>
@@ -250,7 +250,7 @@ describe('TaskWorkHistory', () => {
     render(<TaskWorkHistory taskId="task-1" />)
 
     expect(screen.getByText('Kept focus')).toBeInTheDocument()
-    expect(screen.queryByText(/時間記録は削除されています/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/紐付く時間記録がありません/)).not.toBeInTheDocument()
   })
 
   it('shows a failed load of either source without hiding the other', () => {
@@ -260,8 +260,8 @@ describe('TaskWorkHistory', () => {
     const { unmount } = render(<TaskWorkHistory taskId="task-1" />)
     expect(screen.getByText('時間記録の読み込みに失敗しました: offline')).toBeInTheDocument()
     expect(screen.getByText('Kept focus')).toBeInTheDocument()
-    // The logs did not load, so the session's log is unknown, not deleted.
-    expect(screen.queryByText(/時間記録は削除されています/)).not.toBeInTheDocument()
+    // The logs did not load, so whether the session has a log is unknown.
+    expect(screen.queryByText(/紐付く時間記録がありません/)).not.toBeInTheDocument()
     unmount()
 
     logs = { data: [log({ comment: 'Drafted' })], isLoading: false, error: null }
