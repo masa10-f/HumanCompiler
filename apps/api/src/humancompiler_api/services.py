@@ -1630,6 +1630,9 @@ class WorkSessionService(
             # session, the log and the estimate are one transaction: an
             # estimate out of range leaves the session running.
             remaining_estimate_hours=checkout_data.remaining_estimate_hours,
+            # "Complete" at checkout finishes the task, as it does when a time
+            # record entered by hand or a switch says the task is done.
+            complete_task=checkout_data.decision == SessionDecision.COMPLETE,
         )
 
         session.add(current_session)

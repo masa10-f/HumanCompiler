@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +13,6 @@ import {
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -31,6 +30,12 @@ import { useToast } from "@/hooks/use-toast";
 import type { LogCreate } from "@/types/log";
 import { sanitizeInput, isInputSafe } from "@/lib/sanitize";
 import { queryKeys } from "@/lib/query-keys";
+import {
+  MAX_REMAINING_HOURS,
+  REMAINING_HOURS_TOO_LARGE,
+  REMAINING_HOURS_TOO_SMALL,
+  RemainingEstimateField,
+} from "@/components/work-records/remaining-estimate-field";
 
 const logFormSchema = z.object({
   actual_hours: z.number().min(0.1, "実作業時間は0.1時間以上である必要があります"),
@@ -41,8 +46,8 @@ const logFormSchema = z.object({
   // What is left after this record; the task's estimate follows it.
   remaining_hours: z
     .number()
-    .min(0, "残り時間は0以上で入力してください")
-    .max(999.99, "残り時間は999.99時間以内で入力してください")
+    .min(0, REMAINING_HOURS_TOO_SMALL)
+    .max(MAX_REMAINING_HOURS, REMAINING_HOURS_TOO_LARGE)
     .optional(),
   complete_task: z.boolean(),
 });
@@ -59,11 +64,19 @@ const EMPTY_FORM = {
 interface LogFormDialogProps {
   taskId: string;
   taskTitle: string;
+  /** The task's estimate now, shown beside the remaining estimate when known. */
+  estimateHours?: number | null;
   trigger?: React.ReactNode;
 }
 
-export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps) {
+/**
+ * A time record entered by hand. It asks what remains and whether the task is
+ * done the way the Runner's checkout does, in the same order: the time, where
+ * the task stands, then the note on the work.
+ */
+export function LogFormDialog({ taskId, taskTitle, estimateHours, trigger }: LogFormDialogProps) {
   const [open, setOpen] = useState(false);
+  const remainingFieldId = useId();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -83,6 +96,8 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
       // A remaining estimate changes the task's estimate and so its goal's total.
       queryClient.invalidateQueries({ queryKey: queryKeys.goals.all });
+      // The work history lists every time record.
+      queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.records() });
       toast({
         title: "作業時間を登録しました",
         description: `${taskTitle}の実作業時間を記録しました。`,
@@ -152,50 +167,16 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
 
             <FormField
               control={form.control}
-              name="comment"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>コメント（任意）</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      {...field}
-                      placeholder="作業内容や感想を記録..."
-                      rows={3}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
               name="remaining_hours"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>残りの見込み（時間・任意）</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="999.99"
-                      {...field}
-                      value={field.value ?? ""}
-                      disabled={completing}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        const parsed = parseFloat(value);
-                        field.onChange(value === "" || Number.isNaN(parsed) ? undefined : parsed);
-                      }}
-                      placeholder="例: 1.5"
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    入力すると、タスクの見積を「これまでの実績＋残り」に更新します。
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
+              render={({ field, fieldState }) => (
+                <RemainingEstimateField
+                  id={remainingFieldId}
+                  value={field.value}
+                  onChange={field.onChange}
+                  currentEstimateHours={estimateHours}
+                  disabled={completing}
+                  error={fieldState.error?.message}
+                />
               )}
             />
 
@@ -211,6 +192,24 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
                     />
                   </FormControl>
                   <FormLabel className="font-normal">このタスクを完了にする</FormLabel>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="comment"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>コメント（任意）</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      placeholder="作業内容や感想を記録..."
+                      rows={3}
+                    />
+                  </FormControl>
+                  <FormMessage />
                 </FormItem>
               )}
             />

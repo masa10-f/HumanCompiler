@@ -104,6 +104,21 @@ describe('LogFormDialog', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['tasks'] });
     // The goal shows the sum of its tasks' estimates.
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['goals'] });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ['workSessions', 'history', 'records'],
+    });
+  });
+
+  it('shows the estimate the task has now beside what remains', () => {
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <LogFormDialog taskId="task-1" taskTitle="序論を書く" estimateHours={4} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '時間記録' }));
+
+    expect(screen.getByText('現在の見積: 4h')).toBeInTheDocument();
   });
 
   it('does not record a negative remaining time', async () => {

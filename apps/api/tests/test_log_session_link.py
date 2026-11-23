@@ -256,6 +256,37 @@ def test_checkout_sets_what_remains(session: Session, test_user_id: str):
     assert stored_task(session, task.id).estimate_hours == expected
 
 
+def test_complete_at_checkout_finishes_the_task(session: Session, test_user_id: str):
+    task = make_task(session, test_user_id)
+    start(session, test_user_id, task.id)
+
+    WorkSessionService().checkout_session(
+        session, test_user_id, WorkSessionCheckoutRequest(decision="complete")
+    )
+
+    assert stored_task(session, task.id).status == TaskStatus.COMPLETED
+
+
+@pytest.mark.parametrize("decision", ["continue", "switch", "break"])
+def test_other_decisions_at_checkout_leave_the_task_in_progress(
+    session: Session, test_user_id: str, decision: str
+):
+    task = make_task(session, test_user_id)
+    start(session, test_user_id, task.id)
+
+    WorkSessionService().checkout_session(
+        session,
+        test_user_id,
+        WorkSessionCheckoutRequest(
+            decision=decision,
+            kpt_keep="Kept focus",
+            continue_reason="good_stopping_point" if decision == "continue" else None,
+        ),
+    )
+
+    assert stored_task(session, task.id).status == TaskStatus.IN_PROGRESS
+
+
 def test_a_checkout_whose_estimate_is_out_of_range_leaves_the_session_running(
     session: Session, test_user_id: str
 ):

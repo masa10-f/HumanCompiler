@@ -11,8 +11,6 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   Select,
@@ -27,6 +25,11 @@ import {
   CONTINUE_REASON_LABELS,
 } from '@/types/work-session';
 import type { CurrentSessionDetails, CheckoutOptions } from '@/types/runner';
+import { EMPTY_KPT, KptFields, type KptValues } from '@/components/work-records/kpt-fields';
+import {
+  RemainingEstimateField,
+  remainingHoursError,
+} from '@/components/work-records/remaining-estimate-field';
 
 interface CheckoutDialogProps {
   open: boolean;
@@ -49,14 +52,15 @@ export function CheckoutDialog({
 }: CheckoutDialogProps) {
   const [decision, setDecision] = useState<SessionDecision>('switch');
   const [continueReason, setContinueReason] = useState<ContinueReason | ''>('');
-  const [kptKeep, setKptKeep] = useState('');
-  const [kptProblem, setKptProblem] = useState('');
-  const [kptTry, setKptTry] = useState('');
-  const [remainingEstimateHours, setRemainingEstimateHours] = useState<string>('');
+  const [kpt, setKpt] = useState<KptValues>(EMPTY_KPT);
+  const [remainingHours, setRemainingHours] = useState<number | undefined>(undefined);
 
   // KPT validation for continue decision
   const hasAtLeastOneKpt =
-    kptKeep.trim() !== '' || kptProblem.trim() !== '' || kptTry.trim() !== '';
+    kpt.keep.trim() !== '' || kpt.problem.trim() !== '' || kpt.try.trim() !== '';
+  // A finished task has nothing left, whatever the field says.
+  const completing = decision === 'complete';
+  const remainingError = completing ? undefined : remainingHoursError(remainingHours);
 
   // Calculate elapsed work time
   const elapsedMinutes = session
@@ -65,6 +69,13 @@ export function CheckoutDialog({
       )
     : 0;
   const elapsedHours = (elapsedMinutes / 60).toFixed(1);
+
+  const resetForm = () => {
+    setDecision('switch');
+    setContinueReason('');
+    setKpt(EMPTY_KPT);
+    setRemainingHours(undefined);
+  };
 
   const handleCheckout = async () => {
     const options: CheckoutOptions = {};
@@ -77,32 +88,20 @@ export function CheckoutDialog({
       options.next_task_id = selectedNextTaskId;
     }
 
-    if (kptKeep) options.kpt_keep = kptKeep;
-    if (kptProblem) options.kpt_problem = kptProblem;
-    if (kptTry) options.kpt_try = kptTry;
+    if (kpt.keep) options.kpt_keep = kpt.keep;
+    if (kpt.problem) options.kpt_problem = kpt.problem;
+    if (kpt.try) options.kpt_try = kpt.try;
 
-    if (remainingEstimateHours && parseFloat(remainingEstimateHours) >= 0) {
-      options.remaining_estimate_hours = parseFloat(remainingEstimateHours);
+    if (!completing && remainingHours !== undefined) {
+      options.remaining_estimate_hours = remainingHours;
     }
 
     await onCheckout(decision, options);
-
-    // Reset form
-    setDecision('switch');
-    setContinueReason('');
-    setKptKeep('');
-    setKptProblem('');
-    setKptTry('');
-    setRemainingEstimateHours('');
+    resetForm();
   };
 
   const handleClose = () => {
-    setDecision('switch');
-    setContinueReason('');
-    setKptKeep('');
-    setKptProblem('');
-    setKptTry('');
-    setRemainingEstimateHours('');
+    resetForm();
     onOpenChange(false);
   };
 
@@ -189,30 +188,16 @@ export function CheckoutDialog({
             </div>
           )}
 
-          {/* Remaining estimate */}
-          <div className="space-y-3 border-t pt-4">
-            <Label htmlFor="remaining-estimate">残見積時間（任意）</Label>
-            <div className="flex items-center gap-2">
-              <Input
-                id="remaining-estimate"
-                type="number"
-                min="0"
-                step="0.5"
-                placeholder={sessionDetails.task.estimate_hours?.toString() ?? ''}
-                value={remainingEstimateHours}
-                onChange={(e) => setRemainingEstimateHours(e.target.value)}
-                className="w-32"
-              />
-              <span className="text-sm text-muted-foreground">時間</span>
-              {sessionDetails.task.estimate_hours != null && (
-                <span className="text-xs text-muted-foreground ml-2">
-                  （現在の見積: {sessionDetails.task.estimate_hours}h）
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              このタスクの残り作業時間を入力してください
-            </p>
+          {/* Remaining estimate: the same field a time record entered by hand has */}
+          <div className="border-t pt-4">
+            <RemainingEstimateField
+              id="remaining-estimate"
+              value={remainingHours}
+              onChange={setRemainingHours}
+              currentEstimateHours={sessionDetails.task.estimate_hours}
+              disabled={completing}
+              error={remainingError}
+            />
           </div>
 
           {/* KPT reflection */}
@@ -225,48 +210,7 @@ export function CheckoutDialog({
                 ※継続する場合、少なくとも1つのKPT項目を入力してください
               </p>
             )}
-
-            <div className="space-y-2">
-              <Label htmlFor="kpt-keep" className="text-xs">
-                Keep: うまくいったこと
-              </Label>
-              <Textarea
-                id="kpt-keep"
-                placeholder="良かった点を記録"
-                value={kptKeep}
-                onChange={(e) => setKptKeep(e.target.value)}
-                rows={2}
-                maxLength={500}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="kpt-problem" className="text-xs">
-                Problem: 困ったこと
-              </Label>
-              <Textarea
-                id="kpt-problem"
-                placeholder="課題や問題点を記録"
-                value={kptProblem}
-                onChange={(e) => setKptProblem(e.target.value)}
-                rows={2}
-                maxLength={500}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="kpt-try" className="text-xs">
-                Try: 次に試したいこと
-              </Label>
-              <Textarea
-                id="kpt-try"
-                placeholder="次回への改善点を記録"
-                value={kptTry}
-                onChange={(e) => setKptTry(e.target.value)}
-                rows={2}
-                maxLength={500}
-              />
-            </div>
+            <KptFields idPrefix="kpt" value={kpt} onChange={setKpt} />
           </div>
         </div>
 
@@ -282,6 +226,7 @@ export function CheckoutDialog({
             onClick={handleCheckout}
             disabled={
               isCheckingOut ||
+              Boolean(remainingError) ||
               (decision === 'continue' && !continueReason) ||
               (decision === 'continue' && !hasAtLeastOneKpt)
             }

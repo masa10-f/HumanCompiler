@@ -10,8 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { EMPTY_KPT, KptFields, type KptValues } from '@/components/work-records/kpt-fields';
 import { useUpdateWorkSession } from '@/hooks/use-work-sessions';
 import type { WorkSession } from '@/types/work-session';
 
@@ -26,18 +25,18 @@ export function SessionKptEditDialog({
   open,
   onOpenChange,
 }: SessionKptEditDialogProps) {
-  const [kptKeep, setKptKeep] = useState('');
-  const [kptProblem, setKptProblem] = useState('');
-  const [kptTry, setKptTry] = useState('');
+  const [kpt, setKpt] = useState<KptValues>(EMPTY_KPT);
 
   const updateMutation = useUpdateWorkSession();
 
   // Populate form when session changes
   useEffect(() => {
     if (session) {
-      setKptKeep(session.kpt_keep ?? '');
-      setKptProblem(session.kpt_problem ?? '');
-      setKptTry(session.kpt_try ?? '');
+      setKpt({
+        keep: session.kpt_keep ?? '',
+        problem: session.kpt_problem ?? '',
+        try: session.kpt_try ?? '',
+      });
     }
   }, [session]);
 
@@ -50,9 +49,9 @@ export function SessionKptEditDialog({
       await updateMutation.mutateAsync({
         sessionId: session.id,
         data: {
-          kpt_keep: kptKeep,
-          kpt_problem: kptProblem,
-          kpt_try: kptTry,
+          kpt_keep: kpt.keep,
+          kpt_problem: kpt.problem,
+          kpt_try: kpt.try,
         },
       });
       onOpenChange(false);
@@ -72,47 +71,7 @@ export function SessionKptEditDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="edit-kpt-keep" className="text-xs">
-              Keep: うまくいったこと
-            </Label>
-            <Textarea
-              id="edit-kpt-keep"
-              placeholder="良かった点を記録"
-              value={kptKeep}
-              onChange={(e) => setKptKeep(e.target.value)}
-              rows={2}
-              maxLength={500}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="edit-kpt-problem" className="text-xs">
-              Problem: 困ったこと
-            </Label>
-            <Textarea
-              id="edit-kpt-problem"
-              placeholder="課題や問題点を記録"
-              value={kptProblem}
-              onChange={(e) => setKptProblem(e.target.value)}
-              rows={2}
-              maxLength={500}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="edit-kpt-try" className="text-xs">
-              Try: 次に試したいこと
-            </Label>
-            <Textarea
-              id="edit-kpt-try"
-              placeholder="次回への改善点を記録"
-              value={kptTry}
-              onChange={(e) => setKptTry(e.target.value)}
-              rows={2}
-              maxLength={500}
-            />
-          </div>
+          <KptFields idPrefix="edit-kpt" value={kpt} onChange={setKpt} />
         </div>
 
         <DialogFooter>
