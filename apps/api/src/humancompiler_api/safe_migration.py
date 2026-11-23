@@ -581,6 +581,9 @@ class DataBackupManager:
                 for log_data in backup_data.get("logs", []):
                     log_data["id"] = str(uuid.uuid4())
                     log_data["task_id"] = task_id_map.get(log_data["task_id"])
+                    # Runner sessions are not part of a backup, so the session a
+                    # log was measured in does not exist here.
+                    log_data["work_session_id"] = None
 
                     if log_data["task_id"]:  # Only add if task exists
                         log = Log(**log_data)

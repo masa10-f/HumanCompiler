@@ -182,6 +182,8 @@ def test_runner_switch_is_atomic_and_saves_resume_context(
     assert previous.ended_at is not None
     assert current.task_id == next_task.id
     assert log.task_id == current_task.id
+    # The time log is the record of the session that was just closed.
+    assert log.work_session_id == previous.id
     if note:
         context = service.get_resume_context(session, test_user_id, current_task.id)
         assert context is not None

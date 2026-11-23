@@ -668,6 +668,14 @@ class Log(LogBase, table=True):  # type: ignore[call-arg]
 
     id: UUID | None = SQLField(default=None, primary_key=True)
     task_id: UUID = SQLField(foreign_key="tasks.id", ondelete="CASCADE")
+    # The Runner session this time was measured in; NULL for a time entered by
+    # hand, in the daily note or by an agent. A session has at most one log.
+    work_session_id: UUID | None = SQLField(
+        default=None,
+        foreign_key="work_sessions.id",
+        ondelete="SET NULL",
+        unique=True,
+    )
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
@@ -1778,9 +1786,15 @@ class ScheduleResponse(ScheduleBase):
 
 
 class LogCreate(LogBase):
-    """Log creation request"""
+    """Log creation request.
+
+    A time record can also say where the task stands, as a Runner checkout
+    does: ``remaining_estimate_hours`` moves the task's estimate so that this
+    much is left after the recorded time, and ``complete_task`` finishes it."""
 
     task_id: UUID
+    remaining_estimate_hours: Decimal | None = Field(default=None, ge=0)
+    complete_task: bool = False
 
 
 class LogUpdate(BaseModel):
@@ -1795,6 +1809,8 @@ class LogResponse(LogBase):
 
     id: UUID
     task_id: UUID
+    # The Runner session this time was measured in, if any.
+    work_session_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
 

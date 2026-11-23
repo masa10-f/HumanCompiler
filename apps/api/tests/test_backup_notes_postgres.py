@@ -8,6 +8,7 @@ import that adds them in the same flush as those rows fails on PostgreSQL
 (SQLite does not check the foreign keys)."""
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from decimal import Decimal
 import json
 import os
@@ -19,7 +20,15 @@ from sqlalchemy import Engine, text
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from humancompiler_api import safe_migration
-from humancompiler_api.models import ContextNote, Goal, Project, Task, User
+from humancompiler_api.models import (
+    ContextNote,
+    Goal,
+    Log,
+    Project,
+    Task,
+    User,
+    WorkSession,
+)
 from humancompiler_api.safe_migration import DataBackupManager
 
 pytestmark = pytest.mark.skipif(
@@ -104,6 +113,24 @@ def test_user_backup_carries_notes_and_imports_them(engine: Engine, tmp_path: Pa
                 content_type="html",
             )
         )
+        # A Runner checkout: the session and the log that carries its time.
+        runner_session = WorkSession(
+            id=uuid4(),
+            user_id=source,
+            task_id=task.id,
+            planned_checkout_at=datetime(2030, 1, 1, tzinfo=UTC),
+            ended_at=datetime(2029, 12, 31, tzinfo=UTC),
+        )
+        session.add(runner_session)
+        session.flush()
+        session.add(
+            Log(
+                id=uuid4(),
+                task_id=task.id,
+                actual_minutes=45,
+                work_session_id=runner_session.id,
+            )
+        )
         session.commit()
 
     manager = DataBackupManager(str(tmp_path))
@@ -134,6 +161,13 @@ def test_user_backup_carries_notes_and_imports_them(engine: Engine, tmp_path: Pa
     }
     # The source user's notes are still theirs.
     assert len(notes_of(engine, source)) == 2
+    # Sessions are not in a backup: the imported log keeps its time and loses
+    # the link, where a dangling one would fail the whole import.
+    with Session(engine) as session:
+        imported_logs = session.exec(
+            select(Log).where(Log.work_session_id.is_(None))  # type: ignore[union-attr]
+        ).all()
+    assert [log.actual_minutes for log in imported_logs] == [45]
 
 
 def test_import_of_an_older_backup_puts_task_text_into_notes(
