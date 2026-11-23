@@ -62,6 +62,16 @@ jest.mock("@/hooks/use-toast", () => ({
   useToast: () => ({ toast: mockToast }),
 }));
 
+jest.mock("@/components/tasks/task-panel", () => ({
+  TaskPanel: ({ taskId, onClose }: { taskId: string | null; onClose: () => void }) =>
+    taskId ? (
+      <div data-testid="task-panel">
+        {taskId}
+        <button type="button" onClick={onClose}>パネルを閉じる</button>
+      </div>
+    ) : null,
+}));
+
 jest.mock("@/hooks/use-project-query", () => ({
   useProjectOptions: () => ({ data: mockProjects }),
 }));
@@ -189,6 +199,27 @@ describe("DailyPlanWorkspace", () => {
       expect.objectContaining({ blocks: [expect.objectContaining({ completed: true })] })), { timeout: 2500 });
     fireEvent.click(screen.getByRole("checkbox", { name: "会議を終了済みにする" }));
     await waitFor(() => expect(jest.mocked(dailyPlansApi.update).mock.calls.at(-1)![2].blocks[0]).toMatchObject({ completed: false }), { timeout: 2500 });
+    expect(dailyPlansApi.applyTaskAction).not.toHaveBeenCalled();
+    expect(dailyPlansApi.generate).not.toHaveBeenCalled();
+  });
+
+  it("opens the linked task's panel from a timed line, without saving or regenerating", async () => {
+    const block = { id: "fixed", type: "timed_line" as const, title: "論文を書く", start: "09:00", end: "10:00", task_ref: { source: "task" as const, id: "paper" } };
+    const quick = { id: "quick", type: "timed_line" as const, title: "電話", start: "10:00", end: "10:30", task_ref: { source: "quick_task" as const, id: "call" } };
+    jest.mocked(dailyPlansApi.get).mockResolvedValue({ ...blankResponse, revision: 1,
+      document: { schema_version: 1, blocks: [block, quick] },
+      schedule: { success: true, assignments: [], total_scheduled_hours: 1.5,
+        optimization_status: "OK", generated_at: "2030-01-02T00:00:00Z", source_scheduling_blocks: [block, quick] } });
+    await renderNotebook(<DailyPlanWorkspace selectedDate="2030-01-02" onSelectedDateChange={jest.fn()} />);
+    expect(screen.queryByTestId("task-panel")).not.toBeInTheDocument();
+    // Quick tasks have no note, so only the project task's line offers it.
+    expect(screen.getAllByRole("button", { name: /のノートを開く$/ })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "論文を書くのノートを開く" }));
+    expect(screen.getByTestId("task-panel")).toHaveTextContent("paper");
+
+    fireEvent.click(screen.getByRole("button", { name: "パネルを閉じる" }));
+    expect(screen.queryByTestId("task-panel")).not.toBeInTheDocument();
     expect(dailyPlansApi.applyTaskAction).not.toHaveBeenCalled();
     expect(dailyPlansApi.generate).not.toHaveBeenCalled();
   });

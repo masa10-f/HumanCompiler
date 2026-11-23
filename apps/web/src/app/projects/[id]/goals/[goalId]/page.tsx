@@ -74,11 +74,7 @@ export default function GoalDetailPage() {
   });
 
   const taskIds = useMemo(() => tasks.map(task => task.id), [tasks]);
-  const {
-    data: logsByTask = {},
-    isLoading: logsLoading,
-    error: logsError,
-  } = useBatchLogsQuery(taskIds);
+  const { data: logsByTask = {} } = useBatchLogsQuery(taskIds);
 
   const taskActualMinutesById = useMemo(() => {
     return Object.fromEntries(
@@ -396,10 +392,6 @@ export default function GoalDetailPage() {
             tasks={tasks}
             useDefaultSort={taskSortOptions === undefined}
             projectId={id}
-            goalId={goalId}
-            logsByTask={logsByTask}
-            logsLoading={logsLoading}
-            logsError={logsError}
             actualMinutesByTask={taskActualMinutesById}
           />
         )}

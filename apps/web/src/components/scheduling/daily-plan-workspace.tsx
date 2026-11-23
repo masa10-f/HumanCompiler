@@ -33,6 +33,7 @@ import {
   ChevronRight,
   ChevronUp,
   Coffee,
+  FileText,
   HelpCircle,
   Loader2,
   Save,
@@ -41,6 +42,7 @@ import {
 } from "lucide-react";
 
 import { DailyPlanHistory } from "./daily-plan-history";
+import { TaskPanel } from "@/components/tasks/task-panel";
 import { getJSTDateString } from "@/lib/date-utils";
 import {
   DailyPlanNoteEditor,
@@ -219,6 +221,8 @@ export const DailyPlanWorkspace = forwardRef<
     string | null
   >(null);
   const [actualMinutes, setActualMinutes] = useState(30);
+  // The task whose panel (note, time records, dependencies) is open.
+  const [panelTaskId, setPanelTaskId] = useState<string | null>(null);
   const [comment, setComment] = useState("");
   const commentTooLong = comment.length > 500;
   const taskActionInFlight = useRef(false);
@@ -1302,15 +1306,28 @@ export const DailyPlanWorkspace = forwardRef<
                                       }
                                     />
                                     {block.task_ref?.source === "task" && (
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() =>
-                                          openTimedCompletion(block)
-                                        }
-                                      >
-                                        実績
-                                      </Button>
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() =>
+                                            openTimedCompletion(block)
+                                          }
+                                        >
+                                          実績
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          aria-label={`${block.title ?? "タスク"}のノートを開く`}
+                                          onClick={() =>
+                                            setPanelTaskId(block.task_ref!.id)
+                                          }
+                                        >
+                                          <FileText className="mr-1 h-3 w-3" />
+                                          ノート
+                                        </Button>
+                                      </>
                                     )}
                                   </div>
                                 )}
@@ -1540,6 +1557,12 @@ export const DailyPlanWorkspace = forwardRef<
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <TaskPanel
+        taskId={panelTaskId}
+        availableTasks={regularTasks}
+        onClose={() => setPanelTaskId(null)}
+        onSelectTask={setPanelTaskId}
+      />
     </div>
   );
 });

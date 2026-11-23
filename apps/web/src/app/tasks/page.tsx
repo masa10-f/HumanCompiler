@@ -21,7 +21,7 @@ import {
 import { AppHeader } from "@/components/layout/app-header";
 import { QuickTaskList } from "@/components/quick-tasks";
 import { TaskDependencyMap } from "@/components/tasks/task-dependency-map";
-import { TaskDependencyPanel } from "@/components/tasks/task-dependency-panel";
+import { TaskPanel } from "@/components/tasks/task-panel";
 import { TaskBulkToolbar } from "@/components/tasks/task-bulk-toolbar";
 import { TaskPickerDialog } from "@/components/runner/task-picker-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -693,7 +693,7 @@ export default function TasksPage() {
         )}
       </main>
 
-      <TaskDependencyPanel
+      <TaskPanel
         taskId={selectedTaskId}
         availableTasks={visibleTasks}
         onClose={() => setSelectedTaskId(null)}

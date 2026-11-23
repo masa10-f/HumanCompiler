@@ -65,7 +65,11 @@ import type {
   WorkSessionWithReschedule,
 } from "@/types/reschedule";
 import type { SortOptions } from "@/types/sort";
-import type { ContextNote, ContextNoteUpdate } from "@/types/context-note";
+import type {
+  ContextNote,
+  ContextNoteUpdate,
+  TaskNoteMarkdown,
+} from "@/types/context-note";
 import type {
   ContextExportOptions,
   ContextExportResponse,
@@ -1508,6 +1512,16 @@ class ApiClient {
   }
 
   /**
+   * Get a task's title and its note as Markdown, to paste into an AI chat.
+   *
+   * @param taskId - The task UUID
+   * @returns The title and the note as Markdown ('' for a task without a note)
+   */
+  async getTaskNoteMarkdown(taskId: string): Promise<TaskNoteMarkdown> {
+    return this.request<TaskNoteMarkdown>(`/api/notes/tasks/${taskId}/markdown`);
+  }
+
+  /**
    * Update a task's note.
    *
    * @param taskId - The task UUID
@@ -2038,6 +2052,8 @@ export const notesApi = {
   updateGoalNote: (goalId: string, data: ContextNoteUpdate) =>
     apiClient.updateGoalNote(goalId, data),
   getTaskNote: (taskId: string) => apiClient.getTaskNote(taskId),
+  getTaskNoteMarkdown: (taskId: string) =>
+    apiClient.getTaskNoteMarkdown(taskId),
   updateTaskNote: (taskId: string, data: ContextNoteUpdate) =>
     apiClient.updateTaskNote(taskId, data),
 };

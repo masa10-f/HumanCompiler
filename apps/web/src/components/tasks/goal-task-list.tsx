@@ -19,31 +19,25 @@ import {
 } from 'lucide-react'
 
 import { LogFormDialog } from '@/components/logs/log-form-dialog'
+import { CopyTaskNoteButton } from '@/components/tasks/copy-task-note-button'
 import { TaskDeleteDialog } from '@/components/tasks/task-delete-dialog'
-import { TaskDependencyPanel } from '@/components/tasks/task-dependency-panel'
 import { TaskEditDialog } from '@/components/tasks/task-edit-dialog'
-import { TaskWorkHistoryPanel } from '@/components/tasks/task-work-history-panel'
+import { TaskPanel } from '@/components/tasks/task-panel'
+import { TaskStatusSelect } from '@/components/tasks/task-status-select'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { useToast } from '@/hooks/use-toast'
-import { useUpdateTask } from '@/hooks/use-tasks-query'
-import { log } from '@/lib/logger'
-import { getStatusUpdateError } from '@/lib/status-error-handler'
 import { getTaskDecisionSummary, type TaskDecisionState } from '@/lib/tasks/task-decision'
+import { taskPagePath } from '@/lib/tasks/task-paths'
 import { cn } from '@/lib/utils'
-import type { Log } from '@/types/log'
 import {
   taskPriorityColors,
   taskPriorityLabels,
-  taskStatusColors,
-  taskStatusLabels,
   workTypeColors,
   workTypeLabels,
 } from '@/types/task'
-import type { Task, TaskStatus } from '@/types/task'
+import type { Task } from '@/types/task'
 
 type TaskView = 'all' | TaskDecisionState
 
@@ -51,10 +45,6 @@ interface GoalTaskListProps {
   tasks: Task[]
   useDefaultSort?: boolean
   projectId: string
-  goalId: string
-  logsByTask: Record<string, Log[]>
-  logsLoading: boolean
-  logsError: Error | null
   actualMinutesByTask: Record<string, number>
 }
 
@@ -93,62 +83,50 @@ function TaskDecisionBadge({ task }: { task: Task }) {
   )
 }
 
+/**
+ * The task's title. A plain click opens the task's panel over the list; the
+ * link itself is the task's page, so it can still be opened in a new tab.
+ */
+function TaskTitleLink({
+  task,
+  projectId,
+  className,
+  onOpen,
+}: {
+  task: Task
+  projectId: string
+  className?: string
+  onOpen: () => void
+}) {
+  return (
+    <Link
+      href={taskPagePath(projectId, task.goal_id, task.id)}
+      className={cn('hover:text-blue-600 hover:underline', className)}
+      onClick={(event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+        event.preventDefault()
+        onOpen()
+      }}
+    >
+      {task.title}
+    </Link>
+  )
+}
+
 /** The opening of the task's note, which is the task's body. */
 function TaskNoteExcerpt({ task, className }: { task: Task; className?: string }) {
   if (!task.note_excerpt) return null
   return (
-    <p className={cn('text-sm text-muted-foreground', className)}>
-      <FileText
-        aria-label="ノートあり"
-        className="mr-1 inline h-3.5 w-3.5 align-[-2px]"
-      />
-      {task.note_excerpt}
-    </p>
-  )
-}
-
-function TaskStatusSelect({ task }: { task: Task }) {
-  const updateTaskMutation = useUpdateTask()
-  const { toast } = useToast()
-
-  const handleStatusChange = async (newStatus: TaskStatus) => {
-    try {
-      await updateTaskMutation.mutateAsync({
-        id: task.id,
-        data: { status: newStatus },
-      })
-    } catch (error) {
-      log.error('Failed to update task status', error, {
-        component: 'GoalTaskList',
-        taskId: task.id,
-        newStatus,
-      })
-      const { title, message } = getStatusUpdateError(error as Error, 'task')
-      toast({ title, description: message, variant: 'destructive' })
-    }
-  }
-
-  return (
-    <Select
-      value={task.status}
-      onValueChange={handleStatusChange}
-      disabled={updateTaskMutation.isPending}
-    >
-      <SelectTrigger className="h-8 w-auto min-w-[108px] px-2">
-        <SelectValue>
-          <Badge className={taskStatusColors[task.status]}>
-            {taskStatusLabels[task.status]}
-          </Badge>
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {Object.entries(taskStatusLabels).map(([value, label]) => (
-          <SelectItem key={value} value={value}>
-            <Badge className={taskStatusColors[value as TaskStatus]}>{label}</Badge>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="mt-1 flex items-start gap-1">
+      <p className={cn('min-w-0 flex-1 text-sm text-muted-foreground', className)}>
+        <FileText
+          aria-label="ノートあり"
+          className="mr-1 inline h-3.5 w-3.5 align-[-2px]"
+        />
+        {task.note_excerpt}
+      </p>
+      <CopyTaskNoteButton taskId={task.id} variant="icon" />
+    </div>
   )
 }
 
@@ -217,10 +195,6 @@ export function GoalTaskList({
   tasks,
   useDefaultSort = true,
   projectId,
-  goalId,
-  logsByTask,
-  logsLoading,
-  logsError,
   actualMinutesByTask,
 }: GoalTaskListProps) {
   const [view, setView] = useState<TaskView>('all')
@@ -313,12 +287,8 @@ export function GoalTaskList({
                       task={task}
                       tasks={tasks}
                       projectId={projectId}
-                      goalId={goalId}
-                      logs={logsByTask[task.id] ?? []}
-                      logsLoading={logsLoading}
-                      logsError={logsError}
                       actualMinutes={actualMinutesByTask[task.id] ?? 0}
-                      onOpenDependencies={() => setSelectedTaskId(task.id)}
+                      onOpen={() => setSelectedTaskId(task.id)}
                     />
                   ))}
                 </TableBody>
@@ -333,19 +303,15 @@ export function GoalTaskList({
                 task={task}
                 tasks={tasks}
                 projectId={projectId}
-                goalId={goalId}
-                logs={logsByTask[task.id] ?? []}
-                logsLoading={logsLoading}
-                logsError={logsError}
                 actualMinutes={actualMinutesByTask[task.id] ?? 0}
-                onOpenDependencies={() => setSelectedTaskId(task.id)}
+                onOpen={() => setSelectedTaskId(task.id)}
               />
             ))}
           </div>
         </>
       )}
 
-      <TaskDependencyPanel
+      <TaskPanel
         taskId={selectedTaskId}
         availableTasks={tasks}
         onClose={() => setSelectedTaskId(null)}
@@ -359,37 +325,30 @@ interface TaskDisplayProps {
   task: Task
   tasks: Task[]
   projectId: string
-  goalId: string
-  logs: Log[]
-  logsLoading: boolean
-  logsError: Error | null
   actualMinutes: number
-  onOpenDependencies: () => void
+  /** Open the task's panel: note, time records and dependencies. */
+  onOpen: () => void
 }
 
 function TaskDesktopRows({
   task,
   tasks,
   projectId,
-  goalId,
-  logs,
-  logsLoading,
-  logsError,
   actualMinutes,
-  onOpenDependencies,
+  onOpen,
 }: TaskDisplayProps) {
   return (
     <>
       <TableRow>
         <TableCell><TaskDecisionBadge task={task} /></TableCell>
         <TableCell className="max-w-[340px]">
-          <Link
-            href={`/projects/${projectId}/goals/${goalId}/tasks/${task.id}`}
-            className="font-medium hover:text-blue-600 hover:underline"
-          >
-            {task.title}
-          </Link>
-          <TaskNoteExcerpt task={task} className="mt-1 line-clamp-1" />
+          <TaskTitleLink
+            task={task}
+            projectId={projectId}
+            className="font-medium"
+            onOpen={onOpen}
+          />
+          <TaskNoteExcerpt task={task} className="line-clamp-1" />
           <div className="mt-2 flex flex-wrap gap-1">
             <Badge className={workTypeColors[task.work_type ?? 'light_work']}>
               {workTypeLabels[task.work_type ?? 'light_work']}
@@ -399,7 +358,7 @@ function TaskDesktopRows({
             </Badge>
           </div>
         </TableCell>
-        <TableCell><DependencyButton task={task} onClick={onOpenDependencies} /></TableCell>
+        <TableCell><DependencyButton task={task} onClick={onOpen} /></TableCell>
         <TableCell><TaskStatusSelect task={task} /></TableCell>
         <TableCell>
           <div className="flex items-center gap-1 text-sm">
@@ -419,16 +378,6 @@ function TaskDesktopRows({
         </TableCell>
         <TableCell><TaskActions task={task} tasks={tasks} /></TableCell>
       </TableRow>
-      <TableRow>
-        <TableCell colSpan={7} className="p-0">
-          <TaskWorkHistoryPanel
-            task={task}
-            logs={logs}
-            logsLoading={logsLoading}
-            logsError={logsError}
-          />
-        </TableCell>
-      </TableRow>
     </>
   )
 }
@@ -437,12 +386,8 @@ function TaskMobileCard({
   task,
   tasks,
   projectId,
-  goalId,
-  logs,
-  logsLoading,
-  logsError,
   actualMinutes,
-  onOpenDependencies,
+  onOpen,
 }: TaskDisplayProps) {
   return (
     <Card>
@@ -450,13 +395,13 @@ function TaskMobileCard({
         <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:justify-between">
           <div className="min-w-0 flex-1">
             <TaskDecisionBadge task={task} />
-            <Link
-              href={`/projects/${projectId}/goals/${goalId}/tasks/${task.id}`}
-              className="mt-2 block font-semibold hover:text-blue-600 hover:underline"
-            >
-              {task.title}
-            </Link>
-            <TaskNoteExcerpt task={task} className="mt-1 line-clamp-2" />
+            <TaskTitleLink
+              task={task}
+              projectId={projectId}
+              className="mt-2 block font-semibold"
+              onOpen={onOpen}
+            />
+            <TaskNoteExcerpt task={task} className="line-clamp-2" />
           </div>
           <div className="shrink-0">
             <TaskStatusSelect task={task} />
@@ -480,14 +425,8 @@ function TaskMobileCard({
           </div>
         </div>
 
-        <DependencyButton task={task} onClick={onOpenDependencies} />
+        <DependencyButton task={task} onClick={onOpen} />
         <TaskActions task={task} tasks={tasks} />
-        <TaskWorkHistoryPanel
-          task={task}
-          logs={logs}
-          logsLoading={logsLoading}
-          logsError={logsError}
-        />
       </CardContent>
     </Card>
   )

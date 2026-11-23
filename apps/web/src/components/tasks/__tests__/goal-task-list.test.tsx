@@ -29,13 +29,15 @@ jest.mock('@/components/tasks/task-delete-dialog', () => ({
   TaskDeleteDialog: ({ children }: { children: React.ReactNode }) => children,
 }))
 
-jest.mock('@/components/tasks/task-work-history-panel', () => ({
-  TaskWorkHistoryPanel: () => null,
+jest.mock('@/components/tasks/copy-task-note-button', () => ({
+  CopyTaskNoteButton: ({ taskId }: { taskId: string }) => (
+    <button type="button">copy:{taskId}</button>
+  ),
 }))
 
-jest.mock('@/components/tasks/task-dependency-panel', () => ({
-  TaskDependencyPanel: ({ taskId }: { taskId: string | null }) =>
-    taskId ? <div data-testid="dependency-panel">{taskId}</div> : null,
+jest.mock('@/components/tasks/task-panel', () => ({
+  TaskPanel: ({ taskId }: { taskId: string | null }) =>
+    taskId ? <div data-testid="task-panel">{taskId}</div> : null,
 }))
 
 function dependency(id: string, status: TaskStatus): TaskDependency {
@@ -98,10 +100,6 @@ describe('GoalTaskList', () => {
       <GoalTaskList
         tasks={unorderedTasks}
         projectId="project"
-        goalId="goal"
-        logsByTask={{}}
-        logsLoading={false}
-        logsError={null}
         actualMinutesByTask={{}}
       />,
     )
@@ -127,6 +125,25 @@ describe('GoalTaskList', () => {
     expectTaskOrder(['Blocked high', 'Blocked low'])
   })
 
+  it('opens the task panel on a plain click of the title, and keeps the page link', () => {
+    render(
+      <GoalTaskList
+        tasks={[task({ id: 'ready-task', title: 'Ready task' })]}
+        projectId="project"
+        actualMinutesByTask={{}}
+      />,
+    )
+    const [title] = screen.getAllByRole('link', { name: 'Ready task' })
+    expect(title).toHaveAttribute('href', '/projects/project/goals/goal/tasks/ready-task')
+
+    // A modified click is left to the browser (new tab), so no panel opens.
+    fireEvent.click(title!, { ctrlKey: true })
+    expect(screen.queryByTestId('task-panel')).not.toBeInTheDocument()
+
+    fireEvent.click(title!)
+    expect(screen.getByTestId('task-panel')).toHaveTextContent('ready-task')
+  })
+
   it('shows the opening of the note under the title, only for tasks with note text', () => {
     render(
       <GoalTaskList
@@ -135,10 +152,6 @@ describe('GoalTaskList', () => {
           task({ id: 'without-note', title: 'Without note', note_excerpt: null }),
         ]}
         projectId="project"
-        goalId="goal"
-        logsByTask={{}}
-        logsLoading={false}
-        logsError={null}
         actualMinutesByTask={{}}
       />,
     )
@@ -146,17 +159,16 @@ describe('GoalTaskList', () => {
     // Once in the desktop table and once in the mobile card.
     expect(screen.getAllByText('APIの設計方針を決める')).toHaveLength(2)
     expect(screen.getAllByLabelText('ノートあり')).toHaveLength(2)
+    // The note can be copied from the row; a task without one has nothing to copy.
+    expect(screen.getAllByRole('button', { name: 'copy:with-note' })).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: 'copy:without-note' })).not.toBeInTheDocument()
   })
 
-  it('filters tasks by decision state and opens dependency details', () => {
+  it('filters tasks by decision state and opens the task panel from the dependency summary', () => {
     render(
       <GoalTaskList
         tasks={tasks}
         projectId="project"
-        goalId="goal"
-        logsByTask={{}}
-        logsLoading={false}
-        logsError={null}
         actualMinutesByTask={{}}
       />,
     )
@@ -174,6 +186,6 @@ describe('GoalTaskList', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: /1\/2 完了/ })[0])
 
-    expect(screen.getByTestId('dependency-panel')).toHaveTextContent('blocked-task')
+    expect(screen.getByTestId('task-panel')).toHaveTextContent('blocked-task')
   })
 })
