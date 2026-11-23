@@ -13,11 +13,13 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useForm } from "react-hook-form";
@@ -36,9 +38,23 @@ const logFormSchema = z.object({
     (value) => !value || isInputSafe(value),
     { message: "コメントに不正な内容が含まれています" }
   ),
+  // What is left after this record; the task's estimate follows it.
+  remaining_hours: z
+    .number()
+    .min(0, "残り時間は0以上で入力してください")
+    .max(999.99, "残り時間は999.99時間以内で入力してください")
+    .optional(),
+  complete_task: z.boolean(),
 });
 
 type LogFormData = z.infer<typeof logFormSchema>;
+
+const EMPTY_FORM = {
+  actual_hours: undefined,
+  comment: "",
+  remaining_hours: undefined,
+  complete_task: false,
+};
 
 interface LogFormDialogProps {
   taskId: string;
@@ -53,16 +69,16 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
 
   const form = useForm<LogFormData>({
     resolver: zodResolver(logFormSchema),
-    defaultValues: {
-      actual_hours: undefined,
-      comment: "",
-    },
+    defaultValues: EMPTY_FORM,
   });
+  const completing = form.watch("complete_task");
 
   const createLogMutation = useMutation({
     mutationFn: (data: LogCreate) => logsApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.logs.byTask(taskId) });
+      // Lists show each task's logged time from the batch query.
+      queryClient.invalidateQueries({ queryKey: queryKeys.logs.batches() });
       queryClient.invalidateQueries({ queryKey: queryKeys.progress.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
       toast({
@@ -70,10 +86,7 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
         description: `${taskTitle}の実作業時間を記録しました。`,
       });
       setOpen(false);
-      form.reset({
-        actual_hours: undefined,
-        comment: "",
-      });
+      form.reset(EMPTY_FORM);
     },
     onError: (error) => {
       showErrorToast(error, { title: "作業時間の登録に失敗しました" });
@@ -85,6 +98,9 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
       task_id: taskId,
       actual_minutes: Math.round(data.actual_hours * 60), // Convert hours to minutes for API
       comment: data.comment ? sanitizeInput(data.comment) : undefined,
+      // A finished task has nothing left, whatever the field says.
+      remaining_estimate_hours: data.complete_task ? undefined : data.remaining_hours,
+      complete_task: data.complete_task || undefined,
     });
   };
 
@@ -146,6 +162,53 @@ export function LogFormDialog({ taskId, taskTitle, trigger }: LogFormDialogProps
                     />
                   </FormControl>
                   <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="remaining_hours"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>残りの見込み（時間・任意）</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="999.99"
+                      {...field}
+                      value={field.value ?? ""}
+                      disabled={completing}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        const parsed = parseFloat(value);
+                        field.onChange(value === "" || Number.isNaN(parsed) ? undefined : parsed);
+                      }}
+                      placeholder="例: 1.5"
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    入力すると、タスクの見積を「これまでの実績＋残り」に更新します。
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="complete_task"
+              render={({ field }) => (
+                <FormItem className="flex items-center gap-2 space-y-0">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={(checked) => field.onChange(checked === true)}
+                    />
+                  </FormControl>
+                  <FormLabel className="font-normal">このタスクを完了にする</FormLabel>
                 </FormItem>
               )}
             />
