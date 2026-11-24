@@ -28,7 +28,7 @@ Life of an attachment:
 
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
@@ -58,6 +58,7 @@ from humancompiler_api.models import (
     NoteAttachment,
     NoteAttachmentResponse,
     User,
+    WeeklyNote,
 )
 from humancompiler_api.note_attachment_refs import (
     attachment_markdown,
@@ -71,8 +72,10 @@ logger = logging.getLogger(__name__)
 URL_TTL_SECONDS = 600
 # How long an attachment no note refers to is kept.
 DETACH_GRACE = timedelta(days=7)
-# Attachments one cleanup run looks at.
+# Attachments the cleanup looks at in one query, and how many such queries one
+# run makes at most.
 SWEEP_BATCH = 200
+SWEEP_MAX_BATCHES = 25
 # How long an upload counts towards its note's image limit before the note
 # refers to it. The editor saves the reference seconds after the upload.
 PENDING_WINDOW = timedelta(hours=1)
@@ -256,7 +259,7 @@ def create_attachment(
             height=image.height,
             sha256=image.sha256,
             caption=caption,
-            source=source.model_dump(exclude_none=True) or None if source else None,
+            source=(source.model_dump(exclude_none=True) or None) if source else None,
             detached_at=datetime.now(UTC),
         )
         for key, body in (
@@ -370,19 +373,40 @@ def signed_url(
     return AttachmentUrlResponse(url=urls[key], expires_at=expires_at)
 
 
-def _referring_note_id(session: Session, attachment: NoteAttachment) -> UUID | None:
-    """A note of the same user whose content names the attachment's id.
+def _names(content: Any, attachment: NoteAttachment) -> ColumnElement[bool]:
+    """True where a note's content holds the attachment's id, in either case."""
+    named: ColumnElement[bool] = func.lower(content).contains(
+        str(attachment.id), autoescape=True
+    )
+    return named
 
-    References are written with the id in lower case (``note_markdown`` and the
-    web editor both do)."""
+
+def _referring_note_id(session: Session, attachment: NoteAttachment) -> UUID | None:
+    """A project, goal or task note of the same user that names the attachment."""
     return session.exec(
         select(ContextNote.id)
         .where(
             ContextNote.user_id == attachment.user_id,
-            col(ContextNote.content).contains(str(attachment.id), autoescape=True),
+            _names(ContextNote.content, attachment),
         )
         .limit(1)
     ).first()
+
+
+def _named_in_weekly_note(session: Session, attachment: NoteAttachment) -> bool:
+    """Whether a weekly note of the same user names the attachment.
+
+    A weekly note cannot have attachments of its own, but its editor shows an
+    image copied into it from another note."""
+    found = session.exec(
+        select(WeeklyNote.id)
+        .where(
+            WeeklyNote.user_id == attachment.user_id,
+            _names(WeeklyNote.content, attachment),
+        )
+        .limit(1)
+    ).first()
+    return found is not None
 
 
 def _sweepable(storage: AttachmentStorage, now: datetime) -> ColumnElement[bool]:
@@ -403,52 +427,76 @@ def sweep_attachments(
     Candidates are attachments whose note is gone and those detached for
     longer than ``DETACH_GRACE``. One that some note of the same user still
     names (an image copied to another note, or a note written without the
-    reference sync) is attached to that note instead. The files are deleted
-    before the row, so a failed delete is tried again on the next run.
+    reference sync) is attached to that note instead, and one that a weekly
+    note shows is kept. The files are deleted before the row, so a failed
+    delete is tried again on the next run.
 
     Each candidate is locked and checked again before anything is deleted, so
     a note write or a repeated upload that brings the image back at the same
     moment either comes first, and the image is kept, or waits and then finds
     the attachment gone. It never ends with a kept row whose files are
-    deleted."""
+    deleted.
+
+    An attachment this run could not delete or decided to keep is left out of
+    its later queries, so rows that keep failing do not hold up the rest."""
     now = now or datetime.now(UTC)
-    candidate_ids = session.exec(
-        select(col(NoteAttachment.id))
-        .where(_sweepable(storage, now))
-        .order_by(col(NoteAttachment.created_at))
-        .limit(SWEEP_BATCH)
-    ).all()
-    # End the read transaction: each candidate gets its own.
-    session.rollback()
     deleted = 0
-    for candidate_id in candidate_ids:
-        attachment = session.exec(
-            select(NoteAttachment)
-            .where(NoteAttachment.id == candidate_id, _sweepable(storage, now))
-            # Skipped when a write holds it: that write is using the image.
-            .with_for_update(skip_locked=True)
-            .execution_options(populate_existing=True)
-        ).first()
-        if attachment is None:
-            session.rollback()
-            continue
-        note_id = _referring_note_id(session, attachment)
-        if note_id is not None:
-            attachment.note_id = note_id
-            attachment.detached_at = None
-            session.add(attachment)
-            session.commit()
-            continue
-        try:
-            storage.delete([attachment.object_key, attachment.thumb_object_key])
-        except AttachmentStorageError:
-            logger.warning(
-                "Could not delete the files of attachment %s; will retry",
-                candidate_id,
-            )
-            session.rollback()
-            continue
-        session.delete(attachment)
-        session.commit()
-        deleted += 1
+    left: set[UUID] = set()
+    for _ in range(SWEEP_MAX_BATCHES):
+        query = select(col(NoteAttachment.id)).where(_sweepable(storage, now))
+        if left:
+            query = query.where(col(NoteAttachment.id).not_in(left))
+        candidate_ids = session.exec(
+            query.order_by(col(NoteAttachment.created_at)).limit(SWEEP_BATCH)
+        ).all()
+        # End the read transaction: each candidate gets its own.
+        session.rollback()
+        for candidate_id in candidate_ids:
+            if _sweep_one(session, storage, candidate_id, now):
+                deleted += 1
+            else:
+                left.add(candidate_id)
+        if len(candidate_ids) < SWEEP_BATCH:
+            break
     return deleted
+
+
+def _sweep_one(
+    session: Session, storage: AttachmentStorage, candidate_id: UUID, now: datetime
+) -> bool:
+    """Delete one candidate if it is still one; return whether it was deleted."""
+    attachment = session.exec(
+        select(NoteAttachment)
+        .where(NoteAttachment.id == candidate_id, _sweepable(storage, now))
+        # Skipped when a write holds it: that write is using the image.
+        .with_for_update(skip_locked=True)
+        .execution_options(populate_existing=True)
+    ).first()
+    if attachment is None:
+        session.rollback()
+        return False
+    note_id = _referring_note_id(session, attachment)
+    if note_id is not None:
+        attachment.note_id = note_id
+        attachment.detached_at = None
+        session.add(attachment)
+        session.commit()
+        return False
+    if _named_in_weekly_note(session, attachment):
+        # Kept for as long as the weekly note shows it; looked at again after
+        # another grace period, or on the next run if its own note is gone.
+        attachment.detached_at = now
+        session.add(attachment)
+        session.commit()
+        return False
+    try:
+        storage.delete([attachment.object_key, attachment.thumb_object_key])
+    except AttachmentStorageError:
+        logger.warning(
+            "Could not delete the files of attachment %s; will retry", candidate_id
+        )
+        session.rollback()
+        return False
+    session.delete(attachment)
+    session.commit()
+    return True

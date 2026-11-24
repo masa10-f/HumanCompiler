@@ -125,6 +125,23 @@ def test_image_with_a_bad_id_is_not_a_reference() -> None:
     assert attachment_references(html, "html") == {}
 
 
+@pytest.mark.parametrize(
+    "written",
+    [
+        str(ID).replace("-", ""),
+        "{" + str(ID) + "}",
+        f"urn:uuid:{ID}",
+    ],
+    ids=["no-hyphens", "braces", "urn"],
+)
+def test_only_the_usual_form_of_an_id_is_a_reference(written: str) -> None:
+    # UUID() reads these too, but the cleanup looks for the hyphenated text.
+    html = f'<img data-attachment-id="{written}" alt="x">'
+
+    assert attachment_references(html, "html") == {}
+    assert "attachment:" not in note_html_to_markdown(html)
+
+
 def test_references_of_an_html_note() -> None:
     html = (
         f"<p>a</p>{IMG}"

@@ -26,6 +26,7 @@ ATTACHMENT_SCHEME = "attachment:"
 CAPTION_MAX_LENGTH = 500
 
 _UUID = r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}"
+_CANONICAL_UUID = re.compile(_UUID)
 _ATTACHMENT_TARGET = re.compile(rf"^{ATTACHMENT_SCHEME}({_UUID})$")
 # The alt may hold escaped brackets (``\]``), as ``attachment_markdown`` writes.
 _MARKDOWN_IMAGE = re.compile(
@@ -47,13 +48,14 @@ def attachment_id_from_target(target: str) -> UUID | None:
 
 
 def parse_attachment_id(value: str | None) -> UUID | None:
-    """The id in a ``data-attachment-id`` attribute, or None if it is not one."""
-    if not value:
+    """The id in a ``data-attachment-id`` attribute, or None if it is not one.
+
+    Only the usual hyphenated form counts (in either case), as in a Markdown
+    target: the cleanup looks for that text in notes, so an id written any
+    other way that ``UUID()`` reads must not attach an image."""
+    if not value or _CANONICAL_UUID.fullmatch(value) is None:
         return None
-    try:
-        return UUID(value)
-    except ValueError:
-        return None
+    return UUID(value)
 
 
 def attachment_markdown(attachment_id: UUID, caption: str) -> str:

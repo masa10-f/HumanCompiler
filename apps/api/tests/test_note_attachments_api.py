@@ -23,7 +23,7 @@ from humancompiler_api.attachment_storage import (
 from humancompiler_api.auth import AuthUser, get_current_user
 from humancompiler_api.config import settings
 from humancompiler_api.main import app
-from humancompiler_api.models import ContextNote, NoteAttachment
+from humancompiler_api.models import ContextNote, NoteAttachment, WeeklyNote
 from humancompiler_api.routers import notes
 from humancompiler_api.scheduler import notification_scheduler
 from tests.agent_api_helpers import (
@@ -604,3 +604,96 @@ def test_sweep_keeps_an_image_brought_back_after_it_was_listed(
     (row,) = _rows(session)
     assert row.detached_at is None
     assert len(storage.objects) == 2
+
+
+def _expire(session: Session) -> None:
+    for row in _rows(session):
+        row.detached_at = datetime.now(UTC) - timedelta(days=8)
+        session.add(row)
+    session.commit()
+
+
+def test_sweep_keeps_an_image_a_weekly_note_shows(
+    session: Session, storage: InMemoryAttachmentStorage
+) -> None:
+    path, _ = _project_path(session)
+    attachment_id = _upload(f"{path}/attachments").json()["id"]
+    # Copied from the project note into a weekly note, then removed from the
+    # project note.
+    session.add(
+        WeeklyNote(
+            user_id=USER_A,
+            week_start=datetime(2026, 11, 22).date(),
+            content=f"<p>今週</p>{_reference(attachment_id)}",
+        )
+    )
+    session.commit()
+    _expire(session)
+
+    assert _sweep(session, storage) == 0
+    assert len(storage.objects) == 2
+
+    weekly = session.exec(select(WeeklyNote)).one()
+    weekly.content = "<p>今週</p>"
+    session.add(weekly)
+    session.commit()
+    assert _sweep(session, storage, days=8) == 1
+    assert storage.objects == {}
+
+
+def test_sweep_does_not_keep_an_image_for_another_users_weekly_note(
+    session: Session, storage: InMemoryAttachmentStorage
+) -> None:
+    path, _ = _project_path(session)
+    attachment_id = _upload(f"{path}/attachments").json()["id"]
+    session.add(
+        WeeklyNote(
+            user_id=USER_B,
+            week_start=datetime(2026, 11, 22).date(),
+            content=_reference(attachment_id),
+        )
+    )
+    session.commit()
+    _expire(session)
+
+    assert _sweep(session, storage) == 1
+
+
+def test_sweep_finds_a_reference_written_in_upper_case(
+    session: Session, storage: InMemoryAttachmentStorage
+) -> None:
+    first_path, _ = _project_path(session)
+    second_path, _ = _project_path(session)
+    attachment_id = _upload(f"{first_path}/attachments").json()["id"]
+    _save_note(second_path, _reference(attachment_id.upper()))
+    _expire(session)
+
+    assert _sweep(session, storage) == 0
+    assert _rows(session)[0].detached_at is None
+
+
+def test_sweep_goes_on_past_images_it_cannot_delete(
+    session: Session, storage: InMemoryAttachmentStorage, monkeypatch
+) -> None:
+    monkeypatch.setattr(attachment_service, "SWEEP_BATCH", 2)
+    path, _ = _project_path(session)
+    for color in ((200, 30, 30), (30, 200, 30), (30, 30, 200), (200, 200, 30)):
+        assert (
+            _upload(f"{path}/attachments", image_bytes(color=color)).status_code == 201
+        )
+    _expire(session)
+    stuck = {
+        row.object_key for row in sorted(_rows(session), key=lambda r: r.created_at)[:2]
+    }
+    delete = storage.delete
+
+    def delete_unless_stuck(keys: list[str]) -> None:
+        if stuck & set(keys):
+            raise AttachmentStorageError("down")
+        delete(keys)
+
+    monkeypatch.setattr(storage, "delete", delete_unless_stuck)
+
+    # The two oldest fill the first batch and fail; the newer two still go.
+    assert _sweep(session, storage) == 2
+    assert {row.object_key for row in _rows(session)} == stuck

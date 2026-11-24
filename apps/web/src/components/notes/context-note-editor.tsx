@@ -81,7 +81,12 @@ function insertNoteImage(
   if (position === undefined) {
     editor.commands.insertContent(node);
   } else {
-    editor.commands.insertContentAt(position, node);
+    // The position was read when the file was dropped, before the upload;
+    // the note may have got shorter since.
+    editor.commands.insertContentAt(
+      Math.min(position, editor.state.doc.content.size),
+      node
+    );
   }
   // The note has no trailing node: after an image that ends it, add a
   // paragraph to go on writing in.

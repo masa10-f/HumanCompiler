@@ -275,4 +275,20 @@ describe('images in notes', () => {
     expect(await screen.findByText('画像を読み込めませんでした')).toBeInTheDocument();
     expect(mockUrls).toHaveBeenCalledTimes(2);
   });
+
+  it('asks again each time a URL expires while the note stays open', async () => {
+    const id = '44444444-2222-4333-8444-555555555555';
+    render(<ContextNoteViewer content={`<img data-attachment-id="${id}" alt="図">`} />);
+
+    // The first URL expires: the image fails, a new URL is fetched and loads.
+    fireEvent.error(await screen.findByAltText('図'));
+    await waitFor(() => expect(mockUrls).toHaveBeenCalledTimes(2));
+    fireEvent.load(await screen.findByAltText('図'));
+
+    // Ten minutes later that one expires too.
+    fireEvent.error(await screen.findByAltText('図'));
+
+    await waitFor(() => expect(mockUrls).toHaveBeenCalledTimes(3));
+    expect(screen.queryByText('画像を読み込めませんでした')).not.toBeInTheDocument();
+  });
 });

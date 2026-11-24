@@ -66,6 +66,7 @@ export function NoteImageView({
   const [state, setState] = useState<ImageState>({ status: 'loading' });
   const [open, setOpen] = useState(false);
   // One retry with a new URL per failed load, so a deleted file cannot loop.
+  // A load that succeeds clears it: the next expiry gets its own retry.
   const retried = useRef(false);
   const captionInput = useRef<HTMLInputElement>(null);
 
@@ -162,6 +163,9 @@ export function NoteImageView({
             decoding="async"
             draggable={false}
             className="block h-auto max-w-full rounded-md"
+            onLoad={() => {
+              retried.current = false;
+            }}
             onError={() => {
               void refresh();
             }}
@@ -269,6 +273,9 @@ export function NoteImageView({
               width={state.image.width}
               height={state.image.height}
               className="mx-auto h-auto max-h-[80dvh] w-auto max-w-full"
+              onLoad={() => {
+                retried.current = false;
+              }}
               onError={() => {
                 void refresh();
               }}
