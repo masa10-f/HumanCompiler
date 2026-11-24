@@ -16,7 +16,7 @@ import json
 
 from pydantic import TypeAdapter
 from sqlmodel import Session, SQLModel, select, text
-from sqlalchemy import inspect
+from sqlalchemy import Table, func, inspect
 
 from humancompiler_api.database import db
 from humancompiler_api.models import (
@@ -119,6 +119,45 @@ def notes_with_former_task_text(backup_data: dict[str, Any]) -> list[dict[str, A
         # updated_at as the backup has it.
         note["content_text"] = note_plain_text(note["content"], "html")
     return notes
+
+
+# The tables of a full backup by name, which is also each one's key in the
+# file. Each comes after the ones it references: the order their rows can be
+# inserted in.
+FULL_BACKUP_MODELS: dict[str, type[SQLModel]] = {
+    "users": User,
+    "projects": Project,
+    "goals": Goal,
+    "tasks": Task,
+    "context_notes": ContextNote,
+    "quick_tasks": QuickTask,
+    "schedules": Schedule,
+    "work_sessions": WorkSession,
+    "logs": Log,
+    "user_settings": UserSettings,
+    "triage_capacity_settings": TriageCapacitySettings,
+    "task_triage_runs": TaskTriageRun,
+    "task_triage_items": TaskTriageItem,
+    "goal_dependencies": GoalDependency,
+    "task_dependencies": TaskDependency,
+}
+
+# What a full restore truncates by name; CASCADE reaches the rest from these.
+_TRUNCATED_TABLES = ("tasks", "goals", "projects", "users")
+
+
+def _tables_emptied_without_restore() -> list[Table]:
+    """The tables a full restore empties and a full backup does not carry."""
+    emptied = set(_TRUNCATED_TABLES)
+    # Parents come first in sorted_tables, so one pass follows every chain.
+    for table in SQLModel.metadata.sorted_tables:
+        if any(key.column.table.name in emptied for key in table.foreign_keys):
+            emptied.add(table.name)
+    return [
+        table
+        for table in SQLModel.metadata.sorted_tables
+        if table.name in emptied and table.name not in FULL_BACKUP_MODELS
+    ]
 
 
 class SafeMigrationError(Exception):
@@ -266,7 +305,24 @@ class DataBackupManager:
             raise SafeMigrationError(f"Backup creation failed: {e}")
 
     def restore_backup(self, backup_path: str) -> None:
-        """Restore data from a backup file"""
+        """Replace the database's data with a full backup's. PostgreSQL only.
+
+        Every table ``create_backup`` writes (``FULL_BACKUP_MODELS``) comes back
+        as the backup has it, IDs included. A backup made before notes or
+        Runner sessions were part of it is read as ``restore_user_data`` reads
+        one.
+
+        The delete and the inserts are one transaction: a restore that fails
+        leaves the database as it was.
+
+        NOT restored: the delete is ``TRUNCATE ... CASCADE`` from users, which
+        also empties every table that refers to users, directly or through
+        another table, and a backup carries only some of them. Daily plan
+        documents, weekly notes, weekly rhythm blocks, push subscriptions,
+        agent tokens, proposals, changes and audit logs, email notification
+        logs, reschedule suggestions and decisions, and note attachments are
+        lost. The ones that held rows are named in a warning.
+        """
         backup_file = Path(backup_path)
         if not backup_file.exists():
             raise SafeMigrationError(f"Backup file not found: {backup_path}")
@@ -275,46 +331,67 @@ class DataBackupManager:
             with open(backup_file, encoding="utf-8") as f:
                 backup_data = json.load(f)
 
+            missing = [table for table in _TRUNCATED_TABLES if table not in backup_data]
+            if missing:
+                # Not a full backup: stop before anything is deleted.
+                raise SafeMigrationError(f"Backup has no {', '.join(missing)}")
+
+            records: dict[str, list[dict[str, Any]]] = {
+                table: backup_data.get(table, []) for table in FULL_BACKUP_MODELS
+            }
+            # Notes carry the text older backups kept on tasks.
+            records["context_notes"] = notes_with_former_task_text(backup_data)
+            # A log keeps its time when its session is not in the backup (an
+            # older backup has none); a dangling link would fail.
+            session_ids = {str(row["id"]) for row in records["work_sessions"]}
+            records["logs"] = [
+                log
+                if str(log.get("work_session_id")) in session_ids
+                else {**log, "work_session_id": None}
+                for log in records["logs"]
+            ]
+            # Read before anything is deleted: a record that cannot be read
+            # ends the restore here.
+            rows = {
+                table: [backup_row(model, record) for record in records[table]]
+                for table, model in FULL_BACKUP_MODELS.items()
+            }
+
             engine = db.get_engine()
 
             with Session(engine) as session:
-                # Clear existing data (in reverse dependency order)
-                session.exec(text("TRUNCATE tasks, goals, projects, users CASCADE"))
-                session.commit()
+                lost = {
+                    table.name: session.exec(
+                        select(func.count()).select_from(table)
+                    ).one()
+                    for table in _tables_emptied_without_restore()
+                }
 
-                # Restore users first
-                for user_data in backup_data["users"]:
-                    user = User(**user_data)
-                    session.add(user)
+                # No commit until every row is back: this delete is undone
+                # with the rest if an insert fails.
+                session.exec(text(f"TRUNCATE {', '.join(_TRUNCATED_TABLES)} CASCADE"))
 
-                # Restore projects
-                for project_data in backup_data["projects"]:
-                    project = Project(**project_data)
-                    session.add(project)
-
-                # Restore goals
-                for goal_data in backup_data["goals"]:
-                    goal = Goal(**goal_data)
-                    session.add(goal)
-
-                # Restore tasks
-                for task_data in backup_data["tasks"]:
-                    task = Task(**task_data)
-                    session.add(task)
-
-                # Restore notes, with the text older backups kept on tasks.
-                # Notes have no ORM relationship to what they are on, so the
-                # rows they reference must be inserted first.
-                session.flush()
-                for note_data in notes_with_former_task_text(backup_data):
-                    session.add(ContextNote(**note_data))
+                # Few of these tables have an ORM relationship to the rows
+                # they reference, so each is inserted before the next.
+                for table in FULL_BACKUP_MODELS:
+                    session.add_all(rows[table])
+                    session.flush()
 
                 session.commit()
 
             metadata = backup_data.get("metadata", {})
             logger.info(f"✅ Backup restored from: {backup_path}")
             logger.info(f"   Backup created: {metadata.get('created_at')}")
-            logger.info(f"   Records restored: {metadata.get('total_records', {})}")
+            restored = {table: len(found) for table, found in records.items()}
+            logger.info(f"   Records restored: {restored}")
+            lost_rows = [
+                f"{table} ({count} rows)" for table, count in lost.items() if count
+            ]
+            if lost_rows:
+                logger.warning(
+                    "⚠️  Not in the backup, emptied by the restore: "
+                    + ", ".join(lost_rows)
+                )
 
         except Exception as e:
             logger.error(f"❌ Failed to restore backup: {e}")

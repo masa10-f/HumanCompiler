@@ -120,13 +120,20 @@ print('復旧完了')
 "
 ```
 
+`restore_backup` は PostgreSQL 専用で、データベースの内容をバックアップの内容に**置き換えます**。
+
+- **復元されるテーブル**（`create_backup` が書き出すもの全て）: users, projects, goals, tasks, context_notes, quick_tasks, schedules, work_sessions, logs, user_settings, triage_capacity_settings, task_triage_runs, task_triage_items, goal_dependencies, task_dependencies
+- **失敗しても安全**: 削除と挿入は1つのトランザクションです。途中で失敗した場合、データベースは復旧前の状態のまま残ります。
+- **復元されないテーブル**: 既存データの削除は `TRUNCATE ... CASCADE` で行うため、users を（直接・間接に）参照する全テーブルが空になります。バックアップに含まれない次のテーブルのデータは**失われます**: daily_plan_documents, weekly_notes, weekly_rhythm_blocks, push_subscriptions, agent_tokens, agent_proposals, agent_changes, agent_audit_logs, email_notification_logs, reschedule_suggestions, reschedule_decisions, note_attachments。行があったテーブルは復旧時に警告ログ（`⚠️  Not in the backup, emptied by the restore: ...`）に出力されます。
+
 ### 2. 特定のテーブルのみ復旧
 
 ```python
 import json
 from sqlmodel import Session
 from humancompiler_api.database import db
-from humancompiler_api.models import User, Project, Goal, Task
+from humancompiler_api.models import User
+from humancompiler_api.safe_migration import backup_row
 
 # バックアップファイル読み込み
 with open('backups/daily_backup_20250815_120000.json') as f:
@@ -135,9 +142,10 @@ with open('backups/daily_backup_20250815_120000.json') as f:
 engine = db.get_engine()
 with Session(engine) as session:
     # 例: ユーザーデータのみ復旧
+    # バックアップはJSONなので、日時・UUID・小数は文字列です。
+    # User(**user_data) では変換されずINSERTが失敗するため、backup_row を使います。
     for user_data in backup_data['users']:
-        user = User(**user_data)
-        session.add(user)
+        session.add(backup_row(User, user_data))
     session.commit()
 ```
 
@@ -192,6 +200,8 @@ self._cleanup_old_backups(prefix="weekly_backup_", days=56)  # 8週に変更
 schedules = session.exec(select(Schedule)).all()
 backup_data["schedules"] = [schedule.model_dump() for schedule in schedules]
 ```
+
+追加したテーブルは `safe_migration.py` の `FULL_BACKUP_MODELS` にも（参照先のテーブルより後に）追加してください。追加しないと `restore_backup` で復元されません。
 
 ## 🛠️ トラブルシューティング
 
