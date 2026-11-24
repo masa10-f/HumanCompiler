@@ -57,7 +57,7 @@ Images attached to notes are kept in Supabase Storage.
 3. Leave **Public bucket** off.
 4. Add **no** storage policies. Only the API reads and writes the bucket, with the service role key; it checks who owns an image and hands out signed URLs that expire after 10 minutes. With no policies, the anon and user keys open nothing.
 
-Apply migration `046_add_note_attachments.sql` as well (see `apps/api/migrations/README.md`). Until the bucket exists, uploads answer 503; nothing else is affected.
+Apply migration `046_add_note_attachments.sql` as well, before deploying the API (see `apps/api/migrations/README.md`): without the table, saving a note fails. Until the bucket exists, uploads answer 503; nothing else is affected.
 
 ## Testing Checklist
 

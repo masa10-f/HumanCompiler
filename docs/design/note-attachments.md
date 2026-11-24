@@ -100,7 +100,7 @@ Web（Supabase のログイン）:
 ## 手作業
 
 1. Supabase のダッシュボードで、非公開バケット `note-attachments` を作る（ポリシーは作らない）。`docs/dev/database-setup.md`。
-2. マイグレーション 046 を適用する。`apps/api/migrations/README.md`。
+2. マイグレーション 046 を、API をデプロイする前に適用する。`apps/api/migrations/README.md`。この API はノートを保存するたびに `note_attachments` を読むので、テーブルが無いとノートの保存が失敗する。
 
 ## 決めていないこと
 

@@ -19,7 +19,8 @@
 -- must then be deleted by hand.
 -- Additive only: the API deployed before this migration does not know the
 -- table and keeps working. Apply it before deploying the API that serves
--- attachments.
+-- attachments: that API reads the table on every note save, so note saves
+-- fail without it.
 -- Safe to apply twice: a manual application is not recorded in
 -- schema_migrations, so the migration manager runs it again at startup.
 -- The DO body is single-quoted (not $$) because the migration manager splits
