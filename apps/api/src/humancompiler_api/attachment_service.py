@@ -32,7 +32,8 @@ from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
-from sqlmodel import Session, col, func, select
+from sqlalchemy import ColumnElement
+from sqlmodel import Session, and_, col, func, select
 
 from humancompiler_api import proposal_service
 from humancompiler_api.attachment_images import (
@@ -56,6 +57,7 @@ from humancompiler_api.models import (
     ContextNote,
     NoteAttachment,
     NoteAttachmentResponse,
+    User,
 )
 from humancompiler_api.note_attachment_refs import (
     attachment_markdown,
@@ -71,6 +73,9 @@ URL_TTL_SECONDS = 600
 DETACH_GRACE = timedelta(days=7)
 # Attachments one cleanup run looks at.
 SWEEP_BATCH = 200
+# How long an upload counts towards its note's image limit before the note
+# refers to it. The editor saves the reference seconds after the upload.
+PENDING_WINDOW = timedelta(hours=1)
 
 AttachmentVariant = Literal["full", "thumb"]
 
@@ -175,20 +180,30 @@ def create_attachment(
 
     stored_keys: list[str] = []
     try:
-        # The lock makes uploads to one note run one after the other, so the
-        # same-image check and the per-note count below hold when the row is
-        # inserted. The user's quota is not locked: uploads to different notes
-        # at the same moment can pass it together, by one image each at most.
+        # Locking the user's row makes that user's uploads run one after the
+        # other, so the checks below still hold when the row is inserted: two
+        # uploads at the same moment cannot both take the last of the quota.
+        # FOR NO KEY UPDATE, so inserts that reference the user do not wait.
+        session.exec(
+            select(col(User.id))
+            .where(User.id == user_id)
+            .with_for_update(key_share=True)
+        ).first()
         note = proposal_service.lock_note(session, target)
         if note is None:
             note = proposal_service.create_note(session, user_id, target)
 
+        # Locked, so the cleanup job cannot delete it while it is handed out
+        # (and if the job got there first, the row is gone and a new one is
+        # stored).
         existing = session.exec(
-            select(NoteAttachment).where(
+            select(NoteAttachment)
+            .where(
                 NoteAttachment.note_id == note.id,
                 NoteAttachment.user_id == user_id,
                 NoteAttachment.sha256 == image.sha256,
             )
+            .with_for_update()
         ).first()
         if existing is not None:
             if existing.detached_at is not None:
@@ -199,12 +214,17 @@ def create_attachment(
             session.refresh(existing)
             return existing, True
 
+        # Images the note shows, and uploads so recent that the note may not
+        # have been saved with them yet: without those, uploading many images
+        # before the first save would pass the limit.
+        now = datetime.now(UTC)
         shown = session.exec(
             select(func.count())
             .select_from(NoteAttachment)
             .where(
                 NoteAttachment.note_id == note.id,
-                col(NoteAttachment.detached_at).is_(None),
+                col(NoteAttachment.detached_at).is_(None)
+                | (col(NoteAttachment.created_at) > now - PENDING_WINDOW),
             )
         ).one()
         if shown >= settings.attachment_max_per_note:
@@ -365,6 +385,16 @@ def _referring_note_id(session: Session, attachment: NoteAttachment) -> UUID | N
     ).first()
 
 
+def _sweepable(storage: AttachmentStorage, now: datetime) -> ColumnElement[bool]:
+    """Attachments the cleanup may delete: the note is gone, or the grace
+    period since the note last referred to them has passed."""
+    return and_(
+        NoteAttachment.bucket == storage.bucket,
+        col(NoteAttachment.note_id).is_(None)
+        | (col(NoteAttachment.detached_at) < now - DETACH_GRACE),
+    )
+
+
 def sweep_attachments(
     session: Session, storage: AttachmentStorage, now: datetime | None = None
 ) -> int:
@@ -374,20 +404,34 @@ def sweep_attachments(
     longer than ``DETACH_GRACE``. One that some note of the same user still
     names (an image copied to another note, or a note written without the
     reference sync) is attached to that note instead. The files are deleted
-    before the row, so a failed delete is tried again on the next run."""
+    before the row, so a failed delete is tried again on the next run.
+
+    Each candidate is locked and checked again before anything is deleted, so
+    a note write or a repeated upload that brings the image back at the same
+    moment either comes first, and the image is kept, or waits and then finds
+    the attachment gone. It never ends with a kept row whose files are
+    deleted."""
     now = now or datetime.now(UTC)
-    candidates = session.exec(
-        select(NoteAttachment)
-        .where(
-            NoteAttachment.bucket == storage.bucket,
-            col(NoteAttachment.note_id).is_(None)
-            | (col(NoteAttachment.detached_at) < now - DETACH_GRACE),
-        )
+    candidate_ids = session.exec(
+        select(col(NoteAttachment.id))
+        .where(_sweepable(storage, now))
         .order_by(col(NoteAttachment.created_at))
         .limit(SWEEP_BATCH)
     ).all()
+    # End the read transaction: each candidate gets its own.
+    session.rollback()
     deleted = 0
-    for attachment in candidates:
+    for candidate_id in candidate_ids:
+        attachment = session.exec(
+            select(NoteAttachment)
+            .where(NoteAttachment.id == candidate_id, _sweepable(storage, now))
+            # Skipped when a write holds it: that write is using the image.
+            .with_for_update(skip_locked=True)
+            .execution_options(populate_existing=True)
+        ).first()
+        if attachment is None:
+            session.rollback()
+            continue
         note_id = _referring_note_id(session, attachment)
         if note_id is not None:
             attachment.note_id = note_id
@@ -400,8 +444,9 @@ def sweep_attachments(
         except AttachmentStorageError:
             logger.warning(
                 "Could not delete the files of attachment %s; will retry",
-                attachment.id,
+                candidate_id,
             )
+            session.rollback()
             continue
         session.delete(attachment)
         session.commit()

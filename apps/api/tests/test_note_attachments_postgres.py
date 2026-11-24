@@ -14,7 +14,8 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, event, text
+from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from humancompiler_api import attachment_service, safe_migration
@@ -45,6 +46,17 @@ def engine() -> Iterator[Engine]:
     with admin.begin() as connection:
         connection.execute(text(f'CREATE SCHEMA "{schema}"'))
     scoped = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+
+    @event.listens_for(scoped, "connect")
+    def use_test_schema(dbapi_connection, _record) -> None:
+        # Once any test has built the app's engine, a listener on every pool
+        # points new connections at public (database_config). These tests open
+        # a second connection, so put it back on the test schema; committed, or
+        # the first rollback would undo it.
+        with dbapi_connection.cursor() as cursor:
+            cursor.execute(f'SET search_path TO "{schema}"')
+        dbapi_connection.commit()
+
     try:
         SQLModel.metadata.create_all(scoped)
         yield scoped
@@ -167,6 +179,89 @@ def test_deleting_the_project_leaves_the_files_to_the_sweep(engine: Engine) -> N
     (row,) = _rows(engine)
     assert row.id == kept_id
     assert set(storage.objects) == {row.object_key, row.thumb_object_key}
+
+
+def _expire(engine: Engine) -> None:
+    """Make every attachment look detached for longer than the grace period."""
+    with Session(engine) as session:
+        for row in session.exec(select(NoteAttachment)).all():
+            row.detached_at = datetime.now(UTC) - timedelta(days=8)
+            session.add(row)
+        session.commit()
+
+
+def test_sweep_leaves_an_attachment_a_write_holds(engine: Engine) -> None:
+    storage = InMemoryAttachmentStorage()
+    user_id, project_id = _project(engine)
+    attachment_id = _attach(engine, storage, user_id, project_id)
+    _expire(engine)
+
+    with Session(engine) as writer:
+        # A repeated upload of the same image, or a note save, in progress.
+        held = writer.exec(
+            select(NoteAttachment)
+            .where(NoteAttachment.id == attachment_id)
+            .with_for_update()
+        ).one()
+        with Session(engine) as session:
+            assert attachment_service.sweep_attachments(session, storage) == 0
+        held.detached_at = None
+        writer.add(held)
+        writer.commit()
+
+    with Session(engine) as session:
+        assert attachment_service.sweep_attachments(session, storage) == 0
+    (row,) = _rows(engine)
+    assert row.detached_at is None
+    assert len(storage.objects) == 2
+
+
+def test_repeated_upload_takes_an_expired_attachment_back_from_the_sweep(
+    engine: Engine,
+) -> None:
+    storage = InMemoryAttachmentStorage()
+    user_id, project_id = _project(engine)
+    first = _attach(engine, storage, user_id, project_id)
+    _expire(engine)
+
+    again = _attach(engine, storage, user_id, project_id)
+
+    assert again == first
+    with Session(engine) as session:
+        assert attachment_service.sweep_attachments(session, storage) == 0
+    assert len(_rows(engine)) == 1
+    assert len(storage.objects) == 2
+
+
+def test_uploads_of_one_user_wait_for_each_other(engine: Engine) -> None:
+    """The quota check is exact: a second upload cannot read the usage while
+    the first is between its check and its insert."""
+    storage = InMemoryAttachmentStorage()
+    user_id, project_id = _project(engine)
+    other_user, other_project = _project(engine)
+
+    with Session(engine) as first:
+        # What create_attachment holds from its quota check to its commit.
+        first.exec(
+            select(User.id).where(User.id == user_id).with_for_update(key_share=True)
+        ).one()
+        with Session(engine) as second:
+            second.exec(text("SET LOCAL lock_timeout = '300ms'"))
+            with pytest.raises(OperationalError):
+                attachment_service.create_attachment(
+                    second,
+                    storage,
+                    user_id,
+                    NoteTarget(project_id=project_id),
+                    image_bytes(),
+                    "図1",
+                    None,
+                    require_caption=True,
+                )
+        # Another user's upload does not wait.
+        _attach(engine, storage, other_user, other_project)
+
+    assert [row.user_id for row in _rows(engine)] == [other_user]
 
 
 def test_same_image_twice_and_usage(engine: Engine) -> None:

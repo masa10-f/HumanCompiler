@@ -246,6 +246,40 @@ def test_note_shows_at_most_the_limit_of_images(
     assert "already has 1 images" in response.json()["detail"]
 
 
+def test_limit_counts_uploads_the_note_does_not_refer_to_yet(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Several images pasted before the first save must not pass the limit.
+    monkeypatch.setattr(settings, "attachment_max_per_note", 2)
+    path, _ = _project_path(session)
+    for color in ((200, 30, 30), (30, 200, 30)):
+        response = _upload(f"{path}/attachments", image_bytes(color=color))
+        assert response.status_code == 201
+
+    response = _upload(f"{path}/attachments", image_bytes(color=(30, 30, 200)))
+
+    assert response.status_code == 422
+    assert len(_rows(session)) == 2
+
+
+def test_limit_does_not_count_images_removed_from_the_note(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "attachment_max_per_note", 1)
+    path, _ = _project_path(session)
+    _upload(f"{path}/attachments", image_bytes(color=(1, 2, 3)))
+    (row,) = _rows(session)
+    # Uploaded a while ago and no longer in the note: waiting to be deleted.
+    row.created_at = datetime.now(UTC) - timedelta(hours=2)
+    row.detached_at = datetime.now(UTC) - timedelta(hours=1)
+    session.add(row)
+    session.commit()
+
+    response = _upload(f"{path}/attachments", image_bytes(color=(9, 9, 9)))
+
+    assert response.status_code == 201
+
+
 def test_quota_counts_all_of_the_users_attachments(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -539,3 +573,34 @@ async def test_daily_job_sweeps_with_the_configured_storage(
 
     assert _rows(session) == []
     assert storage.objects == {}
+
+
+def test_sweep_keeps_an_image_brought_back_after_it_was_listed(
+    session: Session, storage: InMemoryAttachmentStorage, monkeypatch
+) -> None:
+    path, _ = _project_path(session)
+    attachment_id = _upload(f"{path}/attachments").json()["id"]
+    (row,) = _rows(session)
+    row.detached_at = datetime.now(UTC) - timedelta(days=8)
+    session.add(row)
+    session.commit()
+    rollback = session.rollback
+    saved = False
+
+    def save_note_then_rollback() -> None:
+        # The sweep has listed its candidates; before it gets to this one, the
+        # user puts the image back in the note.
+        nonlocal saved
+        rollback()
+        if not saved:
+            saved = True
+            _save_note(path, _reference(attachment_id))
+
+    monkeypatch.setattr(session, "rollback", save_note_then_rollback)
+
+    assert _sweep(session, storage) == 0
+
+    monkeypatch.undo()
+    (row,) = _rows(session)
+    assert row.detached_at is None
+    assert len(storage.objects) == 2
