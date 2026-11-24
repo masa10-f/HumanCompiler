@@ -121,13 +121,42 @@ describe('LogFormDialog', () => {
     expect(screen.getByText('現在の見積: 4h')).toBeInTheDocument();
   });
 
+  it('shows why a remaining time above what an estimate holds is not recorded', () => {
+    openDialog();
+    fireEvent.change(screen.getByLabelText('残りの見込み（時間・任意）'), {
+      target: { value: '1500' },
+    });
+
+    expect(screen.getByText('残り時間は999.99時間以内で入力してください')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '記録' })).toBeDisabled();
+    // Even a submit that does not go through the button records nothing.
+    fireEvent.click(screen.getByRole('button', { name: '記録' }));
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('records a completion whatever was left in the remaining time', async () => {
+    openDialog();
+    const remaining = screen.getByLabelText('残りの見込み（時間・任意）');
+    fireEvent.change(remaining, { target: { value: '1500' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'このタスクを完了にする' }));
+    expect(remaining).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '記録' }));
+
+    // The disabled field's value is neither checked nor sent.
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    expect(mockCreate.mock.calls[0][0]).toMatchObject({
+      remaining_estimate_hours: undefined,
+      complete_task: true,
+    });
+  });
+
   it('does not record a negative remaining time', async () => {
     openDialog();
     const remaining = screen.getByLabelText('残りの見込み（時間・任意）');
     fireEvent.change(remaining, { target: { value: '-1' } });
     fireEvent.click(screen.getByRole('button', { name: '記録' }));
 
-    // The field's own minimum stops the form before it is sent.
+    expect(screen.getByText('残り時間は0以上で入力してください')).toBeInTheDocument();
     expect(remaining).toBeInvalid();
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(mockCreate).not.toHaveBeenCalled();

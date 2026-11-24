@@ -31,10 +31,8 @@ import type { LogCreate } from "@/types/log";
 import { sanitizeInput, isInputSafe } from "@/lib/sanitize";
 import { queryKeys } from "@/lib/query-keys";
 import {
-  MAX_REMAINING_HOURS,
-  REMAINING_HOURS_TOO_LARGE,
-  REMAINING_HOURS_TOO_SMALL,
   RemainingEstimateField,
+  remainingHoursError,
 } from "@/components/work-records/remaining-estimate-field";
 
 const logFormSchema = z.object({
@@ -43,12 +41,9 @@ const logFormSchema = z.object({
     (value) => !value || isInputSafe(value),
     { message: "コメントに不正な内容が含まれています" }
   ),
-  // What is left after this record; the task's estimate follows it.
-  remaining_hours: z
-    .number()
-    .min(0, REMAINING_HOURS_TOO_SMALL)
-    .max(MAX_REMAINING_HOURS, REMAINING_HOURS_TOO_LARGE)
-    .optional(),
+  // What is left after this record; the task's estimate follows it. Its range
+  // is checked beside the field (see `remainingError`), as the checkout does.
+  remaining_hours: z.number().optional(),
   complete_task: z.boolean(),
 });
 
@@ -85,6 +80,11 @@ export function LogFormDialog({ taskId, taskTitle, estimateHours, trigger }: Log
     defaultValues: EMPTY_FORM,
   });
   const completing = form.watch("complete_task");
+  // A finished task has nothing left: the field is disabled and its value is
+  // not sent, so what it holds must not keep the record from being saved.
+  const remainingError = completing
+    ? undefined
+    : remainingHoursError(form.watch("remaining_hours"));
 
   const createLogMutation = useMutation({
     mutationFn: (data: LogCreate) => logsApi.create(data),
@@ -168,14 +168,14 @@ export function LogFormDialog({ taskId, taskTitle, estimateHours, trigger }: Log
             <FormField
               control={form.control}
               name="remaining_hours"
-              render={({ field, fieldState }) => (
+              render={({ field }) => (
                 <RemainingEstimateField
                   id={remainingFieldId}
                   value={field.value}
                   onChange={field.onChange}
                   currentEstimateHours={estimateHours}
                   disabled={completing}
-                  error={fieldState.error?.message}
+                  error={remainingError}
                 />
               )}
             />
@@ -222,7 +222,10 @@ export function LogFormDialog({ taskId, taskTitle, estimateHours, trigger }: Log
               >
                 キャンセル
               </Button>
-              <Button type="submit" disabled={createLogMutation.isPending}>
+              <Button
+                type="submit"
+                disabled={createLogMutation.isPending || Boolean(remainingError)}
+              >
                 {createLogMutation.isPending ? "記録中..." : "記録"}
               </Button>
             </div>
