@@ -136,7 +136,9 @@ def notes_with_former_task_text(backup_data: dict[str, Any]) -> list[dict[str, A
 #
 # Left out on purpose, so a restore leaves them empty: agent tokens and push
 # subscriptions. They are credentials, not work: a token is issued again and a
-# browser subscribes again, and a backup file should not hold them.
+# browser subscribes again, and a backup file should not hold them. For the
+# same reason user settings are written without the OpenAI API key (see
+# ``backup_record``).
 FULL_BACKUP_MODELS: dict[str, type[SQLModel]] = {
     "users": User,
     "projects": Project,
@@ -173,6 +175,21 @@ AGENT_TOKEN_LINKS = {
     "agent_audit_logs": "token_id",
 }
 
+
+def backup_record(row: SQLModel) -> dict[str, Any]:
+    """A row as a backup file holds it.
+
+    User settings go without the OpenAI API key: it is a credential the user
+    enters again, and a backup file should not hold it, encrypted or not. AI
+    features are off without a key, as deleting the key in the app leaves them.
+    """
+    record = row.model_dump()
+    if isinstance(row, UserSettings):
+        record["openai_api_key_encrypted"] = None
+        record["ai_features_enabled"] = False
+    return record
+
+
 # What a full restore truncates by name; CASCADE reaches the rest from these.
 _TRUNCATED_TABLES = ("tasks", "goals", "projects", "users")
 
@@ -207,7 +224,8 @@ class DataBackupManager:
     def create_backup(self, backup_name: str | None = None) -> str:
         """Write every table of ``FULL_BACKUP_MODELS`` to a JSON file.
 
-        Agent tokens and push subscriptions are not written."""
+        Agent tokens, push subscriptions and the OpenAI API key in user
+        settings are not written."""
         if not backup_name:
             timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
             backup_name = f"backup_{timestamp}"
@@ -221,7 +239,7 @@ class DataBackupManager:
             with Session(engine) as session:
                 for table, model in FULL_BACKUP_MODELS.items():
                     backup_data[table] = [
-                        row.model_dump() for row in session.exec(select(model)).all()
+                        backup_record(row) for row in session.exec(select(model)).all()
                     ]
 
             total_records = {table: len(rows) for table, rows in backup_data.items()}
@@ -262,6 +280,10 @@ class DataBackupManager:
         tokens and browsers subscribe again; proposals, changes and audit
         logs come back without the link to their token. Any such table that
         held rows is named in a warning.
+
+        A backup also holds no OpenAI API key: user settings come back
+        without one and with AI features off, until the user enters the key
+        again. (A backup made before keys were left out still restores its.)
         """
         backup_file = Path(backup_path)
         if not backup_file.exists():
@@ -344,7 +366,9 @@ class DataBackupManager:
             raise SafeMigrationError(f"Backup restoration failed: {e}")
 
     def create_user_backup(self, user_id: str, backup_name: str | None = None) -> str:
-        """Create a backup of all data for a specific user"""
+        """Create a backup of all data for a specific user.
+
+        User settings are written without the OpenAI API key."""
         if not backup_name:
             timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
             backup_name = f"user_{user_id}_backup_{timestamp}"
@@ -436,7 +460,9 @@ class DataBackupManager:
                 user_settings = session.exec(
                     select(UserSettings).where(UserSettings.user_id == user_id)
                 ).all()
-                backup_data["user_settings"] = [us.model_dump() for us in user_settings]
+                backup_data["user_settings"] = [
+                    backup_record(us) for us in user_settings
+                ]
 
                 # Backup user's capacity triage data
                 triage_settings = session.exec(

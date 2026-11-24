@@ -120,6 +120,11 @@ def as_restored(
     }
     for table, column in AGENT_TOKEN_LINKS.items():
         restored[table] = [{**row, column: None} for row in rows[table]]
+    # No OpenAI API key, and so no AI features until the user enters one.
+    restored["user_settings"] = [
+        {**row, "openai_api_key_encrypted": None, "ai_features_enabled": False}
+        for row in rows["user_settings"]
+    ]
     return restored
 
 
@@ -216,7 +221,16 @@ def add_one_of_everything(engine: Engine) -> UUID:
         session.add(
             Log(id=uuid4(), task_id=tasks[0].id, actual_minutes=20, comment="By hand")
         )
-        session.add(UserSettings(id=uuid4(), user_id=user_id, created_at=CREATED))
+        session.add(
+            UserSettings(
+                id=uuid4(),
+                user_id=user_id,
+                openai_api_key_encrypted=f"encrypted-{user_id}",
+                ai_features_enabled=True,
+                week_start_day="monday",
+                created_at=CREATED,
+            )
+        )
         session.add(
             TriageCapacitySettings(id=uuid4(), user_id=user_id, created_at=CREATED)
         )
@@ -464,7 +478,14 @@ def test_credentials_are_not_in_the_backup_and_are_named_when_emptied(
     with Session(engine) as session:
         token = session.exec(select(AgentToken)).one()
         subscription = session.exec(select(PushSubscription)).one()
-    for secret in (token.token_hash, subscription.p256dh_key, subscription.endpoint):
+        settings = session.exec(select(UserSettings)).one()
+    assert settings.openai_api_key_encrypted
+    for secret in (
+        token.token_hash,
+        subscription.p256dh_key,
+        subscription.endpoint,
+        settings.openai_api_key_encrypted,
+    ):
         assert secret not in file_text
 
     with caplog.at_level(logging.WARNING, logger=safe_migration.logger.name):
@@ -477,6 +498,11 @@ def test_credentials_are_not_in_the_backup_and_are_named_when_emptied(
     # What came through the token is kept, without the link to it.
     (proposal,) = after["agent_proposals"]
     assert (proposal["token_id"], proposal["agent_name"]) == (None, "Agent")
+    # The other settings are kept; AI features wait for a new key.
+    (restored_settings,) = after["user_settings"]
+    assert restored_settings["week_start_day"] == "monday"
+    assert restored_settings["openai_api_key_encrypted"] is None
+    assert restored_settings["ai_features_enabled"] is False
 
 
 def test_every_table_is_backed_up_or_left_out_on_purpose():
