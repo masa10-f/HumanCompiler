@@ -6,6 +6,7 @@
 |---|---|
 | `humancompiler roadmap <project-id>` | Draws a project's roadmap (PNG or SVG) on your machine and prints its schedule. |
 | `humancompiler context <project\|goal> <id>` | Exports a project's or goal's notes, tasks and work history as Markdown. |
+| `humancompiler attach <project\|goal\|task> <id> <file>` | Attaches an image made on your machine to a note, as a light preview. |
 | `humancompiler setup <claude-code\|codex>` | Connects a coding agent to the HumanCompiler MCP server and adds a usage guide for it. |
 | `humancompiler doctor` | Checks Node.js, the token, the API and the token's scopes, and says how to fix problems. |
 
@@ -25,15 +26,16 @@ In HumanCompiler, create an agent token under **Settings → Agent tokens**. Put
 
 - Every command reads the token from `HUMANCOMPILER_TOKEN` only. There is no option for it on the command line (it would stay in your shell history), no `login` command and no file that stores it.
 - The same variable is used by the MCP server setup, so one token serves both.
-- Scopes are fixed when a token is created. The read presets include every scope the commands need:
+- Scopes are fixed when a token is created. The read presets include every scope the reading commands need; `attach` writes, so it needs a token from a preset that writes:
 
 | Command | Scopes |
 |---|---|
 | `roadmap` | `projects:read`, `goals:read`, `tasks:read`, `logs:read` |
-| `context` | `context:read` |
+| `context` | `context:read`; with `--with-images` also `attachments:read` |
+| `attach` | `attachments:write`; with `--append` also `notes:write` |
 | `setup`, `doctor` | none |
 
-`humancompiler doctor` shows which commands the current token can run.
+`humancompiler doctor` shows which commands the current token can run. A token created before a scope existed does not have it: create a new one.
 
 ## roadmap
 
@@ -99,9 +101,47 @@ Fetches the same Markdown document as the AI context export in the web app: the 
 | `--no-completed` | | Leaves completed goals and tasks out. |
 | `--no-work-sessions` | | Leaves work sessions out. |
 | `--no-daily-plans` | | Leaves daily plans out. |
+| `--with-images <dir>` | | Saves the images the notes refer to into `<dir>`, and points the references to the saved files. |
 | `--api-url <url>` | `$HUMANCOMPILER_API_URL`, else the hosted API | The API's base URL. |
 
 It calls `GET /api/agent/v1/context-export/{projects|goals}/{id}`.
+
+### Images in notes
+
+The document never holds image bytes. An image in a note comes as `![caption](attachment:<id>)`: what it shows, and its id.
+
+With `--with-images <dir>`, each image is saved as `<dir>/<id>.webp` and its reference becomes a path relative to the output file (to the current directory when the document goes to stdout):
+
+```bash
+npx humancompiler context project <project-id> -o context.md --with-images context-images
+```
+
+For each image the command asks the API for a short-lived download URL (`GET /api/agent/v1/attachments/{id}/url`) and fetches it without the agent token, which goes to the API only. An image that cannot be saved (deleted since, for example) keeps its `attachment:` reference and is reported on stderr; the command still succeeds.
+
+## attach
+
+```bash
+npx humancompiler attach task <task-id> loss.png --caption "Validation loss by epoch" --source "python plot_loss.py" --append
+```
+
+Puts an image made on your machine, such as a plot from an analysis, on the note of a project, goal or task, so it can be seen from any browser.
+
+- **Only a light preview is uploaded.** The image is converted here to WebP, at most 1600 px on the long edge and 300 KB (quality 80; lower quality, then a smaller size, if that is not enough), without EXIF or other metadata. HumanCompiler never gets the original.
+- **The original is recorded, not stored.** The upload carries the file's absolute path, this machine's name, its SHA-256 and the `--source` you give, so the original can be found where the data is.
+- **The caption is required.** Readers that cannot see images, such as the context export, get only the caption.
+
+It prints the image's Markdown reference, `![caption](attachment:<id>)`, to stdout and everything else to stderr. The image shows in the note once the reference is in it: `--append` adds it to the end of the note, or put it where you want with the MCP tools `append_note` and `replace_note`. Notes show images only in this form; an image at an external URL is not shown.
+
+Attaching the same image to the same note again reuses the stored one. An image whose reference is in no note is deleted after about a week.
+
+| Option | Description |
+|---|---|
+| `--caption <text>` | What the image shows (required, up to 500 characters). |
+| `--source <script>` | The script or command that made the image. |
+| `--append` | Also adds the reference to the end of the note. |
+| `--api-url <url>` | `$HUMANCOMPILER_API_URL`, else the hosted API. |
+
+It calls `POST /api/agent/v1/context-notes/{projects|goals|tasks}/{id}/attachments`, and with `--append` also `POST .../append`.
 
 ## setup
 
@@ -156,6 +196,7 @@ The guide tells the agent how to find ids with the MCP tool `find`, when to run 
 ```bash
 npx humancompiler doctor            # check everything
 npx humancompiler doctor roadmap    # check only the scopes roadmap needs
+npx humancompiler doctor attach     # fail if the token cannot attach images
 ```
 
 Checks, and prints how to fix each problem:
@@ -164,6 +205,8 @@ Checks, and prints how to fix each problem:
 - `HUMANCOMPILER_TOKEN` is set.
 - The API answers (`GET /health`, without the token).
 - The token is valid, and has the scopes each command needs (`GET /api/agent/v1/me`).
+
+A read-only token cannot attach images. Without command names, that is reported but is not a failure, and so are the scopes only an option needs (`context --with-images`, `attach --append`). Name `attach` to make its scope a check.
 
 It also shows whether `setup` has been run for this directory and for Codex. It exits with 1 if any check fails.
 
@@ -174,6 +217,7 @@ It also shows whether `setup` has been run for this directory and for Codex. It 
 1. Find the project's id with the HumanCompiler MCP tool `find`.
 2. Run `npx humancompiler@0 roadmap <project-id> --goals-per-page 20` and read the printed summary first. Open the images only when the picture itself helps.
 3. For background, run `npx humancompiler@0 context <project|goal> <id> -o <file>.md` and read the parts you need.
+4. To show the user a figure, run `npx humancompiler@0 attach <project|goal|task> <id> <file> --caption "..." --append`.
 
 The guidance pins the major version (`@0`), so a future breaking release does not silently change what agents run.
 
@@ -184,11 +228,14 @@ The roadmap data and the context document go straight from the API to the comman
 - The token is read from `HUMANCOMPILER_TOKEN` only, and never written to a file by this package.
 - The API URL must be https, or http to localhost.
 - Redirects are not followed, so the token is never sent to another host.
+- Image downloads (`context --with-images`) use short-lived URLs from the API and are fetched without the token, over https only.
+- `attach` sends the preview, the caption, and where the original is: its absolute path, this machine's name and its SHA-256. The original file is not sent.
 
 ## Requirements
 
 - Node.js 22.4 or later. Earlier 22.x releases lack the `util.parseArgs` feature the `--no-...` options need, and Node 20 is past its end of life.
 - The drawing uses [resvg](https://github.com/yisibl/resvg-js), which ships prebuilt binaries for common platforms. Only `roadmap` loads it.
+- The image conversion uses [sharp](https://sharp.pixelplumbing.com/), which also ships prebuilt binaries. Only `attach` loads it.
 - Noto Sans JP (Regular and Bold) is included.
 
 ## Development

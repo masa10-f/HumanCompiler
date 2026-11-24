@@ -1,8 +1,8 @@
 # CLI 設計（`humancompiler`）
 
 作成日: 2026-11-07（ロードマップ CLI として作成。同日、CLI 全体の設計に更新）
-状態: 実装済み（`roadmap` は #435、ほかのサブコマンドと npm 公開の自動化はこの PR）
-関連: [エージェントの書き込みと MCP サーバー設計](agent-mcp.md)、タイムラインの描画の作り直し（#431）、容量設定からの週の作業時間（#433）
+状態: 実装済み（`roadmap` は #435、ほかのサブコマンドと npm 公開の自動化はこの PR。`attach` と `context --with-images` は 2026-11-24 に #471 で追加）
+関連: [エージェントの書き込みと MCP サーバー設計](agent-mcp.md)、タイムラインの描画の作り直し（#431）、容量設定からの週の作業時間（#433）、ノートの画像（#408、#471）
 
 ## 概要
 
@@ -12,6 +12,7 @@
 
 - **ロードマップ（`roadmap`）：** タイムライン画面のロードマップ（#431）を、手元で描画して要約を出す。
 - **コンテキスト（`context`）：** プロジェクトやゴールのノート、タスク、作業履歴を、1つの Markdown にまとめて取得する。
+- **画像の添付（`attach`）：** 手元で作った図（解析結果のプロットなど）を縮小・変換して、プロジェクト・ゴール・タスクのノートに添付する。
 - **接続の設定（`setup`）：** エージェントを HumanCompiler の MCP サーバーにつなぐ設定と、エージェント向けの使い方の案内を書き込む。
 - **診断（`doctor`）：** 動かないときに、何が足りないかと直し方を示す。
 
@@ -27,6 +28,7 @@
 | サブコマンド（2026-11-07） | `roadmap`、`setup`、`doctor`、`context` の4つ |
 | 公開（2026-11-07） | npm に公開する。GitHub Actions と npm の Trusted Publishing で自動化する |
 | 認証（2026-11-07） | MCP と同じエージェントトークン。環境変数 `HUMANCOMPILER_TOKEN` だけから読む。コマンドラインの引数では受け取らない。`login` コマンドも、トークンを保存する設定ファイルも作らない |
+| 画像の添付（2026-11-24、#471） | MCP ではなく CLI に置く。ローカルのファイルを読めるのは CLI なので。縮小・変換は手元で行い、原本は送らない。キャプションは必須 |
 | MCP の案内（2026-11-07） | `INSTRUCTIONS` と設定画面の使い方ガイドに、`npx humancompiler roadmap` と `context` を載せる。初回の公開の前にマージされるが、この PR に含める |
 
 ### MCP で画像を返さない理由
@@ -53,6 +55,11 @@ humancompiler（利用者の手元、packages/cli）
   │          resvg で PNG（Noto Sans JP を同梱）、標準出力に要約
   ├ context  GET /api/agent/v1/context-export/{projects|goals}/{id} ──▶ API
   │          Markdown をファイルか標準出力へ
+  │          --with-images: GET /api/agent/v1/attachments/{id}/url ──▶ API
+  │                         署名付き URL から画像を取得（トークンを付けない）──▶ ストレージ
+  ├ attach   sharp で WebP のプレビューに変換（長辺 1600 px、300 KB 以下）
+  │          POST /api/agent/v1/context-notes/{projects|goals|tasks}/{id}/attachments ──▶ API
+  │          --append: POST .../append ──▶ API
   ├ doctor   GET /health、GET /api/agent/v1/me ──▶ API
   └ setup    .mcp.json / ~/.codex/config.toml と CLAUDE.md / AGENTS.md を書く（通信しない）
 ```
@@ -70,8 +77,10 @@ humancompiler（利用者の手元、packages/cli）
 | `src/args.ts` | 数値オプションの検査、Node のバージョンの確認、使い方の誤りの扱い |
 | `src/commands/*.ts` | 各サブコマンド |
 | `src/render.ts`、`src/summary.ts` | `roadmap` の描画と要約 |
+| `src/preview.ts` | `attach` の縮小・変換（sharp） |
+| `src/images.ts` | `context --with-images` の画像の保存と、参照の書き換え |
 
-- **サブコマンドは必要なときに読み込む。** `roadmap` は描画のコードと、ネイティブの `@resvg/resvg-js` を読み込む。動的 `import()` にしたので、ほかのサブコマンドはこれらを読み込まない。resvg のバイナリが無い環境でも、`setup` と `doctor` は動く。
+- **サブコマンドは必要なときに読み込む。** `roadmap` は描画のコードと、ネイティブの `@resvg/resvg-js` を読み込む。動的 `import()` にしたので、ほかのサブコマンドはこれらを読み込まない。resvg のバイナリが無い環境でも、`setup` と `doctor` は動く。`attach` のネイティブの `sharp` も同じで、`src/preview.ts` の中で初めて読み込む。
 - **エラー：** 使い方の誤りは終了コード 2、それ以外の失敗は 1。メッセージの頭に `humancompiler <command>:` を付ける。
 
 ---
@@ -86,17 +95,21 @@ humancompiler（利用者の手元、packages/cli）
 - **エラーメッセージ：** HTTP の状態ごとに、直し方の分かる文にする。
   - 401：トークンが拒否された。`HUMANCOMPILER_TOKEN` を確かめる。
   - 403：API の `detail` に続けて、そのサブコマンドに必要なスコープを示す。
-  - 404：何が見つからないか（`Project <id>`、`Goal <id>`）。
+  - 404：何が見つからないか（`Project <id>`、`Goal <id>`、`Task <id>`、`Image <id>`）。
+  - 413：アップロードが大きすぎる。
   - 422：FastAPI の検証エラーの一覧を `項目: 内容` の形にまとめる（例：ID が UUID でない）。
   - 429：時間をおいて試す。
   - 通信の失敗：`fetch failed` ではなく、原因（`ENOTFOUND`、`ECONNREFUSED` など）を出す。
-- **サブコマンドごとの必要なスコープ**（`COMMAND_SCOPES`）。403 のメッセージと `doctor` が使う。
+- **サブコマンドごとの必要なスコープ**（`COMMAND_SCOPES`）と、**オプションが追加で必要とするスコープ**（`OPTION_SCOPES`）。403 のメッセージと `doctor` が使う。
 
-| サブコマンド | スコープ |
-|---|---|
-| `roadmap` | `projects:read`、`goals:read`、`tasks:read`、`logs:read` |
-| `context` | `context:read` |
-| `setup`、`doctor` | なし |
+| サブコマンド | スコープ | オプションで追加 |
+|---|---|---|
+| `roadmap` | `projects:read`、`goals:read`、`tasks:read`、`logs:read` | |
+| `context` | `context:read` | `--with-images`：`attachments:read` |
+| `attach` | `attachments:write` | `--append`：`notes:write` |
+| `setup`、`doctor` | なし | |
+
+- **POST：** `agentPost` が JSON かフォーム（multipart）を送る。GET と同じく、リダイレクトを辿らず、同じエラーメッセージにする。
 
 ---
 
@@ -169,6 +182,45 @@ npx humancompiler context <project|goal> <id> [-o file.md]
 
 - **出力：** `-o` があればファイルに書き、標準出力には行数とバイト数だけを出す。エージェントが、必要な部分だけをファイルから読めるようにするため。`-o` が無ければ標準出力に Markdown を出す。
 
+### ノートの画像（`--with-images <dir>`、#471）
+
+- **既定では画像を出さない。** ノートの画像は `![キャプション](attachment:<id>)` という参照で出る。Markdown に画像のバイト列は入らない。
+- **`--with-images <dir>`：** 参照されている画像を `<dir>/<id>.webp` に保存し、参照の先をそのファイルへの相対パスに書き換える。
+  - 相対パスの基準は、`-o` のファイルのあるディレクトリ。標準出力に出すときは、今のディレクトリ。
+  - 空白や括弧を含むパスは `<...>` で囲む。
+- **取得の手順：** 画像ごとに `GET /api/agent/v1/attachments/{id}/url?variant=full`（スコープは `attachments:read`）で、短い時間だけ有効な署名付き URL を得る。その URL を、トークンを付けずに取得する。
+  - URL は https に限る（http は localhost だけ）。リダイレクトは辿らない。5MB を超える応答は保存しない（保存されているプレビューは 300 KB 以下）。
+  - 同じ画像が何度参照されていても、取得は1回。
+- **失敗の扱い：** 保存できなかった画像（削除済みなど）は、参照を `attachment:` のまま残し、標準エラーに警告を出す。コマンドは成功で終わる。
+  - 401 と 403 だけは、そこで止める。どの画像も同じ理由で失敗するため。
+- **表示：** 保存した枚数と警告は、標準エラーに出す。標準出力は Markdown そのものかもしれないため。
+
+---
+
+## `attach`（#471）
+
+```bash
+npx humancompiler attach <project|goal|task> <id> <file> --caption "..." [--source <script>] [--append]
+```
+
+エージェントが手元で作った図を、ノートから見られるようにする。今まではノートにローカルのファイルパスを書くしかなく、別の端末やブラウザからは開けなかった。
+
+- **エンドポイント：** `POST /api/agent/v1/context-notes/{projects|goals|tasks}/{id}/attachments`（multipart、スコープは `attachments:write`）。
+  - 送る項目は `file`（`preview.webp`、`image/webp`）、`caption`、`source`（JSON の文字列）。
+  - 応答は添付のメタデータ。`markdown` が、ノートに置く参照 `![キャプション](attachment:<id>)`。同じ内容がそのノートに添付済みなら、`reused` が true になる。
+- **縮小と変換（`src/preview.ts`）：** sharp で、EXIF の向きを反映し、長辺 1600 px に収め（拡大はしない）、WebP の品質 80 にする。メタデータは付けない。
+  - 300 KB を超えたら、品質を 70、60、50 と下げる。それでも超えたら、品質 50 のまま長辺を 0.85 倍ずつ縮める。長辺 200 px でも収まらなければ失敗にする。
+  - 上限は API の検証と同じ値（#471）。API でも検証するので、CLI の値は送る前に収めるためのもの。
+  - アニメーションは最初のコマだけを使う。
+- **原本は送らない。** 代わりに来歴を `source` として送る：`path`（ファイルの絶対パス）、`script`（`--source` の値）、`host`（`os.hostname()`）、`sha256`（原本の SHA-256）。
+  - 絶対パスが 1000 文字を超えるときは、切り詰めずに `path` を省く。
+- **キャプションは必須。** 画像を読めない読み手（テキストだけのコンテキスト書き出し、エージェント）は、キャプションだけを読むため。無いか空白だけなら、使い方の誤り（終了コード 2）で、API を呼ばない。500 文字まで。
+- **出力：** 標準出力には参照の1行だけを出す。エージェントがそのまま受け取れるようにするため。元のサイズとプレビューのサイズ、画素数、再利用したかどうか、追記したかどうかは、標準エラーに出す。
+- **`--append`：** アップロードのあと、参照を既存の `POST .../append`（スコープは `notes:write`）でノートの末尾に追記する。
+  - 追記だけが失敗したときは、画像は添付済みであることと、参照を手でノートに置くことを伝えて、終了コード 1 にする。参照は標準出力に出ている。
+  - `--append` を付けないときは、エージェントが MCP の `append_note` や `replace_note` で、参照を好きな位置に置く。
+- **トークンを先に確かめる。** トークンが無ければ、ファイルを読む前に止まる。
+
 ---
 
 ## `setup`
@@ -224,6 +276,8 @@ npx humancompiler setup codex
 - MCP の `find` で、プロジェクトやゴールの ID を調べる。
 - `npx humancompiler roadmap <project-id> --goals-per-page 20` を実行し、まず要約を読む。図は、ユーザーに見せるときなど、必要なときだけ開く。
 - `context` の使いどころ：プロジェクトやゴールの作業を始める前の背景の把握や、報告を書くとき。`-o` でファイルに書き、必要な部分だけを読む。ファイルはコミットしない。
+- 図をノートに載せるときは `npx humancompiler attach ... --caption "..." --append` を使う。原本ではなく小さいプレビューが送られること。ノートが表示する画像は `![caption](attachment:<id>)` の形だけで、外部の URL やローカルのパスの画像は表示されないこと。キャプションは、画像を見られない読み手に向けて書くこと。
+- ノートを読むとき、画像はキャプションと ID だけで出る。画像を見るには `context` に `--with-images <dir>` を付ける。
 - コマンドが失敗したら `npx humancompiler doctor` を実行する。
 
 ---
@@ -231,7 +285,7 @@ npx humancompiler setup codex
 ## `doctor`
 
 ```bash
-npx humancompiler doctor [roadmap|context ...] [--api-url <url>]
+npx humancompiler doctor [roadmap|context|attach ...] [--api-url <url>]
 ```
 
 | 確かめること | 方法 | 失敗したときの直し方の例 |
@@ -246,6 +300,8 @@ npx humancompiler doctor [roadmap|context ...] [--api-url <url>]
 - 届くかどうかの確認にトークンを付けないのは、トークンが無効なときに、API の IP ごとの認証失敗の上限に数えられる回数を、`/me` の1回だけにするため。
 - **終了コード：** 1つでも失敗があれば 1。
 - **サブコマンドを絞る：** `doctor roadmap` のように名前を付けると、そのスコープだけを確かめる。`roadmap` だけに使うトークンで、`context:read` が無いことを失敗にしないため。
+- **書き込みのサブコマンド（`attach`）：** 名前を付けずに実行したときは、`attachments:write` が無くても失敗にせず、`[info]` で「このトークンでは使えない」と示す。読み取り専用のトークンは意図して選ぶものなので、それだけで `doctor` を失敗にしない。`doctor attach` と名前を付けたときは失敗にする。
+- **オプションだけが必要とするスコープ**（`context --with-images` の `attachments:read`、`attach --append` の `notes:write`）：無くても失敗にせず、`[info]` で示す。そのサブコマンド自体が使えないときは出さない。
 - **Node が古いとき：** ほかのサブコマンドは起動時に止まるが、`doctor` は止まらず、確かめた結果の1つとして示す。
 - **参考の表示：** このディレクトリの `.mcp.json` と Codex の `config.toml` に、`humancompiler` のサーバーがあるかを `[info]` で出す。終了コードには影響しない。
 
@@ -255,7 +311,8 @@ npx humancompiler doctor [roadmap|context ...] [--api-url <url>]
 
 - **名前：** `humancompiler`（スコープなし）。コマンドも `humancompiler`。`humancompiler-roadmap` は公開する前に名前を変えたので、移行は要らない。
 - **中身：** 束ねた `dist/cli.js`（約 310KB）、Noto Sans JP の Regular と Bold（OFL）、AGPL のライセンス文。圧縮で 6.7MB、展開で 11.8MB。
-- **依存：** 実行時の依存は `@resvg/resvg-js`（ネイティブのバイナリ）だけ。React、react-dom、date-fns は束ねる。
+- **依存：** 実行時の依存は `@resvg/resvg-js` と `sharp`（どちらもネイティブのバイナリで、束ねずに `external` にする）。React、react-dom、date-fns は束ねる。
+  - `sharp` は 0.2.0 で `attach` のために足した。バージョンは Web（Next.js）が使っているものと同じ `0.35.5` に固定した。インストール時に、利用者の環境に合う libvips のバイナリ（linux-x64 で約 19MB）が入る。
 - **ビルド：** `scripts/build.mjs` が esbuild で束ねる。
   - パッケージの `tsconfig.json` を強制し、`@/*` → `../../apps/web/src/*` の別名と `jsx: react-jsx` を Web のファイルにも当てる。
   - `'use client'` の警告は `logOverride` で抑える。
@@ -322,8 +379,9 @@ Trusted Publisher は、npm の**既存のパッケージ**の設定画面で登
 - **CLI（`node:test`、`packages/cli/test/*.test.mjs`）：** ビルドした `dist/cli.js` を子プロセスで実際に起動して確かめる。トークン、API の URL、`CODEX_HOME` は空にし、HOME は一時ディレクトリにする。本物の API や `~/.codex` には触らない。
   - **入口（`cli.test.mjs`）：** 全体と各サブコマンドの `--help`、`help <command>`、`--version`、引数なし、知らないサブコマンド、エラーの頭のコマンド名、パッケージ名・`bin`・`repository.url`。
   - **`roadmap`（`roadmap.test.mjs`）：** ファイルから描く（PNG と Markdown、JSON、`--weekly-hours`、容量が無いときの仮の値、ページ分け、SVG と題のエスケープ、`--no-image`、`--hide-completed`、不正な引数と小数の `--width`）。模擬 API から取得する（トークンとパス、401・403・404、JSON でない応答、プロキシのエラー、トークンが無いとき、http の外部ホストを拒む）。古い Node で止まる。
-  - **`context`（`context.test.mjs`）：** 標準出力とファイル、クエリパラメータ、403・404・422・401 のメッセージ、引数の誤り（API を呼ばない）、トークンが無いとき、http の外部ホストを拒む。
-  - **`doctor`（`doctor.test.mjs`）：** すべて揃っていれば 0、スコープの不足、サブコマンドで絞る、無効なトークン、429 の待ち時間、トークンが無いとき（`/me` を呼ばない）、API の 503、届かない API、http の外部ホスト、古い Node、`setup` の状態の表示。
+  - **`context`（`context.test.mjs`）：** 標準出力とファイル、クエリパラメータ、403・404・422・401 のメッセージ、引数の誤り（API を呼ばない）、トークンが無いとき、http の外部ホストを拒む。`--with-images`：保存と参照の書き換え（出力ファイルからの相対パス、空白を含むパス、同じ画像の重複）、削除済みの画像と https でない URL は参照を残して警告、ストレージにトークンを送らないこと、画像が無いときはディレクトリを作らないこと、スコープが無ければ止まること。
+  - **`attach`（`attach.test.mjs`）：** 画像はテストの中で sharp で作り、模擬 API が受け取ったプレビューを sharp で読み直す。multipart の項目（`file`、`caption`、`source`）と標準出力の参照、圧縮の効かない大きい画像（乱数）が 300 KB・1600 px に収まること、横長の画像と透過、EXIF の向きの反映とメタデータの除去、`--append`、追記だけが失敗したとき、再利用、401・403・404・413・422 のメッセージ、キャプションが無い・長いなどの引数の誤り（API を呼ばない）、読めないファイルと画像でないファイル、トークンが無いとき、http の外部ホストを拒む。
+  - **`doctor`（`doctor.test.mjs`）：** すべて揃っていれば 0、スコープの不足、サブコマンドで絞る、読み取り専用のトークンで `attach` が失敗にならないこと、`doctor attach` では失敗になること、オプションのスコープの表示、無効なトークン、429 の待ち時間、トークンが無いとき（`/me` を呼ばない）、API の 503、届かない API、http の外部ホスト、古い Node、`setup` の状態の表示。
   - **`setup`（`setup.test.mjs`）：** 新しく作る、2回目は何も変えない、既存のファイルへのマージ（ほかのサーバー、字下げ、文章）、違う内容は `--force` が要り何も書かない、案内の更新、壊れた JSON、`--no-guide`・`--guide-file`・`--dir`・`--api-url`、`HUMANCOMPILER_API_URL` を見ないこと、Codex の作成、`CODEX_HOME`、TOML のコメントやほかの表を残すこと、同じ意味の既存の表、`--force` で他の設定を残すこと、編集しない形の検出、`AGENTS.md` を両方で使っても重複しないこと。どのテストでもトークンの値がファイルに出ないことを確かめる。
 - **CI：** `.github/workflows/cli.yml`。`packages/cli` と、Web のロードマップのコードが変わったときに、型チェックとテストを走らせる。
 
