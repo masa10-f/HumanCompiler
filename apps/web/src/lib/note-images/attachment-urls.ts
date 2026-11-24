@@ -48,6 +48,8 @@ export class AttachmentUrlResolver {
   private readonly cache = new Map<string, CacheEntry>();
   private readonly waiting = new Map<string, Waiter[]>();
   private timer: ReturnType<typeof setTimeout> | null = null;
+  // Raised by clear(): an answer asked for before it is not kept.
+  private generation = 0;
 
   constructor(
     private readonly fetchUrls: FetchAttachmentUrls,
@@ -76,13 +78,20 @@ export class AttachmentUrlResolver {
     });
   }
 
-  /** Forget every URL, e.g. when another user signs in. */
+  /**
+   * Forget every URL. Called when the signed-in user changes: a URL opens
+   * its image for anyone who has it, so one user's URLs must not be handed
+   * to the next user of the same tab. Answers still on their way are given
+   * to those who asked and then dropped.
+   */
   clear(): void {
+    this.generation += 1;
     this.cache.clear();
   }
 
   private async flush(): Promise<void> {
     this.timer = null;
+    const generation = this.generation;
     const batch = new Map(this.waiting);
     this.waiting.clear();
     const ids = [...batch.keys()];
@@ -105,10 +114,12 @@ export class AttachmentUrlResolver {
                 height: item.height,
               }
             : null;
-          this.cache.set(id, {
-            value,
-            until: value ? until : this.now() + MISSING_TTL_MS,
-          });
+          if (generation === this.generation) {
+            this.cache.set(id, {
+              value,
+              until: value ? until : this.now() + MISSING_TTL_MS,
+            });
+          }
           batch.get(id)?.forEach((waiter) => waiter.resolve(value));
         }
       } catch (error) {

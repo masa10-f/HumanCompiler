@@ -144,6 +144,38 @@ describe('AttachmentUrlResolver', () => {
     expect(await resolve(A)).not.toBeNull();
   });
 
+  it('does not keep an answer that arrives after clear', async () => {
+    const { fetchUrls, resolver, resolve } = setup();
+    let answer: (response: NoteAttachmentUrlsResponse) => void = () => {};
+    fetchUrls.mockImplementationOnce(
+      () => new Promise<NoteAttachmentUrlsResponse>((done) => (answer = done))
+    );
+    const pending = resolver.resolve(A);
+    await jest.advanceTimersByTimeAsync(25);
+
+    // The user signs out while the request is on its way.
+    resolver.clear();
+    answer({
+      items: [
+        {
+          id: A,
+          url: 'https://storage.test/previous-user/preview.webp',
+          thumb_url: 'https://storage.test/previous-user/thumb.webp',
+          width: 10,
+          height: 10,
+          caption: '',
+        },
+      ],
+      expires_at: new Date(START + TEN_MINUTES).toISOString(),
+    });
+    expect((await pending)?.url).toContain('previous-user');
+
+    // The next user is asked for again, not served the earlier answer.
+    const next = await resolve(A);
+    expect(fetchUrls).toHaveBeenCalledTimes(2);
+    expect(next?.url).not.toContain('previous-user');
+  });
+
   it('forgets everything on clear', async () => {
     const { fetchUrls, resolver, resolve } = setup();
     await resolve(A);

@@ -176,7 +176,9 @@ def create_attachment(
     stored_keys: list[str] = []
     try:
         # The lock makes uploads to one note run one after the other, so the
-        # checks below hold when the row is inserted.
+        # same-image check and the per-note count below hold when the row is
+        # inserted. The user's quota is not locked: uploads to different notes
+        # at the same moment can pass it together, by one image each at most.
         note = proposal_service.lock_note(session, target)
         if note is None:
             note = proposal_service.create_note(session, user_id, target)
