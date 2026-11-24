@@ -161,7 +161,9 @@ def safe_execute(
         result = operation()
         session.commit()
         return result
-    except HumanCompilerException:
+    except (HumanCompilerException, HTTPException):
+        # A response the operation chose (a 400 for a value out of range, say)
+        # is not a failed database operation: undo the work and pass it on.
         if rollback_on_error:
             session.rollback()
         raise

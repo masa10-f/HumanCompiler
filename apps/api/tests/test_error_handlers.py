@@ -1,4 +1,6 @@
 import json
+import logging
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import HTTPException, status
@@ -9,6 +11,7 @@ from humancompiler_api.common.error_handlers import (
     ResourceNotFoundError,
     ServiceError,
     ValidationError,
+    safe_execute,
     service_exception_handler,
 )
 from humancompiler_api.config import settings
@@ -203,3 +206,33 @@ async def test_cors_middleware_hides_unexpected_error_details_in_production(
         "detail": "Internal server error",
         "error_code": "INTERNAL_ERROR",
     }
+
+
+def test_safe_execute_passes_on_a_response_the_operation_chose(caplog):
+    session = MagicMock()
+
+    def refuse():
+        raise HTTPException(status_code=400, detail="Out of range")
+
+    with caplog.at_level(logging.ERROR), pytest.raises(HTTPException) as caught:
+        safe_execute(session, refuse)
+
+    assert caught.value.status_code == 400
+    assert caught.value.detail == "Out of range"
+    session.rollback.assert_called_once()
+    session.commit.assert_not_called()
+    # A refused request is not a failed database operation.
+    assert caplog.records == []
+
+
+def test_safe_execute_reports_an_unexpected_failure(caplog):
+    session = MagicMock()
+
+    def fail():
+        raise RuntimeError("connection lost")
+
+    with caplog.at_level(logging.ERROR), pytest.raises(ServiceError):
+        safe_execute(session, fail)
+
+    session.rollback.assert_called_once()
+    assert [record.levelname for record in caplog.records] == ["ERROR"]

@@ -164,6 +164,45 @@ def test_workspace_search_matches_note_text_not_markup(
     assert found("placeholder") == 0
 
 
+def test_workspace_search_takes_wildcard_characters_as_written(
+    session: Session, test_user_id: str
+):
+    service, task_id = _create(
+        session, test_user_id, title="Budget", note="50% of plan_a, see docs/a"
+    )
+    goal_id = session.get(Task, task_id).goal_id
+    service.create_task(
+        session,
+        TaskCreate(
+            goal_id=goal_id,
+            title="Plan B",
+            estimate_hours=Decimal("2"),
+            note="500 of planXa",
+        ),
+        test_user_id,
+    )
+
+    def found(search: str) -> list[str]:
+        rows, total = service.get_workspace_tasks(session, test_user_id, search=search)
+        counts = service.get_workspace_summary_counts(
+            session, test_user_id, search=search
+        )
+        assert counts["total"] == total == len(rows)
+        return sorted(row[0].title for row in rows)
+
+    # "%" and "_" are the characters themselves, not "anything" and "any one".
+    assert found("%") == ["Budget"]
+    assert found("50%") == ["Budget"]
+    assert found("plan_a") == ["Budget"]
+    assert found("5_%") == []
+    assert found("_") == ["Budget"]
+    # The character the pattern is escaped with is one too.
+    assert found("docs/a") == ["Budget"]
+    assert found("/") == ["Budget"]
+    # A plain word still finds both, whatever its case.
+    assert found("PLAN") == ["Budget", "Plan B"]
+
+
 def test_converting_a_quick_task_moves_its_description_to_the_note(
     session: Session, test_user_id: str
 ):
