@@ -289,27 +289,41 @@ def test_same_image_twice_and_usage(engine: Engine) -> None:
     assert [item.id for item in urls.items] == [first]
 
 
-def test_full_backup_carries_the_records_of_the_images(
+def test_full_backup_and_restore_keep_the_images(
     engine: Engine, monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     monkeypatch.setattr(safe_migration.db, "get_engine", lambda: engine)
     storage = InMemoryAttachmentStorage()
     user_id, project_id = _project(engine)
     attachment_id = _attach(engine, storage, user_id, project_id)
-    (row,) = _rows(engine)
+    reference = f'<img data-attachment-id="{attachment_id}" alt="図1">'
+    _save(engine, user_id, project_id, reference)
+    (before,) = _rows(engine)
+    manager = DataBackupManager(str(tmp_path))
 
-    backup_path = DataBackupManager(str(tmp_path)).create_backup("with-images")
-
+    backup_path = manager.create_backup("with-images")
     backup = json.loads(Path(backup_path).read_text(encoding="utf-8"))
+    # The restore empties every table that references users, attachments too.
+    manager.restore_backup(backup_path)
+
+    # The backup holds the keys of the files, which stay in the bucket.
     (listed,) = backup["note_attachments"]
-    assert listed["id"] == str(attachment_id)
-    # The keys of the files, which stay in the bucket; never their bytes.
-    assert listed["object_key"] == row.object_key
-    assert listed["thumb_object_key"] == row.thumb_object_key
+    assert listed["object_key"] == before.object_key
     assert backup["metadata"]["total_records"]["note_attachments"] == 1
-    # What a restore reads each record with.
-    restored = safe_migration.backup_row(NoteAttachment, listed)
-    assert restored.model_dump() == row.model_dump()
+    (after,) = _rows(engine)
+    assert after.model_dump() == before.model_dump()
+    with Session(engine) as session:
+        note = session.exec(select(ContextNote)).one()
+        assert note.content == reference
+        assert after.note_id == note.id
+        # The files were never touched, so the image still opens, and the
+        # cleanup still knows it is in use.
+        urls = attachment_service.signed_urls(
+            session, storage, user_id, [attachment_id]
+        )
+        assert len(urls.items) == 1
+        assert attachment_service.sweep_attachments(session, storage) == 0
+    assert len(storage.objects) == 2
 
 
 def test_user_backup_lists_the_images_and_import_leaves_them_out(
