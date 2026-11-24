@@ -69,6 +69,9 @@ import type { SortOptions } from "@/types/sort";
 import type {
   ContextNote,
   ContextNoteUpdate,
+  NoteAttachment,
+  NoteAttachmentTarget,
+  NoteAttachmentUrlsResponse,
   TaskNoteMarkdown,
 } from "@/types/context-note";
 import type {
@@ -248,7 +251,7 @@ class ApiClient {
     return url;
   }
 
-  private async getAuthHeaders(): Promise<HeadersInit> {
+  private async getAuthHeaders(): Promise<Record<string, string>> {
     safeLog("debug", "🔍 [ApiClient] Getting Supabase session...");
 
     // Try to refresh the session first
@@ -314,6 +317,10 @@ class ApiClient {
       safeLog("debug", "🔍 [ApiClient] Getting auth headers...");
       const headers = await this.getAuthHeaders();
       safeLog("debug", "✅ [ApiClient] Auth headers obtained");
+      if (fetchOptions.body instanceof FormData) {
+        // The browser sets the multipart boundary itself.
+        delete headers["Content-Type"];
+      }
 
       // Use enhanced fetch with fallback
       const response = await fetchWithFallback(endpoint, {
@@ -1558,6 +1565,40 @@ class ApiClient {
   // === Context Export API methods ===
 
   /**
+   * Attaches an image to the note of a project, goal or task.
+   *
+   * The image must already be shrunk (see `prepareNoteImage`): the API accepts
+   * PNG, JPEG or WebP of at most 300 KB and 1600 px. The note is not changed;
+   * the editor puts the returned id in it.
+   */
+  async uploadNoteAttachment(
+    target: NoteAttachmentTarget,
+    image: Blob,
+    caption: string,
+  ): Promise<NoteAttachment> {
+    const form = new FormData();
+    form.set("file", image, "image");
+    form.set("caption", caption);
+    return this.request<NoteAttachment>(
+      `/api/notes/${target.type}s/${target.id}/attachments`,
+      { method: "POST", body: form },
+    );
+  }
+
+  /**
+   * Signed URLs for the images a note refers to. Ids that are not the user's
+   * own attachments are left out of the answer.
+   */
+  async getNoteAttachmentUrls(
+    ids: string[],
+  ): Promise<NoteAttachmentUrlsResponse> {
+    return this.request<NoteAttachmentUrlsResponse>(
+      "/api/notes/attachments/urls",
+      { method: "POST", body: JSON.stringify({ ids }) },
+    );
+  }
+
+  /**
    * Exports a project's or goal's notes, tasks, and work history as Markdown
    * that can be handed to an AI assistant as context.
    *
@@ -2075,6 +2116,12 @@ export const notesApi = {
     apiClient.getTaskNoteMarkdown(taskId),
   updateTaskNote: (taskId: string, data: ContextNoteUpdate) =>
     apiClient.updateTaskNote(taskId, data),
+  uploadAttachment: (
+    target: NoteAttachmentTarget,
+    image: Blob,
+    caption: string,
+  ) => apiClient.uploadNoteAttachment(target, image, caption),
+  getAttachmentUrls: (ids: string[]) => apiClient.getNoteAttachmentUrls(ids),
 };
 
 /**

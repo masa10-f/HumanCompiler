@@ -102,6 +102,7 @@ export function NotePageLayout({
         saving={saving}
         placeholder={`Write context notes for this ${entityType}...`}
         updatedAt={note?.updated_at}
+        attachmentTarget={{ type: entityType, id: entityId }}
       />
     </div>
   );

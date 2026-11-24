@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
+//
+// This file is part of HumanCompiler.
+// For commercial licensing, see COMMERCIAL-LICENSE.md or contact masa1063fuk@gmail.com
+
+import { notesApi } from '@/lib/api';
+import { AttachmentUrlResolver } from './attachment-urls';
+
+/** The signed URLs of note images, shared by every note on the page. */
+export const noteAttachmentUrls = new AttachmentUrlResolver((ids) =>
+  notesApi.getAttachmentUrls(ids)
+);

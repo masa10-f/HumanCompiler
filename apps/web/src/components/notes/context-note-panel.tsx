@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { Edit3, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import type { NoteAttachmentTarget } from '@/types/context-note';
 import { ContextNoteEditor } from './context-note-editor';
 import { ContextNoteViewer } from './context-note-viewer';
 
@@ -19,6 +20,8 @@ interface ContextNotePanelProps {
   /** Heading and hint shown while the note is empty. */
   emptyTitle?: string;
   emptyDescription?: string;
+  /** The project, goal or task the note is on; lets the editor add images. */
+  attachmentTarget?: NoteAttachmentTarget;
 }
 
 function hasRenderableContent(content: string) {
@@ -47,6 +50,7 @@ export function ContextNotePanel({
   className,
   emptyTitle = 'No notes yet',
   emptyDescription = 'Add context when it becomes useful.',
+  attachmentTarget,
 }: ContextNotePanelProps) {
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const isCompact = variant === 'compact';
@@ -69,6 +73,7 @@ export function ContextNotePanel({
           saving={saving}
           placeholder={placeholder}
           variant={variant}
+          attachmentTarget={attachmentTarget}
         />
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-500 dark:text-gray-400">
           <div className="flex min-h-9 items-center">

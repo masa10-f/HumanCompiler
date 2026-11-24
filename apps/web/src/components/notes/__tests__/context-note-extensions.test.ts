@@ -118,4 +118,81 @@ describe('createContextNoteExtensions', () => {
     reloaded.destroy();
     editor.destroy();
   });
+
+  // What the API's note_markdown renders for
+  // "前\n\n![損失の推移](attachment:<id>)\n\n後"
+  // (apps/api tests/test_note_attachment_refs.py pins the same shape).
+  const ID = '11111111-2222-4333-8444-555555555555';
+  const AGENT_IMAGE_HTML =
+    `<p>前</p>\n<img data-attachment-id="${ID}" alt="損失の推移">\n<p>後</p>\n`;
+  const html = (content: string) => {
+    const editor = new Editor({ extensions: createContextNoteExtensions(), content });
+    const saved = editor.getHTML();
+    editor.destroy();
+    return saved;
+  };
+
+  it('loads an attached image and saves it without a URL', () => {
+    const editor = new Editor({
+      extensions: createContextNoteExtensions(),
+      content: AGENT_IMAGE_HTML,
+    });
+
+    expect(editor.getJSON()).toEqual({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: '前' }] },
+        { type: 'noteImage', attrs: { attachmentId: ID, alt: '損失の推移' } },
+        { type: 'paragraph', content: [{ type: 'text', text: '後' }] },
+      ],
+    });
+    expect(editor.getHTML()).toBe(
+      `<p>前</p><img data-attachment-id="${ID}" alt="損失の推移"><p>後</p>`
+    );
+    editor.destroy();
+  });
+
+  it('escapes the caption in the saved HTML', () => {
+    const saved = html(`<img data-attachment-id="${ID}" alt="a &quot;b&quot; &lt;c&gt; &amp; d">`);
+
+    expect(saved).toBe(
+      `<img data-attachment-id="${ID}" alt="a &quot;b&quot; <c> &amp; d">`
+    );
+    // Loading it again gives the same caption.
+    expect(html(saved)).toBe(saved);
+  });
+
+  it('puts an image written inside a sentence on its own line', () => {
+    expect(html(`<p>図 <img data-attachment-id="${ID}" alt="a"> を参照</p>`)).toBe(
+      `<p>図</p><img data-attachment-id="${ID}" alt="a"><p> を参照</p>`
+    );
+  });
+
+  it('keeps images in list items and table cells', () => {
+    const image = `<img data-attachment-id="${ID}" alt="a">`;
+
+    expect(html(`<ul><li><p>項目</p>${image}</li></ul>`)).toContain(`<p>項目</p>${image}</li>`);
+    expect(html(`<table><tbody><tr><td>${image}</td></tr></tbody></table>`)).toContain(
+      `<td>${image}</td>`
+    );
+  });
+
+  it('writes the id in lower case', () => {
+    expect(html(`<img data-attachment-id="${ID.toUpperCase()}" alt="">`)).toBe(
+      `<img data-attachment-id="${ID}" alt="">`
+    );
+  });
+
+  it('drops images that are not attachments', () => {
+    expect(html('<p>a</p><img src="https://example.com/x.png" alt="外部"><p>b</p>')).toBe(
+      '<p>a</p><p>b</p>'
+    );
+    expect(html('<p>a</p><img data-attachment-id="not-an-id" src="x"><p>b</p>')).toBe(
+      '<p>a</p><p>b</p>'
+    );
+    // A URL next to the id is never kept or loaded.
+    expect(html(`<img data-attachment-id="${ID}" src="https://example.com/x.png" alt="a">`)).toBe(
+      `<img data-attachment-id="${ID}" alt="a">`
+    );
+  });
 });
