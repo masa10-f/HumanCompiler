@@ -282,7 +282,8 @@ class DataBackupManager:
         agent tokens, push subscriptions and the OpenAI API key (with whether
         AI features are on). Rolling back a failed migration therefore revokes
         nothing. They are read and written back inside the transaction and
-        never reach a file.
+        never reach a file. A key in a file (a backup made before keys were
+        left out has one) is not read: it may since be replaced or deleted.
 
         NOT restored: credentials the database does not hold. On an empty
         database, or for a user it no longer has, agents need new tokens,
@@ -330,6 +331,17 @@ class DataBackupManager:
                 # no table yet): only what exists holds rows.
                 existing = set(inspect(connection).get_table_names())
 
+                # The lock the delete takes, taken before the reads below, so
+                # that no credential written in between is deleted unread.
+                locked = [
+                    name
+                    for name in ("users", "user_settings", *CREDENTIAL_TABLES)
+                    if name in existing
+                ]
+                session.exec(
+                    text(f"LOCK TABLE {', '.join(locked)} IN ACCESS EXCLUSIVE MODE")
+                )
+
                 # A backup has no credentials. Those in the database stay, for
                 # the users the backup brings back: read now, written back
                 # below, in this transaction only.
@@ -355,18 +367,19 @@ class DataBackupManager:
                     )
                     if api_key
                 }
+                # The key is the database's or none: never one from the file,
+                # which an older backup still holds and may since be replaced
+                # or deleted.
                 records["user_settings"] = [
                     {
                         **settings,
-                        "openai_api_key_encrypted": api_keys[str(settings["user_id"])][
-                            0
-                        ],
-                        "ai_features_enabled": api_keys[str(settings["user_id"])][1],
+                        "openai_api_key_encrypted": api_key,
+                        "ai_features_enabled": ai_features_enabled,
                     }
-                    if not settings.get("openai_api_key_encrypted")
-                    and str(settings["user_id"]) in api_keys
-                    else settings
                     for settings in records["user_settings"]
+                    for api_key, ai_features_enabled in [
+                        api_keys.get(str(settings["user_id"]), (None, False))
+                    ]
                 ]
                 token_ids = {
                     str(token["id"]) for token in credentials.get("agent_tokens", [])
@@ -785,6 +798,10 @@ class DataBackupManager:
                 for us_data in backup_data.get("user_settings", []):
                     us_data["id"] = str(uuid.uuid4())
                     us_data["user_id"] = target_user_id
+                    # Never a key from a file: an older backup still holds
+                    # one, and it is the key of the user the backup is of.
+                    us_data["openai_api_key_encrypted"] = None
+                    us_data["ai_features_enabled"] = False
 
                     # Check if user settings already exist
                     existing_us = session.exec(

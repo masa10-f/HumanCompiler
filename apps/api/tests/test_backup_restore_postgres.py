@@ -559,6 +559,31 @@ def test_a_restore_keeps_the_credentials_the_database_holds_now(
     assert "push_subscriptions (1 rows)" in caplog.text
 
 
+def test_a_key_in_an_older_backup_file_is_not_restored(engine: Engine, tmp_path: Path):
+    add_one_of_everything(engine)
+    manager = DataBackupManager(str(tmp_path))
+    backup_path = manager.create_backup("full")
+    # A backup made before keys were left out: the file holds the key.
+    backup = json.loads(Path(backup_path).read_text(encoding="utf-8"))
+    (settings_record,) = backup["user_settings"]
+    settings_record["openai_api_key_encrypted"] = "encrypted-old-key"
+    settings_record["ai_features_enabled"] = True
+    Path(backup_path).write_text(json.dumps(backup), encoding="utf-8")
+    # Since then the user deleted their key.
+    with Session(engine) as session:
+        settings = session.exec(select(UserSettings)).one()
+        settings.openai_api_key_encrypted = None
+        settings.ai_features_enabled = False
+        session.commit()
+
+    manager.restore_backup(backup_path)
+
+    (restored_settings,) = all_rows(engine)["user_settings"]
+    assert restored_settings["openai_api_key_encrypted"] is None
+    assert restored_settings["ai_features_enabled"] is False
+    assert restored_settings["week_start_day"] == "monday"
+
+
 def test_every_table_is_backed_up_or_left_out_on_purpose():
     """A new table must be added to the backup, or named here as left out."""
     tables = {table.name for table in SQLModel.metadata.sorted_tables}

@@ -520,6 +520,38 @@ def test_a_user_backup_does_not_carry_the_openai_api_key(
     assert kept.ai_features_enabled is True
 
 
+def test_import_of_an_older_backup_does_not_bring_its_openai_api_key(
+    engine: Engine, tmp_path: Path
+):
+    target = add_user(engine)
+    old_user = str(uuid4())
+    # A backup made before keys were left out: the key of the user it is of.
+    backup = {
+        "users": [{"id": old_user, "email": "old@example.com"}],
+        "user_settings": [
+            {
+                "id": str(uuid4()),
+                "user_id": old_user,
+                "openai_api_key_encrypted": "encrypted-old-key",
+                "ai_features_enabled": True,
+                "week_start_day": "monday",
+            }
+        ],
+        "metadata": {"backup_type": "user_specific", "version": "2.0"},
+    }
+    backup_path = tmp_path / "old.json"
+    backup_path.write_text(json.dumps(backup), encoding="utf-8")
+
+    DataBackupManager(str(tmp_path)).restore_user_data(str(backup_path), str(target))
+
+    with Session(engine) as session:
+        imported = session.exec(select(UserSettings)).one()
+    assert imported.user_id == target
+    assert imported.week_start_day == "monday"
+    assert imported.openai_api_key_encrypted is None
+    assert imported.ai_features_enabled is False
+
+
 def test_import_of_an_older_backup_puts_task_text_into_notes(
     engine: Engine, tmp_path: Path
 ):
