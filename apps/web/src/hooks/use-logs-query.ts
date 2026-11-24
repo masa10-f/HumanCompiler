@@ -110,6 +110,8 @@ export function useCreateLog() {
 
       // Invalidate progress data as it depends on logs
       queryClient.invalidateQueries({ queryKey: queryKeys.progress.all })
+      // The work history lists logs with their sessions
+      queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.records() })
 
       // Logging work moves pending tasks to in_progress on the server
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all })
@@ -157,6 +159,8 @@ export function useUpdateLog() {
 
       // Invalidate progress data as it depends on logs
       queryClient.invalidateQueries({ queryKey: queryKeys.progress.all })
+      // The work history lists logs with their sessions
+      queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.records() })
     },
   })
 }
@@ -201,6 +205,8 @@ export function useDeleteLog() {
 
       // Invalidate progress data as it depends on logs
       queryClient.invalidateQueries({ queryKey: queryKeys.progress.all })
+      // The work history lists logs with their sessions
+      queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.records() })
     },
   })
 }

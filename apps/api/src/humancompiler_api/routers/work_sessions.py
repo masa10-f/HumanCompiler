@@ -24,6 +24,7 @@ from humancompiler_api.models import (
     ScheduleDiff,
     SnoozeRequest,
     SnoozeResponse,
+    WorkRecordResponse,
     WorkSessionStartRequest,
     WorkSessionCheckoutRequest,
     WorkSessionUpdate,
@@ -244,6 +245,45 @@ async def get_session_history(
         session, current_user.user_id, skip, limit
     )
     return [WorkSessionResponse.model_validate(s) for s in sessions]
+
+
+@router.get(
+    "/records",
+    response_model=list[WorkRecordResponse],
+    summary="Get work records",
+    description=(
+        "The user's work across tasks, newest first: every time log, with the "
+        "Runner session it came from, and every session without a time log."
+    ),
+)
+async def get_work_records(
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+    skip: Annotated[int, Query(ge=0, description="Number of records to skip")] = 0,
+    limit: Annotated[
+        int, Query(ge=1, le=100, description="Maximum number of records to return")
+    ] = 50,
+) -> list[WorkRecordResponse]:
+    """Get time logs and Runner sessions as one list of work records"""
+    records = work_session_service.get_work_records(
+        session, current_user.user_id, skip, limit
+    )
+    return [
+        WorkRecordResponse(
+            at=record.at,
+            task_id=record.task.id,
+            task_title=record.task.title,
+            goal_id=record.goal.id,
+            project_id=record.goal.project_id,
+            log=LogResponse.model_validate(record.log) if record.log else None,
+            session=(
+                WorkSessionResponse.model_validate(record.work_session)
+                if record.work_session
+                else None
+            ),
+        )
+        for record in records
+    ]
 
 
 @router.get(

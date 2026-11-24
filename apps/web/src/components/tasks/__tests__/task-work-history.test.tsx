@@ -6,7 +6,8 @@
 
 import { render, screen, within } from '@testing-library/react'
 
-import { TaskWorkHistory, buildWorkRecords, kptSummary } from '../task-work-history'
+import { TaskWorkHistory } from '../task-work-history'
+import { buildWorkRecords, kptSummary } from '@/components/work-records/work-record-item'
 import type { Log } from '@/types/log'
 import type { WorkSession } from '@/types/work-session'
 

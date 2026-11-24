@@ -6,7 +6,7 @@ from collections import deque
 from collections.abc import Sequence
 from datetime import datetime, timedelta, UTC
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Any
+from typing import Any, NamedTuple
 import hashlib
 import secrets
 from uuid import UUID
@@ -163,6 +163,21 @@ def set_remaining_estimate(
     task.updated_at = now
     session.add(task)
     session.flush()
+
+
+class WorkRecord(NamedTuple):
+    """One piece of work on a task: its time log, its Runner session, or both."""
+
+    at: datetime
+    task: Task
+    goal: Goal
+    log: Log | None
+    work_session: WorkSession | None
+
+
+def _as_utc(value: datetime) -> datetime:
+    """A stored time as an aware one (SQLite returns naive UTC)."""
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 def kpt_summary(keep: str | None, problem: str | None, try_: str | None) -> str | None:
@@ -1615,6 +1630,9 @@ class WorkSessionService(
             # session, the log and the estimate are one transaction: an
             # estimate out of range leaves the session running.
             remaining_estimate_hours=checkout_data.remaining_estimate_hours,
+            # "Complete" at checkout finishes the task, as it does when a time
+            # record entered by hand or a switch says the task is done.
+            complete_task=checkout_data.decision == SessionDecision.COMPLETE,
         )
 
         session.add(current_session)
@@ -1823,6 +1841,72 @@ class WorkSessionService(
             .limit(limit)
         )
         return list(session.exec(statement).all())
+
+    def get_work_records(
+        self,
+        session: Session,
+        user_id: str | UUID,
+        skip: int = 0,
+        limit: int = 50,
+    ) -> list[WorkRecord]:
+        """The user's work across tasks as one list, newest first.
+
+        Every time log is a record, with the Runner session it came from when
+        it has one. A session no log is linked to (still running, or its log
+        was deleted) is a record of its own."""
+        user_id_validated = validate_uuid(user_id, "user_id")
+        # The newest (skip + limit) of the two kinds together are among the
+        # newest (skip + limit) of each.
+        window = skip + limit
+
+        log_rows = session.exec(
+            select(Log, WorkSession, Task, Goal)
+            .join(Task, col(Log.task_id) == col(Task.id))
+            .join(Goal, col(Task.goal_id) == col(Goal.id))
+            .join(Project, col(Goal.project_id) == col(Project.id))
+            .outerjoin(
+                WorkSession,
+                and_(
+                    col(Log.work_session_id) == col(WorkSession.id),
+                    col(WorkSession.user_id) == user_id_validated,
+                ),
+            )
+            .where(col(Project.owner_id) == user_id_validated)
+            .order_by(col(Log.created_at).desc(), col(Log.id))
+            .limit(window)
+        ).all()
+        recorded_at = func.coalesce(WorkSession.ended_at, WorkSession.started_at)
+        session_rows = session.exec(
+            select(WorkSession, Task, Goal)
+            .join(Task, col(WorkSession.task_id) == col(Task.id))
+            .join(Goal, col(Task.goal_id) == col(Goal.id))
+            .where(
+                col(WorkSession.user_id) == user_id_validated,
+                ~select(Log.id)
+                .where(col(Log.work_session_id) == col(WorkSession.id))
+                .exists(),
+            )
+            .order_by(recorded_at.desc(), col(WorkSession.id))
+            .limit(window)
+        ).all()
+
+        records = [
+            WorkRecord(_as_utc(log.created_at), task, goal, log, work_session)
+            for log, work_session, task, goal in log_rows
+            if log.created_at is not None
+        ]
+        records += [
+            WorkRecord(
+                _as_utc(work_session.ended_at or work_session.started_at),
+                task,
+                goal,
+                None,
+                work_session,
+            )
+            for work_session, task, goal in session_rows
+        ]
+        records.sort(key=lambda record: record.at, reverse=True)
+        return records[skip : skip + limit]
 
     def pause_session(
         self,

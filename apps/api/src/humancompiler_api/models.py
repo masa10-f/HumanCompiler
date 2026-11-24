@@ -1979,6 +1979,31 @@ class WorkSessionWithLogResponse(WorkSessionResponse):
     generated_log: LogResponse | None = None
 
 
+class WorkRecordResponse(BaseModel):
+    """One piece of work on a task: a time log, a Runner session, or both.
+
+    A Runner checkout writes a session and a log for the same work; they are
+    one record. A time entered by hand has only the log, and a session that is
+    still running, or whose log is gone, has only the session."""
+
+    # When the work was recorded: the log's creation, or the session's end
+    # (its start while it is running).
+    at: datetime
+    task_id: UUID
+    task_title: str
+    goal_id: UUID
+    project_id: UUID
+    log: LogResponse | None = None
+    session: WorkSessionResponse | None = None
+
+    @field_serializer("at")
+    def serialize_at(self, value: datetime) -> str:
+        """Ensure datetime is serialized with UTC timezone info"""
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
+
 class WorkSessionSwitchResponse(BaseModel):
     """Previous and newly active sessions returned by an atomic switch."""
 

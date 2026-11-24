@@ -273,6 +273,7 @@ export function TaskDetail({
         <LogFormDialog
           taskId={task.id}
           taskTitle={task.title}
+          estimateHours={task.estimate_hours}
           trigger={
             <Button size="sm" variant="outline">
               <Timer className="mr-2 h-4 w-4" />
