@@ -1540,7 +1540,10 @@ def test_openapi_states_what_a_note_replace_loses():
         "content_markdown"
     ]
     for description in (put["description"], field["description"]):
-        assert "text colour and highlight, images and attachments" in (description)
+        assert "keep each ![caption](attachment:<id>) line as you read it" in (
+            description
+        )
+        assert "text colour and highlight." in description
 
 
 def test_openapi_documents_existing_dependency_as_200():

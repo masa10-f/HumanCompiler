@@ -30,6 +30,7 @@ from humancompiler_api.agent_write_models import (
     AgentTaskCreate,
     AgentTaskUpdate,
     NoteTargetKind,
+    NOTE_IMAGES,
     NOTE_REPLACE_LOSES,
 )
 from humancompiler_api.database import get_session
@@ -70,7 +71,7 @@ NOTE_GUIDE = (
     "decided before authentication. Raw HTML in the Markdown is shown as text. "
     "A change to a task's note text also advances that task's updated_at (the "
     "task carries the opening of its note as note_excerpt): read the task "
-    "again before updating it, or the update answers 409."
+    f"again before updating it, or the update answers 409. {NOTE_IMAGES}"
 )
 
 

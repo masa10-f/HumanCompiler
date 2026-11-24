@@ -48,6 +48,17 @@ After fixing the configuration:
 1. Test user registration with a valid email
 2. Check if the user appears in the Users table with `email_confirmed_at` timestamp after clicking the confirmation link
 
+### 5. Storage: bucket for images in notes
+
+Images attached to notes are kept in Supabase Storage.
+
+1. Go to **Storage** > **New bucket**.
+2. Name it `note-attachments` (or set `ATTACHMENTS_BUCKET` on the API to the name you chose).
+3. Leave **Public bucket** off.
+4. Add **no** storage policies. Only the API reads and writes the bucket, with the service role key; it checks who owns an image and hands out signed URLs that expire after 10 minutes. With no policies, the anon and user keys open nothing.
+
+Apply migration `046_add_note_attachments.sql` as well (see `apps/api/migrations/README.md`). Until the bucket exists, uploads answer 503; nothing else is affected.
+
 ## Testing Checklist
 
 1. [ ] User can register with a valid email address

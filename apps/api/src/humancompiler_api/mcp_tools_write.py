@@ -34,6 +34,7 @@ from humancompiler_api.agent_auth import AgentPrincipal
 from humancompiler_api.agent_write_models import (
     DEPENDS_ON_MAX,
     EXPECTED_UPDATED_AT_DESCRIPTION,
+    NOTE_IMAGES,
     NOTE_REPLACE_LOSES,
     AgentGoalCreate,
     AgentGoalUpdate,
@@ -375,7 +376,9 @@ _NOTE_TARGET = (
     "item and a missing one both give a 404 error. Raw HTML in the Markdown is "
     "shown as text. A change to a task's note text also advances that task's "
     "updated_at (the task carries the opening of its note as note_excerpt): "
-    "read the task again before update_task, or it answers 409."
+    f"read the task again before update_task, or it answers 409. {NOTE_IMAGES} "
+    "To attach an image, run the humancompiler CLI: humancompiler attach "
+    '<project|goal|task> <id> <file> --caption "..." prints that reference.'
 )
 
 
