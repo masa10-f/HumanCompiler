@@ -185,6 +185,23 @@ def test_upload_of_something_else_than_an_image_is_422(
     assert storage.objects == {}
 
 
+def test_upload_of_a_header_claiming_a_huge_image_is_422(
+    session: Session, storage: InMemoryAttachmentStorage
+) -> None:
+    # 45 bytes that say "20000 x 20000 pixels": refused, not a server error.
+    path, _ = _project_path(session)
+    tiny = bytes.fromhex(
+        "89504e470d0a1a0a0000000d4948445200004e2000004e2008020000006c12d16e"
+        "0000000049454e44ae426082"
+    )
+
+    response = _upload(f"{path}/attachments", tiny)
+
+    assert response.status_code == 422, response.text
+    assert "long edge limit" in response.json()["detail"]
+    assert storage.objects == {}
+
+
 def test_upload_over_the_image_limit_is_413(session: Session) -> None:
     path, _ = _project_path(session)
     data = noise_bytes("PNG", (355, 355))

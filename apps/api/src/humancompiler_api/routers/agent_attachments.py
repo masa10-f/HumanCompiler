@@ -114,7 +114,7 @@ def attach_image(
     source: Annotated[str | None, Form(max_length=8000)] = None,
 ) -> NoteAttachmentResponse:
     parsed_source = _parse_source(source)
-    target = agent_write_service._owned_note_target(
+    target = agent_write_service.owned_note_target(
         session, principal.user_id, kind, target_id
     ).target
     attachment, reused = attachment_service.create_attachment(

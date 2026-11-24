@@ -624,7 +624,7 @@ def remove_task_dependency(
 
 
 @dataclass(frozen=True)
-class _NoteTarget:
+class OwnedNoteTarget:
     """The item a note is on, with the parents its change rows carry."""
 
     target: NoteTarget
@@ -632,19 +632,21 @@ class _NoteTarget:
     goal_id: UUID | None
 
 
-def _owned_note_target(
+def owned_note_target(
     session: Session, user_id: UUID, kind: NoteTargetKind, target_id: UUID
-) -> _NoteTarget:
+) -> OwnedNoteTarget:
     """Check the note's project, goal or task is the user's (else 404)."""
     if kind == "projects":
         _owned_project(session, user_id, target_id)
-        return _NoteTarget(NoteTarget(project_id=target_id), target_id, None)
+        return OwnedNoteTarget(NoteTarget(project_id=target_id), target_id, None)
     if kind == "goals":
         goal = _owned_goal(session, user_id, target_id)
-        return _NoteTarget(NoteTarget(goal_id=target_id), goal.project_id, target_id)
+        return OwnedNoteTarget(
+            NoteTarget(goal_id=target_id), goal.project_id, target_id
+        )
     task = _owned_task(session, user_id, target_id)
     goal = _owned_goal(session, user_id, task.goal_id)
-    return _NoteTarget(NoteTarget(task_id=target_id), goal.project_id, task.goal_id)
+    return OwnedNoteTarget(NoteTarget(task_id=target_id), goal.project_id, task.goal_id)
 
 
 def _note_id(note: ContextNote) -> UUID:
@@ -669,7 +671,7 @@ def _check_note_version(note: ContextNote | None, expected: datetime | None) -> 
 
 
 def _create_note_for_replace(
-    session: Session, user_id: UUID, note_target: _NoteTarget
+    session: Session, user_id: UUID, note_target: OwnedNoteTarget
 ) -> ContextNote:
     """Create the missing note; a concurrent first create gives the stale 409.
 
@@ -696,7 +698,7 @@ def append_note(
     as an accepted note_append proposal does. Creates the note if the item has
     none. Not destructive."""
     try:
-        note_target = _owned_note_target(session, principal.user_id, kind, target_id)
+        note_target = owned_note_target(session, principal.user_id, kind, target_id)
         note = proposal_service.lock_note(session, note_target.target)
         if note is None:
             note = proposal_service.create_note(
@@ -742,7 +744,7 @@ def replace_note(
     created. Replacing an existing note with the HTML it already has changes
     nothing and records nothing."""
     try:
-        note_target = _owned_note_target(session, principal.user_id, kind, target_id)
+        note_target = owned_note_target(session, principal.user_id, kind, target_id)
         note = proposal_service.lock_note(session, note_target.target)
         _check_note_version(note, data.expected_updated_at)
         destructive = note is not None and not _is_blank_note(note)

@@ -122,6 +122,13 @@ def process_upload(data: bytes) -> ProcessedImage:
         raise ImageRejected("Only PNG, JPEG and WebP images are accepted")
     try:
         image = Image.open(BytesIO(data), formats=[sniffed])
+    except Image.DecompressionBombError:
+        # Pillow's own guard, for a header that claims hundreds of millions of
+        # pixels. Not an OSError, so it needs its own clause.
+        raise ImageRejected(
+            f"The image is far too large; the long edge limit is {MAX_EDGE} px "
+            "(shrink it before uploading)"
+        ) from None
     except (UnidentifiedImageError, OSError, ValueError):
         raise ImageRejected("The file is not a readable image") from None
 

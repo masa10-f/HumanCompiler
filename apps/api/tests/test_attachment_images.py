@@ -7,6 +7,8 @@
 """Checking an uploaded image and making what is stored from it."""
 
 import hashlib
+import struct
+import zlib
 from io import BytesIO
 
 import pytest
@@ -185,6 +187,29 @@ def test_type_is_read_from_the_bytes_not_the_name() -> None:
 def test_long_edge_over_the_limit_is_rejected() -> None:
     with pytest.raises(ImageRejected, match="long edge"):
         process_upload(image_bytes("PNG", size=(MAX_EDGE + 1, 10)))
+
+
+def _png_header_only(width: int, height: int) -> bytes:
+    """A PNG that is nothing but a header claiming a size: a few dozen bytes."""
+
+    def chunk(tag: bytes, body: bytes) -> bytes:
+        checksum = zlib.crc32(tag + body) & 0xFFFFFFFF
+        return struct.pack(">I", len(body)) + tag + body + struct.pack(">I", checksum)
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IEND", b"")
+
+
+@pytest.mark.parametrize("edge", [2000, 12000, 20000, 60000])
+@pytest.mark.filterwarnings("ignore::PIL.Image.DecompressionBombWarning")
+def test_tiny_file_claiming_a_huge_image_is_rejected(edge: int) -> None:
+    # Past about 179 million pixels Pillow refuses to open the file at all,
+    # with an error that is not an OSError.
+    data = _png_header_only(edge, edge)
+    assert len(data) < 100
+
+    with pytest.raises(ImageRejected, match="long edge limit"):
+        process_upload(data)
 
 
 def test_long_edge_at_the_limit_is_accepted() -> None:
