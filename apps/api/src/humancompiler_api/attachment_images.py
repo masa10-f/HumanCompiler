@@ -14,8 +14,10 @@ sender says is trusted: the type is read from the bytes, the size is read from
 the image header before any pixel is decoded, and EXIF and XMP (camera, GPS,
 software, author) are dropped.
 
-A WebP without EXIF or XMP is stored byte for byte; anything else is encoded
-as WebP here.
+A WebP made of image data alone is stored byte for byte, so the sender's one
+lossy encoding is the only one; anything else (another format, or a WebP with
+EXIF, XMP, a chunk this module does not know, or bytes after the image) is
+encoded as WebP here from its pixels.
 """
 
 import hashlib
@@ -32,8 +34,10 @@ THUMB_EDGE = 480
 _WEBP_QUALITIES = (80, 70, 60)
 _THUMB_QUALITY = 75
 _FORMATS = {"PNG", "JPEG", "WEBP"}
-# WebP metadata that can say who made the image, where and with what.
-_PRIVATE_METADATA = ("exif", "xmp")
+# The chunks of a still WebP that are the image itself: pixels, alpha, the
+# header that says which of those follow, and the colour profile. Everything
+# else (EXIF, XMP, animation, anything unknown) makes the file be re-encoded.
+_WEBP_IMAGE_CHUNKS = frozenset({b"VP8 ", b"VP8L", b"VP8X", b"ALPH", b"ICCP"})
 
 
 class ImageRejected(Exception):
@@ -64,6 +68,28 @@ def _sniff(data: bytes) -> str | None:
     if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "WEBP"
     return None
+
+
+def _is_plain_webp(data: bytes) -> bool:
+    """Whether ``data`` is a WebP file holding image chunks and nothing else.
+
+    Walks the RIFF container: the declared size must be the whole of ``data``
+    (no bytes after it) and every chunk must be one of ``_WEBP_IMAGE_CHUNKS``.
+    """
+    if len(data) < 12 or data[:4] != b"RIFF" or data[8:12] != b"WEBP":
+        return False
+    if int.from_bytes(data[4:8], "little") + 8 != len(data):
+        return False
+    offset = 12
+    while offset < len(data):
+        if offset + 8 > len(data):
+            return False
+        if data[offset : offset + 4] not in _WEBP_IMAGE_CHUNKS:
+            return False
+        size = int.from_bytes(data[offset + 4 : offset + 8], "little")
+        # A chunk's payload is padded to an even length.
+        offset += 8 + size + (size & 1)
+    return offset == len(data)
 
 
 def _encode_webp(image: Image.Image, quality: int) -> bytes:
@@ -114,8 +140,7 @@ def process_upload(data: bytes) -> ProcessedImage:
     except (OSError, ValueError, SyntaxError, Image.DecompressionBombError):
         raise ImageRejected("The file is not a readable image") from None
 
-    has_private_metadata = any(image.info.get(key) for key in _PRIVATE_METADATA)
-    if sniffed == "WEBP" and not has_private_metadata:
+    if sniffed == "WEBP" and _is_plain_webp(data):
         preview = data
         pixels = _displayable(image)
     else:

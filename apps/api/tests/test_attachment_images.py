@@ -10,7 +10,7 @@ import hashlib
 from io import BytesIO
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageCms
 
 from humancompiler_api.attachment_images import (
     MAX_EDGE,
@@ -47,6 +47,52 @@ def test_clean_webp_is_stored_byte_for_byte() -> None:
     result = process_upload(data)
 
     assert result.preview == data
+
+
+def _with_chunk(webp: bytes, tag: bytes, payload: bytes) -> bytes:
+    """``webp`` with one more RIFF chunk at its end, and the size to match."""
+    chunk = tag + len(payload).to_bytes(4, "little") + payload
+    if len(payload) % 2:
+        chunk += b"\x00"
+    body = webp[8:] + chunk
+    return b"RIFF" + len(body).to_bytes(4, "little") + body
+
+
+def test_webp_with_an_unknown_chunk_is_stored_from_its_pixels() -> None:
+    clean = image_bytes("WEBP", size=(320, 200), quality=80)
+    data = _with_chunk(clean, b"JUNK", b"SecretNoteInAChunk")
+    assert opened(data).size == (320, 200)
+
+    result = process_upload(data)
+
+    assert b"SecretNoteInAChunk" not in result.preview
+    assert b"JUNK" not in result.preview
+    assert opened(result.preview).size == (320, 200)
+
+
+def test_bytes_after_the_webp_are_not_stored() -> None:
+    data = image_bytes("WEBP", size=(320, 200), quality=80) + b"SecretTrailer"
+
+    result = process_upload(data)
+
+    assert b"SecretTrailer" not in result.preview
+    assert opened(result.preview).size == (320, 200)
+
+
+def test_webp_with_alpha_and_a_colour_profile_is_stored_byte_for_byte() -> None:
+    # VP8X + ICCP + ALPH + VP8: all of it is the image.
+    profile = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
+    data = image_bytes(
+        "WEBP",
+        size=(64, 64),
+        color=(0, 0, 255, 120),
+        mode="RGBA",
+        quality=80,
+        icc_profile=profile,
+    )
+    assert b"ICCP" in data and b"VP8X" in data
+
+    assert process_upload(data).preview == data
 
 
 def test_thumbnail_fits_the_thumbnail_edge_and_keeps_the_shape() -> None:
