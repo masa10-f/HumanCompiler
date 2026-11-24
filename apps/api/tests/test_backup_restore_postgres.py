@@ -67,7 +67,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 BACKED_UP = set(FULL_BACKUP_MODELS)
-# Credentials: a backup leaves them out and a restore leaves them empty.
+# Credentials: a backup leaves them out, and a restore keeps the database's own.
 NOT_BACKED_UP = {"agent_tokens", "push_subscriptions"}
 CREATED = datetime(2029, 6, 1, 9, 30, tzinfo=UTC)
 
@@ -110,11 +110,11 @@ def all_rows(engine: Engine) -> dict[str, list[dict[str, Any]]]:
     return all_rows_of(engine, BACKED_UP | NOT_BACKED_UP)
 
 
-def as_restored(
+def without_credentials(
     rows: dict[str, list[dict[str, Any]]],
 ) -> dict[str, list[dict[str, Any]]]:
-    """What a restore of a backup of ``rows`` leaves: the same rows, without
-    the credentials and without the links to them."""
+    """What a backup of ``rows`` restores to on a database that holds no
+    credentials: the same rows, without them and without the links to them."""
     restored = {
         table: [] if table in NOT_BACKED_UP else found for table, found in rows.items()
     }
@@ -126,6 +126,30 @@ def as_restored(
         for row in rows["user_settings"]
     ]
     return restored
+
+
+def add_credentials(session: Session, user_id: UUID) -> AgentToken:
+    """An agent token and a push subscription of the user. Returns the token."""
+    token = AgentToken(
+        id=uuid4(),
+        user_id=user_id,
+        name="Agent",
+        scopes=["tasks:read"],
+        token_hash=uuid4().hex,
+        token_prefix="hc_agent_",
+    )
+    session.add(token)
+    session.add(
+        PushSubscription(
+            id=uuid4(),
+            user_id=user_id,
+            endpoint=f"https://push.example.com/{uuid4().hex}",
+            p256dh_key="p256dh",
+            auth_key="auth",
+        )
+    )
+    session.flush()
+    return token
 
 
 def add_one_of_everything(engine: Engine) -> UUID:
@@ -295,25 +319,7 @@ def add_one_of_everything(engine: Engine) -> UUID:
                 project_id=project.id,
             )
         )
-        token = AgentToken(
-            id=uuid4(),
-            user_id=user_id,
-            name="Agent",
-            scopes=["tasks:read"],
-            token_hash=uuid4().hex,
-            token_prefix="hc_agent_",
-        )
-        session.add(token)
-        session.add(
-            PushSubscription(
-                id=uuid4(),
-                user_id=user_id,
-                endpoint="https://push.example.com/subscription",
-                p256dh_key="p256dh",
-                auth_key="auth",
-            )
-        )
-        session.flush()
+        token = add_credentials(session, user_id)
         proposal = AgentProposal(
             id=uuid4(),
             user_id=user_id,
@@ -404,6 +410,8 @@ def change_the_data(engine: Engine, user_id: UUID) -> None:
         session.add(newcomer)
         session.flush()
         session.add(Project(id=uuid4(), owner_id=newcomer.id, title="Later project"))
+        assert newcomer.id is not None
+        add_credentials(session, newcomer.id)
         session.commit()
 
 
@@ -425,7 +433,24 @@ def test_a_full_backup_restores_to_the_same_rows(engine: Engine, tmp_path: Path)
 
     manager.restore_backup(backup_path)
 
-    assert all_rows(engine) == as_restored(before)
+    # Credentials and the links to them included: the database held them.
+    assert all_rows(engine) == before
+
+
+def test_a_restore_onto_an_empty_database_leaves_no_credentials(
+    engine: Engine, tmp_path: Path
+):
+    """Recovery after the data is gone: a backup has no credentials to give."""
+    add_one_of_everything(engine)
+    before = all_rows(engine)
+    manager = DataBackupManager(str(tmp_path))
+    backup_path = manager.create_backup("full")
+    with engine.begin() as connection:
+        connection.execute(text("TRUNCATE users CASCADE"))
+
+    manager.restore_backup(backup_path)
+
+    assert all_rows(engine) == without_credentials(before)
 
 
 def test_a_restore_that_fails_leaves_the_database_as_it_was(
@@ -466,12 +491,10 @@ def test_a_file_that_is_not_a_full_backup_deletes_nothing(
     assert all_rows(engine) == before
 
 
-def test_credentials_are_not_in_the_backup_and_are_named_when_emptied(
-    engine: Engine, tmp_path: Path, caplog: pytest.LogCaptureFixture
-):
+def test_credentials_are_not_in_the_backup_file(engine: Engine, tmp_path: Path):
     add_one_of_everything(engine)
-    manager = DataBackupManager(str(tmp_path))
-    backup_path = manager.create_backup("full")
+
+    backup_path = DataBackupManager(str(tmp_path)).create_backup("full")
 
     file_text = Path(backup_path).read_text(encoding="utf-8")
     assert not NOT_BACKED_UP & set(json.loads(file_text))
@@ -488,21 +511,52 @@ def test_credentials_are_not_in_the_backup_and_are_named_when_emptied(
     ):
         assert secret not in file_text
 
+
+def test_a_restore_keeps_the_credentials_the_database_holds_now(
+    engine: Engine, tmp_path: Path, caplog: pytest.LogCaptureFixture
+):
+    user_id = add_one_of_everything(engine)
+    manager = DataBackupManager(str(tmp_path))
+    backup_path = manager.create_backup("full")
+
+    # Since the backup: the token is replaced by a new one, the key by a new
+    # key, and a user the backup does not have arrives with credentials.
+    change_the_data(engine, user_id)
+    with Session(engine) as session:
+        session.delete(
+            session.exec(select(AgentToken).where(AgentToken.user_id == user_id)).one()
+        )
+        session.flush()
+        new_token = add_credentials(session, user_id)
+        settings = session.exec(select(UserSettings)).one()
+        settings.openai_api_key_encrypted = "encrypted-new-key"
+        new_token_id = new_token.id
+        session.commit()
+    credentials = all_rows_of(engine, NOT_BACKED_UP)
+
     with caplog.at_level(logging.WARNING, logger=safe_migration.logger.name):
         manager.restore_backup(backup_path)
 
     after = all_rows(engine)
-    assert after["agent_tokens"] == [] and after["push_subscriptions"] == []
-    assert "agent_tokens (1 rows)" in caplog.text
-    assert "push_subscriptions (1 rows)" in caplog.text
-    # What came through the token is kept, without the link to it.
+    # The user's credentials are the ones they had when the restore started.
+    assert after["agent_tokens"] == [
+        row for row in credentials["agent_tokens"] if row["user_id"] == user_id
+    ]
+    assert [row["id"] for row in after["agent_tokens"]] == [new_token_id]
+    assert after["push_subscriptions"] == [
+        row for row in credentials["push_subscriptions"] if row["user_id"] == user_id
+    ]
+    assert len(after["push_subscriptions"]) == 2
+    (restored_settings,) = after["user_settings"]
+    assert restored_settings["openai_api_key_encrypted"] == "encrypted-new-key"
+    assert restored_settings["ai_features_enabled"] is True
+    assert restored_settings["week_start_day"] == "monday"
+    # The proposal came through the token that is gone: it is kept, unlinked.
     (proposal,) = after["agent_proposals"]
     assert (proposal["token_id"], proposal["agent_name"]) == (None, "Agent")
-    # The other settings are kept; AI features wait for a new key.
-    (restored_settings,) = after["user_settings"]
-    assert restored_settings["week_start_day"] == "monday"
-    assert restored_settings["openai_api_key_encrypted"] is None
-    assert restored_settings["ai_features_enabled"] is False
+    # The newcomer is not in the backup, and their credentials go with them.
+    assert "agent_tokens (1 rows)" in caplog.text
+    assert "push_subscriptions (1 rows)" in caplog.text
 
 
 def test_every_table_is_backed_up_or_left_out_on_purpose():
@@ -535,7 +589,7 @@ def test_a_table_the_database_does_not_have_yet_does_not_stop_a_restore(
 
     manager.restore_backup(backup_path)
 
-    assert all_rows_of(engine, BACKED_UP) == as_restored(before)
+    assert all_rows_of(engine, BACKED_UP) == before
 
 
 def test_an_older_full_backup_restores(engine: Engine, tmp_path: Path):
@@ -603,4 +657,5 @@ def test_a_failed_safe_migration_rolls_back_to_the_backup(
     with pytest.raises(SafeMigrationError, match="second step failed"):
         BreaksHalfway().execute_safe_migration("breaks_halfway")
 
-    assert all_rows(engine) == as_restored(before)
+    # Nothing is revoked: the credentials are the database's own.
+    assert all_rows(engine) == before

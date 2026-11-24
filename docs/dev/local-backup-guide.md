@@ -124,11 +124,10 @@ print('復旧完了')
 
 - **復元されるテーブル**（`create_backup` が書き出すもの全て = `FULL_BACKUP_MODELS`）: users, projects, goals, tasks, context_notes, quick_tasks, schedules, work_sessions, logs, user_settings, triage_capacity_settings, task_triage_runs, task_triage_items, goal_dependencies, task_dependencies, daily_plan_documents, weekly_notes, weekly_rhythm_blocks, agent_proposals, agent_changes, agent_audit_logs, email_notification_logs, reschedule_suggestions, reschedule_decisions
 - **失敗しても安全**: 削除と挿入は1つのトランザクションです。途中で失敗した場合、データベースは復旧前の状態のまま残ります。
-- **復元されないテーブル**: `agent_tokens` と `push_subscriptions` は認証情報なので、意図的にバックアップに含めていません。既存データの削除は `TRUNCATE ... CASCADE` で行うため、復旧後この2つは空になります。
-  - エージェントトークンは設定画面から**再発行**してください。提案・変更履歴・監査ログは復元されますが、トークンへのリンクは空になります（エージェント名やトークンのプレフィックスは残ります）。
-  - プッシュ通知は各ブラウザで**再購読**が必要です。
-  - 行があった場合は復旧時に警告ログ（`⚠️  Not in the backup, emptied by the restore: ...`）に出力されます。
-- **OpenAI APIキーも含まれません**: `user_settings` は APIキー（`openai_api_key_encrypted`）を除いて書き出されます（ユーザー単位のエクスポートも同じ）。復旧後は AI 機能がオフになるので、各ユーザーが設定画面でキーを**再入力**してください。その他の設定はそのまま戻ります。
+- **認証情報はバックアップに含まれません**: `agent_tokens`、`push_subscriptions`、OpenAI APIキー（`user_settings.openai_api_key_encrypted`）は、意図的にバックアップファイルに書き出していません（ユーザー単位のエクスポートも APIキーを含みません）。
+  - **復旧を実行した時点でデータベースに残っている認証情報は、そのまま保持されます**（バックアップに含まれるユーザーの分）。マイグレーション失敗時のロールバックや、稼働中のDBへの復旧では、トークンの失効やAPIキーの消失は起きません。保持はトランザクション内で行われ、ファイルには書き出されません。
+  - **空のデータベースへ復旧した場合**（データ消失後の復旧など）は、認証情報は戻りません。エージェントトークンは設定画面から**再発行**、プッシュ通知は各ブラウザで**再購読**、OpenAI APIキーは各ユーザーが設定画面で**再入力**してください（それまで AI 機能はオフになります）。提案・変更履歴・監査ログは復元されますが、存在しないトークンへのリンクは空になります（エージェント名やトークンのプレフィックスは残ります）。
+  - 既存データの削除は `TRUNCATE ... CASCADE` で行います。バックアップに含まれないユーザーの認証情報など、削除されて戻らない行があった場合は、復旧時に警告ログ（`⚠️  Not in the backup, lost in the restore: ...`）に件数が出力されます。
 - 古いバックアップ（上記のテーブルが追加される前に作成されたもの）から復旧すると、そのファイルに含まれないテーブルは空になります。キーを除外する前に作成されたバックアップには暗号化済みのキーが入っており、復旧するとそのまま戻ります。不要になった古いバックアップファイルは削除してください。
 
 ### 2. 特定のテーブルのみ復旧

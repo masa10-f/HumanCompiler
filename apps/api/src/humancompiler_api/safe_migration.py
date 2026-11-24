@@ -134,11 +134,11 @@ def notes_with_former_task_text(backup_data: dict[str, Any]) -> list[dict[str, A
 # file. Each comes after the ones it references: the order their rows can be
 # inserted in.
 #
-# Left out on purpose, so a restore leaves them empty: agent tokens and push
-# subscriptions. They are credentials, not work: a token is issued again and a
-# browser subscribes again, and a backup file should not hold them. For the
-# same reason user settings are written without the OpenAI API key (see
-# ``backup_record``).
+# Left out on purpose: agent tokens and push subscriptions. They are
+# credentials, not work: a token is issued again and a browser subscribes
+# again, and a backup file should not hold them. For the same reason user
+# settings are written without the OpenAI API key (see ``backup_record``). A
+# restore keeps the credentials the database holds (see ``restore_backup``).
 FULL_BACKUP_MODELS: dict[str, type[SQLModel]] = {
     "users": User,
     "projects": Project,
@@ -166,14 +166,18 @@ FULL_BACKUP_MODELS: dict[str, type[SQLModel]] = {
     "reschedule_decisions": RescheduleDecision,
 }
 
-# The column of each table that names the agent token a row came through. No
-# token is restored, so these come back empty, as deleting a token leaves them
-# (ON DELETE SET NULL); the row keeps the agent's name or the token's prefix.
+# The column of each table that names the agent token a row came through. A
+# backup has no tokens, so a link whose token the database no longer holds
+# comes back empty, as deleting a token leaves it (ON DELETE SET NULL); the
+# row keeps the agent's name or the token's prefix.
 AGENT_TOKEN_LINKS = {
     "agent_proposals": "token_id",
     "agent_changes": "agent_token_id",
     "agent_audit_logs": "token_id",
 }
+
+# The tables of credentials a backup leaves out. Each row is one user's.
+CREDENTIAL_TABLES = ("agent_tokens", "push_subscriptions")
 
 
 def backup_record(row: SQLModel) -> dict[str, Any]:
@@ -273,17 +277,21 @@ class DataBackupManager:
         The delete and the inserts are one transaction: a restore that fails
         leaves the database as it was.
 
-        NOT restored: agent tokens and push subscriptions. The delete is
-        ``TRUNCATE ... CASCADE`` from users, which empties every table that
-        refers to users, directly or through another table, and a backup
-        leaves these two out on purpose. After a restore agents need new
-        tokens and browsers subscribe again; proposals, changes and audit
-        logs come back without the link to their token. Any such table that
-        held rows is named in a warning.
+        Credentials are not in a backup, so the ones the database holds when
+        the restore starts are kept, for every user the backup brings back:
+        agent tokens, push subscriptions and the OpenAI API key (with whether
+        AI features are on). Rolling back a failed migration therefore revokes
+        nothing. They are read and written back inside the transaction and
+        never reach a file.
 
-        A backup also holds no OpenAI API key: user settings come back
-        without one and with AI features off, until the user enters the key
-        again. (A backup made before keys were left out still restores its.)
+        NOT restored: credentials the database does not hold. On an empty
+        database, or for a user it no longer has, agents need new tokens,
+        browsers subscribe again and the user enters the OpenAI API key again
+        (AI features are off until then); proposals, changes and audit logs
+        come back without the link to a token that is gone. The delete is
+        ``TRUNCATE ... CASCADE`` from users, which empties every table that
+        refers to users: rows it removes that are not put back are counted in
+        a warning.
         """
         backup_file = Path(backup_path)
         if not backup_file.exists():
@@ -312,25 +320,78 @@ class DataBackupManager:
                 else {**log, "work_session_id": None}
                 for log in records["logs"]
             ]
-            for table, column in AGENT_TOKEN_LINKS.items():
-                records[table] = [{**row, column: None} for row in records[table]]
-            # Read before anything is deleted: a record that cannot be read
-            # ends the restore here.
-            rows = {
-                table: [backup_row(model, record) for record in records[table]]
-                for table, model in FULL_BACKUP_MODELS.items()
-            }
+            user_ids = {str(user["id"]) for user in records["users"]}
 
             engine = db.get_engine()
 
             with Session(engine) as session:
+                connection = session.connection()
                 # A model can be ahead of the database (note_attachments has
-                # no table yet): only what exists can lose rows.
-                existing = set(inspect(session.connection()).get_table_names())
+                # no table yet): only what exists holds rows.
+                existing = set(inspect(connection).get_table_names())
+
+                # A backup has no credentials. Those in the database stay, for
+                # the users the backup brings back: read now, written back
+                # below, in this transaction only.
+                credentials = {
+                    name: [
+                        dict(row)
+                        for row in connection.execute(
+                            SQLModel.metadata.tables[name].select()
+                        ).mappings()
+                        if str(row["user_id"]) in user_ids
+                    ]
+                    for name in CREDENTIAL_TABLES
+                    if name in existing
+                }
+                api_keys = {
+                    str(user_id): (api_key, ai_features_enabled)
+                    for user_id, api_key, ai_features_enabled in session.exec(
+                        select(
+                            UserSettings.user_id,
+                            UserSettings.openai_api_key_encrypted,
+                            UserSettings.ai_features_enabled,
+                        )
+                    )
+                    if api_key
+                }
+                records["user_settings"] = [
+                    {
+                        **settings,
+                        "openai_api_key_encrypted": api_keys[str(settings["user_id"])][
+                            0
+                        ],
+                        "ai_features_enabled": api_keys[str(settings["user_id"])][1],
+                    }
+                    if not settings.get("openai_api_key_encrypted")
+                    and str(settings["user_id"]) in api_keys
+                    else settings
+                    for settings in records["user_settings"]
+                ]
+                token_ids = {
+                    str(token["id"]) for token in credentials.get("agent_tokens", [])
+                }
+                for table, column in AGENT_TOKEN_LINKS.items():
+                    records[table] = [
+                        row
+                        if str(row.get(column)) in token_ids
+                        else {**row, column: None}
+                        for row in records[table]
+                    ]
+
+                # Read before anything is deleted: a record that cannot be
+                # read ends the restore here.
+                rows = {
+                    table: [backup_row(model, record) for record in records[table]]
+                    for table, model in FULL_BACKUP_MODELS.items()
+                }
+
+                # What the delete removes and nothing puts back.
                 lost = {
                     table.name: session.exec(
                         select(func.count()).select_from(table)
                     ).one()
+                    - len(credentials.get(table.name, []))
                     for table in _tables_emptied_without_restore()
                     if table.name in existing
                 }
@@ -344,6 +405,13 @@ class DataBackupManager:
                 for table in FULL_BACKUP_MODELS:
                     session.add_all(rows[table])
                     session.flush()
+                    if table == "users":
+                        # Next, so that what names a token finds it.
+                        for name, kept in credentials.items():
+                            if kept:
+                                connection.execute(
+                                    SQLModel.metadata.tables[name].insert(), kept
+                                )
 
                 session.commit()
 
@@ -357,8 +425,7 @@ class DataBackupManager:
             ]
             if lost_rows:
                 logger.warning(
-                    "⚠️  Not in the backup, emptied by the restore: "
-                    + ", ".join(lost_rows)
+                    "⚠️  Not in the backup, lost in the restore: " + ", ".join(lost_rows)
                 )
 
         except Exception as e:
