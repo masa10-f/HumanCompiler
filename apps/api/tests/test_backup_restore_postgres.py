@@ -8,7 +8,7 @@ does not have), so only PostgreSQL can run it. It is also what rolls back a
 failed safe migration."""
 
 from collections.abc import Iterator
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 import json
 import logging
@@ -23,12 +23,24 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 from humancompiler_api import safe_migration
 from humancompiler_api.models import (
+    AgentAuditLog,
+    AgentChange,
+    AgentProposal,
+    AgentToken,
     ContextNote,
+    DailyPlanDocument,
+    EmailNotificationLog,
+    EmailNotificationStatus,
+    EmailNotificationType,
     Goal,
     GoalDependency,
     Log,
     Project,
+    PushSubscription,
     QuickTask,
+    RescheduleDecision,
+    RescheduleSuggestion,
+    RescheduleTriggerType,
     Schedule,
     SessionDecision,
     Task,
@@ -39,9 +51,11 @@ from humancompiler_api.models import (
     User,
     UserSettings,
     WeeklyNote,
+    WeeklyRhythmBlock,
     WorkSession,
 )
 from humancompiler_api.safe_migration import (
+    AGENT_TOKEN_LINKS,
     FULL_BACKUP_MODELS,
     DataBackupManager,
     SafeMigrationError,
@@ -53,6 +67,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 BACKED_UP = set(FULL_BACKUP_MODELS)
+# Credentials: a backup leaves them out and a restore leaves them empty.
+NOT_BACKED_UP = {"agent_tokens", "push_subscriptions"}
 CREATED = datetime(2029, 6, 1, 9, 30, tzinfo=UTC)
 
 
@@ -76,8 +92,8 @@ def engine(monkeypatch) -> Iterator[Engine]:
         admin.dispose()
 
 
-def all_rows(engine: Engine) -> dict[str, list[dict[str, Any]]]:
-    """Every table's rows as the database holds them, in a stable order."""
+def all_rows_of(engine: Engine, tables: set[str]) -> dict[str, list[dict[str, Any]]]:
+    """The rows of ``tables`` as the database holds them, in a stable order."""
     with engine.connect() as connection:
         return {
             table.name: sorted(
@@ -85,11 +101,30 @@ def all_rows(engine: Engine) -> dict[str, list[dict[str, Any]]]:
                 key=lambda row: str(row["id"]),
             )
             for table in SQLModel.metadata.sorted_tables
+            if table.name in tables
         }
 
 
+def all_rows(engine: Engine) -> dict[str, list[dict[str, Any]]]:
+    """Every table that refers to users: all a restore deletes or writes."""
+    return all_rows_of(engine, BACKED_UP | NOT_BACKED_UP)
+
+
+def as_restored(
+    rows: dict[str, list[dict[str, Any]]],
+) -> dict[str, list[dict[str, Any]]]:
+    """What a restore of a backup of ``rows`` leaves: the same rows, without
+    the credentials and without the links to them."""
+    restored = {
+        table: [] if table in NOT_BACKED_UP else found for table, found in rows.items()
+    }
+    for table, column in AGENT_TOKEN_LINKS.items():
+        restored[table] = [{**row, column: None} for row in rows[table]]
+    return restored
+
+
 def add_one_of_everything(engine: Engine) -> UUID:
-    """A user with rows in every table a full backup carries. Returns the user."""
+    """A user with rows in every table that refers to users. Returns the user."""
     user_id = uuid4()
     with Session(engine) as session:
         session.add(User(id=user_id, email=f"{user_id}@example.com"))
@@ -222,6 +257,118 @@ def add_one_of_everything(engine: Engine) -> UUID:
                 id=uuid4(), task_id=tasks[1].id, depends_on_task_id=tasks[0].id
             )
         )
+        session.add(
+            DailyPlanDocument(
+                user_id=user_id,
+                date=date(2029, 6, 2),
+                revision=3,
+                document_json={"blocks": [{"type": "text", "text": "Morning"}]},
+                search_text="Morning",
+                created_at=CREATED,
+            )
+        )
+        session.add(
+            WeeklyNote(
+                user_id=user_id, week_start=date(2029, 6, 3), content="<p>Week</p>"
+            )
+        )
+        session.add(
+            WeeklyRhythmBlock(
+                user_id=user_id,
+                weekday=0,
+                start_time=time(9, 0),
+                end_time=time(10, 30),
+                project_id=project.id,
+            )
+        )
+        token = AgentToken(
+            id=uuid4(),
+            user_id=user_id,
+            name="Agent",
+            scopes=["tasks:read"],
+            token_hash=uuid4().hex,
+            token_prefix="hc_agent_",
+        )
+        session.add(token)
+        session.add(
+            PushSubscription(
+                id=uuid4(),
+                user_id=user_id,
+                endpoint="https://push.example.com/subscription",
+                p256dh_key="p256dh",
+                auth_key="auth",
+            )
+        )
+        session.flush()
+        proposal = AgentProposal(
+            id=uuid4(),
+            user_id=user_id,
+            token_id=token.id,
+            agent_name="Agent",
+            kind="task_create",
+            title="Add a task",
+            payload={"title": "Proposed", "estimate_hours": 1.5},
+            sources=[{"kind": "note", "id": str(uuid4())}],
+            idempotency_key=uuid4().hex,
+            project_id=project.id,
+            created_at=CREATED,
+        )
+        session.add(proposal)
+        session.add(
+            AgentChange(
+                user_id=user_id,
+                actor="agent",
+                agent_token_id=token.id,
+                agent_name="Agent",
+                proposal_id=proposal.id,
+                entity_type="task",
+                entity_id=tasks[0].id,
+                action="update",
+                before={"title": "Before"},
+                after={"title": "First task"},
+                created_at=CREATED,
+            )
+        )
+        session.add(
+            AgentAuditLog(
+                id=uuid4(),
+                token_id=token.id,
+                user_id=user_id,
+                token_prefix="hc_agent_",
+                method="GET",
+                route="/agent/v1/tasks",
+                status_code=200,
+                duration_ms=12,
+                created_at=CREATED,
+            )
+        )
+        session.add(
+            EmailNotificationLog(
+                user_id=user_id,
+                task_id=tasks[0].id,
+                notification_type=EmailNotificationType.DEADLINE_REMINDER,
+                status=EmailNotificationStatus.SENT,
+                sent_at=CREATED,
+            )
+        )
+        suggestion = RescheduleSuggestion(
+            id=uuid4(),
+            user_id=user_id,
+            work_session_id=checked_out.id,
+            trigger_type=RescheduleTriggerType.CHECKOUT,
+            proposed_schedule_json={"assignments": []},
+        )
+        session.add(suggestion)
+        session.flush()
+        session.add(
+            RescheduleDecision(
+                id=uuid4(),
+                suggestion_id=suggestion.id,
+                user_id=user_id,
+                accepted=True,
+                context_json={"reason": "fits"},
+            )
+        )
         session.commit()
     return user_id
 
@@ -250,8 +397,8 @@ def test_a_full_backup_restores_to_the_same_rows(engine: Engine, tmp_path: Path)
     add_one_of_everything(engine)
     user_id = add_one_of_everything(engine)
     before = all_rows(engine)
-    # Every table the backup carries has rows to bring back.
-    assert all(before[table] for table in BACKED_UP)
+    # Every table has rows to bring back or to lose.
+    assert all(before.values())
 
     manager = DataBackupManager(str(tmp_path))
     backup_path = manager.create_backup("full")
@@ -264,7 +411,7 @@ def test_a_full_backup_restores_to_the_same_rows(engine: Engine, tmp_path: Path)
 
     manager.restore_backup(backup_path)
 
-    assert all_rows(engine) == before
+    assert all_rows(engine) == as_restored(before)
 
 
 def test_a_restore_that_fails_leaves_the_database_as_it_was(
@@ -281,12 +428,9 @@ def test_a_restore_that_fails_leaves_the_database_as_it_was(
     Path(backup_path).write_text(json.dumps(backup), encoding="utf-8")
 
     change_the_data(engine, user_id)
-    with Session(engine) as session:
-        # A table the backup does not carry, which the delete would also empty.
-        session.add(WeeklyNote(user_id=user_id, week_start=date(2029, 6, 4)))
-        session.commit()
     before = all_rows(engine)
-    assert before["weekly_notes"]
+    # Including what the backup does not carry, which the delete also empties.
+    assert all(before[table] for table in NOT_BACKED_UP)
 
     with pytest.raises(SafeMigrationError, match="Backup restoration failed"):
         manager.restore_backup(backup_path)
@@ -308,23 +452,64 @@ def test_a_file_that_is_not_a_full_backup_deletes_nothing(
     assert all_rows(engine) == before
 
 
-def test_tables_the_backup_does_not_carry_are_emptied_and_named(
+def test_credentials_are_not_in_the_backup_and_are_named_when_emptied(
     engine: Engine, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ):
-    user_id = add_one_of_everything(engine)
-    with Session(engine) as session:
-        session.add(WeeklyNote(user_id=user_id, week_start=date(2029, 6, 4)))
-        session.commit()
+    add_one_of_everything(engine)
     manager = DataBackupManager(str(tmp_path))
     backup_path = manager.create_backup("full")
+
+    file_text = Path(backup_path).read_text(encoding="utf-8")
+    assert not NOT_BACKED_UP & set(json.loads(file_text))
+    with Session(engine) as session:
+        token = session.exec(select(AgentToken)).one()
+        subscription = session.exec(select(PushSubscription)).one()
+    for secret in (token.token_hash, subscription.p256dh_key, subscription.endpoint):
+        assert secret not in file_text
 
     with caplog.at_level(logging.WARNING, logger=safe_migration.logger.name):
         manager.restore_backup(backup_path)
 
     after = all_rows(engine)
-    assert after["users"] and after["tasks"]
-    assert after["weekly_notes"] == []
-    assert "weekly_notes (1 rows)" in caplog.text
+    assert after["agent_tokens"] == [] and after["push_subscriptions"] == []
+    assert "agent_tokens (1 rows)" in caplog.text
+    assert "push_subscriptions (1 rows)" in caplog.text
+    # What came through the token is kept, without the link to it.
+    (proposal,) = after["agent_proposals"]
+    assert (proposal["token_id"], proposal["agent_name"]) == (None, "Agent")
+
+
+def test_every_table_is_backed_up_or_left_out_on_purpose():
+    """A new table must be added to the backup, or named here as left out."""
+    tables = {table.name for table in SQLModel.metadata.sorted_tables}
+    # note_attachments has a model and no migration: there is nothing to keep.
+    assert tables == BACKED_UP | NOT_BACKED_UP | {"note_attachments"}
+
+
+def test_every_restored_reference_is_to_a_restored_table():
+    """A row that names a table the restore leaves empty cannot be inserted."""
+    for table, model in FULL_BACKUP_MODELS.items():
+        for key in model.__table__.foreign_keys:  # type: ignore[attr-defined]
+            assert (
+                key.column.table.name in FULL_BACKUP_MODELS
+                or AGENT_TOKEN_LINKS.get(table) == key.parent.name
+            ), f"{table}.{key.parent.name}"
+
+
+def test_a_table_the_database_does_not_have_yet_does_not_stop_a_restore(
+    engine: Engine, tmp_path: Path
+):
+    # note_attachments has a model and no migration: production has no such table.
+    add_one_of_everything(engine)
+    with engine.begin() as connection:
+        connection.execute(text("DROP TABLE note_attachments"))
+    before = all_rows_of(engine, BACKED_UP)
+    manager = DataBackupManager(str(tmp_path))
+    backup_path = manager.create_backup("full")
+
+    manager.restore_backup(backup_path)
+
+    assert all_rows_of(engine, BACKED_UP) == as_restored(before)
 
 
 def test_an_older_full_backup_restores(engine: Engine, tmp_path: Path):
@@ -392,4 +577,4 @@ def test_a_failed_safe_migration_rolls_back_to_the_backup(
     with pytest.raises(SafeMigrationError, match="second step failed"):
         BreaksHalfway().execute_safe_migration("breaks_halfway")
 
-    assert all_rows(engine) == before
+    assert all_rows(engine) == as_restored(before)

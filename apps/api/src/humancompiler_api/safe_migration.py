@@ -20,7 +20,14 @@ from sqlalchemy import Table, func, inspect
 
 from humancompiler_api.database import db
 from humancompiler_api.models import (
+    AgentAuditLog,
+    AgentChange,
+    AgentProposal,
     ContextNote,
+    DailyPlanDocument,
+    EmailNotificationLog,
+    RescheduleDecision,
+    RescheduleSuggestion,
     User,
     Project,
     Goal,
@@ -34,6 +41,8 @@ from humancompiler_api.models import (
     TriageCapacitySettings,
     TaskTriageRun,
     TaskTriageItem,
+    WeeklyNote,
+    WeeklyRhythmBlock,
     WorkSession,
 )
 
@@ -124,6 +133,10 @@ def notes_with_former_task_text(backup_data: dict[str, Any]) -> list[dict[str, A
 # The tables of a full backup by name, which is also each one's key in the
 # file. Each comes after the ones it references: the order their rows can be
 # inserted in.
+#
+# Left out on purpose, so a restore leaves them empty: agent tokens and push
+# subscriptions. They are credentials, not work: a token is issued again and a
+# browser subscribes again, and a backup file should not hold them.
 FULL_BACKUP_MODELS: dict[str, type[SQLModel]] = {
     "users": User,
     "projects": Project,
@@ -140,6 +153,24 @@ FULL_BACKUP_MODELS: dict[str, type[SQLModel]] = {
     "task_triage_items": TaskTriageItem,
     "goal_dependencies": GoalDependency,
     "task_dependencies": TaskDependency,
+    "daily_plan_documents": DailyPlanDocument,
+    "weekly_notes": WeeklyNote,
+    "weekly_rhythm_blocks": WeeklyRhythmBlock,
+    "agent_proposals": AgentProposal,
+    "agent_changes": AgentChange,
+    "agent_audit_logs": AgentAuditLog,
+    "email_notification_logs": EmailNotificationLog,
+    "reschedule_suggestions": RescheduleSuggestion,
+    "reschedule_decisions": RescheduleDecision,
+}
+
+# The column of each table that names the agent token a row came through. No
+# token is restored, so these come back empty, as deleting a token leaves them
+# (ON DELETE SET NULL); the row keeps the agent's name or the token's prefix.
+AGENT_TOKEN_LINKS = {
+    "agent_proposals": "token_id",
+    "agent_changes": "agent_token_id",
+    "agent_audit_logs": "token_id",
 }
 
 # What a full restore truncates by name; CASCADE reaches the rest from these.
@@ -174,7 +205,9 @@ class DataBackupManager:
         self.backup_dir.mkdir(exist_ok=True)
 
     def create_backup(self, backup_name: str | None = None) -> str:
-        """Create a full backup of critical data tables"""
+        """Write every table of ``FULL_BACKUP_MODELS`` to a JSON file.
+
+        Agent tokens and push subscriptions are not written."""
         if not backup_name:
             timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
             backup_name = f"backup_{timestamp}"
@@ -183,120 +216,27 @@ class DataBackupManager:
 
         try:
             engine = db.get_engine()
-            backup_data = {}
+            backup_data: dict[str, Any] = {}
 
             with Session(engine) as session:
-                # Backup users
-                users = session.exec(select(User)).all()
-                backup_data["users"] = [user.model_dump() for user in users]
+                for table, model in FULL_BACKUP_MODELS.items():
+                    backup_data[table] = [
+                        row.model_dump() for row in session.exec(select(model)).all()
+                    ]
 
-                # Backup projects
-                projects = session.exec(select(Project)).all()
-                backup_data["projects"] = [project.model_dump() for project in projects]
-
-                # Backup goals
-                goals = session.exec(select(Goal)).all()
-                backup_data["goals"] = [goal.model_dump() for goal in goals]
-
-                # Backup tasks
-                tasks = session.exec(select(Task)).all()
-                backup_data["tasks"] = [task.model_dump() for task in tasks]
-
-                # Backup notes: a task's note is its body
-                notes = session.exec(select(ContextNote)).all()
-                backup_data["context_notes"] = [note.model_dump() for note in notes]
-
-                # Backup quick tasks
-                quick_tasks = session.exec(select(QuickTask)).all()
-                backup_data["quick_tasks"] = [
-                    quick_task.model_dump() for quick_task in quick_tasks
-                ]
-
-                # Backup schedules
-                schedules = session.exec(select(Schedule)).all()
-                backup_data["schedules"] = [
-                    schedule.model_dump() for schedule in schedules
-                ]
-
-                # Backup Runner sessions: the reflection on a piece of work
-                work_sessions = session.exec(select(WorkSession)).all()
-                backup_data["work_sessions"] = [
-                    work_session.model_dump() for work_session in work_sessions
-                ]
-
-                # Backup logs
-                logs = session.exec(select(Log)).all()
-                backup_data["logs"] = [log.model_dump() for log in logs]
-
-                # Backup user settings
-                user_settings = session.exec(select(UserSettings)).all()
-                backup_data["user_settings"] = [us.model_dump() for us in user_settings]
-
-                # Backup capacity triage data
-                triage_settings = session.exec(select(TriageCapacitySettings)).all()
-                backup_data["triage_capacity_settings"] = [
-                    row.model_dump() for row in triage_settings
-                ]
-                triage_runs = session.exec(select(TaskTriageRun)).all()
-                backup_data["task_triage_runs"] = [
-                    row.model_dump() for row in triage_runs
-                ]
-                triage_items = session.exec(select(TaskTriageItem)).all()
-                backup_data["task_triage_items"] = [
-                    row.model_dump() for row in triage_items
-                ]
-
-                # Backup goal dependencies
-                goal_dependencies = session.exec(select(GoalDependency)).all()
-                backup_data["goal_dependencies"] = [
-                    gd.model_dump() for gd in goal_dependencies
-                ]
-
-                # Backup task dependencies
-                task_dependencies = session.exec(select(TaskDependency)).all()
-                backup_data["task_dependencies"] = [
-                    td.model_dump() for td in task_dependencies
-                ]
-
-                # Add metadata
-                backup_data["metadata"] = {
-                    "created_at": datetime.now(UTC).isoformat(),
-                    "version": "2.0",
-                    "total_records": {
-                        "users": len(backup_data["users"]),
-                        "projects": len(backup_data["projects"]),
-                        "goals": len(backup_data["goals"]),
-                        "tasks": len(backup_data["tasks"]),
-                        "context_notes": len(backup_data["context_notes"]),
-                        "quick_tasks": len(backup_data["quick_tasks"]),
-                        "schedules": len(backup_data["schedules"]),
-                        "work_sessions": len(backup_data["work_sessions"]),
-                        "logs": len(backup_data["logs"]),
-                        "user_settings": len(backup_data["user_settings"]),
-                        "triage_capacity_settings": len(
-                            backup_data["triage_capacity_settings"]
-                        ),
-                        "task_triage_runs": len(backup_data["task_triage_runs"]),
-                        "task_triage_items": len(backup_data["task_triage_items"]),
-                        "goal_dependencies": len(backup_data["goal_dependencies"]),
-                        "task_dependencies": len(backup_data["task_dependencies"]),
-                    },
-                }
+            total_records = {table: len(rows) for table, rows in backup_data.items()}
+            backup_data["metadata"] = {
+                "created_at": datetime.now(UTC).isoformat(),
+                "version": "2.0",
+                "total_records": total_records,
+            }
 
             # Write backup file
             with open(backup_path, "w", encoding="utf-8") as f:
                 json.dump(backup_data, f, indent=2, default=str, ensure_ascii=False)
 
             logger.info(f"✅ Backup created: {backup_path}")
-            logger.info(f"   Users: {len(backup_data['users'])}")
-            logger.info(f"   Projects: {len(backup_data['projects'])}")
-            logger.info(f"   Goals: {len(backup_data['goals'])}")
-            logger.info(f"   Tasks: {len(backup_data['tasks'])}")
-            logger.info(f"   Schedules: {len(backup_data['schedules'])}")
-            logger.info(f"   Logs: {len(backup_data['logs'])}")
-            logger.info(f"   UserSettings: {len(backup_data['user_settings'])}")
-            logger.info(f"   GoalDependencies: {len(backup_data['goal_dependencies'])}")
-            logger.info(f"   TaskDependencies: {len(backup_data['task_dependencies'])}")
+            logger.info(f"   Records: {total_records}")
 
             return str(backup_path)
 
@@ -308,20 +248,20 @@ class DataBackupManager:
         """Replace the database's data with a full backup's. PostgreSQL only.
 
         Every table ``create_backup`` writes (``FULL_BACKUP_MODELS``) comes back
-        as the backup has it, IDs included. A backup made before notes or
-        Runner sessions were part of it is read as ``restore_user_data`` reads
-        one.
+        as the backup has it, IDs included. A backup made before a table was
+        part of it leaves that table empty, and one made before notes or
+        Runner sessions were is read as ``restore_user_data`` reads one.
 
         The delete and the inserts are one transaction: a restore that fails
         leaves the database as it was.
 
-        NOT restored: the delete is ``TRUNCATE ... CASCADE`` from users, which
-        also empties every table that refers to users, directly or through
-        another table, and a backup carries only some of them. Daily plan
-        documents, weekly notes, weekly rhythm blocks, push subscriptions,
-        agent tokens, proposals, changes and audit logs, email notification
-        logs, reschedule suggestions and decisions, and note attachments are
-        lost. The ones that held rows are named in a warning.
+        NOT restored: agent tokens and push subscriptions. The delete is
+        ``TRUNCATE ... CASCADE`` from users, which empties every table that
+        refers to users, directly or through another table, and a backup
+        leaves these two out on purpose. After a restore agents need new
+        tokens and browsers subscribe again; proposals, changes and audit
+        logs come back without the link to their token. Any such table that
+        held rows is named in a warning.
         """
         backup_file = Path(backup_path)
         if not backup_file.exists():
@@ -350,6 +290,8 @@ class DataBackupManager:
                 else {**log, "work_session_id": None}
                 for log in records["logs"]
             ]
+            for table, column in AGENT_TOKEN_LINKS.items():
+                records[table] = [{**row, column: None} for row in records[table]]
             # Read before anything is deleted: a record that cannot be read
             # ends the restore here.
             rows = {
@@ -360,11 +302,15 @@ class DataBackupManager:
             engine = db.get_engine()
 
             with Session(engine) as session:
+                # A model can be ahead of the database (note_attachments has
+                # no table yet): only what exists can lose rows.
+                existing = set(inspect(session.connection()).get_table_names())
                 lost = {
                     table.name: session.exec(
                         select(func.count()).select_from(table)
                     ).one()
                     for table in _tables_emptied_without_restore()
+                    if table.name in existing
                 }
 
                 # No commit until every row is back: this delete is undone
