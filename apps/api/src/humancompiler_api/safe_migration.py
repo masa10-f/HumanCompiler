@@ -16,11 +16,18 @@ import json
 
 from pydantic import TypeAdapter
 from sqlmodel import Session, SQLModel, select, text
-from sqlalchemy import inspect
+from sqlalchemy import Table, func, inspect
 
 from humancompiler_api.database import db
 from humancompiler_api.models import (
+    AgentAuditLog,
+    AgentChange,
+    AgentProposal,
     ContextNote,
+    DailyPlanDocument,
+    EmailNotificationLog,
+    RescheduleDecision,
+    RescheduleSuggestion,
     User,
     Project,
     Goal,
@@ -34,6 +41,8 @@ from humancompiler_api.models import (
     TriageCapacitySettings,
     TaskTriageRun,
     TaskTriageItem,
+    WeeklyNote,
+    WeeklyRhythmBlock,
     WorkSession,
 )
 
@@ -121,6 +130,88 @@ def notes_with_former_task_text(backup_data: dict[str, Any]) -> list[dict[str, A
     return notes
 
 
+# The tables of a full backup by name, which is also each one's key in the
+# file. Each comes after the ones it references: the order their rows can be
+# inserted in.
+#
+# Left out on purpose: agent tokens and push subscriptions. They are
+# credentials, not work: a token is issued again and a browser subscribes
+# again, and a backup file should not hold them. For the same reason user
+# settings are written without the OpenAI API key (see ``backup_record``). A
+# restore keeps the credentials the database holds (see ``restore_backup``).
+FULL_BACKUP_MODELS: dict[str, type[SQLModel]] = {
+    "users": User,
+    "projects": Project,
+    "goals": Goal,
+    "tasks": Task,
+    "context_notes": ContextNote,
+    "quick_tasks": QuickTask,
+    "schedules": Schedule,
+    "work_sessions": WorkSession,
+    "logs": Log,
+    "user_settings": UserSettings,
+    "triage_capacity_settings": TriageCapacitySettings,
+    "task_triage_runs": TaskTriageRun,
+    "task_triage_items": TaskTriageItem,
+    "goal_dependencies": GoalDependency,
+    "task_dependencies": TaskDependency,
+    "daily_plan_documents": DailyPlanDocument,
+    "weekly_notes": WeeklyNote,
+    "weekly_rhythm_blocks": WeeklyRhythmBlock,
+    "agent_proposals": AgentProposal,
+    "agent_changes": AgentChange,
+    "agent_audit_logs": AgentAuditLog,
+    "email_notification_logs": EmailNotificationLog,
+    "reschedule_suggestions": RescheduleSuggestion,
+    "reschedule_decisions": RescheduleDecision,
+}
+
+# The column of each table that names the agent token a row came through. A
+# backup has no tokens, so a link whose token the database no longer holds
+# comes back empty, as deleting a token leaves it (ON DELETE SET NULL); the
+# row keeps the agent's name or the token's prefix.
+AGENT_TOKEN_LINKS = {
+    "agent_proposals": "token_id",
+    "agent_changes": "agent_token_id",
+    "agent_audit_logs": "token_id",
+}
+
+# The tables of credentials a backup leaves out. Each row is one user's.
+CREDENTIAL_TABLES = ("agent_tokens", "push_subscriptions")
+
+
+def backup_record(row: SQLModel) -> dict[str, Any]:
+    """A row as a backup file holds it.
+
+    User settings go without the OpenAI API key: it is a credential the user
+    enters again, and a backup file should not hold it, encrypted or not. AI
+    features are off without a key, as deleting the key in the app leaves them.
+    """
+    record = row.model_dump()
+    if isinstance(row, UserSettings):
+        record["openai_api_key_encrypted"] = None
+        record["ai_features_enabled"] = False
+    return record
+
+
+# What a full restore truncates by name; CASCADE reaches the rest from these.
+_TRUNCATED_TABLES = ("tasks", "goals", "projects", "users")
+
+
+def _tables_emptied_without_restore() -> list[Table]:
+    """The tables a full restore empties and a full backup does not carry."""
+    emptied = set(_TRUNCATED_TABLES)
+    # Parents come first in sorted_tables, so one pass follows every chain.
+    for table in SQLModel.metadata.sorted_tables:
+        if any(key.column.table.name in emptied for key in table.foreign_keys):
+            emptied.add(table.name)
+    return [
+        table
+        for table in SQLModel.metadata.sorted_tables
+        if table.name in emptied and table.name not in FULL_BACKUP_MODELS
+    ]
+
+
 class SafeMigrationError(Exception):
     """Exception raised during safe migration operations"""
 
@@ -135,7 +226,10 @@ class DataBackupManager:
         self.backup_dir.mkdir(exist_ok=True)
 
     def create_backup(self, backup_name: str | None = None) -> str:
-        """Create a full backup of critical data tables"""
+        """Write every table of ``FULL_BACKUP_MODELS`` to a JSON file.
+
+        Agent tokens, push subscriptions and the OpenAI API key in user
+        settings are not written."""
         if not backup_name:
             timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
             backup_name = f"backup_{timestamp}"
@@ -144,120 +238,27 @@ class DataBackupManager:
 
         try:
             engine = db.get_engine()
-            backup_data = {}
+            backup_data: dict[str, Any] = {}
 
             with Session(engine) as session:
-                # Backup users
-                users = session.exec(select(User)).all()
-                backup_data["users"] = [user.model_dump() for user in users]
+                for table, model in FULL_BACKUP_MODELS.items():
+                    backup_data[table] = [
+                        backup_record(row) for row in session.exec(select(model)).all()
+                    ]
 
-                # Backup projects
-                projects = session.exec(select(Project)).all()
-                backup_data["projects"] = [project.model_dump() for project in projects]
-
-                # Backup goals
-                goals = session.exec(select(Goal)).all()
-                backup_data["goals"] = [goal.model_dump() for goal in goals]
-
-                # Backup tasks
-                tasks = session.exec(select(Task)).all()
-                backup_data["tasks"] = [task.model_dump() for task in tasks]
-
-                # Backup notes: a task's note is its body
-                notes = session.exec(select(ContextNote)).all()
-                backup_data["context_notes"] = [note.model_dump() for note in notes]
-
-                # Backup quick tasks
-                quick_tasks = session.exec(select(QuickTask)).all()
-                backup_data["quick_tasks"] = [
-                    quick_task.model_dump() for quick_task in quick_tasks
-                ]
-
-                # Backup schedules
-                schedules = session.exec(select(Schedule)).all()
-                backup_data["schedules"] = [
-                    schedule.model_dump() for schedule in schedules
-                ]
-
-                # Backup Runner sessions: the reflection on a piece of work
-                work_sessions = session.exec(select(WorkSession)).all()
-                backup_data["work_sessions"] = [
-                    work_session.model_dump() for work_session in work_sessions
-                ]
-
-                # Backup logs
-                logs = session.exec(select(Log)).all()
-                backup_data["logs"] = [log.model_dump() for log in logs]
-
-                # Backup user settings
-                user_settings = session.exec(select(UserSettings)).all()
-                backup_data["user_settings"] = [us.model_dump() for us in user_settings]
-
-                # Backup capacity triage data
-                triage_settings = session.exec(select(TriageCapacitySettings)).all()
-                backup_data["triage_capacity_settings"] = [
-                    row.model_dump() for row in triage_settings
-                ]
-                triage_runs = session.exec(select(TaskTriageRun)).all()
-                backup_data["task_triage_runs"] = [
-                    row.model_dump() for row in triage_runs
-                ]
-                triage_items = session.exec(select(TaskTriageItem)).all()
-                backup_data["task_triage_items"] = [
-                    row.model_dump() for row in triage_items
-                ]
-
-                # Backup goal dependencies
-                goal_dependencies = session.exec(select(GoalDependency)).all()
-                backup_data["goal_dependencies"] = [
-                    gd.model_dump() for gd in goal_dependencies
-                ]
-
-                # Backup task dependencies
-                task_dependencies = session.exec(select(TaskDependency)).all()
-                backup_data["task_dependencies"] = [
-                    td.model_dump() for td in task_dependencies
-                ]
-
-                # Add metadata
-                backup_data["metadata"] = {
-                    "created_at": datetime.now(UTC).isoformat(),
-                    "version": "2.0",
-                    "total_records": {
-                        "users": len(backup_data["users"]),
-                        "projects": len(backup_data["projects"]),
-                        "goals": len(backup_data["goals"]),
-                        "tasks": len(backup_data["tasks"]),
-                        "context_notes": len(backup_data["context_notes"]),
-                        "quick_tasks": len(backup_data["quick_tasks"]),
-                        "schedules": len(backup_data["schedules"]),
-                        "work_sessions": len(backup_data["work_sessions"]),
-                        "logs": len(backup_data["logs"]),
-                        "user_settings": len(backup_data["user_settings"]),
-                        "triage_capacity_settings": len(
-                            backup_data["triage_capacity_settings"]
-                        ),
-                        "task_triage_runs": len(backup_data["task_triage_runs"]),
-                        "task_triage_items": len(backup_data["task_triage_items"]),
-                        "goal_dependencies": len(backup_data["goal_dependencies"]),
-                        "task_dependencies": len(backup_data["task_dependencies"]),
-                    },
-                }
+            total_records = {table: len(rows) for table, rows in backup_data.items()}
+            backup_data["metadata"] = {
+                "created_at": datetime.now(UTC).isoformat(),
+                "version": "2.0",
+                "total_records": total_records,
+            }
 
             # Write backup file
             with open(backup_path, "w", encoding="utf-8") as f:
                 json.dump(backup_data, f, indent=2, default=str, ensure_ascii=False)
 
             logger.info(f"✅ Backup created: {backup_path}")
-            logger.info(f"   Users: {len(backup_data['users'])}")
-            logger.info(f"   Projects: {len(backup_data['projects'])}")
-            logger.info(f"   Goals: {len(backup_data['goals'])}")
-            logger.info(f"   Tasks: {len(backup_data['tasks'])}")
-            logger.info(f"   Schedules: {len(backup_data['schedules'])}")
-            logger.info(f"   Logs: {len(backup_data['logs'])}")
-            logger.info(f"   UserSettings: {len(backup_data['user_settings'])}")
-            logger.info(f"   GoalDependencies: {len(backup_data['goal_dependencies'])}")
-            logger.info(f"   TaskDependencies: {len(backup_data['task_dependencies'])}")
+            logger.info(f"   Records: {total_records}")
 
             return str(backup_path)
 
@@ -266,7 +267,33 @@ class DataBackupManager:
             raise SafeMigrationError(f"Backup creation failed: {e}")
 
     def restore_backup(self, backup_path: str) -> None:
-        """Restore data from a backup file"""
+        """Replace the database's data with a full backup's. PostgreSQL only.
+
+        Every table ``create_backup`` writes (``FULL_BACKUP_MODELS``) comes back
+        as the backup has it, IDs included. A backup made before a table was
+        part of it leaves that table empty, and one made before notes or
+        Runner sessions were is read as ``restore_user_data`` reads one.
+
+        The delete and the inserts are one transaction: a restore that fails
+        leaves the database as it was.
+
+        Credentials are not in a backup, so the ones the database holds when
+        the restore starts are kept, for every user the backup brings back:
+        agent tokens, push subscriptions and the OpenAI API key (with whether
+        AI features are on). Rolling back a failed migration therefore revokes
+        nothing. They are read and written back inside the transaction and
+        never reach a file. A key in a file (a backup made before keys were
+        left out has one) is not read: it may since be replaced or deleted.
+
+        NOT restored: credentials the database does not hold. On an empty
+        database, or for a user it no longer has, agents need new tokens,
+        browsers subscribe again and the user enters the OpenAI API key again
+        (AI features are off until then); proposals, changes and audit logs
+        come back without the link to a token that is gone. The delete is
+        ``TRUNCATE ... CASCADE`` from users, which empties every table that
+        refers to users: rows it removes that are not put back are counted in
+        a warning.
+        """
         backup_file = Path(backup_path)
         if not backup_file.exists():
             raise SafeMigrationError(f"Backup file not found: {backup_path}")
@@ -275,53 +302,153 @@ class DataBackupManager:
             with open(backup_file, encoding="utf-8") as f:
                 backup_data = json.load(f)
 
+            missing = [table for table in _TRUNCATED_TABLES if table not in backup_data]
+            if missing:
+                # Not a full backup: stop before anything is deleted.
+                raise SafeMigrationError(f"Backup has no {', '.join(missing)}")
+
+            records: dict[str, list[dict[str, Any]]] = {
+                table: backup_data.get(table, []) for table in FULL_BACKUP_MODELS
+            }
+            # Notes carry the text older backups kept on tasks.
+            records["context_notes"] = notes_with_former_task_text(backup_data)
+            # A log keeps its time when its session is not in the backup (an
+            # older backup has none); a dangling link would fail.
+            session_ids = {str(row["id"]) for row in records["work_sessions"]}
+            records["logs"] = [
+                log
+                if str(log.get("work_session_id")) in session_ids
+                else {**log, "work_session_id": None}
+                for log in records["logs"]
+            ]
+            user_ids = {str(user["id"]) for user in records["users"]}
+
             engine = db.get_engine()
 
             with Session(engine) as session:
-                # Clear existing data (in reverse dependency order)
-                session.exec(text("TRUNCATE tasks, goals, projects, users CASCADE"))
-                session.commit()
+                connection = session.connection()
+                # A model can be ahead of the database (note_attachments has
+                # no table yet): only what exists holds rows.
+                existing = set(inspect(connection).get_table_names())
 
-                # Restore users first
-                for user_data in backup_data["users"]:
-                    user = User(**user_data)
-                    session.add(user)
+                # The lock the delete takes, taken before the reads below, so
+                # that no credential written in between is deleted unread.
+                locked = [
+                    name
+                    for name in ("users", "user_settings", *CREDENTIAL_TABLES)
+                    if name in existing
+                ]
+                session.exec(
+                    text(f"LOCK TABLE {', '.join(locked)} IN ACCESS EXCLUSIVE MODE")
+                )
 
-                # Restore projects
-                for project_data in backup_data["projects"]:
-                    project = Project(**project_data)
-                    session.add(project)
+                # A backup has no credentials. Those in the database stay, for
+                # the users the backup brings back: read now, written back
+                # below, in this transaction only.
+                credentials = {
+                    name: [
+                        dict(row)
+                        for row in connection.execute(
+                            SQLModel.metadata.tables[name].select()
+                        ).mappings()
+                        if str(row["user_id"]) in user_ids
+                    ]
+                    for name in CREDENTIAL_TABLES
+                    if name in existing
+                }
+                api_keys = {
+                    str(user_id): (api_key, ai_features_enabled)
+                    for user_id, api_key, ai_features_enabled in session.exec(
+                        select(
+                            UserSettings.user_id,
+                            UserSettings.openai_api_key_encrypted,
+                            UserSettings.ai_features_enabled,
+                        )
+                    )
+                    if api_key
+                }
+                # The key is the database's or none: never one from the file,
+                # which an older backup still holds and may since be replaced
+                # or deleted.
+                records["user_settings"] = [
+                    {
+                        **settings,
+                        "openai_api_key_encrypted": api_key,
+                        "ai_features_enabled": ai_features_enabled,
+                    }
+                    for settings in records["user_settings"]
+                    for api_key, ai_features_enabled in [
+                        api_keys.get(str(settings["user_id"]), (None, False))
+                    ]
+                ]
+                token_ids = {
+                    str(token["id"]) for token in credentials.get("agent_tokens", [])
+                }
+                for table, column in AGENT_TOKEN_LINKS.items():
+                    records[table] = [
+                        row
+                        if str(row.get(column)) in token_ids
+                        else {**row, column: None}
+                        for row in records[table]
+                    ]
 
-                # Restore goals
-                for goal_data in backup_data["goals"]:
-                    goal = Goal(**goal_data)
-                    session.add(goal)
+                # Read before anything is deleted: a record that cannot be
+                # read ends the restore here.
+                rows = {
+                    table: [backup_row(model, record) for record in records[table]]
+                    for table, model in FULL_BACKUP_MODELS.items()
+                }
 
-                # Restore tasks
-                for task_data in backup_data["tasks"]:
-                    task = Task(**task_data)
-                    session.add(task)
+                # What the delete removes and nothing puts back.
+                lost = {
+                    table.name: session.exec(
+                        select(func.count()).select_from(table)
+                    ).one()
+                    - len(credentials.get(table.name, []))
+                    for table in _tables_emptied_without_restore()
+                    if table.name in existing
+                }
 
-                # Restore notes, with the text older backups kept on tasks.
-                # Notes have no ORM relationship to what they are on, so the
-                # rows they reference must be inserted first.
-                session.flush()
-                for note_data in notes_with_former_task_text(backup_data):
-                    session.add(ContextNote(**note_data))
+                # No commit until every row is back: this delete is undone
+                # with the rest if an insert fails.
+                session.exec(text(f"TRUNCATE {', '.join(_TRUNCATED_TABLES)} CASCADE"))
+
+                # Few of these tables have an ORM relationship to the rows
+                # they reference, so each is inserted before the next.
+                for table in FULL_BACKUP_MODELS:
+                    session.add_all(rows[table])
+                    session.flush()
+                    if table == "users":
+                        # Next, so that what names a token finds it.
+                        for name, kept in credentials.items():
+                            if kept:
+                                connection.execute(
+                                    SQLModel.metadata.tables[name].insert(), kept
+                                )
 
                 session.commit()
 
             metadata = backup_data.get("metadata", {})
             logger.info(f"✅ Backup restored from: {backup_path}")
             logger.info(f"   Backup created: {metadata.get('created_at')}")
-            logger.info(f"   Records restored: {metadata.get('total_records', {})}")
+            restored = {table: len(found) for table, found in records.items()}
+            logger.info(f"   Records restored: {restored}")
+            lost_rows = [
+                f"{table} ({count} rows)" for table, count in lost.items() if count
+            ]
+            if lost_rows:
+                logger.warning(
+                    "⚠️  Not in the backup, lost in the restore: " + ", ".join(lost_rows)
+                )
 
         except Exception as e:
             logger.error(f"❌ Failed to restore backup: {e}")
             raise SafeMigrationError(f"Backup restoration failed: {e}")
 
     def create_user_backup(self, user_id: str, backup_name: str | None = None) -> str:
-        """Create a backup of all data for a specific user"""
+        """Create a backup of all data for a specific user.
+
+        User settings are written without the OpenAI API key."""
         if not backup_name:
             timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
             backup_name = f"user_{user_id}_backup_{timestamp}"
@@ -413,7 +540,9 @@ class DataBackupManager:
                 user_settings = session.exec(
                     select(UserSettings).where(UserSettings.user_id == user_id)
                 ).all()
-                backup_data["user_settings"] = [us.model_dump() for us in user_settings]
+                backup_data["user_settings"] = [
+                    backup_record(us) for us in user_settings
+                ]
 
                 # Backup user's capacity triage data
                 triage_settings = session.exec(
@@ -669,6 +798,10 @@ class DataBackupManager:
                 for us_data in backup_data.get("user_settings", []):
                     us_data["id"] = str(uuid.uuid4())
                     us_data["user_id"] = target_user_id
+                    # Never a key from a file: an older backup still holds
+                    # one, and it is the key of the user the backup is of.
+                    us_data["openai_api_key_encrypted"] = None
+                    us_data["ai_features_enabled"] = False
 
                     # Check if user settings already exist
                     existing_us = session.exec(

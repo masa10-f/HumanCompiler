@@ -120,13 +120,24 @@ print('復旧完了')
 "
 ```
 
+`restore_backup` は PostgreSQL 専用で、データベースの内容をバックアップの内容に**置き換えます**。
+
+- **復元されるテーブル**（`create_backup` が書き出すもの全て = `FULL_BACKUP_MODELS`）: users, projects, goals, tasks, context_notes, quick_tasks, schedules, work_sessions, logs, user_settings, triage_capacity_settings, task_triage_runs, task_triage_items, goal_dependencies, task_dependencies, daily_plan_documents, weekly_notes, weekly_rhythm_blocks, agent_proposals, agent_changes, agent_audit_logs, email_notification_logs, reschedule_suggestions, reschedule_decisions
+- **失敗しても安全**: 削除と挿入は1つのトランザクションです。途中で失敗した場合、データベースは復旧前の状態のまま残ります。
+- **認証情報はバックアップに含まれません**: `agent_tokens`、`push_subscriptions`、OpenAI APIキー（`user_settings.openai_api_key_encrypted`）は、意図的にバックアップファイルに書き出していません（ユーザー単位のエクスポートも APIキーを含みません）。
+  - **復旧を実行した時点でデータベースに残っている認証情報は、そのまま保持されます**（バックアップに含まれるユーザーの分）。マイグレーション失敗時のロールバックや、稼働中のDBへの復旧では、トークンの失効やAPIキーの消失は起きません。保持はトランザクション内で行われ、ファイルには書き出されません。
+  - **空のデータベースへ復旧した場合**（データ消失後の復旧など）は、認証情報は戻りません。エージェントトークンは設定画面から**再発行**、プッシュ通知は各ブラウザで**再購読**、OpenAI APIキーは各ユーザーが設定画面で**再入力**してください（それまで AI 機能はオフになります）。提案・変更履歴・監査ログは復元されますが、存在しないトークンへのリンクは空になります（エージェント名やトークンのプレフィックスは残ります）。
+  - 既存データの削除は `TRUNCATE ... CASCADE` で行います。バックアップに含まれないユーザーの認証情報など、削除されて戻らない行があった場合は、復旧時に警告ログ（`⚠️  Not in the backup, lost in the restore: ...`）に件数が出力されます。
+- 古いバックアップ（上記のテーブルが追加される前に作成されたもの）から復旧すると、そのファイルに含まれないテーブルは空になります。キーを除外する前に作成されたバックアップファイルには暗号化済みのキーが入っていますが、復旧時（ユーザー単位のインポートを含む）には**読み込まれません**。ファイルのキーは、その後に変更・削除されている可能性があるためです。不要になった古いバックアップファイルは削除してください。
+
 ### 2. 特定のテーブルのみ復旧
 
 ```python
 import json
 from sqlmodel import Session
 from humancompiler_api.database import db
-from humancompiler_api.models import User, Project, Goal, Task
+from humancompiler_api.models import User
+from humancompiler_api.safe_migration import backup_row
 
 # バックアップファイル読み込み
 with open('backups/daily_backup_20250815_120000.json') as f:
@@ -135,9 +146,10 @@ with open('backups/daily_backup_20250815_120000.json') as f:
 engine = db.get_engine()
 with Session(engine) as session:
     # 例: ユーザーデータのみ復旧
+    # バックアップはJSONなので、日時・UUID・小数は文字列です。
+    # User(**user_data) では変換されずINSERTが失敗するため、backup_row を使います。
     for user_data in backup_data['users']:
-        user = User(**user_data)
-        session.add(user)
+        session.add(backup_row(User, user_data))
     session.commit()
 ```
 
@@ -185,13 +197,18 @@ self._cleanup_old_backups(prefix="weekly_backup_", days=56)  # 8週に変更
 
 ### バックアップ対象テーブルの変更
 
-`safe_migration.py`の`DataBackupManager.create_backup()`を編集：
+`safe_migration.py` の `FULL_BACKUP_MODELS` にモデルを追加します。`create_backup` と `restore_backup` の両方がこの一覧を使うので、追加したテーブルはバックアップにも復旧にも反映されます。
 
 ```python
-# 追加のテーブルをバックアップに含める場合
-schedules = session.exec(select(Schedule)).all()
-backup_data["schedules"] = [schedule.model_dump() for schedule in schedules]
+FULL_BACKUP_MODELS: dict[str, type[SQLModel]] = {
+    "users": User,
+    ...
+    # キーはテーブル名。参照先のテーブルより後に追加する（挿入順になるため）
+    "my_new_table": MyNewModel,
+}
 ```
+
+トークンや鍵のように再発行できる認証情報は追加しないでください。テーブルの一部の列だけを除外する場合は `backup_record` に追加します。
 
 ## 🛠️ トラブルシューティング
 
