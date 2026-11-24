@@ -161,7 +161,8 @@ def create_attachment(
     """Attach an image to the note of ``target``, which must be the user's.
 
     Returns the attachment and whether it was already there: the same image
-    (same stored bytes) attached to the same note is not stored twice. Creates
+    (same stored bytes) attached to the same note is not stored twice, and
+    takes ``caption`` if that is not empty. Creates
     the note if the item has none. The note's content is not changed; the
     caller puts the reference in it.
 
@@ -212,7 +213,13 @@ def create_attachment(
             if existing.detached_at is not None:
                 # Start the grace period again: the caller is about to use it.
                 existing.detached_at = datetime.now(UTC)
-                session.add(existing)
+            if caption:
+                # The caller says what the image shows now, and gets that back
+                # in the reference. Sent without a caption (the web editor),
+                # the image keeps the one it has. As for any attachment, the
+                # next save of the note sets the caption from the note's text.
+                existing.caption = caption
+            session.add(existing)
             session.commit()
             session.refresh(existing)
             return existing, True

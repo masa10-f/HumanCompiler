@@ -233,9 +233,26 @@ def test_same_image_for_the_same_note_is_stored_once(
     assert second.status_code == 200
     assert second.json()["id"] == first.json()["id"]
     assert second.json()["reused"] is True
-    assert second.json()["caption"] == "図1"
-    assert len(_rows(session)) == 1
+    assert second.json()["caption"] == "another caption"
+    (row,) = _rows(session)
+    assert row.caption == "another caption"
     assert len(storage.objects) == 2
+
+
+@pytest.mark.parametrize("caption", [None, "", "  "])
+def test_same_image_without_a_caption_keeps_the_caption(
+    session: Session, caption: str | None
+) -> None:
+    path, _ = _project_path(session)
+    first = _upload(f"{path}/attachments")
+
+    second = _upload(f"{path}/attachments", caption=caption)
+
+    assert second.status_code == 200
+    assert second.json()["id"] == first.json()["id"]
+    assert second.json()["caption"] == "図1"
+    (row,) = _rows(session)
+    assert row.caption == "図1"
 
 
 def test_same_image_for_another_note_is_a_new_attachment(session: Session) -> None:

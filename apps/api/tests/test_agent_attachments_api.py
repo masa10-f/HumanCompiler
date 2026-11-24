@@ -200,6 +200,22 @@ def test_same_image_again_is_reused(session: Session) -> None:
     assert second.json()["id"] == first.json()["id"]
 
 
+def test_same_image_again_takes_the_new_caption(session: Session) -> None:
+    token = issue_token(session, USER_A, ATTACH)
+    project = seed_project(session, USER_A)
+    first = _attach(token, "projects", project.id)
+
+    second = _attach(token, "projects", project.id, caption="検証損失 [run 2]")
+
+    assert second.status_code == 200
+    body = second.json()
+    assert body["id"] == first.json()["id"]
+    assert body["caption"] == "検証損失 [run 2]"
+    assert body["markdown"] == f"![検証損失 \\[run 2\\]](attachment:{body['id']})"
+    (row,) = _rows(session)
+    assert row.caption == "検証損失 [run 2]"
+
+
 def test_metadata_and_url_for_the_owner(
     session: Session, storage: InMemoryAttachmentStorage
 ) -> None:

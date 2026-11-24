@@ -207,7 +207,7 @@ npx humancompiler attach <project|goal|task> <id> <file> --caption "..." [--sour
 
 - **エンドポイント：** `POST /api/agent/v1/context-notes/{projects|goals|tasks}/{id}/attachments`（multipart、スコープは `attachments:write`）。
   - 送る項目は `file`（`preview.webp`、`image/webp`）、`caption`、`source`（JSON の文字列）。
-  - 応答は添付のメタデータ。`markdown` が、ノートに置く参照 `![キャプション](attachment:<id>)`。同じ内容がそのノートに添付済みなら、`reused` が true になる。
+  - 応答は添付のメタデータ。`markdown` が、ノートに置く参照 `![キャプション](attachment:<id>)`。同じ内容がそのノートに添付済みなら、`reused` が true になり、`markdown` のキャプションは今回送ったものになる。
 - **縮小と変換（`src/preview.ts`）：** sharp で、EXIF の向きを反映し、長辺 1600 px に収め（拡大はしない）、WebP の品質 80 にする。メタデータは付けない。
   - 300 KB を超えたら、品質を 70、60、50 と下げる。それでも超えたら、品質 50 のまま長辺を 0.85 倍ずつ縮める。長辺 200 px でも収まらなければ失敗にする。
   - 上限は API の検証と同じ値（#471）。API でも検証するので、CLI の値は送る前に収めるためのもの。

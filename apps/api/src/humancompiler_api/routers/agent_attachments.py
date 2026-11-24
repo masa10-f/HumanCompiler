@@ -90,7 +90,8 @@ def _parse_source(raw: str | None) -> AttachmentSource | None:
         "or tasks, and target_id is that item's id; another user's item and a "
         "missing one both give 404. Creates the note if the item has none, and "
         "does not change its text. Sending the same image for the same note "
-        "again answers 200 with the attachment already there (reused: true). "
+        "again answers 200 with the attachment already there (reused: true), "
+        "which takes the caption sent. "
         f"{ATTACHMENT_GUIDE}"
     ),
     responses={

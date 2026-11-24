@@ -132,7 +132,7 @@ Puts an image made on your machine, such as a plot from an analysis, on the note
 
 It prints the image's Markdown reference, `![caption](attachment:<id>)`, to stdout and everything else to stderr. The image shows in the note once the reference is in it: `--append` adds it to the end of the note, or put it where you want with the MCP tools `append_note` and `replace_note`. Notes show images only in this form; an image at an external URL is not shown.
 
-Attaching the same image to the same note again reuses the stored one. An image whose reference is in no note is deleted after about a week.
+Attaching the same image to the same note again reuses the stored one, and the reference printed has the new caption. An image whose reference is in no note is deleted after about a week.
 
 | Option | Description |
 |---|---|
