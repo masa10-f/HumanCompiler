@@ -6,7 +6,7 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
-import { CheckoutDialog } from '../checkout-dialog'
+import { CheckoutDialog, workedMinutes } from '../checkout-dialog'
 import type { CurrentSessionDetails } from '@/types/runner'
 import type { WorkSession } from '@/types/work-session'
 
@@ -20,12 +20,15 @@ const sessionDetails = {
   task: { id: 'task-1', title: '序論を書く', estimate_hours: 4 },
 } as unknown as CurrentSessionDetails
 
-function renderDialog(onCheckout = jest.fn().mockResolvedValue(undefined)) {
+function renderDialog(
+  onCheckout = jest.fn().mockResolvedValue(undefined),
+  shownSession: WorkSession = session,
+) {
   render(
     <CheckoutDialog
       open
       onOpenChange={jest.fn()}
-      session={session}
+      session={shownSession}
       sessionDetails={sessionDetails}
       isCheckingOut={false}
       onCheckout={onCheckout}
@@ -37,7 +40,49 @@ function renderDialog(onCheckout = jest.fn().mockResolvedValue(undefined)) {
 const remaining = () => screen.getByLabelText('残りの見込み（時間・任意）')
 const checkoutButton = () => screen.getByRole('button', { name: 'チェックアウト' })
 
+describe('workedMinutes', () => {
+  const now = new Date('2026-11-20T12:00:00Z').getTime()
+  const at = (minutesAgo: number) => new Date(now - minutesAgo * 60 * 1000).toISOString()
+  const running = (fields: Partial<WorkSession>) =>
+    ({ started_at: at(60), paused_at: null, total_paused_seconds: 0, ...fields }) as WorkSession
+
+  it('is the time since the session started', () => {
+    expect(workedMinutes(running({}), now)).toBe(60)
+  })
+
+  it('leaves out the pauses already taken', () => {
+    expect(workedMinutes(running({ total_paused_seconds: 15 * 60 }), now)).toBe(45)
+  })
+
+  it('leaves out the pause still running', () => {
+    expect(
+      workedMinutes(running({ total_paused_seconds: 15 * 60, paused_at: at(20) }), now),
+    ).toBe(25)
+  })
+
+  it('counts whole minutes of work, as the API does', () => {
+    // 60 minutes less 90 seconds of pause is 58.5 minutes of work.
+    expect(workedMinutes(running({ total_paused_seconds: 90 }), now)).toBe(58)
+  })
+
+  it('is at least the one minute a checkout records', () => {
+    expect(workedMinutes(running({ started_at: at(0) }), now)).toBe(1)
+    expect(workedMinutes(running({ started_at: at(10), paused_at: at(10) }), now)).toBe(1)
+  })
+})
+
 describe('CheckoutDialog', () => {
+  it('shows the time worked without the pauses', () => {
+    renderDialog(undefined, {
+      ...session,
+      started_at: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
+      paused_at: null,
+      total_paused_seconds: 30 * 60,
+    })
+
+    expect(screen.getByText('作業時間: 1.0時間（60分）')).toBeInTheDocument()
+  })
+
   it('asks what remains the way a time record entered by hand does', () => {
     renderDialog()
 
