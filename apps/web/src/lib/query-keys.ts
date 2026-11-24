@@ -92,6 +92,12 @@ export const queryKeys = {
     weekStart: () => [...queryKeys.userSettings.all, 'week-start'] as const,
   },
 
+  // Images attached to notes
+  noteAttachments: {
+    all: ['noteAttachments'] as const,
+    usage: () => [...queryKeys.noteAttachments.all, 'usage'] as const,
+  },
+
   // AI keys
   ai: {
     all: ['ai'] as const,

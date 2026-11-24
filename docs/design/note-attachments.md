@@ -1,0 +1,108 @@
+# ノートの画像
+
+プロジェクト・Goal・Task のノートに画像を置く。HumanCompiler が持つのは「見るための写し」（縮小したプレビュー）で、原本は保存しない。画像は利用者ごとに非公開。Web のエディターからも、エージェント（CLI）からも添付できる。Issue #408 と #471 の実装。
+
+週次ノートと日次ノートは対象外（ほかのノートから貼り付けた画像の表示だけはできる）。
+
+## ノートが持つもの
+
+ノートの本文には、添付の ID とキャプションだけを書く。画像も URL も書かない。
+
+| 形 | 書き方 |
+| --- | --- |
+| HTML（エディターが保存する形） | `<img data-attachment-id="<uuid>" alt="キャプション">`。`src` は無い |
+| Markdown（エージェントが読み書きする形） | `![キャプション](attachment:<uuid>)` |
+
+- `note_markdown` と `note_markdown_out` が相互に変換する。ID は小文字で書く。
+- **これ以外の画像は表示しない。** 外部 URL の画像は、今までどおりリンクになる（ノートを開いたことが外部に伝わらないように）。
+- キャプションはノートの検索対象になる（`context_notes.content_text` に入る）。コンテキストの書き出しと MCP には、キャプションと ID だけが出る。画像のバイト列は出ない。
+- 参照の読み取りは `note_attachment_refs.py` にまとめてある。
+
+## 保存するもの
+
+テーブル `note_attachments`（マイグレーション 046）に1画像1行。ファイルは Supabase Storage の非公開バケット `note-attachments`（`ATTACHMENTS_BUCKET`）に置く。
+
+- ファイルは2つ。プレビュー `{user_id}/{attachment_id}/preview.webp` と、サムネイル `…/thumb.webp`（長辺 480 px）。どちらも WebP。
+- 行は `bucket` と `object_key` を持ち、URL は持たない（別の S3 互換ストレージへ移せるように）。ストレージの操作は `attachment_storage.AttachmentStorage` の3つ（`put`、`delete`、`signed_urls`）だけで、テストはメモリ上の実装を使う。
+- `source`（JSON）に原本の場所を持てる。`path`、`script`、`host`、`sha256`（原本の SHA-256）。送る側の申告で、検証しない。
+- `sha256` は保存したプレビューの SHA-256。同じノートに同じバイト列を送ると、既存の添付を返す（`reused: true`）。
+
+### バケットに誰が触れるか
+
+バケットは非公開で、ストレージのポリシーは作らない。読み書きは API だけが service role で行う。API は `note_attachments.user_id` で所有者を確かめてから、10分で切れる署名付き URL を返す。他人の添付と存在しない添付は区別できない（Web の URL 取得では結果から省き、エージェント API では 404）。
+
+## 上限と検証
+
+| 項目 | 値 |
+| --- | --- |
+| 形式 | PNG / JPEG / WebP。SVG は受け付けない（スクリプトを含められる）。アニメーションも受け付けない |
+| 大きさ | 長辺 1600 px、300 KB まで |
+| 1ノートに表示できる枚数 | 50（`ATTACHMENT_MAX_PER_NOTE`） |
+| 利用者あたりの合計 | 200 MB（`ATTACHMENT_USER_QUOTA_BYTES`）。ノートから外して削除を待っている画像も数える |
+
+- **縮小は送る側がする。** Web はブラウザの canvas で、CLI は sharp で、長辺 1600 px・WebP 品質 80 にし、300 KB を超えるなら品質を下げ、それでも超えるなら小さくする。原本はサーバーに届かない。
+- **サーバーは何も信用しない**（`attachment_images.py`）。形式は先頭のバイト列で判定し、大きさは画素を展開する前にヘッダーで確かめる。EXIF と XMP は除く（向きは先に画素へ反映する）。WebP でない入力は WebP にする。メタデータの無い WebP は、送られたバイト列のまま保存する。
+- サムネイルはサーバーが作る。
+
+## 添付の一生
+
+1. アップロードすると行ができる。この時点ではどのノートも参照していないので、`detached_at`（参照されなくなった時刻）が入っている。
+2. 参照を含むノートを保存すると `detached_at` が消える。参照を外して保存すると、また入る。キャプションも、ノートの `alt` に合わせて更新する。これは `ContextNote` の更新時に `models._sync_note_attachments` が行うので、Web・エージェントの書き込み・提案の承認のどの経路でも同じ。
+3. 1日1回の掃除（`attachment_service.sweep_attachments`）が、`detached_at` から7日たった添付と、ノートが削除された添付（`note_id` が NULL）を、ファイルごと消す。
+   - 消す前に、同じ利用者のどれかのノートが ID を含んでいないか確かめる。含んでいれば、そのノートの添付に付け替える（画像を別のノートへコピーした場合）。
+   - ファイルを先に消し、行を後で消す。ファイルを消せなければ行を残し、次回に再試行する。
+
+7日の猶予は、「元に戻す」、古いタブからの保存、`humancompiler attach` してから参照を貼るまでの間に、画像を失わないためのもの。
+
+- プロジェクト・Goal・Task を削除するとノートは消えるが、添付の行は `note_id` が NULL になって残る（`ON DELETE SET NULL`）。掃除がファイルを見つけられるようにするため。
+- 利用者を削除すると行は消える。`{user_id}/` 以下のファイルは手で消す。
+
+## API
+
+Web（Supabase のログイン）:
+
+| メソッド | パス | 内容 |
+| --- | --- | --- |
+| POST | `/api/notes/{projects\|goals\|tasks}/{id}/attachments` | multipart。`file`、`caption`（省ける）。ノートが無ければ作る。本文は変えない。201、同じ画像なら 200 |
+| POST | `/api/notes/attachments/urls` | `{ids}`（100件まで）→ 自分の添付だけの、サムネイルとプレビューの署名付き URL と `expires_at` |
+| GET | `/api/notes/attachments/usage` | 保存量、上限、枚数 |
+
+エージェント（`/api/agent/v1`）:
+
+| メソッド | パス | スコープ | 内容 |
+| --- | --- | --- | --- |
+| POST | `/context-notes/{kind}/{id}/attachments` | `attachments:write` | multipart。`file`、`caption`（必須）、`source`（JSON、省ける）。貼る参照 `markdown` を返す |
+| GET | `/attachments/{id}` | `attachments:read` | キャプション、大きさ、`source` |
+| GET | `/attachments/{id}/url?variant=full\|thumb` | `attachments:read` | `{url, expires_at}`。リダイレクトではなく JSON で返す（CLI はトークンを別ホストへ送らないよう、リダイレクトを追わない） |
+
+- 画像本体のアップロードは 413（大きすぎる）、422（画像でない、上限）、503（ストレージに届かない）を返す。
+- アップロードはノートの本文を変えない。エージェントは返った参照を `append_note` などでノートに書く。
+- スコープは `attachments:read` と `attachments:write` を足した。読み取りのプリセットは前者を、「作業するエージェント」は両方を含む。スコープは作成後に変えられないので、既存のトークンは作り直す。
+
+## Web
+
+- 画像は TipTap のブロックノード `noteImage`（`note-image-extension.ts`）。すべてのノートエディターに入れる。入れないエディターは、読み込んだノートの画像を落として保存してしまうため。
+- 表示（`note-image-view.tsx`）はサムネイルで、画面に入ってから読み込む。クリックするとプレビューを開く。URL は `AttachmentUrlResolver` がまとめて取り、期限の1分前まで使い回す。読み込みに失敗したら1回だけ取り直す。
+- 追加は、貼り付け・ドラッグ＆ドロップ・ツールバーのボタン。アップロードが終わってからノードを入れるので、失敗したアップロードへの参照が保存されることはない。
+- キャプションは画像の下の入力欄で、追加した直後にフォーカスが移る。未入力でも保存できるが、その旨を表示する。
+- 文字と画像の両方を持つ貼り付け（表計算ソフトからのコピーなど）は、今までどおり文字として貼る。
+- 設定ページに保存量を出す。
+
+## CLI
+
+`docs/design/cli.md` の `attach` と `context --with-images` を参照。
+
+## バックアップ
+
+- 全体のバックアップとユーザーごとの書き出しは、`note_attachments` の行（ファイルのキーを含む）を含める。画像は含めない。
+- ユーザーごとの取り込みは、添付を取り込まない。画像の持ち主が同じなら取り込んだノートでも表示され、別の利用者なら「表示できません」になる。
+
+## 手作業
+
+1. Supabase のダッシュボードで、非公開バケット `note-attachments` を作る（ポリシーは作らない）。`docs/dev/database-setup.md`。
+2. マイグレーション 046 を適用する。`apps/api/migrations/README.md`。
+
+## 決めていないこと
+
+- チーム対応（#463）で、添付の所有をどう扱うか。今は `user_id` がノートの持ち主と同じ。
+- 週次ノート・日次ノートへの添付。

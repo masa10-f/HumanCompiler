@@ -21,6 +21,7 @@ from sqlalchemy import inspect
 from humancompiler_api.database import db
 from humancompiler_api.models import (
     ContextNote,
+    NoteAttachment,
     User,
     Project,
     Goal,
@@ -167,6 +168,14 @@ class DataBackupManager:
                 notes = session.exec(select(ContextNote)).all()
                 backup_data["context_notes"] = [note.model_dump() for note in notes]
 
+                # Backup the records of images attached to notes. The images
+                # themselves stay in the storage bucket: a backup has their
+                # keys, not their bytes.
+                attachments = session.exec(select(NoteAttachment)).all()
+                backup_data["note_attachments"] = [
+                    attachment.model_dump() for attachment in attachments
+                ]
+
                 # Backup quick tasks
                 quick_tasks = session.exec(select(QuickTask)).all()
                 backup_data["quick_tasks"] = [
@@ -229,6 +238,7 @@ class DataBackupManager:
                         "goals": len(backup_data["goals"]),
                         "tasks": len(backup_data["tasks"]),
                         "context_notes": len(backup_data["context_notes"]),
+                        "note_attachments": len(backup_data["note_attachments"]),
                         "quick_tasks": len(backup_data["quick_tasks"]),
                         "schedules": len(backup_data["schedules"]),
                         "work_sessions": len(backup_data["work_sessions"]),
@@ -309,6 +319,15 @@ class DataBackupManager:
                 for note_data in notes_with_former_task_text(backup_data):
                     session.add(ContextNote(**note_data))
 
+                # Restore the records of attached images. The TRUNCATE above
+                # emptied note_attachments too (it references users), and the
+                # files are still in the bucket under the same keys: without
+                # these rows the restored notes would show no image and the
+                # files would never be deleted.
+                session.flush()
+                for attachment_data in backup_data.get("note_attachments", []):
+                    session.add(backup_row(NoteAttachment, attachment_data))
+
                 session.commit()
 
             metadata = backup_data.get("metadata", {})
@@ -375,6 +394,16 @@ class DataBackupManager:
                     select(ContextNote).where(ContextNote.user_id == user_id)
                 ).all()
                 backup_data["context_notes"] = [note.model_dump() for note in notes]
+
+                # The records of the user's attached images, as a list of what
+                # the notes refer to. The images are not in the backup, and an
+                # import does not bring them back.
+                attachments = session.exec(
+                    select(NoteAttachment).where(NoteAttachment.user_id == user_id)
+                ).all()
+                backup_data["note_attachments"] = [
+                    attachment.model_dump() for attachment in attachments
+                ]
 
                 # Backup user's quick tasks
                 quick_tasks = session.exec(
@@ -482,6 +511,7 @@ class DataBackupManager:
                         "goals": len(backup_data["goals"]),
                         "tasks": len(backup_data["tasks"]),
                         "context_notes": len(backup_data["context_notes"]),
+                        "note_attachments": len(backup_data["note_attachments"]),
                         "quick_tasks": len(backup_data["quick_tasks"]),
                         "schedules": len(backup_data["schedules"]),
                         "work_sessions": len(backup_data["work_sessions"]),
@@ -604,6 +634,11 @@ class DataBackupManager:
                     note_data["id"] = str(uuid.uuid4())
                     note_data["user_id"] = target_user_id
                     session.add(backup_row(ContextNote, note_data))
+
+                # The backup's note_attachments are not imported: it has the
+                # records of the images, not the images. A note imported for
+                # the user who owns the images still shows them; for another
+                # user it shows that the image cannot be displayed.
 
                 # Import quick tasks with new IDs and updated user reference
                 for quick_task_data in backup_data.get("quick_tasks", []):

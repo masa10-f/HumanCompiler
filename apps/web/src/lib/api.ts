@@ -72,6 +72,7 @@ import type {
   NoteAttachment,
   NoteAttachmentTarget,
   NoteAttachmentUrlsResponse,
+  NoteAttachmentUsage,
   TaskNoteMarkdown,
 } from "@/types/context-note";
 import type {
@@ -1598,6 +1599,11 @@ class ApiClient {
     );
   }
 
+  /** How much of the user's storage for note images is in use. */
+  async getNoteAttachmentUsage(): Promise<NoteAttachmentUsage> {
+    return this.request<NoteAttachmentUsage>("/api/notes/attachments/usage");
+  }
+
   /**
    * Exports a project's or goal's notes, tasks, and work history as Markdown
    * that can be handed to an AI assistant as context.
@@ -2122,6 +2128,7 @@ export const notesApi = {
     caption: string,
   ) => apiClient.uploadNoteAttachment(target, image, caption),
   getAttachmentUrls: (ids: string[]) => apiClient.getNoteAttachmentUrls(ids),
+  getAttachmentUsage: () => apiClient.getNoteAttachmentUsage(),
 };
 
 /**

@@ -39,6 +39,14 @@ export interface NoteAttachmentUrlsResponse {
   expires_at: string;
 }
 
+/** How much of the user's storage for note images is in use. */
+export interface NoteAttachmentUsage {
+  used_bytes: number;
+  limit_bytes: number;
+  /** Images stored, including ones removed from notes in the last 7 days. */
+  count: number;
+}
+
 /** The project, goal or task whose note an image is attached to. */
 export interface NoteAttachmentTarget {
   type: NoteEntityType;

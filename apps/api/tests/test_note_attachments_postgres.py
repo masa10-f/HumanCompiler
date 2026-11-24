@@ -8,14 +8,16 @@ SQLite, which the other attachment tests use, does not enforce the foreign keys
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+import json
 import os
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import Engine, text
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from humancompiler_api import attachment_service
+from humancompiler_api import attachment_service, safe_migration
 from humancompiler_api.attachment_storage import InMemoryAttachmentStorage
 from humancompiler_api.models import (
     ContextNote,
@@ -26,6 +28,7 @@ from humancompiler_api.models import (
 )
 from humancompiler_api.proposal_payloads import NoteTarget
 from humancompiler_api.routers import notes
+from humancompiler_api.safe_migration import DataBackupManager
 from tests.attachment_helpers import image_bytes
 
 pytestmark = pytest.mark.skipif(
@@ -189,3 +192,66 @@ def test_same_image_twice_and_usage(engine: Engine) -> None:
     assert usage.count == 2
     assert usage.used_bytes == sum(r.byte_size + r.thumb_byte_size for r in rows)
     assert [item.id for item in urls.items] == [first]
+
+
+def test_full_backup_carries_the_records_of_the_images(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setattr(safe_migration.db, "get_engine", lambda: engine)
+    storage = InMemoryAttachmentStorage()
+    user_id, project_id = _project(engine)
+    attachment_id = _attach(engine, storage, user_id, project_id)
+    (row,) = _rows(engine)
+
+    backup_path = DataBackupManager(str(tmp_path)).create_backup("with-images")
+
+    backup = json.loads(Path(backup_path).read_text(encoding="utf-8"))
+    (listed,) = backup["note_attachments"]
+    assert listed["id"] == str(attachment_id)
+    # The keys of the files, which stay in the bucket; never their bytes.
+    assert listed["object_key"] == row.object_key
+    assert listed["thumb_object_key"] == row.thumb_object_key
+    assert backup["metadata"]["total_records"]["note_attachments"] == 1
+    # What a restore reads each record with.
+    restored = safe_migration.backup_row(NoteAttachment, listed)
+    assert restored.model_dump() == row.model_dump()
+
+
+def test_user_backup_lists_the_images_and_import_leaves_them_out(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setattr(safe_migration.db, "get_engine", lambda: engine)
+    storage = InMemoryAttachmentStorage()
+    user_id, project_id = _project(engine)
+    other_user, _ = _project(engine)
+    attachment_id = _attach(engine, storage, user_id, project_id)
+    _save(
+        engine,
+        user_id,
+        project_id,
+        f'<img data-attachment-id="{attachment_id}" alt="図1">',
+    )
+    manager = DataBackupManager(str(tmp_path))
+
+    backup_path = manager.create_user_backup(str(user_id), "user")
+    backup = json.loads(Path(backup_path).read_text(encoding="utf-8"))
+    manager.restore_user_data(backup_path, str(other_user))
+
+    (listed,) = backup["note_attachments"]
+    assert listed["id"] == str(attachment_id)
+    assert listed["caption"] == "図1"
+    assert backup["metadata"]["total_records"]["note_attachments"] == 1
+    # The other user gets the note's text, and no claim on the image.
+    (row,) = _rows(engine)
+    assert row.user_id == user_id
+    with Session(engine) as session:
+        imported = session.exec(
+            select(ContextNote).where(ContextNote.user_id == other_user)
+        ).one()
+        assert str(attachment_id) in imported.content
+        assert (
+            attachment_service.signed_urls(
+                session, storage, other_user, [attachment_id]
+            ).items
+            == []
+        )
