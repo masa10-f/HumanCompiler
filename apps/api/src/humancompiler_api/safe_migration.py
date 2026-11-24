@@ -8,12 +8,14 @@ during the work_type feature implementation.
 
 import logging
 from datetime import datetime, UTC
-from typing import Any
+from functools import cache
+from typing import Any, TypeVar
 from collections.abc import Callable
 from pathlib import Path
 import json
 
-from sqlmodel import Session, select, text
+from pydantic import TypeAdapter
+from sqlmodel import Session, SQLModel, select, text
 from sqlalchemy import inspect
 
 from humancompiler_api.database import db
@@ -32,6 +34,7 @@ from humancompiler_api.models import (
     TriageCapacitySettings,
     TaskTriageRun,
     TaskTriageItem,
+    WorkSession,
 )
 
 from humancompiler_api.note_text import (
@@ -41,6 +44,33 @@ from humancompiler_api.note_text import (
 )
 
 logger = logging.getLogger(__name__)
+
+RowT = TypeVar("RowT", bound=SQLModel)
+
+
+@cache
+def _column_readers(model: type[SQLModel]) -> dict[str, TypeAdapter[Any]]:
+    return {
+        name: TypeAdapter(field.annotation)
+        for name, field in model.model_fields.items()
+    }
+
+
+def backup_row(model: type[RowT], data: dict[str, Any]) -> RowT:
+    """A table row from a backup's record.
+
+    A backup is JSON: timestamps, dates, decimals and UUIDs are text in it, and
+    a table model takes what it is given without converting it, which the
+    database then refuses. Each value is read back as its column's type; keys
+    the model no longer has (a column since dropped) are left out."""
+    readers = _column_readers(model)
+    return model(
+        **{
+            name: readers[name].validate_python(value)
+            for name, value in data.items()
+            if name in readers
+        }
+    )
 
 
 def notes_with_former_task_text(backup_data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -149,6 +179,12 @@ class DataBackupManager:
                     schedule.model_dump() for schedule in schedules
                 ]
 
+                # Backup Runner sessions: the reflection on a piece of work
+                work_sessions = session.exec(select(WorkSession)).all()
+                backup_data["work_sessions"] = [
+                    work_session.model_dump() for work_session in work_sessions
+                ]
+
                 # Backup logs
                 logs = session.exec(select(Log)).all()
                 backup_data["logs"] = [log.model_dump() for log in logs]
@@ -195,6 +231,7 @@ class DataBackupManager:
                         "context_notes": len(backup_data["context_notes"]),
                         "quick_tasks": len(backup_data["quick_tasks"]),
                         "schedules": len(backup_data["schedules"]),
+                        "work_sessions": len(backup_data["work_sessions"]),
                         "logs": len(backup_data["logs"]),
                         "user_settings": len(backup_data["user_settings"]),
                         "triage_capacity_settings": len(
@@ -355,6 +392,15 @@ class DataBackupManager:
                     schedule.model_dump() for schedule in schedules
                 ]
 
+                # Backup the user's Runner sessions: the reflection on a
+                # piece of work, which its log refers to
+                work_sessions = session.exec(
+                    select(WorkSession).where(WorkSession.user_id == user_id)
+                ).all()
+                backup_data["work_sessions"] = [
+                    work_session.model_dump() for work_session in work_sessions
+                ]
+
                 # Backup logs for user's tasks
                 logs = []
                 if task_ids:
@@ -438,6 +484,7 @@ class DataBackupManager:
                         "context_notes": len(backup_data["context_notes"]),
                         "quick_tasks": len(backup_data["quick_tasks"]),
                         "schedules": len(backup_data["schedules"]),
+                        "work_sessions": len(backup_data["work_sessions"]),
                         "logs": len(backup_data["logs"]),
                         "user_settings": len(backup_data["user_settings"]),
                         "triage_capacity_settings": len(
@@ -497,6 +544,7 @@ class DataBackupManager:
                 task_id_map = {}
                 quick_task_id_map = {}
                 triage_run_id_map = {}
+                work_session_id_map = {}
 
                 # Import projects with new IDs
                 for project_data in backup_data.get("projects", []):
@@ -507,7 +555,7 @@ class DataBackupManager:
                     project_data["id"] = new_project_id
                     project_data["owner_id"] = target_user_id
 
-                    project = Project(**project_data)
+                    project = backup_row(Project, project_data)
                     session.add(project)
 
                 # Import goals with new IDs and updated project references
@@ -522,7 +570,7 @@ class DataBackupManager:
                     )
 
                     if goal_data["project_id"]:  # Only add if project exists
-                        goal = Goal(**goal_data)
+                        goal = backup_row(Goal, goal_data)
                         session.add(goal)
 
                 # Import tasks with new IDs and updated goal references
@@ -535,7 +583,7 @@ class DataBackupManager:
                     task_data["goal_id"] = goal_id_map.get(task_data["goal_id"])
 
                     if task_data["goal_id"]:  # Only add if goal exists
-                        task = Task(**task_data)
+                        task = backup_row(Task, task_data)
                         session.add(task)
 
                 # Import notes with new IDs and updated references. Notes have
@@ -555,7 +603,7 @@ class DataBackupManager:
                         continue  # its project, goal or task was not imported
                     note_data["id"] = str(uuid.uuid4())
                     note_data["user_id"] = target_user_id
-                    session.add(ContextNote(**note_data))
+                    session.add(backup_row(ContextNote, note_data))
 
                 # Import quick tasks with new IDs and updated user reference
                 for quick_task_data in backup_data.get("quick_tasks", []):
@@ -566,7 +614,7 @@ class DataBackupManager:
                     quick_task_data["id"] = new_quick_task_id
                     quick_task_data["owner_id"] = target_user_id
 
-                    quick_task = QuickTask(**quick_task_data)
+                    quick_task = backup_row(QuickTask, quick_task_data)
                     session.add(quick_task)
 
                 # Import schedules with new IDs and updated user reference
@@ -574,19 +622,47 @@ class DataBackupManager:
                     schedule_data["id"] = str(uuid.uuid4())
                     schedule_data["user_id"] = target_user_id
 
-                    schedule = Schedule(**schedule_data)
+                    schedule = backup_row(Schedule, schedule_data)
                     session.add(schedule)
+
+                # Import Runner sessions with new IDs and updated references.
+                # Only ended ones: a session that was running when the backup
+                # was made is not running now, and a user has one at a time.
+                for work_session_data in backup_data.get("work_sessions", []):
+                    old_work_session_id = work_session_data["id"]
+                    work_session_data["task_id"] = task_id_map.get(
+                        work_session_data["task_id"]
+                    )
+                    if not work_session_data["task_id"]:
+                        continue  # its task was not imported
+                    if not work_session_data.get("ended_at"):
+                        continue
+                    new_work_session_id = str(uuid.uuid4())
+                    work_session_id_map[old_work_session_id] = new_work_session_id
+
+                    work_session_data["id"] = new_work_session_id
+                    work_session_data["user_id"] = target_user_id
+                    session.add(backup_row(WorkSession, work_session_data))
+
+                # Logs have no ORM relationship to the session they were
+                # measured in, so the sessions must be inserted first.
+                session.flush()
 
                 # Import logs with new IDs and updated task references
                 for log_data in backup_data.get("logs", []):
                     log_data["id"] = str(uuid.uuid4())
                     log_data["task_id"] = task_id_map.get(log_data["task_id"])
-                    # Runner sessions are not part of a backup, so the session a
-                    # log was measured in does not exist here.
-                    log_data["work_session_id"] = None
+                    # A log keeps its time when its session is not imported (an
+                    # older backup has none); a dangling link would fail.
+                    old_work_session_id = log_data.get("work_session_id")
+                    log_data["work_session_id"] = (
+                        work_session_id_map.get(str(old_work_session_id))
+                        if old_work_session_id
+                        else None
+                    )
 
                     if log_data["task_id"]:  # Only add if task exists
-                        log = Log(**log_data)
+                        log = backup_row(Log, log_data)
                         session.add(log)
 
                 # Import user settings (skip if already exists)
@@ -602,7 +678,7 @@ class DataBackupManager:
                     ).first()
 
                     if not existing_us:
-                        user_settings = UserSettings(**us_data)
+                        user_settings = backup_row(UserSettings, us_data)
                         session.add(user_settings)
 
                 # Import triage capacity settings (skip if already exists)
@@ -618,7 +694,9 @@ class DataBackupManager:
                         )
                     ).first()
                     if not existing_triage_settings:
-                        triage_settings = TriageCapacitySettings(**triage_settings_data)
+                        triage_settings = backup_row(
+                            TriageCapacitySettings, triage_settings_data
+                        )
                         session.add(triage_settings)
 
                 # Import triage runs and items with updated references
@@ -628,7 +706,7 @@ class DataBackupManager:
                     triage_run_id_map[old_run_id] = new_run_id
                     run_data["id"] = new_run_id
                     run_data["user_id"] = target_user_id
-                    triage_run = TaskTriageRun(**run_data)
+                    triage_run = backup_row(TaskTriageRun, run_data)
                     session.add(triage_run)
 
                 for item_data in backup_data.get("task_triage_items", []):
@@ -660,7 +738,7 @@ class DataBackupManager:
                     if item_data.get("goal_id"):
                         item_data["goal_id"] = goal_id_map.get(item_data["goal_id"])
 
-                    triage_item = TaskTriageItem(**item_data)
+                    triage_item = backup_row(TaskTriageItem, item_data)
                     session.add(triage_item)
 
                 # Import goal dependencies with updated references
@@ -672,7 +750,7 @@ class DataBackupManager:
                     )
 
                     if gd_data["goal_id"] and gd_data["depends_on_goal_id"]:
-                        goal_dependency = GoalDependency(**gd_data)
+                        goal_dependency = backup_row(GoalDependency, gd_data)
                         session.add(goal_dependency)
 
                 # Import task dependencies with updated references
@@ -684,7 +762,7 @@ class DataBackupManager:
                     )
 
                     if td_data["task_id"] and td_data["depends_on_task_id"]:
-                        task_dependency = TaskDependency(**td_data)
+                        task_dependency = backup_row(TaskDependency, td_data)
                         session.add(task_dependency)
 
                 session.commit()

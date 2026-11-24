@@ -81,4 +81,30 @@ describe('RemainingEstimateField', () => {
     expect(screen.getByText(REMAINING_HOURS_TOO_SMALL)).toBeInTheDocument()
     expect(screen.getByLabelText('残りの見込み（時間・任意）')).toBeDisabled()
   })
+
+  it('reads its error out with the field', () => {
+    const { rerender } = render(
+      <RemainingEstimateField id="remaining" value={1} onChange={jest.fn()} />,
+    )
+    const input = screen.getByLabelText('残りの見込み（時間・任意）')
+    const help = '入力すると、タスクの見積を「これまでの実績＋残り」に更新します。'
+
+    // Without an error the field is described by its help text alone.
+    expect(input).toHaveAccessibleDescription(help)
+    expect(input).not.toHaveAttribute('aria-invalid')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    rerender(
+      <RemainingEstimateField
+        id="remaining"
+        value={1000}
+        onChange={jest.fn()}
+        error={REMAINING_HOURS_TOO_LARGE}
+      />,
+    )
+
+    expect(input).toHaveAttribute('aria-invalid', 'true')
+    expect(input).toHaveAccessibleDescription(`${help} ${REMAINING_HOURS_TOO_LARGE}`)
+    expect(screen.getByRole('alert')).toHaveTextContent(REMAINING_HOURS_TOO_LARGE)
+  })
 })

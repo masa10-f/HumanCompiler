@@ -169,6 +169,7 @@ async def import_user_data(
                 "tasks": total_records.get("tasks", 0),
                 "quick_tasks": total_records.get("quick_tasks", 0),
                 "schedules": total_records.get("schedules", 0),
+                "work_sessions": total_records.get("work_sessions", 0),
                 "logs": total_records.get("logs", 0),
                 "user_settings": total_records.get("user_settings", 0),
                 "triage_capacity_settings": total_records.get(
@@ -339,6 +340,7 @@ async def get_export_info(
                     "Quick tasks",
                     "Schedules",
                     "Task logs and progress data",
+                    "Runner sessions and their reflections",
                     "Capacity triage settings and history",
                     "User settings",
                     "API usage history",

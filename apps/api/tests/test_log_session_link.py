@@ -7,6 +7,7 @@
 """A Runner session and its time log are one work record; a manual log can
 also say where the task stands."""
 
+import logging
 from decimal import Decimal
 from uuid import UUID
 
@@ -201,10 +202,12 @@ def test_completing_through_a_log_does_not_revive_a_cancelled_task(
     assert stored_task(session, task.id).status == TaskStatus.CANCELLED
 
 
-def test_an_estimate_out_of_range_records_nothing(session: Session, test_user_id: str):
+def test_an_estimate_out_of_range_records_nothing(
+    session: Session, test_user_id: str, caplog: pytest.LogCaptureFixture
+):
     task = make_task(session, test_user_id, estimate=10.0)
 
-    with pytest.raises(HTTPException) as caught:
+    with caplog.at_level(logging.ERROR), pytest.raises(HTTPException) as caught:
         LogService().create_log(
             session,
             LogCreate(
@@ -217,6 +220,8 @@ def test_an_estimate_out_of_range_records_nothing(session: Session, test_user_id
         )
 
     assert caught.value.status_code == 400
+    # The caller's mistake, not a failed database operation: nothing to alert on.
+    assert caplog.records == []
     session.rollback()
     assert session.exec(select(func.count()).select_from(Log)).one() == 0
     untouched = stored_task(session, task.id)

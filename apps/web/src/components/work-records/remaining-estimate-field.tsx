@@ -63,7 +63,7 @@ export function RemainingEstimateField({
           value={value ?? ''}
           disabled={disabled}
           aria-invalid={error ? true : undefined}
-          aria-describedby={`${id}-help`}
+          aria-describedby={error ? `${id}-help ${id}-error` : `${id}-help`}
           onChange={(event) => {
             const parsed = parseFloat(event.target.value)
             onChange(event.target.value === '' || Number.isNaN(parsed) ? undefined : parsed)
@@ -78,7 +78,12 @@ export function RemainingEstimateField({
       <p id={`${id}-help`} className="text-xs text-muted-foreground">
         入力すると、タスクの見積を「これまでの実績＋残り」に更新します。
       </p>
-      {error && <p className="text-sm font-medium text-destructive">{error}</p>}
+      {error && (
+        // Read out when it appears, and again with the field it describes.
+        <p id={`${id}-error`} role="alert" className="text-sm font-medium text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

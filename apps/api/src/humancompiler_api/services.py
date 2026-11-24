@@ -99,17 +99,19 @@ def _dependency_path_exists(
     return False
 
 
-def _task_text_matches(pattern: str) -> Any:
-    """Tasks whose title or note text matches an ILIKE pattern."""
+def _task_text_matches(search: str) -> Any:
+    """Tasks whose title or note text contains ``search``, whatever its case.
+
+    The text is matched as written: ``%`` and ``_`` in it are not wildcards."""
     note_matches = (
         select(ContextNote.id)
         .where(
             ContextNote.task_id == Task.id,
-            col(ContextNote.content_text).ilike(pattern),
+            col(ContextNote.content_text).icontains(search, autoescape=True),
         )
         .exists()
     )
-    return col(Task.title).ilike(pattern) | note_matches
+    return col(Task.title).icontains(search, autoescape=True) | note_matches
 
 
 def add_task_note_text(
@@ -817,8 +819,7 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         if due_after is not None:
             conditions.append(col(Task.due_date) >= due_after)
         if search and search.strip():
-            pattern = f"%{search.strip()}%"
-            conditions.append(_task_text_matches(pattern))
+            conditions.append(_task_text_matches(search.strip()))
         if blocked is not None:
             prerequisite = aliased(Task)
             blocking_dependency = (
@@ -1006,8 +1007,7 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         if goal_id:
             conditions.append(Goal.id == goal_id)
         if search and search.strip():
-            pattern = f"%{search.strip()}%"
-            conditions.append(_task_text_matches(pattern))
+            conditions.append(_task_text_matches(search.strip()))
 
         prerequisite = aliased(Task)
         has_blocker = (
@@ -1343,14 +1343,9 @@ class LogService(BaseService[Log, LogCreate, LogUpdate]):
                 )
             return log
 
-        try:
-            return safe_execute(session, record)
-        except ServiceError as error:
-            # safe_execute has rolled back. An estimate out of range is the
-            # caller's mistake (400), not a failed database operation.
-            if isinstance(error.__cause__, HTTPException):
-                raise error.__cause__ from None
-            raise
+        # An estimate out of range is the caller's mistake: safe_execute rolls
+        # back and passes the 400 on.
+        return safe_execute(session, record)
 
     def get_log(
         self, session: Session, log_id: str | UUID, owner_id: str | UUID

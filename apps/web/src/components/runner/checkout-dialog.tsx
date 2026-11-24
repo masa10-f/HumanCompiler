@@ -31,6 +31,20 @@ import {
   remainingHoursError,
 } from '@/components/work-records/remaining-estimate-field';
 
+/**
+ * Minutes the checkout will record for a session: the time since it started
+ * without its pauses, the one still running included. Counted the way the API
+ * counts it, at least one minute.
+ */
+export function workedMinutes(session: WorkSession, nowMs: number = Date.now()): number {
+  const elapsedSeconds = Math.floor((nowMs - new Date(session.started_at).getTime()) / 1000);
+  let pausedSeconds = session.total_paused_seconds || 0;
+  if (session.paused_at) {
+    pausedSeconds += Math.floor((nowMs - new Date(session.paused_at).getTime()) / 1000);
+  }
+  return Math.max(1, Math.floor((elapsedSeconds - pausedSeconds) / 60));
+}
+
 interface CheckoutDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -62,12 +76,8 @@ export function CheckoutDialog({
   const completing = decision === 'complete';
   const remainingError = completing ? undefined : remainingHoursError(remainingHours);
 
-  // Calculate elapsed work time
-  const elapsedMinutes = session
-    ? Math.floor(
-        (Date.now() - new Date(session.started_at).getTime()) / (1000 * 60)
-      )
-    : 0;
+  // The time worked, as the checkout will record it (pauses are not work)
+  const elapsedMinutes = session ? workedMinutes(session) : 0;
   const elapsedHours = (elapsedMinutes / 60).toFixed(1);
 
   const resetForm = () => {
