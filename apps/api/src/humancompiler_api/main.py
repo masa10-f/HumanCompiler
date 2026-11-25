@@ -34,6 +34,7 @@ from humancompiler_api.exceptions import (
     validation_exception_handler,
 )
 from humancompiler_api.routers import (
+    agent_attachments,
     agent_proposals,
     agent_tokens,
     agent_v1,
@@ -48,6 +49,7 @@ from humancompiler_api.routers import (
     hooks,
     logs,
     monitoring,
+    note_attachments,
     notes,
     notifications,
     progress,
@@ -357,6 +359,7 @@ app.include_router(agent_tokens.router)
 app.include_router(agent_v1.router)
 app.include_router(agent_proposals.router)
 app.include_router(agent_writes.router)
+app.include_router(agent_attachments.router)
 app.include_router(proposals.router, prefix="/api")
 app.include_router(hooks.router, prefix="/api")
 app.include_router(work_sessions.router, prefix="/api")
@@ -367,6 +370,7 @@ app.include_router(notifications.router, prefix="/api")
 app.include_router(websocket.router)
 # Context notes router
 app.include_router(notes.router, prefix="/api")
+app.include_router(note_attachments.router, prefix="/api")
 app.include_router(context_export.router, prefix="/api")
 # Capacity triage router
 app.include_router(triage.router, prefix="/api")

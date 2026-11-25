@@ -8,6 +8,7 @@ import TaskItem from '@tiptap/extension-task-item';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { TableKit } from '@tiptap/extension-table';
 import { common, createLowlight } from 'lowlight';
+import { NoteImage } from './note-image-extension';
 
 const lowlight = createLowlight(common);
 
@@ -40,6 +41,10 @@ export function createContextNoteExtensions(placeholder?: string) {
     CodeBlockLowlight.configure({
       lowlight,
     }),
+    // Images attached to the note. In every note editor, including ones that
+    // cannot upload: an editor without this node would drop the images of a
+    // note it loads and save the note without them.
+    NoteImage,
     // Agents write GitHub-style pipe tables, which the API renders as <table>.
     // Without a table node the editor would drop the markup and keep the text.
     TableKit.configure({

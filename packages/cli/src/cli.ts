@@ -25,6 +25,9 @@ Commands:
                                 machine and print its schedule.
   context <project|goal> <id>   Export a project's or goal's notes, tasks and
                                 work history as Markdown.
+  attach <project|goal|task> <id> <file>
+                                Attach an image made on this machine to a
+                                note, as a light preview.
   setup <claude-code|codex>     Connect a coding agent to the HumanCompiler MCP
                                 server and add a usage guide for it.
   doctor                        Check Node.js, the token, the API and the
@@ -43,10 +46,12 @@ Options:
 type Command = (argv: string[]) => Promise<void>
 
 // Loaded on demand: roadmap brings in the drawing code and the native
-// rasterizer, which the other commands do not need.
+// rasterizer, and attach the native image library, which the other commands
+// do not need.
 const COMMANDS: Record<string, () => Promise<Command>> = {
   roadmap: async () => (await import('./commands/roadmap')).roadmap,
   context: async () => (await import('./commands/context')).context,
+  attach: async () => (await import('./commands/attach')).attach,
   setup: async () => (await import('./commands/setup')).setup,
   doctor: async () => (await import('./commands/doctor')).doctor,
 }

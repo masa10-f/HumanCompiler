@@ -159,6 +159,7 @@ function TaskNote({ taskId, variant }: { taskId: string; variant: 'panel' | 'pag
         variant={variant === 'page' ? 'full' : 'compact'}
         emptyTitle="ノートはまだありません"
         emptyDescription="作業メモや依頼文をここに書けます。"
+        attachmentTarget={{ type: 'task', id: taskId }}
       />
     </>
   )

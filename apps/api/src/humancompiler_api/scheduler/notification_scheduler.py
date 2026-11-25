@@ -7,12 +7,15 @@ Manages scheduled notification jobs:
 - Daily digest emails: Polls every 10 minutes and sends each user's digest
   once a day after their hour (Asia/Tokyo)
 - Agent audit log retention: Runs daily and purges rows older than 90 days
+- Note attachment cleanup: Runs daily and deletes the stored files of images
+  no note refers to any more
 
 Note: For MVP, we use a polling approach rather than scheduling individual
 jobs per session. This is simpler and works well for single-instance deployments.
 For multi-instance deployments, consider using a persistent job store (e.g., Redis).
 """
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, UTC
 from uuid import UUID, uuid4
@@ -22,7 +25,8 @@ from apscheduler.jobstores.memory import MemoryJobStore
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, col, func, select
 
-from humancompiler_api import agent_audit, agent_changes
+from humancompiler_api import agent_audit, agent_changes, attachment_service
+from humancompiler_api.attachment_storage import get_attachment_storage
 from humancompiler_api.daily_digest import jst_day_start, run_daily_digest
 from humancompiler_api.database import db
 from humancompiler_api.notification_service import (
@@ -238,6 +242,25 @@ async def purge_expired_agent_audit_logs():
             logger.info("Purged %s expired agent changes", changes_deleted)
     except Exception:
         logger.exception("Error in agent audit log retention")
+
+
+def _sweep_note_attachments() -> int:
+    with Session(db.get_engine()) as session:
+        return attachment_service.sweep_attachments(session, get_attachment_storage())
+
+
+async def sweep_note_attachments():
+    """Delete the files and rows of attached images nothing refers to any more.
+
+    Runs in a worker thread: each deletion is a request to the object store."""
+    logger.debug("Running note attachment cleanup...")
+
+    try:
+        deleted_count = await asyncio.to_thread(_sweep_note_attachments)
+        if deleted_count:
+            logger.info("Deleted %s unreferenced note attachments", deleted_count)
+    except Exception:
+        logger.exception("Error in note attachment cleanup")
 
 
 async def _process_user_deadline_notifications(
@@ -510,11 +533,26 @@ def start_notification_scheduler() -> bool:
         replace_existing=True,
     )
 
+    # Delete attached images that no note has referred to for a week, and
+    # those of deleted notes. Daily, and shortly after boot for the same reason
+    # as the purge above.
+    scheduler.add_job(
+        sweep_note_attachments,
+        "interval",
+        days=1,
+        next_run_time=datetime.now(UTC) + timedelta(minutes=2),
+        misfire_grace_time=3600,
+        id="note_attachment_cleanup",
+        name="Delete unreferenced note attachments",
+        replace_existing=True,
+    )
+
     scheduler.start()
     logger.info(
         "Notification scheduler started "
         "(checkout notifications: 30s, deadline emails: 5min, daily digest: 10min, "
-        "triage suggestions: 1h, agent audit log retention: 1d)"
+        "triage suggestions: 1h, agent audit log retention: 1d, "
+        "note attachment cleanup: 1d)"
     )
     return True
 

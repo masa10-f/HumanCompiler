@@ -59,7 +59,7 @@ G1〜G3 と同じ前提に従う。
 - **完全な削除。** エージェントの「削除」は、すべて「中止（`cancelled`）」への変更にする。完全な削除は、ユーザーが普段の画面で行う。
 - 作業セッション、日次ノート、Quick Task の書き込み。Quick Task は既存の `quick_tasks:write` で作れる。
 - 作業ログ（Log）の書き込みは、当初は範囲外だったが、後から足した（「作業ログの記録」の節）。
-- ノートの画像・添付ファイル（#408）
+- ノートの画像・添付ファイル（#408）。当初は範囲外だったが、後から足した（`docs/design/note-attachments.md`）。画像の添付は MCP ではなく CLI の `attach` で行う（手元のファイルを読めるのは CLI なので）。
 - Goal の依存関係の書き込み（Task の依存関係だけを扱う）
 - HumanCompiler からエージェントに仕事を渡す経路
 - Research Distillator からの利用。R3 は G3 の提案を使い、この書き込みは使わない。
@@ -142,6 +142,7 @@ G1〜G3 と同じ前提に従う。
 | `tasks:write` | Task の作成・更新 |
 | `notes:write` | Project / Goal / Task のノートへの追記と書き換え |
 | `logs:write` | 作業ログ（Log）の記録。後から足した（「作業ログの記録」の節） |
+| `attachments:write` | ノートへの画像の添付。後から足した（`docs/design/note-attachments.md`）。読み取りは `attachments:read` |
 | `writes:unconfirmed` | 「消える操作」を確認なしで実行する。無ければ、消える操作は提案になる |
 
 **提案になるときの条件。**
@@ -154,7 +155,7 @@ G1〜G3 と同じ前提に従う。
 
 | プリセット | スコープ |
 |---|---|
-| 作業するエージェント（確認あり） | 読み取りのすべて、`goals:write`、`tasks:write`、`notes:write`、`logs:write`、`proposals:read`、`proposals:write` |
+| 作業するエージェント（確認あり） | 読み取りのすべて、`goals:write`、`tasks:write`、`notes:write`、`logs:write`、`attachments:write`、`proposals:read`、`proposals:write` |
 | 作業するエージェント（確認なし） | 上のすべてと、`writes:unconfirmed` |
 
 **モードの切り替え。** モードを変えたいときは、別のトークンを作る。スコープは作成後に変えない、という G1 の規則のまま。
@@ -230,6 +231,7 @@ MCP のツールと REST は、同じサービス関数を呼ぶ。REST を先�
   - Markdown で表せない書式は、書き換えで失われる。例えば文字の色やハイライト。
   - チェックリストの `- [ ]` / `- [x]` は、TipTap のタスクリストの HTML（`<ul data-type="taskList">` と `<li data-type="taskItem" data-checked="…">`）に変換するので残る。すべての項目に印がある箇条書きだけをチェックリストにする。
   - 書き換えで失われるのは、表、文字の色とハイライト、画像と添付。表には対応しない。
+  - 後から、表と添付した画像は残るようにした。画像は `![キャプション](attachment:<id>)` の行を残せば残り、消せばノートから外れる（`docs/design/note-attachments.md`）。
   - `replace_note` の説明文にも、失われるものがあることを書く。
 
 **記録と差分**

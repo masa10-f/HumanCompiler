@@ -30,8 +30,9 @@ await build({
   // Applies this tsconfig (paths, jsx) to the web app's files too.
   tsconfig: path.join(root, 'tsconfig.json'),
   jsx: 'automatic',
-  // The native rasterizer is installed as a dependency, not bundled.
-  external: ['@resvg/resvg-js'],
+  // The native rasterizer and image library are installed as dependencies,
+  // not bundled.
+  external: ['@resvg/resvg-js', 'sharp'],
   define: {
     'process.env.NODE_ENV': '"production"',
     __VERSION__: JSON.stringify(version),

@@ -17,6 +17,10 @@ checklist markups are accepted:
 * the markup the editor itself saves, where an item also holds a checkbox label
   and wraps its content in a ``div``.
 
+An attached image, ``<img data-attachment-id="<uuid>" alt="caption">``, becomes
+``![caption](attachment:<uuid>)``, which ``markdown_to_note_html`` turns back
+into the same image. Any other image keeps its URL, as ``![alt](url)``.
+
 Anything Markdown cannot express (underline, colours, unknown tags) is reduced
 to its text. ``script`` and ``style`` content is dropped.
 """
@@ -25,6 +29,12 @@ import re
 
 from bs4.element import Tag
 from markdownify import ATX, MarkdownConverter
+
+from humancompiler_api.note_attachment_refs import (
+    ATTACHMENT_ID_ATTRIBUTE,
+    attachment_markdown,
+    parse_attachment_id,
+)
 
 _LANGUAGE_CLASS = re.compile(r"^language-(\S+)$")
 _BACKTICK_RUN = re.compile(r"`+")
@@ -88,6 +98,21 @@ class _NoteMarkdownConverter(MarkdownConverter):
     def convert_th(self, el: Tag, text: str, parent_tags: set[str]) -> str:
         cell: str = super().convert_th(el, _escape_cell(text), parent_tags)  # type: ignore[misc]
         return cell
+
+    def convert_img(self, el: Tag, text: str, parent_tags: set[str]) -> str:
+        marker = el.get(ATTACHMENT_ID_ATTRIBUTE)
+        attachment_id = parse_attachment_id(marker if isinstance(marker, str) else None)
+        if attachment_id is None:
+            other: str = super().convert_img(el, text, parent_tags)  # type: ignore[misc]
+            return other
+        alt = el.get("alt")
+        reference = attachment_markdown(
+            attachment_id, alt if isinstance(alt, str) else ""
+        )
+        # The editor's image is a block: keep it on lines of its own.
+        if "_inline" in parent_tags:
+            return reference
+        return f"\n\n{reference}\n\n"
 
     def convert_pre(self, el: Tag, text: str, parent_tags: set[str]) -> str:
         if not text:

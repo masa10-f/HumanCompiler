@@ -35,7 +35,7 @@ const MCP_PATH = '/mcp'
 export const SETUP_HELP = `Usage: humancompiler setup <claude-code|codex> [options]
 
 Connects a coding agent to the HumanCompiler MCP server, and adds a short
-guide for the agent (finding ids, the roadmap and context commands).
+guide for the agent (finding ids, the roadmap, context and attach commands).
 
   claude-code   Adds the server to the project's .mcp.json, and the guide to
                 CLAUDE.md.
@@ -69,6 +69,8 @@ The user's tasks are managed in HumanCompiler, connected as the \`${SERVER_NAME}
 - Find the id of a project or goal with the MCP tool \`find\`.
 - Roadmap and schedule: run \`npx humancompiler@0 roadmap <project-id> --goals-per-page 20\`. Read the printed summary first (projected dates, delays, what each goal waits on). Open the images (\`roadmap-1.png\`, ...) only when the picture itself helps, for example to show the user.
 - Background before working on a project or goal, or for a report: run \`npx humancompiler@0 context <project|goal> <id> -o <file>.md\` to get its notes, tasks and work history as one Markdown file, then read the parts you need. Keep the file out of commits.
+- Images in notes: to put a figure you made (a plot, a screenshot) on the note of a project, goal or task, run \`npx humancompiler@0 attach <project|goal|task> <id> <file> --caption "<what it shows>" --append\`. It uploads a small preview, not the original, and prints the reference \`![caption](attachment:<id>)\`; without \`--append\`, put that reference in the note yourself. Notes show only images in this form: an image at an external URL or a local path is not shown. Write the caption for a reader who cannot see the image.
+- When you read notes, an image is its caption and id only. To look at the images, add \`--with-images <dir>\` to the \`context\` command, then open the saved files you need.
 - If a command fails, run \`npx humancompiler@0 doctor\` and follow its hints.`
 
 /**

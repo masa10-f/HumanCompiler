@@ -76,6 +76,8 @@ CREATE TABLE context_notes (
 
 #### 2.2 新規テーブル: `note_attachments`（画像・ファイル用）
 
+> この節と「6. 画像ストレージ設計」は当初の案で、実装とは異なる。実装した設計は `docs/design/note-attachments.md` にある（非公開バケット、署名付きURL、縮小したプレビューだけを保存）。
+
 ```sql
 CREATE TABLE note_attachments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

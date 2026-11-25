@@ -271,10 +271,12 @@ describe('AgentTokenUsageGuide', () => {
     expect(example).toHaveTextContent('npx humancompiler@0 context project <project-id> -o context.md')
     // The CLI reads the token from the environment, never from the command.
     expect(example).not.toHaveTextContent('AGENT_TOKEN')
-    for (const command of ['roadmap', 'context', 'setup claude-code / setup codex', 'doctor']) {
+    expect(example).toHaveTextContent('npx humancompiler@0 attach task <task-id> loss.png --caption')
+    for (const command of ['roadmap', 'context', 'attach', 'setup claude-code / setup codex', 'doctor']) {
       expect(section.getByText(command)).toBeInTheDocument()
     }
     expect(section.getByText(/context:read が必要です/)).toBeInTheDocument()
+    expect(section.getByText(/attachments:write が必要です/)).toBeInTheDocument()
   })
 
   it('builds the MCP URL on the same base as the other examples', () => {

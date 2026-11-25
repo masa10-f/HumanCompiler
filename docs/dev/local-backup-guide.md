@@ -122,7 +122,7 @@ print('復旧完了')
 
 `restore_backup` は PostgreSQL 専用で、データベースの内容をバックアップの内容に**置き換えます**。
 
-- **復元されるテーブル**（`create_backup` が書き出すもの全て = `FULL_BACKUP_MODELS`）: users, projects, goals, tasks, context_notes, quick_tasks, schedules, work_sessions, logs, user_settings, triage_capacity_settings, task_triage_runs, task_triage_items, goal_dependencies, task_dependencies, daily_plan_documents, weekly_notes, weekly_rhythm_blocks, agent_proposals, agent_changes, agent_audit_logs, email_notification_logs, reschedule_suggestions, reschedule_decisions
+- **復元されるテーブル**（`create_backup` が書き出すもの全て = `FULL_BACKUP_MODELS`）: users, projects, goals, tasks, context_notes, note_attachments, quick_tasks, schedules, work_sessions, logs, user_settings, triage_capacity_settings, task_triage_runs, task_triage_items, goal_dependencies, task_dependencies, daily_plan_documents, weekly_notes, weekly_rhythm_blocks, agent_proposals, agent_changes, agent_audit_logs, email_notification_logs, reschedule_suggestions, reschedule_decisions
 - **失敗しても安全**: 削除と挿入は1つのトランザクションです。途中で失敗した場合、データベースは復旧前の状態のまま残ります。
 - **認証情報はバックアップに含まれません**: `agent_tokens`、`push_subscriptions`、OpenAI APIキー（`user_settings.openai_api_key_encrypted`）は、意図的にバックアップファイルに書き出していません（ユーザー単位のエクスポートも APIキーを含みません）。
   - **復旧を実行した時点でデータベースに残っている認証情報は、そのまま保持されます**（バックアップに含まれるユーザーの分）。マイグレーション失敗時のロールバックや、稼働中のDBへの復旧では、トークンの失効やAPIキーの消失は起きません。保持はトランザクション内で行われ、ファイルには書き出されません。

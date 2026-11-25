@@ -12,9 +12,11 @@ show the opening of the note (``note_excerpt``) and search matches its visible
 text, which is stored in ``context_notes.content_text`` and rebuilt on every
 write by ``note_plain_text``.
 
-Migration 044 rebuilds ``content_text`` for existing notes and copies task
-descriptions and memos into notes in SQL, by the same rules as
-``note_plain_text`` and ``plain_text_to_note_html``. Change both together.
+Migration 044 rebuilt ``content_text`` for the notes of its time and copied
+task descriptions and memos into notes in SQL, by the rules
+``note_plain_text`` and ``plain_text_to_note_html`` had then. Attached images
+came later (migration 046): their captions are text here and not in 044's SQL,
+which no note of that time needed.
 """
 
 import html
@@ -27,6 +29,9 @@ _BLOCK_END = re.compile(
 )
 _CELL_END = re.compile(r"</(?:td|th)\s*>", re.IGNORECASE)
 _TAG = re.compile(r"<[^>]*>")
+# An <img>, whose quoted attribute values may hold ">".
+_IMAGE = re.compile(r'<img\b(?:[^>"]|"[^"]*")*>', re.IGNORECASE)
+_IMAGE_ALT = re.compile(r'(?<![\w-])alt="([^"]*)"', re.IGNORECASE)
 _SPACES = re.compile(r"[ \t\r 　]+")
 # The heading ``note_markdown.agent_append_heading`` puts before agent text.
 _AGENT_HEADING = re.compile(r"^エージェントからの追記（.*）$")
@@ -36,13 +41,21 @@ NOTE_EXCERPT_LENGTH = 200
 NOTE_TEXT_HEAD_LENGTH = 400
 
 
+def _image_caption(match: re.Match[str]) -> str:
+    alt = _IMAGE_ALT.search(match.group(0))
+    return f"\n{alt.group(1)}\n" if alt is not None else ""
+
+
 def note_plain_text(content: str, content_type: str) -> str:
     """The text a reader sees in a note, one block per line, no blank lines.
 
     Only an HTML note has tags to strip; in a markdown note (the column's
-    default, so legacy notes may be one) ``<TODO>`` is the user's text."""
+    default, so legacy notes may be one) ``<TODO>`` is the user's text. An
+    image is its caption (the alt text), on a line of its own, so search finds
+    a figure by what it shows."""
     text = content
     if content_type == "html":
+        text = _IMAGE.sub(_image_caption, text)
         text = _BLOCK_END.sub("\n", text)
         text = _CELL_END.sub(" ", text)
         text = html.unescape(_TAG.sub("", text))

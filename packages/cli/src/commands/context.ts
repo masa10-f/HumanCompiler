@@ -10,8 +10,12 @@
  *
  * With `-o`, the document goes to the file without passing through an
  * agent's context; the agent then reads only the parts it needs.
+ *
+ * Images in notes come as `![caption](attachment:<id>)`: the caption and the
+ * id, never the bytes. `--with-images <dir>` also saves the images.
  */
 
+import path from 'node:path'
 import { parseArgs } from 'node:util'
 import {
   API_URL_ENV,
@@ -19,12 +23,14 @@ import {
   CliError,
   type ContextKind,
   DEFAULT_API_URL,
+  OPTION_SCOPES,
   TOKEN_ENV,
   fetchContext,
   requireToken,
   resolveApiUrl,
 } from '../api'
 import { numberOption, usageError, writeOutput } from '../args'
+import { saveImages } from '../images'
 
 export const CONTEXT_HELP = `Usage: humancompiler context <project|goal> <id> [options]
 
@@ -32,8 +38,13 @@ Fetches the context export of a project or goal as Markdown: the notes and
 tasks under it and the work history (logs, work sessions, daily plans). The
 same document as the AI context export in the web app.
 
+An image in a note comes as ![caption](attachment:<id>): its caption and
+id, not the image. ${OPTION_SCOPES.context.option} also saves the images and points the
+references to the saved files.
+
 Needs the ${TOKEN_ENV} environment variable (an agent token with
-${COMMAND_SCOPES.context.join(', ')}, which the read presets include).
+${COMMAND_SCOPES.context.join(', ')}, which the read presets include; ${OPTION_SCOPES.context.option} also
+needs ${OPTION_SCOPES.context.scopes.join(', ')}).
 
 Options:
   -o, --output <file>      Write the Markdown to this file (default: stdout).
@@ -41,6 +52,8 @@ Options:
   --no-completed           Leave completed goals and tasks out.
   --no-work-sessions       Leave work sessions out.
   --no-daily-plans         Leave daily plans out.
+  --with-images <dir>      Save the images the notes refer to into <dir> (as
+                           <id>.webp), and point the references to them.
   --api-url <url>          API base URL (default: $${API_URL_ENV} or
                            ${DEFAULT_API_URL}).
   -h, --help               Show this help.
@@ -59,6 +72,7 @@ export async function context(argv: string[]): Promise<void> {
       completed: { type: 'boolean', default: true },
       'work-sessions': { type: 'boolean', default: true },
       'daily-plans': { type: 'boolean', default: true },
+      'with-images': { type: 'string' },
       'api-url': { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
     },
@@ -78,6 +92,10 @@ export async function context(argv: string[]): Promise<void> {
   const periodDays = numberOption('period-days', values['period-days'], 1, 3650, {
     integer: true,
   })
+  const imageDir = values['with-images']
+  if (imageDir !== undefined && imageDir.trim() === '') {
+    throw usageError('--with-images needs a directory.', CONTEXT_HELP)
+  }
 
   const token = requireToken()
   const apiUrl = resolveApiUrl(values['api-url'])
@@ -91,7 +109,24 @@ export async function context(argv: string[]): Promise<void> {
   if (typeof result?.markdown !== 'string') {
     throw new CliError(`${apiUrl} did not answer with a context export. Check the API URL.`)
   }
-  const markdown = result.markdown.endsWith('\n') ? result.markdown : `${result.markdown}\n`
+  let markdown = result.markdown.endsWith('\n') ? result.markdown : `${result.markdown}\n`
+  if (imageDir !== undefined) {
+    const images = await saveImages(markdown, {
+      apiUrl,
+      token,
+      dir: imageDir,
+      // Links are relative to where the document is read from.
+      relativeTo: values.output === undefined ? process.cwd() : path.dirname(path.resolve(values.output)),
+    })
+    markdown = images.markdown
+    // To standard error: standard output may be the document itself.
+    for (const warning of images.warnings) process.stderr.write(`humancompiler context: ${warning}\n`)
+    process.stderr.write(
+      images.found === 0
+        ? 'The notes refer to no images.\n'
+        : `Saved ${images.saved} of ${images.found} ${images.found === 1 ? 'image' : 'images'} to ${imageDir}.\n`,
+    )
+  }
   if (values.output === undefined) {
     process.stdout.write(markdown)
     return

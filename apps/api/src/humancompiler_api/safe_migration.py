@@ -24,6 +24,7 @@ from humancompiler_api.models import (
     AgentChange,
     AgentProposal,
     ContextNote,
+    NoteAttachment,
     DailyPlanDocument,
     EmailNotificationLog,
     RescheduleDecision,
@@ -145,6 +146,11 @@ FULL_BACKUP_MODELS: dict[str, type[SQLModel]] = {
     "goals": Goal,
     "tasks": Task,
     "context_notes": ContextNote,
+    # The records of images attached to notes: the keys of the files, which
+    # stay in the storage bucket, not their bytes. After the notes they are
+    # attached to. Without these rows the restored notes would show no image
+    # and nothing would ever delete the files.
+    "note_attachments": NoteAttachment,
     "quick_tasks": QuickTask,
     "schedules": Schedule,
     "work_sessions": WorkSession,
@@ -327,8 +333,8 @@ class DataBackupManager:
 
             with Session(engine) as session:
                 connection = session.connection()
-                # A model can be ahead of the database (note_attachments has
-                # no table yet): only what exists holds rows.
+                # A model can be ahead of the database (a table whose
+                # migration is not applied yet): only what exists holds rows.
                 existing = set(inspect(connection).get_table_names())
 
                 # The lock the delete takes, taken before the reads below, so
@@ -503,6 +509,16 @@ class DataBackupManager:
                 ).all()
                 backup_data["context_notes"] = [note.model_dump() for note in notes]
 
+                # The records of the user's attached images, as a list of what
+                # the notes refer to. The images are not in the backup, and an
+                # import does not bring them back.
+                attachments = session.exec(
+                    select(NoteAttachment).where(NoteAttachment.user_id == user_id)
+                ).all()
+                backup_data["note_attachments"] = [
+                    attachment.model_dump() for attachment in attachments
+                ]
+
                 # Backup user's quick tasks
                 quick_tasks = session.exec(
                     select(QuickTask).where(QuickTask.owner_id == user_id)
@@ -611,6 +627,7 @@ class DataBackupManager:
                         "goals": len(backup_data["goals"]),
                         "tasks": len(backup_data["tasks"]),
                         "context_notes": len(backup_data["context_notes"]),
+                        "note_attachments": len(backup_data["note_attachments"]),
                         "quick_tasks": len(backup_data["quick_tasks"]),
                         "schedules": len(backup_data["schedules"]),
                         "work_sessions": len(backup_data["work_sessions"]),
@@ -733,6 +750,11 @@ class DataBackupManager:
                     note_data["id"] = str(uuid.uuid4())
                     note_data["user_id"] = target_user_id
                     session.add(backup_row(ContextNote, note_data))
+
+                # The backup's note_attachments are not imported: it has the
+                # records of the images, not the images. A note imported for
+                # the user who owns the images still shows them; for another
+                # user it shows that the image cannot be displayed.
 
                 # Import quick tasks with new IDs and updated user reference
                 for quick_task_data in backup_data.get("quick_tasks", []):

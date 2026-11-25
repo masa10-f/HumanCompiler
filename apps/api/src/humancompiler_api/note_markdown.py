@@ -8,8 +8,16 @@
 Convert agent-written Markdown into HTML that is safe for the TipTap note editor.
 
 The web note editor loads every note as HTML, so agent Markdown is rendered
-here. Raw HTML is escaped, images are disabled and headings are limited to h1-h3
-(the levels the editor supports).
+here. Raw HTML is escaped and headings are limited to h1-h3 (the levels the
+editor supports).
+
+The only image is an attachment of the note's owner,
+``![caption](attachment:<uuid>)``, which becomes
+``<img data-attachment-id="<uuid>" alt="caption">``: the editor shows it
+through a signed URL it asks the API for (see ``note_attachment_refs``). An
+image with any other target is never loaded; it stays readable as ``!`` and a
+link, as it did when images were disabled altogether. A paragraph that holds
+only attachments becomes the images alone, the block form the editor saves.
 
 A bullet list whose items all start with ``[ ]``, ``[x]`` or ``[X]`` becomes a
 checklist in the markup TipTap's TaskList and TaskItem parse:
@@ -32,6 +40,12 @@ from markdown_it.renderer import RendererHTML
 from markdown_it.rules_core import StateCore
 from markdown_it.token import Token
 from markdown_it.utils import OptionsDict
+
+from humancompiler_api.note_attachment_refs import (
+    ATTACHMENT_ID_ATTRIBUTE,
+    attachment_id_from_target,
+    normalize_caption,
+)
 
 _MAX_HEADING_LEVEL = 3
 # "[ ]", "[x]" or "[X]" at the start of an item, then a space or nothing.
@@ -122,15 +136,80 @@ def _task_lists(state: StateCore) -> None:
             _mark_task_list(state.tokens, index)
 
 
+def _alt_text(children: list[Token]) -> str:
+    """The text of an image's alt, without its markup.
+
+    ``renderInlineAsText`` drops escaped characters (``\\[``), which are
+    ``text_special`` tokens inside an image."""
+    parts: list[str] = []
+    for child in children:
+        if child.type in ("softbreak", "hardbreak"):
+            parts.append(" ")
+        elif child.children:
+            parts.append(_alt_text(child.children))
+        else:
+            parts.append(child.content)
+    return "".join(parts)
+
+
+def _render_image(
+    self: RendererHTML,
+    tokens: list[Token],
+    idx: int,
+    options: OptionsDict,
+    env: dict,
+) -> str:
+    token = tokens[idx]
+    target = str(token.attrGet("src") or "")
+    alt = _alt_text(token.children or [])
+    attachment_id = attachment_id_from_target(target)
+    if attachment_id is None:
+        # Not loaded: an image from another host would tell that host when the
+        # note is opened.
+        href = html.escape(target, quote=True)
+        return f'!<a href="{href}">{html.escape(alt, quote=False)}</a>'
+    caption = html.escape(normalize_caption(alt), quote=True)
+    return f'<img {ATTACHMENT_ID_ATTRIBUTE}="{attachment_id}" alt="{caption}">'
+
+
+def _is_attachment(token: Token) -> bool:
+    target = str(token.attrGet("src") or "")
+    return token.type == "image" and attachment_id_from_target(target) is not None
+
+
+def _attachment_blocks(state: StateCore) -> None:
+    """Show a paragraph that holds only attachments as the images alone.
+
+    The editor's image is a block, so ``<p><img></p>`` would load as an image
+    next to an empty paragraph."""
+    tokens = state.tokens
+    for index, token in enumerate(tokens):
+        if token.type != "inline" or index == 0 or index + 1 >= len(tokens):
+            continue
+        if tokens[index - 1].type != "paragraph_open":
+            continue
+        children = [
+            child
+            for child in token.children or []
+            if child.type not in ("softbreak", "hardbreak")
+            and not (child.type == "text" and not child.content.strip())
+        ]
+        if children and all(_is_attachment(child) for child in children):
+            token.children = children
+            tokens[index - 1].hidden = True
+            tokens[index + 1].hidden = True
+
+
 def _build_parser() -> MarkdownIt:
     # Link validation is left at its default: javascript:, vbscript:, file: and
     # non-image data: URLs are rejected.
     md = MarkdownIt("commonmark", {"html": False})
     md.enable("table")
-    md.disable("image")
     md.add_render_rule("heading_open", _clamp_heading)
     md.add_render_rule("heading_close", _clamp_heading)
+    md.add_render_rule("image", _render_image)
     md.core.ruler.push("task_lists", _task_lists)
+    md.core.ruler.push("attachment_blocks", _attachment_blocks)
     return md
 
 

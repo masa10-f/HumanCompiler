@@ -15,6 +15,8 @@ import { run, startMockApi, tempDir } from './helpers.mjs'
 const ALL_READ = ['context:read', 'goals:read', 'logs:read', 'projects:read', 'tasks:read']
 const TOKENS = {
   'full-token': ALL_READ,
+  'agent-token': [...ALL_READ, 'attachments:read', 'attachments:write', 'notes:write'],
+  'attach-only-token': ['attachments:write'],
   'roadmap-token': ['goals:read', 'logs:read', 'projects:read', 'tasks:read'],
   'hook-token': ['quick_tasks:write'],
 }
@@ -69,6 +71,48 @@ describe('doctor', () => {
     // /health needs no token; only /me gets it.
     const health = api.requests.findLast((r) => r.url === '/health')
     assert.equal(health.authorization, undefined)
+  })
+
+  test('passes a read-only token, and says what it cannot do', async () => {
+    const { code, stdout } = await doctor([], 'full-token')
+
+    assert.equal(code, 0, stdout)
+    assert.match(stdout, /\[info\] context --with-images: not available with this token \(missing attachments:read\)/)
+    assert.match(stdout, /\[info\] attach: not available with this token \(missing attachments:write\)/)
+    // An option of a command the token cannot run is not listed.
+    assert.doesNotMatch(stdout, /attach --append/)
+    assert.match(stdout, /All checks passed\.\n$/)
+  })
+
+  test('reports the scopes of attach and of the options that need more', async () => {
+    const { code, stdout } = await doctor([], 'agent-token')
+
+    assert.equal(code, 0, stdout)
+    assert.match(stdout, /\[ok\] {3}context --with-images: attachments:read/)
+    assert.match(stdout, /\[ok\] {3}attach: attachments:write/)
+    assert.match(stdout, /\[ok\] {3}attach --append: notes:write/)
+  })
+
+  test('fails when attach is named and the token cannot attach', async () => {
+    const { code, stdout } = await doctor(['attach'], 'full-token')
+
+    assert.equal(code, 1)
+    assert.match(stdout, /\[fail\] attach: missing attachments:write\n {7}Fix: Scopes are fixed when a token is created\. Create a new token under Settings > Agent tokens with a preset that writes/)
+    assert.doesNotMatch(stdout, /\] +(roadmap|context)/)
+  })
+
+  test('an option the token lacks is not a failure, even when its command is named', async () => {
+    const { code, stdout } = await doctor(['attach'], 'attach-only-token')
+
+    assert.equal(code, 0, stdout)
+    assert.match(stdout, /\[ok\] {3}attach: attachments:write/)
+    assert.match(stdout, /\[info\] attach --append: not available with this token \(missing notes:write\)/)
+  })
+
+  test('rejects a name that is not a subcommand with scopes', async () => {
+    const { code, stderr } = await doctor(['setup'], 'full-token')
+    assert.equal(code, 2)
+    assert.match(stderr, /doctor checks the scopes of roadmap, context, attach, not setup\./)
   })
 
   test('fails when a subcommand lacks scopes, and says how to fix it', async () => {

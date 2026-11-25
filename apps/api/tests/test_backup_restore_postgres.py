@@ -35,6 +35,7 @@ from humancompiler_api.models import (
     Goal,
     GoalDependency,
     Log,
+    NoteAttachment,
     Project,
     PushSubscription,
     QuickTask,
@@ -190,12 +191,32 @@ def add_one_of_everything(engine: Engine) -> UUID:
                 content_type="html",
             )
         )
+        project_note = ContextNote(
+            id=uuid4(),
+            user_id=user_id,
+            project_id=project.id,
+            content="<p>Project plan</p>",
+            content_type="html",
+        )
+        session.add(project_note)
+        session.flush()
+        attachment_id = uuid4()
         session.add(
-            ContextNote(
+            NoteAttachment(
+                id=attachment_id,
                 user_id=user_id,
-                project_id=project.id,
-                content="<p>Project plan</p>",
-                content_type="html",
+                note_id=project_note.id,
+                bucket="note-attachments",
+                object_key=f"{user_id}/{attachment_id}/preview.webp",
+                thumb_object_key=f"{user_id}/{attachment_id}/thumb.webp",
+                byte_size=64000,
+                thumb_byte_size=13000,
+                width=1260,
+                height=800,
+                sha256="a" * 64,
+                caption="Loss curve",
+                source={"path": "/data/loss.png", "host": "lab"},
+                created_at=CREATED,
             )
         )
         quick_task = QuickTask(
@@ -587,8 +608,7 @@ def test_a_key_in_an_older_backup_file_is_not_restored(engine: Engine, tmp_path:
 def test_every_table_is_backed_up_or_left_out_on_purpose():
     """A new table must be added to the backup, or named here as left out."""
     tables = {table.name for table in SQLModel.metadata.sorted_tables}
-    # note_attachments has a model and no migration: there is nothing to keep.
-    assert tables == BACKED_UP | NOT_BACKED_UP | {"note_attachments"}
+    assert tables == BACKED_UP | NOT_BACKED_UP
 
 
 def test_every_restored_reference_is_to_a_restored_table():
@@ -604,10 +624,11 @@ def test_every_restored_reference_is_to_a_restored_table():
 def test_a_table_the_database_does_not_have_yet_does_not_stop_a_restore(
     engine: Engine, tmp_path: Path
 ):
-    # note_attachments has a model and no migration: production has no such table.
+    # A model whose migration is not applied yet: the database has no such
+    # table. Here it is one a backup does not carry.
     add_one_of_everything(engine)
     with engine.begin() as connection:
-        connection.execute(text("DROP TABLE note_attachments"))
+        connection.execute(text("DROP TABLE push_subscriptions"))
     before = all_rows_of(engine, BACKED_UP)
     manager = DataBackupManager(str(tmp_path))
     backup_path = manager.create_backup("full")

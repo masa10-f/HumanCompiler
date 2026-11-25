@@ -149,6 +149,7 @@ export default function ProjectDetailPage() {
                     saving={noteSaving}
                     placeholder="プロジェクトに関するメモや背景情報を記録..."
                     updatedAt={projectNote?.updated_at}
+                    attachmentTarget={{ type: 'project', id }}
                   />
                 </>
               )}
