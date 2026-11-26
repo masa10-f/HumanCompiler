@@ -33,8 +33,10 @@ export interface NumberInputProps
 function parseDraft(draft: string, integer: boolean): number | undefined {
   const trimmed = draft.trim()
   if (trimmed === "") return undefined
-  const parsed = integer ? Number.parseInt(trimmed, 10) : Number.parseFloat(trimmed)
-  return Number.isFinite(parsed) ? parsed : undefined
+  // Parse the whole value (so "1e2" is 100), then drop any fraction for integers.
+  const parsed = Number(trimmed)
+  if (!Number.isFinite(parsed)) return undefined
+  return integer ? Math.trunc(parsed) : parsed
 }
 
 function formatValue(value: number | null | undefined): string {
@@ -91,13 +93,11 @@ const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
           if (lower !== undefined) next = Math.max(lower, next)
           if (upper !== undefined) next = Math.min(upper, next)
         }
-        if (next !== parsed) {
-          onValueChange(next)
-          setDraft(formatValue(next))
-        } else if (parsed !== (value ?? undefined)) {
-          // The parent transformed the number (e.g. 0 meaning "none"); show its value.
-          setDraft(formatValue(value))
-        }
+        if (next !== parsed) onValueChange(next)
+        // Show what was kept: the clamped number, or the parent's value when it
+        // transformed the input (e.g. 0 meaning "none", or a fraction dropped).
+        const kept = next !== parsed ? next : (value ?? undefined)
+        if (Number(draft.trim()) !== kept) setDraft(formatValue(kept))
       }
       onBlur?.(event)
     }

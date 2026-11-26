@@ -89,6 +89,25 @@ describe('NumberInput', () => {
     expect(input().value).toBe('1440')
   })
 
+  it('reads scientific notation as the whole number in integer fields', () => {
+    const onSpy = jest.fn()
+    render(<Harness initial={30} min={5} max={480} integer clampOnBlur onSpy={onSpy} />)
+
+    fireEvent.change(input(), { target: { value: '1e2' } })
+    expect(onSpy).toHaveBeenLastCalledWith(100)
+    fireEvent.blur(input())
+    expect(screen.getByTestId('value')).toHaveTextContent('100')
+  })
+
+  it('shows the whole number kept when a fraction is typed into an integer field', () => {
+    render(<Harness initial={30} integer />)
+
+    fireEvent.change(input(), { target: { value: '12.7' } })
+    fireEvent.blur(input())
+    expect(input().value).toBe('12')
+    expect(screen.getByTestId('value')).toHaveTextContent('12')
+  })
+
   it('follows values set from outside', () => {
     render(<Harness initial={30} />)
 
