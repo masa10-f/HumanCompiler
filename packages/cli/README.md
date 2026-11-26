@@ -101,6 +101,7 @@ Fetches the same Markdown document as the AI context export in the web app: the 
 | `--no-completed` | | Leaves completed goals and tasks out. |
 | `--no-work-sessions` | | Leaves work sessions out. |
 | `--no-daily-plans` | | Leaves daily plans out. |
+| `--with-logs` | | Adds the logs of the notes. A project, goal or task has an overview (what is true now) and a log (what happened, which keeps growing); the export has the overviews and only mentions each log with its size. |
 | `--with-images <dir>` | | Saves the images the notes refer to into `<dir>`, and points the references to the saved files. |
 | `--api-url <url>` | `$HUMANCOMPILER_API_URL`, else the hosted API | The API's base URL. |
 
@@ -130,7 +131,7 @@ Puts an image made on your machine, such as a plot from an analysis, on the note
 - **The original is recorded, not stored.** The upload carries the file's absolute path, this machine's name, its SHA-256 and the `--source` you give, so the original can be found where the data is.
 - **The caption is required.** Readers that cannot see images, such as the context export, get only the caption.
 
-It prints the image's Markdown reference, `![caption](attachment:<id>)`, to stdout and everything else to stderr. The image shows in the note once the reference is in it: `--append` adds it to the end of the note, or put it where you want with the MCP tools `append_note` and `replace_note`. Notes show images only in this form; an image at an external URL is not shown.
+It prints the image's Markdown reference, `![caption](attachment:<id>)`, to stdout and everything else to stderr. The image shows once the reference is in one of the item's two notes, its overview or its log: `--append` adds it to the end of the log, or put it where you want with the MCP tools `append_note` and `replace_note`. Notes show images only in this form; an image at an external URL is not shown.
 
 Attaching the same image to the same note again reuses the stored one, and the reference printed has the new caption. An image whose reference is in no note is deleted after about a week.
 
@@ -138,7 +139,7 @@ Attaching the same image to the same note again reuses the stored one, and the r
 |---|---|
 | `--caption <text>` | What the image shows (required, up to 500 characters). |
 | `--source <script>` | The script or command that made the image. |
-| `--append` | Also adds the reference to the end of the note. |
+| `--append` | Also adds the reference to the end of the item's log. |
 | `--api-url <url>` | `$HUMANCOMPILER_API_URL`, else the hosted API. |
 
 It calls `POST /api/agent/v1/context-notes/{projects|goals|tasks}/{id}/attachments`, and with `--append` also `POST .../append`.
