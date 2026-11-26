@@ -86,6 +86,21 @@ class Settings(BaseSettings):
         description="Run the APScheduler background jobs in this process",
     )
 
+    # Note attachments (images in context notes). The bucket is private and is
+    # created by hand in the Supabase dashboard.
+    attachments_bucket: str = Field(
+        default="note-attachments",
+        description="Private Supabase Storage bucket for note attachments",
+    )
+    attachment_user_quota_bytes: int = Field(
+        default=200 * 1024 * 1024,
+        gt=0,
+        description="Total bytes of attachments one user may store",
+    )
+    attachment_max_per_note: int = Field(
+        default=50, gt=0, description="Images one note may show"
+    )
+
     # CORS Configuration
     # Allow Vercel deployments, custom domain, and local development
     cors_origins: list[str] | str = Field(
@@ -272,6 +287,9 @@ except Exception as e:
     settings.email_notifications_enabled = False
     settings.web_base_url = None
     settings.notification_scheduler_enabled = True
+    settings.attachments_bucket = "note-attachments"
+    settings.attachment_user_quota_bytes = 200 * 1024 * 1024
+    settings.attachment_max_per_note = 50
 
 
 # Production security check

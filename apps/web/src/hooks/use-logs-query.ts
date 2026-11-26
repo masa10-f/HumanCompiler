@@ -20,6 +20,9 @@ const chunkTaskIds = (taskIds: string[], chunkSize: number) => {
   return chunks
 }
 
+/** How many of a task's latest logs `useLogsByTask` loads by default. */
+export const TASK_LOGS_LIMIT = 50
+
 /**
  * Fetches logs for a specific task with pagination.
  *
@@ -28,7 +31,7 @@ const chunkTaskIds = (taskIds: string[], chunkSize: number) => {
  * @param limit - Maximum records to return (default: 50)
  * @returns UseQueryResult with log array
  */
-export function useLogsByTask(taskId: string, skip = 0, limit = 50) {
+export function useLogsByTask(taskId: string, skip = 0, limit = TASK_LOGS_LIMIT) {
   return useQuery({
     queryKey: logKeys.byTask(taskId),
     queryFn: () => logsApi.getByTask(taskId, skip, limit),
@@ -107,6 +110,8 @@ export function useCreateLog() {
 
       // Invalidate progress data as it depends on logs
       queryClient.invalidateQueries({ queryKey: queryKeys.progress.all })
+      // The work history lists logs with their sessions
+      queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.records() })
 
       // Logging work moves pending tasks to in_progress on the server
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all })
@@ -154,6 +159,8 @@ export function useUpdateLog() {
 
       // Invalidate progress data as it depends on logs
       queryClient.invalidateQueries({ queryKey: queryKeys.progress.all })
+      // The work history lists logs with their sessions
+      queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.records() })
     },
   })
 }
@@ -198,6 +205,8 @@ export function useDeleteLog() {
 
       // Invalidate progress data as it depends on logs
       queryClient.invalidateQueries({ queryKey: queryKeys.progress.all })
+      // The work history lists logs with their sessions
+      queryClient.invalidateQueries({ queryKey: queryKeys.workSessions.records() })
     },
   })
 }

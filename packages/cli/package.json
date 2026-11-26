@@ -1,7 +1,7 @@
 {
   "name": "humancompiler",
-  "version": "0.1.1",
-  "description": "HumanCompiler on the command line: draw project roadmaps, export context, and connect coding agents (Claude Code, Codex) to HumanCompiler",
+  "version": "0.2.0",
+  "description": "HumanCompiler on the command line: draw project roadmaps, export context, attach images to notes, and connect coding agents (Claude Code, Codex) to HumanCompiler",
   "license": "AGPL-3.0-or-later",
   "author": "Masato Fukushima <masa1063fuk@gmail.com>",
   "homepage": "https://github.com/masa10-f/HumanCompiler/tree/main/packages/cli#readme",
@@ -39,7 +39,8 @@
     "prepublishOnly": "pnpm run type-check && pnpm run test"
   },
   "dependencies": {
-    "@resvg/resvg-js": "2.6.2"
+    "@resvg/resvg-js": "2.6.2",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@expo-google-fonts/noto-sans-jp": "0.4.4",

@@ -301,6 +301,7 @@ def test_scopes_returns_presets_from_the_spec(session: Session):
         "daily_plans:read",
         "weekly_notes:read",
         "context:read",
+        "attachments:read",
         "proposals:read",
     ]
     assert presets["proposing_agent"]["label"] == "提案するエージェント"
@@ -312,7 +313,8 @@ def test_scopes_returns_presets_from_the_spec(session: Session):
     assert confirmed["label"] == "作業するエージェント（確認あり）"
     assert confirmed["description"] == (
         "Agent API の読み取りすべてと、Goal・Task・ノート・作業ログの書き込み、"
-        "提案の送信を許可する。中止・書き換え・移動などの消える操作は、承認が必要"
+        "画像の添付、提案の送信を許可する。"
+        "中止・書き換え・移動などの消える操作は、承認が必要"
         "（承認の仕組みは今後の更新で追加。それまでは拒否される）"
     )
     assert confirmed["scopes"] == [
@@ -321,6 +323,7 @@ def test_scopes_returns_presets_from_the_spec(session: Session):
         "tasks:write",
         "notes:write",
         "logs:write",
+        "attachments:write",
         "proposals:write",
     ]
     unconfirmed = presets["working_agent_unconfirmed"]

@@ -51,6 +51,21 @@ export function useWorkSessionHistory(skip = 0, limit = 20) {
 }
 
 /**
+ * Hook for the user's work records across tasks: time logs and Runner
+ * sessions as one list, newest first.
+ *
+ * @param skip - Pagination offset
+ * @param limit - Maximum results (at most 100)
+ */
+export function useWorkRecords(skip = 0, limit = 50) {
+  return useQuery({
+    queryKey: queryKeys.workSessions.recordsPage(skip, limit),
+    queryFn: () => workSessionsApi.getRecords(skip, limit),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
  * Hook for getting sessions by task.
  *
  * @param taskId - The task ID
@@ -185,6 +200,9 @@ export function useUpdateWorkSession() {
         queryKey: queryKeys.workSessions.all,
         predicate: (query) => query.queryKey[1] === 'task' && query.queryKey[2] === result.task_id,
       });
+      // The session's time log carries the reflection as its comment, and the
+      // server keeps it in step.
+      queryClient.invalidateQueries({ queryKey: queryKeys.logs.byTask(result.task_id) });
     },
   });
 }

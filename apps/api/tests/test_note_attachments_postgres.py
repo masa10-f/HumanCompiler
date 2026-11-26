@@ -1,0 +1,366 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2024-2026 Masato Fukushima <masa1063fuk@gmail.com>
+
+"""Note attachments on PostgreSQL, where foreign keys and row locks are real.
+
+SQLite, which the other attachment tests use, does not enforce the foreign keys
+(so a deleted note leaves ``note_id`` set) and ignores ``FOR UPDATE``."""
+
+from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
+import json
+import os
+from pathlib import Path
+from uuid import UUID, uuid4
+
+import pytest
+from sqlalchemy import Engine, event, text
+from sqlalchemy.exc import OperationalError
+from sqlmodel import Session, SQLModel, create_engine, select
+
+from humancompiler_api import attachment_service, safe_migration
+from humancompiler_api.attachment_storage import InMemoryAttachmentStorage
+from humancompiler_api.models import (
+    ContextNote,
+    ContextNoteUpdate,
+    NoteAttachment,
+    Project,
+    User,
+)
+from humancompiler_api.proposal_payloads import NoteTarget
+from humancompiler_api.routers import notes
+from humancompiler_api.safe_migration import DataBackupManager
+from tests.attachment_helpers import image_bytes
+
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("NOTEBOOK_TEST_POSTGRES_URL"), reason="requires test PostgreSQL"
+)
+
+
+@pytest.fixture
+def engine() -> Iterator[Engine]:
+    # No production table is touched, even when running against an existing database.
+    url = os.environ["NOTEBOOK_TEST_POSTGRES_URL"]
+    schema = f"note_attachments_orm_test_{uuid4().hex}"
+    admin = create_engine(url)
+    with admin.begin() as connection:
+        connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+    scoped = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+
+    @event.listens_for(scoped, "connect")
+    def use_test_schema(dbapi_connection, _record) -> None:
+        # Once any test has built the app's engine, a listener on every pool
+        # points new connections at public (database_config). These tests open
+        # a second connection, so put it back on the test schema; committed, or
+        # the first rollback would undo it.
+        with dbapi_connection.cursor() as cursor:
+            cursor.execute(f'SET search_path TO "{schema}"')
+        dbapi_connection.commit()
+
+    try:
+        SQLModel.metadata.create_all(scoped)
+        yield scoped
+    finally:
+        scoped.dispose()
+        with admin.begin() as connection:
+            connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()
+
+
+def _project(engine: Engine) -> tuple[UUID, UUID]:
+    user_id, project_id = uuid4(), uuid4()
+    with Session(engine) as session:
+        session.add(User(id=user_id, email=f"{user_id}@example.com"))
+        session.flush()
+        session.add(Project(id=project_id, owner_id=user_id, title="Project"))
+        session.commit()
+    return user_id, project_id
+
+
+def _attach(
+    engine: Engine,
+    storage: InMemoryAttachmentStorage,
+    user_id: UUID,
+    project_id: UUID,
+    color: tuple[int, int, int] = (200, 30, 30),
+) -> UUID:
+    with Session(engine) as session:
+        attachment, _ = attachment_service.create_attachment(
+            session,
+            storage,
+            user_id,
+            NoteTarget(project_id=project_id),
+            image_bytes(color=color),
+            "図1",
+            None,
+            require_caption=True,
+        )
+        assert attachment.id is not None
+        return attachment.id
+
+
+def _save(engine: Engine, user_id: UUID, project_id: UUID, content: str) -> None:
+    with Session(engine) as session:
+        notes.update_note(
+            session,
+            str(user_id),
+            NoteTarget(project_id=project_id),
+            ContextNoteUpdate(content=content, content_type="html"),
+        )
+
+
+def _rows(engine: Engine) -> list[NoteAttachment]:
+    with Session(engine) as session:
+        return list(session.exec(select(NoteAttachment)).all())
+
+
+def test_upload_reference_and_removal(engine: Engine) -> None:
+    storage = InMemoryAttachmentStorage()
+    user_id, project_id = _project(engine)
+
+    attachment_id = _attach(engine, storage, user_id, project_id)
+    assert _rows(engine)[0].detached_at is not None
+
+    _save(
+        engine,
+        user_id,
+        project_id,
+        f'<img data-attachment-id="{attachment_id}" alt="新しい説明">',
+    )
+    (row,) = _rows(engine)
+    assert row.detached_at is None
+    assert row.caption == "新しい説明"
+
+    _save(engine, user_id, project_id, "<p>removed</p>")
+    (row,) = _rows(engine)
+    assert row.detached_at is not None
+
+    with Session(engine) as session:
+        assert attachment_service.sweep_attachments(session, storage) == 0
+        late = datetime.now(UTC) + timedelta(days=8)
+        assert attachment_service.sweep_attachments(session, storage, late) == 1
+    assert _rows(engine) == []
+    assert storage.objects == {}
+
+
+def test_deleting_the_project_leaves_the_files_to_the_sweep(engine: Engine) -> None:
+    storage = InMemoryAttachmentStorage()
+    user_id, project_id = _project(engine)
+    kept_user, kept_project = _project(engine)
+    attachment_id = _attach(engine, storage, user_id, project_id)
+    kept_id = _attach(engine, storage, kept_user, kept_project)
+    _save(
+        engine,
+        user_id,
+        project_id,
+        f'<img data-attachment-id="{attachment_id}" alt="図1">',
+    )
+    _save(
+        engine,
+        kept_user,
+        kept_project,
+        f'<img data-attachment-id="{kept_id}" alt="図1">',
+    )
+
+    with engine.begin() as connection:
+        connection.execute(
+            text("DELETE FROM projects WHERE id = :id"), {"id": project_id}
+        )
+
+    rows = {row.id: row for row in _rows(engine)}
+    # The note went with the project; the row stays so the files can be found.
+    assert rows[attachment_id].note_id is None
+    assert len(storage.objects) == 4
+
+    with Session(engine) as session:
+        assert len(session.exec(select(ContextNote)).all()) == 1
+        assert attachment_service.sweep_attachments(session, storage) == 1
+
+    (row,) = _rows(engine)
+    assert row.id == kept_id
+    assert set(storage.objects) == {row.object_key, row.thumb_object_key}
+
+
+def _expire(engine: Engine) -> None:
+    """Make every attachment look detached for longer than the grace period."""
+    with Session(engine) as session:
+        for row in session.exec(select(NoteAttachment)).all():
+            row.detached_at = datetime.now(UTC) - timedelta(days=8)
+            session.add(row)
+        session.commit()
+
+
+def test_sweep_leaves_an_attachment_a_write_holds(engine: Engine) -> None:
+    storage = InMemoryAttachmentStorage()
+    user_id, project_id = _project(engine)
+    attachment_id = _attach(engine, storage, user_id, project_id)
+    _expire(engine)
+
+    with Session(engine) as writer:
+        # A repeated upload of the same image, or a note save, in progress.
+        held = writer.exec(
+            select(NoteAttachment)
+            .where(NoteAttachment.id == attachment_id)
+            .with_for_update()
+        ).one()
+        with Session(engine) as session:
+            assert attachment_service.sweep_attachments(session, storage) == 0
+        held.detached_at = None
+        writer.add(held)
+        writer.commit()
+
+    with Session(engine) as session:
+        assert attachment_service.sweep_attachments(session, storage) == 0
+    (row,) = _rows(engine)
+    assert row.detached_at is None
+    assert len(storage.objects) == 2
+
+
+def test_repeated_upload_takes_an_expired_attachment_back_from_the_sweep(
+    engine: Engine,
+) -> None:
+    storage = InMemoryAttachmentStorage()
+    user_id, project_id = _project(engine)
+    first = _attach(engine, storage, user_id, project_id)
+    _expire(engine)
+
+    again = _attach(engine, storage, user_id, project_id)
+
+    assert again == first
+    with Session(engine) as session:
+        assert attachment_service.sweep_attachments(session, storage) == 0
+    assert len(_rows(engine)) == 1
+    assert len(storage.objects) == 2
+
+
+def test_uploads_of_one_user_wait_for_each_other(engine: Engine) -> None:
+    """The quota check is exact: a second upload cannot read the usage while
+    the first is between its check and its insert."""
+    storage = InMemoryAttachmentStorage()
+    user_id, project_id = _project(engine)
+    other_user, other_project = _project(engine)
+
+    with Session(engine) as first:
+        # What create_attachment holds from its quota check to its commit.
+        first.exec(
+            select(User.id).where(User.id == user_id).with_for_update(key_share=True)
+        ).one()
+        with Session(engine) as second:
+            second.exec(text("SET LOCAL lock_timeout = '300ms'"))
+            with pytest.raises(OperationalError):
+                attachment_service.create_attachment(
+                    second,
+                    storage,
+                    user_id,
+                    NoteTarget(project_id=project_id),
+                    image_bytes(),
+                    "図1",
+                    None,
+                    require_caption=True,
+                )
+        # Another user's upload does not wait.
+        _attach(engine, storage, other_user, other_project)
+
+    assert [row.user_id for row in _rows(engine)] == [other_user]
+
+
+def test_same_image_twice_and_usage(engine: Engine) -> None:
+    storage = InMemoryAttachmentStorage()
+    user_id, project_id = _project(engine)
+
+    first = _attach(engine, storage, user_id, project_id)
+    second = _attach(engine, storage, user_id, project_id)
+    _attach(engine, storage, user_id, project_id, color=(1, 2, 3))
+
+    assert first == second
+    rows = _rows(engine)
+    assert len(rows) == 2
+    with Session(engine) as session:
+        usage = attachment_service.attachment_usage(session, user_id)
+        urls = attachment_service.signed_urls(
+            session, storage, user_id, [first, uuid4()]
+        )
+        assert (
+            attachment_service.signed_urls(session, storage, uuid4(), [first]).items
+            == []
+        )
+    assert usage.count == 2
+    assert usage.used_bytes == sum(r.byte_size + r.thumb_byte_size for r in rows)
+    assert [item.id for item in urls.items] == [first]
+
+
+def test_full_backup_and_restore_keep_the_images(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setattr(safe_migration.db, "get_engine", lambda: engine)
+    storage = InMemoryAttachmentStorage()
+    user_id, project_id = _project(engine)
+    attachment_id = _attach(engine, storage, user_id, project_id)
+    reference = f'<img data-attachment-id="{attachment_id}" alt="図1">'
+    _save(engine, user_id, project_id, reference)
+    (before,) = _rows(engine)
+    manager = DataBackupManager(str(tmp_path))
+
+    backup_path = manager.create_backup("with-images")
+    backup = json.loads(Path(backup_path).read_text(encoding="utf-8"))
+    # The restore empties every table that references users, attachments too.
+    manager.restore_backup(backup_path)
+
+    # The backup holds the keys of the files, which stay in the bucket.
+    (listed,) = backup["note_attachments"]
+    assert listed["object_key"] == before.object_key
+    assert backup["metadata"]["total_records"]["note_attachments"] == 1
+    (after,) = _rows(engine)
+    assert after.model_dump() == before.model_dump()
+    with Session(engine) as session:
+        note = session.exec(select(ContextNote)).one()
+        assert note.content == reference
+        assert after.note_id == note.id
+        # The files were never touched, so the image still opens, and the
+        # cleanup still knows it is in use.
+        urls = attachment_service.signed_urls(
+            session, storage, user_id, [attachment_id]
+        )
+        assert len(urls.items) == 1
+        assert attachment_service.sweep_attachments(session, storage) == 0
+    assert len(storage.objects) == 2
+
+
+def test_user_backup_lists_the_images_and_import_leaves_them_out(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setattr(safe_migration.db, "get_engine", lambda: engine)
+    storage = InMemoryAttachmentStorage()
+    user_id, project_id = _project(engine)
+    other_user, _ = _project(engine)
+    attachment_id = _attach(engine, storage, user_id, project_id)
+    _save(
+        engine,
+        user_id,
+        project_id,
+        f'<img data-attachment-id="{attachment_id}" alt="図1">',
+    )
+    manager = DataBackupManager(str(tmp_path))
+
+    backup_path = manager.create_user_backup(str(user_id), "user")
+    backup = json.loads(Path(backup_path).read_text(encoding="utf-8"))
+    manager.restore_user_data(backup_path, str(other_user))
+
+    (listed,) = backup["note_attachments"]
+    assert listed["id"] == str(attachment_id)
+    assert listed["caption"] == "図1"
+    assert backup["metadata"]["total_records"]["note_attachments"] == 1
+    # The other user gets the note's text, and no claim on the image.
+    (row,) = _rows(engine)
+    assert row.user_id == user_id
+    with Session(engine) as session:
+        imported = session.exec(
+            select(ContextNote).where(ContextNote.user_id == other_user)
+        ).one()
+        assert str(attachment_id) in imported.content
+        assert (
+            attachment_service.signed_urls(
+                session, storage, other_user, [attachment_id]
+            ).items
+            == []
+        )

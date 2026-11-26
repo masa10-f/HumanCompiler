@@ -16,6 +16,8 @@ export interface Log {
   actual_minutes: number;
   /** コメント・メモ */
   comment?: string;
+  /** この時間を計測した Runner セッション。手入力などの記録では null */
+  work_session_id?: string | null;
   /** 作成日時 (ISO 8601形式) */
   created_at: string;
 }
@@ -31,6 +33,10 @@ export interface LogCreate {
   actual_minutes: number;
   /** コメント・メモ */
   comment?: string;
+  /** 記録後に残っている作業時間（時間）。指定するとタスクの見積を合わせて更新する */
+  remaining_estimate_hours?: number;
+  /** この記録でタスクを完了にする */
+  complete_task?: boolean;
 }
 
 /**

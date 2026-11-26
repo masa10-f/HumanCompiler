@@ -6,7 +6,7 @@ from collections import deque
 from collections.abc import Sequence
 from datetime import datetime, timedelta, UTC
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Any
+from typing import Any, NamedTuple
 import hashlib
 import secrets
 from uuid import UUID
@@ -20,10 +20,12 @@ from sqlmodel import Session, and_, col, delete, func, select
 from humancompiler_api.base_service import BaseService
 from humancompiler_api.common.error_handlers import (
     ResourceNotFoundError,
+    ServiceError,
     safe_execute,
     validate_uuid,
 )
 from humancompiler_api.models import (
+    MAX_ESTIMATE_HOURS,
     AgentScope,
     AgentToken,
     ContextNote,
@@ -97,17 +99,19 @@ def _dependency_path_exists(
     return False
 
 
-def _task_text_matches(pattern: str) -> Any:
-    """Tasks whose title or note text matches an ILIKE pattern."""
+def _task_text_matches(search: str) -> Any:
+    """Tasks whose title or note text contains ``search``, whatever its case.
+
+    The text is matched as written: ``%`` and ``_`` in it are not wildcards."""
     note_matches = (
         select(ContextNote.id)
         .where(
             ContextNote.task_id == Task.id,
-            col(ContextNote.content_text).ilike(pattern),
+            col(ContextNote.content_text).icontains(search, autoescape=True),
         )
         .exists()
     )
-    return col(Task.title).ilike(pattern) | note_matches
+    return col(Task.title).icontains(search, autoescape=True) | note_matches
 
 
 def add_task_note_text(
@@ -123,6 +127,73 @@ def add_task_note_text(
         )
     )
     session.flush()
+
+
+def set_remaining_estimate(
+    session: Session, task: Task, remaining_hours: Decimal, now: datetime
+) -> None:
+    """Move the task's estimate so that ``remaining_hours`` is left to do.
+
+    The estimate becomes the time logged so far plus the remaining hours, so
+    that (estimate - actual) is what the user said remains. Flushed, not
+    committed. An estimate out of the column's range gives 400."""
+    total_minutes = session.exec(
+        select(func.coalesce(func.sum(Log.actual_minutes), 0)).where(
+            Log.task_id == task.id
+        )
+    ).one()
+    remaining = remaining_hours.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    new_estimate_hours = (
+        Decimal(int(total_minutes or 0)) / Decimal(60) + remaining
+    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    # Task.estimate_hours is constrained to NUMERIC(5,2) and must be > 0.
+    if new_estimate_hours > MAX_ESTIMATE_HOURS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Updated estimate_hours ({new_estimate_hours}h) exceeds "
+                f"maximum ({MAX_ESTIMATE_HOURS}h)"
+            ),
+        )
+    if new_estimate_hours <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Updated estimate_hours must be greater than 0",
+        )
+    task.estimate_hours = new_estimate_hours
+    task.updated_at = now
+    session.add(task)
+    session.flush()
+
+
+class WorkRecord(NamedTuple):
+    """One piece of work on a task: its time log, its Runner session, or both."""
+
+    at: datetime
+    task: Task
+    goal: Goal
+    log: Log | None
+    work_session: WorkSession | None
+
+
+def _as_utc(value: datetime) -> datetime:
+    """A stored time as an aware one (SQLite returns naive UTC)."""
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+def kpt_summary(keep: str | None, problem: str | None, try_: str | None) -> str | None:
+    """A session's reflection as its log's comment (max 500 chars)."""
+    parts = []
+    if keep:
+        parts.append(f"K: {keep[:100]}")
+    if problem:
+        parts.append(f"P: {problem[:100]}")
+    if try_:
+        parts.append(f"T: {try_[:100]}")
+    if not parts:
+        return None
+    return " | ".join(parts)[:500]
 
 
 def _touch(session: Session, entity: Goal | Task | None) -> None:
@@ -748,8 +819,7 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         if due_after is not None:
             conditions.append(col(Task.due_date) >= due_after)
         if search and search.strip():
-            pattern = f"%{search.strip()}%"
-            conditions.append(_task_text_matches(pattern))
+            conditions.append(_task_text_matches(search.strip()))
         if blocked is not None:
             prerequisite = aliased(Task)
             blocking_dependency = (
@@ -937,8 +1007,7 @@ class TaskService(BaseService[Task, TaskCreate, TaskUpdate]):
         if goal_id:
             conditions.append(Goal.id == goal_id)
         if search and search.strip():
-            pattern = f"%{search.strip()}%"
-            conditions.append(_task_text_matches(pattern))
+            conditions.append(_task_text_matches(search.strip()))
 
         prerequisite = aliased(Task)
         has_blocker = (
@@ -1215,6 +1284,7 @@ class LogService(BaseService[Log, LogCreate, LogUpdate]):
             task_id=data.task_id,
             actual_minutes=data.actual_minutes,
             comment=data.comment,
+            work_session_id=kwargs.get("work_session_id"),
         )
 
     def _get_user_filter(self, user_id: str | UUID):
@@ -1227,9 +1297,17 @@ class LogService(BaseService[Log, LogCreate, LogUpdate]):
         )
 
     def create_log(
-        self, session: Session, log_data: LogCreate, owner_id: str | UUID
+        self,
+        session: Session,
+        log_data: LogCreate,
+        owner_id: str | UUID,
+        work_session_id: UUID | None = None,
     ) -> Log:
-        """Create a new work time log"""
+        """Create a new work time log.
+
+        ``work_session_id`` links the log to the Runner session it was measured
+        in. The log, the new estimate (``remaining_estimate_hours``) and the
+        completion (``complete_task``) are one transaction."""
         # Verify task ownership through goal and project
         task = self.task_service.get_task(session, log_data.task_id, owner_id)
         if not task:
@@ -1244,7 +1322,30 @@ class LogService(BaseService[Log, LogCreate, LogUpdate]):
             .where(Task.id == task.id, Task.status == TaskStatus.PENDING)
             .values(status=TaskStatus.IN_PROGRESS, updated_at=datetime.now(UTC))
         )
-        return self.create(session, log_data, owner_id)
+
+        def record() -> Log:
+            log = self.build(
+                session, log_data, owner_id, work_session_id=work_session_id
+            )
+            now = datetime.now(UTC)
+            if log_data.remaining_estimate_hours is not None:
+                # The status update above bypassed the session: read it again.
+                session.refresh(task)
+                set_remaining_estimate(
+                    session, task, log_data.remaining_estimate_hours, now
+                )
+            if log_data.complete_task:
+                # Like the start above, never overwrite a cancellation.
+                session.exec(
+                    sqlalchemy_update(Task)
+                    .where(Task.id == task.id, Task.status != TaskStatus.CANCELLED)
+                    .values(status=TaskStatus.COMPLETED, updated_at=now)
+                )
+            return log
+
+        # An estimate out of range is the caller's mistake: safe_execute rolls
+        # back and passes the 400 on.
+        return safe_execute(session, record)
 
     def get_log(
         self, session: Session, log_id: str | UUID, owner_id: str | UUID
@@ -1512,67 +1613,30 @@ class WorkSessionService(
         current_session.updated_at = ended_at
 
         # Create log entry with KPT summary
-        kpt_summary = self._generate_kpt_summary(
-            checkout_data.kpt_keep,
-            checkout_data.kpt_problem,
-            checkout_data.kpt_try,
-        )
-
         log_data = LogCreate(
             task_id=current_session.task_id,
             actual_minutes=actual_minutes,
-            comment=kpt_summary,
+            comment=kpt_summary(
+                checkout_data.kpt_keep,
+                checkout_data.kpt_problem,
+                checkout_data.kpt_try,
+            ),
+            # The log moves the task's estimate with it, so the end of the
+            # session, the log and the estimate are one transaction: an
+            # estimate out of range leaves the session running.
+            remaining_estimate_hours=checkout_data.remaining_estimate_hours,
+            # "Complete" at checkout finishes the task, as it does when a time
+            # record entered by hand or a switch says the task is done.
+            complete_task=checkout_data.decision == SessionDecision.COMPLETE,
         )
 
         session.add(current_session)
-        new_log = self.log_service.create_log(session, log_data, user_id_validated)
-
-        # If remaining estimate is provided, update task.estimate_hours so that
-        # (estimate_hours - actual_hours) ~= remaining_estimate_hours.
-        if checkout_data.remaining_estimate_hours is not None:
-            total_minutes = session.exec(
-                select(func.coalesce(func.sum(Log.actual_minutes), 0)).where(
-                    Log.task_id == current_session.task_id
-                )
-            ).one()
-            total_minutes_int = int(total_minutes or 0)
-
-            remaining_hours = checkout_data.remaining_estimate_hours.quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP
-            )
-            new_estimate_hours = (
-                Decimal(total_minutes_int) / Decimal(60) + remaining_hours
-            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-            # Task.estimate_hours is constrained to NUMERIC(5,2) and must be > 0.
-            max_estimate_hours = Decimal("999.99")
-            if new_estimate_hours > max_estimate_hours:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Updated estimate_hours ({new_estimate_hours}h) exceeds "
-                        f"maximum ({max_estimate_hours}h)"
-                    ),
-                )
-            if new_estimate_hours <= 0:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Updated estimate_hours must be greater than 0",
-                )
-
-            task = self.task_service.get_task(
-                session, current_session.task_id, user_id_validated
-            )
-            if not task:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Task not found",
-                )
-
-            task.estimate_hours = new_estimate_hours
-            task.updated_at = ended_at
-            session.add(task)
-            session.flush()
+        new_log = self.log_service.create_log(
+            session,
+            log_data,
+            user_id_validated,
+            work_session_id=current_session.id,
+        )
 
         session.commit()
         session.refresh(current_session)
@@ -1668,6 +1732,7 @@ class WorkSessionService(
             task_id=current.task_id,
             actual_minutes=actual_minutes,
             comment=(current.interruption_note or "")[:500] or None,
+            work_session_id=current.id,
         )
         next_session = WorkSession(
             id=uuid4(),
@@ -1772,26 +1837,71 @@ class WorkSessionService(
         )
         return list(session.exec(statement).all())
 
-    def _generate_kpt_summary(
+    def get_work_records(
         self,
-        keep: str | None,
-        problem: str | None,
-        try_: str | None,
-    ) -> str | None:
-        """Generate KPT summary for log comment (max 500 chars)"""
-        parts = []
-        if keep:
-            parts.append(f"K: {keep[:100]}")
-        if problem:
-            parts.append(f"P: {problem[:100]}")
-        if try_:
-            parts.append(f"T: {try_[:100]}")
+        session: Session,
+        user_id: str | UUID,
+        skip: int = 0,
+        limit: int = 50,
+    ) -> list[WorkRecord]:
+        """The user's work across tasks as one list, newest first.
 
-        if not parts:
-            return None
+        Every time log is a record, with the Runner session it came from when
+        it has one. A session no log is linked to (still running, or its log
+        was deleted) is a record of its own."""
+        user_id_validated = validate_uuid(user_id, "user_id")
+        # The newest (skip + limit) of the two kinds together are among the
+        # newest (skip + limit) of each.
+        window = skip + limit
 
-        summary = " | ".join(parts)
-        return summary[:500] if len(summary) > 500 else summary
+        log_rows = session.exec(
+            select(Log, WorkSession, Task, Goal)
+            .join(Task, col(Log.task_id) == col(Task.id))
+            .join(Goal, col(Task.goal_id) == col(Goal.id))
+            .join(Project, col(Goal.project_id) == col(Project.id))
+            .outerjoin(
+                WorkSession,
+                and_(
+                    col(Log.work_session_id) == col(WorkSession.id),
+                    col(WorkSession.user_id) == user_id_validated,
+                ),
+            )
+            .where(col(Project.owner_id) == user_id_validated)
+            .order_by(col(Log.created_at).desc(), col(Log.id))
+            .limit(window)
+        ).all()
+        recorded_at = func.coalesce(WorkSession.ended_at, WorkSession.started_at)
+        session_rows = session.exec(
+            select(WorkSession, Task, Goal)
+            .join(Task, col(WorkSession.task_id) == col(Task.id))
+            .join(Goal, col(Task.goal_id) == col(Goal.id))
+            .where(
+                col(WorkSession.user_id) == user_id_validated,
+                ~select(Log.id)
+                .where(col(Log.work_session_id) == col(WorkSession.id))
+                .exists(),
+            )
+            .order_by(recorded_at.desc(), col(WorkSession.id))
+            .limit(window)
+        ).all()
+
+        records = [
+            WorkRecord(_as_utc(log.created_at), task, goal, log, work_session)
+            for log, work_session, task, goal in log_rows
+            if log.created_at is not None
+        ]
+        records += [
+            WorkRecord(
+                _as_utc(work_session.ended_at or work_session.started_at),
+                task,
+                goal,
+                None,
+                work_session,
+            )
+            for work_session, task, goal in session_rows
+        ]
+        records.sort(key=lambda record: record.at, reverse=True)
+        return records[skip : skip + limit]
 
     def pause_session(
         self,
@@ -1954,6 +2064,10 @@ class WorkSessionService(
                 detail="Cannot edit KPT of an active session",
             )
 
+        previous_summary = kpt_summary(
+            work_session.kpt_keep, work_session.kpt_problem, work_session.kpt_try
+        )
+
         # Update KPT fields: empty string clears the field, None means no change
         if update_data.kpt_keep is not None:
             work_session.kpt_keep = update_data.kpt_keep or None
@@ -1962,8 +2076,22 @@ class WorkSessionService(
         if update_data.kpt_try is not None:
             work_session.kpt_try = update_data.kpt_try or None
 
-        work_session.updated_at = datetime.now(UTC)
+        now = datetime.now(UTC)
+        work_session.updated_at = now
         session.add(work_session)
+
+        # The session's log carries the reflection as its comment. Keep it in
+        # step, unless the user has rewritten the comment since the checkout.
+        log = session.exec(
+            select(Log).where(Log.work_session_id == work_session.id)
+        ).first()
+        if log is not None and (log.comment or None) == previous_summary:
+            log.comment = kpt_summary(
+                work_session.kpt_keep, work_session.kpt_problem, work_session.kpt_try
+            )
+            log.updated_at = now
+            session.add(log)
+
         session.commit()
         session.refresh(work_session)
 

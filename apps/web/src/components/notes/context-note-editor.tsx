@@ -1,10 +1,20 @@
 'use client';
 
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { notesApi } from '@/lib/api';
+import { ApiError } from '@/lib/errors';
+import {
+  NoteImageError,
+  isAttachableImage,
+  prepareNoteImage,
+} from '@/lib/note-images/prepare-image';
+import type { NoteAttachmentTarget } from '@/types/context-note';
 import { createContextNoteExtensions } from './context-note-extensions';
+import { NoteImage, type NoteImageAttributes } from './note-image-extension';
+import { requestCaptionFocus } from './note-image-view';
 import {
   Bold,
   Italic,
@@ -28,6 +38,8 @@ import {
   Rows3,
   Columns3,
   Trash2,
+  ImagePlus,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -40,6 +52,60 @@ interface ContextNoteEditorProps {
   className?: string;
   readOnly?: boolean;
   variant?: 'full' | 'compact';
+  /**
+   * The project, goal or task this note is on. With it, images can be added
+   * by pasting, dropping and the toolbar; without it (a note that cannot hold
+   * attachments) images already in the content still show.
+   */
+  attachmentTarget?: NoteAttachmentTarget;
+}
+
+const IMAGE_FILE_TYPES = 'image/png,image/jpeg,image/webp,image/gif,image/avif,image/bmp';
+
+function imageFilesOf(data: DataTransfer | null): File[] {
+  return Array.from(data?.files ?? []).filter(isAttachableImage);
+}
+
+/**
+ * Put an image in the note: at `position` (a drop), else at the selection.
+ *
+ * The editor is not focused here: the image's caption field takes the focus
+ * when the node appears, and focusing the editor would take it back.
+ */
+function insertNoteImage(
+  editor: Editor,
+  attrs: NoteImageAttributes,
+  position?: number
+): void {
+  const node = { type: NoteImage.name, attrs };
+  if (position === undefined) {
+    editor.commands.insertContent(node);
+  } else {
+    // The position was read when the file was dropped, before the upload;
+    // the note may have got shorter since.
+    editor.commands.insertContentAt(
+      Math.min(position, editor.state.doc.content.size),
+      node
+    );
+  }
+  // The note has no trailing node: after an image that ends it, add a
+  // paragraph to go on writing in.
+  const { doc } = editor.state;
+  if (doc.lastChild?.type.name === NoteImage.name) {
+    editor.commands.insertContentAt(doc.content.size, { type: 'paragraph' });
+  }
+}
+
+function uploadErrorMessage(error: unknown): string {
+  if (error instanceof NoteImageError) return error.message;
+  if (error instanceof ApiError) {
+    if (error.statusCode === 413) return '画像が大きすぎます。';
+    if (error.statusCode === 503) {
+      return '画像の保存先に接続できませんでした。少し待ってからもう一度お試しください。';
+    }
+    return `画像を添付できませんでした: ${error.message}`;
+  }
+  return '画像を添付できませんでした。';
 }
 
 export function ContextNoteEditor({
@@ -51,9 +117,17 @@ export function ContextNoteEditor({
   className,
   readOnly = false,
   variant = 'full',
+  attachmentTarget,
 }: ContextNoteEditorProps) {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isCompact = variant === 'compact';
+  const canAttach = !readOnly && attachmentTarget !== undefined;
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  // The editor is created once; its paste and drop handlers read the latest
+  // attach function through this ref.
+  const attachImagesRef = useRef<((files: File[], position?: number) => void) | null>(null);
 
   const editor = useEditor({
     extensions: createContextNoteExtensions(placeholder),
@@ -62,6 +136,30 @@ export function ContextNoteEditor({
     immediatelyRender: false,
     // The toolbar reads editor.isActive() during render.
     shouldRerenderOnTransaction: true,
+    editorProps: {
+      handlePaste: (_view, event) => {
+        const attach = attachImagesRef.current;
+        const files = imageFilesOf(event.clipboardData);
+        // A copy from a spreadsheet or document carries a picture of the
+        // selection next to its text: paste the text, as before.
+        if (!attach || files.length === 0 || event.clipboardData?.getData('text/plain')) {
+          return false;
+        }
+        event.preventDefault();
+        attach(files);
+        return true;
+      },
+      handleDrop: (view, event, _slice, moved) => {
+        const attach = attachImagesRef.current;
+        const files = imageFilesOf(event.dataTransfer);
+        // `moved` is a drag inside the editor (an image node being moved).
+        if (!attach || moved || files.length === 0) return false;
+        event.preventDefault();
+        const position = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        attach(files, position?.pos);
+        return true;
+      },
+    },
     onUpdate: ({ editor }) => {
       const html = editor.getHTML();
       onUpdate(html);
@@ -77,6 +175,45 @@ export function ContextNoteEditor({
       }
     },
   });
+
+  const attachImages = useCallback(
+    async (files: File[], position?: number) => {
+      if (!editor || !attachmentTarget) return;
+      setUploadError(null);
+      let insertAt = position;
+      for (const file of files) {
+        setUploading((count) => count + 1);
+        try {
+          const prepared = await prepareNoteImage(file);
+          const attachment = await notesApi.uploadAttachment(attachmentTarget, prepared.blob, '');
+          if (editor.isDestroyed) return;
+          // The node goes in only now that the image is stored, so a save
+          // never carries a reference to an upload that failed.
+          requestCaptionFocus(attachment.id);
+          insertNoteImage(
+            editor,
+            { attachmentId: attachment.id, alt: attachment.caption },
+            insertAt
+          );
+          // The next image of the same paste or drop follows this one.
+          insertAt = undefined;
+        } catch (error) {
+          setUploadError(uploadErrorMessage(error));
+        } finally {
+          setUploading((count) => count - 1);
+        }
+      }
+    },
+    [editor, attachmentTarget]
+  );
+
+  useEffect(() => {
+    attachImagesRef.current = canAttach
+      ? (files, position) => {
+          void attachImages(files, position);
+        }
+      : null;
+  }, [canAttach, attachImages]);
 
   // Update editor content when prop changes
   useEffect(() => {
@@ -348,14 +485,68 @@ export function ContextNoteEditor({
             <LinkIcon className="h-4 w-4" />
           </Button>
 
+          {/* Image */}
+          {canAttach && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                title="Insert Image"
+              >
+                <ImagePlus className="h-4 w-4" />
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={IMAGE_FILE_TYPES}
+                multiple
+                hidden
+                aria-label="Insert Image"
+                onChange={(event) => {
+                  const files = Array.from(event.target.files ?? []);
+                  // Lets the same file be chosen again.
+                  event.target.value = '';
+                  if (files.length > 0) void attachImages(files);
+                }}
+              />
+            </>
+          )}
+
           {/* Save indicator */}
           <div className="flex-1" />
+          {uploading > 0 && (
+            <div
+              className="flex items-center text-sm text-gray-500 dark:text-gray-400"
+              role="status"
+            >
+              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              画像を添付しています…
+            </div>
+          )}
           {saving && (
             <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
               <Loader2 className="h-4 w-4 animate-spin mr-1" />
               Saving...
             </div>
           )}
+        </div>
+      )}
+
+      {uploadError && (
+        <div
+          role="alert"
+          className="flex items-start justify-between gap-2 border-x border-gray-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-gray-700 dark:bg-red-950 dark:text-red-200"
+        >
+          <span>{uploadError}</span>
+          <button
+            type="button"
+            onClick={() => setUploadError(null)}
+            aria-label="閉じる"
+            className="shrink-0 rounded p-0.5 hover:bg-red-100 dark:hover:bg-red-900"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
       )}
 

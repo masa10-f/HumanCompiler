@@ -72,6 +72,7 @@ export function TaskNotesSection({ taskId }: TaskNotesSectionProps) {
                 placeholder="作業メモを入力..."
                 updatedAt={note?.updated_at}
                 variant="compact"
+                attachmentTarget={{ type: 'task', id: taskId }}
               />
             </div>
           </>

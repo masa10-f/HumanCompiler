@@ -308,10 +308,6 @@
     @apply bg-gray-50 font-semibold text-gray-900 dark:bg-gray-800 dark:text-gray-100;
   }
 
-  .context-note-content img {
-    @apply my-4 max-w-full rounded-md border border-gray-200 dark:border-gray-700;
-  }
-
   .context-note-viewer .ProseMirror {
     cursor: default;
   }

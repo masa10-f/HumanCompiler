@@ -16,6 +16,7 @@ from pydantic import (
 from sqlalchemy import ARRAY, JSON, Text, UniqueConstraint, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy import DateTime, event, func, select
+from sqlalchemy import inspect as sqlalchemy_inspect
 from sqlalchemy import update as sqlalchemy_update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import column_property
@@ -23,6 +24,11 @@ from sqlmodel import Column, Relationship, SQLModel
 from sqlmodel import Field as SQLField
 
 
+from humancompiler_api.note_attachment_refs import (
+    CAPTION_MAX_LENGTH,
+    attachment_references,
+    normalize_caption,
+)
 from humancompiler_api.note_text import (
     NOTE_TEXT_HEAD_LENGTH,
     note_excerpt,
@@ -37,6 +43,8 @@ GOAL_DUE_DATE_DESCRIPTION = (
 GOAL_DUE_DATE_ONLY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # Plain text a task can be created with; it becomes the task's note.
 TASK_NOTE_TEXT_MAX_LENGTH = 20000
+# The largest value tasks.estimate_hours (NUMERIC(5,2)) holds.
+MAX_ESTIMATE_HOURS = Decimal("999.99")
 
 
 def prepare_due_date(value: Any) -> Any:
@@ -668,6 +676,14 @@ class Log(LogBase, table=True):  # type: ignore[call-arg]
 
     id: UUID | None = SQLField(default=None, primary_key=True)
     task_id: UUID = SQLField(foreign_key="tasks.id", ondelete="CASCADE")
+    # The Runner session this time was measured in; NULL for a time entered by
+    # hand, in the daily note or by an agent. A session has at most one log.
+    work_session_id: UUID | None = SQLField(
+        default=None,
+        foreign_key="work_sessions.id",
+        ondelete="SET NULL",
+        unique=True,
+    )
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
@@ -872,6 +888,7 @@ class AgentScope(StrEnum):
     DAILY_PLANS_READ = "daily_plans:read"
     WEEKLY_NOTES_READ = "weekly_notes:read"
     CONTEXT_READ = "context:read"
+    ATTACHMENTS_READ = "attachments:read"
     PROPOSALS_READ = "proposals:read"
     QUICK_TASKS_WRITE = "quick_tasks:write"
     PROPOSALS_WRITE = "proposals:write"
@@ -879,6 +896,7 @@ class AgentScope(StrEnum):
     TASKS_WRITE = "tasks:write"
     NOTES_WRITE = "notes:write"
     LOGS_WRITE = "logs:write"
+    ATTACHMENTS_WRITE = "attachments:write"
     WRITES_UNCONFIRMED = "writes:unconfirmed"
 
 
@@ -897,6 +915,9 @@ AGENT_SCOPE_DESCRIPTIONS: dict[AgentScope, str] = {
         "context export（Markdown）の取得。ノート、タスク、作業履歴、日次ノートを"
         "まとめて読むため、実質的に広い読み取り権限になる"
     ),
+    AgentScope.ATTACHMENTS_READ: (
+        "ノートに添付した画像の取得（メタデータと、期限つきのダウンロードURL）"
+    ),
     AgentScope.PROPOSALS_READ: "提案の一覧・取得（そのユーザーのすべての提案）",
     AgentScope.QUICK_TASKS_WRITE: "POST /api/hooks/quick-tasks（既存 hook の互換）",
     AgentScope.PROPOSALS_WRITE: "提案の送信（POST /api/agent/v1/proposals）",
@@ -904,6 +925,9 @@ AGENT_SCOPE_DESCRIPTIONS: dict[AgentScope, str] = {
     AgentScope.TASKS_WRITE: "Task の作成・更新と依存関係の追加・削除",
     AgentScope.NOTES_WRITE: "Project / Goal / Task のノートへの追記と書き換え",
     AgentScope.LOGS_WRITE: "作業ログ（Log：作業時間と作業内容）の記録",
+    AgentScope.ATTACHMENTS_WRITE: (
+        "Project / Goal / Task のノートへの画像の添付（縮小したプレビューを保存）"
+    ),
     AgentScope.WRITES_UNCONFIRMED: (
         "中止・書き換え・移動・依存関係の削除を、承認なしで実行する（強い権限）"
     ),
@@ -932,6 +956,7 @@ _WORKING_AGENT_SCOPES: list[str] = [
     AgentScope.TASKS_WRITE.value,
     AgentScope.NOTES_WRITE.value,
     AgentScope.LOGS_WRITE.value,
+    AgentScope.ATTACHMENTS_WRITE.value,
     AgentScope.PROPOSALS_WRITE.value,
 ]
 
@@ -967,7 +992,7 @@ AGENT_TOKEN_PRESETS: tuple[AgentTokenPresetInfo, ...] = (
         label="作業するエージェント（確認あり）",
         description=(
             "Agent API の読み取りすべてと、Goal・Task・ノート・作業ログの書き込み、"
-            "提案の送信を許可する。"
+            "画像の添付、提案の送信を許可する。"
             "中止・書き換え・移動などの消える操作は、承認が必要"
             "（承認の仕組みは今後の更新で追加。それまでは拒否される）"
         ),
@@ -1778,9 +1803,17 @@ class ScheduleResponse(ScheduleBase):
 
 
 class LogCreate(LogBase):
-    """Log creation request"""
+    """Log creation request.
+
+    A time record can also say where the task stands, as a Runner checkout
+    does: ``remaining_estimate_hours`` moves the task's estimate so that this
+    much is left after the recorded time, and ``complete_task`` finishes it."""
 
     task_id: UUID
+    remaining_estimate_hours: Decimal | None = Field(
+        default=None, ge=0, le=MAX_ESTIMATE_HOURS
+    )
+    complete_task: bool = False
 
 
 class LogUpdate(BaseModel):
@@ -1795,6 +1828,8 @@ class LogResponse(LogBase):
 
     id: UUID
     task_id: UUID
+    # The Runner session this time was measured in, if any.
+    work_session_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -1831,7 +1866,7 @@ class WorkSessionCheckoutRequest(BaseModel):
     kpt_keep: str | None = Field(None, max_length=500)
     kpt_problem: str | None = Field(None, max_length=500)
     kpt_try: str | None = Field(None, max_length=500)
-    remaining_estimate_hours: Decimal | None = Field(None, ge=0)
+    remaining_estimate_hours: Decimal | None = Field(None, ge=0, le=MAX_ESTIMATE_HOURS)
     next_task_id: UUID | None = None
 
 
@@ -1843,7 +1878,7 @@ class WorkSessionSwitchRequest(BaseModel):
     interruption_note: str | None = Field(None, max_length=2000)
     planned_checkout_at: datetime
     planned_outcome: str | None = Field(None, max_length=500)
-    remaining_estimate_hours: Decimal | None = Field(None, ge=0)
+    remaining_estimate_hours: Decimal | None = Field(None, ge=0, le=MAX_ESTIMATE_HOURS)
 
     @model_validator(mode="after")
     def require_interruption_note(self):
@@ -1957,6 +1992,31 @@ class WorkSessionWithLogResponse(WorkSessionResponse):
     """Work session response with generated log"""
 
     generated_log: LogResponse | None = None
+
+
+class WorkRecordResponse(BaseModel):
+    """One piece of work on a task: a time log, a Runner session, or both.
+
+    A Runner checkout writes a session and a log for the same work; they are
+    one record. A time entered by hand has only the log, and a session that is
+    still running, or whose log is gone, has only the session."""
+
+    # When the work was recorded: the log's creation, or the session's end
+    # (its start while it is running).
+    at: datetime
+    task_id: UUID
+    task_title: str
+    goal_id: UUID
+    project_id: UUID
+    log: LogResponse | None = None
+    session: WorkSessionResponse | None = None
+
+    @field_serializer("at")
+    def serialize_at(self, value: datetime) -> str:
+        """Ensure datetime is serialized with UTC timezone info"""
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
 
 
 class WorkSessionSwitchResponse(BaseModel):
@@ -3015,8 +3075,6 @@ class ContextNote(ContextNoteBase, table=True):  # type: ignore[call-arg]
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
-    # Note: attachments relationship removed - note_attachments table not yet implemented
-
 
 @event.listens_for(ContextNote, "before_insert")
 @event.listens_for(ContextNote, "before_update")
@@ -3045,28 +3103,87 @@ Task.note_text_head = column_property(  # type: ignore[assignment]
 )
 
 
-class NoteAttachmentBase(SQLModel):
-    """Base note attachment model"""
+class NoteAttachment(SQLModel, table=True):  # type: ignore[call-arg]
+    """An image attached to a context note.
 
-    filename: str = SQLField(max_length=255)
-    content_type: str = SQLField(max_length=100)
-    file_size: int
-    storage_path: str = SQLField(max_length=500)
+    The files are in a private storage bucket: a preview (``object_key``) and a
+    thumbnail (``thumb_object_key``), both WebP. The original is never stored;
+    ``source`` says where it came from, as the uploader reported it. No URL is
+    stored: the API signs a short-lived one on every read.
 
-
-class NoteAttachment(NoteAttachmentBase, table=True):  # type: ignore[call-arg]
-    """Note attachment database model for images and files"""
+    The note refers to the attachment by id (see ``note_attachment_refs``).
+    ``detached_at`` is the time since which it has not: set at upload, cleared
+    by the note write that adds the reference (``_sync_note_attachments``).
+    ``note_id`` becomes NULL when the note is deleted, so the cleanup job can
+    still delete the files."""
 
     __tablename__ = "note_attachments"
 
-    id: UUID | None = SQLField(default=None, primary_key=True)
-    note_id: UUID = SQLField(foreign_key="context_notes.id", ondelete="CASCADE")
-
-    # Timestamps
+    id: UUID | None = SQLField(default_factory=uuid4, primary_key=True)
+    user_id: UUID = SQLField(foreign_key="users.id", ondelete="CASCADE", index=True)
+    note_id: UUID | None = SQLField(
+        default=None, foreign_key="context_notes.id", ondelete="SET NULL", index=True
+    )
+    bucket: str = SQLField(max_length=100)
+    object_key: str = SQLField(max_length=500)
+    thumb_object_key: str = SQLField(max_length=500)
+    byte_size: int
+    thumb_byte_size: int
+    width: int
+    height: int
+    # SHA-256 of the stored preview, hex.
+    sha256: str = SQLField(max_length=64)
+    caption: str = SQLField(default="", max_length=CAPTION_MAX_LENGTH)
+    source: dict[str, Any] | None = SQLField(
+        default=None,
+        # none_as_null: None must be SQL NULL, not the JSON value null.
+        sa_column=Column(
+            JSON(none_as_null=True).with_variant(
+                JSONB(none_as_null=True), "postgresql"
+            ),
+            nullable=True,
+        ),
+    )
+    detached_at: datetime | None = SQLField(default=None)
     created_at: datetime | None = SQLField(default_factory=lambda: datetime.now(UTC))
 
-    # Note: Relationship removed - note_attachments table not yet implemented
-    # note: ContextNote = Relationship(back_populates="attachments")
+
+@event.listens_for(ContextNote, "before_update")
+def _sync_note_attachments(_mapper: Any, connection: Any, note: ContextNote) -> None:
+    """Make the note's attachments follow the references in its new content.
+
+    An attachment the content refers to is attached (``detached_at`` NULL) and
+    takes the caption the note gives it; one it no longer refers to is detached
+    from now. Runs on every write path (web editor, agent writes, accepted
+    proposals). A note without attachments costs one indexed SELECT."""
+    if not sqlalchemy_inspect(note).attrs.content.history.has_changes():
+        return
+    table = NoteAttachment.__table__  # type: ignore[attr-defined]
+    rows = connection.execute(
+        select(table.c.id, table.c.caption, table.c.detached_at).where(
+            table.c.note_id == note.id
+        )
+    ).all()
+    if not rows:
+        return
+    references = attachment_references(note.content, note.content_type)
+    now = datetime.now(UTC)
+    for attachment_id, caption, detached_at in rows:
+        values: dict[str, Any] = {}
+        if attachment_id in references:
+            new_caption = normalize_caption(references[attachment_id])
+            if detached_at is not None:
+                values["detached_at"] = None
+            if new_caption != caption:
+                values["caption"] = new_caption
+        elif detached_at is None:
+            values["detached_at"] = now
+        if values:
+            connection.execute(
+                sqlalchemy_update(table)
+                .where(table.c.id == attachment_id)
+                .values(**values)
+            )
 
 
 # Context Notes API Models
@@ -3088,16 +3205,42 @@ class ContextNoteUpdate(BaseModel):
     expected_updated_at: datetime | None = None
 
 
+class AttachmentSource(BaseModel):
+    """Where an attached image came from, as the uploader reported it.
+
+    The original file stays where the data is; HumanCompiler keeps only a
+    preview. Nothing here is checked."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str | None = Field(None, max_length=1000, description="Path of the original")
+    script: str | None = Field(
+        None, max_length=1000, description="The script that made the image"
+    )
+    host: str | None = Field(None, max_length=255, description="Machine it is on")
+    sha256: str | None = Field(
+        None,
+        pattern=r"^[0-9a-fA-F]{64}$",
+        description="SHA-256 of the original file, hex",
+    )
+
+
 class NoteAttachmentResponse(BaseModel):
-    """Note attachment response model"""
+    """An attached image. ``markdown`` is the reference to put in a note."""
 
     id: UUID
-    note_id: UUID
-    filename: str
-    content_type: str
-    file_size: int
-    storage_path: str
+    note_id: UUID | None
+    caption: str
+    width: int
+    height: int
+    byte_size: int
+    thumb_byte_size: int
+    sha256: str
+    source: dict[str, Any] | None
     created_at: datetime
+    markdown: str
+    # True when the same image was already attached to the note and this is it.
+    reused: bool = False
 
     @field_serializer("created_at")
     def serialize_created_at(self, value: datetime) -> str:
@@ -3106,7 +3249,54 @@ class NoteAttachmentResponse(BaseModel):
             value = value.replace(tzinfo=UTC)
         return value.isoformat()
 
-    model_config = ConfigDict(from_attributes=True)
+
+class AttachmentUrlsRequest(BaseModel):
+    """The attachments a note being shown refers to."""
+
+    ids: list[UUID] = Field(max_length=100)
+
+
+class AttachmentUrlItem(BaseModel):
+    """Short-lived signed URLs of one attachment's thumbnail and preview."""
+
+    id: UUID
+    url: str
+    thumb_url: str
+    width: int
+    height: int
+    caption: str
+
+
+class AttachmentUrlsResponse(BaseModel):
+    """Signed URLs for the requested ids that are the user's attachments.
+
+    An id that is unknown, deleted or another user's is left out."""
+
+    items: list[AttachmentUrlItem]
+    expires_at: datetime
+
+    @field_serializer("expires_at")
+    def serialize_expires_at(self, value: datetime) -> str:
+        return value.isoformat()
+
+
+class AttachmentUrlResponse(BaseModel):
+    """A short-lived signed URL of one attachment."""
+
+    url: str
+    expires_at: datetime
+
+    @field_serializer("expires_at")
+    def serialize_expires_at(self, value: datetime) -> str:
+        return value.isoformat()
+
+
+class AttachmentUsageResponse(BaseModel):
+    """How much of the user's attachment storage is in use."""
+
+    used_bytes: int
+    limit_bytes: int
+    count: int
 
 
 class ContextNoteResponse(BaseModel):
@@ -3120,7 +3310,6 @@ class ContextNoteResponse(BaseModel):
     content_type: str
     created_at: datetime
     updated_at: datetime
-    # Note: attachments field removed - not yet implemented
 
     @field_serializer("created_at", "updated_at")
     def serialize_datetimes(self, value: datetime) -> str:

@@ -22,6 +22,7 @@ import {
   COMMAND_SCOPES,
   CliError,
   DEFAULT_API_URL,
+  OPTION_SCOPES,
   TOKEN_ENV,
   readToken,
   request,
@@ -30,13 +31,17 @@ import {
 import { SUPPORTED_NODE, nodeVersionOk, usageError } from '../args'
 import { SERVER_NAME, TOML_HEADER, codexConfigPath, isPlainObject } from './setup'
 
-export const DOCTOR_HELP = `Usage: humancompiler doctor [roadmap|context ...] [options]
+export const DOCTOR_HELP = `Usage: humancompiler doctor [roadmap|context|attach ...] [options]
 
 Checks Node.js, the ${TOKEN_ENV} token, that the API answers, and that the
 token is valid and has the scopes each subcommand needs. Prints how to fix
 what is missing, and exits with 1 if anything is.
 
 Give subcommand names to check only their scopes (default: all of them).
+A read-only token cannot attach images: without names, a token that lacks
+the scopes of attach is reported but is not a failure. Scopes that only an
+option needs (context --with-images, attach --append) are reported the same
+way.
 
 Options:
   --api-url <url>   API base URL (default: $${API_URL_ENV} or
@@ -46,11 +51,20 @@ Options:
 
 type ScopedCommand = keyof typeof COMMAND_SCOPES
 const SCOPED_COMMANDS = Object.keys(COMMAND_SCOPES) as ScopedCommand[]
+// Commands that write. A read-only token is a deliberate choice, so lacking
+// their scopes fails only when the command is named.
+const WRITE_COMMANDS: readonly ScopedCommand[] = ['attach']
+const OPTIONS: Partial<Record<ScopedCommand, { option: string; scopes: readonly string[] }>> =
+  OPTION_SCOPES
 
 const NEW_TOKEN_HINT =
   'Scopes are fixed when a token is created. Create a new token under Settings > Agent tokens ' +
   'with a preset that includes them (the read and agent presets include every read scope), ' +
   `and put it in ${TOKEN_ENV}.`
+
+const NEW_WRITE_TOKEN_HINT =
+  'Scopes are fixed when a token is created. Create a new token under Settings > Agent tokens ' +
+  `with a preset that writes and includes them, and put it in ${TOKEN_ENV}.`
 
 interface Report {
   failed: boolean
@@ -207,10 +221,11 @@ export async function doctor(argv: string[]): Promise<void> {
   }
   for (const name of positionals) {
     if (!SCOPED_COMMANDS.includes(name as ScopedCommand)) {
-      throw usageError(`doctor checks the scopes of ${SCOPED_COMMANDS.join(' and ')}, not ${name}.`, DOCTOR_HELP)
+      throw usageError(`doctor checks the scopes of ${SCOPED_COMMANDS.join(', ')}, not ${name}.`, DOCTOR_HELP)
     }
   }
-  const commands = positionals.length > 0 ? (positionals as ScopedCommand[]) : SCOPED_COMMANDS
+  const named = positionals.length > 0
+  const commands = named ? (positionals as ScopedCommand[]) : SCOPED_COMMANDS
 
   const report: Report = { failed: false, out: [] }
   const node = process.versions.node
@@ -253,7 +268,20 @@ export async function doctor(argv: string[]): Promise<void> {
     }
     const missing = needed.filter((scope) => !me.scopes.includes(scope))
     if (missing.length === 0) pass(report, `${command}: ${needed.join(', ')}`)
-    else fail(report, `${command}: missing ${missing.join(', ')}`, NEW_TOKEN_HINT)
+    else if (!WRITE_COMMANDS.includes(command)) {
+      fail(report, `${command}: missing ${missing.join(', ')}`, NEW_TOKEN_HINT)
+    } else if (named) {
+      fail(report, `${command}: missing ${missing.join(', ')}`, NEW_WRITE_TOKEN_HINT)
+    } else {
+      info(report, `${command}: not available with this token (missing ${missing.join(', ')})`)
+      continue
+    }
+    const extra = OPTIONS[command]
+    if (extra === undefined) continue
+    const label = `${command} ${extra.option}`
+    const lacking = extra.scopes.filter((scope) => !me.scopes.includes(scope))
+    if (lacking.length === 0) pass(report, `${label}: ${extra.scopes.join(', ')}`)
+    else info(report, `${label}: not available with this token (missing ${lacking.join(', ')})`)
   }
   report.out.push('[ok]   setup: needs no scopes (the MCP tools use the token\'s scopes)')
 

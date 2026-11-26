@@ -92,6 +92,12 @@ export const queryKeys = {
     weekStart: () => [...queryKeys.userSettings.all, 'week-start'] as const,
   },
 
+  // Images attached to notes
+  noteAttachments: {
+    all: ['noteAttachments'] as const,
+    usage: () => [...queryKeys.noteAttachments.all, 'usage'] as const,
+  },
+
   // AI keys
   ai: {
     all: ['ai'] as const,
@@ -111,6 +117,10 @@ export const queryKeys = {
     current: () => [...queryKeys.workSessions.all, 'current'] as const,
     history: (skip?: number, limit?: number) =>
       [...queryKeys.workSessions.all, 'history', { skip, limit }] as const,
+    // Under 'history', so whatever refreshes the session history refreshes these.
+    records: () => [...queryKeys.workSessions.all, 'history', 'records'] as const,
+    recordsPage: (skip?: number, limit?: number) =>
+      [...queryKeys.workSessions.records(), { skip, limit }] as const,
     byTask: (taskId: string, skip?: number, limit?: number) =>
       [...queryKeys.workSessions.all, 'task', taskId, { skip, limit }] as const,
     detail: (id: string) => [...queryKeys.workSessions.all, 'detail', id] as const,

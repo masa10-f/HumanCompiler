@@ -283,6 +283,7 @@ export default function GoalDetailPage() {
                   saving={noteSaving}
                   placeholder="ゴールに関するメモや背景情報を記録..."
                   updatedAt={goalNote?.updated_at}
+                  attachmentTarget={{ type: 'goal', id: goalId }}
                 />
               </>
             )}

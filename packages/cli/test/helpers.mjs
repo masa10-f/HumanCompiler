@@ -47,19 +47,36 @@ export function run(args, env = {}, { cwd, nodeArgs = [] } = {}) {
 }
 
 /**
- * A local stand-in for the agent API. `handler(req)` returns
- * `{ status, body, headers }` or undefined for a 404. Requests are recorded.
+ * A local stand-in for the agent API. `handler(req, body)` returns
+ * `{ status, body, headers }` or undefined for a 404; `body` is the request
+ * body as a Buffer. A Buffer in the reply is sent as it is, anything else as
+ * JSON. Requests are recorded as `{ url, authorization }`, and those that are
+ * not a GET also with `method`, `contentType` and `body`.
  */
 export async function startMockApi(handler) {
   const requests = []
   const server = createServer((req, res) => {
-    requests.push({ url: req.url, authorization: req.headers.authorization })
-    const reply = handler(req) ?? { status: 404, body: { detail: 'Not Found' } }
-    res.writeHead(reply.status, reply.statusText, {
-      'Content-Type': 'application/json',
-      ...reply.headers,
+    const chunks = []
+    req.on('data', (chunk) => chunks.push(chunk))
+    req.on('end', async () => {
+      const body = Buffer.concat(chunks)
+      const entry = { url: req.url, authorization: req.headers.authorization }
+      requests.push(
+        req.method === 'GET'
+          ? entry
+          : { ...entry, method: req.method, contentType: req.headers['content-type'], body },
+      )
+      const reply = (await handler(req, body)) ?? { status: 404, body: { detail: 'Not Found' } }
+      res.writeHead(reply.status, reply.statusText, {
+        'Content-Type': 'application/json',
+        ...reply.headers,
+      })
+      res.end(
+        Buffer.isBuffer(reply.body) || typeof reply.body === 'string'
+          ? reply.body
+          : JSON.stringify(reply.body),
+      )
     })
-    res.end(typeof reply.body === 'string' ? reply.body : JSON.stringify(reply.body))
   })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   return {
@@ -67,4 +84,9 @@ export async function startMockApi(handler) {
     requests,
     close: () => new Promise((resolve) => server.close(resolve)),
   }
+}
+
+/** The fields of a recorded multipart request, as a FormData. */
+export function formOf(request) {
+  return new Response(request.body, { headers: { 'content-type': request.contentType } }).formData()
 }

@@ -175,6 +175,7 @@ function TaskActions({ task, tasks }: { task: Task; tasks: Task[] }) {
       <LogFormDialog
         taskId={task.id}
         taskTitle={task.title}
+        estimateHours={task.estimate_hours}
         trigger={
           <Button variant="outline" size="sm" className="w-full sm:w-auto">
             時間記録

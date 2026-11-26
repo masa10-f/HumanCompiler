@@ -177,3 +177,18 @@ export const CHECKOUT_TYPE_LABELS: Record<CheckoutType, string> = {
   overdue: '超過',
   interrupted: '中断',
 };
+
+/**
+ * One piece of work, as GET /api/work-sessions/records lists it across tasks:
+ * a time log, the Runner session it came from, or both.
+ */
+export interface WorkRecordEntry {
+  /** The log's creation, or the session's end (its start while it runs). */
+  at: string;
+  task_id: string;
+  task_title: string;
+  goal_id: string;
+  project_id: string;
+  log: Log | null;
+  session: WorkSession | null;
+}

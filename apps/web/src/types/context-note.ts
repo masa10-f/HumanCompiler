@@ -2,14 +2,55 @@
  * Context note types for rich text notes on projects, goals, and tasks
  */
 
+/**
+ * An image attached to a note. The note's HTML refers to it by id,
+ * `<img data-attachment-id="...">`; the image itself is behind a signed URL
+ * (see `NoteAttachmentUrls`).
+ */
 export interface NoteAttachment {
   id: string;
-  note_id: string;
-  filename: string;
-  content_type: string;
-  file_size: number;
-  storage_path: string;
+  note_id: string | null;
+  /** What the image shows; '' until the user writes one. */
+  caption: string;
+  width: number;
+  height: number;
+  byte_size: number;
+  thumb_byte_size: number;
   created_at: string;
+  /** The reference agents use in Markdown: `![caption](attachment:<id>)`. */
+  markdown: string;
+  /** True when the same image was already attached to the note. */
+  reused: boolean;
+}
+
+/** Signed URLs of one attachment; they stop working at `expires_at`. */
+export interface NoteAttachmentUrls {
+  id: string;
+  url: string;
+  thumb_url: string;
+  width: number;
+  height: number;
+  caption: string;
+}
+
+export interface NoteAttachmentUrlsResponse {
+  /** Only the caller's own attachments; any other id is left out. */
+  items: NoteAttachmentUrls[];
+  expires_at: string;
+}
+
+/** How much of the user's storage for note images is in use. */
+export interface NoteAttachmentUsage {
+  used_bytes: number;
+  limit_bytes: number;
+  /** Images stored, including ones removed from notes in the last 7 days. */
+  count: number;
+}
+
+/** The project, goal or task whose note an image is attached to. */
+export interface NoteAttachmentTarget {
+  type: NoteEntityType;
+  id: string;
 }
 
 export interface ContextNote {
@@ -21,7 +62,6 @@ export interface ContextNote {
   content_type: 'markdown' | 'html' | 'tiptap_json';
   created_at: string;
   updated_at: string;
-  attachments: NoteAttachment[];
 }
 
 export interface ContextNoteUpdate {

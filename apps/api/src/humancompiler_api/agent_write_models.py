@@ -45,8 +45,16 @@ FORMER_TASK_TEXT_FIELDS_DETAIL = (
 
 NOTE_REPLACE_LOSES = (
     "A replace keeps headings, lists, checklists (- [ ] / - [x]), pipe tables, "
-    "bold, italic, code and links, but loses what Markdown cannot carry here: "
-    "text colour and highlight, images and attachments."
+    "bold, italic, code, links and attached images (keep each "
+    "![caption](attachment:<id>) line as you read it; one you leave out is "
+    "removed from the note and its file is deleted 7 days later), but loses "
+    "what Markdown cannot carry here: text colour and highlight."
+)
+
+NOTE_IMAGES = (
+    "The only image a note shows is one attached to it, written "
+    "![caption](attachment:<id>) with the id an attachment upload returned; an "
+    "image with any other URL is shown as a link and never loaded."
 )
 
 

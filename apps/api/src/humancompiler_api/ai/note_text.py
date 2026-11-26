@@ -13,6 +13,11 @@ from uuid import UUID
 from sqlmodel import Session, and_, col, or_, select
 
 from humancompiler_api.models import ContextNote
+from humancompiler_api.note_attachment_refs import (
+    ATTACHMENT_ID_ATTRIBUTE,
+    attachment_markdown,
+    parse_attachment_id,
+)
 
 _HTML_START_PATTERN = re.compile(
     r"^\s*<(p|h[1-6]|ul|ol|li|div|pre|blockquote|table)\b", re.IGNORECASE
@@ -46,7 +51,9 @@ class _NoteHTMLTextExtractor(HTMLParser):
     """Convert TipTap editor HTML into compact, markdown-like plain text.
 
     Lists keep their bullets and nesting, and task list items keep their
-    checked state (``[x]`` / ``[ ]``) so unfinished TODOs stay visible.
+    checked state (``[x]`` / ``[ ]``) so unfinished TODOs stay visible. An
+    attached image is its reference, ``![caption](attachment:<id>)``, on a line
+    of its own: the caption and the id, never the image.
     """
 
     def __init__(self) -> None:
@@ -78,6 +85,17 @@ class _NoteHTMLTextExtractor(HTMLParser):
             return
         if tag == "br":
             self._flush()
+            return
+        if tag == "img":
+            attributes = dict(attrs)
+            attachment_id = parse_attachment_id(attributes.get(ATTACHMENT_ID_ATTRIBUTE))
+            if attachment_id is not None and not self._skip_depth:
+                self._flush()
+                reference = attachment_markdown(
+                    attachment_id, attributes.get("alt") or ""
+                )
+                self._lines.append(f"{self._prefix}{reference}")
+                self._prefix = ""
             return
         if tag in _BLOCK_TAGS:
             self._flush()

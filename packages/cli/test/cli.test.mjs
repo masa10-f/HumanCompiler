@@ -16,7 +16,7 @@ describe('help', () => {
     const { code, stdout } = await run(['--help'])
     assert.equal(code, 0)
     assert.match(stdout, /^Usage: humancompiler <command>/)
-    for (const command of ['roadmap', 'context', 'setup', 'doctor']) {
+    for (const command of ['roadmap', 'context', 'attach', 'setup', 'doctor']) {
       assert.match(stdout, new RegExp(`^  ${command} `, 'm'))
     }
   })
@@ -24,6 +24,7 @@ describe('help', () => {
   for (const [command, usage] of [
     ['roadmap', /^Usage: humancompiler roadmap <project-id>/],
     ['context', /^Usage: humancompiler context <project\|goal> <id>/],
+    ['attach', /^Usage: humancompiler attach <project\|goal\|task> <id> <file> --caption/],
     ['setup', /^Usage: humancompiler setup <claude-code\|codex>/],
     ['doctor', /^Usage: humancompiler doctor/],
   ]) {
@@ -59,7 +60,7 @@ test('--version prints the package version, not the surrounding project\'s', asy
 test('rejects an unknown command', async () => {
   const { code, stderr } = await run(['draw', 'project-1'])
   assert.equal(code, 2)
-  assert.match(stderr, /^humancompiler: Unknown command draw\. Commands: roadmap, context, setup, doctor\./)
+  assert.match(stderr, /^humancompiler: Unknown command draw\. Commands: roadmap, context, attach, setup, doctor\./)
 })
 
 test('names the command in errors', async () => {

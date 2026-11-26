@@ -159,6 +159,7 @@ function TaskNote({ taskId, variant }: { taskId: string; variant: 'panel' | 'pag
         variant={variant === 'page' ? 'full' : 'compact'}
         emptyTitle="ノートはまだありません"
         emptyDescription="作業メモや依頼文をここに書けます。"
+        attachmentTarget={{ type: 'task', id: taskId }}
       />
     </>
   )
@@ -273,6 +274,7 @@ export function TaskDetail({
         <LogFormDialog
           taskId={task.id}
           taskTitle={task.title}
+          estimateHours={task.estimate_hours}
           trigger={
             <Button size="sm" variant="outline">
               <Timer className="mr-2 h-4 w-4" />

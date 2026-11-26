@@ -115,7 +115,8 @@ bearer_token_env_var = "HUMANCOMPILER_TOKEN"`;
 // The npm package `humancompiler` (packages/cli). It reads the same
 // HUMANCOMPILER_TOKEN, so the token never appears in these commands.
 const CLI_EXAMPLE = `npx humancompiler@0 roadmap <project-id> --goals-per-page 20
-npx humancompiler@0 context project <project-id> -o context.md`;
+npx humancompiler@0 context project <project-id> -o context.md
+npx humancompiler@0 attach task <task-id> loss.png --caption "損失の推移" --append`;
 
 const CLI_COMMANDS = [
   {
@@ -127,6 +128,11 @@ const CLI_COMMANDS = [
     command: "context",
     description:
       "プロジェクトやゴールのノート、タスク、作業履歴を、1つのMarkdownで書き出します。context:read が必要です",
+  },
+  {
+    command: "attach",
+    description:
+      "手元の画像（解析結果の図など）を、プロジェクト・ゴール・タスクのノートに添付します。手元で縮小した軽いプレビューだけを保存し、原本は保存しません。attachments:write が必要です（--append でノートに書き足すには notes:write も）",
   },
   {
     command: "setup claude-code / setup codex",
