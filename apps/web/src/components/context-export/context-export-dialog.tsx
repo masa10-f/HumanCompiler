@@ -30,7 +30,11 @@ import {
   type ContextExportScope,
 } from '@/types/context-export';
 
-type ToggleKey = 'includeCompleted' | 'includeWorkSessions' | 'includeDailyPlans';
+type ToggleKey =
+  | 'includeCompleted'
+  | 'includeWorkSessions'
+  | 'includeDailyPlans'
+  | 'includeNoteLogs';
 
 const TOGGLES: Array<{ key: ToggleKey; label: string; description: string }> = [
   {
@@ -47,6 +51,12 @@ const TOGGLES: Array<{ key: ToggleKey; label: string; description: string }> = [
     key: 'includeDailyPlans',
     label: 'デイリープランの記録を含める',
     description: 'タスクに紐づいた予定行とそのメモです。',
+  },
+  {
+    key: 'includeNoteLogs',
+    label: 'ノートのログを含める',
+    description:
+      '経緯や作業メモを書き足していくログです。概要は常に含まれます。長くなることがあります。',
   },
 ];
 

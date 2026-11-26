@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { useTaskNote } from '@/hooks/use-notes';
 import { ContextNotePanel } from '@/components/notes/context-note-panel';
 import { NoteConflictAlert } from '@/components/notes/note-conflict-alert';
+import { NoteLogSection } from '@/components/notes/note-log-section';
 import { FileText, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -73,6 +74,12 @@ export function TaskNotesSection({ taskId }: TaskNotesSectionProps) {
                 updatedAt={note?.updated_at}
                 variant="compact"
                 attachmentTarget={{ type: 'task', id: taskId }}
+              />
+              <NoteLogSection
+                entityType="task"
+                entityId={taskId}
+                summary={note?.log}
+                variant="compact"
               />
             </div>
           </>

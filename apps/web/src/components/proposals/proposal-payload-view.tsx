@@ -166,6 +166,11 @@ function renderBody(proposal: Proposal, payload: UnknownRecord): ReactNode {
       return (
         <>
           {target ? <Row label={`追記先（${target.label}）`} value={target.name} /> : null}
+          {/* A proposal made before notes had sections goes to the log. */}
+          <Row
+            label="追記する場所"
+            value={payload.section === 'overview' ? '概要' : 'ログ'}
+          />
           <Row label="内容" value={text(payload.content_markdown)} />
         </>
       );

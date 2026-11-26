@@ -15,6 +15,8 @@ export interface ContextExportOptions {
   includeCompleted: boolean;
   includeWorkSessions: boolean;
   includeDailyPlans: boolean;
+  /** Include the logs of the notes; their overviews are always included. */
+  includeNoteLogs: boolean;
   /** Limit work sessions and daily plan entries to the last N days; null for all. */
   periodDays: number | null;
 }
@@ -29,5 +31,6 @@ export const DEFAULT_CONTEXT_EXPORT_OPTIONS: ContextExportOptions = {
   includeCompleted: true,
   includeWorkSessions: true,
   includeDailyPlans: true,
+  includeNoteLogs: false,
   periodDays: null,
 };

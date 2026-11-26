@@ -86,7 +86,7 @@ describe('contextExportApi', () => {
 
     expect(result).toEqual(exportResponse)
     expect(mockFetchWithFallback).toHaveBeenCalledWith(
-      '/api/context-export/projects/project-1?include_completed=true&include_work_sessions=true&include_daily_plans=true',
+      '/api/context-export/projects/project-1?include_completed=true&include_work_sessions=true&include_daily_plans=true&include_note_logs=false',
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: 'Bearer test-token' }),
       }),
@@ -98,11 +98,12 @@ describe('contextExportApi', () => {
       includeCompleted: false,
       includeWorkSessions: true,
       includeDailyPlans: false,
+      includeNoteLogs: true,
       periodDays: 30,
     })
 
     expect(mockFetchWithFallback).toHaveBeenCalledWith(
-      '/api/context-export/goals/goal-1?include_completed=false&include_work_sessions=true&include_daily_plans=false&period_days=30',
+      '/api/context-export/goals/goal-1?include_completed=false&include_work_sessions=true&include_daily_plans=false&include_note_logs=true&period_days=30',
       expect.anything(),
     )
   })

@@ -10,6 +10,7 @@ import { ProjectProgressCard } from '@/components/progress/progress-card'
 import { GoalList } from '@/components/goals/goal-list'
 import { ContextNotePanel } from '@/components/notes/context-note-panel'
 import { NoteConflictAlert } from '@/components/notes/note-conflict-alert'
+import { NoteLogSection } from '@/components/notes/note-log-section'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowLeft, FileText, Loader2, AlertCircle } from 'lucide-react'
@@ -147,9 +148,14 @@ export default function ProjectDetailPage() {
                     content={projectNote?.content || ''}
                     onUpdate={(content) => updateNote({ content, content_type: 'html' })}
                     saving={noteSaving}
-                    placeholder="プロジェクトに関するメモや背景情報を記録..."
+                    placeholder="プロジェクトの目的・方針・決定事項など、今の要点を記録..."
                     updatedAt={projectNote?.updated_at}
                     attachmentTarget={{ type: 'project', id }}
+                  />
+                  <NoteLogSection
+                    entityType="project"
+                    entityId={id}
+                    summary={projectNote?.log}
                   />
                 </>
               )}

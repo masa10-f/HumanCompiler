@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, Loader2, AlertCircle, FileText } from 'lucide-react';
 import { ContextNotePanel } from './context-note-panel';
 import { NoteConflictAlert } from './note-conflict-alert';
+import { NoteLogSection } from './note-log-section';
 import { useNote } from '@/hooks/use-notes';
 import type { NoteEntityType } from '@/types/context-note';
 
@@ -104,6 +105,8 @@ export function NotePageLayout({
         updatedAt={note?.updated_at}
         attachmentTarget={{ type: entityType, id: entityId }}
       />
+
+      <NoteLogSection entityType={entityType} entityId={entityId} summary={note?.log} />
     </div>
   );
 }
