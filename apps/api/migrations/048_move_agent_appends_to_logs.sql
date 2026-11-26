@@ -7,23 +7,25 @@
 -- item had, under a heading "エージェントからの追記（date、name）". From 047 on
 -- they append to the log; this moves what they appended before.
 --
--- 1. For each project or goal whose overview holds such a heading and which
---    has no log yet, a log is created with everything from the first heading
---    on, and the overview keeps what comes before it (nothing, if the note
---    starts with the heading). No text is deleted or changed; content_text is
---    split at the same place. Both notes get a new updated_at.
+-- 1. For each project or goal whose overview holds such a heading and whose
+--    log is still empty, the log gets everything from the first heading on,
+--    and the overview keeps what comes before it (nothing, if the note starts
+--    with the heading). No text is deleted or changed; content_text is split
+--    at the same place. Both notes get a new updated_at. The web creates an
+--    empty log row when a log is first opened; such a row is filled, and an
+--    item without one gets a new row.
 -- 2. An image shown only in the log is attached to the log.
 --
 -- Left alone: task notes (a task's note is its body, and for a task an agent
 -- created the text under the heading is that body), Markdown notes (the web
--- editor saves HTML and agents append HTML), and items that already have a
--- log. Text the user wrote below an agent heading moves with it; move it back
--- in the editor if it belongs in the overview.
+-- editor saves HTML and agents append HTML), and items whose log already has
+-- content. Text the user wrote below an agent heading moves with it; move it
+-- back in the editor if it belongs in the overview.
 --
 -- Apply after the API that reads context_notes.section is deployed: the API
 -- deployed before 047 does not tell an item's two notes apart. Requires 047
 -- and 044 (content_text).
--- Safe to apply twice: an item that has a log is not split again.
+-- Safe to apply twice: an item whose log has content is not split again.
 -- There is no rollback of its own: the 047 rollback puts every log back at
 -- the end of its overview.
 -- The DO bodies are single-quoted (not $$) because the migration manager
@@ -53,7 +55,8 @@ END
 -- 1. html_pos is where the first agent heading starts in content, and
 -- text_pos where its line starts in content_text (one block per line). A note
 -- is split only when both are found, so the two always split at the same
--- heading.
+-- heading. log_id is the item's log row when it has an empty one: '' as the
+-- web creates it, or the empty paragraph the editor saves.
 WITH split AS (
     SELECT
         n.id,
@@ -62,6 +65,7 @@ WITH split AS (
         n.goal_id,
         n.content,
         n.content_text,
+        l.id AS log_id,
         strpos(n.content, '<p><strong>エージェントからの追記（') AS html_pos,
         CASE
             WHEN left(n.content_text, 12) = 'エージェントからの追記（' THEN 1
@@ -70,23 +74,34 @@ WITH split AS (
             ELSE 0
         END AS text_pos
     FROM public.context_notes AS n
+    LEFT JOIN public.context_notes AS l
+      ON l.section = 'log'
+     AND (l.project_id = n.project_id OR l.goal_id = n.goal_id)
     WHERE n.section = 'overview'
       AND n.task_id IS NULL
       AND n.content_type = 'html'
-      AND NOT EXISTS (
-          SELECT 1 FROM public.context_notes AS l
-          WHERE l.section = 'log'
-            AND (l.project_id = n.project_id OR l.goal_id = n.goal_id)
-      )
+      AND (l.id IS NULL OR l.content IN ('', '<p></p>'))
 ),
-moved AS (
+created AS (
     INSERT INTO public.context_notes
         (id, user_id, project_id, goal_id, section, content, content_type, content_text)
     SELECT gen_random_uuid(), user_id, project_id, goal_id, 'log',
            substr(content, html_pos), 'html', substr(content_text, text_pos)
     FROM split
-    WHERE html_pos > 0 AND text_pos > 0
+    WHERE html_pos > 0 AND text_pos > 0 AND log_id IS NULL
     RETURNING id
+),
+filled AS (
+    UPDATE public.context_notes AS l
+    SET content = substr(split.content, split.html_pos),
+        content_type = 'html',
+        content_text = substr(split.content_text, split.text_pos),
+        updated_at = NOW()
+    FROM split
+    WHERE l.id = split.log_id
+      AND split.html_pos > 0
+      AND split.text_pos > 0
+    RETURNING l.id
 )
 UPDATE public.context_notes AS n
 SET content = left(split.content, split.html_pos - 1),

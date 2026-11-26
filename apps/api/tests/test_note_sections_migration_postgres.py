@@ -276,6 +276,31 @@ def test_move_leaves_other_notes_alone_and_runs_once(db):
     assert {row[0] for row in cursor.fetchall()} == {OLD}
 
 
+@pytest.mark.parametrize("empty", ["", "<p></p>"])
+def test_move_fills_a_log_that_was_opened_but_never_written(db, empty: str):
+    cursor, schema = db
+    log = f"{HEADING}<p>Summary</p>"
+    add_note(cursor, schema, "project_id", PROJECT_ID, f"<p>Why</p>{log}")
+    run_migration(cursor, schema, SECTIONS)
+    # The web creates the row when the log is first opened, before 048 runs.
+    log_id = add_note(cursor, schema, "project_id", PROJECT_ID, empty, section="log")
+
+    run_migration(cursor, schema, MOVE)
+    run_migration(cursor, schema, MOVE)
+
+    assert notes_of(cursor, schema, "project_id", PROJECT_ID) == {
+        "overview": ("<p>Why</p>", "html", "Why"),
+        "log": (log, "html", note_plain_text(log, "html")),
+    }
+    cursor.execute(
+        f'SELECT id::text, updated_at > %s FROM "{schema}".context_notes '
+        "WHERE section = 'log'",
+        (OLD,),
+    )
+    # The same row, so an editor that has it open gets a conflict, not a copy.
+    assert cursor.fetchall() == [(log_id, True)]
+
+
 def test_move_does_not_split_an_item_that_has_a_log(db):
     cursor, schema = db
     first = f"<p>Why</p>{HEADING}<p>Summary</p>"
