@@ -12,7 +12,7 @@ from uuid import UUID
 
 from sqlmodel import Session, and_, col, or_, select
 
-from humancompiler_api.models import ContextNote
+from humancompiler_api.models import ContextNote, NoteSection
 from humancompiler_api.note_attachment_refs import (
     ATTACHMENT_ID_ATTRIBUTE,
     attachment_markdown,
@@ -182,10 +182,12 @@ def load_note_texts(
     project_ids: Sequence[UUID] = (),
     goal_ids: Sequence[UUID] = (),
     task_ids: Sequence[UUID] = (),
+    section: NoteSection = NoteSection.OVERVIEW,
 ) -> tuple[dict[UUID, str], dict[UUID, str], dict[UUID, str]]:
     """Load non-empty note texts for projects, goals, and tasks in one query.
 
-    Returns ``(project_notes, goal_notes, task_notes)`` keyed by entity ID.
+    The overviews unless ``section`` asks for the logs. Returns
+    ``(project_notes, goal_notes, task_notes)`` keyed by entity ID.
     """
     conditions = []
     if project_ids:
@@ -199,7 +201,11 @@ def load_note_texts(
 
     notes = session.exec(
         select(ContextNote).where(
-            and_(ContextNote.user_id == owner_id, or_(*conditions))
+            and_(
+                ContextNote.user_id == owner_id,
+                ContextNote.section == section.value,
+                or_(*conditions),
+            )
         )
     ).all()
 

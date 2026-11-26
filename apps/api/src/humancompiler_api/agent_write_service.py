@@ -50,6 +50,7 @@ from humancompiler_api.models import (
     GoalStatus,
     Log,
     LogCreate,
+    NoteSection,
     Project,
     Task,
     TaskCreate,
@@ -671,14 +672,19 @@ def _check_note_version(note: ContextNote | None, expected: datetime | None) -> 
 
 
 def _create_note_for_replace(
-    session: Session, user_id: UUID, note_target: OwnedNoteTarget
+    session: Session,
+    user_id: UUID,
+    note_target: OwnedNoteTarget,
+    section: NoteSection,
 ) -> ContextNote:
     """Create the missing note; a concurrent first create gives the stale 409.
 
     ``create_note`` answers that race with a plain-text 409; the PUT answers
     every 409 with ``{message, current_updated_at}``."""
     try:
-        return proposal_service.create_note(session, user_id, note_target.target)
+        return proposal_service.create_note(
+            session, user_id, note_target.target, section
+        )
     except HTTPException as error:
         if error.status_code == status.HTTP_409_CONFLICT:
             raise _stale(None) from None
@@ -692,17 +698,19 @@ def append_note(
     target_id: UUID,
     data: AgentNoteAppend,
 ) -> ContextNote:
-    """Append Markdown to the note of one of the user's projects, goals or tasks.
+    """Append Markdown to the log (or, if asked, the overview) of one of the
+    user's projects, goals or tasks.
 
     The text goes under a heading with the token's name and today's date (JST),
     as an accepted note_append proposal does. Creates the note if the item has
     none. Not destructive."""
+    section = NoteSection(data.section)
     try:
         note_target = owned_note_target(session, principal.user_id, kind, target_id)
-        note = proposal_service.lock_note(session, note_target.target)
+        note = proposal_service.lock_note(session, note_target.target, section)
         if note is None:
             note = proposal_service.create_note(
-                session, principal.user_id, note_target.target
+                session, principal.user_id, note_target.target, section
             )
         old_length = len(note.content)
         block = proposal_service.append_agent_markdown(
@@ -736,16 +744,18 @@ def replace_note(
     target_id: UUID,
     data: AgentNoteReplace,
 ) -> ContextNote:
-    """Replace the note of one of the user's projects, goals or tasks.
+    """Replace the overview (or, if asked, the log) of one of the user's
+    projects, goals or tasks.
 
     Destructive when the note has text (see ``_is_blank_note``); creating the
     note or filling an empty one is not. ``expected_updated_at`` must be the
-    note's updated_at, or None when the item has no note yet; then the note is
-    created. Replacing an existing note with the HTML it already has changes
-    nothing and records nothing."""
+    note's updated_at, or None when the item has no note of that section yet;
+    then the note is created. Replacing an existing note with the HTML it
+    already has changes nothing and records nothing."""
+    section = NoteSection(data.section)
     try:
         note_target = owned_note_target(session, principal.user_id, kind, target_id)
-        note = proposal_service.lock_note(session, note_target.target)
+        note = proposal_service.lock_note(session, note_target.target, section)
         _check_note_version(note, data.expected_updated_at)
         destructive = note is not None and not _is_blank_note(note)
         if destructive:
@@ -755,7 +765,9 @@ def replace_note(
             session.commit()
             return note
         if note is None:
-            note = _create_note_for_replace(session, principal.user_id, note_target)
+            note = _create_note_for_replace(
+                session, principal.user_id, note_target, section
+            )
         old_html = note.content
         note.content = new_html
         note.content_type = "html"

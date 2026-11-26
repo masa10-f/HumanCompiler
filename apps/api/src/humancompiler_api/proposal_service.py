@@ -31,6 +31,7 @@ from humancompiler_api.models import (
     ContextNote,
     Goal,
     GoalCreate,
+    NoteSection,
     Project,
     ProposalKind,
     ProposalResponse,
@@ -272,14 +273,19 @@ def _create_input(
         raise _unprocessable(_validation_detail(error)) from error
 
 
-def lock_note(session: Session, target: NoteTarget) -> ContextNote | None:
-    """The target's note, locked (a no-op on SQLite), or None if it has none.
+def lock_note(
+    session: Session,
+    target: NoteTarget,
+    section: NoteSection = NoteSection.OVERVIEW,
+) -> ContextNote | None:
+    """The target's note of ``section``, locked (a no-op on SQLite), or None
+    if it has none.
 
     The same lookup as ``routers/notes.get_or_create_note``. The lock makes two
     writes to the same note run one after the other; otherwise both read the
     same content and the later write drops the earlier one. It is
     ``FOR NO KEY UPDATE``, so adding an attachment to the note does not wait."""
-    query = select(ContextNote)
+    query = select(ContextNote).where(ContextNote.section == section.value)
     if target.project_id is not None:
         query = query.where(ContextNote.project_id == target.project_id)
     elif target.goal_id is not None:
@@ -291,8 +297,14 @@ def lock_note(session: Session, target: NoteTarget) -> ContextNote | None:
     ).first()
 
 
-def create_note(session: Session, user_id: UUID, target: NoteTarget) -> ContextNote:
-    """Create the target's empty HTML note, flushed but not committed.
+def create_note(
+    session: Session,
+    user_id: UUID,
+    target: NoteTarget,
+    section: NoteSection = NoteSection.OVERVIEW,
+) -> ContextNote:
+    """Create the target's empty HTML note of ``section``, flushed but not
+    committed.
 
     A note created by another request in the meantime gives 409."""
     note = ContextNote(
@@ -301,6 +313,7 @@ def create_note(session: Session, user_id: UUID, target: NoteTarget) -> ContextN
         project_id=target.project_id,
         goal_id=target.goal_id,
         task_id=target.task_id,
+        section=section.value,
         content="",
         content_type="html",
     )
@@ -330,12 +343,14 @@ def append_agent_markdown(note: ContextNote, agent_name: str, markdown: str) -> 
 def _append_to_note(
     session: Session, user_id: UUID, agent_name: str, payload: NoteAppendPayload
 ) -> ContextNote:
-    """Append the agent's text to the target's note, creating the note if needed."""
+    """Append the agent's text to the target's log (or its overview, if the
+    proposal says so), creating the note if needed."""
     # The proposal row is always locked first, then the note, so the order
     # cannot deadlock.
-    note = lock_note(session, payload.target)
+    section = NoteSection(payload.section)
+    note = lock_note(session, payload.target, section)
     if note is None:
-        note = create_note(session, user_id, payload.target)
+        note = create_note(session, user_id, payload.target, section)
     append_agent_markdown(note, agent_name, payload.content_markdown)
     session.add(note)
     session.flush()
@@ -349,8 +364,9 @@ def _create_task_note(
     task_id: UUID,
     markdown: str | None,
 ) -> ContextNote | None:
-    """Add the agent's Markdown to a new task's note, flushed not committed.
+    """Add the agent's Markdown to a new task's overview, flushed not committed.
 
+    It is the task's body, not a record of work, so it does not go to the log.
     The note already exists when the task was proposed with a description,
     which opens it. Writes nothing when there is no text."""
     if markdown is None or markdown.strip() == "":

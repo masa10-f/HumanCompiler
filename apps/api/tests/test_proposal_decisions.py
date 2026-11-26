@@ -527,7 +527,11 @@ def test_note_append_appends_to_existing_html(session: Session):
     row = make_proposal(
         session,
         ProposalKind.NOTE_APPEND,
-        {"target": {"goal_id": str(goal.id)}, "content_markdown": "- one\n- two"},
+        {
+            "target": {"goal_id": str(goal.id)},
+            "section": "overview",
+            "content_markdown": "- one\n- two",
+        },
         project_id=project.id,
     )
 
@@ -557,7 +561,11 @@ def test_note_append_converts_markdown_note_to_html(session: Session):
     row = make_proposal(
         session,
         ProposalKind.NOTE_APPEND,
-        {"target": {"task_id": str(task.id)}, "content_markdown": "New"},
+        {
+            "target": {"task_id": str(task.id)},
+            "section": "overview",
+            "content_markdown": "New",
+        },
         project_id=project.id,
     )
 
@@ -570,6 +578,34 @@ def test_note_append_converts_markdown_note_to_html(session: Session):
     )
     assert result.result_id == note.id
     assert result.project_id == project.id
+
+
+def test_note_append_goes_to_the_log_unless_it_names_the_overview(session: Session):
+    project = seed_project(session, USER_A)
+    goal = seed_goal(session, project)
+    overview = seed_note(session, USER_A, goal=goal, updated_at=OLD_STAMP)
+    # A proposal stored before notes had sections has no section either.
+    row = make_proposal(
+        session,
+        ProposalKind.NOTE_APPEND,
+        {"target": {"goal_id": str(goal.id)}, "content_markdown": "Did it"},
+        project_id=project.id,
+    )
+
+    result = accept(session, row)
+
+    session.refresh(overview)
+    assert overview.content == "Note"
+    assert as_utc(overview.updated_at) == OLD_STAMP
+    log = session.exec(
+        select(ContextNote).where(
+            ContextNote.goal_id == goal.id, ContextNote.section == "log"
+        )
+    ).one()
+    assert log.content == (
+        agent_append_heading(AGENT, tokyo_today()) + "<p>Did it</p>\n"
+    )
+    assert result.result_id == log.id
 
 
 def test_note_append_locks_the_note_row(session: Session):

@@ -14,7 +14,7 @@ comparing dumps tells a real edit from a change of notation.
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import (
@@ -131,8 +131,18 @@ class NoteTarget(_Payload):
         return self
 
 
+# The two notes of a project, goal or task (models.NoteSection).
+NoteSectionName = Literal["overview", "log"]
+
+
 class NoteAppendPayload(_Payload):
+    """Text to add to the end of an item's log, or of its overview.
+
+    A proposal stored before notes had sections has no ``section``; it is
+    read as ``log``, where appended text goes now."""
+
     target: NoteTarget
+    section: NoteSectionName = "log"
     content_markdown: str = Field(min_length=1, max_length=20000)
 
 

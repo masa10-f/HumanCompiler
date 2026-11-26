@@ -15,7 +15,7 @@ from pydantic import (
 )
 from sqlalchemy import ARRAY, JSON, Text, UniqueConstraint, text, UUID as SQLAlchemyUUID
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy import DateTime, event, func, select
+from sqlalchemy import DateTime, String, event, func, select
 from sqlalchemy import inspect as sqlalchemy_inspect
 from sqlalchemy import update as sqlalchemy_update
 from sqlalchemy.dialects.postgresql import JSONB
@@ -3037,6 +3037,19 @@ class TaskTriageItem(SQLModel, table=True):  # type: ignore[call-arg]
     run: TaskTriageRun = Relationship(back_populates="items")
 
 
+class NoteSection(StrEnum):
+    """Which of an item's two notes a row is.
+
+    ``overview`` holds what is true now (purpose, decisions, next steps): it is
+    kept short and rewritten in place, lists and excerpts show it, and reads
+    return it by default. ``log`` holds what happened (work summaries,
+    findings, how a decision was reached): it is added to over time and read
+    on request."""
+
+    OVERVIEW = "overview"
+    LOG = "log"
+
+
 class ContextNoteBase(SQLModel):
     """Base context note model"""
 
@@ -3045,9 +3058,16 @@ class ContextNoteBase(SQLModel):
 
 
 class ContextNote(ContextNoteBase, table=True):  # type: ignore[call-arg]
-    """Context note database model for rich text notes on projects, goals, and tasks"""
+    """Context note database model for rich text notes on projects, goals, and tasks
+
+    An item has up to two notes, one per ``section`` (see ``NoteSection``)."""
 
     __tablename__ = "context_notes"
+    __table_args__ = (
+        UniqueConstraint("project_id", "section", name="unique_project_note_section"),
+        UniqueConstraint("goal_id", "section", name="unique_goal_note_section"),
+        UniqueConstraint("task_id", "section", name="unique_task_note_section"),
+    )
 
     id: UUID | None = SQLField(default_factory=uuid4, primary_key=True)
 
@@ -3063,6 +3083,14 @@ class ContextNote(ContextNoteBase, table=True):  # type: ignore[call-arg]
     )
     task_id: UUID | None = SQLField(
         default=None, foreign_key="tasks.id", ondelete="CASCADE"
+    )
+
+    # A NoteSection value: the item's overview or its log.
+    section: str = SQLField(
+        default=NoteSection.OVERVIEW.value,
+        sa_column=Column(
+            "section", String(20), nullable=False, server_default="overview"
+        ),
     )
 
     # The visible text of ``content``, for search and list excerpts. Set from
@@ -3081,11 +3109,16 @@ class ContextNote(ContextNoteBase, table=True):  # type: ignore[call-arg]
 def _set_note_content_text(_mapper: Any, connection: Any, note: ContextNote) -> None:
     """Keep content_text current, and the task's updated_at with it.
 
-    A task answers with the opening of its note (note_excerpt), so a change to
-    the note's text changes the task's response: advancing the task's
-    updated_at lets incremental sync by updated_at pick it up."""
+    A task answers with the opening of its overview (note_excerpt), so a change
+    to the overview's text changes the task's response: advancing the task's
+    updated_at lets incremental sync by updated_at pick it up. A change to the
+    task's log changes nothing the task answers with, so the task is left."""
     content_text = note_plain_text(note.content, note.content_type)
-    if note.task_id is not None and content_text != note.content_text:
+    if (
+        note.task_id is not None
+        and note.section == NoteSection.OVERVIEW
+        and content_text != note.content_text
+    ):
         connection.execute(
             sqlalchemy_update(Task)
             .where(Task.id == note.task_id)  # type: ignore[arg-type]
@@ -3097,6 +3130,7 @@ def _set_note_content_text(_mapper: Any, connection: Any, note: ContextNote) -> 
 Task.note_text_head = column_property(  # type: ignore[assignment]
     select(func.substr(ContextNote.content_text, 1, NOTE_TEXT_HEAD_LENGTH))
     .where(ContextNote.task_id == Task.id)  # type: ignore[arg-type]
+    .where(ContextNote.section == NoteSection.OVERVIEW.value)  # type: ignore[arg-type]
     .correlate_except(ContextNote)
     .limit(1)
     .scalar_subquery()
@@ -3155,28 +3189,44 @@ def _sync_note_attachments(_mapper: Any, connection: Any, note: ContextNote) -> 
     An attachment the content refers to is attached (``detached_at`` NULL) and
     takes the caption the note gives it; one it no longer refers to is detached
     from now. Runs on every write path (web editor, agent writes, accepted
-    proposals). A note without attachments costs one indexed SELECT."""
+    proposals). A note without attachments costs one indexed SELECT.
+
+    An upload is held by the item's overview until a note refers to it, and an
+    image can be moved between the item's overview and log, so the attachments
+    of both notes are looked at: one this note now refers to becomes this
+    note's, and one held by the other note is never detached from here."""
     if not sqlalchemy_inspect(note).attrs.content.history.has_changes():
         return
     table = NoteAttachment.__table__  # type: ignore[attr-defined]
+    notes = ContextNote.__table__  # type: ignore[attr-defined]
+    if note.project_id is not None:
+        same_item = notes.c.project_id == note.project_id
+    elif note.goal_id is not None:
+        same_item = notes.c.goal_id == note.goal_id
+    elif note.task_id is not None:
+        same_item = notes.c.task_id == note.task_id
+    else:
+        same_item = notes.c.id == note.id
     rows = connection.execute(
-        select(table.c.id, table.c.caption, table.c.detached_at).where(
-            table.c.note_id == note.id
+        select(table.c.id, table.c.caption, table.c.detached_at, table.c.note_id).where(
+            table.c.note_id.in_(select(notes.c.id).where(same_item))
         )
     ).all()
     if not rows:
         return
     references = attachment_references(note.content, note.content_type)
     now = datetime.now(UTC)
-    for attachment_id, caption, detached_at in rows:
+    for attachment_id, caption, detached_at, holder_id in rows:
         values: dict[str, Any] = {}
         if attachment_id in references:
             new_caption = normalize_caption(references[attachment_id])
+            if holder_id != note.id:
+                values["note_id"] = note.id
             if detached_at is not None:
                 values["detached_at"] = None
             if new_caption != caption:
                 values["caption"] = new_caption
-        elif detached_at is None:
+        elif holder_id == note.id and detached_at is None:
             values["detached_at"] = now
         if values:
             connection.execute(
@@ -3306,6 +3356,8 @@ class ContextNoteResponse(BaseModel):
     project_id: UUID | None
     goal_id: UUID | None
     task_id: UUID | None
+    # "overview" or "log" (see NoteSection).
+    section: str
     content: str
     content_type: str
     created_at: datetime
@@ -3319,3 +3371,26 @@ class ContextNoteResponse(BaseModel):
         return value.isoformat()
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class NoteLogSummary(BaseModel):
+    """How much an item's log holds, without its text."""
+
+    updated_at: datetime
+    # Characters of visible text.
+    characters: int
+
+    @field_serializer("updated_at")
+    def serialize_updated_at(self, value: datetime) -> str:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+
+
+class ContextNoteWithLogResponse(ContextNoteResponse):
+    """A note as the web reads it.
+
+    ``log`` is set on an overview whose item has a log with text, so the page
+    can say there is one without loading it; None otherwise and on a log."""
+
+    log: NoteLogSummary | None = None

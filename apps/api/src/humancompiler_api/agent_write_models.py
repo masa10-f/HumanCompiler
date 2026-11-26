@@ -19,7 +19,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from humancompiler_api.models import GoalStatus, TaskStatus, WorkType
-from humancompiler_api.proposal_payloads import DueDate
+from humancompiler_api.proposal_payloads import DueDate, NoteSectionName
 
 Hours = Annotated[Decimal, Field(gt=0, max_digits=5, decimal_places=2)]
 Priority = Annotated[int, Field(ge=1, le=5)]
@@ -171,7 +171,23 @@ class AgentTaskUpdate(_AgentUpdate):
         return data
 
 
+NOTE_SECTIONS = (
+    "An item has two notes. The overview is what is true now (purpose, "
+    "decisions, next steps): short, kept current, and what reads return by "
+    "default. The log is what happened (work summaries, findings, how a "
+    "decision was reached): it grows, and is read only on request."
+)
+
+
 class AgentNoteAppend(_AgentWrite):
+    section: NoteSectionName = Field(
+        default="log",
+        description=(
+            "Which note to add to. Leave it out for the log, where records of "
+            "work belong; overview only when the text is part of what the "
+            "item is (e.g. the body of a task you just created)."
+        ),
+    )
     content_markdown: str = Field(
         min_length=1,
         max_length=20000,
@@ -183,10 +199,18 @@ class AgentNoteAppend(_AgentWrite):
 
 
 class AgentNoteReplace(_AgentWrite):
+    section: NoteSectionName = Field(
+        default="overview",
+        description=(
+            "Which note to replace. Leave it out for the overview; log only "
+            "when the user asks you to tidy the log."
+        ),
+    )
     expected_updated_at: datetime | None = Field(
         description=(
-            f"{EXPECTED_UPDATED_AT_DESCRIPTION} Required; send null only when "
-            "the item has no note yet, which creates it."
+            f"{EXPECTED_UPDATED_AT_DESCRIPTION} It is the updated_at of the "
+            "note of that section. Required; send null only when the item has "
+            "no such note yet, which creates it."
         )
     )
     content_markdown: str = Field(

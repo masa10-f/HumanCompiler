@@ -57,6 +57,7 @@ def get_export_options(
     include_completed: bool = True,
     include_work_sessions: bool = True,
     include_daily_plans: bool = True,
+    include_note_logs: bool = False,
     period_days: Annotated[int | None, Query(ge=1, le=3650)] = None,
 ) -> ContextExportOptions:
     """Parse export options from query parameters."""
@@ -64,6 +65,7 @@ def get_export_options(
         include_completed=include_completed,
         include_work_sessions=include_work_sessions,
         include_daily_plans=include_daily_plans,
+        include_note_logs=include_note_logs,
         period_days=period_days,
     )
 

@@ -27,6 +27,7 @@ from humancompiler_api.services import add_task_note_text
 from humancompiler_api.crypto import get_crypto_service
 from humancompiler_api.models import (
     ContextNote,
+    NoteSection,
     Goal,
     GoalResponse,
     Project,
@@ -1174,7 +1175,10 @@ class GoalTaskDraftService:
         goal_id: UUID | None = None,
         task_id: UUID | None = None,
     ) -> ContextNote | None:
-        query = select(ContextNote)
+        """The item's overview; its log is not sent to the model."""
+        query = select(ContextNote).where(
+            ContextNote.section == NoteSection.OVERVIEW.value
+        )
         if project_id:
             query = query.where(ContextNote.project_id == project_id)
         elif goal_id:

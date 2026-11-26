@@ -158,17 +158,19 @@ def create_attachment(
     *,
     require_caption: bool,
 ) -> tuple[NoteAttachment, bool]:
-    """Attach an image to the note of ``target``, which must be the user's.
+    """Attach an image to the notes of ``target``, which must be the user's.
 
     Returns the attachment and whether it was already there: the same image
-    (same stored bytes) attached to the same note is not stored twice, and
-    takes ``caption`` if that is not empty. Creates
-    the note if the item has none. The note's content is not changed; the
-    caller puts the reference in it.
+    (same stored bytes) attached to the same item is not stored twice, and
+    takes ``caption`` if that is not empty. The item's overview holds the
+    attachment (and is created if the item has none) until a note refers to
+    it; a write that puts the reference in the item's log moves it there (see
+    ``models._sync_note_attachments``). No note's content is changed; the
+    caller puts the reference in one.
 
     413 for too many bytes; 422 for anything else wrong with the image or the
-    caption, for a note with too many images and for a full quota; 503 when the
-    object store fails."""
+    caption, for an item with too many images and for a full quota; 503 when
+    the object store fails."""
     caption = normalize_caption(caption)
     if require_caption and not caption:
         raise _unprocessable(
@@ -196,6 +198,14 @@ def create_attachment(
         note = proposal_service.lock_note(session, target)
         if note is None:
             note = proposal_service.create_note(session, user_id, target)
+        # The item's overview and log: an image may be shown in either.
+        item_notes = select(ContextNote.id)
+        if target.project_id is not None:
+            item_notes = item_notes.where(ContextNote.project_id == target.project_id)
+        elif target.goal_id is not None:
+            item_notes = item_notes.where(ContextNote.goal_id == target.goal_id)
+        else:
+            item_notes = item_notes.where(ContextNote.task_id == target.task_id)
 
         # Locked, so the cleanup job cannot delete it while it is handed out
         # (and if the job got there first, the row is gone and a new one is
@@ -203,7 +213,7 @@ def create_attachment(
         existing = session.exec(
             select(NoteAttachment)
             .where(
-                NoteAttachment.note_id == note.id,
+                col(NoteAttachment.note_id).in_(item_notes),
                 NoteAttachment.user_id == user_id,
                 NoteAttachment.sha256 == image.sha256,
             )
@@ -224,15 +234,16 @@ def create_attachment(
             session.refresh(existing)
             return existing, True
 
-        # Images the note shows, and uploads so recent that the note may not
-        # have been saved with them yet: without those, uploading many images
-        # before the first save would pass the limit.
+        # Images the item's notes show, and uploads so recent that the note
+        # may not have been saved with them yet: without those, uploading many
+        # images before the first save would pass the limit. The limit is for
+        # the overview and the log together, which one page shows.
         now = datetime.now(UTC)
         shown = session.exec(
             select(func.count())
             .select_from(NoteAttachment)
             .where(
-                NoteAttachment.note_id == note.id,
+                col(NoteAttachment.note_id).in_(item_notes),
                 col(NoteAttachment.detached_at).is_(None)
                 | (col(NoteAttachment.created_at) > now - PENDING_WINDOW),
             )

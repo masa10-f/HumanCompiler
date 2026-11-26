@@ -1056,10 +1056,15 @@ def _notes(session: Session) -> list[ContextNote]:
     return list(session.exec(select(ContextNote)).all())
 
 
-def _append(token: str, kind: str, target_id: Any, markdown: str):
+def _append(
+    token: str, kind: str, target_id: Any, markdown: str, section: str | None = None
+):
+    body = {"content_markdown": markdown}
+    if section is not None:
+        body["section"] = section
     return client.post(
         f"{BASE}/context-notes/{kind}/{target_id}/append",
-        json={"content_markdown": markdown},
+        json=body,
         headers=bearer(token),
     )
 
@@ -1091,11 +1096,11 @@ def test_note_writes_need_notes_write(session: Session):
 
 
 def test_task_update_after_a_note_write_needs_the_new_updated_at(session: Session):
-    """A task carries its note's opening, so writing the note changes the task."""
+    """A task carries its overview's opening, so writing it changes the task."""
     _, _, task = _tree(session)
     token = issue_token(session, USER_A, [*WRITE, AgentScope.NOTES_WRITE])
 
-    response = _append(token, "tasks", task.id, "Done: drafted the intro")
+    response = _append(token, "tasks", task.id, "Done: drafted the intro", "overview")
     assert response.status_code == 200, response.text
 
     stale = _patch(f"/tasks/{task.id}", token, title="Renamed")
@@ -1120,6 +1125,21 @@ def test_finishing_a_task_then_appending_a_summary_needs_one_read(session: Sessi
 
     response = _append(token, "tasks", task.id, "Done: drafted the intro")
     assert response.status_code == 200, response.text
+
+
+def test_a_summary_in_the_log_leaves_the_task_as_it_was(session: Session):
+    """The log is not part of what a task answers with, so the task's
+    updated_at stays and the summary may come before the update."""
+    _, _, task = _tree(session)
+    token = issue_token(session, USER_A, [*WRITE, AgentScope.NOTES_WRITE])
+
+    response = _append(token, "tasks", task.id, "Done: drafted the intro")
+    assert response.status_code == 200, response.text
+    assert response.json()["section"] == "log"
+
+    finished = _patch(f"/tasks/{task.id}", token, status="completed")
+    assert finished.status_code == 200, finished.text
+    assert finished.json()["note_excerpt"] is None
 
 
 def test_goal_note_write_leaves_its_tasks_updated_at(session: Session):
@@ -1184,7 +1204,7 @@ def test_append_to_existing_note_keeps_it(session: Session):
     seed_note(session, USER_A, project=project, updated_at=STAMP)
     token = issue_token(session, USER_A, NOTES, name="distiller")
 
-    response = _append(token, "projects", project.id, "More")
+    response = _append(token, "projects", project.id, "More", "overview")
     assert response.status_code == 200, response.text
     (note,) = _notes(session)
     assert note.content == "Note" + _heading("distiller") + "<p>More</p>\n"
@@ -1192,6 +1212,70 @@ def test_append_to_existing_note_keeps_it(session: Session):
     assert _utc(note.updated_at) > STAMP  # type: ignore[operator]
     (change,) = _changes(session)
     assert change.before == {"length": len("Note")}
+
+
+def test_append_goes_to_the_log_and_leaves_the_overview(session: Session):
+    project, _, _ = _tree(session)
+    overview = seed_note(session, USER_A, project=project, updated_at=STAMP)
+    token = issue_token(session, USER_A, NOTES, name="distiller")
+
+    first = _append(token, "projects", project.id, "Did one")
+    second = _append(token, "projects", project.id, "Did two")
+
+    assert first.status_code == 200, first.text
+    assert second.json()["id"] == first.json()["id"] != str(overview.id)
+    assert second.json()["section"] == "log"
+    notes = {note.section: note for note in _notes(session)}
+    assert set(notes) == {"overview", "log"}
+    assert notes["overview"].content == "Note"
+    assert _utc(notes["overview"].updated_at) == STAMP
+    assert notes["log"].content == (
+        _heading("distiller")
+        + "<p>Did one</p>\n"
+        + _heading("distiller")
+        + "<p>Did two</p>\n"
+    )
+    assert [change.entity_id for change in _changes(session)] == [notes["log"].id] * 2
+
+
+def test_replace_is_for_the_overview_unless_it_names_the_log(session: Session):
+    project, _, _ = _tree(session)
+    token = issue_token(session, USER_A, [*NOTES, AgentScope.WRITES_UNCONFIRMED])
+    log = _append(token, "projects", project.id, "Did one").json()
+
+    # The project has a log and no overview yet: null creates the overview.
+    created = _replace(token, "projects", project.id, "## Now\n\nShip", None)
+    assert created.status_code == 200, created.text
+    assert created.json()["section"] == "overview"
+    # The log's updated_at is not the overview's.
+    stale = _replace(token, "projects", project.id, "x", log["updated_at"])
+    assert stale.status_code == 409
+
+    tidied = client.put(
+        f"{BASE}/context-notes/projects/{project.id}",
+        json={
+            "section": "log",
+            "expected_updated_at": log["updated_at"],
+            "content_markdown": "Tidied log",
+        },
+        headers=bearer(token),
+    )
+    assert tidied.status_code == 200, tidied.text
+    notes = {note.section: note.content for note in _notes(session)}
+    assert notes == {
+        "overview": "<h2>Now</h2>\n<p>Ship</p>\n",
+        "log": "<p>Tidied log</p>\n",
+    }
+
+
+def test_unknown_section_is_rejected(session: Session):
+    project, _, _ = _tree(session)
+    token = issue_token(session, USER_A, NOTES)
+
+    response = _append(token, "projects", project.id, "x", "journal")
+
+    assert response.status_code == 422
+    assert _notes(session) == []
 
 
 def test_append_escapes_raw_html(session: Session):
