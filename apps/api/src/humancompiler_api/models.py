@@ -3194,7 +3194,10 @@ def _sync_note_attachments(_mapper: Any, connection: Any, note: ContextNote) -> 
     An upload is held by the item's overview until a note refers to it, and an
     image can be moved between the item's overview and log, so the attachments
     of both notes are looked at: one this note now refers to becomes this
-    note's, and one held by the other note is never detached from here."""
+    note's, and one held by the other note is never detached from here. One
+    this note held and no longer refers to goes to the item's other note when
+    that note still shows it (an image copied to both and removed from one),
+    and is detached only when neither does."""
     if not sqlalchemy_inspect(note).attrs.content.history.has_changes():
         return
     table = NoteAttachment.__table__  # type: ignore[attr-defined]
@@ -3216,6 +3219,20 @@ def _sync_note_attachments(_mapper: Any, connection: Any, note: ContextNote) -> 
         return
     references = attachment_references(note.content, note.content_type)
     now = datetime.now(UTC)
+    # The item's other note and the images it refers to, read only when this
+    # note drops an image it held.
+    other: tuple[Any, dict[UUID, str]] | None = None
+
+    def other_note() -> tuple[Any, dict[UUID, str]]:
+        row = connection.execute(
+            select(notes.c.id, notes.c.content, notes.c.content_type).where(
+                same_item, notes.c.id != note.id
+            )
+        ).first()
+        if row is None:
+            return None, {}
+        return row[0], attachment_references(row[1], row[2])
+
     for attachment_id, caption, detached_at, holder_id in rows:
         values: dict[str, Any] = {}
         if attachment_id in references:
@@ -3227,7 +3244,12 @@ def _sync_note_attachments(_mapper: Any, connection: Any, note: ContextNote) -> 
             if new_caption != caption:
                 values["caption"] = new_caption
         elif holder_id == note.id and detached_at is None:
-            values["detached_at"] = now
+            if other is None:
+                other = other_note()
+            if attachment_id in other[1]:
+                values["note_id"] = other[0]
+            else:
+                values["detached_at"] = now
         if values:
             connection.execute(
                 sqlalchemy_update(table)
