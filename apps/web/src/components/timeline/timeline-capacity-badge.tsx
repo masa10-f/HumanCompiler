@@ -9,7 +9,7 @@
 import Link from 'next/link'
 import { AlertTriangle, Clock3, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { NumberInput } from '@/components/ui/number-input'
 import { Label } from '@/components/ui/label'
 import type { ProjectCapacity } from '@/types/timeline'
 
@@ -78,17 +78,17 @@ export function TimelineCapacityBadge({
                 週間キャパシティ（仮）
               </Label>
               <div className="mt-0.5 flex items-center gap-1.5">
-                <Input
+                <NumberInput
                   id="weekly-work-hours"
-                  type="number"
                   min="1"
                   max="168"
+                  clampOnBlur
                   value={fallbackHours}
-                  onChange={(e) =>
-                    onFallbackHoursChange(
-                      Math.min(168, Math.max(1, Number(e.target.value) || 1)),
-                    )
-                  }
+                  onValueChange={(value) => {
+                    if (value !== undefined) {
+                      onFallbackHoursChange(Math.min(168, Math.max(1, value)))
+                    }
+                  }}
                   className="h-7 w-16 border-0 bg-transparent p-0 text-right text-sm font-semibold shadow-none focus-visible:ring-0"
                 />
                 <span className="text-xs text-slate-500">時間 / 週</span>

@@ -64,6 +64,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -1490,20 +1491,18 @@ export const DailyPlanWorkspace = forwardRef<
             !completionAssignment?.task_id.startsWith("quick_") && (
               <div className="space-y-2">
                 <Label htmlFor="daily-actual-minutes">実働時間（分）</Label>
-                <Input
+                <NumberInput
                   id="daily-actual-minutes"
-                  type="number"
+                  integer
+                  clampOnBlur
                   min={1}
                   max={1440}
                   disabled={taskActionPending}
                   value={actualMinutes}
-                  onChange={(event) => {
-                    const parsed = Number.parseInt(event.target.value, 10);
-                    setActualMinutes(
-                      Number.isFinite(parsed) && parsed > 0
-                        ? Math.min(parsed, 1440)
-                        : 1,
-                    );
+                  onValueChange={(value) => {
+                    if (value !== undefined) {
+                      setActualMinutes(Math.min(Math.max(value, 1), 1440));
+                    }
                   }}
                 />
                 <Label htmlFor="daily-log-comment">コメント（任意）</Label>
@@ -2233,20 +2232,20 @@ function DirectiveEditor({
       <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-blue-100 pt-3 dark:border-blue-900">
         <div className="space-y-1">
           <Label className="text-xs">割当量（分）</Label>
-          <Input
+          <NumberInput
             aria-label="割当量（分）"
-            type="number"
+            integer
+            allowEmpty
             min={1}
             max={1440}
             placeholder={block.mode === "task" ? "残り見積り" : "上限なし"}
-            value={block.duration_override_minutes ?? ""}
-            onChange={(event) => {
-              const parsed = Number.parseInt(event.target.value, 10);
+            value={block.duration_override_minutes}
+            onValueChange={(value) => {
               onChange({
                 ...block,
                 duration_override_minutes:
-                  Number.isFinite(parsed) && parsed > 0
-                    ? Math.min(parsed, 1440)
+                  value !== undefined && value > 0
+                    ? Math.min(value, 1440)
                     : undefined,
               });
             }}

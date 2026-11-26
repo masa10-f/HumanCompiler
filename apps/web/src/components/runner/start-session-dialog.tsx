@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -147,14 +147,17 @@ export function StartSessionDialog({
           <div className="space-y-3">
             <Label htmlFor="duration">作業時間（分）</Label>
             <div className="flex items-center gap-4">
-              <Input
+              <NumberInput
                 id="duration"
-                type="number"
+                integer
+                clampOnBlur
                 min={5}
                 max={480}
                 step={5}
                 value={duration}
-                onChange={(e) => setDuration(Number(e.target.value))}
+                onValueChange={(value) => {
+                  if (value !== undefined) setDuration(value);
+                }}
                 className="w-24"
               />
               <div className="flex gap-2">

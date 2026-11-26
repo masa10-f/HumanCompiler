@@ -6,7 +6,7 @@ export const TASK_NOTE_MAX_LENGTH = 20000;
 export const TASK_ESTIMATE_HOURS_MIN = 0.01;
 export const TASK_ESTIMATE_HOURS_MAX = 999.99;
 
-export const taskEstimateHoursSchema = z.number()
+export const taskEstimateHoursSchema = z.number({ error: '必須項目です' })
   .min(TASK_ESTIMATE_HOURS_MIN, '0.01時間以上で入力してください')
   .max(TASK_ESTIMATE_HOURS_MAX, '999.99時間以内で入力してください')
   .refine((val) => Number((val * 100).toFixed()) / 100 === val, {

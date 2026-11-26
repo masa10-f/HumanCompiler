@@ -21,6 +21,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -36,7 +37,7 @@ import { taskStatusLabels } from '@/types/task';
 import { TaskDependenciesManager } from './task-dependencies-manager';
 import { SessionHistory } from '@/components/runner/session-history';
 import type { Task } from '@/types/task';
-import { roundToDecimals, parseFloatSafe } from '@/lib/number-utils';
+import { roundToDecimals } from '@/lib/number-utils';
 import { toJSTDateInputValue } from '@/lib/date-utils';
 import { buildTaskEditUpdatePayload } from './task-edit-payload';
 import {
@@ -149,18 +150,21 @@ export function TaskEditDialog({ task, availableTasks = [], children }: TaskEdit
                 <FormItem>
                   <FormLabel>見積時間 (時間) *</FormLabel>
                   <FormControl>
-                    <Input
-                      type="number"
+                    <NumberInput
                       step="0.01"
                       min={TASK_ESTIMATE_HOURS_MIN}
                       max={TASK_ESTIMATE_HOURS_MAX}
                       placeholder="1.00"
-                      {...field}
-                      onChange={(e) => {
-                        const value = parseFloatSafe(e.target.value, 0);
+                      allowEmpty
+                      name={field.name}
+                      ref={field.ref}
+                      onBlur={field.onBlur}
+                      disabled={field.disabled}
+                      value={field.value}
+                      onValueChange={(value) =>
                         // Use proper rounding utility to avoid floating point issues
-                        field.onChange(roundToDecimals(value, 2));
-                      }}
+                        field.onChange(value === undefined ? undefined : roundToDecimals(value, 2))
+                      }
                     />
                   </FormControl>
                   <FormMessage />

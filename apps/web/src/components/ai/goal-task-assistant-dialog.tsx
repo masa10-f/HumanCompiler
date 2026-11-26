@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -733,18 +734,16 @@ function TaskDraftTable({
                   </div>
                   <div className="space-y-1">
                     <div className="text-xs font-medium text-muted-foreground">見積(h)</div>
-                    <Input
-                      type="number"
+                    <NumberInput
                       min="0.1"
                       step="0.1"
+                      clampOnBlur
                       value={task.estimate_hours}
-                      onChange={(event) =>
-                        onUpdateTask(
-                          task.client_id,
-                          'estimate_hours',
-                          Number.parseFloat(event.target.value) || 0.1
-                        )
-                      }
+                      onValueChange={(value) => {
+                        if (value !== undefined) {
+                          onUpdateTask(task.client_id, 'estimate_hours', value)
+                        }
+                      }}
                     />
                   </div>
                   <div className="space-y-1">
