@@ -3,10 +3,11 @@
 -- No text is lost: each log is put back at the end of its item's overview
 -- (the way agent appends were stored before 047), and then the log rows are
 -- deleted. An item that has only a log gets an overview to hold it. A
--- Markdown overview that takes a log becomes HTML paragraphs of the same
--- text, as in migration 044. Images shown in a log stay attached, to the
--- overview. Tasks whose overview took a log get a new updated_at, because
--- the opening of their note may have changed.
+-- Markdown overview that takes a log, and a Markdown log, become HTML
+-- paragraphs of the same text, as in migration 044. Images shown in a log
+-- stay attached, to the overview. Overviews that took a log get a new
+-- updated_at, and so do their tasks, because the opening of a task's note
+-- may have changed.
 -- Not restored: which part of a note was the log. Applying 047 and 048 again
 -- moves only what follows the first agent heading.
 -- The DO bodies are single-quoted (not $$) because the migration manager
@@ -50,7 +51,10 @@ WHERE l.section = 'log'
   AND l.content <> ''
   AND l.task_id = t.id;
 
--- 3. Each log goes to the end of its item's overview.
+-- 3. Each log goes to the end of its item's overview. A note that is not HTML
+-- keeps its text as escaped paragraphs, so text such as <TODO> is not read as
+-- a tag afterwards. updated_at is set here because not every schema has the
+-- trigger that advances it.
 UPDATE public.context_notes AS o
 SET content = CASE
         WHEN o.content_type = 'html' THEN o.content
@@ -63,11 +67,23 @@ SET content = CASE
                 '\s*\n\s*', '</p><p>', 'g'
             ) || '</p>'
         ELSE ''
-    END || l.content,
+    END || CASE
+        WHEN l.content_type = 'html' THEN l.content
+        WHEN l.content ~ '\S' THEN
+            '<p>' || regexp_replace(
+                regexp_replace(
+                    replace(replace(replace(l.content, '&', '&amp;'), '<', '&lt;'), '>', '&gt;'),
+                    '^\s+|\s+$', '', 'g'
+                ),
+                '\s*\n\s*', '</p><p>', 'g'
+            ) || '</p>'
+        ELSE ''
+    END,
     content_type = 'html',
     content_text = concat_ws(
         chr(10), NULLIF(o.content_text, ''), NULLIF(l.content_text, '')
-    )
+    ),
+    updated_at = NOW()
 FROM public.context_notes AS l
 WHERE o.section = 'overview'
   AND l.section = 'log'

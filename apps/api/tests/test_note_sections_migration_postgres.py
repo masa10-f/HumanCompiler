@@ -428,6 +428,39 @@ def test_rollback_puts_logs_back_into_the_notes(db):
     }
 
 
+def test_rollback_keeps_a_markdown_log_as_text_and_marks_the_note_changed(db):
+    cursor, schema = db
+    add_note(cursor, schema, "project_id", PROJECT_ID, "<p>Why</p>")
+    run_migration(cursor, schema, SECTIONS)
+    # A log saved as Markdown through the API, on a schema without the
+    # updated_at trigger of 035.
+    add_note(
+        cursor,
+        schema,
+        "project_id",
+        PROJECT_ID,
+        " <TODO> a & b\n\n next ",
+        "markdown",
+        section="log",
+    )
+    cursor.execute(
+        f'DROP TRIGGER update_context_notes_updated_at ON "{schema}".context_notes'
+    )
+
+    run_migration(cursor, schema, SECTIONS_ROLLBACK)
+
+    cursor.execute(
+        f"SELECT content, content_type, content_text, updated_at > %s "
+        f'FROM "{schema}".context_notes',
+        (OLD,),
+    )
+    merged = "<p>Why</p><p>&lt;TODO&gt; a &amp; b</p><p>next</p>"
+    # Incremental reads by updated_at pick the merged note up.
+    assert cursor.fetchall() == [
+        (merged, "html", note_plain_text(merged, "html"), True)
+    ]
+
+
 def test_rollback_requires_sections(db):
     cursor, schema = db
     with pytest.raises(psycopg2.errors.RaiseException, match="nothing to roll back"):
