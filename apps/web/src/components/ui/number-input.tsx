@@ -61,10 +61,22 @@ const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
     const [draft, setDraft] = React.useState(() => formatValue(value))
     const draftRef = React.useRef(draft)
     draftRef.current = draft
+    const inputRef = React.useRef<HTMLInputElement | null>(null)
+    const setRefs = React.useCallback(
+      (node: HTMLInputElement | null) => {
+        inputRef.current = node
+        if (typeof ref === "function") ref(node)
+        else if (ref) ref.current = node
+      },
+      [ref],
+    )
 
-    // Follow values set from outside (presets, form resets, parent clamping)
-    // without overwriting what the user is typing when it already matches.
+    // Follow values set from outside (presets, form resets) without overwriting
+    // what the user is typing. While the field has focus the draft is left alone,
+    // so a parent that clamps each reported number (e.g. 0 -> 1) does not replace
+    // the text mid-edit; blur then shows the value that was kept.
     React.useEffect(() => {
+      if (typeof document !== "undefined" && document.activeElement === inputRef.current) return
       if (parseDraft(draftRef.current, integer) !== (value ?? undefined)) {
         setDraft(formatValue(value))
       }
@@ -106,7 +118,7 @@ const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
     return (
       <Input
         {...props}
-        ref={ref}
+        ref={setRefs}
         type="number"
         min={min}
         max={max}

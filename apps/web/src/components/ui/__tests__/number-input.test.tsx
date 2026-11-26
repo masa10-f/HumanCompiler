@@ -12,10 +12,12 @@ import { NumberInput, type NumberInputProps } from '../number-input'
 function Harness({
   initial,
   onSpy,
+  transform = (next) => next,
   ...props
 }: Omit<NumberInputProps, 'value' | 'onValueChange'> & {
   initial: number | undefined
   onSpy?: (value: number | undefined) => void
+  transform?: (value: number | undefined) => number | undefined
 }) {
   const [value, setValue] = useState<number | undefined>(initial)
   return (
@@ -25,7 +27,7 @@ function Harness({
         value={value}
         onValueChange={(next) => {
           onSpy?.(next)
-          setValue(next)
+          setValue(transform(next))
         }}
         {...props}
       />
@@ -99,6 +101,33 @@ describe('NumberInput', () => {
     expect(onSpy).toHaveBeenLastCalledWith(480)
     expect(input().value).toBe('480')
     expect(screen.getByTestId('value')).toHaveTextContent('480')
+  })
+
+  it('keeps the typed text while focused even when the parent clamps it', () => {
+    render(
+      <Harness
+        initial={30}
+        min={1}
+        max={1440}
+        integer
+        clampOnBlur
+        transform={(next) => (next === undefined ? next : Math.min(Math.max(next, 1), 1440))}
+      />,
+    )
+
+    input().focus()
+    fireEvent.change(input(), { target: { value: '0' } })
+    expect(input().value).toBe('0')
+    expect(screen.getByTestId('value')).toHaveTextContent('1')
+
+    fireEvent.change(input(), { target: { value: '' } })
+    fireEvent.change(input(), { target: { value: '45' } })
+    expect(input().value).toBe('45')
+
+    fireEvent.change(input(), { target: { value: '2000' } })
+    expect(input().value).toBe('2000')
+    fireEvent.blur(input())
+    expect(input().value).toBe('1440')
   })
 
   it('reads scientific notation as the whole number in integer fields', () => {
