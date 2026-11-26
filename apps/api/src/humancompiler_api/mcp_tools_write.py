@@ -36,6 +36,7 @@ from humancompiler_api.agent_write_models import (
     EXPECTED_UPDATED_AT_DESCRIPTION,
     NOTE_IMAGES,
     NOTE_REPLACE_LOSES,
+    NOTE_SECTIONS,
     AgentGoalCreate,
     AgentGoalUpdate,
     AgentLogCreate,
@@ -46,7 +47,8 @@ from humancompiler_api.agent_write_models import (
     Hours,
     LOG_COMMENT_MAX,
     LOG_MINUTES_MAX,
-    NoteTargetKind,
+    NOTE_TARGET_KINDS,
+    NoteKind,
 )
 from humancompiler_api.mcp_server import guarded_call, mcp_server
 from humancompiler_api.mcp_tools_read import _note_payload, _utc_iso
@@ -59,15 +61,8 @@ from humancompiler_api.models import (
     TaskStatus,
     WorkType,
 )
+from humancompiler_api.proposal_payloads import NoteSectionName
 from humancompiler_api.routers.agent_writes import _goal_response, _task_response
-
-NoteKind = Literal["project", "goal", "task"]
-
-_NOTE_KINDS: dict[NoteKind, NoteTargetKind] = {
-    "project": "projects",
-    "goal": "goals",
-    "task": "tasks",
-}
 
 _CREATE = ToolAnnotations(read_only_hint=False, destructive_hint=False)
 _MAY_DESTROY = ToolAnnotations(read_only_hint=False, destructive_hint=True)
@@ -201,8 +196,8 @@ async def update_goal(
     name="create_task",
     description=(
         "Create a task in one of the user's goals. Returns {task}. A task's "
-        "note is its body: description is plain text that opens the new "
-        "task's note, and append_note adds Markdown to it later. depends_on "
+        "overview is its body: description is plain text that opens it, and "
+        "append_note with section overview adds Markdown to it. depends_on "
         f"lists up to {DEPENDS_ON_MAX} of the user's tasks that must be "
         "finished first; if any is missing or another user's, the error is 404 "
         f"and nothing is created. {_NOT_FOUND} Not a destructive change."
@@ -266,12 +261,11 @@ async def create_task(
     description=(
         f"Update one of the user's tasks. {_UPDATE_GUIDE} Destructive changes "
         "(status cancelled, and goal_id, which moves the task to another goal) "
-        f"{_UNCONFIRMED}. A task has no description or memo: its note is its "
-        "body, written with append_note and replace_note. To finish a task, "
-        "pass status completed here first and then add a summary with "
-        "append_note: a note write advances the task's updated_at, so in the "
-        "other order this call answers 409 until you read the task again. Returns "
-        f"{{applied: true, task}}. {_NOT_FOUND}"
+        f"{_UNCONFIRMED}. A task has no description or memo: its overview is "
+        "its body (see replace_note and append_note). To finish a task, pass status "
+        "completed here and add a summary of the work with append_note, which "
+        "writes to the task's log and leaves the task's updated_at as it is. "
+        f"Returns {{applied: true, task}}. {_NOT_FOUND}"
     ),
     annotations=_MAY_DESTROY,
 )
@@ -374,9 +368,10 @@ async def remove_dependency(
 _NOTE_TARGET = (
     "kind is project, goal or task, and id is that item's id. Another user's "
     "item and a missing one both give a 404 error. Raw HTML in the Markdown is "
-    "shown as text. A change to a task's note text also advances that task's "
-    "updated_at (the task carries the opening of its note as note_excerpt): "
-    f"read the task again before update_task, or it answers 409. {NOTE_IMAGES} "
+    "shown as text. A change to the text of a task's overview also advances "
+    "that task's updated_at (the task carries the opening of its overview as "
+    "note_excerpt): read the task again before update_task, or it answers "
+    f"409. A change to a task's log does not. {NOTE_IMAGES} "
     "To attach an image, run the humancompiler CLI: humancompiler attach "
     '<project|goal|task> <id> <file> --caption "..." prints that reference.'
 )
@@ -385,11 +380,15 @@ _NOTE_TARGET = (
 @mcp_server.tool(
     name="append_note",
     description=(
-        "Add Markdown to the end of the note of a project, goal or task, under a "
-        "heading with your token name and today's date. Creates the note if the "
-        "item has none. Use it for dated work summaries. Not a destructive "
-        "change, and no expected_updated_at is needed. Returns {note: {id, "
-        f"updated_at, content_markdown}}, the whole note as Markdown. {_NOTE_TARGET}"
+        "Add Markdown to the end of the log of a project, goal or task, under a "
+        "heading with your token name and today's date. Use it for dated work "
+        "summaries, findings and how a decision was reached. "
+        f"{NOTE_SECTIONS} With section overview the text goes to the end of "
+        "the overview instead: only for text that is part of what the item is, "
+        "such as the body of a task you just created. Creates the note if the "
+        "item has none. Not a destructive change, and no expected_updated_at "
+        "is needed. Returns {section, note: {id, updated_at, characters}}; "
+        f"the note's text is not returned, read it with get_note. {_NOTE_TARGET}"
     ),
     annotations=_CREATE,
 )
@@ -405,13 +404,24 @@ async def append_note(
         ),
     ],
     ctx: Context,
+    section: Annotated[
+        NoteSectionName,
+        Field(description=_field_description(AgentNoteAppend, "section")),
+    ] = "log",
 ) -> CallToolResult:
     def run(session: Session, principal: AgentPrincipal) -> dict[str, Any]:
-        data = AgentNoteAppend(content_markdown=content_markdown)
+        data = AgentNoteAppend(section=section, content_markdown=content_markdown)
         note = agent_write_service.append_note(
-            session, principal, _NOTE_KINDS[kind], id, data
+            session, principal, NOTE_TARGET_KINDS[kind], id, data
         )
-        return {"note": _note_payload(note)}
+        return {
+            "section": section,
+            "note": {
+                "id": str(note.id),
+                "updated_at": _utc_iso(note.updated_at),
+                "characters": len(note.content_text),
+            },
+        }
 
     return await guarded_call("append_note", AgentScope.NOTES_WRITE, run, ctx)
 
@@ -419,17 +429,21 @@ async def append_note(
 @mcp_server.tool(
     name="replace_note",
     description=(
-        "Replace the whole note of a project, goal or task with the Markdown "
-        "passed; an empty string empties it. Use it only when the user asks you "
-        "to tidy the note. Replacing a note that has text is a destructive "
+        "Replace the whole overview of a project, goal or task with the "
+        "Markdown passed; an empty string empties it. Use it only when the "
+        "user asks you to update or tidy the overview, e.g. to bring it up to "
+        f"date from the log. {NOTE_SECTIONS} With section log it replaces the "
+        "whole log instead, only when the user asks you to tidy the log. "
+        "Replacing a note that has text is a destructive "
         f"change: it and every other destructive change {_UNCONFIRMED}. "
         "Creating the note or filling an empty one is not destructive. "
-        f"{NOTE_REPLACE_LOSES} expected_updated_at must be the note's "
-        "updated_at you last read, or null when the item has no note yet (that "
-        "creates it). If they differ, nothing is written and the error is 409 "
+        f"{NOTE_REPLACE_LOSES} expected_updated_at must be the updated_at you "
+        "last read of the note of that section (get_note returns it), or null "
+        "when the item has no such note yet (that creates it). If they "
+        "differ, nothing is written and the error is 409 "
         "with detail.current_updated_at (null when there is no note); read it "
-        "again and retry. Returns {applied: true, note: {id, updated_at, "
-        f"content_markdown}}. {_NOTE_TARGET}"
+        "again and retry. Returns {applied: true, section, note: {id, "
+        f"updated_at, content_markdown}}. {_NOTE_TARGET}"
     ),
     annotations=_MAY_DESTROY,
 )
@@ -448,16 +462,21 @@ async def replace_note(
         ),
     ],
     ctx: Context,
+    section: Annotated[
+        NoteSectionName,
+        Field(description=_field_description(AgentNoteReplace, "section")),
+    ] = "overview",
 ) -> CallToolResult:
     def run(session: Session, principal: AgentPrincipal) -> dict[str, Any]:
         data = AgentNoteReplace(
+            section=section,
             expected_updated_at=expected_updated_at,
             content_markdown=content_markdown,
         )
         note = agent_write_service.replace_note(
-            session, principal, _NOTE_KINDS[kind], id, data
+            session, principal, NOTE_TARGET_KINDS[kind], id, data
         )
-        return {"applied": True, "note": _note_payload(note)}
+        return {"applied": True, "section": section, "note": _note_payload(note)}
 
     return await guarded_call("replace_note", AgentScope.NOTES_WRITE, run, ctx)
 

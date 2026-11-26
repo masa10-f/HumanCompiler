@@ -119,6 +119,13 @@ G1〜G3 と同じ前提に従う。
 - Task のノートの文字が変わると、その Task の `updated_at` も進む。`note_excerpt` が変わるので、`updated_since` による Task の差分取得で拾えるようにするためである。そのため、Task のノートを書いたあとにその Task を更新するときは、Task を読み直して新しい `updated_at` を `expected_updated_at` に使う（古い値のままだと 409 になる）。ノートの追記と書き換えのツール説明にも同じことを書いてある。Task を完了にして要約を残すときは、先に `update_task` で完了にし、そのあとで `append_note` する（この順なら Task を読み直さなくてよい）。
 - 既存の description と memo は、マイグレーション 044 がノートの先頭に写す。
 
+**ノートの「概要」と「ログ」（2026-11-26 に変更）。**
+- Project / Goal / Task のノートは、概要（今も正しいこと）とログ（起きたこと）の2つになった。くわしくは `docs/design/note-sections.md`。この文書の「ノート」は、断りがなければ概要を指す。
+- `append_note`（REST の append も）はログに書く。`section: "overview"` で概要の末尾に書ける。`replace_note` は概要を書き換える。`section: "log"` でログを書き換えられる。
+- `get_task` / `get_goal` は概要と、ログの `{updated_at, characters}` だけを返す。ログの本文は `get_note` で読む。`get_context` はログを入れない（`include_logs` で入る）。
+- 上の「Task のノートの文字が変わると Task の `updated_at` も進む」は、概要についての話になった。Task のログを書いても Task の `updated_at` は進まないので、完了にする順番と要約の追記の順番は、どちらが先でもよい。
+- `append_note` は、ノート全体ではなく `{section, note: {id, updated_at, characters}}` を返す。
+
 **線を引いた理由。**
 - 「消える操作」は、ユーザーが書いた文章を消すか、タスクを一覧から外す操作で、間違えると気づきにくい。
 - title や数値・日付の変更は、変更の記録から元の値に戻せる。間違えても一覧で目に入る。
@@ -389,12 +396,13 @@ G3 の `agent_proposals` に、種類を3つ足す。
 |---|---|---|
 | `find` | 探す種類の読み取り（`projects:read` / `goals:read` / `tasks:read`。種類を指定しなければ3つすべて） | Project / Goal / Task を題で探す。部分一致。各候補の ID、親、状態を返す |
 | `get_context` | `context:read` | Project か Goal の context export（Markdown）を返す。作業を始める前に読む想定 |
-| `get_task` / `get_goal` | `tasks:read` / `goals:read` | 1件と、そのノートを返す。ノートは REST と同じく `notes:read` があるときだけ返し、無ければ `null` |
+| `get_task` / `get_goal` | `tasks:read` / `goals:read` | 1件と、そのノート（概要）を返す。ノートは REST と同じく `notes:read` があるときだけ返し、無ければ `null`。ログは `log: {updated_at, characters}` だけを返す |
+| `get_note` | `notes:read` | Project / Goal / Task の概要か、`section: "log"` でログを Markdown で返す。`tail_characters` で末尾だけを読める。後から足した（`docs/design/note-sections.md`） |
 | `create_goal` / `create_task` | `goals:write` / `tasks:write` | 作る |
 | `update_goal` / `update_task` | `goals:write` / `tasks:write` | 送った項目だけ変える。`expected_updated_at` が必須 |
 | `add_dependency` / `remove_dependency` | `tasks:write` | Task の依存関係を足す・外す。`create_task` も `depends_on` を受け取る |
-| `append_note` | `notes:write` | Project / Goal / Task のノートに追記する |
-| `replace_note` | `notes:write` | ノートを書き換える。`expected_updated_at` が必須 |
+| `append_note` | `notes:write` | Project / Goal / Task のログに追記する（`section: "overview"` で概要に） |
+| `replace_note` | `notes:write` | 概要を書き換える（`section: "log"` でログを）。`expected_updated_at` が必須 |
 | `list_logs` | `logs:read` | Task の作業ログを新しい順に返す。件数と合計の分も返す |
 | `get_weekly_note` | `weekly_notes:read` | 指定した日を含む週の週次ノートを Markdown で返す。週の始まりの曜日はユーザーの設定に従い、書いたノートは書いたときの7日間のまま。日を省くと今週（日本時間）。ノートが無いか空なら `note` は `null`。`daily_plans:read` もあれば、その週の日次ノートの `{date, title}` の一覧（`daily_notes`）も返す。無ければ `null` |
 | `get_daily_note` | `daily_plans:read` | 1日の日次ノートを Markdown で返す。日を省くと今日（日本時間）。予定・休憩は `- 09:00〜10:00 title`、`/schedule` 行、チェックリストも含み、タスクを指す行には `(task_id: ...)` が付く。生成済みのスケジュール（開始時刻・分・タスク）も返す |

@@ -21,13 +21,14 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import ColumnElement, Text, cast, func
 from sqlmodel import Session, col, or_, select
 
-from humancompiler_api.ai.note_text import load_note_texts
+from humancompiler_api.ai.note_text import load_note_text_lengths, load_note_texts
 from humancompiler_api.ai.report_generator import TASK_STATUS_LABELS
 from humancompiler_api.common.error_handlers import ResourceNotFoundError
 from humancompiler_api.models import (
     DailyPlanDocument,
     Goal,
     Log,
+    NoteSection,
     Project,
     ProjectStatus,
     Task,
@@ -97,8 +98,11 @@ class ContextExportOptions:
     include_completed: bool = True
     include_work_sessions: bool = True
     include_daily_plans: bool = True
-    # Limits work sessions and daily plan entries; notes and tasks are always
-    # exported in full.
+    # The logs of the project, goals and tasks. Their overviews are always
+    # exported; a log left out is mentioned with its size.
+    include_note_logs: bool = False
+    # Limits work sessions and daily plan entries; overviews and tasks are
+    # always exported in full.
     period_days: int | None = None
 
 
@@ -222,6 +226,11 @@ class _ContextExportBuilder:
             if options.period_days
             else None
         )
+        # The logs of the exported items: their text when logs are exported,
+        # else only how long each is.
+        self.project_logs: Mapping[UUID, str | int] = {}
+        self.goal_logs: Mapping[UUID, str | int] = {}
+        self.task_logs: Mapping[UUID, str | int] = {}
 
     def build(
         self, scope: ExportScope, project: Project, goals: list[Goal]
@@ -257,6 +266,20 @@ class _ContextExportBuilder:
             project_ids=[project.id] if project.id else [],
             goal_ids=[section.goal.id for section in sections if section.goal.id],
             task_ids=task_ids,
+        )
+        # A log left out is only counted: logs are the notes that grow.
+        load_logs = (
+            load_note_texts
+            if self.options.include_note_logs
+            else load_note_text_lengths
+        )
+        self.project_logs, self.goal_logs, self.task_logs = load_logs(
+            self.session,
+            self.owner_id,
+            project_ids=[project.id] if project.id else [],
+            goal_ids=[section.goal.id for section in sections if section.goal.id],
+            task_ids=task_ids,
+            section=NoteSection.LOG,
         )
         work_sessions = (
             self._load_work_sessions(task_ids)
@@ -431,6 +454,7 @@ class _ContextExportBuilder:
                 ("完了・キャンセル済み", self.options.include_completed),
                 ("作業セッション", self.options.include_work_sessions),
                 ("デイリープラン", self.options.include_daily_plans),
+                ("ノートのログ", self.options.include_note_logs),
             )
         )
         return [
@@ -479,7 +503,24 @@ class _ContextExportBuilder:
             )
         if note:
             blocks.extend(["### プロジェクトノート", demote_headings(note, 3)])
+        blocks.extend(
+            self._render_log(
+                "### プロジェクトノートのログ",
+                self.project_logs.get(project.id) if project.id else None,
+                3,
+            )
+        )
         return blocks
+
+    def _render_log(self, heading: str, log: str | int | None, level: int) -> list[str]:
+        """An item's log under ``heading``, or one line saying it was left out.
+
+        ``log`` is the log's text, or its length when logs are not exported."""
+        if not log:
+            return []
+        if isinstance(log, str):
+            return [heading, demote_headings(log, level)]
+        return [f"※ ログ（経緯・作業メモ、約{log}文字）は省略しています。"]
 
     def _render_goal(
         self,
@@ -507,6 +548,13 @@ class _ContextExportBuilder:
         goal_note = goal_notes.get(goal.id) if goal.id else None
         if goal_note:
             blocks.extend(["### ゴールノート", demote_headings(goal_note, 3)])
+        blocks.extend(
+            self._render_log(
+                "### ゴールノートのログ",
+                self.goal_logs.get(goal.id) if goal.id else None,
+                3,
+            )
+        )
         if section.hidden_task_count:
             blocks.append(
                 f"※ 完了・キャンセル済みのタスク{section.hidden_task_count}件は"
@@ -553,6 +601,13 @@ class _ContextExportBuilder:
         blocks = [f"### タスク: {_one_line(task.title)}", _bullets(facts)]
         if note:
             blocks.extend(["#### ノート", demote_headings(note, 4)])
+        blocks.extend(
+            self._render_log(
+                "#### ノートのログ",
+                self.task_logs.get(task.id) if task.id else None,
+                4,
+            )
+        )
         if work_sessions:
             blocks.extend(
                 [

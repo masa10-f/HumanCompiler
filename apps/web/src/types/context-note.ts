@@ -53,11 +53,31 @@ export interface NoteAttachmentTarget {
   id: string;
 }
 
+/**
+ * A project, goal or task has two notes. The overview says what is true now
+ * (purpose, decisions, next steps) and is what pages show first; the log
+ * records what happened (work summaries, findings) and keeps growing.
+ */
+export type NoteSection = 'overview' | 'log';
+
+/** How much an item's log holds, without its text. */
+export interface NoteLogSummary {
+  updated_at: string;
+  /** Characters of visible text. */
+  characters: number;
+}
+
 export interface ContextNote {
   id: string;
   project_id: string | null;
   goal_id: string | null;
   task_id: string | null;
+  section: NoteSection;
+  /**
+   * On an overview: its item's log, when that has text. null when there is
+   * none, and always on a log.
+   */
+  log?: NoteLogSummary | null;
   content: string;
   content_type: 'markdown' | 'html' | 'tiptap_json';
   created_at: string;

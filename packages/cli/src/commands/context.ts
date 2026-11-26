@@ -38,6 +38,10 @@ Fetches the context export of a project or goal as Markdown: the notes and
 tasks under it and the work history (logs, work sessions, daily plans). The
 same document as the AI context export in the web app.
 
+A project, goal or task has two notes: its overview (what is true now) and
+its log (what happened, which keeps growing). The export has the overviews
+and only mentions the logs with their size; --with-logs adds them in full.
+
 An image in a note comes as ![caption](attachment:<id>): its caption and
 id, not the image. ${OPTION_SCOPES.context.option} also saves the images and points the
 references to the saved files.
@@ -52,6 +56,7 @@ Options:
   --no-completed           Leave completed goals and tasks out.
   --no-work-sessions       Leave work sessions out.
   --no-daily-plans         Leave daily plans out.
+  --with-logs              Add the logs of the notes, which can be long.
   --with-images <dir>      Save the images the notes refer to into <dir> (as
                            <id>.webp), and point the references to them.
   --api-url <url>          API base URL (default: $${API_URL_ENV} or
@@ -72,6 +77,7 @@ export async function context(argv: string[]): Promise<void> {
       completed: { type: 'boolean', default: true },
       'work-sessions': { type: 'boolean', default: true },
       'daily-plans': { type: 'boolean', default: true },
+      'with-logs': { type: 'boolean', default: false },
       'with-images': { type: 'string' },
       'api-url': { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
@@ -103,6 +109,7 @@ export async function context(argv: string[]): Promise<void> {
     includeCompleted: values.completed,
     includeWorkSessions: values['work-sessions'],
     includeDailyPlans: values['daily-plans'],
+    includeNoteLogs: values['with-logs'],
     periodDays,
   })
 

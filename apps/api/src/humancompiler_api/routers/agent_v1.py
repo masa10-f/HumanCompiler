@@ -43,6 +43,7 @@ from humancompiler_api.models import (
     AgentToken,
     ContextNote,
     ContextNoteResponse,
+    NoteSection,
     DailyPlanDocument,
     Goal,
     GoalDependency,
@@ -493,9 +494,13 @@ async def list_work_sessions(
     "/context-notes",
     response_model=AgentPage[ContextNoteResponse],
     description=(
-        "List the user's context notes ordered by (updated_at, id). "
-        f"{INCREMENTAL_SYNC_GUIDE} Each filter matches only notes attached "
-        "directly to that item, not notes on its goals or tasks."
+        "List the user's context notes ordered by (updated_at, id). A project, "
+        "goal or task has up to two notes, told apart by section: its "
+        "overview (what is true now, kept short) and its log (what happened, "
+        "which grows). Both are listed unless section is given; an item's "
+        "log can be long, so pass section=overview when you only need the "
+        f"overviews. {INCREMENTAL_SYNC_GUIDE} Each filter matches only notes "
+        "attached directly to that item, not notes on its goals or tasks."
     ),
 )
 async def list_context_notes(
@@ -514,8 +519,14 @@ async def list_context_notes(
         UUID | None,
         Query(description="Filter by task. Another user's task yields no rows."),
     ] = None,
+    section: Annotated[
+        NoteSection | None,
+        Query(description="Only overviews or only logs. Omit for both."),
+    ] = None,
 ) -> AgentPage[ContextNoteResponse]:
     statement = select(ContextNote).where(_owned_note_filter(principal.user_id))
+    if section is not None:
+        statement = statement.where(ContextNote.section == section.value)
     if project_id is not None:
         statement = statement.where(ContextNote.project_id == project_id)
     if goal_id is not None:

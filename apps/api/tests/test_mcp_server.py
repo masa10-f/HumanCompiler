@@ -26,6 +26,7 @@ from humancompiler_api.agent_rate_limit import agent_rate_limiter
 from humancompiler_api.database import db, get_session
 from humancompiler_api.main import app
 from humancompiler_api.mcp_server import mcp_lifespan
+from humancompiler_api.mcp_tools_read import _markdown_tail
 from humancompiler_api.models import (
     AgentAuditLog,
     AgentChange,
@@ -72,6 +73,7 @@ READ_TOOLS = {
     "find",
     "get_goal",
     "get_task",
+    "get_note",
     "list_logs",
     "get_context",
     "get_weekly_note",
@@ -985,8 +987,9 @@ async def test_destructive_with_unconfirmed_applies(
 
     is_error, body = await call(mcp, *calls[2], secret)
     assert not is_error, body
-    assert set(body) == {"applied", "note"}
+    assert set(body) == {"applied", "section", "note"}
     assert body["applied"] is True
+    assert body["section"] == "overview"
     assert set(body["note"]) == {"id", "updated_at", "content_markdown"}
     assert body["note"]["id"] == str(note.id)
     assert body["note"]["content_markdown"] == "Replaced"
@@ -1078,7 +1081,9 @@ async def test_foreign_ids_are_404_errors(session: Session, mcp: httpx.AsyncClie
     assert session.get(Task, other_task.id).title == "Task"  # type: ignore[union-attr]
 
 
-async def test_append_note_returns_markdown(session: Session, mcp: httpx.AsyncClient):
+async def test_append_note_writes_the_log_and_returns_no_text(
+    session: Session, mcp: httpx.AsyncClient
+):
     _, _, task = _tree(session)
     secret = issue_token(session, USER_A, [AgentScope.NOTES_WRITE])
 
@@ -1094,15 +1099,17 @@ async def test_append_note_returns_markdown(session: Session, mcp: httpx.AsyncCl
     )
 
     assert not is_error, body
-    assert set(body) == {"note"}
+    # A log grows with every append, so the append does not send it back.
+    assert set(body) == {"section", "note"}
+    assert body["section"] == "log"
     note = body["note"]
-    assert set(note) == {"id", "updated_at", "content_markdown"}
-    assert "- [ ] Ship it" in note["content_markdown"]
-    assert "- [x] Test it" in note["content_markdown"]
+    assert set(note) == {"id", "updated_at", "characters"}
     assert note["updated_at"].endswith("+00:00")
     stored = session.exec(select(ContextNote)).one()
     assert note["id"] == str(stored.id)
-    assert stored.task_id == task.id
+    assert (stored.task_id, stored.section) == (task.id, "log")
+    assert 'data-type="taskItem" data-checked="true"' in stored.content
+    assert note["characters"] == len(stored.content_text)
     changes = _agent_changes(session)
     assert [(row.entity_type, row.action) for row in changes] == [
         ("context_note", "append")
@@ -1459,32 +1466,153 @@ async def test_goal_note_append_read_and_replace(
     )
     assert not is_error, body
 
+    # The goal's reads carry its overview; of the log, only that it exists.
     is_error, read = await call(mcp, "get_goal", {"goal_id": str(goal.id)}, secret)
     assert not is_error, read
-    assert "First summary" in read["note"]["content_markdown"]
+    assert read["note"] is None
+    assert set(read["log"]) == {"updated_at", "characters"}
+    assert read["log"]["characters"] > len("First summary")
 
+    is_error, log = await call(
+        mcp, "get_note", {"kind": "goal", "id": str(goal.id), "section": "log"}, secret
+    )
+    assert not is_error, log
+    assert (log["kind"], log["id"], log["section"]) == ("goal", str(goal.id), "log")
+    assert "First summary" in log["note"]["content_markdown"]
+    assert log["note"]["updated_at"] == read["log"]["updated_at"]
+
+    # Writing the overview for the first time: there is none, so null.
     is_error, body = await call(
         mcp,
         "replace_note",
         {
             "kind": "goal",
             "id": str(goal.id),
-            "expected_updated_at": read["note"]["updated_at"],
+            "expected_updated_at": None,
+            "content_markdown": "## Now\n\n- One point",
+        },
+        secret,
+    )
+    assert not is_error, body
+    assert (body["applied"], body["section"]) == (True, "overview")
+    is_error, read = await call(mcp, "get_goal", {"goal_id": str(goal.id)}, secret)
+    assert read["note"]["content_markdown"].startswith("## Now")
+
+    # Tidying the log names the log and its updated_at.
+    is_error, body = await call(
+        mcp,
+        "replace_note",
+        {
+            "kind": "goal",
+            "id": str(goal.id),
+            "section": "log",
+            "expected_updated_at": log["note"]["updated_at"],
             "content_markdown": "## Tidied\n\n- One point",
         },
         secret,
     )
     assert not is_error, body
-    assert body["applied"] is True
     assert body["note"]["content_markdown"].startswith("## Tidied")
-    stored = session.exec(select(ContextNote)).one()
-    assert stored.goal_id == goal.id
-    assert "First summary" not in stored.content
+    stored = {
+        note.section: note.content for note in session.exec(select(ContextNote)).all()
+    }
+    assert set(stored) == {"overview", "log"}
+    assert "First summary" not in stored["log"]
     changes = sorted(_agent_changes(session), key=lambda row: row.created_at)
     assert [(row.action, row.destructive) for row in changes] == [
         ("append", False),
+        ("replace", False),
         ("replace", True),
     ]
+
+
+def test_markdown_tail_starts_at_a_paragraph_only_when_that_costs_little():
+    entries = "\n\n".join(f"entry {index:03d}" for index in range(50))
+    tail, truncated = _markdown_tail(entries, 100)
+    assert (tail.startswith("entry 0"), tail.endswith("entry 049"), truncated) == (
+        True,
+        True,
+        True,
+    )
+    assert 80 <= len(tail) <= 100
+
+    # One long paragraph and then a short one: starting at the blank line would
+    # return a fraction of what was asked for.
+    long_then_short = "x" * 5000 + "\n\nlast line"
+    tail, truncated = _markdown_tail(long_then_short, 1000)
+    assert (len(tail), truncated) == (1000, True)
+    assert tail.endswith("\n\nlast line")
+
+    assert _markdown_tail("short", 1000) == ("short", False)
+
+
+async def test_get_note_reads_either_section_and_the_tail_of_a_long_log(
+    session: Session, mcp: httpx.AsyncClient
+):
+    project, _, task = _tree(session)
+    seed_note(
+        session,
+        USER_A,
+        project=project,
+        content="<p>Why we do this</p>",
+        content_type="html",
+    )
+    seed_note(
+        session,
+        USER_A,
+        project=project,
+        section="log",
+        content="".join(f"<p>entry {index:03d}</p>" for index in range(100)),
+        content_type="html",
+    )
+    secret = issue_token(session, USER_A, [AgentScope.NOTES_READ])
+
+    is_error, body = await call(
+        mcp, "get_note", {"kind": "project", "id": str(project.id)}, secret
+    )
+    assert not is_error, body
+    assert body["section"] == "overview"
+    assert body["note"]["content_markdown"] == "Why we do this"
+    assert body["note"]["truncated"] is False
+    # The visible text, the unit get_goal and get_task count a log in.
+    assert body["note"]["characters"] == len("Why we do this")
+
+    is_error, body = await call(
+        mcp,
+        "get_note",
+        {
+            "kind": "project",
+            "id": str(project.id),
+            "section": "log",
+            "tail_characters": 200,
+        },
+        secret,
+    )
+    assert not is_error, body
+    note = body["note"]
+    assert note["truncated"] is True
+    assert note["characters"] > 200 >= len(note["content_markdown"])
+    # The latest entries, starting at a whole one.
+    assert note["content_markdown"].startswith("entry 0")
+    assert note["content_markdown"].endswith("entry 099")
+
+    # An item without that note, and one that is not the user's.
+    is_error, body = await call(
+        mcp, "get_note", {"kind": "task", "id": str(task.id), "section": "log"}, secret
+    )
+    assert (is_error, body["note"]) == (False, None)
+    other = seed_project(session, USER_B)
+    for missing in (other.id, uuid4()):
+        is_error, body = await call(
+            mcp, "get_note", {"kind": "project", "id": str(missing)}, secret
+        )
+        assert (is_error, body["status"]) == (True, 404)
+
+    no_notes = issue_token(session, USER_A, [AgentScope.PROJECTS_READ])
+    is_error, body = await call(
+        mcp, "get_note", {"kind": "project", "id": str(project.id)}, no_notes
+    )
+    assert (is_error, body["status"]) == (True, 403)
 
 
 # --- weekly notes ---------------------------------------------------------------

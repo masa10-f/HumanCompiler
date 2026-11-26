@@ -73,7 +73,10 @@ _OUTER_APP_SCOPE_KEY = "humancompiler.outer_app"
 
 INSTRUCTIONS = """\
 HumanCompiler is the user's task manager. Projects contain goals, goals contain \
-tasks, and each project, goal and task can have one context note. Tasks also \
+tasks. Each project, goal and task has two notes: an overview, which says what \
+is true now (purpose, decisions, next steps), is kept short and is what the \
+`get_*` tools return; and a log, which records what happened (work summaries, \
+findings), keeps growing and is read on request with `get_note`. Tasks also \
 have work logs: time records of the minutes worked and what was done. The user \
 also keeps one weekly note per week (seven days from the weekday the user \
 chooses) for plans and reflections; read it with `get_weekly_note` or \
@@ -83,8 +86,10 @@ them with `get_daily_note` or `list_daily_notes`.
 Working rules:
 1. Before writing, check the target with `find` or a `get_*` tool.
 2. At the end of your work, update the related tasks' status and notes.
-3. Append dated summaries to notes, written so the user can read them later.
-4. Replace a note only when the user asks you to tidy it.
+3. Append dated summaries to the log with `append_note`, written so the user \
+can read them later. Do not put a record of work in an overview.
+4. Rewrite an overview with `replace_note` only when the user asks you to \
+update or tidy it.
 5. To record time worked on a task, use `create_log` with the minutes and, in \
 comment, a short summary of what was done; check `list_logs` first so the \
 same work is not recorded twice.

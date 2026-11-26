@@ -41,11 +41,11 @@ function makeNote(content: string, updatedAt: string): ContextNote {
     project_id: 'project-1',
     goal_id: null,
     task_id: null,
+    section: 'overview',
     content,
     content_type: 'html',
     created_at: FETCHED_AT,
     updated_at: updatedAt,
-    attachments: [],
   }
 }
 
@@ -325,6 +325,50 @@ describe('useNote and task lists', () => {
     })
 
     expect(mockUpdateProjectNote).toHaveBeenCalledTimes(1)
+    expect(invalidateQueries).not.toHaveBeenCalled()
+  })
+})
+
+describe('useNote sections', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    mockGetTaskNote.mockResolvedValue(makeNote('<p>old</p>', FETCHED_AT))
+    mockUpdateTaskNote.mockResolvedValue(makeNote('<p>new</p>', FIRST_SAVE_AT))
+  })
+
+  it('reads and saves the overview unless told otherwise', async () => {
+    const { result } = await renderLoaded('task')
+
+    await act(async () => {
+      await result.current.updateNoteImmediate({ content: '<p>new</p>', content_type: 'html' })
+    })
+
+    expect(mockGetTaskNote).toHaveBeenCalledWith('task-1', 'overview')
+    expect(mockUpdateTaskNote).toHaveBeenCalledWith(
+      'task-1',
+      expect.objectContaining({ content: '<p>new</p>' }),
+      'overview',
+    )
+  })
+
+  it('reads and saves the log, which task lists do not show', async () => {
+    const { result } = renderHook(
+      () => useNote({ entityType: 'task', entityId: 'task-1', section: 'log' }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => {
+      await result.current.updateNoteImmediate({ content: '<p>new</p>', content_type: 'html' })
+    })
+
+    expect(mockGetTaskNote).toHaveBeenCalledWith('task-1', 'log')
+    expect(mockUpdateTaskNote).toHaveBeenCalledWith(
+      'task-1',
+      expect.objectContaining({ content: '<p>new</p>', expected_updated_at: FETCHED_AT }),
+      'log',
+    )
+    // note_excerpt is the overview's opening: a log save changes no task.
     expect(invalidateQueries).not.toHaveBeenCalled()
   })
 })

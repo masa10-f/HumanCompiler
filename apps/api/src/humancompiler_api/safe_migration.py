@@ -25,6 +25,7 @@ from humancompiler_api.models import (
     AgentProposal,
     ContextNote,
     NoteAttachment,
+    NoteSection,
     DailyPlanDocument,
     EmailNotificationLog,
     RescheduleDecision,
@@ -93,8 +94,14 @@ def notes_with_former_task_text(backup_data: dict[str, Any]) -> list[dict[str, A
     one owned by its project's owner. Notes of newer backups pass
     through unchanged. The IDs are the backup's own."""
     notes = [dict(note) for note in backup_data.get("context_notes", [])]
+    # The text was the task's body, so it goes to the overview, not the log.
+    # A note of a backup made before notes had sections is an overview.
     note_by_task = {
-        str(note["task_id"]): note for note in notes if note.get("task_id") is not None
+        str(note["task_id"]): note
+        for note in notes
+        if note.get("task_id") is not None
+        and note.get("section", NoteSection.OVERVIEW.value)
+        == NoteSection.OVERVIEW.value
     }
     project_by_goal = {
         str(goal["id"]): str(goal["project_id"])

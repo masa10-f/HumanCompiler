@@ -255,6 +255,8 @@ export interface ContextExportQuery {
   includeCompleted: boolean
   includeWorkSessions: boolean
   includeDailyPlans: boolean
+  /** The logs of the notes; their overviews are always exported. */
+  includeNoteLogs?: boolean
   periodDays?: number
 }
 
@@ -276,6 +278,7 @@ export function fetchContext(
     include_work_sessions: String(query.includeWorkSessions),
     include_daily_plans: String(query.includeDailyPlans),
   })
+  if (query.includeNoteLogs) params.set('include_note_logs', 'true')
   if (query.periodDays !== undefined) params.set('period_days', String(query.periodDays))
   const subject = kind === 'project' ? `Project ${id}` : `Goal ${id}`
   return agentGet(

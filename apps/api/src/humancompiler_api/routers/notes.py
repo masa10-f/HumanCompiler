@@ -5,12 +5,13 @@ Context Notes API router for rich text notes on projects, goals, and tasks
 import logging
 from collections.abc import Generator
 from datetime import datetime, UTC
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session, and_, select
+from sqlmodel import Session, and_, col, func, select
 
 from humancompiler_api import proposal_service
 from humancompiler_api.agent_write_service import check_expected_updated_at
@@ -19,8 +20,10 @@ from humancompiler_api.database import db
 from humancompiler_api.models import (
     ContextNote,
     ContextNoteUpdate,
-    ContextNoteResponse,
+    ContextNoteWithLogResponse,
     ErrorResponse,
+    NoteLogSummary,
+    NoteSection,
     Project,
     Goal,
     Task,
@@ -31,6 +34,12 @@ from humancompiler_api.proposal_payloads import NoteTarget
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/notes", tags=["notes"])
+
+# Which of the item's two notes a request is about; the overview when left out.
+SectionQuery = Annotated[
+    NoteSection,
+    Query(description="The item's overview (default) or its log."),
+]
 
 
 class TaskNoteMarkdownResponse(BaseModel):
@@ -114,14 +123,15 @@ def get_or_create_note(
     project_id: UUID | None = None,
     goal_id: UUID | None = None,
     task_id: UUID | None = None,
+    section: NoteSection = NoteSection.OVERVIEW,
 ) -> ContextNote:
-    """Get existing note or create a new one.
+    """Get the item's existing note of ``section`` or create a new one.
 
     Handles concurrent creation race conditions by catching IntegrityError
     and retrying the select query.
     """
     # Build query based on entity type
-    query = select(ContextNote)
+    query = select(ContextNote).where(ContextNote.section == section.value)
 
     if project_id:
         query = query.where(ContextNote.project_id == project_id)
@@ -141,6 +151,7 @@ def get_or_create_note(
             project_id=project_id,
             goal_id=goal_id,
             task_id=task_id,
+            section=section.value,
             content="",
             content_type="markdown",
         )
@@ -169,8 +180,10 @@ def update_note(
     user_id: str,
     target: NoteTarget,
     note_data: ContextNoteUpdate,
+    section: NoteSection = NoteSection.OVERVIEW,
 ) -> ContextNote:
-    """Write the editor's fields to the target's note (created if missing).
+    """Write the editor's fields to the target's note of ``section`` (created
+    if missing).
 
     The note row is locked (a no-op on SQLite) before ``expected_updated_at`` is
     compared, so an agent write cannot land between the check and the save. A
@@ -182,9 +195,10 @@ def update_note(
         project_id=target.project_id,
         goal_id=target.goal_id,
         task_id=target.task_id,
+        section=section,
     )
     try:
-        note = proposal_service.lock_note(session, target)
+        note = proposal_service.lock_note(session, target, section)
         if note is None or note.updated_at is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -209,10 +223,32 @@ def update_note(
     return note
 
 
+def note_response(session: Session, note: ContextNote) -> ContextNoteWithLogResponse:
+    """The note as the web reads it: an overview says whether its item has a
+    log with text, so the page can show that without loading the log."""
+    response = ContextNoteWithLogResponse.model_validate(note)
+    if note.section != NoteSection.OVERVIEW:
+        return response
+    query = select(ContextNote.updated_at, func.length(ContextNote.content_text)).where(
+        ContextNote.section == NoteSection.LOG.value,
+        col(ContextNote.content_text) != "",
+    )
+    if note.project_id is not None:
+        query = query.where(ContextNote.project_id == note.project_id)
+    elif note.goal_id is not None:
+        query = query.where(ContextNote.goal_id == note.goal_id)
+    else:
+        query = query.where(ContextNote.task_id == note.task_id)
+    row = session.exec(query).first()
+    if row is not None and row[0] is not None:
+        response.log = NoteLogSummary(updated_at=row[0], characters=row[1])
+    return response
+
+
 # Project Notes
 @router.get(
     "/projects/{project_id}",
-    response_model=ContextNoteResponse,
+    response_model=ContextNoteWithLogResponse,
     responses={
         404: {"model": ErrorResponse, "description": "Project not found"},
         403: {"model": ErrorResponse, "description": "Not authorized"},
@@ -220,18 +256,21 @@ def update_note(
 )
 async def get_project_note(
     project_id: UUID,
+    section: SectionQuery = NoteSection.OVERVIEW,
     session: Session = Depends(get_session),
     current_user: AuthUser = Depends(get_current_user),
-) -> ContextNoteResponse:
-    """Get or create a note for a project"""
+) -> ContextNoteWithLogResponse:
+    """Get or create a project's overview, or its log with ``section=log``"""
     verify_project_ownership(session, project_id, current_user.user_id)
-    note = get_or_create_note(session, current_user.user_id, project_id=project_id)
-    return ContextNoteResponse.model_validate(note)
+    note = get_or_create_note(
+        session, current_user.user_id, project_id=project_id, section=section
+    )
+    return note_response(session, note)
 
 
 @router.put(
     "/projects/{project_id}",
-    response_model=ContextNoteResponse,
+    response_model=ContextNoteWithLogResponse,
     responses={
         404: {"model": ErrorResponse, "description": "Project not found"},
         403: {"model": ErrorResponse, "description": "Not authorized"},
@@ -241,23 +280,29 @@ async def get_project_note(
 async def update_project_note(
     project_id: UUID,
     note_data: ContextNoteUpdate,
+    section: SectionQuery = NoteSection.OVERVIEW,
     session: Session = Depends(get_session),
     current_user: AuthUser = Depends(get_current_user),
-) -> ContextNoteResponse:
-    """Update a project's note (creates if doesn't exist)"""
+) -> ContextNoteWithLogResponse:
+    """Update a project's overview, or its log with ``section=log`` (creates if
+    doesn't exist)"""
     verify_project_ownership(session, project_id, current_user.user_id)
     note = update_note(
-        session, current_user.user_id, NoteTarget(project_id=project_id), note_data
+        session,
+        current_user.user_id,
+        NoteTarget(project_id=project_id),
+        note_data,
+        section,
     )
 
-    logger.info(f"Updated project note for project {project_id}")
-    return ContextNoteResponse.model_validate(note)
+    logger.info(f"Updated project {section.value} note for project {project_id}")
+    return note_response(session, note)
 
 
 # Goal Notes
 @router.get(
     "/goals/{goal_id}",
-    response_model=ContextNoteResponse,
+    response_model=ContextNoteWithLogResponse,
     responses={
         404: {"model": ErrorResponse, "description": "Goal not found"},
         403: {"model": ErrorResponse, "description": "Not authorized"},
@@ -265,18 +310,21 @@ async def update_project_note(
 )
 async def get_goal_note(
     goal_id: UUID,
+    section: SectionQuery = NoteSection.OVERVIEW,
     session: Session = Depends(get_session),
     current_user: AuthUser = Depends(get_current_user),
-) -> ContextNoteResponse:
-    """Get or create a note for a goal"""
+) -> ContextNoteWithLogResponse:
+    """Get or create a goal's overview, or its log with ``section=log``"""
     verify_goal_ownership(session, goal_id, current_user.user_id)
-    note = get_or_create_note(session, current_user.user_id, goal_id=goal_id)
-    return ContextNoteResponse.model_validate(note)
+    note = get_or_create_note(
+        session, current_user.user_id, goal_id=goal_id, section=section
+    )
+    return note_response(session, note)
 
 
 @router.put(
     "/goals/{goal_id}",
-    response_model=ContextNoteResponse,
+    response_model=ContextNoteWithLogResponse,
     responses={
         404: {"model": ErrorResponse, "description": "Goal not found"},
         403: {"model": ErrorResponse, "description": "Not authorized"},
@@ -286,23 +334,29 @@ async def get_goal_note(
 async def update_goal_note(
     goal_id: UUID,
     note_data: ContextNoteUpdate,
+    section: SectionQuery = NoteSection.OVERVIEW,
     session: Session = Depends(get_session),
     current_user: AuthUser = Depends(get_current_user),
-) -> ContextNoteResponse:
-    """Update a goal's note (creates if doesn't exist)"""
+) -> ContextNoteWithLogResponse:
+    """Update a goal's overview, or its log with ``section=log`` (creates if
+    doesn't exist)"""
     verify_goal_ownership(session, goal_id, current_user.user_id)
     note = update_note(
-        session, current_user.user_id, NoteTarget(goal_id=goal_id), note_data
+        session,
+        current_user.user_id,
+        NoteTarget(goal_id=goal_id),
+        note_data,
+        section,
     )
 
-    logger.info(f"Updated goal note for goal {goal_id}")
-    return ContextNoteResponse.model_validate(note)
+    logger.info(f"Updated goal {section.value} note for goal {goal_id}")
+    return note_response(session, note)
 
 
 # Task Notes
 @router.get(
     "/tasks/{task_id}",
-    response_model=ContextNoteResponse,
+    response_model=ContextNoteWithLogResponse,
     responses={
         404: {"model": ErrorResponse, "description": "Task not found"},
         403: {"model": ErrorResponse, "description": "Not authorized"},
@@ -310,18 +364,21 @@ async def update_goal_note(
 )
 async def get_task_note(
     task_id: UUID,
+    section: SectionQuery = NoteSection.OVERVIEW,
     session: Session = Depends(get_session),
     current_user: AuthUser = Depends(get_current_user),
-) -> ContextNoteResponse:
-    """Get or create a note for a task"""
+) -> ContextNoteWithLogResponse:
+    """Get or create a task's overview, or its log with ``section=log``"""
     verify_task_ownership(session, task_id, current_user.user_id)
-    note = get_or_create_note(session, current_user.user_id, task_id=task_id)
-    return ContextNoteResponse.model_validate(note)
+    note = get_or_create_note(
+        session, current_user.user_id, task_id=task_id, section=section
+    )
+    return note_response(session, note)
 
 
 @router.put(
     "/tasks/{task_id}",
-    response_model=ContextNoteResponse,
+    response_model=ContextNoteWithLogResponse,
     responses={
         404: {"model": ErrorResponse, "description": "Task not found"},
         403: {"model": ErrorResponse, "description": "Not authorized"},
@@ -331,17 +388,23 @@ async def get_task_note(
 async def update_task_note(
     task_id: UUID,
     note_data: ContextNoteUpdate,
+    section: SectionQuery = NoteSection.OVERVIEW,
     session: Session = Depends(get_session),
     current_user: AuthUser = Depends(get_current_user),
-) -> ContextNoteResponse:
-    """Update a task's note (creates if doesn't exist)"""
+) -> ContextNoteWithLogResponse:
+    """Update a task's overview, or its log with ``section=log`` (creates if
+    doesn't exist)"""
     verify_task_ownership(session, task_id, current_user.user_id)
     note = update_note(
-        session, current_user.user_id, NoteTarget(task_id=task_id), note_data
+        session,
+        current_user.user_id,
+        NoteTarget(task_id=task_id),
+        note_data,
+        section,
     )
 
-    logger.info(f"Updated task note for task {task_id}")
-    return ContextNoteResponse.model_validate(note)
+    logger.info(f"Updated task {section.value} note for task {task_id}")
+    return note_response(session, note)
 
 
 @router.get(
@@ -357,14 +420,18 @@ async def get_task_note_markdown(
     session: Session = Depends(get_session),
     current_user: AuthUser = Depends(get_current_user),
 ) -> TaskNoteMarkdownResponse:
-    """The task's note as Markdown, the way agents read it.
+    """The task's overview as Markdown, the way agents read it.
 
-    A task's note often holds the prompt for an AI assistant; this is the text
-    the web copies to the clipboard. A task without a note gives an empty
-    string, and reading does not create the note."""
+    A task's overview is its body and often holds the prompt for an AI
+    assistant; this is the text the web copies to the clipboard. The task's log
+    is not part of it. A task without a note gives an empty string, and reading
+    does not create the note."""
     task = verify_task_ownership(session, task_id, current_user.user_id)
     note = session.exec(
-        select(ContextNote).where(ContextNote.task_id == task_id)
+        select(ContextNote).where(
+            ContextNote.task_id == task_id,
+            ContextNote.section == NoteSection.OVERVIEW.value,
+        )
     ).first()
     content = note.content if note is not None else ""
     markdown = (

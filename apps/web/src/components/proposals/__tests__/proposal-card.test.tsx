@@ -120,9 +120,28 @@ describe('ProposalCard', () => {
       );
       expect(screen.getByText('ノート追記')).toBeInTheDocument();
       expect(screen.getByText('Target goal')).toBeInTheDocument();
+      // Without a section (a proposal made before notes had two) it is the log.
+      expect(screen.getByText('追記する場所').nextElementSibling).toHaveTextContent('ログ');
       expect(
         screen.getByText((_, el) => el?.textContent === '# Heading\n- item' && el.tagName === 'DD')
       ).toBeInTheDocument();
+    });
+
+    it('says when a note append is for the overview', () => {
+      renderWithClient(
+        <ProposalCard
+          proposal={makeProposal({
+            kind: 'note_append',
+            goal_title: 'Target goal',
+            payload: {
+              target: { goal_id: 'g1' },
+              section: 'overview',
+              content_markdown: 'text',
+            },
+          })}
+        />
+      );
+      expect(screen.getByText('追記する場所').nextElementSibling).toHaveTextContent('概要');
     });
 
     it('shows （削除済み） for a note target that was deleted', () => {

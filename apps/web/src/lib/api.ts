@@ -69,6 +69,7 @@ import type { SortOptions } from "@/types/sort";
 import type {
   ContextNote,
   ContextNoteUpdate,
+  NoteSection,
   NoteAttachment,
   NoteAttachmentTarget,
   NoteAttachmentUrlsResponse,
@@ -151,11 +152,25 @@ export function buildContextExportQuery(options: ContextExportOptions): string {
     include_completed: String(options.includeCompleted),
     include_work_sessions: String(options.includeWorkSessions),
     include_daily_plans: String(options.includeDailyPlans),
+    include_note_logs: String(options.includeNoteLogs),
   });
   if (options.periodDays !== null) {
     params.set("period_days", String(options.periodDays));
   }
   return params.toString();
+}
+
+/**
+ * Where the web reads and saves one of an item's two notes. The overview is
+ * the default, so its URL carries no query.
+ */
+function noteUrl(
+  collection: "projects" | "goals" | "tasks",
+  id: string,
+  section: NoteSection = "overview",
+): string {
+  const url = `/api/notes/${collection}/${id}`;
+  return section === "overview" ? url : `${url}?section=${section}`;
 }
 
 type RawTask = Omit<Task, "estimate_hours"> & {
@@ -1476,10 +1491,14 @@ class ApiClient {
    * Get or create a note for a project.
    *
    * @param projectId - The project UUID
+   * @param section - The project's overview (default) or its log
    * @returns The context note
    */
-  async getProjectNote(projectId: string): Promise<ContextNote> {
-    return this.request<ContextNote>(`/api/notes/projects/${projectId}`);
+  async getProjectNote(
+    projectId: string,
+    section?: NoteSection,
+  ): Promise<ContextNote> {
+    return this.request<ContextNote>(noteUrl("projects", projectId, section));
   }
 
   /**
@@ -1487,13 +1506,15 @@ class ApiClient {
    *
    * @param projectId - The project UUID
    * @param data - Note update data
+   * @param section - The project's overview (default) or its log
    * @returns The updated context note
    */
   async updateProjectNote(
     projectId: string,
     data: ContextNoteUpdate,
+    section?: NoteSection,
   ): Promise<ContextNote> {
-    return this.request<ContextNote>(`/api/notes/projects/${projectId}`, {
+    return this.request<ContextNote>(noteUrl("projects", projectId, section), {
       method: "PUT",
       body: JSON.stringify(data),
     });
@@ -1503,10 +1524,14 @@ class ApiClient {
    * Get or create a note for a goal.
    *
    * @param goalId - The goal UUID
+   * @param section - The goal's overview (default) or its log
    * @returns The context note
    */
-  async getGoalNote(goalId: string): Promise<ContextNote> {
-    return this.request<ContextNote>(`/api/notes/goals/${goalId}`);
+  async getGoalNote(
+    goalId: string,
+    section?: NoteSection,
+  ): Promise<ContextNote> {
+    return this.request<ContextNote>(noteUrl("goals", goalId, section));
   }
 
   /**
@@ -1514,13 +1539,15 @@ class ApiClient {
    *
    * @param goalId - The goal UUID
    * @param data - Note update data
+   * @param section - The goal's overview (default) or its log
    * @returns The updated context note
    */
   async updateGoalNote(
     goalId: string,
     data: ContextNoteUpdate,
+    section?: NoteSection,
   ): Promise<ContextNote> {
-    return this.request<ContextNote>(`/api/notes/goals/${goalId}`, {
+    return this.request<ContextNote>(noteUrl("goals", goalId, section), {
       method: "PUT",
       body: JSON.stringify(data),
     });
@@ -1530,10 +1557,14 @@ class ApiClient {
    * Get or create a note for a task.
    *
    * @param taskId - The task UUID
+   * @param section - The task's overview (default) or its log
    * @returns The context note
    */
-  async getTaskNote(taskId: string): Promise<ContextNote> {
-    return this.request<ContextNote>(`/api/notes/tasks/${taskId}`);
+  async getTaskNote(
+    taskId: string,
+    section?: NoteSection,
+  ): Promise<ContextNote> {
+    return this.request<ContextNote>(noteUrl("tasks", taskId, section));
   }
 
   /**
@@ -1551,13 +1582,15 @@ class ApiClient {
    *
    * @param taskId - The task UUID
    * @param data - Note update data
+   * @param section - The task's overview (default) or its log
    * @returns The updated context note
    */
   async updateTaskNote(
     taskId: string,
     data: ContextNoteUpdate,
+    section?: NoteSection,
   ): Promise<ContextNote> {
-    return this.request<ContextNote>(`/api/notes/tasks/${taskId}`, {
+    return this.request<ContextNote>(noteUrl("tasks", taskId, section), {
       method: "PUT",
       body: JSON.stringify(data),
     });
@@ -2111,17 +2144,29 @@ export const rescheduleApi = {
  * Provides methods for managing rich text notes on projects, goals, and tasks.
  */
 export const notesApi = {
-  getProjectNote: (projectId: string) => apiClient.getProjectNote(projectId),
-  updateProjectNote: (projectId: string, data: ContextNoteUpdate) =>
-    apiClient.updateProjectNote(projectId, data),
-  getGoalNote: (goalId: string) => apiClient.getGoalNote(goalId),
-  updateGoalNote: (goalId: string, data: ContextNoteUpdate) =>
-    apiClient.updateGoalNote(goalId, data),
-  getTaskNote: (taskId: string) => apiClient.getTaskNote(taskId),
+  getProjectNote: (projectId: string, section?: NoteSection) =>
+    apiClient.getProjectNote(projectId, section),
+  updateProjectNote: (
+    projectId: string,
+    data: ContextNoteUpdate,
+    section?: NoteSection,
+  ) => apiClient.updateProjectNote(projectId, data, section),
+  getGoalNote: (goalId: string, section?: NoteSection) =>
+    apiClient.getGoalNote(goalId, section),
+  updateGoalNote: (
+    goalId: string,
+    data: ContextNoteUpdate,
+    section?: NoteSection,
+  ) => apiClient.updateGoalNote(goalId, data, section),
+  getTaskNote: (taskId: string, section?: NoteSection) =>
+    apiClient.getTaskNote(taskId, section),
   getTaskNoteMarkdown: (taskId: string) =>
     apiClient.getTaskNoteMarkdown(taskId),
-  updateTaskNote: (taskId: string, data: ContextNoteUpdate) =>
-    apiClient.updateTaskNote(taskId, data),
+  updateTaskNote: (
+    taskId: string,
+    data: ContextNoteUpdate,
+    section?: NoteSection,
+  ) => apiClient.updateTaskNote(taskId, data, section),
   uploadAttachment: (
     target: NoteAttachmentTarget,
     image: Blob,

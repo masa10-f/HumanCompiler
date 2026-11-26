@@ -6,9 +6,9 @@
 
 """Read tools of the MCP server.
 
-``find``, ``get_goal``, ``get_task``, ``list_logs``, ``get_context``,
-``get_weekly_note``, ``list_weekly_notes``, ``get_daily_note`` and
-``list_daily_notes``.
+``find``, ``get_goal``, ``get_task``, ``get_note``, ``list_logs``,
+``get_context``, ``get_weekly_note``, ``list_weekly_notes``,
+``get_daily_note`` and ``list_daily_notes``.
 
 They reuse the agent read API's owned-row queries and the context export, so
 ownership and output match REST. Another user's ID is reported exactly like a
@@ -25,12 +25,13 @@ from mcp_types import CallToolResult, ToolAnnotations
 from pydantic import Field
 from sqlmodel import Session, col, func, select
 
-from humancompiler_api import weekly_notes
+from humancompiler_api import agent_write_service, weekly_notes
 from humancompiler_api.daily_note_markdown import (
     daily_note_markdown,
     schedule_payload,
 )
 from humancompiler_api.agent_auth import AgentPrincipal
+from humancompiler_api.agent_write_models import NOTE_TARGET_KINDS, NoteKind
 from humancompiler_api.ai.context_export import (
     build_goal_context_export,
     build_project_context_export,
@@ -44,6 +45,7 @@ from humancompiler_api.models import (
     GoalResponse,
     Log,
     LogResponse,
+    NoteSection,
     Project,
     Task,
     TaskResponse,
@@ -100,10 +102,20 @@ def _note_payload(note: ContextNote | None) -> dict[str, Any] | None:
     }
 
 
-def _note_for(session: Session, user_id: UUID, column: Any, item_id: UUID) -> Any:
+def _note_for(
+    session: Session,
+    user_id: UUID,
+    column: Any,
+    item_id: UUID,
+    section: NoteSection = NoteSection.OVERVIEW,
+) -> Any:
     statement = (
         select(ContextNote)
-        .where(_owned_note_filter(user_id), column == item_id)
+        .where(
+            _owned_note_filter(user_id),
+            column == item_id,
+            ContextNote.section == section.value,
+        )
         .order_by(col(ContextNote.updated_at).desc())
     )
     return session.exec(statement).first()
@@ -112,11 +124,64 @@ def _note_for(session: Session, user_id: UUID, column: Any, item_id: UUID) -> An
 def _readable_note(
     session: Session, principal: AgentPrincipal, column: Any, item_id: UUID
 ) -> ContextNote | None:
-    """The item's note, only for a token with ``notes:read`` (as in REST)."""
+    """The item's overview, only for a token with ``notes:read`` (as in REST)."""
     if AgentScope.NOTES_READ.value not in principal.scopes:
         return None
     note: ContextNote | None = _note_for(session, principal.user_id, column, item_id)
     return note
+
+
+def _log_summary(
+    session: Session, principal: AgentPrincipal, column: Any, item_id: UUID
+) -> dict[str, Any] | None:
+    """When the item's log last changed and how long it is, not its text.
+
+    None without ``notes:read`` and for an item whose log has no text."""
+    if AgentScope.NOTES_READ.value not in principal.scopes:
+        return None
+    log: ContextNote | None = _note_for(
+        session, principal.user_id, column, item_id, NoteSection.LOG
+    )
+    if log is None or not log.content_text:
+        return None
+    return {
+        "updated_at": _utc_iso(log.updated_at),
+        "characters": len(log.content_text),
+    }
+
+
+def _markdown_tail(markdown: str, limit: int) -> tuple[str, bool]:
+    """The end of ``markdown`` in at most ``limit`` characters, and whether
+    anything was left out. The tail starts after a blank line when one comes
+    early in it, so it does not open in the middle of a paragraph; when the
+    first one comes late, starting there would drop most of what was asked
+    for, so the tail starts mid-paragraph instead."""
+    if len(markdown) <= limit:
+        return markdown, False
+    tail = markdown[-limit:]
+    cut = tail.find("\n\n")
+    if cut != -1 and cut < limit // 2:
+        tail = tail[cut:]
+    return tail.lstrip("\n"), True
+
+
+_NOTE_COLUMNS: dict[str, Any] = {
+    "project": ContextNote.project_id,
+    "goal": ContextNote.goal_id,
+    "task": ContextNote.task_id,
+}
+_SECTIONS = (
+    "An item has two notes: its overview (what is true now: purpose, "
+    "decisions, next steps; short and kept current) and its log (what "
+    "happened: work summaries, findings; it grows)."
+)
+_NOTE_AND_LOG = (
+    "note is the overview as Markdown, and log is {updated_at, characters} "
+    "for a log that has text, without the text (characters counts its visible "
+    "text): read it with get_note when you need how things got here. Both are "
+    "returned only to a token with "
+    "notes:read; each is null without that scope or when there is none."
+)
 
 
 # --- find ---------------------------------------------------------------------
@@ -227,9 +292,8 @@ async def find(
 @mcp_server.tool(
     name="get_goal",
     description=(
-        "Get one of the user's goals and its context note as Markdown. The "
-        "note is returned only to a token with notes:read; it is null without "
-        f"that scope or when there is no note. {_USER_DATA}"
+        f"Get one of the user's goals with its notes. {_SECTIONS} "
+        f"{_NOTE_AND_LOG} {_USER_DATA}"
     ),
     annotations=_READ_ONLY,
 )
@@ -244,6 +308,7 @@ async def get_goal(goal_id: UUID, ctx: Context) -> CallToolResult:
         return {
             "goal": GoalResponse.model_validate(goal).model_dump(mode="json"),
             "note": _note_payload(note),
+            "log": _log_summary(session, principal, ContextNote.goal_id, goal_id),
         }
 
     return await guarded_call("get_goal", AgentScope.GOALS_READ, run, ctx)
@@ -252,9 +317,8 @@ async def get_goal(goal_id: UUID, ctx: Context) -> CallToolResult:
 @mcp_server.tool(
     name="get_task",
     description=(
-        "Get one of the user's tasks and its context note as Markdown. The "
-        "note is returned only to a token with notes:read; it is null without "
-        f"that scope or when there is no note. {_USER_DATA}"
+        f"Get one of the user's tasks with its notes. {_SECTIONS} A task's "
+        f"overview is its body. {_NOTE_AND_LOG} {_USER_DATA}"
     ),
     annotations=_READ_ONLY,
 )
@@ -269,9 +333,72 @@ async def get_task(task_id: UUID, ctx: Context) -> CallToolResult:
         return {
             "task": TaskResponse.model_validate(task).model_dump(mode="json"),
             "note": _note_payload(note),
+            "log": _log_summary(session, principal, ContextNote.task_id, task_id),
         }
 
     return await guarded_call("get_task", AgentScope.TASKS_READ, run, ctx)
+
+
+# --- get_note ---------------------------------------------------------------------
+
+
+@mcp_server.tool(
+    name="get_note",
+    description=(
+        "Get one note of a project, goal or task as Markdown: its overview, or "
+        f"its log with section log. {_SECTIONS} Read the overview to know "
+        "where things stand and the log only when you need how they got "
+        "there. A log can be long: pass tail_characters (e.g. 4000) to get "
+        "only its latest entries. Returns {kind, id, section, note}: note is "
+        "{id, updated_at, content_markdown, characters, truncated}, or null "
+        "when the item has no such note; characters is the length of the "
+        "whole note's visible text, the same count get_task and get_goal give "
+        "for a log (its Markdown, which tail_characters counts, is somewhat "
+        "longer), and truncated says the start was left out. "
+        "Another user's item and a missing one both give a 404 error. "
+        f"{_USER_DATA}"
+    ),
+    annotations=_READ_ONLY,
+)
+async def get_note(
+    kind: NoteKind,
+    id: UUID,
+    ctx: Context,
+    section: Annotated[
+        Literal["overview", "log"],
+        Field(description="Which note. Omit for the overview."),
+    ] = "overview",
+    tail_characters: Annotated[
+        int | None,
+        Field(
+            ge=200,
+            le=100000,
+            description=(
+                "Only the last this many characters of the Markdown. Omit for all."
+            ),
+        ),
+    ] = None,
+) -> CallToolResult:
+    def run(session: Session, principal: AgentPrincipal) -> dict[str, Any]:
+        # 404 for an item that is not the user's, as the note writes answer.
+        agent_write_service.owned_note_target(
+            session, principal.user_id, NOTE_TARGET_KINDS[kind], id
+        )
+        note: ContextNote | None = _note_for(
+            session, principal.user_id, _NOTE_COLUMNS[kind], id, NoteSection(section)
+        )
+        payload = _note_payload(note)
+        if payload is not None and note is not None:
+            markdown = payload["content_markdown"]
+            payload["characters"] = len(note.content_text)
+            payload["truncated"] = False
+            if tail_characters is not None:
+                payload["content_markdown"], payload["truncated"] = _markdown_tail(
+                    markdown, tail_characters
+                )
+        return {"kind": kind, "id": str(id), "section": section, "note": payload}
+
+    return await guarded_call("get_note", AgentScope.NOTES_READ, run, ctx)
 
 
 # --- list_logs ------------------------------------------------------------------
@@ -333,16 +460,24 @@ async def list_logs(
     description=(
         "Get the Markdown context export of one of the user's projects or "
         "goals: its notes, tasks and work history. Read it before starting "
-        f"work on that project or goal. {_USER_DATA}"
+        "work on that project or goal. The notes are the overviews of the "
+        "project, goals and tasks; their logs are left out and only mentioned "
+        "with their size, unless include_logs is true, which can make the "
+        f"export much longer. {_USER_DATA}"
     ),
     annotations=_READ_ONLY,
 )
 async def get_context(
-    kind: Literal["project", "goal"], id: UUID, ctx: Context
+    kind: Literal["project", "goal"],
+    id: UUID,
+    ctx: Context,
+    include_logs: Annotated[
+        bool, Field(description="Also export the notes' logs in full.")
+    ] = False,
 ) -> CallToolResult:
     def run(session: Session, principal: AgentPrincipal) -> dict[str, Any]:
         # The REST endpoint's defaults, as when it is called without a query.
-        options = get_export_options()
+        options = get_export_options(include_note_logs=include_logs)
         if kind == "project":
             result = build_project_context_export(
                 session, principal.user_id, id, options

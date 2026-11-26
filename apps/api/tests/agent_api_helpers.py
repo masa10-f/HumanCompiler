@@ -211,6 +211,9 @@ def seed_note(
     goal: Goal | None = None,
     task: Task | None = None,
     updated_at: datetime | None = None,
+    section: str = "overview",
+    content: str = "Note",
+    content_type: str = "markdown",
 ) -> ContextNote:
     stamp = updated_at or datetime.now(UTC)
     task_stamp = task.updated_at if task else None
@@ -220,7 +223,9 @@ def seed_note(
         project_id=project.id if project else None,
         goal_id=goal.id if goal else None,
         task_id=task.id if task else None,
-        content="Note",
+        section=section,
+        content=content,
+        content_type=content_type,
         created_at=stamp,
         updated_at=stamp,
     )

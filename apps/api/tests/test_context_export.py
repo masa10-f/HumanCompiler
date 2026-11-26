@@ -192,9 +192,11 @@ def workspace(test_session: Session) -> Workspace:
                 content_type="html",
                 content="<p>設計方針: 小さく始める</p>",
             ),
+            # Not the owner's, so neither exported nor mentioned as a log.
             ContextNote(
                 user_id=other.id,
-                task_id=task.id,
+                goal_id=goal.id,
+                section="log",
                 content_type="markdown",
                 content="他人のノート",
             ),
@@ -392,6 +394,57 @@ def test_project_export_bundles_notes_tasks_and_work_history(
     assert markdown.index("### タスク: 旧案検討") < markdown.index(
         "## ゴール: 初期調査"
     )
+
+
+def test_logs_are_mentioned_unless_asked_for(
+    test_session: Session, workspace: Workspace
+):
+    test_session.add_all(
+        [
+            ContextNote(
+                user_id=workspace.owner.id,
+                project_id=workspace.project.id,
+                section="log",
+                content_type="html",
+                content="<h2>経緯</h2><p>10月に方針を変えた</p>",
+            ),
+            ContextNote(
+                user_id=workspace.owner.id,
+                task_id=workspace.task.id,
+                section="log",
+                content_type="html",
+                content="<p>下書きを書いた</p>",
+            ),
+        ]
+    )
+    test_session.commit()
+
+    _, markdown = _export_project(test_session, workspace)
+
+    # The overviews as before; of a log, only that it is there and how long.
+    assert "### プロジェクトノート\n\n#### 背景" in markdown
+    assert "> - 完了・キャンセル済み: 含む ／ 作業セッション: 含む ／ " in markdown
+    assert "ノートのログ: 含まない" in markdown
+    assert "方針を変えた" not in markdown
+    assert "下書きを書いた" not in markdown
+    assert markdown.count("※ ログ（経緯・作業メモ、約") == 2
+    # Counted from the stored visible text, without loading the logs.
+    assert "※ ログ（経緯・作業メモ、約13文字）は省略しています。" in markdown
+    assert "※ ログ（経緯・作業メモ、約7文字）は省略しています。" in markdown
+    # Another user's log on the goal is not counted.
+    assert "他人のノート" not in markdown
+
+    _, markdown = _export_project(test_session, workspace, include_note_logs=True)
+
+    assert "ノートのログ: 含む" in markdown
+    assert "### プロジェクトノートのログ\n\n##### 経緯\n10月に方針を変えた" in markdown
+    assert "#### ノートのログ\n\n下書きを書いた" in markdown
+    assert "※ ログ" not in markdown
+    # Each log follows its own overview.
+    assert markdown.index("### プロジェクトノート\n") < markdown.index(
+        "### プロジェクトノートのログ"
+    )
+    assert markdown.index("設計方針: 小さく始める") < markdown.index("下書きを書いた")
 
 
 def test_project_export_can_omit_completed_and_cancelled_items(

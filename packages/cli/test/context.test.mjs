@@ -120,6 +120,7 @@ describe('context', () => {
       [
         'context', 'goal', GOAL_ID, '-o', out,
         '--period-days', '30', '--no-completed', '--no-work-sessions', '--no-daily-plans',
+        '--with-logs',
       ],
       env,
     )
@@ -133,6 +134,7 @@ describe('context', () => {
       include_completed: 'false',
       include_work_sessions: 'false',
       include_daily_plans: 'false',
+      include_note_logs: 'true',
       period_days: '30',
     })
   })

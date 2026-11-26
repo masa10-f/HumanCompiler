@@ -10,9 +10,10 @@ from collections.abc import Sequence
 from html.parser import HTMLParser
 from uuid import UUID
 
-from sqlmodel import Session, and_, col, or_, select
+from sqlalchemy import ColumnElement
+from sqlmodel import Session, and_, col, func, or_, select
 
-from humancompiler_api.models import ContextNote
+from humancompiler_api.models import ContextNote, NoteSection
 from humancompiler_api.note_attachment_refs import (
     ATTACHMENT_ID_ATTRIBUTE,
     attachment_markdown,
@@ -175,18 +176,14 @@ def truncate_text(text: str, limit: int) -> str:
     return text[:limit].rstrip() + "…（以下省略）"
 
 
-def load_note_texts(
-    session: Session,
+def _notes_of(
     owner_id: UUID,
-    *,
-    project_ids: Sequence[UUID] = (),
-    goal_ids: Sequence[UUID] = (),
-    task_ids: Sequence[UUID] = (),
-) -> tuple[dict[UUID, str], dict[UUID, str], dict[UUID, str]]:
-    """Load non-empty note texts for projects, goals, and tasks in one query.
-
-    Returns ``(project_notes, goal_notes, task_notes)`` keyed by entity ID.
-    """
+    section: NoteSection,
+    project_ids: Sequence[UUID],
+    goal_ids: Sequence[UUID],
+    task_ids: Sequence[UUID],
+) -> ColumnElement[bool] | None:
+    """The owner's notes of ``section`` on the given items; None for no items."""
     conditions = []
     if project_ids:
         conditions.append(col(ContextNote.project_id).in_(project_ids))
@@ -195,13 +192,73 @@ def load_note_texts(
     if task_ids:
         conditions.append(col(ContextNote.task_id).in_(task_ids))
     if not conditions:
+        return None
+    return and_(
+        ContextNote.user_id == owner_id,
+        ContextNote.section == section.value,
+        or_(*conditions),
+    )
+
+
+def load_note_text_lengths(
+    session: Session,
+    owner_id: UUID,
+    *,
+    project_ids: Sequence[UUID] = (),
+    goal_ids: Sequence[UUID] = (),
+    task_ids: Sequence[UUID] = (),
+    section: NoteSection = NoteSection.OVERVIEW,
+) -> tuple[dict[UUID, int], dict[UUID, int], dict[UUID, int]]:
+    """How many characters of visible text each note has, without loading it.
+
+    For saying that a long note is there. Notes without text are left out.
+    Returns ``(project_notes, goal_notes, task_notes)`` keyed by entity ID.
+    """
+    where = _notes_of(owner_id, section, project_ids, goal_ids, task_ids)
+    if where is None:
         return {}, {}, {}
 
-    notes = session.exec(
-        select(ContextNote).where(
-            and_(ContextNote.user_id == owner_id, or_(*conditions))
-        )
+    rows = session.exec(
+        select(
+            ContextNote.project_id,
+            ContextNote.goal_id,
+            ContextNote.task_id,
+            func.length(ContextNote.content_text),
+        ).where(where, col(ContextNote.content_text) != "")
     ).all()
+
+    project_notes: dict[UUID, int] = {}
+    goal_notes: dict[UUID, int] = {}
+    task_notes: dict[UUID, int] = {}
+    for project_id, goal_id, task_id, length in rows:
+        if project_id:
+            project_notes[project_id] = length
+        elif goal_id:
+            goal_notes[goal_id] = length
+        elif task_id:
+            task_notes[task_id] = length
+    return project_notes, goal_notes, task_notes
+
+
+def load_note_texts(
+    session: Session,
+    owner_id: UUID,
+    *,
+    project_ids: Sequence[UUID] = (),
+    goal_ids: Sequence[UUID] = (),
+    task_ids: Sequence[UUID] = (),
+    section: NoteSection = NoteSection.OVERVIEW,
+) -> tuple[dict[UUID, str], dict[UUID, str], dict[UUID, str]]:
+    """Load non-empty note texts for projects, goals, and tasks in one query.
+
+    The overviews unless ``section`` asks for the logs. Returns
+    ``(project_notes, goal_notes, task_notes)`` keyed by entity ID.
+    """
+    where = _notes_of(owner_id, section, project_ids, goal_ids, task_ids)
+    if where is None:
+        return {}, {}, {}
+
+    notes = session.exec(select(ContextNote).where(where)).all()
 
     project_notes: dict[UUID, str] = {}
     goal_notes: dict[UUID, str] = {}

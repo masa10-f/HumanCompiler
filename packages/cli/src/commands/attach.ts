@@ -51,9 +51,10 @@ is; its path, this machine's name and its SHA-256 are recorded with the
 preview so it can be found again.
 
 Prints the Markdown reference of the image, ![caption](attachment:<id>). The
-image shows in the note once the reference is in it: pass --append, or put
-the reference in the note yourself (for example with the MCP tool
-append_note).
+image shows once the reference is in one of the item's two notes, its
+overview or its log: pass --append to add it to the log, or put the reference
+where you want it yourself (for example with the MCP tools append_note and
+replace_note).
 
 Needs the ${TOKEN_ENV} environment variable (an agent token with
 ${COMMAND_SCOPES.attach.join(', ')}; ${OPTION_SCOPES.attach.option} also needs ${OPTION_SCOPES.attach.scopes.join(', ')}).
@@ -62,7 +63,7 @@ Options:
   --caption <text>     What the image shows (required, up to ${CAPTION_MAX} characters).
                        Readers that cannot see images get only this.
   --source <script>    The script or command that made the image.
-  --append             Also add the reference to the end of the note.
+  --append             Also add the reference to the end of the item's log.
   --api-url <url>      API base URL (default: $${API_URL_ENV} or
                        ${DEFAULT_API_URL}).
   -h, --help           Show this help.

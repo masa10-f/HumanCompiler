@@ -26,6 +26,7 @@ import { GoalTaskAssistantDialog } from '@/components/ai/goal-task-assistant-dia
 import { LogFormDialog } from '@/components/logs/log-form-dialog'
 import { ContextNotePanel } from '@/components/notes/context-note-panel'
 import { NoteConflictAlert } from '@/components/notes/note-conflict-alert'
+import { NoteLogSection } from '@/components/notes/note-log-section'
 import { CopyTaskNoteButton } from '@/components/tasks/copy-task-note-button'
 import { TaskEditDialog } from '@/components/tasks/task-edit-dialog'
 import { TaskStatusSelect } from '@/components/tasks/task-status-select'
@@ -160,6 +161,12 @@ function TaskNote({ taskId, variant }: { taskId: string; variant: 'panel' | 'pag
         emptyTitle="ノートはまだありません"
         emptyDescription="作業メモや依頼文をここに書けます。"
         attachmentTarget={{ type: 'task', id: taskId }}
+      />
+      <NoteLogSection
+        entityType="task"
+        entityId={taskId}
+        summary={note?.log}
+        variant={variant === 'page' ? 'full' : 'compact'}
       />
     </>
   )

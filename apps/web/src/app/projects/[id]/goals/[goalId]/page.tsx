@@ -17,6 +17,7 @@ import { TaskFormDialog } from '@/components/tasks/task-form-dialog';
 import { GoalTaskList } from '@/components/tasks/goal-task-list';
 import { ContextNotePanel } from '@/components/notes/context-note-panel';
 import { NoteConflictAlert } from '@/components/notes/note-conflict-alert';
+import { NoteLogSection } from '@/components/notes/note-log-section';
 import { GoalTaskAssistantDialog } from '@/components/ai/goal-task-assistant-dialog';
 import { ContextExportDialog } from '@/components/context-export/context-export-dialog';
 import { ArrowLeft, Plus, Clock, FileText, Loader2, AlertCircle, Sparkles, CalendarDays } from 'lucide-react';
@@ -281,9 +282,14 @@ export default function GoalDetailPage() {
                   content={goalNote?.content || ''}
                   onUpdate={(content) => updateNote({ content, content_type: 'html' })}
                   saving={noteSaving}
-                  placeholder="ゴールに関するメモや背景情報を記録..."
+                  placeholder="ゴールの目的・方針・決定事項など、今の要点を記録..."
                   updatedAt={goalNote?.updated_at}
                   attachmentTarget={{ type: 'goal', id: goalId }}
+                />
+                <NoteLogSection
+                  entityType="goal"
+                  entityId={goalId}
+                  summary={goalNote?.log}
                 />
               </>
             )}

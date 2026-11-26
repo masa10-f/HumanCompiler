@@ -32,6 +32,7 @@ from humancompiler_api.agent_write_models import (
     NoteTargetKind,
     NOTE_IMAGES,
     NOTE_REPLACE_LOSES,
+    NOTE_SECTIONS,
 )
 from humancompiler_api.database import get_session
 from humancompiler_api.models import (
@@ -69,9 +70,10 @@ NOTE_GUIDE = (
     "Another user's item and a missing one both give 404. The request body is "
     "capped at 512 KB (raw bytes, before parsing): a larger body gets 413, "
     "decided before authentication. Raw HTML in the Markdown is shown as text. "
-    "A change to a task's note text also advances that task's updated_at (the "
-    "task carries the opening of its note as note_excerpt): read the task "
-    f"again before updating it, or the update answers 409. {NOTE_IMAGES}"
+    f"{NOTE_SECTIONS} A change to the text of a task's overview also advances "
+    "that task's updated_at (the task carries the opening of its overview as "
+    "note_excerpt): read the task again before updating it, or the update "
+    f"answers 409. A change to a task's log does not. {NOTE_IMAGES}"
 )
 
 
@@ -135,8 +137,9 @@ async def update_goal(
         "Create a task in one of the user's goals. Another user's goal and a "
         "missing one both give 404. depends_on lists up to 20 of the user's "
         "tasks that must be finished first; if any is missing or another "
-        "user's, the answer is 404 and nothing is created. A task's note is "
-        "its body: description is plain text that opens the new task's note."
+        "user's, the answer is 404 and nothing is created. A task's overview "
+        "is its body: description is plain text that opens the new task's "
+        "overview."
     ),
 )
 async def create_task(
@@ -155,11 +158,12 @@ async def create_task(
     response_model=TaskResponse,
     summary="Update a task",
     description=(
-        f"{UPDATE_GUIDE} A task has no description or memo: its note is its "
-        "body, written through the note endpoints. Sending description, memo "
-        "or memo_append is rejected with 422. To finish a task and leave a "
-        "summary, update the task first and append to its note after: a note "
-        "write advances the task's updated_at."
+        f"{UPDATE_GUIDE} A task has no description or memo: its overview is "
+        "its body, written through the note endpoints. Sending description, "
+        "memo or memo_append is rejected with 422. To finish a task and leave "
+        "a summary, update the task and append the summary to its log (where "
+        "the append endpoint writes unless told otherwise); a log write does "
+        "not change the task's updated_at."
     ),
 )
 async def update_task(
@@ -266,10 +270,11 @@ notes_router = APIRouter(route_class=body_capped_route(NOTE_MAX_BODY_BYTES))
     response_model=ContextNoteResponse,
     summary="Append to a note",
     description=(
-        "Add Markdown to the end of the note of a project, goal or task, under a "
-        "heading with your token name and today's date. Creates the note if the "
-        "item has none. Not a destructive change, and no expected_updated_at is "
-        f"needed. {NOTE_GUIDE}"
+        "Add Markdown to the end of the log of a project, goal or task, under a "
+        "heading with your token name and today's date; with section overview, "
+        "to the end of its overview instead. Creates the note if the item has "
+        "none. Not a destructive change, and no expected_updated_at is needed. "
+        f"{NOTE_GUIDE}"
     ),
 )
 async def append_note(
@@ -290,15 +295,17 @@ async def append_note(
     response_model=ContextNoteResponse,
     summary="Replace a note",
     description=(
-        "Replace the whole note of a project, goal or task with the Markdown "
-        "sent; an empty string empties it. Replacing a note that has text is a "
-        "destructive change: it needs the writes:unconfirmed scope, else 403 "
-        "and nothing changes; send it as a proposal instead. Creating the note "
-        "or filling an empty one is not destructive. "
-        f"{NOTE_REPLACE_LOSES} expected_updated_at must be the note's "
-        "updated_at you last read, or null when the item has no note yet (that "
-        "creates it). If they differ, nothing is written and the answer is 409 "
-        "with detail.current_updated_at (null when there is no note); read it "
+        "Replace the whole overview of a project, goal or task with the "
+        "Markdown sent (its whole log instead, with section log); an empty "
+        "string empties it. Replacing a note that has text is a destructive "
+        "change: it needs the writes:unconfirmed scope, else 403 and nothing "
+        "changes; send it as a proposal instead. Creating the note or filling "
+        f"an empty one is not destructive. {NOTE_REPLACE_LOSES} "
+        "expected_updated_at must be the "
+        "updated_at you last read of the note of that section, or null when "
+        "the item has no such note yet (that creates it). If they differ, "
+        "nothing is written and the answer is 409 with "
+        "detail.current_updated_at (null when there is no note); read it "
         f"again and retry. {NOTE_GUIDE}"
     ),
 )

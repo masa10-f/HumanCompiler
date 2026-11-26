@@ -291,9 +291,13 @@ def test_appending_the_reference_attaches_the_image(session: Session) -> None:
 
     assert response.status_code == 200, response.text
     assert _rows(session)[0].detached_at is None
+    # An append goes to the project's log, which now holds the image.
     note = session.exec(
-        select(ContextNote).where(ContextNote.project_id == project.id)
+        select(ContextNote).where(
+            ContextNote.project_id == project.id, ContextNote.section == "log"
+        )
     ).one()
+    assert _rows(session)[0].note_id == note.id
     assert f'<img data-attachment-id="{attached["id"]}" alt="損失の推移">' in (
         note.content
     )
@@ -319,9 +323,12 @@ def test_replacing_the_note_without_the_reference_detaches_the_image(
         headers=bearer(token),
     ).json()
 
+    assert appended["section"] == "log"
+
     response = client.put(
         f"{BASE}/context-notes/projects/{project.id}",
         json={
+            "section": "log",
             "content_markdown": "図は不要になった",
             "expected_updated_at": appended["updated_at"],
         },
@@ -330,6 +337,117 @@ def test_replacing_the_note_without_the_reference_detaches_the_image(
 
     assert response.status_code == 200, response.text
     assert _rows(session)[0].detached_at is not None
+
+
+def test_an_image_follows_its_reference_between_overview_and_log(
+    session: Session,
+) -> None:
+    token = issue_token(
+        session,
+        USER_A,
+        [*ATTACH, AgentScope.NOTES_WRITE, AgentScope.WRITES_UNCONFIRMED],
+    )
+    project = seed_project(session, USER_A)
+    attached = _attach(token, "projects", project.id).json()
+
+    def note_of(section: str) -> ContextNote:
+        session.expire_all()
+        return session.exec(
+            select(ContextNote).where(
+                ContextNote.project_id == project.id, ContextNote.section == section
+            )
+        ).one()
+
+    def write(section: str, markdown: str) -> dict:
+        response = client.post(
+            f"{BASE}/context-notes/projects/{project.id}/append",
+            json={"section": section, "content_markdown": markdown},
+            headers=bearer(token),
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    # The upload is held by the overview until a note refers to it.
+    assert _rows(session)[0].note_id == note_of("overview").id
+
+    log = write("log", attached["markdown"])
+    row = _rows(session)[0]
+    assert (row.note_id, row.detached_at) == (note_of("log").id, None)
+
+    # A write to the overview that does not mention it leaves it with the log.
+    write("overview", "方針を決めた")
+    row = _rows(session)[0]
+    assert (row.note_id, row.detached_at) == (note_of("log").id, None)
+
+    # Shown in the overview as well, it stays attached when the log drops it.
+    write("overview", attached["markdown"])
+    assert _rows(session)[0].note_id == note_of("overview").id
+    emptied = client.put(
+        f"{BASE}/context-notes/projects/{project.id}",
+        json={
+            "section": "log",
+            "content_markdown": "",
+            "expected_updated_at": log["updated_at"],
+        },
+        headers=bearer(token),
+    )
+    assert emptied.status_code == 200, emptied.text
+    row = _rows(session)[0]
+    assert (row.note_id, row.detached_at) == (note_of("overview").id, None)
+
+    # The same image uploaded again for the item is the one already stored.
+    again = _attach(token, "projects", project.id).json()
+    assert (again["id"], again["reused"]) == (attached["id"], True)
+
+
+def test_an_image_removed_from_its_holder_stays_with_the_note_that_shows_it(
+    session: Session,
+) -> None:
+    token = issue_token(
+        session,
+        USER_A,
+        [*ATTACH, AgentScope.NOTES_WRITE, AgentScope.WRITES_UNCONFIRMED],
+    )
+    project = seed_project(session, USER_A)
+    attached = _attach(token, "projects", project.id).json()
+    url = f"{BASE}/context-notes/projects/{project.id}"
+
+    def append(section: str) -> dict:
+        response = client.post(
+            f"{url}/append",
+            json={"section": section, "content_markdown": attached["markdown"]},
+            headers=bearer(token),
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def replace(note: dict, markdown: str) -> None:
+        response = client.put(
+            url,
+            json={
+                "section": note["section"],
+                "content_markdown": markdown,
+                "expected_updated_at": note["updated_at"],
+            },
+            headers=bearer(token),
+        )
+        assert response.status_code == 200, response.text
+
+    # Both notes show the image; the log, written last, holds it.
+    overview = append("overview")
+    log = append("log")
+    assert str(_rows(session)[0].note_id) == log["id"]
+
+    # Removed from the log, it is still in the overview: not detached.
+    replace(log, "図は概要に置いた")
+    row = _rows(session)[0]
+    assert (str(row.note_id), row.detached_at) == (overview["id"], None)
+
+    # Removed from the overview as well, no note shows it.
+    replace(overview, "図は不要になった")
+    row = _rows(session)[0]
+    assert str(row.note_id) == overview["id"]
+    assert row.detached_at is not None
 
 
 def test_a_note_with_only_an_image_is_not_blank_for_replace(session: Session) -> None:

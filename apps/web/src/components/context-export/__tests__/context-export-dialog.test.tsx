@@ -55,6 +55,8 @@ describe('ContextExportDialog', () => {
 
     fireEvent.click(screen.getByLabelText('完了・キャンセル済みを含める'));
     fireEvent.click(screen.getByLabelText('デイリープランの記録を含める'));
+    // Logs are left out unless asked for.
+    fireEvent.click(screen.getByLabelText('ノートのログを含める'));
     fireEvent.click(screen.getByLabelText('直近30日'));
     const preview = await generate();
 
@@ -62,6 +64,7 @@ describe('ContextExportDialog', () => {
       includeCompleted: false,
       includeWorkSessions: true,
       includeDailyPlans: false,
+      includeNoteLogs: true,
       periodDays: 30,
     });
     expect(preview).toHaveValue(exportResponse.markdown);

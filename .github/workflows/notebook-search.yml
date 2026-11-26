@@ -33,6 +33,9 @@ on:
       - 'apps/api/src/humancompiler_api/attachment_service.py'
       - 'apps/api/tests/test_note_attachments_migration_postgres.py'
       - 'apps/api/tests/test_note_attachments_postgres.py'
+      - 'apps/api/migrations/047*'
+      - 'apps/api/migrations/048*'
+      - 'apps/api/tests/test_note_sections_migration_postgres.py'
       - 'apps/api/tests/postgres_migration_helpers.py'
       - 'apps/api/src/humancompiler_api/migration_manager.py'
       - '.github/workflows/notebook-search.yml'
@@ -137,3 +140,8 @@ jobs:
         env:
           NOTEBOOK_TEST_POSTGRES_URL: postgresql://notebook_test:notebook_test@localhost:5432/notebook_test
         run: uv run pytest -q tests/test_note_attachments_postgres.py
+      - name: Check note sections migrations and rollback
+        working-directory: apps/api
+        env:
+          NOTEBOOK_TEST_POSTGRES_URL: postgresql://notebook_test:notebook_test@localhost:5432/notebook_test
+        run: uv run pytest -q tests/test_note_sections_migration_postgres.py
