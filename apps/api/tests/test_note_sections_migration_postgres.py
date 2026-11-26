@@ -255,6 +255,15 @@ def test_move_leaves_other_notes_alone_and_runs_once(db):
     # A Markdown note is the user's text, not HTML to cut.
     markdown = f"Text\n{HEADING}"
     add_note(cursor, schema, "goal_id", GOAL_ID, markdown, "markdown")
+    # The user's own line starts with the words of the heading: where to split
+    # the text is not certain, so the note is left whole.
+    other_goal = str(uuid4())
+    cursor.execute(
+        f'INSERT INTO "{schema}".goals (id, project_id) VALUES (%s, %s)',
+        (other_goal, PROJECT_ID),
+    )
+    quoted = f"<p>エージェントからの追記（下の欄）は読まなくてよい</p>{HEADING}<p>Summary</p>"
+    add_note(cursor, schema, "goal_id", other_goal, quoted)
     run_migration(cursor, schema, SECTIONS)
 
     run_migration(cursor, schema, MOVE)
@@ -271,6 +280,9 @@ def test_move_leaves_other_notes_alone_and_runs_once(db):
     }
     assert notes_of(cursor, schema, "goal_id", GOAL_ID) == {
         "overview": (markdown, "markdown", note_plain_text(markdown, "markdown"))
+    }
+    assert notes_of(cursor, schema, "goal_id", other_goal) == {
+        "overview": (quoted, "html", note_plain_text(quoted, "html"))
     }
     cursor.execute(f'SELECT updated_at FROM "{schema}".context_notes')
     assert {row[0] for row in cursor.fetchall()} == {OLD}

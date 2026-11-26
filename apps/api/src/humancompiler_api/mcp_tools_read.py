@@ -31,6 +31,7 @@ from humancompiler_api.daily_note_markdown import (
     schedule_payload,
 )
 from humancompiler_api.agent_auth import AgentPrincipal
+from humancompiler_api.agent_write_models import NOTE_TARGET_KINDS, NoteKind
 from humancompiler_api.ai.context_export import (
     build_goal_context_export,
     build_project_context_export,
@@ -151,13 +152,15 @@ def _log_summary(
 
 def _markdown_tail(markdown: str, limit: int) -> tuple[str, bool]:
     """The end of ``markdown`` in at most ``limit`` characters, and whether
-    anything was left out. The tail starts after a blank line when it has one,
-    so it does not open in the middle of a paragraph."""
+    anything was left out. The tail starts after a blank line when one comes
+    early in it, so it does not open in the middle of a paragraph; when the
+    first one comes late, starting there would drop most of what was asked
+    for, so the tail starts mid-paragraph instead."""
     if len(markdown) <= limit:
         return markdown, False
     tail = markdown[-limit:]
     cut = tail.find("\n\n")
-    if cut != -1:
+    if cut != -1 and cut < limit // 2:
         tail = tail[cut:]
     return tail.lstrip("\n"), True
 
@@ -174,8 +177,9 @@ _SECTIONS = (
 )
 _NOTE_AND_LOG = (
     "note is the overview as Markdown, and log is {updated_at, characters} "
-    "for a log that has text, without the text: read it with get_note when "
-    "you need how things got here. Both are returned only to a token with "
+    "for a log that has text, without the text (characters counts its visible "
+    "text): read it with get_note when you need how things got here. Both are "
+    "returned only to a token with "
     "notes:read; each is null without that scope or when there is none."
 )
 
@@ -348,14 +352,16 @@ async def get_task(task_id: UUID, ctx: Context) -> CallToolResult:
         "only its latest entries. Returns {kind, id, section, note}: note is "
         "{id, updated_at, content_markdown, characters, truncated}, or null "
         "when the item has no such note; characters is the length of the "
-        "whole note as Markdown, and truncated says the start was left out. "
+        "whole note's visible text, the same count get_task and get_goal give "
+        "for a log (its Markdown, which tail_characters counts, is somewhat "
+        "longer), and truncated says the start was left out. "
         "Another user's item and a missing one both give a 404 error. "
         f"{_USER_DATA}"
     ),
     annotations=_READ_ONLY,
 )
 async def get_note(
-    kind: Literal["project", "goal", "task"],
+    kind: NoteKind,
     id: UUID,
     ctx: Context,
     section: Annotated[
@@ -367,25 +373,24 @@ async def get_note(
         Field(
             ge=200,
             le=100000,
-            description="Only the last this many characters. Omit for all.",
+            description=(
+                "Only the last this many characters of the Markdown. Omit for all."
+            ),
         ),
     ] = None,
 ) -> CallToolResult:
     def run(session: Session, principal: AgentPrincipal) -> dict[str, Any]:
         # 404 for an item that is not the user's, as the note writes answer.
         agent_write_service.owned_note_target(
-            session,
-            principal.user_id,
-            f"{kind}s",
-            id,  # type: ignore[arg-type]
+            session, principal.user_id, NOTE_TARGET_KINDS[kind], id
         )
         note: ContextNote | None = _note_for(
             session, principal.user_id, _NOTE_COLUMNS[kind], id, NoteSection(section)
         )
         payload = _note_payload(note)
-        if payload is not None:
+        if payload is not None and note is not None:
             markdown = payload["content_markdown"]
-            payload["characters"] = len(markdown)
+            payload["characters"] = len(note.content_text)
             payload["truncated"] = False
             if tail_characters is not None:
                 payload["content_markdown"], payload["truncated"] = _markdown_tail(

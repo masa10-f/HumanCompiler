@@ -26,6 +26,7 @@ from humancompiler_api.agent_rate_limit import agent_rate_limiter
 from humancompiler_api.database import db, get_session
 from humancompiler_api.main import app
 from humancompiler_api.mcp_server import mcp_lifespan
+from humancompiler_api.mcp_tools_read import _markdown_tail
 from humancompiler_api.models import (
     AgentAuditLog,
     AgentChange,
@@ -1525,6 +1526,26 @@ async def test_goal_note_append_read_and_replace(
     ]
 
 
+def test_markdown_tail_starts_at_a_paragraph_only_when_that_costs_little():
+    entries = "\n\n".join(f"entry {index:03d}" for index in range(50))
+    tail, truncated = _markdown_tail(entries, 100)
+    assert (tail.startswith("entry 0"), tail.endswith("entry 049"), truncated) == (
+        True,
+        True,
+        True,
+    )
+    assert 80 <= len(tail) <= 100
+
+    # One long paragraph and then a short one: starting at the blank line would
+    # return a fraction of what was asked for.
+    long_then_short = "x" * 5000 + "\n\nlast line"
+    tail, truncated = _markdown_tail(long_then_short, 1000)
+    assert (len(tail), truncated) == (1000, True)
+    assert tail.endswith("\n\nlast line")
+
+    assert _markdown_tail("short", 1000) == ("short", False)
+
+
 async def test_get_note_reads_either_section_and_the_tail_of_a_long_log(
     session: Session, mcp: httpx.AsyncClient
 ):
@@ -1553,6 +1574,8 @@ async def test_get_note_reads_either_section_and_the_tail_of_a_long_log(
     assert body["section"] == "overview"
     assert body["note"]["content_markdown"] == "Why we do this"
     assert body["note"]["truncated"] is False
+    # The visible text, the unit get_goal and get_task count a log in.
+    assert body["note"]["characters"] == len("Why we do this")
 
     is_error, body = await call(
         mcp,

@@ -26,6 +26,13 @@ Priority = Annotated[int, Field(ge=1, le=5)]
 DEPENDS_ON_MAX = 20
 
 NoteTargetKind = Literal["projects", "goals", "tasks"]
+# What a note is on as the MCP tools name it, and as the REST paths do.
+NoteKind = Literal["project", "goal", "task"]
+NOTE_TARGET_KINDS: dict[NoteKind, NoteTargetKind] = {
+    "project": "projects",
+    "goal": "goals",
+    "task": "tasks",
+}
 
 EXPECTED_UPDATED_AT_DESCRIPTION = (
     "The updated_at you last read. If the stored value differs, nothing is "

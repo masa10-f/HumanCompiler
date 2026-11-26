@@ -428,6 +428,9 @@ def test_logs_are_mentioned_unless_asked_for(
     assert "方針を変えた" not in markdown
     assert "下書きを書いた" not in markdown
     assert markdown.count("※ ログ（経緯・作業メモ、約") == 2
+    # Counted from the stored visible text, without loading the logs.
+    assert "※ ログ（経緯・作業メモ、約13文字）は省略しています。" in markdown
+    assert "※ ログ（経緯・作業メモ、約7文字）は省略しています。" in markdown
     # Another user's log on the goal is not counted.
     assert "他人のノート" not in markdown
 

@@ -47,7 +47,8 @@ from humancompiler_api.agent_write_models import (
     Hours,
     LOG_COMMENT_MAX,
     LOG_MINUTES_MAX,
-    NoteTargetKind,
+    NOTE_TARGET_KINDS,
+    NoteKind,
 )
 from humancompiler_api.mcp_server import guarded_call, mcp_server
 from humancompiler_api.mcp_tools_read import _note_payload, _utc_iso
@@ -62,14 +63,6 @@ from humancompiler_api.models import (
 )
 from humancompiler_api.proposal_payloads import NoteSectionName
 from humancompiler_api.routers.agent_writes import _goal_response, _task_response
-
-NoteKind = Literal["project", "goal", "task"]
-
-_NOTE_KINDS: dict[NoteKind, NoteTargetKind] = {
-    "project": "projects",
-    "goal": "goals",
-    "task": "tasks",
-}
 
 _CREATE = ToolAnnotations(read_only_hint=False, destructive_hint=False)
 _MAY_DESTROY = ToolAnnotations(read_only_hint=False, destructive_hint=True)
@@ -419,7 +412,7 @@ async def append_note(
     def run(session: Session, principal: AgentPrincipal) -> dict[str, Any]:
         data = AgentNoteAppend(section=section, content_markdown=content_markdown)
         note = agent_write_service.append_note(
-            session, principal, _NOTE_KINDS[kind], id, data
+            session, principal, NOTE_TARGET_KINDS[kind], id, data
         )
         return {
             "section": section,
@@ -481,7 +474,7 @@ async def replace_note(
             content_markdown=content_markdown,
         )
         note = agent_write_service.replace_note(
-            session, principal, _NOTE_KINDS[kind], id, data
+            session, principal, NOTE_TARGET_KINDS[kind], id, data
         )
         return {"applied": True, "section": section, "note": _note_payload(note)}
 

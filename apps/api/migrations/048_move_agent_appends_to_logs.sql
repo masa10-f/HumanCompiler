@@ -18,9 +18,11 @@
 --
 -- Left alone: task notes (a task's note is its body, and for a task an agent
 -- created the text under the heading is that body), Markdown notes (the web
--- editor saves HTML and agents append HTML), and items whose log already has
--- content. Text the user wrote below an agent heading moves with it; move it
--- back in the editor if it belongs in the overview.
+-- editor saves HTML and agents append HTML), items whose log already has
+-- content, and a note that has the words of the heading in its own text
+-- above the first heading (the place to split its text is then not certain).
+-- Text the user wrote below an agent heading moves with it; move it back in
+-- the editor if it belongs in the overview.
 --
 -- Apply after the API that reads context_notes.section is deployed: the API
 -- deployed before 047 does not tell an item's two notes apart. Requires 047
@@ -55,8 +57,12 @@ END
 -- 1. html_pos is where the first agent heading starts in content, and
 -- text_pos where its line starts in content_text (one block per line). A note
 -- is split only when both are found, so the two always split at the same
--- heading. log_id is the item's log row when it has an empty one: '' as the
--- web creates it, or the empty paragraph the editor saves.
+-- heading. words_before is where the words of the heading appear in content
+-- before that heading, as the user's own text: the first line of
+-- content_text that starts with them would then not be the heading's, so
+-- such a note is not split. log_id is the item's log row when it has an
+-- empty one: '' as the web creates it, or the empty paragraph the editor
+-- saves.
 WITH split AS (
     SELECT
         n.id,
@@ -67,6 +73,13 @@ WITH split AS (
         n.content_text,
         l.id AS log_id,
         strpos(n.content, '<p><strong>エージェントからの追記（') AS html_pos,
+        strpos(
+            left(
+                n.content,
+                GREATEST(strpos(n.content, '<p><strong>エージェントからの追記（') - 1, 0)
+            ),
+            'エージェントからの追記（'
+        ) AS words_before,
         CASE
             WHEN left(n.content_text, 12) = 'エージェントからの追記（' THEN 1
             WHEN strpos(n.content_text, chr(10) || 'エージェントからの追記（') > 0
@@ -88,7 +101,7 @@ created AS (
     SELECT gen_random_uuid(), user_id, project_id, goal_id, 'log',
            substr(content, html_pos), 'html', substr(content_text, text_pos)
     FROM split
-    WHERE html_pos > 0 AND text_pos > 0 AND log_id IS NULL
+    WHERE html_pos > 0 AND text_pos > 0 AND words_before = 0 AND log_id IS NULL
     RETURNING id
 ),
 filled AS (
@@ -101,6 +114,7 @@ filled AS (
     WHERE l.id = split.log_id
       AND split.html_pos > 0
       AND split.text_pos > 0
+      AND split.words_before = 0
     RETURNING l.id
 )
 UPDATE public.context_notes AS n
@@ -113,7 +127,8 @@ SET content = left(split.content, split.html_pos - 1),
 FROM split
 WHERE n.id = split.id
   AND split.html_pos > 0
-  AND split.text_pos > 0;
+  AND split.text_pos > 0
+  AND split.words_before = 0;
 
 -- 2. The note that shows an image holds it. Only images the overview no
 -- longer refers to move; ids are compared in lower case, as the API writes

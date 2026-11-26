@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import ColumnElement, Text, cast, func
 from sqlmodel import Session, col, or_, select
 
-from humancompiler_api.ai.note_text import load_note_texts
+from humancompiler_api.ai.note_text import load_note_text_lengths, load_note_texts
 from humancompiler_api.ai.report_generator import TASK_STATUS_LABELS
 from humancompiler_api.common.error_handlers import ResourceNotFoundError
 from humancompiler_api.models import (
@@ -226,9 +226,11 @@ class _ContextExportBuilder:
             if options.period_days
             else None
         )
-        self.project_logs: dict[UUID, str] = {}
-        self.goal_logs: dict[UUID, str] = {}
-        self.task_logs: dict[UUID, str] = {}
+        # The logs of the exported items: their text when logs are exported,
+        # else only how long each is.
+        self.project_logs: Mapping[UUID, str | int] = {}
+        self.goal_logs: Mapping[UUID, str | int] = {}
+        self.task_logs: Mapping[UUID, str | int] = {}
 
     def build(
         self, scope: ExportScope, project: Project, goals: list[Goal]
@@ -265,7 +267,13 @@ class _ContextExportBuilder:
             goal_ids=[section.goal.id for section in sections if section.goal.id],
             task_ids=task_ids,
         )
-        self.project_logs, self.goal_logs, self.task_logs = load_note_texts(
+        # A log left out is only counted: logs are the notes that grow.
+        load_logs = (
+            load_note_texts
+            if self.options.include_note_logs
+            else load_note_text_lengths
+        )
+        self.project_logs, self.goal_logs, self.task_logs = load_logs(
             self.session,
             self.owner_id,
             project_ids=[project.id] if project.id else [],
@@ -504,13 +512,15 @@ class _ContextExportBuilder:
         )
         return blocks
 
-    def _render_log(self, heading: str, log: str | None, level: int) -> list[str]:
-        """An item's log under ``heading``, or one line saying it was left out."""
+    def _render_log(self, heading: str, log: str | int | None, level: int) -> list[str]:
+        """An item's log under ``heading``, or one line saying it was left out.
+
+        ``log`` is the log's text, or its length when logs are not exported."""
         if not log:
             return []
-        if self.options.include_note_logs:
+        if isinstance(log, str):
             return [heading, demote_headings(log, level)]
-        return [f"※ ログ（経緯・作業メモ、約{len(log)}文字）は省略しています。"]
+        return [f"※ ログ（経緯・作業メモ、約{log}文字）は省略しています。"]
 
     def _render_goal(
         self,
