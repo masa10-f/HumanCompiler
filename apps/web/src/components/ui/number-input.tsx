@@ -83,21 +83,22 @@ const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
 
     const handleBlur = (event: React.FocusEvent<HTMLInputElement>) => {
       const parsed = parseDraft(draft, integer)
-      if (parsed === undefined) {
-        if (!(allowEmpty && draft.trim() === "")) setDraft(formatValue(value))
-      } else {
-        let next = parsed
-        if (clampOnBlur) {
+      if (!(parsed === undefined && allowEmpty && draft.trim() === "")) {
+        // An empty or unreadable field falls back to the last value, which goes
+        // through the same clamp: it may be an out-of-range number typed earlier.
+        const base = parsed ?? value ?? undefined
+        let next = base
+        if (clampOnBlur && next !== undefined) {
           const lower = toBound(min)
           const upper = toBound(max)
           if (lower !== undefined) next = Math.max(lower, next)
           if (upper !== undefined) next = Math.min(upper, next)
         }
-        if (next !== parsed) onValueChange(next)
+        if (next !== base) onValueChange(next)
         // Show what was kept: the clamped number, or the parent's value when it
         // transformed the input (e.g. 0 meaning "none", or a fraction dropped).
-        const kept = next !== parsed ? next : (value ?? undefined)
-        if (Number(draft.trim()) !== kept) setDraft(formatValue(kept))
+        const kept = next !== base ? next : (value ?? undefined)
+        if (parsed === undefined || Number(draft.trim()) !== kept) setDraft(formatValue(kept))
       }
       onBlur?.(event)
     }

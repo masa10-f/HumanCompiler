@@ -89,6 +89,18 @@ describe('NumberInput', () => {
     expect(input().value).toBe('1440')
   })
 
+  it('clamps the restored value when an out-of-range field is cleared and left', () => {
+    const onSpy = jest.fn()
+    render(<Harness initial={30} min={5} max={480} integer clampOnBlur onSpy={onSpy} />)
+
+    fireEvent.change(input(), { target: { value: '5000' } })
+    fireEvent.change(input(), { target: { value: '' } })
+    fireEvent.blur(input())
+    expect(onSpy).toHaveBeenLastCalledWith(480)
+    expect(input().value).toBe('480')
+    expect(screen.getByTestId('value')).toHaveTextContent('480')
+  })
+
   it('reads scientific notation as the whole number in integer fields', () => {
     const onSpy = jest.fn()
     render(<Harness initial={30} min={5} max={480} integer clampOnBlur onSpy={onSpy} />)
